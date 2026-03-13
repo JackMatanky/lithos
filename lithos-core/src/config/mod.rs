@@ -1,7 +1,7 @@
 //! Domain-centric configuration management for Lithos.
 //!
 //! This module provides the domain entities, validation logic, and storage
-//! ports for Lithos configuration. It ensures that configuration is
+//! for Lithos configuration. It ensures that configuration is
 //! "Always Valid" by performing strict validation during ingestion and
 //! construction.
 //!
@@ -10,38 +10,34 @@
 //!
 //! # Features
 //!
+//! - **Hybrid Staleness Detection**: Combines timestamp checks (fast) with
+//!   BLAKE3 content hashing (accurate) to detect configuration changes.
 //! - **Layered Ingestion**: Merges defaults, global settings, and vault
 //!   overrides using Figment.
 //! - **Always Valid Invariants**: Strict type-driven validation at the domain
 //!   boundary.
-//! - **CQRS Architecture**: Separate Command and Query implementations
-//!   decoupled via Ports.
+//! - **Unified Repository**: Single trait for all persistence operations.
 //! - **Zero-Copy Persistence**: Optimized storage using `rkyv` and `redb`.
 //!
 //! # Usage
 //!
-//! ```rust
-//! # use std::path::Path;
+//! ```rust,no_run
 //! # use lithos_core::config::{
-//! #     aggregate::{Config, Version},
-//! #     vault::{VaultId, VaultRoot},
-//! #     ingestor::Ingestor
+//! #     loader::Loader,
+//! #     storage::RedbStorage,
+//! #     vault::VaultRoot,
 //! # };
+//! # use lithos_core::db::Database;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let vault_root = Path::new("/path/to/vault");
-//! let vault_id = VaultId::new();
+//! # let vault_root = std::path::Path::new("/path/to/vault");
+//! # let db_path = std::path::Path::new("/tmp/test.redb");
+//! # let db = Database::open(db_path)?;
+//! // 1. Create loader with repository
+//! let storage = RedbStorage::new(&db);
+//! let loader = Loader::new(vault_root, storage);
 //!
-//! // 1. Ingest raw configuration from files
-//! let ingestor = Ingestor::new(vault_root);
-//! let raw = ingestor.build_merged_raw(vault_root)?;
-//!
-//! // 2. Transform into a validated domain aggregate
-//! let config = Config::build(
-//!     &raw,
-//!     vault_id,
-//!     VaultRoot::try_new(vault_root.to_path_buf())?,
-//!     Version::initial(),
-//! )?;
+//! // 2. Load configuration (with automatic staleness detection)
+//! let config = loader.load()?;
 //!
 //! // 3. Use the validated configuration
 //! assert!(config.paths().cache.cache_dir().as_path().is_relative());
@@ -49,27 +45,27 @@
 //! # }
 //! ```
 //!
-//! # Layout
+//! # Architecture
 //!
-//! The configuration context is organized into three logical areas:
+//! The configuration context follows a clean layered architecture:
 //!
-//! ### Core Aggregates
-//! These modules define the primary domain models and their invariants:
-//! - [`aggregate`] - The [`Config`] aggregate root.
-//! - [`global`] - Global-level configuration settings.
-//! - [`vault`] - Vault-specific overrides and metadata.
-//! - [`paths`] - Validated path configurations.
+//! ## Core Domain
+//! - [`aggregate`] - The [`Config`] aggregate root with versioning
+//! - [`global`] - Global-level configuration settings
+//! - [`vault`] - Vault-specific overrides and metadata
+//! - [`paths`] - Validated path configurations
 //!
-//! ### CQRS Infrastructure
-//! Implementation of write and read operations:
-//! - [`command`] - Mutations and state changes (saving/rebuilding).
-//! - [`query`] - Read-only access to configuration snapshots.
-//! - [`ports`] - Trait definitions for storage decoupling.
+//! ## Orchestration & Storage
+//! - [`loader`] - Configuration loading with hybrid staleness detection
+//! - [`storage`] - Unified Repository trait and redb implementation
+//! - [`ingestor`] - File discovery and TOML parsing
+//! - [`views`] - Raw config views for staleness tracking
 //!
-//! ### Supporting Modules
-//! - [`ingest`] - Figment-based adapter for file loading.
-//! - [`task`] - Task-specific schema and validation.
-//! - [`logging`] / [`frontmatter`] - Focused domain building blocks.
+//! ## Supporting Modules
+//! - [`task`] - Task-specific schema and validation
+//! - [`logging`] / [`frontmatter`] - Focused domain building blocks
+//! - [`error`] - Structured error types
+//! - [`events`] - Domain events
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
@@ -77,8 +73,6 @@
 //                   Core Aggregate Modules                    //
 // ----------------------------------------------------------- //
 
-/// Configuration storage adapters.
-pub mod adapter;
 /// Configuration aggregate root.
 pub mod aggregate;
 /// Global configuration types and validation.
@@ -92,12 +86,6 @@ pub mod vault;
 //               Logic & Infrastructure Modules                //
 // ----------------------------------------------------------- //
 
-/// Configuration command implementations (CQRS write operations).
-pub mod command;
-/// Configuration ports for CQRS.
-pub mod ports;
-/// Configuration query implementations (CQRS read operations).
-pub mod query;
 /// Unified repository for configuration persistence.
 pub mod storage;
 
@@ -113,6 +101,8 @@ pub mod events;
 pub mod frontmatter;
 /// Configuration file ingestion (Figment-based parsing).
 pub mod ingestor;
+/// Configuration loading orchestration with hybrid staleness detection.
+pub mod loader;
 /// Logging configuration types.
 pub mod logging;
 /// Raw (serde) configuration input types.
@@ -164,14 +154,6 @@ pub(crate) mod db_table {
     pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_path_by_id");
 
-    /// Stores metadata for config staleness checking.
-    ///
-    /// Keys:
-    /// - `"global:{version}"` → Global config metadata
-    /// - `"{vault_id}:{version}"` → Vault config metadata
-    pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("config_metadata");
-
     /// Raw global config view with version history.
     ///
     /// Keys: `"global"` → `RawGlobalConfigView`.
@@ -184,11 +166,3 @@ pub(crate) mod db_table {
     pub(crate) const RAW_VAULT_CONFIG_VIEW: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_vault_config_view");
 }
-
-/// Generic command type alias to remove path stuttering: `config::Command` vs
-/// `config::command::Command`.
-pub type Command<C> = command::Command<C>;
-
-/// Generic query type alias to remove path stuttering: `config::Query` vs
-/// `config::query::Query`.
-pub type Query<Q> = query::Query<Q>;

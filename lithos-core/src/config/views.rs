@@ -46,7 +46,7 @@ use crate::config::vault::VaultId;
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::config::views::raw::{RawGlobalConfigView, RawFileVersion};
+/// use lithos_core::config::views::{RawGlobalConfigView, RawFileVersion};
 ///
 /// let view = RawGlobalConfigView::new(
 ///     "/home/user/.config/lithos/config.toml".into(),
@@ -73,7 +73,7 @@ impl RawGlobalConfigView {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::views::raw::RawGlobalConfigView;
+    /// use lithos_core::config::views::RawGlobalConfigView;
     ///
     /// let view = RawGlobalConfigView::new(
     ///     "/home/user/.config/lithos/config.toml".into()
@@ -122,11 +122,59 @@ impl RawGlobalConfigView {
         }
     }
 
+    /// Check if this view is fresh (not stale) compared to raw config.
+    ///
+    /// Performs hybrid staleness detection:
+    /// 1. Fast timestamp check (catches most modifications)
+    /// 2. Content hash check (catches timestamp-preserving changes)
+    ///
+    /// Returns `true` if the latest version matches the raw config (not stale).
+    ///
+    /// Returns `false` if:
+    /// - No version history exists (never ingested)
+    /// - Timestamps differ (file was modified)
+    /// - Content hash differs (file content changed)
+    #[inline]
+    #[must_use]
+    pub fn is_fresh(&self, raw: &crate::config::raw::RawGlobalConfig) -> bool {
+        self.latest_version().is_some_and(|latest| {
+            let meta = &raw.metadata;
+            // Delegate to RawFileVersion for comparison logic
+            latest.is_timestamp_match(
+                meta.created_at,
+                meta.modified_at.unwrap_or(SystemTime::UNIX_EPOCH),
+            ) && latest.is_content_match(&meta.content_hash.unwrap_or([0; 32]))
+        })
+    }
+
+    /// Check if content hash matches (accurate staleness check).
+    ///
+    /// Returns `true` if the latest version's BLAKE3 hash matches the raw
+    /// config. This catches changes even when timestamps are preserved
+    /// (e.g., file restored from backup, git checkout).
+    ///
+    /// Returns `false` if:
+    /// - No version history exists
+    /// - Content hash differs
+    #[inline]
+    #[must_use]
+    pub fn content_hash_matches(
+        &self,
+        raw: &crate::config::raw::RawGlobalConfig,
+    ) -> bool {
+        self.latest_version().is_some_and(|latest| {
+            let meta = &raw.metadata;
+            latest.content_hash() == &meta.content_hash.unwrap_or([0; 32])
+        })
+    }
+
     /// Check if this view matches the given raw config (not stale).
     ///
-    /// Returns `true` if the latest version in this view matches the
-    /// raw config's metadata (timestamps AND content hash), indicating no
-    /// staleness.
+    /// Performs hybrid staleness detection:
+    /// 1. Fast timestamp check (catches most modifications)
+    /// 2. Content hash check (catches timestamp-preserving changes)
+    ///
+    /// Returns `true` only if BOTH checks pass.
     ///
     /// Returns `false` if:
     /// - No version history exists (never ingested)
@@ -136,18 +184,9 @@ impl RawGlobalConfigView {
     #[must_use]
     pub fn matches_raw(
         &self,
-        raw: &crate::config::raw::RawVaultConfig,
+        raw: &crate::config::raw::RawGlobalConfig,
     ) -> bool {
-        self.latest_version().is_some_and(|latest| {
-            let meta = &raw.metadata;
-            // Compare created_at (latest has Option, meta has Option)
-            latest.created_at() == meta.created_at
-                // Compare modified_at (latest has SystemTime, meta has Option)
-                && meta.modified_at.is_some_and(|mt| latest.modified_at() == mt)
-                // Compare content hash
-                && latest.content_hash()
-                    == &meta.content_hash.unwrap_or([0; 32])
-        })
+        self.is_fresh(raw)
     }
 }
 
@@ -163,7 +202,7 @@ impl RawGlobalConfigView {
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::config::{vault::VaultId, views::raw::{RawVaultConfigView, RawFileVersion}};
+/// use lithos_core::config::{vault::VaultId, views::{RawVaultConfigView, RawFileVersion}};
 ///
 /// let vault_id = VaultId::new();
 /// let view = RawVaultConfigView::new(
@@ -193,7 +232,7 @@ impl RawVaultConfigView {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::{vault::VaultId, views::raw::RawVaultConfigView};
+    /// use lithos_core::config::{vault::VaultId, views::RawVaultConfigView};
     ///
     /// let vault_id = VaultId::new();
     /// let view = RawVaultConfigView::new(
@@ -251,11 +290,59 @@ impl RawVaultConfigView {
         }
     }
 
+    /// Check if this view is fresh (not stale) compared to raw config.
+    ///
+    /// Performs hybrid staleness detection:
+    /// 1. Fast timestamp check (catches most modifications)
+    /// 2. Content hash check (catches timestamp-preserving changes)
+    ///
+    /// Returns `true` if the latest version matches the raw config (not stale).
+    ///
+    /// Returns `false` if:
+    /// - No version history exists (never ingested)
+    /// - Timestamps differ (file was modified)
+    /// - Content hash differs (file content changed)
+    #[inline]
+    #[must_use]
+    pub fn is_fresh(&self, raw: &crate::config::raw::RawVaultConfig) -> bool {
+        self.latest_version().is_some_and(|latest| {
+            let meta = &raw.metadata;
+            // Delegate to RawFileVersion for comparison logic
+            latest.is_timestamp_match(
+                meta.created_at,
+                meta.modified_at.unwrap_or(SystemTime::UNIX_EPOCH),
+            ) && latest.is_content_match(&meta.content_hash.unwrap_or([0; 32]))
+        })
+    }
+
+    /// Check if content hash matches (accurate staleness check).
+    ///
+    /// Returns `true` if the latest version's BLAKE3 hash matches the raw
+    /// config. This catches changes even when timestamps are preserved
+    /// (e.g., file restored from backup, git checkout).
+    ///
+    /// Returns `false` if:
+    /// - No version history exists
+    /// - Content hash differs
+    #[inline]
+    #[must_use]
+    pub fn content_hash_matches(
+        &self,
+        raw: &crate::config::raw::RawVaultConfig,
+    ) -> bool {
+        self.latest_version().is_some_and(|latest| {
+            let meta = &raw.metadata;
+            latest.content_hash() == &meta.content_hash.unwrap_or([0; 32])
+        })
+    }
+
     /// Check if this view matches the given raw config (not stale).
     ///
-    /// Returns `true` if the latest version in this view matches the
-    /// raw config's metadata (timestamps AND content hash), indicating no
-    /// staleness.
+    /// Performs hybrid staleness detection:
+    /// 1. Fast timestamp check (catches most modifications)
+    /// 2. Content hash check (catches timestamp-preserving changes)
+    ///
+    /// Returns `true` only if BOTH checks pass.
     ///
     /// Returns `false` if:
     /// - No version history exists (never ingested)
@@ -265,18 +352,9 @@ impl RawVaultConfigView {
     #[must_use]
     pub fn matches_raw(
         &self,
-        raw: &crate::config::raw::RawGlobalConfig,
+        raw: &crate::config::raw::RawVaultConfig,
     ) -> bool {
-        self.latest_version().is_some_and(|latest| {
-            let meta = &raw.metadata;
-            // Compare created_at (latest has Option, meta has Option)
-            latest.created_at() == meta.created_at
-                // Compare modified_at (latest has SystemTime, meta has Option)
-                && meta.modified_at.is_some_and(|mt| latest.modified_at() == mt)
-                // Compare content hash
-                && latest.content_hash()
-                    == &meta.content_hash.unwrap_or([0; 32])
-        })
+        self.is_fresh(raw)
     }
 }
 
@@ -303,7 +381,7 @@ impl RawVaultConfigView {
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::config::views::raw::RawFileVersion;
+/// use lithos_core::config::views::RawFileVersion;
 /// use std::time::SystemTime;
 ///
 /// let content = b"vault_path = \"/vault\"\nname = \"My Vault\"";
@@ -352,7 +430,7 @@ impl RawFileVersion {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::views::raw::RawFileVersion;
+    /// use lithos_core::config::views::RawFileVersion;
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
@@ -418,7 +496,7 @@ impl RawFileVersion {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::views::raw::RawFileVersion;
+    /// use lithos_core::config::views::RawFileVersion;
     ///
     /// let version = RawFileVersion::new(b"vault_path = \"/vault\"", None, std::time::SystemTime::now())?;
     /// let content = version.decompress()?;
@@ -429,14 +507,64 @@ impl RawFileVersion {
         zstd::decode_all(self.compressed_content.as_slice())
     }
 
-    /// Checks if this version matches the given file state.
+    /// Checks if timestamps match (fast staleness check).
     ///
-    /// Returns `true` if timestamps and content hash match.
+    /// Compares creation and modification timestamps. This is a cheap check
+    /// that catches most file modifications.
     ///
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::views::raw::RawFileVersion;
+    /// use lithos_core::config::views::RawFileVersion;
+    /// use std::time::SystemTime;
+    ///
+    /// let content = b"vault_path = \"/vault\"";
+    /// let mtime = SystemTime::now();
+    /// let version = RawFileVersion::new(content, None, mtime)?;
+    ///
+    /// assert!(version.is_timestamp_match(None, mtime));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
+    ) -> bool {
+        self.created_at == created_at && self.modified_at == modified_at
+    }
+
+    /// Checks if content hash matches (accurate staleness check).
+    ///
+    /// Compares BLAKE3 hashes. This catches changes even when timestamps
+    /// are preserved (e.g., restored from backup, git checkout).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::config::views::RawFileVersion;
+    /// use std::time::SystemTime;
+    ///
+    /// let content = b"vault_path = \"/vault\"";
+    /// let version = RawFileVersion::new(content, None, SystemTime::now())?;
+    /// let hash = blake3::hash(content);
+    ///
+    /// assert!(version.is_content_match(hash.as_bytes()));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        &self.content_hash == content_hash
+    }
+
+    /// Checks if this version matches the given file state.
+    ///
+    /// Returns `true` if timestamps AND content hash match.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::config::views::RawFileVersion;
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
@@ -453,9 +581,8 @@ impl RawFileVersion {
         modified_at: SystemTime,
         content_hash: &[u8; 32],
     ) -> bool {
-        self.created_at == created_at
-            && self.modified_at == modified_at
-            && &self.content_hash == content_hash
+        self.is_timestamp_match(created_at, modified_at)
+            && self.is_content_match(content_hash)
     }
 }
 

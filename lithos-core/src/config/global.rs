@@ -552,10 +552,18 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
                 }
                 let paths = map
                     .into_iter()
-                    .map(|(k, v)| {
-                        Ok((k.into_boxed_str(), TrustedVaultPath::try_from(v)?))
-                    })
-                    .collect::<Result<HashMap<_, _>, _>>()?;
+                    .map(
+                        |(k, v)| -> Result<
+                            (Box<str>, TrustedVaultPath),
+                            ConfigError,
+                        > {
+                            Ok((
+                                k.into_boxed_str(),
+                                TrustedVaultPath::try_from(v)?,
+                            ))
+                        },
+                    )
+                    .collect::<Result<HashMap<_, _>, ConfigError>>()?;
                 Ok(Self::Map(TrustedVaultMap(paths)))
             }
         }

@@ -24,7 +24,7 @@ use super::{
     aggregate::{Config, Version},
     global::Global,
     vault::{Vault, VaultId, VaultRoot},
-    views::raw::{RawGlobalConfigView, RawVaultConfigView},
+    views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
 // ----------------------------------------------------------- //

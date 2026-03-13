@@ -54,6 +54,10 @@ pub mod vault;
 ///
 /// The service is storage-agnostic and accepts Command/Query implementations
 /// via dependency injection.
+#[expect(
+    deprecated,
+    reason = "Temporary type alias for backward compatibility"
+)]
 pub type ConfigService<'db> = config::ConfigService<'db>;
 
 /// Vault service type alias.

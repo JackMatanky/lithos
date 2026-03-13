@@ -107,6 +107,10 @@ pub enum ConfigError {
     /// Storage operation failed.
     #[error("Storage error: {0}")]
     Storage(Box<str>),
+
+    /// Configuration ingestion failed.
+    #[error("Ingestion error: {0}")]
+    Ingestion(Box<str>),
 }
 
 /// Errors returned by configuration command operations.
@@ -172,10 +176,92 @@ impl From<ConfigIngestError> for ConfigCommandError {
     }
 }
 
+impl From<ConfigIngestError> for ConfigError {
+    #[inline]
+    fn from(error: ConfigIngestError) -> Self {
+        Self::Ingestion(error.to_string().into())
+    }
+}
+
+impl From<DbError> for ConfigError {
+    #[inline]
+    fn from(error: DbError) -> Self {
+        Self::Storage(error.to_string().into())
+    }
+}
+
 impl From<figment::Error> for ConfigIngestError {
     #[inline]
     fn from(error: figment::Error) -> Self {
         Self::Figment(Box::new(error))
+    }
+}
+
+impl From<crate::fs::ParseError> for ConfigIngestError {
+    #[inline]
+    fn from(error: crate::fs::ParseError) -> Self {
+        match error {
+            crate::fs::ParseError::Io {
+                path,
+                source,
+            } => Self::Io {
+                path,
+                source,
+            },
+            crate::fs::ParseError::Toml {
+                path,
+                message,
+                line,
+                column,
+            } => {
+                // Create a synthetic toml::de::Error since it doesn't have a
+                // public constructor. We parse invalid TOML to
+                // get an error instance.
+                #[expect(
+                    clippy::expect_used,
+                    reason = "Intentionally parsing invalid TOML to create \
+                              error instance"
+                )]
+                let source = toml::from_str::<toml::Value>("[")
+                    .expect_err("Invalid TOML should always error");
+
+                // Log the original error details for debugging
+                tracing::warn!(
+                    path = %path.display(),
+                    ?line,
+                    ?column,
+                    message = %message,
+                    "TOML parsing error"
+                );
+
+                Self::TomlParse {
+                    path,
+                    source,
+                }
+            }
+            crate::fs::ParseError::Json {
+                path,
+                ..
+            }
+            | crate::fs::ParseError::Yaml {
+                path,
+                ..
+            }
+            | crate::fs::ParseError::UnsupportedFormat {
+                path,
+                ..
+            } => {
+                // Config only supports TOML, so treat other formats as I/O
+                // errors
+                Self::Io {
+                    path,
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Config only supports TOML format",
+                    ),
+                }
+            }
+        }
     }
 }
 
