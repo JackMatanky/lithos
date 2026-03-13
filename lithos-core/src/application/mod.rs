@@ -39,26 +39,13 @@
 // re-implementation.
 // NOTE: Schema loader moved to schema module (schema::loader) as part of Phase
 // 6.
+// NOTE: Config service removed - use config::loader::Loader directly.
 
-pub mod config;
 pub mod vault;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Public Type Aliases
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Config service type alias.
-///
-/// This is the recommended entry point for config operations. It provides
-/// staleness detection and automatic reloading when configs change.
-///
-/// The service is storage-agnostic and accepts Command/Query implementations
-/// via dependency injection.
-#[expect(
-    deprecated,
-    reason = "Temporary type alias for backward compatibility"
-)]
-pub type ConfigService<'db> = config::ConfigService<'db>;
 
 /// Vault service type alias.
 pub type VaultService<'db, 'config> = vault::Service<'db, 'config>;
