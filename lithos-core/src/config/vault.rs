@@ -22,112 +22,128 @@ use super::{
 };
 
 // ----------------------------------------------------------- //
-//                     Public Domain Types                     //
+//                  Fundamental Building Blocks                //
 // ----------------------------------------------------------- //
 
-/// Version number for vault configuration staleness tracking.
+// ----------------------------------------------------------- //
+//                    Building Block Types                     //
+// ----------------------------------------------------------- //
+
+/// Vault unique identity using UUID v7.
 ///
-/// Incremented each time the vault config file changes. Used to determine
-/// whether the cached merged config needs rebuilding.
-///
-/// # Version Sequence
-///
-/// - Starts at 1 (not 0)
-/// - Increments on each vault config file change
-/// - Independent of `GlobalVersion` and `Config::Version`
+/// UUID v7 is used for its time-ordered properties, which helps with
+/// database indexing and debugging.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct VaultVersion(u64);
+#[non_exhaustive]
+pub struct VaultId(uuid::Uuid);
 
-impl VaultVersion {
-    /// Returns the initial version.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::config::vault::VaultVersion;
-    ///
-    /// let version = VaultVersion::initial();
-    /// assert_eq!(version.value(), 1);
-    /// ```
+impl VaultId {
+    /// Create a new unique vault identity.
     #[inline]
     #[must_use]
-    pub const fn initial() -> Self {
-        Self(1)
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7())
     }
 
-    /// Returns the numeric version value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::config::vault::VaultVersion;
-    ///
-    /// let version = VaultVersion::initial();
-    /// assert_eq!(version.value(), 1);
-    /// ```
+    /// Return the raw UUID.
     #[inline]
     #[must_use]
-    pub const fn value(self) -> u64 {
+    pub const fn uuid(&self) -> uuid::Uuid {
         self.0
-    }
-
-    /// Returns the next version, or an overflow error.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the version number
-    /// overflows.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::config::vault::VaultVersion;
-    ///
-    /// let version = VaultVersion::initial();
-    /// let next = version.next().expect("version increment succeeded");
-    /// assert_eq!(next.value(), 2);
-    /// ```
-    #[inline]
-    pub fn next(self) -> Result<Self, ConfigError> {
-        self.0.checked_add(1).map(Self).ok_or_else(|| {
-            ConfigError::ValidationFailed {
-                field: "vault_version".into(),
-                message: "vault version overflow".into(),
-            }
-        })
     }
 }
 
-impl std::fmt::Display for VaultVersion {
+impl Default for VaultId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for VaultId {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
+/// A validated, absolute path to a vault root.
+///
+/// # Invariants
+///
+/// - Must be a non-empty path.
+/// - Should ideally be an absolute path (checked at the application level).
+///
+/// # Errors
+///
+/// Returns [`ConfigError::ValidationFailed`] if the path is empty.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct VaultRoot(#[rkyv(with = AsString)] PathBuf);
 
-impl TryFrom<u64> for VaultVersion {
+impl VaultRoot {
+    /// Creates a validated vault root path.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the path is empty.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        if path.as_os_str().is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_root".into(),
+                message: "path cannot be empty".into(),
+            });
+        }
+        Ok(Self(path))
+    }
+
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Return this path as a string suitable for DB key lookups.
+    #[inline]
+    #[must_use]
+    pub fn as_key(&self) -> String {
+        self.as_path().to_string_lossy().into_owned()
+    }
+}
+
+impl TryFrom<String> for VaultRoot {
     type Error = ConfigError;
 
     #[inline]
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
-        if value == 0 {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_version".into(),
-                message: "vault version cannot be zero".into(),
-            });
-        }
-        Ok(Self(value))
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
     }
 }
+
+impl From<VaultRoot> for String {
+    #[inline]
+    fn from(root: VaultRoot) -> Self {
+        root.0.to_string_lossy().into_owned()
+    }
+}
+
+impl Default for VaultRoot {
+    #[inline]
+    #[expect(clippy::expect_used, reason = "Root path is guaranteed non-empty")]
+    fn default() -> Self {
+        Self::try_new(PathBuf::from("/")).expect("root path is non-empty")
+    }
+}
+
+// ----------------------------------------------------------- //
+//                     Main Domain Types                      //
+// ----------------------------------------------------------- //
 
 /// Vault-specific configuration overrides.
 ///
@@ -268,7 +284,6 @@ impl TryFrom<&super::raw::RawConfig> for Vault {
         Ok(Self::new(version, logging, paths, frontmatter, task))
     }
 }
-
 /// Metadata for a specific vault.
 ///
 /// This struct holds the identity, root path, and versioning information
@@ -373,6 +388,113 @@ impl Metadata {
     }
 }
 
+// ----------------------------------------------------------- //
+//                     Supporting Types                       //
+// ----------------------------------------------------------- //
+
+/// Version number for vault configuration staleness tracking.
+///
+/// Incremented each time the vault config file changes. Used to determine
+/// whether the cached merged config needs rebuilding.
+///
+/// # Version Sequence
+///
+/// - Starts at 1 (not 0)
+/// - Increments on each vault config file change
+/// - Independent of `GlobalVersion` and `Config::Version`
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct VaultVersion(u64);
+
+impl VaultVersion {
+    /// Returns the initial version.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(1)
+    }
+
+    /// Returns the numeric version value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
+    /// Returns the next version, or an overflow error.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the version number
+    /// overflows.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// let next = version.next().expect("version increment succeeded");
+    /// assert_eq!(next.value(), 2);
+    /// ```
+    #[inline]
+    pub fn next(self) -> Result<Self, ConfigError> {
+        self.0.checked_add(1).map(Self).ok_or_else(|| {
+            ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version overflow".into(),
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for VaultVersion {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<u64> for VaultVersion {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value == 0 {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version cannot be zero".into(),
+            });
+        }
+        Ok(Self(value))
+    }
+}
 /// Vault-specific paths configuration (overrides).
 ///
 /// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
@@ -495,124 +617,6 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
         Ok(Self::new(cache, template, schema, property_bank))
     }
 }
-
-// ----------------------------------------------------------- //
-//                    Building Block Types                     //
-// ----------------------------------------------------------- //
-
-/// Vault unique identity using UUID v7.
-///
-/// UUID v7 is used for its time-ordered properties, which helps with
-/// database indexing and debugging.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct VaultId(uuid::Uuid);
-
-impl VaultId {
-    /// Create a new unique vault identity.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(uuid::Uuid::now_v7())
-    }
-
-    /// Return the raw UUID.
-    #[inline]
-    #[must_use]
-    pub const fn uuid(&self) -> uuid::Uuid {
-        self.0
-    }
-}
-
-impl Default for VaultId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for VaultId {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// A validated, absolute path to a vault root.
-///
-/// # Invariants
-///
-/// - Must be a non-empty path.
-/// - Should ideally be an absolute path (checked at the application level).
-///
-/// # Errors
-///
-/// Returns [`ConfigError::ValidationFailed`] if the path is empty.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct VaultRoot(#[rkyv(with = AsString)] PathBuf);
-
-impl VaultRoot {
-    /// Creates a validated vault root path.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the path is empty.
-    #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        if path.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_root".into(),
-                message: "path cannot be empty".into(),
-            });
-        }
-        Ok(Self(path))
-    }
-
-    /// Return the inner path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-
-    /// Return this path as a string suitable for DB key lookups.
-    #[inline]
-    #[must_use]
-    pub fn as_key(&self) -> String {
-        self.as_path().to_string_lossy().into_owned()
-    }
-}
-
-impl TryFrom<String> for VaultRoot {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<VaultRoot> for String {
-    #[inline]
-    fn from(root: VaultRoot) -> Self {
-        root.0.to_string_lossy().into_owned()
-    }
-}
-
-impl Default for VaultRoot {
-    #[inline]
-    #[expect(clippy::expect_used, reason = "Root path is guaranteed non-empty")]
-    fn default() -> Self {
-        Self::try_new(PathBuf::from("/")).expect("root path is non-empty")
-    }
-}
-
 /// Version identifier for the Lithos application.
 ///
 /// This type ensures that version strings are not empty and represent
@@ -672,7 +676,6 @@ impl std::fmt::Display for AppVersion {
         write!(f, "{}", self.0)
     }
 }
-
 /// A validated vault name.
 ///
 /// This type ensures that vault names are not empty and are user-friendly.
@@ -755,7 +758,6 @@ impl std::fmt::Display for VaultName {
         write!(f, "{}", self.as_str())
     }
 }
-
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
