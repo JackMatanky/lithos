@@ -18,6 +18,9 @@ pub mod aggregate;
 #[deprecated(since = "0.1.0", note = "Use schema::aggregate instead")]
 pub mod id;
 
+/// Unified repository trait for schema persistence.
+pub mod repository;
+
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
 /// Property-bank reference expansion pipeline stage.
