@@ -22,6 +22,12 @@ pub mod repository;
 #[doc(hidden)]
 pub mod redb_repository;
 
+/// View types for storage and queries.
+///
+/// **Migration Status**: Placeholder structure created.
+/// Raw file types currently re-exported from `storage.rs`.
+pub mod views;
+
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
 /// Property-bank reference expansion pipeline stage.
