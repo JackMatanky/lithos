@@ -38,7 +38,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    schema::{id::SchemaName, ingestor::Ingestor, loader::Loader},
+    schema::{aggregate::SchemaName, ingestor::Ingestor, loader::Loader},
 };
 use tempfile::TempDir;
 

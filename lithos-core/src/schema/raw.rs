@@ -126,7 +126,7 @@ impl RawSchema {
     #[inline]
     pub fn validate(&self) -> Result<(), SchemaError> {
         // Validate schema name syntax
-        use super::id::SchemaName;
+        use super::aggregate::SchemaName;
         SchemaName::try_new(self.name.as_ref())?;
 
         // Validate parent schema name syntax (if present)

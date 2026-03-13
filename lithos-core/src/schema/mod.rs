@@ -11,13 +11,6 @@
 /// Schema aggregate and identifier types.
 pub mod aggregate;
 
-/// Schema identifier value objects (SchemaId, SchemaName).
-///
-/// **Deprecated**: Use `schema::aggregate` instead. This module exists for
-/// backwards compatibility during migration.
-#[deprecated(since = "0.1.0", note = "Use schema::aggregate instead")]
-pub mod id;
-
 /// Unified repository trait for schema persistence.
 pub mod repository;
 

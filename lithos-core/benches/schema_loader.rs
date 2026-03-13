@@ -304,11 +304,11 @@ use lithos_core::{
     db::Database,
     fs::FsReader,
     schema::{
+        aggregate::SchemaId,
         bank::{BankVersion, PropertyBank},
         db_command, db_query,
         expander::RefExpander,
         extender::Extender,
-        id::SchemaId,
         ingestor::Ingestor,
         ports::{Command as _, Query as _},
         property::PropertyName,

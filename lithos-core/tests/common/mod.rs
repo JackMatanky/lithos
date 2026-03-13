@@ -17,9 +17,8 @@ use std::{error::Error, path::PathBuf};
 use lithos_core::{
     db::Database,
     schema::{
-        db_command, db_query,
-        id::{SchemaId, SchemaName},
-        ports,
+        aggregate::{SchemaId, SchemaName},
+        db_command, db_query, ports,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },

@@ -57,9 +57,9 @@ use rkyv::{
 };
 
 use super::{
+    aggregate::SchemaId,
     bank::{BankVersion, PropertyBank},
     error::SchemaError,
-    id::SchemaId,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
     property_spec::PropertySpec,
 };
