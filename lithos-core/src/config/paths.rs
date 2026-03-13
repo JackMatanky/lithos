@@ -370,6 +370,36 @@ impl PropertyBank {
     }
 }
 
+impl From<FileName> for PropertyBank {
+    #[inline]
+    fn from(value: FileName) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<String> for PropertyBank {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<PropertyBank> for String {
+    #[inline]
+    fn from(value: PropertyBank) -> Self {
+        value.0.into()
+    }
+}
+
+impl std::fmt::Display for PropertyBank {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 // ----------------------------------------------------------- //
 //               Low-Level Implementation Types                //
 // ----------------------------------------------------------- //
@@ -464,6 +494,29 @@ impl ArchivedRelativePath {
     }
 }
 
+impl TryFrom<String> for RelativePath {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<RelativePath> for String {
+    #[inline]
+    fn from(value: RelativePath) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl std::fmt::Display for RelativePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
 /// A validated absolute path.
 ///
 /// This type ensures that paths are fully resolved and absolute on the
@@ -530,6 +583,29 @@ impl AbsolutePath {
     }
 }
 
+impl TryFrom<String> for AbsolutePath {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<AbsolutePath> for String {
+    #[inline]
+    fn from(path: AbsolutePath) -> Self {
+        path.0.to_string_lossy().into_owned()
+    }
+}
+
+impl std::fmt::Display for AbsolutePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
 /// A validated filename.
 ///
 /// This type ensures that filenames are non-empty and do not contain
@@ -591,44 +667,6 @@ impl FileName {
     }
 }
 
-// ----------------------------------------------------------- //
-//               Standard Trait Implementations                //
-// ----------------------------------------------------------- //
-
-// --- PropertyBank ---
-
-impl From<FileName> for PropertyBank {
-    #[inline]
-    fn from(value: FileName) -> Self {
-        Self(value)
-    }
-}
-
-impl TryFrom<String> for PropertyBank {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<PropertyBank> for String {
-    #[inline]
-    fn from(value: PropertyBank) -> Self {
-        value.0.into()
-    }
-}
-
-impl std::fmt::Display for PropertyBank {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-// --- FileName ---
-
 impl From<PropertyBank> for FileName {
     #[inline]
     fn from(value: PropertyBank) -> Self {
@@ -649,56 +687,6 @@ impl From<FileName> for String {
     #[inline]
     fn from(value: FileName) -> Self {
         value.0.into()
-    }
-}
-
-// --- RelativePath ---
-
-impl TryFrom<String> for RelativePath {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<RelativePath> for String {
-    #[inline]
-    fn from(value: RelativePath) -> Self {
-        value.0.to_string_lossy().into_owned()
-    }
-}
-
-impl std::fmt::Display for RelativePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
-// --- AbsolutePath ---
-
-impl TryFrom<String> for AbsolutePath {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<AbsolutePath> for String {
-    #[inline]
-    fn from(path: AbsolutePath) -> Self {
-        path.0.to_string_lossy().into_owned()
-    }
-}
-
-impl std::fmt::Display for AbsolutePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
     }
 }
 
