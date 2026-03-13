@@ -21,6 +21,14 @@ pub mod id;
 /// Unified repository trait for schema persistence.
 pub mod repository;
 
+/// Redb-backed repository implementation.
+///
+/// **Migration Status**: Skeleton created - full implementation pending.
+/// Methods are being migrated incrementally from `db_query.rs` and
+/// `db_command.rs`.
+#[doc(hidden)]
+pub mod redb_repository;
+
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
 /// Property-bank reference expansion pipeline stage.
