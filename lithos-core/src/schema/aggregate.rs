@@ -45,6 +45,7 @@ use super::{
 /// - `id`: Unique schema identifier
 /// - `name`: Validated schema name
 /// - `parent_id`: Optional parent schema for inheritance
+/// - `children`: Child schema IDs (for fast inheritance traversal)
 /// - `properties`: Resolved properties after inheritance merge
 /// - `recorded_at`: Ingestion timestamp (**private** - not part of public API)
 ///
@@ -60,7 +61,7 @@ use super::{
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("project-note")?;
-/// let schema = Schema::new(id, name, None, vec![]);
+/// let schema = Schema::new(id, name, None, vec![], vec![]);
 /// assert_eq!(schema.id(), &id);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -73,6 +74,11 @@ pub struct Schema {
     name: SchemaName,
     /// Parent schema ID, for inheritance.
     parent_id: Option<SchemaId>,
+    /// Child schema IDs (for fast inheritance traversal).
+    ///
+    /// Stores IDs only. Full relationship metadata (extends/excludes) is
+    /// managed via inheritance views in the repository layer.
+    children: Vec<SchemaId>,
     /// Resolved properties.
     properties: Vec<Property>,
     /// Ingestion timestamp (private - not exposed in public API).
@@ -90,7 +96,7 @@ impl Schema {
     ///
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("note")?;
-    /// let schema = Schema::new(id, name, None, vec![]);
+    /// let schema = Schema::new(id, name, None, vec![], vec![]);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
@@ -99,12 +105,14 @@ impl Schema {
         id: SchemaId,
         name: SchemaName,
         parent_id: Option<SchemaId>,
+        children: Vec<SchemaId>,
         properties: Vec<Property>,
     ) -> Self {
         Self {
             id,
             name,
             parent_id,
+            children,
             properties,
             recorded_at: SystemTime::now(),
         }
@@ -129,6 +137,17 @@ impl Schema {
     #[must_use]
     pub const fn parent_id(&self) -> Option<&SchemaId> {
         self.parent_id.as_ref()
+    }
+
+    /// Returns the child schema IDs.
+    ///
+    /// This provides fast access to direct children for inheritance traversal.
+    /// Full relationship metadata (extends/excludes) is managed separately
+    /// via inheritance views in the repository layer.
+    #[inline]
+    #[must_use]
+    pub fn children(&self) -> &[SchemaId] {
+        &self.children
     }
 
     /// Returns the resolved properties.
@@ -480,7 +499,7 @@ mod tests {
     fn schema_new_creates_with_empty_properties() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("test").unwrap();
-        let schema = Schema::new(id, name.clone(), None, vec![]);
+        let schema = Schema::new(id, name.clone(), None, vec![], vec![]);
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
@@ -493,7 +512,8 @@ mod tests {
         let id = SchemaId::new();
         let parent_id = SchemaId::new();
         let name = SchemaName::try_new("child-schema").unwrap();
-        let schema = Schema::new(id, name.clone(), Some(parent_id), vec![]);
+        let schema =
+            Schema::new(id, name.clone(), Some(parent_id), vec![], vec![]);
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
