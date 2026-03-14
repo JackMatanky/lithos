@@ -164,6 +164,10 @@ pub enum SchemaError {
     /// Property validation error.
     #[error("property error: {0}")]
     Property(String),
+
+    /// Storage/database error.
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
 }
 
 /// Schema command errors.

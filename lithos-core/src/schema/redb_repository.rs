@@ -22,20 +22,17 @@
 
 use std::sync::Arc;
 
-use redb::Database;
-
 use super::{
-    aggregate::{SchemaId, SchemaName},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaError,
     property::{Property, PropertyId, PropertyName},
     repository::{
         InheritanceChildren, InheritanceRelation, NameIdPair, Repository,
-        SchemaPropertyUsage, StalenessCheck,
+        SchemaPropertyUsage,
     },
-    storage::StoredSchema,
 };
-use crate::db::BatchReader;
+use crate::db::{BatchReader, Database};
 
 /// Redb-backed repository implementation.
 ///
@@ -89,53 +86,113 @@ impl Repository for RedbRepository {
 
     fn find_schema_by_id(
         &self,
-        _id: SchemaId,
-    ) -> Result<Option<StoredSchema>, Self::Error> {
-        // TODO: Migrate from db_query::Query::find_by_id
-        todo!("Migrate from db_query.rs")
+        id: SchemaId,
+    ) -> Result<Option<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        Ok(self.db.get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())?)
     }
 
     fn find_schema_id_by_name(
         &self,
-        _name: &SchemaName,
+        name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error> {
-        // TODO: Migrate from db_query::Query::find_id_by_name
-        todo!("Migrate from db_query.rs")
+        use crate::schema::db_table::SCHEMA_ID_BY_NAME;
+
+        Ok(self.db.get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())?)
     }
 
     fn find_schemas_by_ids(
         &self,
-        _ids: &[SchemaId],
-    ) -> Result<Vec<StoredSchema>, Self::Error> {
-        // TODO: Migrate from db_query::Query::find_many_by_ids
-        todo!("Migrate from db_query.rs")
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        ids.iter()
+            .filter_map(|id| {
+                match self
+                    .db
+                    .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())
+                {
+                    Ok(Some(schema)) => Some(Ok(schema)),
+                    Ok(None) => None,
+                    Err(e) => Some(Err(SchemaError::from(e))),
+                }
+            })
+            .collect()
     }
 
-    fn list_schemas(&self) -> Result<Vec<StoredSchema>, Self::Error> {
-        // TODO: Migrate from db_query::Query::list
-        todo!("Migrate from db_query.rs")
+    fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        let pairs: Vec<(Box<str>, Schema)> =
+            self.db.list_owned(SCHEMA_BY_ID)?;
+
+        Ok(pairs.into_iter().map(|(_id, schema)| schema).collect())
     }
 
     fn list_schema_name_id_pairs(
         &self,
     ) -> Result<Vec<NameIdPair>, Self::Error> {
-        // TODO: Migrate from db_query::Query::list_name_id_pairs
-        todo!("Migrate from db_query.rs")
+        use crate::schema::db_table::SCHEMA_ID_BY_NAME;
+
+        self.db
+            .list_owned(SCHEMA_ID_BY_NAME)?
+            .into_iter()
+            .map(|(name_str, id): (Box<str>, SchemaId)| {
+                SchemaName::try_new(name_str.as_ref()).map(|name| (name, id))
+            })
+            .collect()
     }
 
     fn list_inheritance_children(
         &self,
     ) -> Result<InheritanceChildren, Self::Error> {
-        // TODO: Migrate from db_query::Query::list_children
-        todo!("Migrate from db_query.rs")
+        use std::collections::HashMap;
+
+        // Build children map by scanning all schemas
+        // This is simpler than iterating the multimap and since Schema now has
+        // parent_id, we can just scan schemas directly
+        let mut result = HashMap::new();
+        let schemas = self.list_schemas()?;
+
+        for schema in schemas {
+            if let Some(parent_id) = schema.parent_id() {
+                result
+                    .entry(*parent_id)
+                    .or_insert_with(Vec::new)
+                    .push((*schema.id(), vec![])); // TODO: get excludes from somewhere
+            }
+        }
+
+        Ok(result)
     }
 
     fn list_descendant_ids(
         &self,
-        _parent_id: SchemaId,
+        parent_id: SchemaId,
     ) -> Result<Vec<SchemaId>, Self::Error> {
-        // TODO: Migrate from db_query::Query::list_descendants
-        todo!("Migrate from db_query.rs")
+        use std::collections::{HashSet, VecDeque};
+
+        // BFS traversal using Schema.children field
+        let mut descendants = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(parent_id);
+
+        while let Some(current_id) = queue.pop_front() {
+            let Some(schema) = self.find_schema_by_id(current_id)? else {
+                continue;
+            };
+
+            for &child_id in schema.children() {
+                // First time seeing this child - add to queue
+                if descendants.insert(child_id) {
+                    queue.push_back(child_id);
+                }
+            }
+        }
+
+        Ok(descendants.into_iter().collect())
     }
 
     // ========================================================================
@@ -143,116 +200,196 @@ impl Repository for RedbRepository {
     // ========================================================================
 
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        // TODO: Migrate from db_query::Query::get_property_bank
-        todo!("Migrate from db_query.rs")
+        // TODO: Implement property bank retrieval
+        // PropertyBank needs Archive derives or we need to reconstruct from
+        // StoredPropertyBank
+        todo!(
+            "Property bank retrieval - needs PropertyBank serialization \
+             support"
+        )
     }
 
     fn find_property_by_id(
         &self,
-        _id: PropertyId,
+        id: PropertyId,
     ) -> Result<Option<Property>, Self::Error> {
-        // TODO: Migrate from db_query::Query::get_property_by_id
-        todo!("Migrate from db_query.rs")
+        use crate::schema::db_table::BANK_PROPERTY_BY_ID;
+
+        Ok(self.db.get_owned_by_uuid::<Property>(
+            BANK_PROPERTY_BY_ID,
+            id.into_uuid(),
+        )?)
     }
 
     fn find_schemas_using_properties(
         &self,
-        _property_names: &[PropertyName],
+        property_names: &[PropertyName],
     ) -> Result<SchemaPropertyUsage, Self::Error> {
-        // TODO: Migrate from db_query::Query::find_schemas_using_properties
-        todo!("Migrate from db_query.rs")
-    }
+        use std::collections::{HashMap, HashSet};
 
-    // ========================================================================
-    // Staleness Checks
-    // ========================================================================
+        // Convert property names to a set for fast lookup
+        let target_names: HashSet<&str> =
+            property_names.iter().map(PropertyName::as_str).collect();
 
-    fn is_property_bank_stale(
-        &self,
-        _version: BankVersion,
-    ) -> Result<bool, Self::Error> {
-        // TODO: Migrate from db_query::Query::is_bank_stale
-        todo!("Migrate from db_query.rs")
-    }
+        // Scan all schemas and check which properties they use
+        let mut usage = HashMap::new();
+        let schemas = self.list_schemas()?;
 
-    fn are_schemas_stale(
-        &self,
-        _checks: &[StalenessCheck],
-        _bank_version: BankVersion,
-    ) -> Result<std::collections::HashMap<SchemaId, bool>, Self::Error> {
-        // TODO: Migrate from db_query::Query::are_many_stale
-        todo!("Migrate from db_query.rs")
-    }
+        for schema in schemas {
+            let mut matching_properties = Vec::new();
 
-    fn cascade_schema_staleness(
-        &self,
-        _staleness_map: &mut std::collections::HashMap<SchemaId, bool>,
-    ) -> Result<(), Self::Error> {
-        // TODO: Migrate from db_query::Query::cascade_staleness
-        todo!("Migrate from db_query.rs")
+            for property in schema.properties() {
+                if target_names.contains(property.name().as_str()) {
+                    matching_properties.push(property.name().clone());
+                }
+            }
+
+            if !matching_properties.is_empty() {
+                usage.insert(*schema.id(), matching_properties);
+            }
+        }
+
+        Ok(usage)
     }
 
     // ========================================================================
     // Write Operations
     // ========================================================================
 
-    fn save_schemas(
-        &self,
-        _schemas: &[StoredSchema],
-    ) -> Result<(), Self::Error> {
-        // TODO: Migrate from db_command::Command::save_many
-        todo!("Migrate from db_command.rs")
+    fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME};
+
+        self.db.batch_write(|batch| {
+            for schema in schemas {
+                let id_key = schema.id().to_string();
+
+                // Save schema by ID
+                batch.put(SCHEMA_BY_ID, &id_key, schema)?;
+
+                // Save name → ID mapping
+                batch.put(
+                    SCHEMA_ID_BY_NAME,
+                    schema.name().as_str(),
+                    schema.id(),
+                )?;
+            }
+            Ok(())
+        })?;
+
+        Ok(())
     }
 
     fn save_inheritance_relations(
         &self,
-        _relations: &[InheritanceRelation],
+        relations: &[InheritanceRelation],
     ) -> Result<(), Self::Error> {
-        // TODO: Migrate from db_command::Command::save_inheritance_many
-        todo!("Migrate from db_command.rs")
+        use std::time::SystemTime;
+
+        use crate::schema::{
+            db_table::{SCHEMA_CHILDREN, SCHEMA_PARENT},
+            views::{ChildSchemaView, ParentSchemaView},
+        };
+
+        #[expect(
+            clippy::ref_patterns,
+            reason = "Destructuring with &(a, b, ref c) is clearest for mixed \
+                      Copy/non-Copy fields"
+        )]
+        self.db.batch_write(|batch| {
+            for &(child_id, parent_id, ref excludes) in relations {
+                let timestamp = SystemTime::now();
+                let child_key = child_id.to_string();
+
+                // Save parent → child mapping in multimap (if not root)
+                if let Some(parent) = parent_id {
+                    let child_view = ChildSchemaView {
+                        child_id,
+                        excludes: excludes.clone(),
+                        resolved_at: timestamp,
+                    };
+
+                    let bytes = child_view.to_bytes()?;
+                    batch.multimap_insert_bytes(
+                        SCHEMA_CHILDREN,
+                        parent.to_string().as_str(),
+                        bytes.as_slice(),
+                    )?;
+                }
+
+                // Save child → parent reference table
+                let parent_view = ParentSchemaView {
+                    parent_id,
+                    excludes: excludes.clone(),
+                    resolved_at: timestamp,
+                };
+                batch.put(SCHEMA_PARENT, child_key.as_str(), &parent_view)?;
+            }
+
+            Ok(())
+        })?;
+
+        Ok(())
     }
 
     fn save_property_bank(
         &self,
         _bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        // TODO: Migrate from db_command::Command::save_property_bank
-        todo!("Migrate from db_command.rs")
+        // TODO: Implement property bank persistence
+        // PropertyBank needs Archive derives or we need to serialize to
+        // StoredPropertyBank
+        todo!(
+            "Property bank persistence - needs PropertyBank serialization \
+             support"
+        )
     }
 
     fn delete_schema(&self, _id: SchemaId) -> Result<(), Self::Error> {
-        // TODO: Migrate from db_command::Command::delete
-        todo!("Migrate from db_command.rs")
-    }
+        use crate::schema::db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME};
 
-    // ========================================================================
-    // Zero-Copy Access
-    // ========================================================================
-
-    fn with_schema_metadata<F, R>(
-        &self,
-        _id: SchemaId,
-        _f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<super::storage::StoredMetadata>,
-        ) -> R,
-    {
-        // TODO: Migrate from db_query::Query::with_metadata
-        todo!("Migrate from db_query.rs")
+        // Need to:
+        // 1. Load schema to get its name
+        // 2. Delete from SCHEMA_BY_ID
+        // 3. Delete from SCHEMA_ID_BY_NAME
+        // 4. Delete from SCHEMA_PARENT
+        // 5. Remove from SCHEMA_CHILDREN multimap entries
+        // This is complex and needs careful implementation to avoid orphans
+        todo!("Schema deletion with proper cleanup of all references")
     }
 
     // ========================================================================
     // Batch Operations
     // ========================================================================
 
-    fn with_batch_reader<F, R>(&self, _f: F) -> Result<R, Self::Error>
+    fn with_batch_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
     {
-        // TODO: Migrate from db_query::Query::read_many
-        todo!("Migrate from db_query.rs")
+        // Adapt the closure to convert SchemaError -> DbError for batch_read
+        // Then convert DbError -> SchemaError for the final result
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "Explicitly matching all 27 SchemaError variants would \
+                      be fragile and unnecessary - we only care about Storage \
+                      variant"
+        )]
+        let result = self.db.batch_read(|reader| {
+            f(reader).map_err(|schema_err| {
+                // Extract DbError if it's a Storage variant, otherwise create a
+                // generic error This is a workaround for the
+                // type mismatch
+                match schema_err {
+                    SchemaError::Storage(db_err) => db_err,
+                    _ => {
+                        // This shouldn't happen in practice since f should only
+                        // return Storage errors when using the reader
+                        crate::db::DbError::Database(schema_err.to_string())
+                    }
+                }
+            })
+        });
+
+        result.map_err(SchemaError::from)
     }
 }
 

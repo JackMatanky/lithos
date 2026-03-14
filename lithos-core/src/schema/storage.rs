@@ -231,7 +231,7 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
                 let prop_name = PropertyName::try_new(&sp.name)?;
                 let optionality = Optionality::from(sp.required);
                 let multiplicity = Multiplicity::from(sp.multi);
-                Ok(Property::new(
+                Ok::<Property, SchemaError>(Property::new(
                     sp.id,
                     prop_name,
                     optionality,

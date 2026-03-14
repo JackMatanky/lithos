@@ -31,21 +31,14 @@
 use std::collections::HashMap;
 
 use super::{
-    aggregate::{SchemaId, SchemaName},
-    bank::{BankVersion, PropertyBank},
+    aggregate::{Schema, SchemaId, SchemaName},
+    bank::PropertyBank,
     property::{Property, PropertyId, PropertyName},
-    storage::StoredSchema,
 };
 use crate::db::BatchReader;
 
 /// A schema name-to-ID pair.
 pub type NameIdPair = (SchemaName, SchemaId);
-
-/// Staleness check tuple: (`SchemaId`, `created_at`, `modified_at`).
-///
-/// Used by `are_schemas_stale()` to check multiple schemas efficiently.
-pub type StalenessCheck =
-    (SchemaId, Option<std::time::SystemTime>, Option<std::time::SystemTime>);
 
 /// Inheritance relationship: (`child_id`, `parent_id`, `excludes`).
 pub type InheritanceRelation = (SchemaId, Option<SchemaId>, Vec<Box<str>>);
@@ -121,7 +114,7 @@ pub trait Repository: Send + Sync {
     fn find_schema_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<StoredSchema>, Self::Error>;
+    ) -> Result<Option<Schema>, Self::Error>;
 
     /// Finds a schema ID by name.
     ///
@@ -146,14 +139,14 @@ pub trait Repository: Send + Sync {
     fn find_schemas_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<StoredSchema>, Self::Error>;
+    ) -> Result<Vec<Schema>, Self::Error>;
 
     /// Lists all schemas.
     ///
     /// # Errors
     ///
     /// Returns storage-specific error if the query fails.
-    fn list_schemas(&self) -> Result<Vec<StoredSchema>, Self::Error>;
+    fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error>;
 
     /// Lists schema name-to-ID pairs.
     ///
@@ -227,54 +220,6 @@ pub trait Repository: Send + Sync {
     ) -> Result<SchemaPropertyUsage, Self::Error>;
 
     // ========================================================================
-    // Staleness Checks
-    // ========================================================================
-
-    /// Checks if the property bank is stale.
-    ///
-    /// Returns `true` if the stored bank version differs from the given
-    /// version.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    fn is_property_bank_stale(
-        &self,
-        version: BankVersion,
-    ) -> Result<bool, Self::Error>;
-
-    /// Checks staleness for multiple schemas efficiently.
-    ///
-    /// Returns a map of `schema_id` → `is_stale` boolean.
-    ///
-    /// Schemas are considered stale when:
-    /// - No stored metadata exists (returns `true`)
-    /// - Stored bank version differs from provided bank version
-    /// - Stored timestamps differ from provided timestamps
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    fn are_schemas_stale(
-        &self,
-        checks: &[StalenessCheck],
-        bank_version: BankVersion,
-    ) -> Result<HashMap<SchemaId, bool>, Self::Error>;
-
-    /// Cascades staleness to descendant schemas.
-    ///
-    /// For each schema marked as stale in the map, marks all its descendants
-    /// as stale as well. This ensures inheritance chain re-resolution.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    fn cascade_schema_staleness(
-        &self,
-        staleness_map: &mut HashMap<SchemaId, bool>,
-    ) -> Result<(), Self::Error>;
-
-    // ========================================================================
     // Write Operations
     // ========================================================================
 
@@ -283,8 +228,7 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns storage-specific error if the save fails.
-    fn save_schemas(&self, schemas: &[StoredSchema])
-    -> Result<(), Self::Error>;
+    fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 
     /// Saves inheritance relationships atomically.
     ///
@@ -314,38 +258,6 @@ pub trait Repository: Send + Sync {
     ///
     /// Returns storage-specific error if the deletion fails.
     fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error>;
-
-    // ========================================================================
-    // Zero-Copy Access (Optional - implement if needed for performance)
-    // ========================================================================
-
-    /// Accesses archived schema metadata with zero-copy.
-    ///
-    /// The closure receives a reference to the archived (rkyv-serialized)
-    /// metadata without deserialization overhead.
-    ///
-    /// Returns `None` if metadata for the schema does not exist.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// repo.with_schema_metadata(id, |metadata| {
-    ///     metadata.created_at() // Zero-copy access
-    /// })?;
-    /// ```
-    fn with_schema_metadata<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<super::storage::StoredMetadata>,
-        ) -> R;
 
     // ========================================================================
     // Batch Operations (for complex multi-table queries)
