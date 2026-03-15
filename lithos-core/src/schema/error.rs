@@ -235,6 +235,45 @@ pub enum SchemaRepositoryError {
     },
 }
 
+/// Schema loader errors.
+///
+/// Errors that occur during the full schema loading pipeline, combining
+/// both ingestion (file I/O) and repository (storage) operations.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaLoaderError;
+///
+/// let error = SchemaLoaderError::Ingestion(
+///     lithos_core::schema::error::SchemaIngestionError::FileSystem(
+///         "file not found".into(),
+///     ),
+/// );
+/// match error {
+///     SchemaLoaderError::Ingestion(_) => {}
+///     SchemaLoaderError::Repository(_) => {}
+///     _ => {}
+/// }
+/// ```
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaLoaderError {
+    /// Ingestion (file I/O or parsing) error.
+    #[error("ingestion error: {0}")]
+    Ingestion(#[from] SchemaIngestionError),
+
+    /// Repository (storage) error.
+    #[error("repository error: {0}")]
+    Repository(#[from] SchemaRepositoryError),
+}
+
+impl From<SchemaError> for SchemaLoaderError {
+    #[inline]
+    fn from(e: SchemaError) -> Self {
+        Self::Repository(e.into())
+    }
+}
+
 /// Schema ingestion errors.
 ///
 /// Errors that occur during file-to-raw translation (loading schema files
@@ -389,6 +428,12 @@ mod tests {
     fn schema_repository_error_is_send_and_sync() {
         fn is_send_sync<T: Send + Sync>() {}
         is_send_sync::<SchemaRepositoryError>();
+    }
+
+    #[test]
+    fn schema_loader_error_is_send_and_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+        is_send_sync::<SchemaLoaderError>();
     }
 
     #[test]

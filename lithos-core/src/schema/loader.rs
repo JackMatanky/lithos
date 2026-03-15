@@ -64,7 +64,9 @@ use crate::{
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
         bank::PropertyBank,
-        error::SchemaIngestionError,
+        error::{
+            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
+        },
         expander::RefExpander,
         extender::Extender,
         ingestor::Ingestor,
@@ -96,6 +98,7 @@ type PartitionResult = (Vec<SchemaWithId>, Vec<SchemaId>);
 impl<'config, R> Loader<'config, R>
 where
     R: Repository,
+    R::Error: Into<SchemaRepositoryError>,
 {
     /// Create a new `Loader` with a repository, file source, and config.
     ///
@@ -125,26 +128,26 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaIngestionError`] on any I/O, parsing, domain, or
+    /// Returns [`SchemaLoaderError`] on any I/O, parsing, domain, or
     /// storage failure.
     #[inline]
-    pub fn load(&self) -> Result<Vec<Schema>, SchemaIngestionError> {
+    pub fn load(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
         // ── Step 2: PropertyBank - ingest raw, check staleness, load if fresh
         let raw_bank = self.ingestor.property_bank()?.ok_or_else(|| {
-            SchemaIngestionError::FileSystem(
+            SchemaLoaderError::Ingestion(SchemaIngestionError::FileSystem(
                 "Property bank file not found".into(),
-            )
+            ))
         })?;
 
         let bank_view =
             self.repository.get_raw_property_bank_view().map_err(|e| {
-                SchemaIngestionError::Io {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
                     path: "database".into(),
                     reason: e.to_string().into(),
-                }
+                })
             })?;
 
         let bank_stale = match bank_view {
@@ -157,13 +160,17 @@ where
         } else {
             self.repository
                 .get_property_bank()
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: "database".into(),
-                    reason: e.to_string().into(),
+                .map_err(|e| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "database".into(),
+                        reason: e.to_string().into(),
+                    })
                 })?
                 .ok_or_else(|| {
-                    SchemaIngestionError::FileSystem(
-                        "Property bank file not found".into(),
+                    SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::FileSystem(
+                            "Property bank file not found".into(),
+                        ),
                     )
                 })?
         };
@@ -184,10 +191,7 @@ where
         let fresh_schemas = self
             .repository
             .find_schemas_by_ids(&fresh_ids)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?;
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         let known_parents: HashMap<SchemaId, Schema> = fresh_schemas
             .into_iter()
@@ -213,12 +217,9 @@ where
             self.persist_schemas(&resolved, &stale)?;
         }
 
-        self.repository.save_property_bank(&bank).map_err(|e| {
-            SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            }
-        })?;
+        self.repository
+            .save_property_bank(&bank)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         Ok(resolved)
     }
@@ -226,14 +227,11 @@ where
     /// Load name-to-ID mapping from database.
     fn load_name_to_id_map(
         &self,
-    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaIngestionError> {
+    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaLoaderError> {
         let existing_pairs = self
             .repository
             .list_schema_name_id_pairs()
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?;
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
         let mut name_to_id: HashMap<SchemaName, SchemaId> =
             HashMap::with_capacity(existing_pairs.len());
         for (name, id) in existing_pairs {
@@ -253,13 +251,13 @@ where
     fn is_property_bank_stale(
         &self,
         raw_bank: Option<&RawPropertyBank>,
-    ) -> Result<bool, SchemaIngestionError> {
+    ) -> Result<bool, SchemaLoaderError> {
         let bank_view =
             self.repository.get_raw_property_bank_view().map_err(|e| {
-                SchemaIngestionError::Io {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
                     path: "database".into(),
                     reason: e.to_string().into(),
-                }
+                })
             })?;
 
         Ok(match (raw_bank, bank_view) {
@@ -282,7 +280,7 @@ where
         &self,
         raw_schema: &RawSchema,
         existing_id: Option<SchemaId>,
-    ) -> Result<bool, SchemaIngestionError> {
+    ) -> Result<bool, SchemaLoaderError> {
         // New schemas are always stale
         if existing_id.is_none() {
             return Ok(true);
@@ -295,10 +293,7 @@ where
         let view = self
             .repository
             .get_raw_schema_view(existing_id.unwrap())
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?;
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         Ok(match view {
             Some(v) => !v.is_fresh(&raw_schema.metadata),
@@ -316,7 +311,7 @@ where
         name_to_id: &HashMap<SchemaName, SchemaId>,
         _current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
-    ) -> Result<PartitionResult, SchemaIngestionError> {
+    ) -> Result<PartitionResult, SchemaLoaderError> {
         let mut stale = Vec::new();
         let mut fresh_ids = Vec::new();
 
@@ -338,10 +333,10 @@ where
                 // Get view and check freshness
                 let view =
                     self.repository.get_raw_schema_view(id).map_err(|e| {
-                        SchemaIngestionError::Io {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
                             path: "database".into(),
                             reason: e.to_string().into(),
-                        }
+                        })
                     })?;
 
                 match view {
@@ -371,24 +366,21 @@ where
         &self,
         resolved: &[Schema],
         stale: &[(SchemaId, RawSchema)],
-    ) -> Result<(), SchemaIngestionError> {
+    ) -> Result<(), SchemaLoaderError> {
         // Save resolved schemas
-        self.repository.save_schemas(resolved).map_err(|e| {
-            SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            }
-        })?;
+        self.repository
+            .save_schemas(resolved)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         // Save raw views for staleness tracking
         for (id, raw) in stale {
             // Create or update raw schema view
-            if let Some(mut view) = self
-                .repository
-                .get_raw_schema_view(*id)
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: "database".into(),
-                    reason: e.to_string().into(),
+            if let Some(mut view) =
+                self.repository.get_raw_schema_view(*id).map_err(|e| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "database".into(),
+                        reason: e.to_string().into(),
+                    })
                 })?
             {
                 // View exists - add new version
@@ -409,17 +401,16 @@ where
                     raw.metadata.created_at,
                     raw.metadata.modified_at,
                 )
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: "database".into(),
-                    reason: e.to_string().into(),
+                .map_err(|e| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "schema view".into(),
+                        reason: e.to_string().into(),
+                    })
                 })?;
 
-                self.repository.save_raw_schema_view(*id, &view).map_err(
-                    |e| SchemaIngestionError::Io {
-                        path: "database".into(),
-                        reason: e.to_string().into(),
-                    },
-                )?;
+                self.repository
+                    .save_raw_schema_view(*id, &view)
+                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
             } else {
                 // New view - create it
                 // TODO: Get raw content from ingestor
@@ -452,17 +443,16 @@ where
                     raw.metadata.created_at,
                     raw.metadata.modified_at,
                 )
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: "database".into(),
-                    reason: e.to_string().into(),
+                .map_err(|e| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "schema view".into(),
+                        reason: e.to_string().into(),
+                    })
                 })?;
 
-                self.repository.save_raw_schema_view(*id, &view).map_err(
-                    |e| SchemaIngestionError::Io {
-                        path: "database".into(),
-                        reason: e.to_string().into(),
-                    },
-                )?;
+                self.repository
+                    .save_raw_schema_view(*id, &view)
+                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
             }
         }
 
