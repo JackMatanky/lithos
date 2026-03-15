@@ -762,6 +762,7 @@ mod tests {
             let raw = RawPropertyBank {
                 version: "1.0".into(),
                 properties,
+                metadata: crate::schema::raw::RawSchemaMetadata::default(),
             };
             let rebuilt = PropertyBank::try_from_raw(raw, Some(&bank))?;
             let rebuilt_prop =

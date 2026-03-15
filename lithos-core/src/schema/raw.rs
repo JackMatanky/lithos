@@ -27,7 +27,7 @@
     reason = "Raw* types follow naming conventions for input layer types"
 )]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::SystemTime};
 
 use super::error::{SchemaError, SchemaIngestionError};
 
@@ -82,6 +82,11 @@ pub struct RawSchema {
     pub excludes: Vec<Box<str>>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawProperty>,
+    /// File metadata for staleness detection.
+    ///
+    /// Populated during ingestion. Not serialized to TOML.
+    #[serde(skip)]
+    pub metadata: RawSchemaMetadata,
 }
 
 /// Default function for schema version field.
@@ -180,6 +185,11 @@ pub struct RawPropertyBank {
     pub version: Box<str>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+    /// File metadata for staleness detection.
+    ///
+    /// Populated during ingestion. Not serialized to TOML.
+    #[serde(skip)]
+    pub metadata: RawSchemaMetadata,
 }
 
 impl RawPropertyBank {
@@ -809,6 +819,41 @@ impl RawOptions {
     }
 }
 
+// ============================================================================
+// File Metadata for Staleness Detection
+// ============================================================================
+
+/// Raw file metadata for staleness detection.
+///
+/// Populated during ingestion from filesystem metadata and content hashing.
+/// Not part of the serialized TOML format.
+///
+/// Used for both schema files and property bank files.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
+pub struct RawSchemaMetadata {
+    /// File creation timestamp (birthtime).
+    ///
+    /// None if the filesystem doesn't support birthtime.
+    pub created_at: Option<SystemTime>,
+
+    /// File modification timestamp (mtime).
+    pub modified_at: Option<SystemTime>,
+
+    /// BLAKE3 hash of raw file content (before parsing).
+    ///
+    /// Computed from raw file bytes during ingestion.
+    pub content_hash: Option<[u8; 32]>,
+
+    /// Per-property BLAKE3 hashes for incremental resolution.
+    ///
+    /// Maps property name to its content hash. Enables detecting which
+    /// specific properties changed without re-parsing the entire file.
+    ///
+    /// Only populated for schema files (empty for property bank).
+    pub property_hashes: BTreeMap<Box<str>, [u8; 32]>,
+}
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -832,6 +877,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         assert!(
@@ -848,6 +894,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         assert!(
@@ -1276,6 +1323,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap();
@@ -1289,6 +1337,7 @@ mod tests {
             extends: Some("parent_schema".into()),
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap();
@@ -1302,6 +1351,7 @@ mod tests {
             extends: Some("parent".into()),
             excludes: vec!["prop1".into(), "prop2".into()],
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap();
@@ -1315,6 +1365,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap_err();
@@ -1328,6 +1379,7 @@ mod tests {
             extends: Some("Parent!Invalid".into()), // Uppercase + special char
             excludes: Vec::new(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap_err();
@@ -1341,6 +1393,7 @@ mod tests {
             extends: Some("parent".into()),
             excludes: vec!["Invalid Property".into()], // Space
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap_err();
@@ -1364,6 +1417,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties,
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap();
@@ -1387,6 +1441,7 @@ mod tests {
             extends: None,
             excludes: Vec::new(),
             properties,
+            metadata: RawSchemaMetadata::default(),
         };
 
         schema.validate().unwrap_err();
@@ -1403,6 +1458,7 @@ mod tests {
         let bank = RawPropertyBank {
             version: SCHEMA_VERSION.into(),
             properties,
+            metadata: RawSchemaMetadata::default(),
         };
 
         bank.validate().unwrap();
@@ -1413,6 +1469,7 @@ mod tests {
         let bank = RawPropertyBank {
             version: SCHEMA_VERSION.into(),
             properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
         };
 
         bank.validate().unwrap();
@@ -1432,6 +1489,7 @@ mod tests {
         let bank = RawPropertyBank {
             version: SCHEMA_VERSION.into(),
             properties,
+            metadata: RawSchemaMetadata::default(),
         };
 
         bank.validate().unwrap_err();

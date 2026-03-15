@@ -501,6 +501,7 @@ mod tests {
                 extends: None,
                 excludes: Vec::new(),
                 properties: props,
+                metadata: crate::schema::raw::RawSchemaMetadata::default(),
             };
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;
@@ -520,6 +521,7 @@ mod tests {
                 extends: Some("parent".into()),
                 excludes: vec!["old-prop".into()],
                 properties: HashMap::new(),
+                metadata: crate::schema::raw::RawSchemaMetadata::default(),
             };
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;
