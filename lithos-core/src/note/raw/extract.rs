@@ -17,7 +17,10 @@ use super::{
 use crate::note::{
     error::NoteError,
     parser::{
-        ast::{AstLinkStyle, AstListType, AstNode, AstNodeKind, TextOrigin},
+        ast::{
+            AstInlineLink, AstLinkStyle, AstListType, AstNode, AstNodeKind,
+            TextOrigin,
+        },
         frontmatter::MetadataBlock,
     },
     position::SourceByteOffset,
@@ -45,11 +48,54 @@ pub fn extract_raw_note(
 
     let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
 
+    walk_nodes(
+        nodes,
+        &mut list_stack,
+        &mut open_item_by_depth,
+        &mut headings,
+        &mut links,
+        &mut tags,
+        &mut list_items,
+        &mut tasks,
+    )?;
+
+    let frontmatter = frontmatter_block
+        .map(|block| RawFrontmatter::new(block.kind(), block.text().into()));
+    let block_refs = collect_block_refs(source)?;
+
+    Ok(RawNote::new(
+        path,
+        source_hash,
+        source_bytes,
+        created_at,
+        modified_at,
+        frontmatter,
+        headings,
+        sections,
+        links,
+        tags,
+        list_items,
+        tasks,
+        block_refs,
+    ))
+}
+
+fn walk_nodes(
+    nodes: &[AstNode],
+    list_stack: &mut Vec<RawListType>,
+    open_item_by_depth: &mut Vec<SourceByteOffset>,
+    headings: &mut Vec<RawHeading>,
+    links: &mut Vec<RawLink>,
+    tags: &mut Vec<super::tags::RawTag>,
+    list_items: &mut Vec<RawListItem>,
+    tasks: &mut Vec<RawTask>,
+) -> Result<(), NoteError> {
     for node in nodes {
         match node.kind() {
             AstNodeKind::Heading {
                 level,
                 text,
+                links: inline_links,
             } => {
                 let raw = RawHeading::new(
                     *level,
@@ -58,15 +104,19 @@ pub fn extract_raw_note(
                     node.range().start(),
                 );
                 headings.push(raw);
-                scan_text_nodes(text, &mut tags)?;
+                scan_text_nodes(text, tags)?;
+                collect_inline_links(inline_links, links)?;
             }
             AstNodeKind::Paragraph {
                 text,
+                links: inline_links,
             } => {
-                scan_text_nodes(text, &mut tags)?;
+                scan_text_nodes(text, tags)?;
+                collect_inline_links(inline_links, links)?;
             }
-            AstNodeKind::ListStart {
+            AstNodeKind::List {
                 list_type,
+                items,
             } => {
                 let list_type = match list_type {
                     AstListType::Ordered {
@@ -77,13 +127,23 @@ pub fn extract_raw_note(
                     AstListType::Unordered => RawListType::Unordered,
                 };
                 list_stack.push(list_type);
-            }
-            AstNodeKind::ListEnd => {
+                walk_nodes(
+                    items,
+                    list_stack,
+                    open_item_by_depth,
+                    headings,
+                    links,
+                    tags,
+                    list_items,
+                    tasks,
+                )?;
                 list_stack.pop();
             }
             AstNodeKind::ListItem {
                 text,
                 task,
+                links: inline_links,
+                children,
             } => {
                 let position = node.range().start();
                 let depth_value =
@@ -97,7 +157,7 @@ pub fn extract_raw_note(
                     *slot = position;
                 }
                 open_item_by_depth.truncate(depth_index.saturating_add(1));
-                let parent = parent_for_depth(depth_value, &open_item_by_depth);
+                let parent = parent_for_depth(depth_value, open_item_by_depth);
 
                 let list_type = list_stack
                     .last()
@@ -120,7 +180,7 @@ pub fn extract_raw_note(
                     ),
                     None => (false, None),
                 };
-                let raw_text = text.to_string();
+                let raw_text = list_item_text(text, children);
                 list_items.push(RawListItem::new(
                     list_type,
                     depth,
@@ -133,78 +193,76 @@ pub fn extract_raw_note(
 
                 if is_checkbox {
                     let raw_tags = scan_raw_tags(&raw_text, position)?;
-                    let tags = raw_tags
+                    let tags_for_task = raw_tags
                         .into_iter()
                         .map(|tag| tag.value().into())
                         .collect();
                     let tokens = RawTaskTokens::parse(&raw_text, &[]);
                     tasks.push(RawTask::new(
                         status_symbol,
-                        raw_text.into_boxed_str(),
-                        tags,
+                        raw_text.clone().into_boxed_str(),
+                        tags_for_task,
                         tokens.inline_fields().to_vec(),
                         tokens.emoji_dates().to_vec(),
                         position,
                     ));
                 }
 
-                scan_text_nodes(text, &mut tags)?;
+                scan_text_nodes(text, tags)?;
+                collect_inline_links(inline_links, links)?;
+                walk_nodes(
+                    children,
+                    list_stack,
+                    open_item_by_depth,
+                    headings,
+                    links,
+                    tags,
+                    list_items,
+                    tasks,
+                )?;
             }
-            AstNodeKind::Link {
-                style,
-                is_embed,
-                target,
-                alias,
+            AstNodeKind::BlockQuote {
+                nodes,
+                ..
             } => {
-                let raw_style = match style {
-                    AstLinkStyle::Wiki => RawLinkStyle::Wiki,
-                    AstLinkStyle::Markdown => RawLinkStyle::Markdown,
-                };
-                let alias_text = alias.to_string();
-                let alias = if alias_text.trim().is_empty() {
-                    None
-                } else {
-                    Some(alias_text.into_boxed_str())
-                };
-                let (target_raw, anchor) =
-                    super::links::split_raw_target_and_anchor(target);
-                links.push(RawLink::new(
-                    raw_style,
-                    *is_embed,
-                    target_raw.into(),
-                    alias,
-                    anchor.map(Into::into),
-                    node.range().start(),
-                ));
+                walk_nodes(
+                    nodes,
+                    list_stack,
+                    open_item_by_depth,
+                    headings,
+                    links,
+                    tags,
+                    list_items,
+                    tasks,
+                )?;
             }
             AstNodeKind::CodeBlock {
-                ..
-            }
-            | AstNodeKind::BlockQuote {
                 ..
             } => {}
         }
     }
+    Ok(())
+}
 
-    let frontmatter = frontmatter_block
-        .map(|block| RawFrontmatter::new(block.kind(), block.text().into()));
-    let block_refs = collect_block_refs(source)?;
-
-    Ok(RawNote::new(
-        path,
-        source_hash,
-        source_bytes,
-        created_at,
-        modified_at,
-        frontmatter,
-        headings,
-        sections,
-        links,
-        tags,
-        list_items,
-        tasks,
-        block_refs,
-    ))
+fn list_item_text(
+    text: &crate::note::parser::ast::Text,
+    children: &[AstNode],
+) -> String {
+    if !text.is_empty() {
+        return text.to_string();
+    }
+    for child in children {
+        if let AstNodeKind::Paragraph {
+            text,
+            ..
+        } = child.kind()
+        {
+            if !text.is_empty() {
+                return text.to_string();
+            }
+        }
+    }
+    String::new()
 }
 
 /// Resolve the parent list item position for a given depth.
@@ -229,6 +287,35 @@ fn scan_text_nodes(
         }
         let raw = scan_raw_tags(node.content(), node.range().start())?;
         tags.extend(raw);
+    }
+    Ok(())
+}
+
+fn collect_inline_links(
+    inline_links: &[AstInlineLink],
+    links: &mut Vec<RawLink>,
+) -> Result<(), NoteError> {
+    for link in inline_links {
+        let raw_style = match link.style() {
+            AstLinkStyle::Wiki => RawLinkStyle::Wiki,
+            AstLinkStyle::Markdown => RawLinkStyle::Markdown,
+        };
+        let alias_text = link.alias().to_string();
+        let alias = if alias_text.trim().is_empty() {
+            None
+        } else {
+            Some(alias_text.into_boxed_str())
+        };
+        let (target_raw, anchor) =
+            super::links::split_raw_target_and_anchor(link.target());
+        links.push(RawLink::new(
+            raw_style,
+            link.is_embed(),
+            target_raw.into(),
+            alias,
+            anchor.map(Into::into),
+            link.range().start(),
+        ));
     }
     Ok(())
 }

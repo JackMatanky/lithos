@@ -1,18 +1,40 @@
 //! Markdown parser boundary for note ingestion.
+//!
+//! This module is the ingestion boundary between file content and the raw
+//! extraction layer. It is the only location in the note context that uses
+//! `pulldown-cmark`. The parser consumes the event stream and emits a minimal
+//! structural AST plus an optional raw metadata block, with byte ranges that
+//! preserve source offsets for downstream extraction.
+//!
+//! Module components:
+//! - `ast`: node and text definitions for the minimal structural AST.
+//! - `frontmatter`: raw metadata block capture (fence kind + raw text).
+//! - `note`: `ParsedNote`, the parser output container.
+//!
+//! Integration in the note pipeline:
+//! - `parser` produces `ParsedNote` from markdown input.
+//! - `raw` extracts `Raw*` facts from AST and metadata block.
+//! - `aggregate` converts `Raw*` into domain facts using `TryFrom`.
+//! - `storage` persists domain facts and builds indexes.
+//!
+//! Boundary guarantees:
+//! - No domain validation or normalization is performed here.
+//! - No raw extraction or configuration-driven parsing is performed here.
+//! - `pulldown-cmark` types do not escape this module.
 
 use std::ops::Range;
 
 use pulldown_cmark::{
-    BlockQuoteKind, CodeBlockKind, Event, LinkType, Options, Parser, Tag,
-    TagEnd, utils::TextMergeWithOffset,
+    BlockQuoteKind, CodeBlockKind, Event, LinkType, OffsetIter, Options,
+    Parser, Tag, TagEnd, utils::TextMergeWithOffset,
 };
 
 use self::{
     ast::{
-        AstBlockQuoteKind, AstLinkStyle, AstListType, AstNode, AstNodeKind,
-        Text, TextNode, TextOrigin, TextStyle,
+        AstBlockQuoteKind, AstInlineLink, AstLinkStyle, AstListType, AstNode,
+        AstNodeKind, Text, TextNode, TextOrigin, TextStyle,
     },
-    frontmatter::{MetadataBlock, MetadataBlockKind},
+    frontmatter::MetadataBlock,
     note::ParsedNote,
 };
 use crate::note::{
@@ -26,7 +48,7 @@ pub(crate) mod note;
 
 pub(crate) use note::ParsedNote;
 
-/// Build the pulldown-cmark option set used for Obsidian-compatible parsing.
+/// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
 #[inline]
 pub const fn obsidian_options() -> Options {
     Options::ENABLE_TASKLISTS
@@ -40,264 +62,475 @@ pub const fn obsidian_options() -> Options {
         .union(Options::ENABLE_MATH)
 }
 
-/// Parse markdown into a minimal AST plus raw frontmatter block.
+/// Parses markdown into a minimal AST and optional raw frontmatter block.
+///
+/// # Errors
+///
+/// Returns [`NoteIngestError`] if byte ranges cannot be represented or AST
+/// construction fails.
 pub fn parse_markdown(
     markdown: &str,
     options: Options,
 ) -> Result<ParsedNote, NoteIngestError> {
-    let events = Parser::new_ext(markdown, options).into_offset_iter();
-    let merged = TextMergeWithOffset::new(events);
+    ParserState::new(markdown, options).parse()
+}
 
-    let mut nodes = Vec::new();
-    let mut frontmatter_kind: Option<MetadataBlockKind> = None;
-    let mut frontmatter_text = String::new();
-    let mut frontmatter = None;
+struct ParserState<'a> {
+    inner: TextMergeWithOffset<'a, OffsetIter<'a>>,
+}
 
-    let mut item_stack: Vec<ListItemBuilder> = Vec::new();
-    let mut current_item: Option<ListItemBuilder> = None;
-    let mut current_heading: Option<HeadingBuilder> = None;
-    let mut current_paragraph: Option<ParagraphBuilder> = None;
-    let mut current_link: Option<LinkBuilder> = None;
-    let mut current_code_block: Option<CodeBlockBuilder> = None;
-    let mut quote_stack: Vec<BlockQuoteBuilder> = Vec::new();
-
-    let mut code_block_depth = 0u32;
-    let mut inline_styles: Vec<TextStyle> = Vec::new();
-
-    for (event, range) in merged {
-        let range = to_range(range)?;
-        match event {
-            Event::Start(Tag::MetadataBlock(kind)) => {
-                frontmatter_kind = Some(kind.into());
-                frontmatter_text.clear();
-            }
-            Event::End(TagEnd::MetadataBlock(kind)) => {
-                let kind = MetadataBlockKind::from(kind);
-                if frontmatter_kind == Some(kind) && frontmatter.is_none() {
-                    if !frontmatter_text.is_empty() {
-                        frontmatter = Some(MetadataBlock::new(
-                            kind,
-                            frontmatter_text.clone().into_boxed_str(),
-                        ));
-                    }
-                }
-                frontmatter_kind = None;
-                frontmatter_text.clear();
-            }
-            Event::Start(Tag::Heading {
-                level,
-                ..
-            }) => {
-                current_heading = Some(HeadingBuilder::new(
-                    heading_level(level),
-                    range.start(),
-                ));
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                if let Some(builder) = current_heading.take() {
-                    let node = builder.finish(range.end())?;
-                    nodes.push(node);
-                }
-            }
-            Event::Start(Tag::Paragraph) => {
-                current_paragraph = Some(ParagraphBuilder::new(range.start()));
-            }
-            Event::End(TagEnd::Paragraph) => {
-                if let Some(builder) = current_paragraph.take() {
-                    let node = builder.finish(range.end())?;
-                    let is_empty_paragraph = matches!(node.kind(), AstNodeKind::Paragraph { text } if text.is_empty());
-                    if !is_empty_paragraph {
-                        nodes.push(node);
-                    }
-                }
-            }
-            Event::Start(Tag::List(start)) => {
-                let list_type = match start {
-                    Some(start_num) => AstListType::Ordered {
-                        start: start_num,
-                    },
-                    None => AstListType::Unordered,
-                };
-                nodes.push(AstNode::new(
-                    AstNodeKind::ListStart {
-                        list_type,
-                    },
-                    range,
-                ));
-            }
-            Event::End(TagEnd::List(_)) => {
-                nodes.push(AstNode::new(AstNodeKind::ListEnd, range));
-            }
-            Event::Start(Tag::Item) => {
-                if let Some(active) = current_item.take() {
-                    item_stack.push(active);
-                }
-                current_item = Some(ListItemBuilder::new(range.start()));
-            }
-            Event::End(TagEnd::Item) => {
-                if let Some(builder) = current_item.take() {
-                    let node = builder.finish(range.end())?;
-                    nodes.push(node);
-                }
-                current_item = item_stack.pop();
-            }
-            Event::TaskListMarker(checked) => {
-                if let Some(item) = current_item.as_mut() {
-                    item.task = Some(checked);
-                }
-            }
-            Event::Start(Tag::Link {
-                link_type,
-                dest_url,
-                ..
-            }) => {
-                current_link = Some(LinkBuilder::new(
-                    link_style(link_type),
-                    false,
-                    dest_url.to_string().into_boxed_str(),
-                    range.start(),
-                ));
-            }
-            Event::Start(Tag::Image {
-                link_type,
-                dest_url,
-                ..
-            }) => {
-                current_link = Some(LinkBuilder::new(
-                    link_style(link_type),
-                    true,
-                    dest_url.to_string().into_boxed_str(),
-                    range.start(),
-                ));
-            }
-            Event::End(TagEnd::Link | TagEnd::Image) => {
-                if let Some(builder) = current_link.take() {
-                    nodes.push(builder.finish(range.end())?);
-                }
-            }
-            Event::Start(Tag::CodeBlock(kind)) => {
-                code_block_depth = code_block_depth.saturating_add(1);
-                current_code_block =
-                    Some(CodeBlockBuilder::new(kind, range.start()));
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                code_block_depth = code_block_depth.saturating_sub(1);
-                if let Some(builder) = current_code_block.take() {
-                    nodes.push(builder.finish(range.end())?);
-                }
-            }
-            Event::Start(Tag::BlockQuote(kind)) => {
-                quote_stack.push(BlockQuoteBuilder::new(
-                    kind.map(map_block_quote_kind),
-                    range.start(),
-                ));
-            }
-            Event::End(TagEnd::BlockQuote) => {
-                if let Some(builder) = quote_stack.pop() {
-                    nodes.push(builder.finish(range.end())?);
-                }
-            }
-            Event::Start(Tag::Emphasis) => {
-                inline_styles.push(TextStyle::Emphasis);
-            }
-            Event::End(TagEnd::Emphasis) => {
-                pop_style(&mut inline_styles, TextStyle::Emphasis);
-            }
-            Event::Start(Tag::Strong) => {
-                inline_styles.push(TextStyle::Strong);
-            }
-            Event::End(TagEnd::Strong) => {
-                pop_style(&mut inline_styles, TextStyle::Strong);
-            }
-            Event::Start(Tag::Strikethrough) => {
-                inline_styles.push(TextStyle::Strikethrough);
-            }
-            Event::End(TagEnd::Strikethrough) => {
-                pop_style(&mut inline_styles, TextStyle::Strikethrough);
-            }
-            Event::Text(text) => {
-                if frontmatter_kind.is_some() {
-                    frontmatter_text.push_str(&text);
-                    continue;
-                }
-                if code_block_depth > 0 {
-                    continue;
-                }
-                let style = current_style(&inline_styles);
-                let origin = if current_link.is_some() {
-                    TextOrigin::LinkAlias
-                } else {
-                    TextOrigin::Normal
-                };
-                push_text(
-                    &mut current_heading,
-                    &mut current_paragraph,
-                    &mut current_item,
-                    &mut current_link,
-                    &text,
-                    style,
-                    origin,
-                    range,
-                );
-            }
-            Event::Code(text) => {
-                if frontmatter_kind.is_some() {
-                    frontmatter_text.push_str(&text);
-                    continue;
-                }
-                if code_block_depth > 0 {
-                    continue;
-                }
-                let origin = if current_link.is_some() {
-                    TextOrigin::LinkAlias
-                } else {
-                    TextOrigin::Normal
-                };
-                push_text(
-                    &mut current_heading,
-                    &mut current_paragraph,
-                    &mut current_item,
-                    &mut current_link,
-                    &text,
-                    TextStyle::Code,
-                    origin,
-                    range,
-                );
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if frontmatter_kind.is_some() {
-                    frontmatter_text.push('\n');
-                    continue;
-                }
-                if code_block_depth > 0 {
-                    continue;
-                }
-                let origin = if current_link.is_some() {
-                    TextOrigin::LinkAlias
-                } else {
-                    TextOrigin::Normal
-                };
-                push_break(
-                    &mut current_heading,
-                    &mut current_paragraph,
-                    &mut current_item,
-                    &mut current_link,
-                    origin,
-                    range,
-                );
-            }
-            Event::InlineMath(_)
-            | Event::DisplayMath(_)
-            | Event::Html(_)
-            | Event::InlineHtml(_)
-            | Event::FootnoteReference(_)
-            | Event::Rule
-            | Event::Start(_)
-            | Event::End(_) => {}
+impl<'a> ParserState<'a> {
+    fn new(markdown: &'a str, options: Options) -> Self {
+        let events = Parser::new_ext(markdown, options).into_offset_iter();
+        let inner = TextMergeWithOffset::new(events);
+        Self {
+            inner,
         }
     }
 
-    Ok(ParsedNote::new(nodes, frontmatter))
+    fn parse(mut self) -> Result<ParsedNote, NoteIngestError> {
+        let mut nodes = Vec::new();
+        let mut frontmatter = None;
+
+        while let Some((event, range)) = self.next() {
+            let range = to_range(range)?;
+            match event {
+                Event::Start(Tag::MetadataBlock(kind)) => {
+                    if frontmatter.is_none() {
+                        let block = self.parse_metadata(kind)?;
+                        frontmatter = Some(block);
+                    } else {
+                        self.consume_container(Tag::MetadataBlock(kind))?;
+                    }
+                }
+                Event::Start(tag) if is_container_tag(&tag) => {
+                    if let Some(node) =
+                        self.parse_container(tag, range.start())?
+                    {
+                        nodes.push(node);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(ParsedNote::new(nodes, frontmatter))
+    }
+
+    fn parse_metadata(
+        &mut self,
+        kind: pulldown_cmark::MetadataBlockKind,
+    ) -> Result<MetadataBlock, NoteIngestError> {
+        let mut text = String::new();
+        while let Some((event, _range)) = self.next() {
+            match event {
+                Event::Text(value) | Event::Code(value) => {
+                    text.push_str(&value);
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    text.push('\n');
+                }
+                Event::End(TagEnd::MetadataBlock(end_kind))
+                    if end_kind == kind =>
+                {
+                    return Ok(MetadataBlock::new(
+                        kind.into(),
+                        text.into_boxed_str(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Err(NoteIngestError::Source("unclosed metadata block".into()))
+    }
+
+    fn consume_container(
+        &mut self,
+        tag: Tag<'a>,
+    ) -> Result<(), NoteIngestError> {
+        while let Some((event, _range)) = self.next() {
+            match event {
+                Event::Start(inner) if is_container_tag(&inner) => {
+                    self.consume_container(inner)?;
+                }
+                Event::End(end) if tag.to_end() == end => return Ok(()),
+                _ => {}
+            }
+        }
+        Err(NoteIngestError::Source("unclosed container".into()))
+    }
+
+    fn parse_container(
+        &mut self,
+        tag: Tag<'a>,
+        start: SourceByteOffset,
+    ) -> Result<Option<AstNode>, NoteIngestError> {
+        let mut children = Vec::new();
+        let mut text_nodes = Vec::new();
+        let mut inline_links = Vec::new();
+        let mut inline_styles = Vec::new();
+        let mut current_link: Option<LinkFrame> = None;
+        let mut task: Option<bool> = None;
+        let mut code_text = String::new();
+
+        let accepts_text =
+            matches!(tag, Tag::Heading { .. } | Tag::Paragraph | Tag::Item);
+        let is_code_block = matches!(tag, Tag::CodeBlock(_));
+        let list_type = match &tag {
+            Tag::List(start) => Some(match start {
+                Some(start_num) => AstListType::Ordered {
+                    start: *start_num,
+                },
+                None => AstListType::Unordered,
+            }),
+            _ => None,
+        };
+        let heading_level = match &tag {
+            Tag::Heading {
+                level,
+                ..
+            } => Some(heading_level(*level)),
+            _ => None,
+        };
+        let block_quote_kind = match &tag {
+            Tag::BlockQuote(kind) => kind.map(map_block_quote_kind),
+            _ => None,
+        };
+        let (fenced, info) = match &tag {
+            Tag::CodeBlock(kind) => match kind {
+                CodeBlockKind::Fenced(info) => {
+                    (true, Some(info.to_string().into_boxed_str()))
+                }
+                CodeBlockKind::Indented => (false, None),
+            },
+            _ => (false, None),
+        };
+
+        while let Some((event, range)) = self.next() {
+            let range = to_range(range)?;
+            match event {
+                Event::Start(inner) if is_container_tag(&inner) => {
+                    if let Some(node) =
+                        self.parse_container(inner, range.start())?
+                    {
+                        children.push(node);
+                    }
+                }
+                Event::Start(Tag::Link {
+                    link_type,
+                    dest_url,
+                    ..
+                }) => {
+                    current_link = Some(LinkFrame::new(
+                        link_style(link_type),
+                        false,
+                        dest_url.to_string().into_boxed_str(),
+                        range.start(),
+                    ));
+                }
+                Event::Start(Tag::Image {
+                    link_type,
+                    dest_url,
+                    ..
+                }) => {
+                    current_link = Some(LinkFrame::new(
+                        link_style(link_type),
+                        true,
+                        dest_url.to_string().into_boxed_str(),
+                        range.start(),
+                    ));
+                }
+                Event::End(TagEnd::Link | TagEnd::Image) => {
+                    if let Some(link) = current_link.take() {
+                        inline_links.push(link.into_inline(range.end())?);
+                    }
+                }
+                Event::Start(inner) => {
+                    if let Some(style) = inline_style(&inner) {
+                        inline_styles.push(style);
+                    }
+                }
+                Event::End(end) if tag.to_end() == end => {
+                    let range = SourceByteRange::new(start, range.end())
+                        .map_err(NoteIngestError::Domain)?;
+                    return Ok(build_node(
+                        &tag,
+                        range,
+                        heading_level,
+                        list_type,
+                        block_quote_kind,
+                        fenced,
+                        info,
+                        text_nodes,
+                        inline_links,
+                        task,
+                        children,
+                        code_text,
+                    ));
+                }
+                Event::End(end) => {
+                    if let Some(style) = inline_style_end(&end) {
+                        pop_style(&mut inline_styles, style);
+                    }
+                }
+                Event::TaskListMarker(checked) => {
+                    task = Some(checked);
+                }
+                Event::Text(text) => {
+                    if is_code_block {
+                        code_text.push_str(&text);
+                    } else if accepts_text {
+                        let style = current_style(&inline_styles);
+                        let origin = if current_link.is_some() {
+                            TextOrigin::LinkAlias
+                        } else {
+                            TextOrigin::Normal
+                        };
+                        push_text_node(
+                            &mut text_nodes,
+                            &mut current_link,
+                            &text,
+                            style,
+                            origin,
+                            range,
+                        );
+                    }
+                }
+                Event::Code(text) => {
+                    if is_code_block {
+                        code_text.push_str(&text);
+                    } else if accepts_text {
+                        let origin = if current_link.is_some() {
+                            TextOrigin::LinkAlias
+                        } else {
+                            TextOrigin::Normal
+                        };
+                        push_text_node(
+                            &mut text_nodes,
+                            &mut current_link,
+                            &text,
+                            TextStyle::Code,
+                            origin,
+                            range,
+                        );
+                    }
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    if is_code_block {
+                        code_text.push('\n');
+                    } else if accepts_text {
+                        let origin = if current_link.is_some() {
+                            TextOrigin::LinkAlias
+                        } else {
+                            TextOrigin::Normal
+                        };
+                        push_break_node(
+                            &mut text_nodes,
+                            &mut current_link,
+                            origin,
+                            range,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+impl<'a> Iterator for ParserState<'a> {
+    type Item = (Event<'a>, Range<usize>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+fn is_container_tag(tag: &Tag<'_>) -> bool {
+    matches!(
+        tag,
+        Tag::Paragraph
+            | Tag::Heading { .. }
+            | Tag::BlockQuote(..)
+            | Tag::CodeBlock(..)
+            | Tag::HtmlBlock
+            | Tag::List(..)
+            | Tag::Item
+            | Tag::FootnoteDefinition(..)
+            | Tag::Table(..)
+            | Tag::TableHead
+            | Tag::TableRow
+            | Tag::TableCell
+            | Tag::DefinitionList
+            | Tag::DefinitionListTitle
+            | Tag::DefinitionListDefinition
+            | Tag::MetadataBlock(..)
+    )
+}
+
+fn inline_style(tag: &Tag<'_>) -> Option<TextStyle> {
+    match tag {
+        Tag::Emphasis => Some(TextStyle::Emphasis),
+        Tag::Strong => Some(TextStyle::Strong),
+        Tag::Strikethrough => Some(TextStyle::Strikethrough),
+        _ => None,
+    }
+}
+
+fn inline_style_end(tag: &TagEnd) -> Option<TextStyle> {
+    match tag {
+        TagEnd::Emphasis => Some(TextStyle::Emphasis),
+        TagEnd::Strong => Some(TextStyle::Strong),
+        TagEnd::Strikethrough => Some(TextStyle::Strikethrough),
+        _ => None,
+    }
+}
+
+fn push_text_node(
+    text_nodes: &mut Vec<TextNode>,
+    current_link: &mut Option<LinkFrame>,
+    text: &str,
+    style: TextStyle,
+    origin: TextOrigin,
+    range: SourceByteRange,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let node = TextNode::new(text.into(), style, origin, range);
+    text_nodes.push(node.clone());
+    if let Some(link) = current_link.as_mut() {
+        link.alias.push(node);
+    }
+}
+
+fn push_break_node(
+    text_nodes: &mut Vec<TextNode>,
+    current_link: &mut Option<LinkFrame>,
+    origin: TextOrigin,
+    range: SourceByteRange,
+) {
+    if text_nodes.last().is_some_and(|node| node.content().ends_with(' ')) {
+        return;
+    }
+    let node = TextNode::new(" ".into(), TextStyle::Plain, origin, range);
+    text_nodes.push(node.clone());
+    if let Some(link) = current_link.as_mut() {
+        link.alias.push(node);
+    }
+}
+
+fn build_node(
+    tag: &Tag<'_>,
+    range: SourceByteRange,
+    heading_level: Option<u8>,
+    list_type: Option<AstListType>,
+    block_quote_kind: Option<AstBlockQuoteKind>,
+    fenced: bool,
+    info: Option<Box<str>>,
+    text_nodes: Vec<TextNode>,
+    inline_links: Vec<AstInlineLink>,
+    task: Option<bool>,
+    children: Vec<AstNode>,
+    code_text: String,
+) -> Option<AstNode> {
+    let kind = match tag {
+        Tag::Heading {
+            ..
+        } => AstNodeKind::Heading {
+            level: heading_level.unwrap_or(1),
+            text: Text::new(text_nodes),
+            links: inline_links,
+        },
+        Tag::Paragraph => AstNodeKind::Paragraph {
+            text: Text::new(text_nodes),
+            links: inline_links,
+        },
+        Tag::List(..) => AstNodeKind::List {
+            list_type: list_type.unwrap_or(AstListType::Unordered),
+            items: children,
+        },
+        Tag::Item => AstNodeKind::ListItem {
+            text: Text::new(text_nodes),
+            task,
+            links: inline_links,
+            children,
+        },
+        Tag::BlockQuote(..) => AstNodeKind::BlockQuote {
+            kind: block_quote_kind,
+            nodes: children,
+        },
+        Tag::CodeBlock(..) => AstNodeKind::CodeBlock {
+            fenced,
+            info,
+            text: code_text.into_boxed_str(),
+        },
+        Tag::HtmlBlock
+        | Tag::FootnoteDefinition(..)
+        | Tag::Table(..)
+        | Tag::TableHead
+        | Tag::TableRow
+        | Tag::TableCell
+        | Tag::DefinitionList
+        | Tag::DefinitionListTitle
+        | Tag::DefinitionListDefinition
+        | Tag::MetadataBlock(..) => return None,
+        Tag::Emphasis
+        | Tag::Strong
+        | Tag::Strikethrough
+        | Tag::Superscript
+        | Tag::Subscript
+        | Tag::Link {
+            ..
+        }
+        | Tag::Image {
+            ..
+        } => return None,
+    };
+    Some(AstNode::new(kind, range))
+}
+
+/// Parse-time state for link nodes.
+struct LinkFrame {
+    style: AstLinkStyle,
+    is_embed: bool,
+    target: Box<str>,
+    alias: Vec<TextNode>,
+    start: SourceByteOffset,
+}
+
+impl LinkFrame {
+    fn new(
+        style: AstLinkStyle,
+        is_embed: bool,
+        target: Box<str>,
+        start: SourceByteOffset,
+    ) -> Self {
+        Self {
+            style,
+            is_embed,
+            target,
+            alias: Vec::new(),
+            start,
+        }
+    }
+
+    fn into_inline(
+        self,
+        end: SourceByteOffset,
+    ) -> Result<AstInlineLink, NoteIngestError> {
+        let range = SourceByteRange::new(self.start, end)
+            .map_err(NoteIngestError::Domain)?;
+        Ok(AstInlineLink::new(
+            self.style,
+            self.is_embed,
+            self.target,
+            Text::new(self.alias),
+            range,
+        ))
+    }
 }
 
 fn to_range(range: Range<usize>) -> Result<SourceByteRange, NoteIngestError> {
@@ -348,280 +581,6 @@ fn pop_style(stack: &mut Vec<TextStyle>, style: TextStyle) {
     }
 }
 
-fn push_text(
-    heading: &mut Option<HeadingBuilder>,
-    paragraph: &mut Option<ParagraphBuilder>,
-    item: &mut Option<ListItemBuilder>,
-    link: &mut Option<LinkBuilder>,
-    text: &str,
-    style: TextStyle,
-    origin: TextOrigin,
-    range: SourceByteRange,
-) {
-    if let Some(builder) = heading.as_mut() {
-        builder.text.push(text, style, origin, range);
-    }
-    if let Some(builder) = paragraph.as_mut() {
-        builder.text.push(text, style, origin, range);
-    }
-    if let Some(builder) = item.as_mut() {
-        builder.text.push(text, style, origin, range);
-    }
-    if let Some(builder) = link.as_mut() {
-        builder.alias.push(text, style, TextOrigin::LinkAlias, range);
-    }
-}
-
-fn push_break(
-    heading: &mut Option<HeadingBuilder>,
-    paragraph: &mut Option<ParagraphBuilder>,
-    item: &mut Option<ListItemBuilder>,
-    link: &mut Option<LinkBuilder>,
-    origin: TextOrigin,
-    range: SourceByteRange,
-) {
-    if let Some(builder) = heading.as_mut() {
-        builder.text.push_break(origin, range);
-    }
-    if let Some(builder) = paragraph.as_mut() {
-        builder.text.push_break(origin, range);
-    }
-    if let Some(builder) = item.as_mut() {
-        builder.text.push_break(origin, range);
-    }
-    if let Some(builder) = link.as_mut() {
-        builder.alias.push_break(TextOrigin::LinkAlias, range);
-    }
-}
-
-/// Internal accumulator for inline text fragments.
-struct TextBuilder {
-    nodes: Vec<TextNode>,
-}
-
-impl TextBuilder {
-    fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-        }
-    }
-
-    fn push(
-        &mut self,
-        text: &str,
-        style: TextStyle,
-        origin: TextOrigin,
-        range: SourceByteRange,
-    ) {
-        if text.is_empty() {
-            return;
-        }
-        self.nodes.push(TextNode::new(text.into(), style, origin, range));
-    }
-
-    fn push_break(&mut self, origin: TextOrigin, range: SourceByteRange) {
-        if self.nodes.last().is_some_and(|node| node.content().ends_with(' ')) {
-            return;
-        }
-        self.nodes.push(TextNode::new(
-            " ".into(),
-            TextStyle::Plain,
-            origin,
-            range,
-        ));
-    }
-
-    fn finish(self) -> Text {
-        Text::new(self.nodes)
-    }
-}
-
-/// Internal accumulator for heading nodes.
-struct HeadingBuilder {
-    level: u8,
-    start: SourceByteOffset,
-    text: TextBuilder,
-}
-
-impl HeadingBuilder {
-    fn new(level: u8, start: SourceByteOffset) -> Self {
-        Self {
-            level,
-            start,
-            text: TextBuilder::new(),
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::Heading {
-                level: self.level,
-                text: self.text.finish(),
-            },
-            range,
-        ))
-    }
-}
-
-/// Internal accumulator for paragraph nodes.
-struct ParagraphBuilder {
-    start: SourceByteOffset,
-    text: TextBuilder,
-}
-
-impl ParagraphBuilder {
-    fn new(start: SourceByteOffset) -> Self {
-        Self {
-            start,
-            text: TextBuilder::new(),
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::Paragraph {
-                text: self.text.finish(),
-            },
-            range,
-        ))
-    }
-}
-
-/// Internal accumulator for list item nodes.
-struct ListItemBuilder {
-    start: SourceByteOffset,
-    text: TextBuilder,
-    task: Option<bool>,
-}
-
-impl ListItemBuilder {
-    fn new(start: SourceByteOffset) -> Self {
-        Self {
-            start,
-            text: TextBuilder::new(),
-            task: None,
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::ListItem {
-                text: self.text.finish(),
-                task: self.task,
-            },
-            range,
-        ))
-    }
-}
-
-/// Internal accumulator for link nodes.
-struct LinkBuilder {
-    style: AstLinkStyle,
-    is_embed: bool,
-    target: Box<str>,
-    start: SourceByteOffset,
-    alias: TextBuilder,
-}
-
-impl LinkBuilder {
-    fn new(
-        style: AstLinkStyle,
-        is_embed: bool,
-        target: Box<str>,
-        start: SourceByteOffset,
-    ) -> Self {
-        Self {
-            style,
-            is_embed,
-            target,
-            start,
-            alias: TextBuilder::new(),
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::Link {
-                style: self.style,
-                is_embed: self.is_embed,
-                target: self.target,
-                alias: self.alias.finish(),
-            },
-            range,
-        ))
-    }
-}
-
-/// Internal accumulator for code block nodes.
-struct CodeBlockBuilder {
-    fenced: bool,
-    info: Option<Box<str>>,
-    start: SourceByteOffset,
-}
-
-impl CodeBlockBuilder {
-    fn new(kind: CodeBlockKind<'_>, start: SourceByteOffset) -> Self {
-        match kind {
-            CodeBlockKind::Indented => Self {
-                fenced: false,
-                info: None,
-                start,
-            },
-            CodeBlockKind::Fenced(info) => Self {
-                fenced: true,
-                info: Some(info.to_string().into_boxed_str()),
-                start,
-            },
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::CodeBlock {
-                fenced: self.fenced,
-                info: self.info,
-            },
-            range,
-        ))
-    }
-}
-
-/// Internal accumulator for block quote nodes.
-struct BlockQuoteBuilder {
-    kind: Option<AstBlockQuoteKind>,
-    start: SourceByteOffset,
-}
-
-impl BlockQuoteBuilder {
-    fn new(kind: Option<AstBlockQuoteKind>, start: SourceByteOffset) -> Self {
-        Self {
-            kind,
-            start,
-        }
-    }
-
-    fn finish(self, end: SourceByteOffset) -> Result<AstNode, NoteIngestError> {
-        let range = SourceByteRange::new(self.start, end)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(AstNode::new(
-            AstNodeKind::BlockQuote {
-                kind: self.kind,
-            },
-            range,
-        ))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,8 +589,8 @@ mod tests {
     fn parses_task_list_marker_events() -> Result<(), NoteIngestError> {
         let options = Options::ENABLE_TASKLISTS;
         let parsed = parse_markdown("- [ ] task", options)?;
-        let found = parsed.nodes().iter().any(|node| {
-            matches!(node.kind(), AstNodeKind::ListItem {
+        let found = contains_list_item(parsed.nodes(), &|item| {
+            matches!(item.kind(), AstNodeKind::ListItem {
                 task: Some(false),
                 ..
             })
@@ -660,5 +619,181 @@ mod tests {
         }
         assert!(found);
         Ok(())
+    }
+
+    #[test]
+    fn tight_list_items_emit_no_paragraph_nodes() -> Result<(), NoteIngestError>
+    {
+        let options = Options::ENABLE_TASKLISTS;
+        let parsed = parse_markdown("- one\n- two", options)?;
+        let list = find_list(parsed.nodes()).expect("list node");
+
+        if let AstNodeKind::List {
+            items,
+            ..
+        } = list.kind()
+        {
+            for item in items {
+                if let AstNodeKind::ListItem {
+                    children,
+                    ..
+                } = item.kind()
+                {
+                    let has_paragraph = children.iter().any(|child| {
+                        matches!(child.kind(), AstNodeKind::Paragraph { .. })
+                    });
+                    assert!(
+                        !has_paragraph,
+                        "tight list item should not contain paragraph nodes"
+                    );
+                } else {
+                    panic!("expected list items only");
+                }
+            }
+        } else {
+            panic!("expected list node");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inline_links_attach_to_text_containers() -> Result<(), NoteIngestError> {
+        let markdown =
+            "# Heading with [link](https://example.com)\n\nParagraph with \
+             [[wiki]] link.\n\n- Item with [ref](note.md)";
+        let parsed = parse_markdown(markdown, obsidian_options())?;
+
+        let heading = find_heading(parsed.nodes()).expect("heading node");
+        if let AstNodeKind::Heading {
+            links,
+            ..
+        } = heading.kind()
+        {
+            assert!(!links.is_empty(), "heading should capture inline links");
+        }
+
+        let paragraph = find_paragraph(parsed.nodes()).expect("paragraph node");
+        if let AstNodeKind::Paragraph {
+            links,
+            ..
+        } = paragraph.kind()
+        {
+            assert!(!links.is_empty(), "paragraph should capture inline links");
+        }
+
+        let list_item = find_list_item(parsed.nodes()).expect("list item node");
+        if let AstNodeKind::ListItem {
+            links,
+            ..
+        } = list_item.kind()
+        {
+            assert!(!links.is_empty(), "list item should capture inline links");
+        }
+        Ok(())
+    }
+
+    fn contains_list_item<F>(nodes: &[AstNode], predicate: &F) -> bool
+    where
+        F: Fn(&AstNode) -> bool,
+    {
+        for node in nodes {
+            if predicate(node) {
+                return true;
+            }
+            match node.kind() {
+                AstNodeKind::List {
+                    items,
+                    ..
+                } => {
+                    if contains_list_item(items, predicate) {
+                        return true;
+                    }
+                }
+                AstNodeKind::ListItem {
+                    children,
+                    ..
+                } => {
+                    if contains_list_item(children, predicate) {
+                        return true;
+                    }
+                }
+                AstNodeKind::BlockQuote {
+                    nodes,
+                    ..
+                } => {
+                    if contains_list_item(nodes, predicate) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn find_list(nodes: &[AstNode]) -> Option<&AstNode> {
+        nodes
+            .iter()
+            .find(|node| matches!(node.kind(), AstNodeKind::List { .. }))
+    }
+
+    fn find_heading(nodes: &[AstNode]) -> Option<&AstNode> {
+        nodes
+            .iter()
+            .find(|node| matches!(node.kind(), AstNodeKind::Heading { .. }))
+    }
+
+    fn find_paragraph(nodes: &[AstNode]) -> Option<&AstNode> {
+        for node in nodes {
+            if matches!(node.kind(), AstNodeKind::Paragraph { .. }) {
+                return Some(node);
+            }
+            if let AstNodeKind::BlockQuote {
+                nodes: children,
+                ..
+            } = node.kind()
+            {
+                if let Some(found) = find_paragraph(children) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    fn find_list_item(nodes: &[AstNode]) -> Option<&AstNode> {
+        for node in nodes {
+            if matches!(node.kind(), AstNodeKind::ListItem { .. }) {
+                return Some(node);
+            }
+            match node.kind() {
+                AstNodeKind::List {
+                    items,
+                    ..
+                } => {
+                    if let Some(found) = find_list_item(items) {
+                        return Some(found);
+                    }
+                }
+                AstNodeKind::ListItem {
+                    children,
+                    ..
+                } => {
+                    if let Some(found) = find_list_item(children) {
+                        return Some(found);
+                    }
+                }
+                AstNodeKind::BlockQuote {
+                    nodes,
+                    ..
+                } => {
+                    if let Some(found) = find_list_item(nodes) {
+                        return Some(found);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 }

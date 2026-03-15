@@ -1,8 +1,15 @@
 //! Minimal AST types for note ingestion.
+//!
+//! The AST is intentionally small and structural. It records block boundaries,
+//! inline text fragments, and byte ranges, but does not embed domain semantics.
+//! List and block-quote structure are represented as nested nodes so the raw
+//! layer can traverse the tree without relying on parser-specific state. Note
+//! that paragraphs only appear when the pulldown-cmark event stream emits them
+//! (tight list items may omit paragraph tags entirely).
 
 use crate::note::position::SourceByteRange;
 
-/// Minimal node wrapper with byte range information.
+/// Minimal AST node wrapper with byte range information.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct AstNode {
@@ -11,7 +18,7 @@ pub struct AstNode {
 }
 
 impl AstNode {
-    /// Create a new AST node.
+    /// Creates a new AST node.
     #[inline]
     #[must_use]
     pub const fn new(kind: AstNodeKind, range: SourceByteRange) -> Self {
@@ -21,14 +28,14 @@ impl AstNode {
         }
     }
 
-    /// Return the node kind.
+    /// Returns the node kind.
     #[inline]
     #[must_use]
     pub const fn kind(&self) -> &AstNodeKind {
         &self.kind
     }
 
-    /// Return the byte range for this node.
+    /// Returns the byte range for this node.
     #[inline]
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
@@ -36,62 +43,132 @@ impl AstNode {
     }
 }
 
-/// Minimal structural node types required by note extraction.
+/// Structural node types required by raw extraction.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum AstNodeKind {
     /// Heading block with inline text.
     Heading {
-        /// Heading level (1–6).
+        /// Heading level, from 1 through 6.
         level: u8,
         /// Heading text with inline styles preserved.
         text: Text,
+        /// Inline links captured within the heading text.
+        links: Vec<AstInlineLink>,
     },
     /// Paragraph block with inline text.
     Paragraph {
         /// Paragraph text with inline styles preserved.
         text: Text,
+        /// Inline links captured within the paragraph text.
+        links: Vec<AstInlineLink>,
     },
-    /// List start marker with list type metadata.
-    ListStart {
-        /// Ordered or unordered list type.
+    /// List container with ordered or unordered metadata.
+    List {
+        /// Ordered or unordered list type, as reported by the parser.
         list_type: AstListType,
+        /// List items in source order.
+        items: Vec<AstNode>,
     },
-    /// List end marker.
-    ListEnd,
     /// List item with optional task marker.
     ListItem {
         /// List item text with inline styles preserved.
         text: Text,
-        /// Task marker state if this list item is a task.
+        /// Task marker state when this list item is a task.
+        ///
+        /// `Some(true)` means checked, `Some(false)` means unchecked.
         task: Option<bool>,
+        /// Inline links captured within the list item text.
+        links: Vec<AstInlineLink>,
+        /// Nested nodes contained by this list item.
+        children: Vec<AstNode>,
     },
-    /// Code block boundary for sectioning and tag exclusion.
+    /// Code block boundary used for sectioning and tag exclusion.
     CodeBlock {
         /// Whether the block is fenced.
         fenced: bool,
         /// Optional fence info string.
         info: Option<Box<str>>,
+        /// Raw code block text as emitted by pulldown-cmark.
+        text: Box<str>,
     },
-    /// Block quote boundary (including callouts).
+    /// Block quote boundary, including callouts.
     BlockQuote {
         /// Optional callout kind.
         kind: Option<AstBlockQuoteKind>,
-    },
-    /// Link or embed with alias text captured separately.
-    Link {
-        /// Link style (wiki or markdown).
-        style: AstLinkStyle,
-        /// Whether this is an embed.
-        is_embed: bool,
-        /// Raw target string as produced by pulldown-cmark.
-        target: Box<str>,
-        /// Alias text captured from link text.
-        alias: Text,
+        /// Nested nodes contained by this block quote.
+        nodes: Vec<AstNode>,
     },
 }
 
-/// Inline text collection for a node.
+/// Inline link captured within a text container.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct AstInlineLink {
+    style: AstLinkStyle,
+    is_embed: bool,
+    target: Box<str>,
+    alias: Text,
+    range: SourceByteRange,
+}
+
+impl AstInlineLink {
+    /// Creates a new inline link descriptor.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        style: AstLinkStyle,
+        is_embed: bool,
+        target: Box<str>,
+        alias: Text,
+        range: SourceByteRange,
+    ) -> Self {
+        Self {
+            style,
+            is_embed,
+            target,
+            alias,
+            range,
+        }
+    }
+
+    /// Returns the link style.
+    #[inline]
+    #[must_use]
+    pub const fn style(&self) -> AstLinkStyle {
+        self.style
+    }
+
+    /// Returns true when this link is an embed.
+    #[inline]
+    #[must_use]
+    pub const fn is_embed(&self) -> bool {
+        self.is_embed
+    }
+
+    /// Returns the raw target string.
+    #[inline]
+    #[must_use]
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    /// Returns the alias text captured from the link body.
+    #[inline]
+    #[must_use]
+    pub fn alias(&self) -> &Text {
+        &self.alias
+    }
+
+    /// Returns the byte range for this inline link.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
+    }
+}
+
+/// Collection of inline text fragments for a node.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Text {
@@ -99,7 +176,7 @@ pub struct Text {
 }
 
 impl Text {
-    /// Create a text collection from nodes.
+    /// Creates a text collection from nodes.
     #[inline]
     #[must_use]
     pub fn new(nodes: Vec<TextNode>) -> Self {
@@ -108,21 +185,23 @@ impl Text {
         }
     }
 
-    /// Return the text nodes in source order.
+    /// Returns the text nodes in source order.
     #[inline]
     #[must_use]
     pub fn nodes(&self) -> &[TextNode] {
         &self.nodes
     }
 
-    /// Return true when no text nodes are present.
+    /// Returns true when no text nodes are present.
     #[inline]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
 
-    /// Concatenate text nodes into a single string.
+    /// Concatenates text nodes into a single string.
+    ///
+    /// This allocates a new `String` with no normalization or trimming.
     #[must_use]
     pub fn to_string(&self) -> String {
         let mut out = String::new();
@@ -144,7 +223,7 @@ pub struct TextNode {
 }
 
 impl TextNode {
-    /// Create a new text node.
+    /// Creates a new text node.
     #[inline]
     #[must_use]
     pub fn new(
@@ -161,28 +240,28 @@ impl TextNode {
         }
     }
 
-    /// Return the raw text content.
+    /// Returns the raw text content.
     #[inline]
     #[must_use]
     pub fn content(&self) -> &str {
         &self.content
     }
 
-    /// Return the inline style applied to this fragment.
+    /// Returns the inline style applied to this fragment.
     #[inline]
     #[must_use]
     pub const fn style(&self) -> TextStyle {
         self.style
     }
 
-    /// Return the origin classification for this fragment.
+    /// Returns the origin classification for this fragment.
     #[inline]
     #[must_use]
     pub const fn origin(&self) -> TextOrigin {
         self.origin
     }
 
-    /// Return the byte range for this fragment.
+    /// Returns the byte range for this fragment.
     #[inline]
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
@@ -206,13 +285,13 @@ pub enum TextStyle {
     Strikethrough,
 }
 
-/// Classification for where a text fragment came from.
+/// Classification for the source of a text fragment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TextOrigin {
     /// Regular document text.
     Normal,
-    /// Link alias text (excluded from tag scanning).
+    /// Link alias text, excluded from tag scanning in raw extraction.
     LinkAlias,
 }
 
@@ -220,7 +299,7 @@ pub enum TextOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AstListType {
-    /// Ordered list with starting number.
+    /// Ordered list with a starting number.
     Ordered {
         /// Starting index for the ordered list.
         start: u64,

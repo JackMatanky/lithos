@@ -1,4 +1,8 @@
 //! Parser output container for note ingestion.
+//!
+//! Stores the minimal AST and optional raw frontmatter block produced by the
+//! parser boundary. This type is consumed by raw extraction rather than domain
+//! conversion.
 
 use super::{ast::AstNode, frontmatter::MetadataBlock};
 
@@ -11,7 +15,7 @@ pub struct ParsedNote {
 }
 
 impl ParsedNote {
-    /// Create a new parsed note output.
+    /// Creates a new parsed note output.
     #[inline]
     #[must_use]
     pub fn new(
@@ -24,14 +28,14 @@ impl ParsedNote {
         }
     }
 
-    /// Return parsed AST nodes in source order.
+    /// Returns parsed AST nodes in source order.
     #[inline]
     #[must_use]
     pub fn nodes(&self) -> &[AstNode] {
         &self.nodes
     }
 
-    /// Return the raw frontmatter block if present.
+    /// Returns the raw frontmatter block if present.
     #[inline]
     #[must_use]
     pub fn frontmatter(&self) -> Option<&MetadataBlock> {

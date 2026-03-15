@@ -84,34 +84,78 @@ pub(crate) fn extract_sections(
     nodes: &[AstNode],
 ) -> Result<Vec<RawSection>, NoteError> {
     let mut sections = Vec::new();
+    walk_sections(nodes, 0, &mut sections)?;
+    Ok(sections)
+}
 
+fn walk_sections(
+    nodes: &[AstNode],
+    depth: u32,
+    sections: &mut Vec<RawSection>,
+) -> Result<(), NoteError> {
     for node in nodes {
-        let kind = match node.kind() {
+        match node.kind() {
             AstNodeKind::Heading {
                 ..
-            } => RawSectionKind::Heading,
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::Heading,
+                    node.range(),
+                    None,
+                    depth,
+                ));
+            }
             AstNodeKind::Paragraph {
                 ..
-            } => RawSectionKind::Paragraph,
-            AstNodeKind::ListItem {
-                ..
-            } => RawSectionKind::List,
-            AstNodeKind::ListStart {
-                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::Paragraph,
+                    node.range(),
+                    None,
+                    depth,
+                ));
             }
-            | AstNodeKind::ListEnd => continue,
+            AstNodeKind::List {
+                items,
+                ..
+            } => {
+                walk_sections(items, depth.saturating_add(1), sections)?;
+            }
+            AstNodeKind::ListItem {
+                children,
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::List,
+                    node.range(),
+                    None,
+                    depth,
+                ));
+                walk_sections(children, depth.saturating_add(1), sections)?;
+            }
             AstNodeKind::CodeBlock {
                 ..
-            } => RawSectionKind::CodeBlock,
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::CodeBlock,
+                    node.range(),
+                    None,
+                    depth,
+                ));
+            }
             AstNodeKind::BlockQuote {
+                nodes,
                 ..
-            } => RawSectionKind::BlockQuote,
-            AstNodeKind::Link {
-                ..
-            } => continue,
-        };
-        sections.push(RawSection::new(kind, node.range(), None, 0));
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::BlockQuote,
+                    node.range(),
+                    None,
+                    depth,
+                ));
+                walk_sections(nodes, depth.saturating_add(1), sections)?;
+            }
+        }
     }
-
-    Ok(sections)
+    Ok(())
 }
