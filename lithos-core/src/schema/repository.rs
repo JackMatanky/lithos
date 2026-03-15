@@ -260,6 +260,54 @@ pub trait Repository: Send + Sync {
     fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error>;
 
     // ========================================================================
+    // Raw View Operations (for staleness detection)
+    // ========================================================================
+
+    /// Gets the raw schema view for a given schema ID.
+    ///
+    /// Returns `None` if no view exists (schema never loaded).
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<super::views::RawSchemaView>, Self::Error>;
+
+    /// Saves a raw schema view.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &super::views::RawSchemaView,
+    ) -> Result<(), Self::Error>;
+
+    /// Gets the raw property bank view.
+    ///
+    /// Returns `None` if no view exists (bank never loaded).
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_raw_property_bank_view(
+        &self,
+    ) -> Result<Option<super::views::RawPropertyBankView>, Self::Error>;
+
+    /// Saves the raw property bank view.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_raw_property_bank_view(
+        &self,
+        view: &super::views::RawPropertyBankView,
+    ) -> Result<(), Self::Error>;
+
+    // ========================================================================
     // Batch Operations (for complex multi-table queries)
     // ========================================================================
 

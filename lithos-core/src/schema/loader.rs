@@ -475,7 +475,7 @@ impl<'db> Loader<'db> {
     /// Partition schemas into stale and fresh based on staleness checks.
     fn partition_by_staleness(
         &self,
-        raw_schemas_with_times: &[RawSchemaWithTimes],
+        raw_schemas: &[RawSchema],
         name_to_id: &HashMap<SchemaName, SchemaId>,
         current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
@@ -483,27 +483,24 @@ impl<'db> Loader<'db> {
         type StalenessCheck =
             (SchemaId, Option<SystemTime>, Option<SystemTime>);
 
-        // Build schema IDs and staleness checks
+        // Build schema IDs and staleness checks from embedded metadata
         let mut schema_ids: Vec<SchemaId> =
-            Vec::with_capacity(raw_schemas_with_times.len());
+            Vec::with_capacity(raw_schemas.len());
         let mut staleness_checks: Vec<StalenessCheck> =
-            Vec::with_capacity(raw_schemas_with_times.len());
+            Vec::with_capacity(raw_schemas.len());
 
-        #[expect(
-            clippy::ref_patterns,
-            reason = "Required for borrowing RawSchema while destructuring \
-                      tuple"
-        )]
-        for &(ref raw_schema, ref _content, _hash, modified, created) in
-            raw_schemas_with_times
-        {
+        for raw_schema in raw_schemas {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
                 .copied()
                 .unwrap_or_else(SchemaId::new);
             schema_ids.push(id);
-            staleness_checks.push((id, created, modified));
+            staleness_checks.push((
+                id,
+                raw_schema.metadata.created_at,
+                raw_schema.metadata.modified_at,
+            ));
         }
 
         // Step 1: Check staleness with cascade (timestamp-based fast path)
@@ -515,20 +512,16 @@ impl<'db> Loader<'db> {
             .cascade_staleness(&mut staleness_map)
             .map_err(SchemaQueryError::from)?;
 
-        // Step 2: Build hash map for content comparison
+        // Step 2: Build hash map for content comparison from metadata
         let mut hash_map: HashMap<SchemaId, [u8; 32]> =
-            HashMap::with_capacity(raw_schemas_with_times.len());
+            HashMap::with_capacity(raw_schemas.len());
 
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Tuple destructuring from slice requires ref pattern"
-        )]
-        for (raw_schema, _content, hash, _modified, _created) in
-            raw_schemas_with_times
-        {
+        for raw_schema in raw_schemas {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
             if let Some(&id) = name_to_id.get(&schema_name) {
-                hash_map.insert(id, *hash);
+                if let Some(hash) = raw_schema.metadata.content_hash {
+                    hash_map.insert(id, hash);
+                }
             }
         }
 
@@ -539,8 +532,8 @@ impl<'db> Loader<'db> {
         let mut stale = Vec::new();
         let mut fresh_ids = Vec::new();
 
-        for (id, (raw_schema, content, hash, modified, created)) in
-            schema_ids.into_iter().zip(raw_schemas_with_times.iter().cloned())
+        for (id, raw_schema) in
+            schema_ids.into_iter().zip(raw_schemas.iter().cloned())
         {
             let schema_stale = staleness_map.get(&id).copied().unwrap_or(true);
             let is_stale = bank_stale || schema_stale;
@@ -563,7 +556,7 @@ impl<'db> Loader<'db> {
                         reason,
                     },
                 );
-                stale.push((id, raw_schema, content, hash, modified, created));
+                stale.push((id, raw_schema));
             } else {
                 self.emit_schema(
                     &crate::schema::events::SchemaEvent::SchemaFresh {

@@ -170,14 +170,17 @@ impl RawSchemaView {
 
     /// Checks if the current version is fresh (matches provided metadata).
     ///
-    /// Returns `true` if timestamps match OR content hash matches.
-    /// This is a hybrid staleness check optimizing for the common case
-    /// (timestamp check) while being accurate for edge cases (hash check).
+    /// Returns `true` if timestamps match OR (content hash matches AND property
+    /// hashes match). This is a hybrid staleness check optimizing for the
+    /// common case (timestamp check) while being accurate for edge cases
+    /// (hash check).
     ///
     /// # Examples
     ///
     /// ```ignore
-    /// if view.is_fresh(file_created_at, file_modified_at) {
+    /// use lithos_core::schema::raw::RawSchemaMetadata;
+    ///
+    /// if view.is_fresh(&raw_schema.metadata) {
     ///     // Skip re-resolution
     /// }
     /// ```
@@ -185,13 +188,113 @@ impl RawSchemaView {
     #[must_use]
     pub fn is_fresh(
         &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-        content: &str,
+        metadata: &super::super::raw::RawSchemaMetadata,
     ) -> bool {
         self.current().is_some_and(|current| {
-            current.is_timestamp_match(created_at, modified_at)
-                || current.is_content_match(content)
+            self.is_timestamp_match(metadata)
+                || (self.is_content_match(metadata)
+                    && self.is_properties_match(metadata))
+        })
+    }
+
+    /// Checks if timestamps match the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            current
+                .is_timestamp_match(metadata.created_at, metadata.modified_at)
+        })
+    }
+
+    /// Checks if content hash matches the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_content_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            metadata
+                .content_hash
+                .is_some_and(|hash| hash == current.content_hash)
+        })
+    }
+
+    /// Checks if all property hashes match the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_properties_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            // All properties in metadata must match current version
+            // Need to convert Box<str> keys to PropertyName for lookup
+            metadata.property_hashes.iter().all(|(name, hash)| {
+                PropertyName::try_new(name.as_ref())
+                    .ok()
+                    .and_then(|prop_name| {
+                        current.property_hashes.get(&prop_name)
+                    })
+                    .is_some_and(|current_hash| current_hash == hash)
+            })
+        })
+    }
+
+    /// Returns the list of properties that changed between the current version
+    /// and provided metadata.
+    ///
+    /// Returns property names that:
+    /// - Were added (in metadata but not in current version)
+    /// - Were removed (in current version but not in metadata)
+    /// - Were modified (different hash)
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let changed = view.filter_changed_properties(&raw_schema.metadata);
+    /// if !changed.is_empty() {
+    ///     // Re-resolve only these properties
+    /// }
+    /// ```
+    #[must_use]
+    pub fn filter_changed_properties(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> Vec<PropertyName> {
+        self.current().map_or_else(Vec::new, |current| {
+            let mut changed = Vec::new();
+
+            // Check for added or modified properties
+            for (name, new_hash) in &metadata.property_hashes {
+                if let Ok(prop_name) = PropertyName::try_new(name.as_ref()) {
+                    match current.property_hashes.get(&prop_name) {
+                        Some(old_hash) if old_hash != new_hash => {
+                            // Property modified
+                            changed.push(prop_name);
+                        }
+                        None => {
+                            // Property added
+                            changed.push(prop_name);
+                        }
+                        _ => {} // Property unchanged
+                    }
+                }
+            }
+
+            // Check for removed properties (in current but not in metadata)
+            for prop_name in current.property_hashes.keys() {
+                let name_str: &str = prop_name.as_ref();
+                if !metadata.property_hashes.contains_key(name_str) {
+                    changed.push(prop_name.clone());
+                }
+            }
+
+            changed
         })
     }
 }
@@ -290,18 +393,112 @@ impl RawPropertyBankView {
 
     /// Checks if the current version is fresh (matches provided metadata).
     ///
-    /// Returns `true` if timestamps match OR content hash matches.
+    /// Returns `true` if timestamps match OR (content hash matches AND property
+    /// hashes match). This is a hybrid staleness check optimizing for the
+    /// common case (timestamp check) while being accurate for edge cases
+    /// (hash check).
     #[inline]
     #[must_use]
     pub fn is_fresh(
         &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-        content: &str,
+        metadata: &super::super::raw::RawSchemaMetadata,
     ) -> bool {
         self.current().is_some_and(|current| {
-            current.is_timestamp_match(created_at, modified_at)
-                || current.is_content_match(content)
+            self.is_timestamp_match(metadata)
+                || (self.is_content_match(metadata)
+                    && self.is_properties_match(metadata))
+        })
+    }
+
+    /// Checks if timestamps match the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            current
+                .is_timestamp_match(metadata.created_at, metadata.modified_at)
+        })
+    }
+
+    /// Checks if content hash matches the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_content_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            metadata
+                .content_hash
+                .is_some_and(|hash| hash == current.content_hash)
+        })
+    }
+
+    /// Checks if all property hashes match the current version.
+    #[inline]
+    #[must_use]
+    pub fn is_properties_match(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> bool {
+        self.current().is_some_and(|current| {
+            // All properties in metadata must match current version
+            // Need to convert Box<str> keys to PropertyName for lookup
+            metadata.property_hashes.iter().all(|(name, hash)| {
+                PropertyName::try_new(name.as_ref())
+                    .ok()
+                    .and_then(|prop_name| {
+                        current.property_hashes.get(&prop_name)
+                    })
+                    .is_some_and(|current_hash| current_hash == hash)
+            })
+        })
+    }
+
+    /// Returns the list of properties that changed between the current version
+    /// and provided metadata.
+    ///
+    /// Returns property names that:
+    /// - Were added (in metadata but not in current version)
+    /// - Were removed (in current version but not in metadata)
+    /// - Were modified (different hash)
+    #[must_use]
+    pub fn filter_changed_properties(
+        &self,
+        metadata: &super::super::raw::RawSchemaMetadata,
+    ) -> Vec<PropertyName> {
+        self.current().map_or_else(Vec::new, |current| {
+            let mut changed = Vec::new();
+
+            // Check for added or modified properties
+            for (name, new_hash) in &metadata.property_hashes {
+                if let Ok(prop_name) = PropertyName::try_new(name.as_ref()) {
+                    match current.property_hashes.get(&prop_name) {
+                        Some(old_hash) if old_hash != new_hash => {
+                            // Property modified
+                            changed.push(prop_name);
+                        }
+                        None => {
+                            // Property added
+                            changed.push(prop_name);
+                        }
+                        _ => {} // Property unchanged
+                    }
+                }
+            }
+
+            // Check for removed properties (in current but not in metadata)
+            for prop_name in current.property_hashes.keys() {
+                let name_str: &str = prop_name.as_ref();
+                if !metadata.property_hashes.contains_key(name_str) {
+                    changed.push(prop_name.clone());
+                }
+            }
+
+            changed
         })
     }
 }
