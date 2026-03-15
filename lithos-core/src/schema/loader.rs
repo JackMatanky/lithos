@@ -56,17 +56,20 @@
 
 use std::collections::HashMap;
 
-use crate::schema::{
-    aggregate::{Schema, SchemaId, SchemaName},
-    bank::PropertyBank,
-    error::{SchemaError, SchemaIngestionError},
-    events::{PropertyBankEvent, SchemaEvent, SchemaEventHandler},
-    expander::RefExpander,
-    extender::Extender,
-    ingestor::Ingestor,
-    raw::RawSchema,
-    resolver::Resolver,
-    storage::Repository,
+use crate::{
+    config::aggregate::Config,
+    fs::FsReader,
+    schema::{
+        aggregate::{Schema, SchemaId, SchemaName},
+        bank::PropertyBank,
+        error::{SchemaError, SchemaIngestionError},
+        expander::RefExpander,
+        extender::Extender,
+        ingestor::Ingestor,
+        raw::RawSchema,
+        resolver::Resolver,
+        storage::Repository,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,10 +100,10 @@ pub enum LoaderError {
 /// Schema loader — orchestrates file ingestion and resolution.
 ///
 /// Generic over `Repository` to support both production (redb) and test
-/// implementations.
-pub struct Loader<R> {
+/// implementations. Embeds an `Ingestor` for file I/O.
+pub struct Loader<'config, R> {
     repository: R,
-    event_handlers: Vec<Box<dyn SchemaEventHandler>>,
+    ingestor: Ingestor<'config>,
 }
 
 // Type aliases for loader operations
@@ -109,53 +112,29 @@ pub struct Loader<R> {
 type SchemaWithId = (SchemaId, RawSchema);
 type PartitionResult = (Vec<SchemaWithId>, Vec<SchemaId>);
 
-impl<R> Loader<R>
+impl<'config, R> Loader<'config, R>
 where
     R: Repository,
 {
-    /// Create a new `Loader` with a repository.
+    /// Create a new `Loader` with a repository, file source, and config.
+    ///
+    /// The loader embeds an `Ingestor` which handles file I/O.
     #[inline]
     #[must_use]
-    pub fn new(repository: R) -> Self {
+    pub fn new(
+        repository: R,
+        source: FsReader,
+        config: &'config Config,
+    ) -> Self {
         Self {
             repository,
-            event_handlers: Vec::new(),
-        }
-    }
-
-    /// Add an event handler to the loader.
-    ///
-    /// Event handlers receive notifications at each pipeline stage for
-    /// observability and reactive coordination.
-    #[inline]
-    #[must_use]
-    pub fn with_event_handler(
-        mut self,
-        handler: Box<dyn SchemaEventHandler>,
-    ) -> Self {
-        self.event_handlers.push(handler);
-        self
-    }
-
-    /// Emit a schema event to all registered handlers.
-    #[inline]
-    fn emit_schema(&self, event: &SchemaEvent) {
-        for handler in &self.event_handlers {
-            handler.handle_schema(event);
-        }
-    }
-
-    /// Emit a property bank event to all registered handlers.
-    #[inline]
-    fn emit_property_bank(&self, event: &PropertyBankEvent) {
-        for handler in &self.event_handlers {
-            handler.handle_property_bank(event);
+            ingestor: Ingestor::new(source, config),
         }
     }
 
     /// Run the full ingestion pipeline.
     ///
-    /// Reads raw files via `ingestor`, resolves schemas through the
+    /// Reads raw files via the embedded ingestor, resolves schemas through the
     /// `RefExpander → Extender → Resolver` pipeline, and persists the
     /// results.  Only stale schemas are re-resolved; fresh schemas are used
     /// as `known_parents` for the inheritance tree.
@@ -168,23 +147,17 @@ where
     /// Returns [`LoaderError`] on any I/O, parsing, domain, or storage
     /// failure.
     #[inline]
-    pub fn load(
-        &self,
-        ingestor: &Ingestor<'_>,
-    ) -> Result<Vec<Schema>, LoaderError> {
+    pub fn load(&self) -> Result<Vec<Schema>, LoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
         // ── Step 2: PropertyBank staleness check ────────────────────────────
         let (bank, bank_stale, changed_properties) =
-            self.load_property_bank(ingestor)?;
+            self.load_property_bank()?;
         let current_bank_version = bank.version();
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
-        let raw_schemas = ingestor.all_schemas()?;
-        self.emit_schema(&SchemaEvent::ScanCompleted {
-            file_count: raw_schemas.len(),
-        });
+        let raw_schemas = self.ingestor.all_schemas()?;
 
         // ── Step 4: staleness partitioning ─────────────────────────────────
         let (stale, fresh_ids) = self.partition_by_staleness(
@@ -193,15 +166,6 @@ where
             current_bank_version,
             bank_stale,
         )?;
-
-        // Emit cascade event if PropertyBank change affected schemas
-        if bank_stale {
-            self.emit_property_bank(
-                &crate::schema::events::PropertyBankEvent::TriggeredCascade {
-                    affected_schema_count: stale.len(),
-                },
-            );
-        }
 
         // ── Step 4b: Incremental resolution for bank-only changes ──────────
         let (stale_for_full_resolution, incrementally_resolved) = self
@@ -247,18 +211,6 @@ where
         // Combine full resolution and incremental resolution results
         resolved.extend(incrementally_resolved);
 
-        // Emit per-schema resolution events
-        for schema in &resolved {
-            self.emit_schema(&SchemaEvent::SchemaResolved {
-                name: schema.name().to_string().into_boxed_str(),
-                id: *schema.id(),
-            });
-        }
-
-        self.emit_schema(&SchemaEvent::SchemaResolutionCompleted {
-            schema_count: resolved.len(),
-        });
-
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
             self.persist_schemas(&resolved, stale_with_raw)?;
@@ -267,9 +219,6 @@ where
         self.repository
             .save_property_bank(&bank)
             .map_err(|e| LoaderError::Storage(e.to_string()))?;
-        self.emit_property_bank(&PropertyBankEvent::Persisted {
-            version: current_bank_version,
-        });
 
         Ok(resolved)
     }
@@ -299,7 +248,6 @@ where
     )]
     fn load_property_bank(
         &self,
-        ingestor: &Ingestor<'_>,
     ) -> Result<
         (PropertyBank, bool, Vec<super::property::PropertyName>),
         LoaderError,
@@ -315,85 +263,55 @@ where
             .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
         // Step 2: Ingest raw bank from filesystem
-        let raw_bank_opt = ingestor.property_bank()?;
+        let raw_bank_opt = self.ingestor.property_bank()?;
 
         // Step 3: Determine staleness based on view.is_fresh()
-        let (bank, bank_stale, changed_properties) = match (
-            raw_bank_opt,
-            stored_bank,
-            bank_view,
-        ) {
-            (Some(raw_bank), Some(stored), Some(view)) => {
-                // Check if bank is fresh
-                if view.is_fresh(&raw_bank.metadata) {
-                    // Fresh - reuse stored bank
-                    self.emit_property_bank(&PropertyBankEvent::Fresh {
-                        version: stored.version(),
-                    });
-                    (stored, false, Vec::new())
-                } else {
-                    // Stale - update changed properties incrementally
-                    self.emit_property_bank(&PropertyBankEvent::Stale {
-                            reason: crate::schema::events::StalenessReason::ContentChanged,
-                        });
-                    self.emit_property_bank(
-                        &PropertyBankEvent::ResolutionStarted,
-                    );
+        let (bank, bank_stale, changed_properties) =
+            match (raw_bank_opt, stored_bank, bank_view) {
+                (Some(raw_bank), Some(stored), Some(view)) => {
+                    // Check if bank is fresh
+                    if view.is_fresh(&raw_bank.metadata) {
+                        // Fresh - reuse stored bank
+                        (stored, false, Vec::new())
+                    } else {
+                        // Stale - update changed properties incrementally
+                        // Compute changed properties FIRST using view helper
+                        let changed_props =
+                            view.filter_changed_properties(&raw_bank.metadata);
 
-                    // Compute changed properties FIRST using view helper
-                    let changed_props =
-                        view.filter_changed_properties(&raw_bank.metadata);
+                        // Update only the changed properties
+                        let mut updated_bank = stored;
+                        updated_bank
+                            .update_properties(&raw_bank, &changed_props)?;
 
-                    // Update only the changed properties
-                    let mut updated_bank = stored;
-                    updated_bank
-                        .update_properties(&raw_bank, &changed_props)?;
-
-                    self.emit_property_bank(&PropertyBankEvent::Resolved {
-                        property_count: updated_bank.all().count(),
-                        version: updated_bank.version(),
-                    });
-
-                    (updated_bank, true, changed_props)
+                        (updated_bank, true, changed_props)
+                    }
                 }
-            }
-            (Some(raw_bank), None, _) | (Some(raw_bank), _, None) => {
-                // New bank (no stored version or no view) - build from scratch
-                self.emit_property_bank(&PropertyBankEvent::Stale {
-                    reason: crate::schema::events::StalenessReason::New,
-                });
-                self.emit_property_bank(&PropertyBankEvent::ResolutionStarted);
+                (Some(raw_bank), None, _) | (Some(raw_bank), _, None) => {
+                    // New bank (no stored version or no view) - build from
+                    // scratch
+                    let new_bank = PropertyBank::try_from(raw_bank.clone())?;
 
-                let new_bank = PropertyBank::try_from(raw_bank.clone())?;
+                    // All properties are "changed"
+                    let all_props: Vec<_> =
+                        new_bank.all().map(|p| p.name().clone()).collect();
 
-                // All properties are "changed"
-                let all_props: Vec<_> =
-                    new_bank.all().map(|p| p.name().clone()).collect();
-
-                self.emit_property_bank(&PropertyBankEvent::Resolved {
-                    property_count: new_bank.all().count(),
-                    version: new_bank.version(),
-                });
-
-                (new_bank, true, all_props)
-            }
-            (None, Some(stored), _) => {
-                // File disappeared but bank exists in DB - treat as fresh
-                // (could be temporary file system issue)
-                self.emit_property_bank(&PropertyBankEvent::Fresh {
-                    version: stored.version(),
-                });
-                (stored, false, Vec::new())
-            }
-            (None, None, _) => {
-                // No file and no stored bank - error
-                return Err(LoaderError::Ingestion(
-                    SchemaIngestionError::FileSystem(
-                        "Property bank file not found".into(),
-                    ),
-                ));
-            }
-        };
+                    (new_bank, true, all_props)
+                }
+                (None, Some(stored), _) => {
+                    // File disappeared but bank exists in DB - treat as fresh
+                    // (could be temporary file system issue)
+                    (stored, false, Vec::new())
+                }
+                (None, None, _) => {
+                    // No file and no stored bank - error
+                    return Err(LoaderError::Ingestion(
+                        SchemaIngestionError::FileSystem(
+                            "Property bank file not found".into(),
+                        ),
+                    ));
+                }
+            };
 
         Ok((bank, bank_stale, changed_properties))
     }
@@ -442,27 +360,8 @@ where
             let is_stale = bank_stale || schema_stale;
 
             if is_stale {
-                let reason = if is_new {
-                    crate::schema::events::StalenessReason::New
-                } else if bank_stale {
-                    crate::schema::events::StalenessReason::BankVersionChanged
-                } else {
-                    crate::schema::events::StalenessReason::ContentChanged
-                };
-
-                self.emit_schema(
-                    &crate::schema::events::SchemaEvent::SchemaStale {
-                        name: raw_schema.name.clone(),
-                        reason,
-                    },
-                );
                 stale.push((id, raw_schema.clone()));
             } else {
-                self.emit_schema(
-                    &crate::schema::events::SchemaEvent::SchemaFresh {
-                        name: raw_schema.name.clone(),
-                    },
-                );
                 fresh_ids.push(id);
             }
         }
@@ -550,16 +449,6 @@ where
                     .save_raw_schema_view(id, &view)
                     .map_err(|e| LoaderError::Storage(e.to_string()))?;
             }
-        }
-
-        // Emit persistence events
-        for schema in resolved {
-            self.emit_schema(
-                &crate::schema::events::SchemaEvent::SchemaPersisted {
-                    name: schema.name().to_string().into_boxed_str(),
-                    id: *schema.id(),
-                },
-            );
         }
 
         Ok(())
