@@ -91,12 +91,10 @@ pub(crate) mod db_table {
     // PropertyBank Storage
     // ========================================================================
 
-    /// `PropertyBank` singleton (key: `PROPERTY_BANK_KEY`, value: rkyv-serialized
-    /// `PropertyBank`).
-    ///
-    /// Note: Uses legacy table name "`bank_metadata`" for backward compatibility.
+    /// `PropertyBank` singleton (key: `PROPERTY_BANK_KEY`, value:
+    /// rkyv-serialized `PropertyBank`).
     pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_metadata");
+        TableDefinition::new("property_bank");
 
     /// Key for `PropertyBank` singleton table.
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";

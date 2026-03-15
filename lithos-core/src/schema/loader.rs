@@ -6,8 +6,9 @@
 //! It is the **only** place where orchestration logic lives (following the
 //! single responsibility principle).
 //!
-//! - **No behavior in StoredSchema**: Schema is a read model (no methods)
-//! - **Event emission**: Emits pipeline events for observability
+//! - **Schema is a read model**: Domain types have no file I/O or DB methods
+//! - **Functional composition**: Direct function calls with `Result<T, E>` for
+//!   error propagation
 //! - **Staleness detection**: Two-tier (timestamp fast path, hash slow path)
 //!
 //! ## Pipeline Flow
@@ -16,23 +17,24 @@
 //! files or reuse cached data from the database:
 //!
 //! 1. **Load existing state from DB**:
-//!    - `Query::list_name_id_pairs()` → name→id map
-//!    - `Query::get_property_bank()` → cached `PropertyBank` (if exists)
+//!    - `list_schema_name_id_pairs()` → name→id map
+//!    - `get_property_bank()` → cached `PropertyBank` (if exists)
+//!    - `get_raw_property_bank_view()` → staleness metadata
 //!
 //! 2. **`PropertyBank` staleness check**:
-//!    - If no bank in DB → **load from file** (`load_raw_property_bank()`)
+//!    - If no bank in DB → **load from file** (`ingestor.property_bank()`)
 //!    - If bank exists:
-//!      - `Query::is_bank_stale()` checks file timestamp vs DB version
+//!      - `view.is_fresh()` checks file metadata vs DB version
 //!      - Stale → **reload from file**
 //!      - Fresh → **reuse cached bank**
 //!
 //! 3. **Scan all schema files** (always from filesystem):
-//!    - `Ingestor::all_schemas()` → `Vec<(RawSchema, timestamps)>`
+//!    - `ingestor.all_schemas()` → `Vec<RawSchema>`
 //!    - Schema names derived from filenames
 //!
 //! 4. **Schema staleness partitioning**:
-//!    - `Query::are_many_stale()` → O(1) check for all schemas
-//!    - Compares file timestamps vs DB metadata
+//!    - `partition_by_staleness()` → O(1) check for all schemas
+//!    - Compares file metadata vs DB metadata
 //!    - **Cascade staleness**: Parent changes mark all descendants stale
 //!    - **Stale schemas** → reload + re-resolve
 //!    - **Fresh schemas** → reuse from DB (fetch as `known_parents`)
@@ -43,11 +45,11 @@
 //!    - `Resolver::resolve()` → merge parent properties
 //!
 //! 6. **Persist changes**:
-//!    - `Command::save_many()` → save only changed schemas
-//!    - `Command::save_inheritance_many()` → track parent-child relationships
-//!    - `Command::save_property_bank()` → save bank if stale
+//!    - `save_schemas()` → save resolved schemas
+//!    - `save_raw_schema_view()` → save staleness metadata
+//!    - `save_property_bank()` → save bank if changed
 //!
-//! **Key optimization**: Lightweight staleness checks (filename + timestamp)
+//! **Key optimization**: Lightweight staleness checks (metadata comparison)
 //! avoid parsing/processing unchanged files.
 //!
 //! All schema-specific error types live in [`crate::schema::error`].
@@ -66,7 +68,7 @@ use crate::{
         expander::RefExpander,
         extender::Extender,
         ingestor::Ingestor,
-        raw::RawSchema,
+        raw::{RawPropertyBank, RawSchema},
         resolver::Resolver,
         storage::Repository,
     },
@@ -151,9 +153,35 @@ where
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
-        // ── Step 2: PropertyBank staleness check ────────────────────────────
-        let (bank, bank_stale, changed_properties) =
-            self.load_property_bank()?;
+        // ── Step 2: PropertyBank - ingest raw, check staleness, load if fresh
+        let raw_bank = self.ingestor.property_bank()?.ok_or_else(|| {
+            LoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                "Property bank file not found".into(),
+            ))
+        })?;
+
+        let bank_view = self
+            .repository
+            .get_raw_property_bank_view()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+
+        let bank_stale = match bank_view {
+            Some(view) => !view.is_fresh(&raw_bank.metadata),
+            None => true,
+        };
+
+        let bank = if bank_stale {
+            PropertyBank::try_from(raw_bank)?
+        } else {
+            self.repository
+                .get_property_bank()
+                .map_err(|e| LoaderError::Storage(e.to_string()))?
+                .ok_or_else(|| {
+                    LoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                        "Property bank file not found".into(),
+                    ))
+                })?
+        };
         let current_bank_version = bank.version();
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
@@ -167,38 +195,22 @@ where
             bank_stale,
         )?;
 
-        // ── Step 4b: Incremental resolution for bank-only changes ──────────
-        let (stale_for_full_resolution, incrementally_resolved) = self
-            .apply_incremental_resolution(
-                stale,
-                bank_stale,
-                &changed_properties,
-                &bank,
-            )?;
-
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
-        // Batch load: O(1) transaction for all fresh schemas
         let fresh_schemas = self
             .repository
             .find_schemas_by_ids(&fresh_ids)
             .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        // Convert to HashMap for Extender/Resolver
         let known_parents: HashMap<SchemaId, Schema> = fresh_schemas
             .into_iter()
             .map(|schema| (*schema.id(), schema))
             .collect();
 
         // ── Step 6: pipeline (RefExpander → Extender → Resolver) ───────────
-        let stale_with_raw = stale_for_full_resolution;
-        let stale_for_expand: Vec<(SchemaId, RawSchema)> =
-            stale_with_raw.clone();
-
-        let mut resolved = if stale_for_expand.is_empty() {
+        let resolved: Vec<Schema> = if stale.is_empty() {
             Vec::new()
         } else {
-            let expanded =
-                RefExpander::new(&bank).expand_all(stale_for_expand)?;
+            let expanded = RefExpander::new(&bank).expand_all(stale.clone())?;
             let tree = Extender::build(expanded, &known_parents)?;
             tracing::debug!(
                 root_count = tree.roots().len(),
@@ -208,12 +220,9 @@ where
             Resolver::resolve(&tree, &known_parents)?
         };
 
-        // Combine full resolution and incremental resolution results
-        resolved.extend(incrementally_resolved);
-
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
-            self.persist_schemas(&resolved, stale_with_raw)?;
+            self.persist_schemas(&resolved, &stale)?;
         }
 
         self.repository
@@ -239,81 +248,62 @@ where
         Ok(name_to_id)
     }
 
-    /// Load property bank, checking staleness and rebuilding if needed.
+    /// Check if the `PropertyBank` is stale.
     ///
-    /// Returns tuple of (bank, `was_stale`, `changed_property_names`).
-    #[expect(
-        clippy::type_complexity,
-        reason = "Return tuple is clearest for internal pipeline orchestration"
-    )]
-    fn load_property_bank(
+    /// Returns `true` if:
+    /// - No view exists in DB (never loaded)
+    /// - Property bank file appeared/disappeared
+    /// - Timestamps differ
+    /// - Content hash differs
+    #[expect(dead_code, reason = "Will be used when simplifying load() method")]
+    fn is_property_bank_stale(
         &self,
-    ) -> Result<
-        (PropertyBank, bool, Vec<super::property::PropertyName>),
-        LoaderError,
-    > {
-        // Step 1: Load stored bank and view from repository
-        let stored_bank = self
-            .repository
-            .get_property_bank()
-            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+        raw_bank: Option<&RawPropertyBank>,
+    ) -> Result<bool, LoaderError> {
         let bank_view = self
             .repository
             .get_raw_property_bank_view()
             .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        // Step 2: Ingest raw bank from filesystem
-        let raw_bank_opt = self.ingestor.property_bank()?;
+        Ok(match (raw_bank, bank_view) {
+            (Some(raw), Some(view)) => !view.is_fresh(&raw.metadata),
+            (Some(_), None) | (None, Some(_)) => true, /* File appeared/ */
+            // disappeared
+            (None, None) => false, // No bank file (consistent)
+        })
+    }
 
-        // Step 3: Determine staleness based on view.is_fresh()
-        let (bank, bank_stale, changed_properties) =
-            match (raw_bank_opt, stored_bank, bank_view) {
-                (Some(raw_bank), Some(stored), Some(view)) => {
-                    // Check if bank is fresh
-                    if view.is_fresh(&raw_bank.metadata) {
-                        // Fresh - reuse stored bank
-                        (stored, false, Vec::new())
-                    } else {
-                        // Stale - update changed properties incrementally
-                        // Compute changed properties FIRST using view helper
-                        let changed_props =
-                            view.filter_changed_properties(&raw_bank.metadata);
+    /// Check if a schema is stale.
+    ///
+    /// Returns `true` if:
+    /// - Schema ID is None (new schema)
+    /// - No view exists in DB (never loaded)
+    /// - Timestamps differ
+    /// - Content hash differs
+    #[expect(dead_code, reason = "Will be used when simplifying load() method")]
+    fn is_schema_stale(
+        &self,
+        raw_schema: &RawSchema,
+        existing_id: Option<SchemaId>,
+    ) -> Result<bool, LoaderError> {
+        // New schemas are always stale
+        if existing_id.is_none() {
+            return Ok(true);
+        }
 
-                        // Update only the changed properties
-                        let mut updated_bank = stored;
-                        updated_bank
-                            .update_properties(&raw_bank, &changed_props)?;
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Safe because we checked is_none() above"
+        )]
+        let view = self
+            .repository
+            .get_raw_schema_view(existing_id.unwrap())
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-                        (updated_bank, true, changed_props)
-                    }
-                }
-                (Some(raw_bank), None, _) | (Some(raw_bank), _, None) => {
-                    // New bank (no stored version or no view) - build from
-                    // scratch
-                    let new_bank = PropertyBank::try_from(raw_bank.clone())?;
-
-                    // All properties are "changed"
-                    let all_props: Vec<_> =
-                        new_bank.all().map(|p| p.name().clone()).collect();
-
-                    (new_bank, true, all_props)
-                }
-                (None, Some(stored), _) => {
-                    // File disappeared but bank exists in DB - treat as fresh
-                    // (could be temporary file system issue)
-                    (stored, false, Vec::new())
-                }
-                (None, None, _) => {
-                    // No file and no stored bank - error
-                    return Err(LoaderError::Ingestion(
-                        SchemaIngestionError::FileSystem(
-                            "Property bank file not found".into(),
-                        ),
-                    ));
-                }
-            };
-
-        Ok((bank, bank_stale, changed_properties))
+        Ok(match view {
+            Some(v) => !v.is_fresh(&raw_schema.metadata),
+            None => true, // No view = never loaded = stale
+        })
     }
 
     /// Partition schemas into stale and fresh based on view staleness checks.
@@ -369,92 +359,15 @@ where
         Ok((stale, fresh_ids))
     }
 
-    /// Checks if the PropertyBank is stale by comparing stored view against
-    /// the raw file from the filesystem.
-    ///
-    /// Returns `(is_stale, changed_property_names)` where:
-    /// - `is_stale`: true if the bank needs updating
-    /// - `changed_property_names`: names of properties that changed (empty if
-    ///   fresh)
-    fn is_property_bank_stale(
-        &self,
-    ) -> Result<(bool, Vec<super::property::PropertyName>), LoaderError> {
-        // Load stored bank and view from repository
-        let stored_bank = self
-            .repository
-            .get_property_bank()
-            .map_err(|e| LoaderError::Storage(e.to_string()))?;
-        let bank_view = self
-            .repository
-            .get_raw_property_bank_view()
-            .map_err(|e| LoaderError::Storage(e.to_string()))?;
-
-        // Ingest raw bank from filesystem
-        let raw_bank_opt = self.ingestor.property_bank()?;
-
-        // Determine staleness
-        match (raw_bank_opt, stored_bank, bank_view) {
-            (Some(raw_bank), Some(stored), Some(view)) => {
-                if view.is_fresh(&raw_bank.metadata) {
-                    // Fresh - no changes
-                    Ok((false, Vec::new()))
-                } else {
-                    // Stale - compute changed properties
-                    let changed_props =
-                        view.filter_changed_properties(&raw_bank.metadata);
-                    Ok((true, changed_props))
-                }
-            }
-            (Some(_raw_bank), None, _) | (Some(_raw_bank), _, None) => {
-                // New bank (no stored version or no view) - stale
-                Ok((true, Vec::new()))
-            }
-            (None, Some(_stored), _) => {
-                // File disappeared but bank exists - treat as fresh
-                Ok((false, Vec::new()))
-            }
-            (None, None, _) => {
-                // No file and no stored bank - error
-                Err(LoaderError::Ingestion(SchemaIngestionError::FileSystem(
-                    "Property bank file not found".into(),
-                )))
-            }
-        }
-    }
-
-    /// Checks if a schema is stale by comparing stored view against
-    /// the raw file from the filesystem.
-    ///
-    /// Returns true if the schema needs re-resolution.
-    fn is_schema_stale(
-        &self,
-        raw_schema: &RawSchema,
-        existing_id: Option<SchemaId>,
-    ) -> Result<bool, LoaderError> {
-        let is_new = existing_id.is_none();
-
-        if is_new {
-            // New schemas are always stale
-            return Ok(true);
-        }
-
-        // Get view and check freshness
-        let view = self
-            .repository
-            .get_raw_schema_view(existing_id.unwrap())
-            .map_err(|e| LoaderError::Storage(e.to_string()))?;
-
-        match view {
-            Some(v) => Ok(!v.is_fresh(&raw_schema.metadata)),
-            None => Ok(true), // No view = never loaded = stale
-        }
-    }
-
     /// Persist resolved schemas with raw views for staleness tracking.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Reference pattern needed for iteration over slice"
+    )]
     fn persist_schemas(
         &self,
         resolved: &[Schema],
-        stale_with_raw: Vec<SchemaWithId>,
+        stale: &[(SchemaId, RawSchema)],
     ) -> Result<(), LoaderError> {
         // Save resolved schemas
         self.repository
@@ -462,11 +375,11 @@ where
             .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
         // Save raw views for staleness tracking
-        for (id, raw) in stale_with_raw {
+        for (id, raw) in stale {
             // Create or update raw schema view
             if let Some(mut view) = self
                 .repository
-                .get_raw_schema_view(id)
+                .get_raw_schema_view(*id)
                 .map_err(|e| LoaderError::Storage(e.to_string()))?
             {
                 // View exists - add new version
@@ -490,7 +403,7 @@ where
                 .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
                 self.repository
-                    .save_raw_schema_view(id, &view)
+                    .save_raw_schema_view(*id, &view)
                     .map_err(|e| LoaderError::Storage(e.to_string()))?;
             } else {
                 // New view - create it
@@ -527,87 +440,11 @@ where
                 .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
                 self.repository
-                    .save_raw_schema_view(id, &view)
+                    .save_raw_schema_view(*id, &view)
                     .map_err(|e| LoaderError::Storage(e.to_string()))?;
             }
         }
 
         Ok(())
-    }
-
-    /// Apply incremental resolution for schemas affected by `PropertyBank`
-    /// changes.
-    ///
-    /// This method partitions stale schemas into two groups:
-    /// 1. Schemas with file changes → need full resolution
-    /// 2. Schemas with only bank changes → need incremental resolution
-    ///
-    /// For the second group, it applies `resolve_affected_properties()` to
-    /// update only the properties that reference changed bank properties.
-    #[expect(
-        clippy::type_complexity,
-        reason = "Return tuple is clearest for pipeline result partitioning"
-    )]
-    fn apply_incremental_resolution(
-        &self,
-        stale: Vec<SchemaWithId>,
-        bank_stale: bool,
-        changed_properties: &[super::property::PropertyName],
-        bank: &PropertyBank,
-    ) -> Result<(Vec<SchemaWithId>, Vec<Schema>), LoaderError> {
-        // Early return if bank is not stale or no properties changed
-        if !bank_stale || changed_properties.is_empty() {
-            return Ok((stale, Vec::new()));
-        }
-
-        // Find schemas that reference changed properties
-        let affected_map = self
-            .repository
-            .find_schemas_using_properties(changed_properties)
-            .map_err(|e| LoaderError::Storage(e.to_string()))?;
-
-        // Partition stale schemas: file-changed vs. bank-only-changed
-        let mut full_resolution = Vec::new();
-        let mut incremental_ids = Vec::new();
-
-        for (id, raw) in stale {
-            // Check if schema file itself is stale (has view and is fresh)
-            let view = self
-                .repository
-                .get_raw_schema_view(id)
-                .map_err(|e| LoaderError::Storage(e.to_string()))?;
-
-            let file_fresh = view.is_some_and(|v| v.is_fresh(&raw.metadata));
-
-            if file_fresh && affected_map.contains_key(&id) {
-                // Schema file is fresh but references changed bank properties
-                incremental_ids.push(id);
-            } else {
-                // Schema file changed OR doesn't reference changed properties
-                full_resolution.push((id, raw));
-            }
-        }
-
-        // Apply incremental resolution to bank-only-changed schemas
-        let mut resolved_incremental = Vec::new();
-        if !incremental_ids.is_empty() {
-            let stored_schemas = self
-                .repository
-                .find_schemas_by_ids(&incremental_ids)
-                .map_err(|e| LoaderError::Storage(e.to_string()))?;
-
-            for schema in &stored_schemas {
-                if let Some(affected_props) = affected_map.get(schema.id()) {
-                    let updated = Resolver::resolve_affected_properties(
-                        schema,
-                        affected_props,
-                        bank,
-                    )?;
-                    resolved_incremental.push(updated);
-                }
-            }
-        }
-
-        Ok((full_resolution, resolved_incremental))
     }
 }
