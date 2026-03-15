@@ -1,6 +1,6 @@
 //! Raw frontmatter extraction helpers.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write as _};
 
 use super::super::parser::frontmatter::MetadataBlockKind;
 use crate::note::{
@@ -160,7 +160,13 @@ fn field_value_from_toml(
         return Ok(FieldValue::Boolean(value));
     }
     if let Some(datetime) = value.as_datetime() {
-        return Ok(FieldValue::String(datetime.to_string().into()));
+        let mut rendered = String::new();
+        write!(&mut rendered, "{datetime}").map_err(|_error| {
+            FrontmatterParseError::InvalidTomlValue {
+                reason: "failed to format datetime",
+            }
+        })?;
+        return Ok(FieldValue::String(rendered.into_boxed_str()));
     }
     if let Some(values) = value.as_array() {
         let mut items = Vec::with_capacity(values.len());
