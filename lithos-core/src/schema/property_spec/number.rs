@@ -178,7 +178,7 @@ impl NumberSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::RawNumberSpec,
+        overrides: &crate::schema::raw::property_spec::RawNumberSpec,
     ) -> Result<Self, SchemaError> {
         let min = overrides.min.or(self.bounds.min().map(FiniteF64::get));
         let max = overrides.max.or(self.bounds.max().map(FiniteF64::get));
@@ -212,12 +212,12 @@ impl ArchivedNumberSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::RawNumberSpec> for NumberSpec {
+impl TryFrom<crate::schema::raw::property_spec::RawNumberSpec> for NumberSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawNumberSpec,
+        raw: crate::schema::raw::property_spec::RawNumberSpec,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.min, raw.max, raw.step)
     }
@@ -299,7 +299,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::schema::raw::RawNumberSpec;
+    use crate::schema::raw::property_spec::RawNumberSpec;
 
     fn validated_spec(def: &RawNumberSpec) -> NumberSpec {
         NumberSpec::try_new(def.min, def.max, def.step)

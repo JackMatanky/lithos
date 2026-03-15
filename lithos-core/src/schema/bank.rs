@@ -613,8 +613,9 @@ mod tests {
 
         use super::*;
         use crate::schema::raw::{
-            RawPropertyBank, RawPropertyBankEntry, RawPropertySpec,
-            RawStringSpec,
+            RawPropertyBank,
+            property::RawPropertyBankEntry,
+            property_spec::{RawPropertySpec, RawStringSpec},
         };
 
         /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.

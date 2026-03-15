@@ -195,7 +195,9 @@ impl ArchivedPropertySpec {
 // Conversions from Raw Types (Syntax → Domain)
 // ============================================================================
 
-impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
+impl TryFrom<crate::schema::raw::property_spec::RawPropertySpec>
+    for PropertySpec
+{
     type Error = SchemaError;
 
     /// Convert raw property spec (syntax layer) to validated domain spec.
@@ -208,9 +210,9 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
     /// required fields, etc.).
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawPropertySpec,
+        raw: crate::schema::raw::property_spec::RawPropertySpec,
     ) -> Result<Self, Self::Error> {
-        use crate::schema::raw::RawPropertySpec;
+        use crate::schema::raw::property_spec::RawPropertySpec;
 
         match raw {
             RawPropertySpec::Bool(def) => Ok(Self::Bool(def.try_into()?)),
@@ -225,7 +227,7 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
 #[cfg(test)]
 mod tests {
     use super::PropertySpec;
-    use crate::schema::raw::{RawBoolSpec, RawPropertySpec};
+    use crate::schema::raw::property_spec::{RawBoolSpec, RawPropertySpec};
 
     #[test]
     fn validate_dispatches_to_bool_spec() {

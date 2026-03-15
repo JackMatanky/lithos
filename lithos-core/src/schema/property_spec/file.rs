@@ -102,7 +102,7 @@ impl FileSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::RawFileSpec,
+        overrides: &crate::schema::raw::property_spec::RawFileSpec,
     ) -> Result<Self, SchemaError> {
         let directory = overrides
             .directory
@@ -144,12 +144,12 @@ impl ArchivedFileSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::RawFileSpec> for FileSpec {
+impl TryFrom<crate::schema::raw::property_spec::RawFileSpec> for FileSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawFileSpec,
+        raw: crate::schema::raw::property_spec::RawFileSpec,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.directory.as_deref(), raw.file_class.as_deref())
     }

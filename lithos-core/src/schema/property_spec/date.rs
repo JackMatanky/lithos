@@ -86,7 +86,7 @@ impl DateSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::RawDateSpec,
+        overrides: &crate::schema::raw::property_spec::RawDateSpec,
     ) -> Result<Self, SchemaError> {
         if let Some(format) = overrides.format.as_ref() {
             Self::try_new(format.as_ref())
@@ -126,12 +126,12 @@ impl ArchivedDateSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::RawDateSpec> for DateSpec {
+impl TryFrom<crate::schema::raw::property_spec::RawDateSpec> for DateSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawDateSpec,
+        raw: crate::schema::raw::property_spec::RawDateSpec,
     ) -> Result<Self, Self::Error> {
         let format = raw.format.ok_or_else(|| {
             SchemaError::ValidationFailed("date format is required".into())

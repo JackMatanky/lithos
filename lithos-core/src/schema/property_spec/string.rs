@@ -116,15 +116,15 @@ impl StringSpec {
     )]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::RawStringSpec,
+        overrides: &crate::schema::raw::property_spec::RawStringSpec,
     ) -> Result<Self, SchemaError> {
         let pattern = match overrides.pattern.as_ref() {
-            Some(crate::schema::raw::RawStringPattern::Custom(p)) => {
-                Some(StringPattern::try_custom(p.clone())?)
-            }
-            Some(crate::schema::raw::RawStringPattern::Named(f)) => {
-                Some(StringPattern::from(*f))
-            }
+            Some(
+                crate::schema::raw::property_spec::RawStringPattern::Custom(p),
+            ) => Some(StringPattern::try_custom(p.clone())?),
+            Some(
+                crate::schema::raw::property_spec::RawStringPattern::Named(f),
+            ) => Some(StringPattern::from(*f)),
             None => self.pattern,
         };
 
@@ -199,20 +199,20 @@ impl ArchivedStringSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::RawStringSpec> for StringSpec {
+impl TryFrom<crate::schema::raw::property_spec::RawStringSpec> for StringSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawStringSpec,
+        raw: crate::schema::raw::property_spec::RawStringSpec,
     ) -> Result<Self, Self::Error> {
         let pattern = match raw.pattern {
-            Some(crate::schema::raw::RawStringPattern::Custom(p)) => {
-                Some(StringPattern::try_custom(p)?)
-            }
-            Some(crate::schema::raw::RawStringPattern::Named(f)) => {
-                Some(StringPattern::from(f))
-            }
+            Some(
+                crate::schema::raw::property_spec::RawStringPattern::Custom(p),
+            ) => Some(StringPattern::try_custom(p)?),
+            Some(
+                crate::schema::raw::property_spec::RawStringPattern::Named(f),
+            ) => Some(StringPattern::from(f)),
             None => None,
         };
 
@@ -545,10 +545,14 @@ impl ArchivedStringPattern {
     }
 }
 
-impl From<crate::schema::raw::RawStringFormat> for StringPattern {
+impl From<crate::schema::raw::property_spec::RawStringFormat>
+    for StringPattern
+{
     #[inline]
-    fn from(format: crate::schema::raw::RawStringFormat) -> Self {
-        use crate::schema::raw::RawStringFormat;
+    fn from(
+        format: crate::schema::raw::property_spec::RawStringFormat,
+    ) -> Self {
+        use crate::schema::raw::property_spec::RawStringFormat;
         match format {
             RawStringFormat::Email => Self::Email,
             RawStringFormat::Url => Self::Url,
@@ -640,12 +644,14 @@ impl OptionEntry {
     }
 }
 
-impl TryFrom<crate::schema::raw::RawOptionEntry> for OptionEntry {
+impl TryFrom<crate::schema::raw::property_spec::RawOptionEntry>
+    for OptionEntry
+{
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawOptionEntry,
+        raw: crate::schema::raw::property_spec::RawOptionEntry,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.value, raw.label)
     }
@@ -700,7 +706,7 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
-        use crate::schema::raw::{RawOptions, RawStringSpec};
+        use crate::schema::raw::property_spec::{RawOptions, RawStringSpec};
 
         #[rstest]
         #[case::options_match(
@@ -723,7 +729,7 @@ mod tests {
             })
         )]
         #[case::regex_match(
-            RawStringSpec { pattern: Some(crate::schema::raw::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
+            RawStringSpec { pattern: Some(crate::schema::raw::property_spec::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
             "123",
             Ok(())
         )]

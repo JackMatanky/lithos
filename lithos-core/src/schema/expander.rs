@@ -30,7 +30,10 @@ use super::{
         PropertyName,
     },
     property_spec::PropertySpec,
-    raw::{RawProperty, RawPropertyRef, RawSchema},
+    raw::{
+        RawSchema,
+        property::{RawProperty, RawPropertyRef},
+    },
 };
 use crate::schema::aggregate::SchemaId;
 
@@ -325,9 +328,12 @@ mod tests {
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
         property_spec::{BoolSpec, PropertySpec},
         raw::{
-            RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec, RawProperty,
-            RawPropertyInline, RawPropertyRef, RawPropertySpec, RawSchema,
-            RawStringSpec,
+            RawSchema,
+            property::{RawProperty, RawPropertyInline, RawPropertyRef},
+            property_spec::{
+                RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec,
+                RawPropertySpec, RawStringSpec,
+            },
         },
     };
 
