@@ -10,8 +10,8 @@
 
 - [x] Read `_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md` (primary authority).
 - [x] Read `_bmad-output/project-context.md` and confirm latest rules.
-- [ ] Read ADR 002 (Repository) only for historical context.
-- [ ] Read `docs/refs/rust/naming-taxonomy.md` and confirm method naming rules.
+- [x] Read ADR 002 (Repository) only for historical context.
+- [x] Read `docs/refs/rust/naming-taxonomy.md` and confirm method naming rules.
 - [x] Confirm context isolation: note must not import schema/template.
 - [x] Confirm file-based source-of-truth requirement for this refactor.
 - [x] Reviewed Obsidian API + Dataview + Tasks references for semantics (reference only, not replicas).
