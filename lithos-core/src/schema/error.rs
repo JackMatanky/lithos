@@ -170,94 +170,10 @@ pub enum SchemaError {
     Storage(#[from] DbError),
 }
 
-/// Schema command errors.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaCommandError;
-///
-/// let error = SchemaCommandError::Conflict {
-///     reason: "conflict".into(),
-/// };
-/// match error {
-///     SchemaCommandError::Conflict {
-///         ..
-///     } => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaCommandError {
-    /// Domain validation failed.
-    #[error("domain validation failed: {0}")]
-    Domain(#[from] SchemaError),
-
-    /// Storage error.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
-
-    /// Conflict during save/delete operations.
-    #[error("conflict: {reason}")]
-    Conflict {
-        /// Reason for the conflict.
-        reason: Box<str>,
-    },
-}
-
-/// Schema query errors.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaQueryError;
-///
-/// let error = SchemaQueryError::NotFound {
-///     name: "schema".into(),
-/// };
-/// match error {
-///     SchemaQueryError::NotFound {
-///         ..
-///     } => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaQueryError {
-    /// Storage error.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
-
-    /// Data corruption detected in storage.
-    #[error("data corruption: {reason}")]
-    Corruption {
-        /// Reason for corruption.
-        reason: Box<str>,
-    },
-
-    /// Entity not found.
-    #[error("not found: {name}")]
-    NotFound {
-        /// Name or identifier.
-        name: Box<str>,
-    },
-
-    /// `PropertyBank` not found in database.
-    ///
-    /// This error indicates that the `PropertyBank` singleton has not been
-    /// initialized. `PropertyBank` must be created before querying schemas.
-    #[error(
-        "PropertyBank not found in database - initialize by loading schema \
-         files or creating properties"
-    )]
-    PropertyBankNotFound,
-}
-
 /// Unified schema repository errors.
 ///
 /// This error type combines query and command operations for the schema
 /// repository, providing a unified error type for storage operations.
-/// It replaces the old CQRS pattern (`SchemaQueryError`, `SchemaCommandError`).
 ///
 /// # Examples
 /// ```
@@ -470,15 +386,9 @@ mod tests {
     }
 
     #[test]
-    fn schema_command_error_is_send_and_sync() {
+    fn schema_repository_error_is_send_and_sync() {
         fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaCommandError>();
-    }
-
-    #[test]
-    fn schema_query_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaQueryError>();
+        is_send_sync::<SchemaRepositoryError>();
     }
 
     #[test]
