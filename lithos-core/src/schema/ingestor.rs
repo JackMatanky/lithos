@@ -9,7 +9,7 @@
 //! - Metadata populated in Raw* types (no separate tuples)
 //! - Returns `Option<T>` for optional files, `Result<Vec<T>>` for collections
 
-use std::{collections::BTreeMap, path::Path};
+use std::path::Path;
 
 use crate::{
     config::aggregate::Config,
@@ -129,13 +129,14 @@ impl Ingestor<'_> {
         bank.validate_version(&path.to_string_lossy())?;
         bank.validate()?;
 
-        // Populate metadata
+        // Populate metadata with property hashes
         bank.metadata = RawSchemaMetadata {
             created_at,
             modified_at,
             content_hash: Some(*content_hash.as_bytes()),
-            property_hashes: BTreeMap::new(), /* Not applicable for property
-                                               * bank */
+            property_hashes: RawSchemaMetadata::compute_property_hashes(
+                &bank.properties,
+            ),
         };
 
         Ok(Some(bank))
@@ -190,15 +191,14 @@ impl Ingestor<'_> {
         // Validate syntax
         raw.validate()?;
 
-        // Compute per-property hashes for incremental resolution
-        let property_hashes = self.compute_property_hashes(&raw);
-
-        // Populate metadata
+        // Populate metadata with property hashes
         raw.metadata = RawSchemaMetadata {
             created_at,
             modified_at,
             content_hash: Some(*content_hash.as_bytes()),
-            property_hashes,
+            property_hashes: RawSchemaMetadata::compute_property_hashes(
+                &raw.properties,
+            ),
         };
 
         Ok(raw)
@@ -253,28 +253,6 @@ impl Ingestor<'_> {
         }
 
         Ok(results)
-    }
-
-    /// Compute per-property hashes for incremental resolution.
-    ///
-    /// Hashes each property definition in the schema to detect which properties
-    /// changed without re-parsing the entire file.
-    fn compute_property_hashes(
-        &self,
-        raw: &RawSchema,
-    ) -> BTreeMap<Box<str>, [u8; 32]> {
-        let mut hashes = BTreeMap::new();
-
-        for (name, prop) in &raw.properties {
-            // Serialize property to JSON for stable hashing
-            // (TOML/YAML order is unstable, JSON is canonical)
-            if let Ok(json) = serde_json::to_string(prop) {
-                let hash = blake3::hash(json.as_bytes());
-                hashes.insert(name.clone(), *hash.as_bytes());
-            }
-        }
-
-        hashes
     }
 }
 

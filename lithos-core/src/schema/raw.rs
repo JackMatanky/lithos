@@ -850,8 +850,44 @@ pub struct RawSchemaMetadata {
     /// Maps property name to its content hash. Enables detecting which
     /// specific properties changed without re-parsing the entire file.
     ///
-    /// Only populated for schema files (empty for property bank).
+    /// Populated for both schema files and property bank files.
     pub property_hashes: BTreeMap<Box<str>, [u8; 32]>,
+}
+
+impl RawSchemaMetadata {
+    /// Compute per-property hashes from a property map.
+    ///
+    /// Hashes each property definition to enable incremental change detection.
+    /// Uses JSON serialization for stable, canonical hashing (TOML/YAML have
+    /// unstable ordering).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use std::collections::HashMap;
+    /// use lithos_core::schema::raw::{RawSchemaMetadata, RawProperty};
+    ///
+    /// let mut properties = HashMap::new();
+    /// properties.insert("title".into(), RawProperty::Ref("text".into()));
+    ///
+    /// let hashes = RawSchemaMetadata::compute_property_hashes(&properties);
+    /// assert_eq!(hashes.len(), 1);
+    /// ```
+    pub fn compute_property_hashes(
+        properties: &std::collections::HashMap<Box<str>, RawProperty>,
+    ) -> BTreeMap<Box<str>, [u8; 32]> {
+        let mut hashes = BTreeMap::new();
+
+        for (name, prop) in properties {
+            // Serialize property to JSON for stable hashing
+            if let Ok(json) = serde_json::to_string(prop) {
+                let hash = blake3::hash(json.as_bytes());
+                hashes.insert(name.clone(), *hash.as_bytes());
+            }
+        }
+
+        hashes
+    }
 }
 
 #[cfg(test)]
