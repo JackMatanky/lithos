@@ -1,17 +1,17 @@
 //! Note bounded context for markdown-based document modeling and persistence.
 //!
-//! This module provides the core domain entities, value objects, and ports
-//! required to model, parse, and persist Obsidian-compatible markdown notes.
-//! It follows a Port-Based CQRS architecture, isolating the business logic
-//! from the underlying storage layer.
+//! This module provides the core domain entities, value objects, and the
+//! ingestion pipeline for Obsidian-compatible markdown notes.
+//! It follows the File → Raw → Domain → Storage pipeline with a unified
+//! repository interface.
 //!
 //! # Features
 //!
 //! - **Obsidian Compatibility**: Wiki-links, markdown links, YAML/TOML
 //!   frontmatter, and hierarchical inline tags.
-//! - **Port-Based CQRS**: Explicit separation of read and write operations.
-//! - **File Source of Truth**: Parsed notes are ingest artifacts; stored
-//!   projections are rebuildable caches.
+//! - **Unified Repository**: Read and write operations live on a single trait.
+//! - **File Source of Truth**: Raw notes are ingest artifacts; stored facts are
+//!   rebuildable caches.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
 //! - **Rich Task Modeling**: Integrated task management with 7 specialized
@@ -28,32 +28,28 @@
 //!
 //! The Note context is organized around ingest artifacts and projections:
 //!
-//! - [`identity`] - Stable note identifiers and validated names.
-//! - [`reader`] - Markdown ingestion parser for note parsing.
-//! - [`stored`] - Projection read models (`StoredNote`, `StoredTask`).
-//! - [`ports`] - Command and Query trait definitions for CQRS.
-//! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities extracted during
-//!   ingestion and stored in projections.
+//! - [`aggregate`] - Stable note identifiers and normalized facts.
+//! - [`parser`] - Markdown parsing boundary (AST + frontmatter capture).
+//! - [`raw`] - Raw extraction helpers (AST → Raw*).
+//! - [`storage`] - Unified repository + redb adapter.
+//! - [`task`], [`tag`], [`link`], [`list`] - Domain entities derived during
+//!   conversion.
 
 #![expect(
     clippy::module_name_repetitions,
     reason = "Public API names include module prefix for clarity"
 )]
 
-/// Note storage adapters.
-pub mod db_command;
-/// Note storage query adapters.
-pub mod db_query;
-/// Note identity and validated names.
-pub mod identity;
+/// Note aggregate and identity types.
+pub mod aggregate;
 /// Note loader orchestration.
 pub mod loader;
-/// Note ports for CQRS.
-pub mod ports;
-/// Markdown note reader.
-pub mod reader;
-/// Stored note projections.
-pub mod stored;
+/// Markdown parser boundary.
+pub mod parser;
+/// Raw extraction helpers.
+pub mod raw;
+/// Unified repository storage.
+pub mod storage;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
@@ -81,8 +77,7 @@ pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
 
-/// Parsed note ingest artifact.
-pub type ParsedNote = reader::ParsedNote;
+pub use aggregate::{AliasName, FileClassName, NoteId};
 
 /// Database table definitions for note storage.
 pub(crate) const STORED_NOTES: redb::TableDefinition<&str, &[u8]> =

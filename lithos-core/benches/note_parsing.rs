@@ -123,7 +123,7 @@
 //!
 //! **If simple throughput drops below 5 MiB/s**:
 //! - Fixed overhead increased (file I/O, Config/Note construction)
-//! - Check for new validation in `NoteReader::new()` or parse routines
+//! - Check for new validation in parser or raw extraction routines
 //!
 //! **If medium/complex throughput drops below 20 MiB/s**:
 //! - Parsing logic changed (pulldown-cmark, regex matching)
@@ -221,13 +221,8 @@ use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use lithos_core::{
-    config::{
-        aggregate::Config,
-        raw::RawConfig,
-        vault::{VaultId, VaultRoot},
-    },
     fs::FsReader,
-    note::reader::NoteReader,
+    note::{parser, paths::NotePath, raw},
 };
 
 /// Simple markdown sample: minimal note structure (~100 bytes).
@@ -356,8 +351,7 @@ fn complex_markdown() -> &'static str {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `NoteReader::apply()` and
-///   `NoteReader::parse_str()`
+/// - **Metric**: Latency per parse + raw extraction
 /// - **Throughput**: Markdown bytes processed per second
 /// - **Scaling**: Simple (~100B) → Medium (~500B) → Complex (~2KB)
 ///
@@ -391,7 +385,6 @@ struct BenchSamples<'sample> {
 fn bench_ingest_group(
     c: &mut Criterion,
     reader: &FsReader,
-    note_reader: &NoteReader<'_>,
     root: &Path,
     samples: &BenchSamples<'_>,
 ) {
@@ -403,10 +396,27 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
     ingest_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
-            let parsed = note_reader
-                .parse(reader, std::path::Path::new("notes/simple.md"))
-                .expect("ingest markdown");
-            black_box(parsed);
+            let markdown = reader
+                .read_to_string(std::path::Path::new("notes/simple.md"))
+                .expect("read markdown");
+            let parsed =
+                parser::parse_markdown(&markdown, parser::obsidian_options())
+                    .expect("parse markdown");
+            let path = NotePath::try_new("notes/simple.md").expect("note path");
+            let source_hash =
+                blake3::hash(markdown.as_bytes()).to_hex().to_string();
+            let raw_note = raw::extract_raw_note(
+                parsed.nodes(),
+                parsed.frontmatter().cloned(),
+                &markdown,
+                path,
+                source_hash.into_boxed_str(),
+                markdown.as_bytes().len() as u64,
+                None,
+                None,
+            )
+            .expect("extract raw");
+            black_box(raw_note);
         });
     });
 
@@ -416,10 +426,27 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
     ingest_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
-            let parsed = note_reader
-                .parse(reader, std::path::Path::new("notes/medium.md"))
-                .expect("ingest markdown");
-            black_box(parsed);
+            let markdown = reader
+                .read_to_string(std::path::Path::new("notes/medium.md"))
+                .expect("read markdown");
+            let parsed =
+                parser::parse_markdown(&markdown, parser::obsidian_options())
+                    .expect("parse markdown");
+            let path = NotePath::try_new("notes/medium.md").expect("note path");
+            let source_hash =
+                blake3::hash(markdown.as_bytes()).to_hex().to_string();
+            let raw_note = raw::extract_raw_note(
+                parsed.nodes(),
+                parsed.frontmatter().cloned(),
+                &markdown,
+                path,
+                source_hash.into_boxed_str(),
+                markdown.as_bytes().len() as u64,
+                None,
+                None,
+            )
+            .expect("extract raw");
+            black_box(raw_note);
         });
     });
 
@@ -429,29 +456,46 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
     ingest_group.bench_function("ingest_markdown/complex", |b| {
         b.iter(|| {
-            let parsed = note_reader
-                .parse(reader, std::path::Path::new("notes/complex.md"))
-                .expect("ingest markdown");
-            black_box(parsed);
+            let markdown = reader
+                .read_to_string(std::path::Path::new("notes/complex.md"))
+                .expect("read markdown");
+            let parsed =
+                parser::parse_markdown(&markdown, parser::obsidian_options())
+                    .expect("parse markdown");
+            let path =
+                NotePath::try_new("notes/complex.md").expect("note path");
+            let source_hash =
+                blake3::hash(markdown.as_bytes()).to_hex().to_string();
+            let raw_note = raw::extract_raw_note(
+                parsed.nodes(),
+                parsed.frontmatter().cloned(),
+                &markdown,
+                path,
+                source_hash.into_boxed_str(),
+                markdown.as_bytes().len() as u64,
+                None,
+                None,
+            )
+            .expect("extract raw");
+            black_box(raw_note);
         });
     });
 
     ingest_group.finish();
 }
 
-fn bench_parse_group(
-    c: &mut Criterion,
-    note_reader: &NoteReader<'_>,
-    samples: &BenchSamples<'_>,
-) {
+fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     let mut parse_group = c.benchmark_group("note_parsing_parse_only");
 
     // Parse-only simple benchmark
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
     parse_group.bench_function("parse_markdown/simple", |b| {
         b.iter(|| {
-            let outcome =
-                note_reader.parse_str(samples.simple).expect("parse markdown");
+            let outcome = parser::parse_markdown(
+                samples.simple,
+                parser::obsidian_options(),
+            )
+            .expect("parse markdown");
             black_box(outcome);
         });
     });
@@ -460,8 +504,11 @@ fn bench_parse_group(
     parse_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
     parse_group.bench_function("parse_markdown/medium", |b| {
         b.iter(|| {
-            let outcome =
-                note_reader.parse_str(samples.medium).expect("parse markdown");
+            let outcome = parser::parse_markdown(
+                samples.medium,
+                parser::obsidian_options(),
+            )
+            .expect("parse markdown");
             black_box(outcome);
         });
     });
@@ -470,8 +517,11 @@ fn bench_parse_group(
     parse_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
     parse_group.bench_function("parse_markdown/complex", |b| {
         b.iter(|| {
-            let outcome =
-                note_reader.parse_str(samples.complex).expect("parse markdown");
+            let outcome = parser::parse_markdown(
+                samples.complex,
+                parser::obsidian_options(),
+            )
+            .expect("parse markdown");
             black_box(outcome);
         });
     });
@@ -482,19 +532,10 @@ fn bench_parse_group(
 fn bench_note_ingest(c: &mut Criterion) {
     let root = std::env::temp_dir()
         .join(format!("lithos_note_bench_{}", std::process::id()));
-    let config = Config::build(
-        &RawConfig::default(),
-        VaultId::new(),
-        VaultRoot::try_new(root.clone()).expect("valid vault root"),
-        lithos_core::config::aggregate::Version::initial(),
-    )
-    .expect("config");
-
     std::fs::create_dir_all(root.join("notes"))
         .expect("create bench notes dir");
 
     let reader = FsReader::new(root.as_path());
-    let note_reader = NoteReader::new(&config);
 
     let samples = BenchSamples {
         simple: simple_markdown(),
@@ -502,8 +543,8 @@ fn bench_note_ingest(c: &mut Criterion) {
         complex: complex_markdown(),
     };
 
-    bench_ingest_group(c, &reader, &note_reader, root.as_path(), &samples);
-    bench_parse_group(c, &note_reader, &samples);
+    bench_ingest_group(c, &reader, root.as_path(), &samples);
+    bench_parse_group(c, &samples);
 }
 
 criterion_group!(benches, bench_note_ingest);

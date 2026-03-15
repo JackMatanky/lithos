@@ -1,0 +1,80 @@
+//! Raw task extraction helpers.
+
+use crate::note::position::SourceByteOffset;
+
+/// Raw task extracted from a checkbox list item.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct RawTask {
+    status_symbol: Option<char>,
+    text: Box<str>,
+    tags: Vec<Box<str>>,
+    inline_fields: Vec<(Box<str>, Box<str>)>,
+    emoji_dates: Vec<(Box<str>, Box<str>)>,
+    position: SourceByteOffset,
+}
+
+impl RawTask {
+    /// Create a raw task entry.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        status_symbol: Option<char>,
+        text: Box<str>,
+        tags: Vec<Box<str>>,
+        inline_fields: Vec<(Box<str>, Box<str>)>,
+        emoji_dates: Vec<(Box<str>, Box<str>)>,
+        position: SourceByteOffset,
+    ) -> Self {
+        Self {
+            status_symbol,
+            text,
+            tags,
+            inline_fields,
+            emoji_dates,
+            position,
+        }
+    }
+
+    /// Return the raw status symbol.
+    #[inline]
+    #[must_use]
+    pub const fn status_symbol(&self) -> Option<char> {
+        self.status_symbol
+    }
+
+    /// Return the raw task text.
+    #[inline]
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Return raw tag tokens found in the task text.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[Box<str>] {
+        &self.tags
+    }
+
+    /// Return raw inline fields parsed from the task text.
+    #[inline]
+    #[must_use]
+    pub fn inline_fields(&self) -> &[(Box<str>, Box<str>)] {
+        &self.inline_fields
+    }
+
+    /// Return raw emoji date entries parsed from the task text.
+    #[inline]
+    #[must_use]
+    pub fn emoji_dates(&self) -> &[(Box<str>, Box<str>)] {
+        &self.emoji_dates
+    }
+
+    /// Return the source byte position for the task marker.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
+    }
+}

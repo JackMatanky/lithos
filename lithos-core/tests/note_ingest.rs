@@ -6,10 +6,10 @@ use lithos_core::{
         raw::RawConfig,
         vault::{VaultId, VaultRoot},
     },
-    fs::FsReader,
+    db::Database,
     note::{
-        list::{List, ListItem, ListType},
-        reader::NoteReader,
+        loader::Loader as NoteLoader,
+        storage::{RedbRepository, Repository},
     },
 };
 
@@ -40,38 +40,29 @@ mod tests {
         std::fs::write(root.join("notes/ingest.md"), markdown)
             .expect("write markdown");
 
-        let reader = FsReader::new(root.as_path());
-        let parsed = NoteReader::new(&config)
-            .parse(&reader, std::path::Path::new("notes/ingest.md"))
-            .expect("parse markdown");
-        assert!(parsed.modified_at().is_some(), "expected modified_at");
+        let db_path = root.join("notes.redb");
+        let db = Database::open(&db_path).expect("open db");
+        let repository = RedbRepository::new(&db, &config);
+        let loader = NoteLoader::new(&repository, &config);
 
-        let lists: Vec<&List> = parsed.lists().iter().collect();
-        assert_eq!(lists.len(), 2, "expected unordered + ordered lists");
+        let note_path =
+            lithos_core::note::paths::NotePath::try_new("notes/ingest.md")
+                .expect("note path");
+        let note_id = loader
+            .load_content(&note_path, markdown.into(), None, None)
+            .expect("load markdown");
+        let note = repository
+            .find_by_id(note_id)
+            .expect("query note")
+            .expect("note exists");
 
-        let unordered = lists
+        assert_eq!(note.list_items().len(), 4, "expected four list items");
+        let checkbox_count = note
+            .list_items()
             .iter()
-            .find(|list| matches!(list.list_type(), ListType::Unordered))
-            .expect("unordered list missing");
-        let items: Vec<_> = unordered.items().collect();
-        assert_eq!(items.len(), 2, "unordered list item count");
-
-        let first_item = items.first().expect("missing first item");
-        assert!(
-            matches!(**first_item, ListItem::Checkbox { .. }),
-            "expected checkbox item"
-        );
-        let ListItem::Checkbox {
-            task_id,
-            status,
-            ..
-        } = (*first_item).clone()
-        else {
-            return;
-        };
-
-        assert_eq!(status.value(), ' ', "expected unchecked status");
-        assert!(task_id.is_some(), "expected promoted task id");
-        assert_eq!(parsed.tasks().len(), 1, "expected one promoted task");
+            .filter(|item| item.status().is_some())
+            .count();
+        assert_eq!(checkbox_count, 2, "expected two checkbox items");
+        assert_eq!(note.tasks().len(), 1, "expected one promoted task");
     }
 }

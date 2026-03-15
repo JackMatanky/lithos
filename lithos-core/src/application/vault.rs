@@ -10,10 +10,10 @@ use crate::{
     db::{Database, DbError},
     fs::FsReader,
     note::{
-        db_command::CommandAdapter,
         error::NoteIngestError,
         loader::{LoadError, Loader as NoteLoader},
         paths::NotePath,
+        storage::RedbRepository,
     },
 };
 
@@ -57,14 +57,12 @@ impl<'db, 'config> Service<'db, 'config> {
     ///
     /// Returns [`ServiceError`] on I/O, parsing, or storage failure.
     #[inline]
-    pub fn load(
-        &self,
-    ) -> Result<Vec<crate::note::identity::NoteId>, ServiceError> {
+    pub fn load(&self) -> Result<Vec<crate::note::NoteId>, ServiceError> {
         let fs = FsReader::new(self.config.vault_metadata().root().as_path());
         let paths = Self::scan_note_paths(&fs)?;
 
-        let command = CommandAdapter::new(self.db, self.config);
-        let loader = NoteLoader::new(command);
+        let repository = RedbRepository::new(self.db, self.config);
+        let loader = NoteLoader::new(&repository, self.config);
 
         let mut path_set: HashSet<Box<str>> =
             HashSet::with_capacity(paths.len());
@@ -72,7 +70,7 @@ impl<'db, 'config> Service<'db, 'config> {
             path_set.insert(note_path.as_str().into());
         }
 
-        let stored_notes = loader.command().list_stored_notes()?;
+        let stored_notes = loader.repository().list()?;
         for stored in stored_notes {
             if !path_set.contains(stored.path().as_str()) {
                 loader
@@ -83,7 +81,7 @@ impl<'db, 'config> Service<'db, 'config> {
 
         let mut note_ids = Vec::with_capacity(paths.len());
         for note_path in paths {
-            let stored = loader.command().stored_note_by_path(&note_path)?;
+            let stored = loader.repository().find_by_path(&note_path)?;
             let metadata = fs.metadata(Path::new(note_path.as_str())).map_err(
                 |error| NoteIngestError::Source(error.to_string().into()),
             )?;
@@ -173,6 +171,9 @@ impl<'db, 'config> Service<'db, 'config> {
 fn map_load_error(error: LoadError) -> ServiceError {
     match error {
         LoadError::Ingestion(error) => ServiceError::Ingestion(error),
-        LoadError::Command(error) => ServiceError::Command(error),
+        LoadError::Domain(error) => {
+            ServiceError::Ingestion(NoteIngestError::Domain(error))
+        }
+        LoadError::Storage(error) => ServiceError::Command(error),
     }
 }

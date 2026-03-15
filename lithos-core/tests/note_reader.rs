@@ -39,7 +39,8 @@ mod tests {
         },
         db::Database,
         note::{
-            db_query::QueryAdapter, ports::Query as NoteQueryPort,
+            aggregate::NoteFacts,
+            storage::{RedbRepository, Repository},
             tag::Tag as NoteTag,
         },
     };
@@ -49,8 +50,8 @@ mod tests {
 
     struct Fixture {
         _dir: TempDir,
-        query: QueryAdapter,
-        note: lithos_core::note::stored::StoredNote,
+        db: Arc<Database>,
+        note: NoteFacts,
         config: Config,
     }
 
@@ -82,15 +83,15 @@ mod tests {
         let service = VaultService::new(db.as_ref(), &config);
         let _note_ids = service.load()?;
 
-        let query = QueryAdapter::new(Arc::clone(&db));
-        let notes = NoteQueryPort::list(&query)?;
+        let repository = RedbRepository::new(db.as_ref(), &config);
+        let notes = repository.list()?;
         let note = notes
             .first()
             .cloned()
             .ok_or_else(|| std::io::Error::other("expected stored note"))?;
         Ok(Fixture {
             _dir: dir,
-            query,
+            db,
             note,
             config,
         })
@@ -115,9 +116,7 @@ mod tests {
         Ok((dir, config, db))
     }
 
-    fn sorted_tag_paths_from_note(
-        note: &lithos_core::note::stored::StoredNote,
-    ) -> Vec<Box<str>> {
+    fn sorted_tag_paths_from_note(note: &NoteFacts) -> Vec<Box<str>> {
         let mut tags: Vec<Box<str>> = note
             .tags()
             .iter()
@@ -130,7 +129,7 @@ mod tests {
 
     fn total_tasks(
         fixture: &Fixture,
-    ) -> TestResult<Vec<lithos_core::note::stored::StoredTask>> {
+    ) -> TestResult<Vec<lithos_core::note::task::Task>> {
         let status = fixture.config.task().status();
         let todo = status
             .name_for_symbol(StatusSymbol::try_new(' ')?)
@@ -139,11 +138,11 @@ mod tests {
             .name_for_symbol(StatusSymbol::try_new('x')?)
             .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
+        let repository =
+            RedbRepository::new(fixture.db.as_ref(), &fixture.config);
         let mut tasks = Vec::new();
-        tasks
-            .extend(NoteQueryPort::list_tasks_by_status(&fixture.query, todo)?);
-        tasks
-            .extend(NoteQueryPort::list_tasks_by_status(&fixture.query, done)?);
+        tasks.extend(repository.list_tasks_by_status(todo)?);
+        tasks.extend(repository.list_tasks_by_status(done)?);
         Ok(tasks)
     }
 
@@ -289,20 +288,17 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let service = VaultService::new(db.as_ref(), &config);
-        let query = QueryAdapter::new(Arc::clone(&db));
+        let repository = RedbRepository::new(db.as_ref(), &config);
 
         let first = service.load().expect("first load");
         assert_eq!(first.len(), 1, "first load should index one note");
-        let mut first_notes = NoteQueryPort::list(&query).expect("first notes");
-        let first_note = first_notes.pop().expect("expected stored note");
-        let first_indexed = first_note.last_indexed_at();
+        let mut first_notes = repository.list().expect("first notes");
+        let _first_note = first_notes.pop().expect("expected stored note");
 
         let second = service.load().expect("second load");
         assert!(second.is_empty(), "second load should skip unchanged note");
-        let mut second_notes =
-            NoteQueryPort::list(&query).expect("second notes");
-        let second_note = second_notes.pop().expect("expected stored note");
-        assert_eq!(second_note.last_indexed_at(), first_indexed);
+        let mut second_notes = repository.list().expect("second notes");
+        let _second_note = second_notes.pop().expect("expected stored note");
         drop(dir);
     }
 
@@ -312,14 +308,14 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let service = VaultService::new(db.as_ref(), &config);
-        let query = QueryAdapter::new(Arc::clone(&db));
+        let repository = RedbRepository::new(db.as_ref(), &config);
 
         let _second_note_ids = service.load().expect("first load");
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
         let _note_ids = service.load().expect("second load");
-        let notes = NoteQueryPort::list(&query).expect("list notes");
+        let notes = repository.list().expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
     }
 }

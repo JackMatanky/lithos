@@ -1,10 +1,15 @@
-//! Note loader — parses markdown content and persists projections.
+//! Note loader — parses markdown content and persists note facts.
 
 use crate::{
+    config::aggregate::Config,
     db::DbError,
     note::{
-        db_command::CommandAdapter, error::NoteIngestError, identity::NoteId,
-        paths::NotePath, ports::Command as _, reader::NoteReader,
+        aggregate::{NoteFacts, NoteId, RawNoteContext},
+        error::{NoteError, NoteIngestError},
+        parser,
+        paths::NotePath,
+        raw,
+        storage::Repository,
     },
 };
 
@@ -16,26 +21,35 @@ pub enum LoadError {
     #[error("ingestion error: {0}")]
     Ingestion(#[from] NoteIngestError),
 
+    /// Domain conversion failed.
+    #[error("domain error: {0}")]
+    Domain(#[from] NoteError),
+
     /// Storage command failed.
-    #[error("command error: {0}")]
-    Command(#[from] DbError),
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
 }
 
 /// Thin orchestration service for note parsing and persistence.
-pub struct Loader<'db, 'config> {
-    command: CommandAdapter<'db, 'config>,
-    reader: NoteReader<'config>,
+pub struct Loader<'repo, 'config, R>
+where
+    R: Repository<Error = DbError>,
+{
+    repository: &'repo R,
+    config: &'config Config,
 }
 
-impl<'db, 'config> Loader<'db, 'config> {
-    /// Create a new `Loader` with command adapter.
+impl<'repo, 'config, R> Loader<'repo, 'config, R>
+where
+    R: Repository<Error = DbError>,
+{
+    /// Create a new `Loader` with repository and config.
     #[inline]
     #[must_use]
-    pub const fn new(command: CommandAdapter<'db, 'config>) -> Self {
-        let reader = NoteReader::new(command.config());
+    pub const fn new(repository: &'repo R, config: &'config Config) -> Self {
         Self {
-            command,
-            reader,
+            repository,
+            config,
         }
     }
 
@@ -55,16 +69,40 @@ impl<'db, 'config> Loader<'db, 'config> {
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, LoadError> {
         let parsed =
-            self.reader.parse_content(markdown, created_at, modified_at)?;
-        let note_id = self.command.upsert_parsed_note(path, &parsed)?;
+            parser::parse_markdown(&markdown, parser::obsidian_options())?;
+        let source_bytes = markdown.as_bytes().len() as u64;
+        let source_hash =
+            blake3::hash(markdown.as_bytes()).to_hex().to_string();
+        let raw_note = raw::extract_raw_note(
+            parsed.nodes(),
+            parsed.frontmatter().cloned(),
+            &markdown,
+            path.clone(),
+            source_hash.into_boxed_str(),
+            source_bytes,
+            created_at,
+            modified_at,
+        )?;
+
+        let note_id = self
+            .repository
+            .find_by_path(path)?
+            .map(|note| note.id())
+            .unwrap_or_else(NoteId::new);
+        let facts = NoteFacts::try_from(RawNoteContext::new(
+            note_id,
+            &raw_note,
+            self.config,
+        ))?;
+        let note_id = self.repository.save_note_facts(&facts)?;
         Ok(note_id)
     }
 
     #[inline]
     #[must_use]
-    /// Access the command adapter used by this loader.
-    pub const fn command(&self) -> &CommandAdapter<'db, 'config> {
-        &self.command
+    /// Access the repository used by this loader.
+    pub const fn repository(&self) -> &'repo R {
+        self.repository
     }
 
     /// Record deletion of a stored note.
@@ -74,7 +112,7 @@ impl<'db, 'config> Loader<'db, 'config> {
     /// Returns [`LoadError`] if persistence fails.
     #[inline]
     pub fn record_deleted_note(&self, id: NoteId) -> Result<(), LoadError> {
-        self.command.record_deleted_note(id)?;
+        self.repository.delete_note(id)?;
         Ok(())
     }
 }

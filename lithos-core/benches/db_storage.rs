@@ -211,8 +211,6 @@
               needless_borrowed_reference lints"
 )]
 
-use std::{collections::HashMap, time::SystemTime};
-
 use criterion::{
     BenchmarkId, Criterion, Throughput, black_box, criterion_group,
     criterion_main,
@@ -220,15 +218,8 @@ use criterion::{
 use lithos_core::{
     db::Database,
     note::{
-        frontmatter::Frontmatter,
-        heading::{Heading, HeadingLevel},
-        identity::NoteId,
-        link::{Link, Target},
+        aggregate::{NoteFacts, NoteId},
         paths::NotePath,
-        position::{SourceByteOffset, SourceByteRange},
-        stored::StoredNote,
-        structure::Section,
-        tag::Tag,
     },
 };
 use redb::TableDefinition;
@@ -238,81 +229,14 @@ use uuid::Uuid;
 const STORED_NOTES_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("stored_notes");
 
-/// Creates a realistic stored note value with nested structures.
-fn create_test_note(index: usize) -> StoredNote {
+/// Creates a stored note value for benchmark fixtures.
+fn create_test_note(index: usize) -> NoteFacts {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
     let note_path = NotePath::try_new(&path).expect("valid path");
-    let links = vec![
-        Link::try_new_wikilink(
-            Target::Unresolved {
-                raw: "other-note.md".into(),
-            },
-            None,
-            None,
-            SourceByteOffset::new(0),
-        )
-        .expect("valid link"),
-        Link::try_new_markdown_link(
-            Target::External {
-                url: "https://example.com".into(),
-            },
-            Some("Example"),
-            None,
-            SourceByteOffset::new(50),
-        )
-        .expect("valid link"),
-    ];
-    let tags = vec![
-        Tag::try_new("#rust").expect("valid tag"),
-        Tag::try_new("#performance").expect("valid tag"),
-        Tag::try_new("#database/benchmarks").expect("valid tag"),
-    ];
-    let headings = vec![
-        Heading::try_new(
-            HeadingLevel::try_new(1).expect("valid level"),
-            "Main Title",
-            SourceByteOffset::new(0),
-        )
-        .expect("valid heading"),
-        Heading::try_new(
-            HeadingLevel::try_new(2).expect("valid level"),
-            "Subsection",
-            SourceByteOffset::new(10),
-        )
-        .expect("valid heading"),
-    ];
-    let sections = vec![Section::new(
-        lithos_core::note::structure::SectionKind::Paragraph,
-        None,
-        SourceByteRange::new(
-            SourceByteOffset::new(0),
-            SourceByteOffset::new(100),
-        )
-        .expect("valid source range"),
-    )];
-
-    StoredNote::new(
-        id,
-        note_path,
-        Some("Main Title".into()),
-        Some(Frontmatter::new(HashMap::new())),
-        Vec::new(),
-        tags,
-        headings,
-        None,
-        sections,
-        None,
-        links,
-        Vec::new(),
-        Vec::new(),
-        format!("hash-{index:04}").into_boxed_str(),
-        1024,
-        None,
-        None,
-        SystemTime::UNIX_EPOCH,
-    )
+    let _hash = format!("hash-{index:04}");
+    NoteFacts::new(id, note_path)
 }
 
 fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
@@ -397,7 +321,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<StoredNote, _, _>(
+            db.get::<NoteFacts, _, _>(
                 STORED_NOTES_TABLE,
                 &test_key,
                 |archived| {
@@ -471,7 +395,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<StoredNote> = db
+            let note: Option<NoteFacts> = db
                 .get_owned(STORED_NOTES_TABLE, &test_key)
                 .expect("get owned note");
             black_box(note.expect("note exists"));
@@ -667,7 +591,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get::<StoredNote, _, _>(
+            db.get::<NoteFacts, _, _>(
                 STORED_NOTES_TABLE,
                 hot_key.as_str(),
                 |archived| {
@@ -684,13 +608,9 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<StoredNote, _, _>(
-                STORED_NOTES_TABLE,
-                cold_id,
-                |archived| {
-                    black_box(archived);
-                },
-            )
+            db.get::<NoteFacts, _, _>(STORED_NOTES_TABLE, cold_id, |archived| {
+                black_box(archived);
+            })
             .expect("get note")
         });
     });
@@ -829,7 +749,7 @@ fn bench_scan_range(c: &mut Criterion) {
 
     // Pre-populate with 1000 notes using prefixed keys
     // Keys format: "notes/test-XXXX" where XXXX is 0000-0999
-    let notes: Vec<StoredNote> =
+    let notes: Vec<NoteFacts> =
         (0..TOTAL_NOTES).map(create_test_note).collect();
 
     db.batch_write(|writer| {
@@ -851,7 +771,7 @@ fn bench_scan_range(c: &mut Criterion) {
             let count = db
                 .batch_read(|reader| {
                     let results = reader
-                        .scan_range::<StoredNote>(STORED_NOTES_TABLE, prefix)?;
+                        .scan_range::<NoteFacts>(STORED_NOTES_TABLE, prefix)?;
                     Ok(results.len())
                 })
                 .expect("batch_read");
@@ -865,7 +785,7 @@ fn bench_scan_range(c: &mut Criterion) {
             let prefix = "notes/test-01";
             let count = db
                 .batch_read(|reader| {
-                    let all_pairs = reader.list_key_value_pairs::<StoredNote>(
+                    let all_pairs = reader.list_key_value_pairs::<NoteFacts>(
                         STORED_NOTES_TABLE,
                     )?;
                     let filtered = all_pairs

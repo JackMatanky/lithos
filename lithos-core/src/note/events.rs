@@ -11,7 +11,7 @@ use rkyv::{
 };
 use uuid::Uuid;
 
-use super::{identity::NoteId, paths::NotePath};
+use super::{aggregate::NoteId, paths::NotePath};
 
 /// Event kinds recorded in the note event log.
 #[derive(
