@@ -446,6 +446,62 @@ note/
 
 ---
 
+## 7.5 Risk + Mitigation Summary (Per Phase)
+
+| Phase | Primary Risk | Mitigation | Evidence to Proceed |
+| --- | --- | --- | --- |
+| 1 | Parser boundary drift changes event interpretation | Snapshot tests for event → AST; keep reader tests unchanged | Parser tests + existing reader tests green |
+| 2 | Raw extraction diverges from current projections | Raw extraction fixtures for headings/links/tags/lists/tasks | Raw fixtures match baseline |
+| 3 | TryFrom rejects valid inputs | Domain validation tests + frontmatter parsing tests | No new parse failures on valid fixtures |
+| 4 | Storage/query regressions | Repository tests + indexing tests + with_archived coverage | Query results match previous behavior |
+| 5 | Legacy modules still referenced | Build + lint with old modules removed | No references to reader/CQRS modules |
+
+---
+
+## 7.6 Phase-by-Phase PR Checklist
+
+**PR 1: Parser boundary**
+- [ ] Add `note/parser/ast.rs` + `note/parser/parser.rs` (no domain types)
+- [ ] Keep existing reader wired; add parser snapshot tests
+- [ ] No behavior changes in current reader tests
+
+**PR 2: Raw extraction scaffolding**
+- [ ] Add `note/raw/*` modules with Raw types only
+- [ ] Add Raw extraction tests for headings/links/tags/lists
+- [ ] Reader still passes all tests
+
+**PR 3: Raw helpers + builder moves**
+- [ ] Move `HeadingBuilder`, `ListItemBuilder`, `LinkBuilder`, `TaskBuilder` into `raw/`
+- [ ] Update reader helpers to use raw helpers (no domain creation)
+- [ ] Add/adjust tests for task promotion, tag scanning, link aliases
+
+**PR 4: Frontmatter boundary**
+- [ ] Move frontmatter parsing to `raw/frontmatter.rs`
+- [ ] Keep domain `Frontmatter` accessors only
+- [ ] Add frontmatter parsing + link extraction tests
+
+**PR 5: Raw → Domain conversion**
+- [ ] Introduce `RawNote` and `TryFrom<Raw*>` for domain types
+- [ ] Replace `ParsedNote` usage with Raw → Domain in pipeline
+- [ ] No new parse failures on valid fixtures
+
+**PR 6: Repository unification**
+- [ ] Create `note/storage.rs` with unified Repository trait
+- [ ] Fold `db_command.rs` + `db_query.rs` into storage
+- [ ] Add repository tests + with_archived coverage
+
+**PR 7: Storage shape cleanup**
+- [ ] Remove `stored.rs` and replace Stored* usage
+- [ ] Add views only if profiling proves necessary
+- [ ] Query behavior matches previous output
+
+**PR 8: Loader rewiring + cleanup**
+- [ ] Loader orchestrates File → Raw → Domain → Storage
+- [ ] Remove `reader/` and `ports.rs` modules
+- [ ] All tests + verify tasks green
+
+---
+
 ## 8) Test and Verification Plan (Draft)
 
 ### Parsing Boundary Tests
