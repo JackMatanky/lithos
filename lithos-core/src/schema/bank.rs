@@ -87,42 +87,6 @@ impl PropertyBank {
         }
     }
 
-    /// Reconstruct a `PropertyBank` from stored properties.
-    ///
-    /// This skips event emission and preserves the provided version.
-    #[expect(
-        dead_code,
-        reason = "Used for deserialization from database - will be needed \
-                  when PropertyBank persistence is fully implemented"
-    )]
-    pub(crate) fn try_reconstruct(
-        properties: Vec<Property>,
-        version: BankVersion,
-        recorded_at: SystemTime,
-    ) -> Result<Self, SchemaError> {
-        let mut bank = Self::new();
-        bank.version = version;
-        bank.recorded_at = recorded_at;
-
-        for property in properties {
-            let name = property.name().clone();
-            if bank.properties.contains_key(&name) {
-                return Err(SchemaError::DuplicatePropertyName(
-                    name.as_str().into(),
-                ));
-            }
-            if bank.properties.values().any(|prop| prop.id() == property.id()) {
-                return Err(SchemaError::AlreadyExists(format!(
-                    "Property ID {} already registered under a different name",
-                    property.id()
-                )));
-            }
-            bank.properties.insert(name, property);
-        }
-
-        Ok(bank)
-    }
-
     /// Returns the current `PropertyBank` version.
     ///
     /// # Examples
