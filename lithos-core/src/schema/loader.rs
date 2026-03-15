@@ -70,7 +70,7 @@ use crate::{
         expander::RefExpander,
         extender::Extender,
         ingestor::Ingestor,
-        raw::{RawPropertyBank, RawSchema},
+        raw::RawSchema,
         resolver::Resolver,
         storage::Repository,
     },
@@ -88,12 +88,6 @@ pub struct Loader<'config, R> {
     repository: R,
     ingestor: Ingestor<'config>,
 }
-
-// Type aliases for loader operations
-// Metadata is now embedded in RawSchema.metadata, so we only track (ID,
-// RawSchema)
-type SchemaWithId = (SchemaId, RawSchema);
-type PartitionResult = (Vec<SchemaWithId>, Vec<SchemaId>);
 
 impl<'config, R> Loader<'config, R>
 where
@@ -135,57 +129,36 @@ where
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
-        // ── Step 2: PropertyBank - ingest raw, check staleness, load if fresh
-        let raw_bank = self.ingestor.property_bank()?.ok_or_else(|| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::FileSystem(
-                "Property bank file not found".into(),
-            ))
-        })?;
-
-        let bank_view =
-            self.repository.get_raw_property_bank_view().map_err(|e| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                    path: "database".into(),
-                    reason: e.to_string().into(),
-                })
-            })?;
-
-        let bank_stale = match bank_view {
-            Some(view) => !view.is_fresh(&raw_bank.metadata),
-            None => true,
-        };
-
-        let bank = if bank_stale {
-            PropertyBank::try_from(raw_bank)?
-        } else {
-            self.repository
-                .get_property_bank()
-                .map_err(|e| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                        path: "database".into(),
-                        reason: e.to_string().into(),
-                    })
-                })?
-                .ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(
-                        SchemaIngestionError::FileSystem(
-                            "Property bank file not found".into(),
-                        ),
-                    )
-                })?
-        };
-        let current_bank_version = bank.version();
+        // ── Step 2: PropertyBank - handle loading with staleness internally
+        let bank = self.load_property_bank()?;
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
         let raw_schemas = self.ingestor.all_schemas()?;
 
-        // ── Step 4: staleness partitioning ─────────────────────────────────
-        let (stale, fresh_ids) = self.partition_by_staleness(
-            &raw_schemas,
-            &name_to_id,
-            current_bank_version,
-            bank_stale,
-        )?;
+        // ── Step 4: check staleness for each schema ─────────────────────────
+        let mut stale = Vec::new();
+        let mut fresh_ids = Vec::new();
+
+        for raw_schema in &raw_schemas {
+            let schema_name = SchemaName::try_new(&raw_schema.name)?;
+            let existing_id = name_to_id.get(&schema_name).copied();
+
+            let is_stale = self.is_schema_stale(raw_schema, existing_id)?;
+
+            match (is_stale, existing_id) {
+                (true, _) => {
+                    let id = existing_id.unwrap_or_else(SchemaId::new);
+                    stale.push((id, raw_schema.clone()));
+                }
+                (false, Some(id)) => {
+                    fresh_ids.push(id);
+                }
+                (false, None) => {
+                    // New schema that somehow wasn't marked stale - shouldn't
+                    // happen
+                }
+            }
+        }
 
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         let fresh_schemas = self
@@ -214,12 +187,9 @@ where
 
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
-            self.persist_schemas(&resolved, &stale)?;
+            self.persist_resolved_schemas(&resolved)?;
+            self.persist_raw_views(&stale)?;
         }
-
-        self.repository
-            .save_property_bank(&bank)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         Ok(resolved)
     }
@@ -240,18 +210,17 @@ where
         Ok(name_to_id)
     }
 
-    /// Check if the `PropertyBank` is stale.
-    ///
-    /// Returns `true` if:
-    /// - No view exists in DB (never loaded)
-    /// - Property bank file appeared/disappeared
-    /// - Timestamps differ
-    /// - Content hash differs
-    #[expect(dead_code, reason = "Will be used when simplifying load() method")]
-    fn is_property_bank_stale(
-        &self,
-        raw_bank: Option<&RawPropertyBank>,
-    ) -> Result<bool, SchemaLoaderError> {
+    /// Load the property bank with three cases:
+    /// 1. First time (no view in DB): convert raw → domain → save
+    /// 2. Stale: get changed properties, update existing bank
+    /// 3. Fresh: load from DB
+    fn load_property_bank(&self) -> Result<PropertyBank, SchemaLoaderError> {
+        let raw_bank = self.ingestor.property_bank()?.ok_or_else(|| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                "Property bank file not found".into(),
+            ))
+        })?;
+
         let bank_view =
             self.repository.get_raw_property_bank_view().map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
@@ -260,12 +229,100 @@ where
                 })
             })?;
 
-        Ok(match (raw_bank, bank_view) {
-            (Some(raw), Some(view)) => !view.is_fresh(&raw.metadata),
-            (Some(_), None) | (None, Some(_)) => true, /* File appeared/ */
-            // disappeared
-            (None, None) => false, // No bank file (consistent)
-        })
+        // Three cases based on view existence and staleness
+        if let Some(mut view) = bank_view {
+            // View exists - check staleness
+            if view.is_fresh(&raw_bank.metadata) {
+                // Case 3: Fresh - load from DB
+                return self
+                    .repository
+                    .get_property_bank()
+                    .map_err(|e| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                            path: "database".into(),
+                            reason: e.to_string().into(),
+                        })
+                    })?
+                    .ok_or_else(|| {
+                        SchemaLoaderError::Ingestion(
+                            SchemaIngestionError::FileSystem(
+                                "Property bank not found in database".into(),
+                            ),
+                        )
+                    });
+            }
+            // Case 2: Stale - get changed properties, update existing bank
+            let changed = view.filter_changed_properties(&raw_bank.metadata);
+
+            let mut bank = self
+                .repository
+                .get_property_bank()
+                .map_err(|e| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "database".into(),
+                        reason: e.to_string().into(),
+                    })
+                })?
+                .ok_or_else(|| {
+                    SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::FileSystem(
+                            "Property bank not found in database".into(),
+                        ),
+                    )
+                })?;
+
+            bank.update_properties(&raw_bank, &changed)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+            self.repository
+                .save_property_bank(&bank)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+            // Update view
+            view.add_version(
+                raw_bank.metadata.content_hash.ok_or_else(|| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                        path: "property bank".into(),
+                        reason: "missing content hash".into(),
+                    })
+                })?,
+                raw_bank
+                    .metadata
+                    .property_hashes
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        super::property::PropertyName::try_new(k.as_ref())
+                            .ok()
+                            .map(|name| (name, *v))
+                    })
+                    .collect(),
+                raw_bank.metadata.created_at,
+                raw_bank.metadata.modified_at,
+            );
+
+            self.repository
+                .save_raw_property_bank_view(&view)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+            Ok(bank)
+        } else {
+            // Case 1: First time - convert from raw and save
+            let raw_bank_for_view = raw_bank.clone();
+            let bank: PropertyBank = raw_bank.try_into()?;
+            self.repository
+                .save_property_bank(&bank)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+            // Create and save view
+            let view =
+                super::views::RawPropertyBankView::try_from(&raw_bank_for_view)
+                    .map_err(SchemaLoaderError::Ingestion)?;
+            self.repository
+                .save_raw_property_bank_view(&view)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+            Ok(bank)
+        }
     }
 
     /// Check if a schema is stale.
@@ -275,7 +332,6 @@ where
     /// - No view exists in DB (never loaded)
     /// - Timestamps differ
     /// - Content hash differs
-    #[expect(dead_code, reason = "Will be used when simplifying load() method")]
     fn is_schema_stale(
         &self,
         raw_schema: &RawSchema,
@@ -301,161 +357,33 @@ where
         })
     }
 
-    /// Partition schemas into stale and fresh based on view staleness checks.
-    ///
-    /// Uses the view-based `is_fresh()` pattern for hybrid staleness detection
-    /// (timestamps + content hash). Bank staleness forces all schemas stale.
-    fn partition_by_staleness(
+    /// Persist resolved schemas to the database.
+    fn persist_resolved_schemas(
         &self,
-        raw_schemas: &[RawSchema],
-        name_to_id: &HashMap<SchemaName, SchemaId>,
-        _current_bank_version: crate::schema::bank::BankVersion,
-        bank_stale: bool,
-    ) -> Result<PartitionResult, SchemaLoaderError> {
-        let mut stale = Vec::new();
-        let mut fresh_ids = Vec::new();
-
-        for raw_schema in raw_schemas {
-            let schema_name = SchemaName::try_new(&raw_schema.name)?;
-            let id = name_to_id
-                .get(&schema_name)
-                .copied()
-                .unwrap_or_else(SchemaId::new);
-
-            // Check if schema is new (ID not in name_to_id means newly created)
-            let is_new =
-                !name_to_id.values().any(|&existing_id| existing_id == id);
-
-            // Load view for staleness check (only if not new)
-            let schema_stale = if is_new {
-                true // New schemas are always stale
-            } else {
-                // Get view and check freshness
-                let view =
-                    self.repository.get_raw_schema_view(id).map_err(|e| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                            path: "database".into(),
-                            reason: e.to_string().into(),
-                        })
-                    })?;
-
-                match view {
-                    Some(v) => !v.is_fresh(&raw_schema.metadata),
-                    None => true, // No view = never loaded = stale
-                }
-            };
-
-            let is_stale = bank_stale || schema_stale;
-
-            if is_stale {
-                stale.push((id, raw_schema.clone()));
-            } else {
-                fresh_ids.push(id);
-            }
-        }
-
-        Ok((stale, fresh_ids))
+        schemas: &[Schema],
+    ) -> Result<(), SchemaLoaderError> {
+        self.repository
+            .save_schemas(schemas)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 
-    /// Persist resolved schemas with raw views for staleness tracking.
+    /// Persist raw schema views for staleness tracking.
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Reference pattern needed for iteration over slice"
     )]
-    fn persist_schemas(
+    fn persist_raw_views(
         &self,
-        resolved: &[Schema],
         stale: &[(SchemaId, RawSchema)],
     ) -> Result<(), SchemaLoaderError> {
-        // Save resolved schemas
-        self.repository
-            .save_schemas(resolved)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        // Save raw views for staleness tracking
         for (id, raw) in stale {
-            // Create or update raw schema view
-            if let Some(mut view) =
-                self.repository.get_raw_schema_view(*id).map_err(|e| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                        path: "database".into(),
-                        reason: e.to_string().into(),
-                    })
-                })?
-            {
-                // View exists - add new version
-                // TODO: Get raw content from ingestor for compression
-                let content = String::new(); // Placeholder
-                view.add_version(
-                    &content,
-                    raw.metadata
-                        .property_hashes
-                        .clone()
-                        .into_iter()
-                        .filter_map(|(k, v)| {
-                            super::property::PropertyName::try_new(k.as_ref())
-                                .ok()
-                                .map(|name| (name, v))
-                        })
-                        .collect(),
-                    raw.metadata.created_at,
-                    raw.metadata.modified_at,
-                )
-                .map_err(|e| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                        path: "schema view".into(),
-                        reason: e.to_string().into(),
-                    })
-                })?;
+            let view = super::views::RawSchemaView::try_from(raw)
+                .map_err(SchemaLoaderError::Ingestion)?;
 
-                self.repository
-                    .save_raw_schema_view(*id, &view)
-                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-            } else {
-                // New view - create it
-                // TODO: Get raw content from ingestor
-                let content = String::new(); // Placeholder
-                let view = super::views::RawSchemaView::new(
-                    format!("schemas/{}.toml", raw.name).into_boxed_str(),
-                    raw.extends.clone().and_then(|name| {
-                        super::aggregate::SchemaName::try_new(&name).ok()
-                    }),
-                    raw.excludes
-                        .iter()
-                        .filter_map(|name| {
-                            super::property::PropertyName::try_new(
-                                name.as_ref(),
-                            )
-                            .ok()
-                        })
-                        .collect(),
-                    &content,
-                    raw.metadata
-                        .property_hashes
-                        .clone()
-                        .into_iter()
-                        .filter_map(|(k, v)| {
-                            super::property::PropertyName::try_new(k.as_ref())
-                                .ok()
-                                .map(|prop| (prop, v))
-                        })
-                        .collect(),
-                    raw.metadata.created_at,
-                    raw.metadata.modified_at,
-                )
-                .map_err(|e| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                        path: "schema view".into(),
-                        reason: e.to_string().into(),
-                    })
-                })?;
-
-                self.repository
-                    .save_raw_schema_view(*id, &view)
-                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-            }
+            self.repository
+                .save_raw_schema_view(*id, &view)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
         }
-
         Ok(())
     }
 }

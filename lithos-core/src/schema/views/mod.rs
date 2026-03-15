@@ -38,6 +38,4 @@ pub mod raw;
 
 // Re-export commonly used types for ergonomic access
 pub use inheritance::{ChildSchemaView, ParentSchemaView};
-pub use raw::{
-    DecompressionError, RawFileVersion, RawPropertyBankView, RawSchemaView,
-};
+pub use raw::{RawFileVersion, RawPropertyBankView, RawSchemaView};
