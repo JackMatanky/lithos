@@ -369,6 +369,87 @@ where
         Ok((stale, fresh_ids))
     }
 
+    /// Checks if the PropertyBank is stale by comparing stored view against
+    /// the raw file from the filesystem.
+    ///
+    /// Returns `(is_stale, changed_property_names)` where:
+    /// - `is_stale`: true if the bank needs updating
+    /// - `changed_property_names`: names of properties that changed (empty if
+    ///   fresh)
+    fn is_property_bank_stale(
+        &self,
+    ) -> Result<(bool, Vec<super::property::PropertyName>), LoaderError> {
+        // Load stored bank and view from repository
+        let stored_bank = self
+            .repository
+            .get_property_bank()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+        let bank_view = self
+            .repository
+            .get_raw_property_bank_view()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+
+        // Ingest raw bank from filesystem
+        let raw_bank_opt = self.ingestor.property_bank()?;
+
+        // Determine staleness
+        match (raw_bank_opt, stored_bank, bank_view) {
+            (Some(raw_bank), Some(stored), Some(view)) => {
+                if view.is_fresh(&raw_bank.metadata) {
+                    // Fresh - no changes
+                    Ok((false, Vec::new()))
+                } else {
+                    // Stale - compute changed properties
+                    let changed_props =
+                        view.filter_changed_properties(&raw_bank.metadata);
+                    Ok((true, changed_props))
+                }
+            }
+            (Some(_raw_bank), None, _) | (Some(_raw_bank), _, None) => {
+                // New bank (no stored version or no view) - stale
+                Ok((true, Vec::new()))
+            }
+            (None, Some(_stored), _) => {
+                // File disappeared but bank exists - treat as fresh
+                Ok((false, Vec::new()))
+            }
+            (None, None, _) => {
+                // No file and no stored bank - error
+                Err(LoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                    "Property bank file not found".into(),
+                )))
+            }
+        }
+    }
+
+    /// Checks if a schema is stale by comparing stored view against
+    /// the raw file from the filesystem.
+    ///
+    /// Returns true if the schema needs re-resolution.
+    fn is_schema_stale(
+        &self,
+        raw_schema: &RawSchema,
+        existing_id: Option<SchemaId>,
+    ) -> Result<bool, LoaderError> {
+        let is_new = existing_id.is_none();
+
+        if is_new {
+            // New schemas are always stale
+            return Ok(true);
+        }
+
+        // Get view and check freshness
+        let view = self
+            .repository
+            .get_raw_schema_view(existing_id.unwrap())
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+
+        match view {
+            Some(v) => Ok(!v.is_fresh(&raw_schema.metadata)),
+            None => Ok(true), // No view = never loaded = stale
+        }
+    }
+
     /// Persist resolved schemas with raw views for staleness tracking.
     fn persist_schemas(
         &self,
