@@ -109,6 +109,7 @@ impl Tag {
 ///
 /// Tag tokens start with `#` and accept alphanumeric, `_`, `-`, and `/`
 /// characters until the first non-tag character.
+#[cfg(test)]
 pub(crate) fn scan_tags(text: &str) -> Vec<Tag> {
     let mut tags = Vec::new();
     let mut chars = text.char_indices().peekable();

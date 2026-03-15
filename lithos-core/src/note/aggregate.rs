@@ -1,8 +1,13 @@
 //! Note aggregate root and identity types.
 
+#![expect(missing_docs, reason = "Public API documented at type level")]
+
 use std::{fmt, time::SystemTime};
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{
+    Archive, Deserialize, Serialize,
+    with::{AsUnixTime, Map},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -10,12 +15,19 @@ use crate::{
     note::{
         error::{NoteError, NoteMetadataError, TaskError},
         frontmatter::Frontmatter,
-        heading::Heading,
+        heading::{Heading, HeadingLevel},
         link::{Anchor, EmbedType, FrontmatterLink, Link, Target},
         list::ListItemEntry,
         paths::NotePath,
-        raw::{note::RawNote, tasks::RawTask},
-        structure::{BlockRef, Section},
+        raw::{
+            block_refs::RawBlockRef,
+            headings::RawHeading,
+            links::{RawLink, RawLinkStyle},
+            note::RawNote,
+            sections::{RawSection, RawSectionKind},
+            tasks::RawTask,
+        },
+        structure::{BlockRef, BlockRefId, Section, SectionKind},
         tag::Tag,
         task::{
             Task, TaskAttributes, TaskAttributesBuilder, TaskFieldKey,
@@ -24,6 +36,8 @@ use crate::{
         value::FieldValue,
     },
 };
+
+type RawInlineField = (Box<str>, Box<str>);
 
 /// Stable identifier for a note.
 #[derive(
@@ -169,7 +183,9 @@ pub struct NoteFacts {
     path: NotePath,
     source_hash: Box<str>,
     source_bytes: u64,
+    #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
+    #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
     frontmatter: Option<Frontmatter>,
     frontmatter_links: Vec<FrontmatterLink>,
@@ -188,7 +204,7 @@ impl NoteFacts {
         clippy::too_many_arguments,
         reason = "NoteFacts aggregates all note facts in one struct"
     )]
-    pub(crate) fn new(
+    pub(crate) fn from_parts(
         id: NoteId,
         path: NotePath,
         source_hash: Box<str>,
@@ -345,20 +361,115 @@ impl NoteFacts {
     }
 }
 
-/// Conversion context for building NoteFacts from RawNote + Config.
-pub(crate) struct RawNoteContext<'a> {
-    raw: &'a RawNote,
-    config: &'a Config,
+impl TryFrom<RawHeading> for Heading {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawHeading) -> Result<Self, Self::Error> {
+        let level = HeadingLevel::try_new(raw.level())?;
+        Heading::try_new(level, raw.text(), raw.position())
+    }
+}
+
+impl TryFrom<RawSection> for Section {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawSection) -> Result<Self, Self::Error> {
+        let kind = match raw.kind() {
+            RawSectionKind::Heading => SectionKind::Heading,
+            RawSectionKind::Paragraph => SectionKind::Paragraph,
+            RawSectionKind::CodeBlock => SectionKind::Code,
+            RawSectionKind::BlockQuote => SectionKind::BlockQuote,
+            RawSectionKind::List => SectionKind::List,
+        };
+        Ok(Section::new(kind, None, raw.range()))
+    }
+}
+
+impl TryFrom<RawLink> for Link {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawLink) -> Result<Self, Self::Error> {
+        let target_text = raw.target();
+        let is_external =
+            crate::note::raw::links::is_external_target(target_text);
+        let anchor = if is_external {
+            None
+        } else {
+            raw.anchor().map(anchor_from_raw).transpose()?
+        };
+        let target = if is_external {
+            Target::External {
+                url: target_text.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_text.into(),
+            }
+        };
+        let alias = raw.alias();
+
+        match (raw.is_embed(), raw.style()) {
+            (true, RawLinkStyle::Wiki) => Link::try_new_embed(
+                target,
+                EmbedType::from_extension(target_text),
+                alias,
+                anchor,
+                raw.position(),
+            ),
+            (true, RawLinkStyle::Markdown) => Link::try_new_markdown_embed(
+                target,
+                EmbedType::from_extension(target_text),
+                alias,
+                raw.position(),
+            ),
+            (false, RawLinkStyle::Wiki) => {
+                Link::try_new_wikilink(target, alias, anchor, raw.position())
+            }
+            (false, RawLinkStyle::Markdown) => Link::try_new_markdown_link(
+                target,
+                alias,
+                anchor,
+                raw.position(),
+            ),
+        }
+    }
+}
+
+impl TryFrom<RawBlockRef> for BlockRef {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawBlockRef) -> Result<Self, Self::Error> {
+        let id = BlockRefId::try_new(raw.id())?;
+        Ok(BlockRef::new(id, raw.position()))
+    }
+}
+
+fn anchor_from_raw(text: &str) -> Result<Anchor, NoteError> {
+    if let Some(block_ref) = text.strip_prefix('^') {
+        Anchor::block_ref(block_ref)
+    } else {
+        Anchor::heading(text)
+    }
+}
+
+/// Conversion context for building `NoteFacts` from `RawNote` + Config.
+pub(crate) struct RawNoteContext<'raw> {
+    raw: &'raw RawNote,
+    config: &'raw Config,
     id: NoteId,
 }
 
-impl<'a> RawNoteContext<'a> {
+impl<'raw> RawNoteContext<'raw> {
     #[inline]
     #[must_use]
     pub(crate) const fn new(
         id: NoteId,
-        raw: &'a RawNote,
-        config: &'a Config,
+        raw: &'raw RawNote,
+        config: &'raw Config,
     ) -> Self {
         Self {
             raw,
@@ -368,10 +479,11 @@ impl<'a> RawNoteContext<'a> {
     }
 }
 
-impl<'a> TryFrom<RawNoteContext<'a>> for NoteFacts {
+impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
     type Error = NoteError;
 
-    fn try_from(ctx: RawNoteContext<'a>) -> Result<Self, Self::Error> {
+    #[inline]
+    fn try_from(ctx: RawNoteContext<'raw>) -> Result<Self, Self::Error> {
         let frontmatter = ctx
             .raw
             .frontmatter()
@@ -433,7 +545,7 @@ impl<'a> TryFrom<RawNoteContext<'a>> for NoteFacts {
 
         let tasks = build_tasks(ctx.raw, ctx.config)?;
 
-        Ok(Self::new(
+        Ok(Self::from_parts(
             ctx.id,
             ctx.raw.path().clone(),
             ctx.raw.source_hash().into(),
@@ -652,14 +764,14 @@ fn is_external_target(target: &str) -> bool {
         || target.starts_with("mailto:")
 }
 
-struct RawTaskContext<'a> {
-    raw: &'a RawTask,
-    config: &'a Config,
+struct RawTaskContext<'raw> {
+    raw: &'raw RawTask,
+    config: &'raw Config,
 }
 
-impl<'a> RawTaskContext<'a> {
+impl<'raw> RawTaskContext<'raw> {
     #[inline]
-    const fn new(raw: &'a RawTask, config: &'a Config) -> Self {
+    const fn new(raw: &'raw RawTask, config: &'raw Config) -> Self {
         Self {
             raw,
             config,
@@ -667,10 +779,11 @@ impl<'a> RawTaskContext<'a> {
     }
 }
 
-impl<'a> TryFrom<RawTaskContext<'a>> for Option<Task> {
+impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
     type Error = NoteError;
 
-    fn try_from(ctx: RawTaskContext<'a>) -> Result<Self, Self::Error> {
+    #[inline]
+    fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
         let Some(symbol) = ctx.raw.status_symbol() else {
             return Ok(None);
         };
@@ -767,12 +880,14 @@ impl<'config> TaskBuilder<'config> {
 
     fn parse_inline_fields(
         &self,
-        inline_fields: &[(Box<str>, Box<str>)],
-        emoji_dates: &[(Box<str>, Box<str>)],
+        inline_fields: &[RawInlineField],
+        emoji_dates: &[RawInlineField],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
-        for (keyword, raw_value) in inline_fields {
+        for (keyword, raw_value) in
+            inline_fields.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
+        {
             state.handle_inline_field(self.config, keyword, raw_value)?;
         }
 
@@ -927,9 +1042,11 @@ impl InlineFieldState {
     fn fill_emoji_dates_from_tokens(
         &mut self,
         config: &crate::config::task::Task,
-        tokens: &[(Box<str>, Box<str>)],
+        tokens: &[RawInlineField],
     ) -> Result<(), NoteError> {
-        for (emoji, value) in tokens {
+        for (emoji, value) in
+            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
+        {
             if let Some((slot, spec)) =
                 Self::match_date_spec_by_emoji(config, emoji)
             {
@@ -946,29 +1063,39 @@ impl InlineFieldState {
 
     fn fill_default_emoji_dates_from_tokens(
         &mut self,
-        tokens: &[(Box<str>, Box<str>)],
+        tokens: &[RawInlineField],
     ) -> Result<(), NoteError> {
-        for (emoji, value) in tokens {
-            if Self::emoji_matches(emoji, '\u{2795}') {
-                self.fill_default_slot_value(
-                    DateSlot::Created,
-                    "created",
-                    value,
-                )?;
-            } else if Self::emoji_matches(emoji, '\u{1f4c5}') {
-                self.fill_default_slot_value(DateSlot::Due, "due", value)?;
-            } else if Self::emoji_matches(emoji, '\u{2705}') {
-                self.fill_default_slot_value(
-                    DateSlot::Completed,
-                    "completed",
-                    value,
-                )?;
-            } else if Self::emoji_matches(emoji, '\u{23f3}') {
-                self.fill_default_metadata_value("scheduled", value)?;
-            } else if Self::emoji_matches(emoji, '\u{1f6eb}') {
-                self.fill_default_metadata_value("start", value)?;
-            } else if Self::emoji_matches(emoji, '\u{274c}') {
-                self.fill_default_metadata_value("cancelled", value)?;
+        for (emoji, value) in
+            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
+        {
+            match () {
+                () if Self::emoji_matches(emoji, '\u{2795}') => {
+                    self.fill_default_slot_value(
+                        DateSlot::Created,
+                        "created",
+                        value,
+                    )?;
+                }
+                () if Self::emoji_matches(emoji, '\u{1f4c5}') => {
+                    self.fill_default_slot_value(DateSlot::Due, "due", value)?;
+                }
+                () if Self::emoji_matches(emoji, '\u{2705}') => {
+                    self.fill_default_slot_value(
+                        DateSlot::Completed,
+                        "completed",
+                        value,
+                    )?;
+                }
+                () if Self::emoji_matches(emoji, '\u{23f3}') => {
+                    self.fill_default_metadata_value("scheduled", value)?;
+                }
+                () if Self::emoji_matches(emoji, '\u{1f6eb}') => {
+                    self.fill_default_metadata_value("start", value)?;
+                }
+                () if Self::emoji_matches(emoji, '\u{274c}') => {
+                    self.fill_default_metadata_value("cancelled", value)?;
+                }
+                () => {}
             }
         }
 
@@ -1091,13 +1218,26 @@ impl InlineFieldState {
         raw_value: &str,
         spec: &crate::config::value::DateSpec,
     ) -> Result<TaskTimestamp, NoteError> {
-        let timestamp = spec.parse_str(raw_value).map_err(|_error| {
-            TaskError::InvalidTimestamp {
-                raw: raw_value.into(),
-                reason: "failed parsing",
-            }
+        if let Ok(naive) =
+            chrono::NaiveDateTime::parse_from_str(raw_value, spec.format())
+        {
+            return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
+        }
+
+        let date = chrono::NaiveDate::parse_from_str(raw_value, spec.format())
+            .map_err(|_error| {
+                NoteError::Task(TaskError::InvalidDate {
+                    keyword: spec.keyword().as_str().into(),
+                    reason: "failed to parse date string",
+                })
+            })?;
+        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            NoteError::Task(TaskError::InvalidDateTime {
+                keyword: spec.keyword().as_str().into(),
+            })
         })?;
-        Ok(TaskTimestamp::new(timestamp))
+
+        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
     }
 
     fn parse_default_date(
@@ -1118,22 +1258,30 @@ impl InlineFieldState {
         emoji: &str,
     ) -> Option<(DateSlot, &'config crate::config::value::DateSpec)> {
         if let Some(spec) = config.created()
-            && Self::emoji_matches(spec.emoji(), emoji)
+            && spec.emoji().is_some_and(|spec_emoji| {
+                Self::emoji_matches(emoji, spec_emoji)
+            })
         {
             return Some((DateSlot::Created, spec));
         }
         if let Some(spec) = config.due()
-            && Self::emoji_matches(spec.emoji(), emoji)
+            && spec.emoji().is_some_and(|spec_emoji| {
+                Self::emoji_matches(emoji, spec_emoji)
+            })
         {
             return Some((DateSlot::Due, spec));
         }
         if let Some(spec) = config.reminder()
-            && Self::emoji_matches(spec.emoji(), emoji)
+            && spec.emoji().is_some_and(|spec_emoji| {
+                Self::emoji_matches(emoji, spec_emoji)
+            })
         {
             return Some((DateSlot::Reminder, spec));
         }
         if let Some(spec) = config.completed()
-            && Self::emoji_matches(spec.emoji(), emoji)
+            && spec.emoji().is_some_and(|spec_emoji| {
+                Self::emoji_matches(emoji, spec_emoji)
+            })
         {
             return Some((DateSlot::Completed, spec));
         }

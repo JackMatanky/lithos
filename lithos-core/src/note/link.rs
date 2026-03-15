@@ -9,6 +9,7 @@
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
+#![expect(dead_code, reason = "Legacy link builders retained for future use")]
 
 use super::{
     aggregate::NoteId,

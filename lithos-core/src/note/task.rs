@@ -23,8 +23,10 @@ use super::{
     tag::Tag,
     value::FieldValue,
 };
+use crate::config::task::StatusName;
+#[cfg(test)]
 use crate::config::{
-    task::{StatusName, StatusSymbol, Task as TaskConfig},
+    task::{StatusSymbol, Task as TaskConfig},
     value::{DateSpec, FieldSpec},
 };
 
@@ -144,10 +146,12 @@ pub struct TaskAttributesBuilder {
 }
 
 /// Builder for promoting checkbox list items into tasks.
+#[cfg(test)]
 pub(crate) struct TaskBuilder<'config> {
     config: &'config TaskConfig,
 }
 
+#[cfg(test)]
 impl<'config> TaskBuilder<'config> {
     #[inline]
     pub(crate) const fn new(config: &'config TaskConfig) -> Self {
@@ -332,11 +336,13 @@ impl<'config> TaskBuilder<'config> {
 }
 
 #[derive(Debug)]
+#[cfg(test)]
 struct ParsedInlineFields {
     slots: TemporalSlots,
     metadata: TaskMetadata,
 }
 
+#[cfg(test)]
 impl ParsedInlineFields {
     fn into_attributes(self, tags: Vec<Tag>) -> TaskAttributes {
         self.slots
@@ -347,6 +353,7 @@ impl ParsedInlineFields {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(test)]
 enum DateSlot {
     Created,
     Due,
@@ -355,6 +362,7 @@ enum DateSlot {
 }
 
 #[derive(Debug, Default)]
+#[cfg(test)]
 struct TemporalSlots {
     created: Option<TaskTimestamp>,
     due: Option<TaskTimestamp>,
@@ -362,6 +370,7 @@ struct TemporalSlots {
     completed: Option<TaskTimestamp>,
 }
 
+#[cfg(test)]
 impl TemporalSlots {
     fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
         ParsedInlineFields {
@@ -401,11 +410,13 @@ impl TemporalSlots {
 }
 
 #[derive(Debug, Default)]
+#[cfg(test)]
 struct InlineFieldState {
     slots: TemporalSlots,
     metadata: TaskMetadata,
 }
 
+#[cfg(test)]
 impl InlineFieldState {
     fn new() -> Self {
         Self::default()

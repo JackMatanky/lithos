@@ -43,7 +43,8 @@ pub(crate) fn scan_raw_tags(
     let mut tags = Vec::new();
     let mut chars = text.char_indices().peekable();
     let mut prev_is_alnum = false;
-    let base = u32::from(base_offset) as usize;
+    let base = usize::try_from(u32::from(base_offset))
+        .map_err(|_error| NoteError::Structure("tag offset out of range"))?;
 
     while let Some((start_idx, ch)) = chars.next() {
         if ch != '#' || prev_is_alnum {

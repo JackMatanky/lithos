@@ -77,8 +77,6 @@ pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
 
-pub use aggregate::{AliasName, FileClassName, NoteId};
-
 /// Database table definitions for note storage.
 pub(crate) const STORED_NOTES: redb::TableDefinition<&str, &[u8]> =
     redb::TableDefinition::new("stored_notes");
@@ -111,8 +109,10 @@ pub(crate) const TASKS_BY_REMINDER_DATE: redb::MultimapTableDefinition<
 > = redb::MultimapTableDefinition::new("tasks_by_reminder_date");
 pub(crate) const TASKS_BY_STATUS: redb::MultimapTableDefinition<&str, &str> =
     redb::MultimapTableDefinition::new("tasks_by_status");
+#[expect(dead_code, reason = "Reserved for per-note task indexing")]
 pub(crate) const TASKS_BY_NOTE: redb::MultimapTableDefinition<&str, &str> =
     redb::MultimapTableDefinition::new("tasks_by_note");
+#[expect(dead_code, reason = "Reserved for future task table usage")]
 pub(crate) const TASKS: redb::TableDefinition<&str, &[u8]> =
     redb::TableDefinition::new("tasks");
 pub(crate) const TASKS_BY_METADATA: redb::MultimapTableDefinition<&str, &str> =

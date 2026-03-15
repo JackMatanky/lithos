@@ -2,6 +2,8 @@
 
 use crate::note::position::SourceByteOffset;
 
+type RawInlineField = (Box<str>, Box<str>);
+
 /// Raw task extracted from a checkbox list item.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -9,8 +11,8 @@ pub struct RawTask {
     status_symbol: Option<char>,
     text: Box<str>,
     tags: Vec<Box<str>>,
-    inline_fields: Vec<(Box<str>, Box<str>)>,
-    emoji_dates: Vec<(Box<str>, Box<str>)>,
+    inline_fields: Vec<RawInlineField>,
+    emoji_dates: Vec<RawInlineField>,
     position: SourceByteOffset,
 }
 
@@ -18,12 +20,16 @@ impl RawTask {
     /// Create a raw task entry.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Raw tasks capture full source metadata"
+    )]
     pub fn new(
         status_symbol: Option<char>,
         text: Box<str>,
         tags: Vec<Box<str>>,
-        inline_fields: Vec<(Box<str>, Box<str>)>,
-        emoji_dates: Vec<(Box<str>, Box<str>)>,
+        inline_fields: Vec<RawInlineField>,
+        emoji_dates: Vec<RawInlineField>,
         position: SourceByteOffset,
     ) -> Self {
         Self {
@@ -60,14 +66,14 @@ impl RawTask {
     /// Return raw inline fields parsed from the task text.
     #[inline]
     #[must_use]
-    pub fn inline_fields(&self) -> &[(Box<str>, Box<str>)] {
+    pub fn inline_fields(&self) -> &[RawInlineField] {
         &self.inline_fields
     }
 
     /// Return raw emoji date entries parsed from the task text.
     #[inline]
     #[must_use]
-    pub fn emoji_dates(&self) -> &[(Box<str>, Box<str>)] {
+    pub fn emoji_dates(&self) -> &[RawInlineField] {
         &self.emoji_dates
     }
 

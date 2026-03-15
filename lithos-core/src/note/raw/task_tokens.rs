@@ -1,11 +1,13 @@
 //! Raw task token parsing helpers.
 
+type RawInlineField = (Box<str>, Box<str>);
+
 /// Raw inline token collection extracted from task text.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawTaskTokens {
-    inline_fields: Vec<(Box<str>, Box<str>)>,
-    emoji_dates: Vec<(Box<str>, Box<str>)>,
+    inline_fields: Vec<RawInlineField>,
+    emoji_dates: Vec<RawInlineField>,
 }
 
 impl RawTaskTokens {
@@ -13,8 +15,8 @@ impl RawTaskTokens {
     #[inline]
     #[must_use]
     pub fn new(
-        inline_fields: Vec<(Box<str>, Box<str>)>,
-        emoji_dates: Vec<(Box<str>, Box<str>)>,
+        inline_fields: Vec<RawInlineField>,
+        emoji_dates: Vec<RawInlineField>,
     ) -> Self {
         Self {
             inline_fields,
@@ -33,18 +35,18 @@ impl RawTaskTokens {
     /// Return parsed inline field tokens.
     #[inline]
     #[must_use]
-    pub fn inline_fields(&self) -> &[(Box<str>, Box<str>)] {
+    pub fn inline_fields(&self) -> &[RawInlineField] {
         &self.inline_fields
     }
 
     /// Return parsed emoji date tokens.
     #[inline]
     #[must_use]
-    pub fn emoji_dates(&self) -> &[(Box<str>, Box<str>)] {
+    pub fn emoji_dates(&self) -> &[RawInlineField] {
         &self.emoji_dates
     }
 
-    fn parse_inline_fields(text: &str) -> Vec<(Box<str>, Box<str>)> {
+    fn parse_inline_fields(text: &str) -> Vec<RawInlineField> {
         let mut fields = Vec::new();
         Self::for_each_inline_field(text, |key, value| {
             fields.push((key.into(), value.into()));
@@ -95,13 +97,13 @@ impl RawTaskTokens {
     fn parse_emoji_dates(
         text: &str,
         emoji_markers: &[char],
-    ) -> Vec<(Box<str>, Box<str>)> {
+    ) -> Vec<RawInlineField> {
         if emoji_markers.is_empty() {
             return Vec::new();
         }
         let mut tokens = Vec::new();
         for (idx, ch) in text.char_indices() {
-            if !emoji_markers.iter().any(|marker| *marker == ch) {
+            if !emoji_markers.contains(&ch) {
                 continue;
             }
             let value_start = idx.saturating_add(ch.len_utf8());
@@ -114,7 +116,9 @@ impl RawTaskTokens {
             if value.is_empty() {
                 continue;
             }
-            tokens.push((ch.to_string().into_boxed_str(), value.into()));
+            let mut buffer = [0u8; 4];
+            let encoded = ch.encode_utf8(&mut buffer);
+            tokens.push((encoded.into(), value.into()));
         }
         tokens
     }

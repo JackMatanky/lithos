@@ -3,6 +3,8 @@
 //! Provides heading levels, text validation, and parsed heading values for
 //! markdown documents.
 
+#![expect(dead_code, reason = "Heading builders retained for legacy parsing")]
+
 use super::error::{LinkError, NoteError, NoteMetadataError};
 use crate::note::position::SourceByteOffset;
 

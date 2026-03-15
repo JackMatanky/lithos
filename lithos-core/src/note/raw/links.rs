@@ -26,6 +26,10 @@ impl RawLink {
     /// Create a new raw link.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Raw links store full source context"
+    )]
     pub fn new(
         style: RawLinkStyle,
         is_embed: bool,

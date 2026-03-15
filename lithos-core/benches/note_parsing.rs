@@ -405,13 +405,13 @@ fn bench_ingest_group(
             let path = NotePath::try_new("notes/simple.md").expect("note path");
             let source_hash =
                 blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract_raw_note(
+            let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),
-                markdown.as_bytes().len() as u64,
+                markdown.len() as u64,
                 None,
                 None,
             )
@@ -435,13 +435,13 @@ fn bench_ingest_group(
             let path = NotePath::try_new("notes/medium.md").expect("note path");
             let source_hash =
                 blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract_raw_note(
+            let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),
-                markdown.as_bytes().len() as u64,
+                markdown.len() as u64,
                 None,
                 None,
             )
@@ -466,13 +466,13 @@ fn bench_ingest_group(
                 NotePath::try_new("notes/complex.md").expect("note path");
             let source_hash =
                 blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract_raw_note(
+            let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),
-                markdown.as_bytes().len() as u64,
+                markdown.len() as u64,
                 None,
                 None,
             )

@@ -7,6 +7,8 @@
 //! that paragraphs only appear when the pulldown-cmark event stream emits them
 //! (tight list items may omit paragraph tags entirely).
 
+use std::fmt;
+
 use crate::note::position::SourceByteRange;
 
 /// Minimal AST node wrapper with byte range information.
@@ -199,16 +201,27 @@ impl Text {
         self.nodes.is_empty()
     }
 
-    /// Concatenates text nodes into a single string.
-    ///
-    /// This allocates a new `String` with no normalization or trimming.
+    /// Concatenates text nodes into a boxed string.
     #[must_use]
-    pub fn to_string(&self) -> String {
-        let mut out = String::new();
+    pub fn to_boxed_str(&self) -> Box<str> {
+        let mut out = String::with_capacity(self.byte_len());
         for node in &self.nodes {
             out.push_str(node.content());
         }
-        out
+        out.into_boxed_str()
+    }
+
+    fn byte_len(&self) -> usize {
+        self.nodes.iter().map(|node| node.content().len()).sum()
+    }
+}
+
+impl fmt::Display for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for node in &self.nodes {
+            f.write_str(node.content())?;
+        }
+        Ok(())
     }
 }
 

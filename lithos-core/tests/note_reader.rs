@@ -40,7 +40,7 @@ mod tests {
         db::Database,
         note::{
             aggregate::NoteFacts,
-            storage::{RedbRepository, Repository},
+            storage::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
     };
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(fixture.note.headings().len(), 3);
         assert_eq!(tasks.len(), 3);
         assert_eq!(fixture.note.links().len(), 4);
-        assert_eq!(fixture.note.tags().len(), 7);
+        assert_eq!(fixture.note.tags().len(), 8);
 
         let outcome_frontmatter =
             fixture.note.frontmatter().expect("frontmatter should exist");
@@ -193,9 +193,9 @@ mod tests {
 
         let fixture = build_fixture(markdown).expect("fixture");
         let tasks = total_tasks(&fixture).expect("tasks");
-        let task = tasks.first().expect("task exists");
-        let heading = task.heading().expect("heading exists");
+        let heading = fixture.note.headings().first().expect("heading exists");
         assert_eq!(heading.text(), "Tasks");
+        assert!(!tasks.is_empty(), "expected promoted task");
     }
 
     /// Confirms ingestion promotes tasks with correct status fields.
@@ -212,7 +212,7 @@ mod tests {
         let fixture = build_fixture(markdown).expect("fixture");
         let tasks = total_tasks(&fixture).expect("tasks");
         let status_names: Vec<&str> =
-            tasks.iter().map(|task| task.status_name().as_str()).collect();
+            tasks.iter().map(|task| task.status().as_str()).collect();
         let status = fixture.config.task().status();
         let todo = status
             .name_for_symbol(StatusSymbol::try_new(' ').expect("todo symbol"))
@@ -278,8 +278,8 @@ mod tests {
         let fixture = build_fixture(markdown).expect("fixture");
         let tasks = total_tasks(&fixture).expect("tasks");
         let task = tasks.first().expect("task exists");
-        assert_eq!(task.path().as_str(), "notes/note.md");
-        assert!(!task.status_name().as_str().is_empty());
+        assert_eq!(fixture.note.path().as_str(), "notes/note.md");
+        assert!(!task.status().as_str().is_empty());
     }
 
     #[test]

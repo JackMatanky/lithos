@@ -1,5 +1,7 @@
 //! Raw heading extraction helpers.
 
+#![expect(dead_code, reason = "Raw heading builders retained for legacy use")]
+
 use crate::note::{
     error::NoteError,
     heading::{Heading, HeadingLevel},

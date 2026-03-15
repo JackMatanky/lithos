@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use super::super::parser::frontmatter::MetadataBlockKind;
 use crate::note::{
-    frontmatter::{Frontmatter, FrontmatterFormat, FrontmatterParseError},
+    error::FrontmatterParseError,
+    frontmatter::{Frontmatter, FrontmatterFormat},
     value::FieldValue,
 };
 
@@ -45,6 +46,7 @@ impl RawFrontmatter {
 impl TryFrom<RawFrontmatter> for Frontmatter {
     type Error = FrontmatterParseError;
 
+    #[inline]
     fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
         let format = match raw.kind() {
             MetadataBlockKind::YamlStyle => FrontmatterFormat::Yaml,

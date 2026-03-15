@@ -1,5 +1,7 @@
 //! Raw list item extraction helpers.
 
+#![expect(dead_code, reason = "Raw list item builders retained for legacy use")]
+
 use crate::{
     config::task::StatusSymbol,
     note::{
@@ -44,6 +46,10 @@ impl RawListItem {
     /// Create a new raw list item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Raw list items capture full source metadata"
+    )]
     pub fn new(
         list_type: RawListType,
         depth: RawListDepth,
@@ -131,6 +137,7 @@ impl RawListDepth {
 impl TryFrom<RawListItem> for ListItemEntry {
     type Error = NoteError;
 
+    #[inline]
     fn try_from(raw: RawListItem) -> Result<Self, Self::Error> {
         let depth = match raw.depth() {
             RawListDepth::Root => ListDepth::root(),

@@ -88,6 +88,10 @@ pub(crate) fn extract_sections(
     Ok(sections)
 }
 
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Match ergonomics on &AstNodeKind"
+)]
 fn walk_sections(
     nodes: &[AstNode],
     depth: u32,
@@ -144,7 +148,7 @@ fn walk_sections(
                 ));
             }
             AstNodeKind::BlockQuote {
-                nodes,
+                nodes: quote_nodes,
                 ..
             } => {
                 sections.push(RawSection::new(
@@ -153,7 +157,7 @@ fn walk_sections(
                     None,
                     depth,
                 ));
-                walk_sections(nodes, depth.saturating_add(1), sections)?;
+                walk_sections(quote_nodes, depth.saturating_add(1), sections)?;
             }
         }
     }

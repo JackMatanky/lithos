@@ -22,8 +22,13 @@
 //! - No raw extraction or configuration-driven parsing is performed here.
 //! - `pulldown-cmark` types do not escape this module.
 
+pub(crate) mod ast;
+pub(crate) mod frontmatter;
+pub(crate) mod note;
+
 use std::ops::Range;
 
+pub(crate) use note::ParsedNote;
 use pulldown_cmark::{
     BlockQuoteKind, CodeBlockKind, Event, LinkType, OffsetIter, Options,
     Parser, Tag, TagEnd, utils::TextMergeWithOffset,
@@ -35,21 +40,15 @@ use self::{
         AstNodeKind, Text, TextNode, TextOrigin, TextStyle,
     },
     frontmatter::MetadataBlock,
-    note::ParsedNote,
 };
 use crate::note::{
     error::NoteIngestError,
     position::{SourceByteOffset, SourceByteRange},
 };
 
-pub(crate) mod ast;
-pub(crate) mod frontmatter;
-pub(crate) mod note;
-
-pub(crate) use note::ParsedNote;
-
 /// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
 #[inline]
+#[must_use]
 pub const fn obsidian_options() -> Options {
     Options::ENABLE_TASKLISTS
         .union(Options::ENABLE_WIKILINKS)
@@ -68,6 +67,7 @@ pub const fn obsidian_options() -> Options {
 ///
 /// Returns [`NoteIngestError`] if byte ranges cannot be represented or AST
 /// construction fails.
+#[inline]
 pub fn parse_markdown(
     markdown: &str,
     options: Options,
@@ -75,12 +75,12 @@ pub fn parse_markdown(
     ParserState::new(markdown, options).parse()
 }
 
-struct ParserState<'a> {
-    inner: TextMergeWithOffset<'a, OffsetIter<'a>>,
+struct ParserState<'source> {
+    inner: TextMergeWithOffset<'source, OffsetIter<'source>>,
 }
 
-impl<'a> ParserState<'a> {
-    fn new(markdown: &'a str, options: Options) -> Self {
+impl<'source> ParserState<'source> {
+    fn new(markdown: &'source str, options: Options) -> Self {
         let events = Parser::new_ext(markdown, options).into_offset_iter();
         let inner = TextMergeWithOffset::new(events);
         Self {
@@ -88,6 +88,10 @@ impl<'a> ParserState<'a> {
         }
     }
 
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Parser ignores unrelated events"
+    )]
     fn parse(mut self) -> Result<ParsedNote, NoteIngestError> {
         let mut nodes = Vec::new();
         let mut frontmatter = None;
@@ -117,12 +121,16 @@ impl<'a> ParserState<'a> {
         Ok(ParsedNote::new(nodes, frontmatter))
     }
 
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Metadata parsing ignores non-text events"
+    )]
     fn parse_metadata(
         &mut self,
         kind: pulldown_cmark::MetadataBlockKind,
     ) -> Result<MetadataBlock, NoteIngestError> {
         let mut text = String::new();
-        while let Some((event, _range)) = self.next() {
+        for (event, _range) in self.by_ref() {
             match event {
                 Event::Text(value) | Event::Code(value) => {
                     text.push_str(&value);
@@ -144,9 +152,17 @@ impl<'a> ParserState<'a> {
         Err(NoteIngestError::Source("unclosed metadata block".into()))
     }
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Tag is lightweight and compared by value"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Container parsing ignores unrelated events"
+    )]
     fn consume_container(
         &mut self,
-        tag: Tag<'a>,
+        tag: Tag<'source>,
     ) -> Result<(), NoteIngestError> {
         while let Some((event, _range)) = self.next() {
             match event {
@@ -160,9 +176,29 @@ impl<'a> ParserState<'a> {
         Err(NoteIngestError::Source("unclosed container".into()))
     }
 
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "Parser must handle nested event streams"
+    )]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Tag is lightweight and compared by value"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics over reference patterns"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Parser event handling is inherently verbose"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Parser ignores unrelated events"
+    )]
     fn parse_container(
         &mut self,
-        tag: Tag<'a>,
+        tag: Tag<'source>,
         start: SourceByteOffset,
     ) -> Result<Option<AstNode>, NoteIngestError> {
         let mut children = Vec::new();
@@ -177,7 +213,7 @@ impl<'a> ParserState<'a> {
             matches!(tag, Tag::Heading { .. } | Tag::Paragraph | Tag::Item);
         let is_code_block = matches!(tag, Tag::CodeBlock(_));
         let list_type = match &tag {
-            Tag::List(start) => Some(match start {
+            Tag::List(list_start) => Some(match list_start {
                 Some(start_num) => AstListType::Ordered {
                     start: *start_num,
                 },
@@ -269,23 +305,18 @@ impl<'a> ParserState<'a> {
                     ));
                 }
                 Event::End(end) => {
-                    if let Some(style) = inline_style_end(&end) {
+                    if let Some(style) = inline_style_end(end) {
                         pop_style(&mut inline_styles, style);
                     }
                 }
                 Event::TaskListMarker(checked) => {
                     task = Some(checked);
                 }
-                Event::Text(text) => {
-                    if is_code_block {
-                        code_text.push_str(&text);
-                    } else if accepts_text {
+                Event::Text(text) => match (is_code_block, accepts_text) {
+                    (true, _) => code_text.push_str(&text),
+                    (false, true) => {
                         let style = current_style(&inline_styles);
-                        let origin = if current_link.is_some() {
-                            TextOrigin::LinkAlias
-                        } else {
-                            TextOrigin::Normal
-                        };
+                        let origin = link_origin(current_link.as_ref());
                         push_text_node(
                             &mut text_nodes,
                             &mut current_link,
@@ -295,16 +326,12 @@ impl<'a> ParserState<'a> {
                             range,
                         );
                     }
-                }
-                Event::Code(text) => {
-                    if is_code_block {
-                        code_text.push_str(&text);
-                    } else if accepts_text {
-                        let origin = if current_link.is_some() {
-                            TextOrigin::LinkAlias
-                        } else {
-                            TextOrigin::Normal
-                        };
+                    _ => {}
+                },
+                Event::Code(text) => match (is_code_block, accepts_text) {
+                    (true, _) => code_text.push_str(&text),
+                    (false, true) => {
+                        let origin = link_origin(current_link.as_ref());
                         push_text_node(
                             &mut text_nodes,
                             &mut current_link,
@@ -314,22 +341,21 @@ impl<'a> ParserState<'a> {
                             range,
                         );
                     }
-                }
+                    _ => {}
+                },
                 Event::SoftBreak | Event::HardBreak => {
-                    if is_code_block {
-                        code_text.push('\n');
-                    } else if accepts_text {
-                        let origin = if current_link.is_some() {
-                            TextOrigin::LinkAlias
-                        } else {
-                            TextOrigin::Normal
-                        };
-                        push_break_node(
-                            &mut text_nodes,
-                            &mut current_link,
-                            origin,
-                            range,
-                        );
+                    match (is_code_block, accepts_text) {
+                        (true, _) => code_text.push('\n'),
+                        (false, true) => {
+                            let origin = link_origin(current_link.as_ref());
+                            push_break_node(
+                                &mut text_nodes,
+                                &mut current_link,
+                                origin,
+                                range,
+                            );
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}
@@ -340,8 +366,12 @@ impl<'a> ParserState<'a> {
     }
 }
 
-impl<'a> Iterator for ParserState<'a> {
-    type Item = (Event<'a>, Range<usize>);
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator adapter forwards to inner iterator"
+)]
+impl<'source> Iterator for ParserState<'source> {
+    type Item = (Event<'source>, Range<usize>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
@@ -370,6 +400,11 @@ fn is_container_tag(tag: &Tag<'_>) -> bool {
     )
 }
 
+#[expect(clippy::pattern_type_mismatch, reason = "Match ergonomics on &Tag")]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Inline style ignores other tags"
+)]
 fn inline_style(tag: &Tag<'_>) -> Option<TextStyle> {
     match tag {
         Tag::Emphasis => Some(TextStyle::Emphasis),
@@ -379,7 +414,11 @@ fn inline_style(tag: &Tag<'_>) -> Option<TextStyle> {
     }
 }
 
-fn inline_style_end(tag: &TagEnd) -> Option<TextStyle> {
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Inline style ignores other end tags"
+)]
+fn inline_style_end(tag: TagEnd) -> Option<TextStyle> {
     match tag {
         TagEnd::Emphasis => Some(TextStyle::Emphasis),
         TagEnd::Strong => Some(TextStyle::Strong),
@@ -388,6 +427,10 @@ fn inline_style_end(tag: &TagEnd) -> Option<TextStyle> {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Parser text node construction requires multiple fields"
+)]
 fn push_text_node(
     text_nodes: &mut Vec<TextNode>,
     current_link: &mut Option<LinkFrame>,
@@ -422,6 +465,10 @@ fn push_break_node(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Parser node construction requires multiple fields"
+)]
 fn build_node(
     tag: &Tag<'_>,
     range: SourceByteRange,
@@ -437,55 +484,55 @@ fn build_node(
     code_text: String,
 ) -> Option<AstNode> {
     let kind = match tag {
-        Tag::Heading {
+        &Tag::Heading {
             ..
         } => AstNodeKind::Heading {
             level: heading_level.unwrap_or(1),
             text: Text::new(text_nodes),
             links: inline_links,
         },
-        Tag::Paragraph => AstNodeKind::Paragraph {
+        &Tag::Paragraph => AstNodeKind::Paragraph {
             text: Text::new(text_nodes),
             links: inline_links,
         },
-        Tag::List(..) => AstNodeKind::List {
+        &Tag::List(..) => AstNodeKind::List {
             list_type: list_type.unwrap_or(AstListType::Unordered),
             items: children,
         },
-        Tag::Item => AstNodeKind::ListItem {
+        &Tag::Item => AstNodeKind::ListItem {
             text: Text::new(text_nodes),
             task,
             links: inline_links,
             children,
         },
-        Tag::BlockQuote(..) => AstNodeKind::BlockQuote {
+        &Tag::BlockQuote(..) => AstNodeKind::BlockQuote {
             kind: block_quote_kind,
             nodes: children,
         },
-        Tag::CodeBlock(..) => AstNodeKind::CodeBlock {
+        &Tag::CodeBlock(..) => AstNodeKind::CodeBlock {
             fenced,
             info,
             text: code_text.into_boxed_str(),
         },
-        Tag::HtmlBlock
-        | Tag::FootnoteDefinition(..)
-        | Tag::Table(..)
-        | Tag::TableHead
-        | Tag::TableRow
-        | Tag::TableCell
-        | Tag::DefinitionList
-        | Tag::DefinitionListTitle
-        | Tag::DefinitionListDefinition
-        | Tag::MetadataBlock(..) => return None,
-        Tag::Emphasis
-        | Tag::Strong
-        | Tag::Strikethrough
-        | Tag::Superscript
-        | Tag::Subscript
-        | Tag::Link {
+        &Tag::HtmlBlock
+        | &Tag::FootnoteDefinition(..)
+        | &Tag::Table(..)
+        | &Tag::TableHead
+        | &Tag::TableRow
+        | &Tag::TableCell
+        | &Tag::DefinitionList
+        | &Tag::DefinitionListTitle
+        | &Tag::DefinitionListDefinition
+        | &Tag::MetadataBlock(..)
+        | &Tag::Emphasis
+        | &Tag::Strong
+        | &Tag::Strikethrough
+        | &Tag::Superscript
+        | &Tag::Subscript
+        | &Tag::Link {
             ..
         }
-        | Tag::Image {
+        | &Tag::Image {
             ..
         } => return None,
     };
@@ -557,7 +604,15 @@ fn link_style(link_type: LinkType) -> AstLinkStyle {
         LinkType::WikiLink {
             ..
         } => AstLinkStyle::Wiki,
-        _ => AstLinkStyle::Markdown,
+        LinkType::Inline
+        | LinkType::Reference
+        | LinkType::ReferenceUnknown
+        | LinkType::Collapsed
+        | LinkType::CollapsedUnknown
+        | LinkType::Shortcut
+        | LinkType::ShortcutUnknown
+        | LinkType::Autolink
+        | LinkType::Email => AstLinkStyle::Markdown,
     }
 }
 
@@ -581,7 +636,35 @@ fn pop_style(stack: &mut Vec<TextStyle>, style: TextStyle) {
     }
 }
 
+fn link_origin(current_link: Option<&LinkFrame>) -> TextOrigin {
+    if current_link.is_some() {
+        TextOrigin::LinkAlias
+    } else {
+        TextOrigin::Normal
+    }
+}
+
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Tests use assertions in Result-returning functions."
+)]
+#[expect(
+    clippy::panic,
+    reason = "Tests use explicit panics for invalid structures"
+)]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Match ergonomics on &AstNodeKind"
+)]
+#[expect(
+    clippy::shadow_unrelated,
+    reason = "Test helpers reuse names for clarity"
+)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Test helpers ignore unrelated node kinds"
+)]
 mod tests {
     use super::*;
 
@@ -612,7 +695,7 @@ mod tests {
             {
                 assert_eq!(*level, 1);
                 let range = node.range();
-                assert!(range.len() > 0);
+                assert!(!range.is_empty());
                 found = true;
                 break;
             }
@@ -634,21 +717,10 @@ mod tests {
         } = list.kind()
         {
             for item in items {
-                if let AstNodeKind::ListItem {
-                    children,
-                    ..
-                } = item.kind()
-                {
-                    let has_paragraph = children.iter().any(|child| {
-                        matches!(child.kind(), AstNodeKind::Paragraph { .. })
-                    });
-                    assert!(
-                        !has_paragraph,
-                        "tight list item should not contain paragraph nodes"
-                    );
-                } else {
-                    panic!("expected list items only");
-                }
+                assert!(
+                    !list_item_has_paragraph(item),
+                    "tight list item should not contain paragraph nodes"
+                );
             }
         } else {
             panic!("expected list node");
@@ -752,10 +824,9 @@ mod tests {
                 nodes: children,
                 ..
             } = node.kind()
+                && let Some(found) = find_paragraph(children)
             {
-                if let Some(found) = find_paragraph(children) {
-                    return Some(found);
-                }
+                return Some(found);
             }
         }
         None
@@ -795,5 +866,18 @@ mod tests {
             }
         }
         None
+    }
+
+    fn list_item_has_paragraph(node: &AstNode) -> bool {
+        if let AstNodeKind::ListItem {
+            children,
+            ..
+        } = node.kind()
+        {
+            return children.iter().any(|child| {
+                matches!(child.kind(), AstNodeKind::Paragraph { .. })
+            });
+        }
+        false
     }
 }

@@ -467,10 +467,12 @@ impl SourceColumn {
 
 /// Precomputed line start offsets for fast line/column lookups.
 #[derive(Debug, Clone)]
+#[cfg(test)]
 pub(crate) struct LineIndex {
     line_starts: Vec<usize>,
 }
 
+#[cfg(test)]
 impl LineIndex {
     /// Builds a new line index for the provided source text.
     #[inline]

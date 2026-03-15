@@ -13,7 +13,7 @@ use crate::{
         error::NoteIngestError,
         loader::{LoadError, Loader as NoteLoader},
         paths::NotePath,
-        storage::RedbRepository,
+        storage::{RedbRepository, Repository as _},
     },
 };
 
@@ -57,7 +57,9 @@ impl<'db, 'config> Service<'db, 'config> {
     ///
     /// Returns [`ServiceError`] on I/O, parsing, or storage failure.
     #[inline]
-    pub fn load(&self) -> Result<Vec<crate::note::NoteId>, ServiceError> {
+    pub fn load(
+        &self,
+    ) -> Result<Vec<crate::note::aggregate::NoteId>, ServiceError> {
         let fs = FsReader::new(self.config.vault_metadata().root().as_path());
         let paths = Self::scan_note_paths(&fs)?;
 
@@ -113,7 +115,7 @@ impl<'db, 'config> Service<'db, 'config> {
                 let note_id = loader
                     .load_content(
                         &note_path,
-                        markdown.into_boxed_str(),
+                        markdown.as_str(),
                         created,
                         modified,
                     )
@@ -128,7 +130,7 @@ impl<'db, 'config> Service<'db, 'config> {
                 let note_id = loader
                     .load_content(
                         &note_path,
-                        markdown.into_boxed_str(),
+                        markdown.as_str(),
                         created,
                         modified,
                     )

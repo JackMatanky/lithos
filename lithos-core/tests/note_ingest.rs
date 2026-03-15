@@ -9,7 +9,7 @@ use lithos_core::{
     db::Database,
     note::{
         loader::Loader as NoteLoader,
-        storage::{RedbRepository, Repository},
+        storage::{RedbRepository, Repository as _},
     },
 };
 
@@ -49,7 +49,7 @@ mod tests {
             lithos_core::note::paths::NotePath::try_new("notes/ingest.md")
                 .expect("note path");
         let note_id = loader
-            .load_content(&note_path, markdown.into(), None, None)
+            .load_content(&note_path, markdown, None, None)
             .expect("load markdown");
         let note = repository
             .find_by_id(note_id)

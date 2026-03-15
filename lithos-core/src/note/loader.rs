@@ -8,7 +8,7 @@ use crate::{
         error::{NoteError, NoteIngestError},
         parser,
         paths::NotePath,
-        raw,
+        raw::extract::extract_raw_note,
         storage::Repository,
     },
 };
@@ -64,19 +64,21 @@ where
     pub fn load_content(
         &self,
         path: &NotePath,
-        markdown: Box<str>,
+        markdown: &str,
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, LoadError> {
         let parsed =
-            parser::parse_markdown(&markdown, parser::obsidian_options())?;
-        let source_bytes = markdown.as_bytes().len() as u64;
+            parser::parse_markdown(markdown, parser::obsidian_options())?;
+        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
+            NoteIngestError::Source("source length out of range".into())
+        })?;
         let source_hash =
             blake3::hash(markdown.as_bytes()).to_hex().to_string();
-        let raw_note = raw::extract_raw_note(
+        let raw_note = extract_raw_note(
             parsed.nodes(),
             parsed.frontmatter().cloned(),
-            &markdown,
+            markdown,
             path.clone(),
             source_hash.into_boxed_str(),
             source_bytes,
@@ -87,15 +89,14 @@ where
         let note_id = self
             .repository
             .find_by_path(path)?
-            .map(|note| note.id())
-            .unwrap_or_else(NoteId::new);
+            .map_or_else(NoteId::new, |note| note.id());
         let facts = NoteFacts::try_from(RawNoteContext::new(
             note_id,
             &raw_note,
             self.config,
         ))?;
-        let note_id = self.repository.save_note_facts(&facts)?;
-        Ok(note_id)
+        let saved_id = self.repository.save_note_facts(&facts)?;
+        Ok(saved_id)
     }
 
     #[inline]

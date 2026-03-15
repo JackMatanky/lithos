@@ -3,7 +3,16 @@
 //! Combines read and write operations for the note context in a single
 //! repository interface, following the File → Raw → Domain → Storage pipeline.
 
-use std::{path::Path, sync::Arc, time::SystemTime};
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Repository methods grouped by behavior"
+)]
+#![expect(
+    clippy::missing_errors_doc,
+    reason = "Repository methods share error semantics"
+)]
+
+use std::{fmt::Write as _, path::Path, sync::Arc, time::SystemTime};
 
 use uuid::Uuid;
 
@@ -42,9 +51,7 @@ pub trait Repository: Send + Sync {
     type Error: std::error::Error;
 
     /// Archived note type for zero-copy reads.
-    type NoteArchived<'archived>
-    where
-        Self: 'archived;
+    type NoteArchived<'archived>;
 
     /// Rebuilds all note indexes from stored projections.
     fn rebuild_note_indexes(&self) -> Result<usize, Self::Error>;
@@ -207,10 +214,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         Ok(())
     }
 
-    fn collect_index_data_from_facts(
-        &self,
-        facts: &NoteFacts,
-    ) -> Result<IndexData, DbError> {
+    fn collect_index_data_from_facts(&self, facts: &NoteFacts) -> IndexData {
         let frontmatter = facts.frontmatter();
         let aliases = frontmatter
             .map(|fm| fm.aliases(self.config).map(Into::into).collect())
@@ -221,7 +225,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         let frontmatter_entries =
             frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
 
-        Ok(IndexData {
+        IndexData {
             path: facts.path().as_str().into(),
             folder: Self::note_folder(facts.path().as_str()),
             tags: facts
@@ -231,9 +235,9 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
                 .collect(),
             aliases,
             file_class,
-            task_indexes: Self::task_indexes_from_facts(facts, self.config)?,
+            task_indexes: Self::task_indexes_from_facts(facts, self.config),
             frontmatter_entries,
-        })
+        }
     }
 
     fn find_note_id_by_path(
@@ -358,7 +362,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     fn task_indexes_from_facts(
         facts: &NoteFacts,
         config: &Config,
-    ) -> Result<TaskIndexData, DbError> {
+    ) -> TaskIndexData {
         let index_all_fields = config.task().indexed().is_empty();
         let dependencies_enabled = config.task().dependencies_enabled();
 
@@ -396,7 +400,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             ));
         }
 
-        Ok(TaskIndexData {
+        TaskIndexData {
             status_keys,
             created_dates,
             due_dates,
@@ -404,7 +408,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             completed_dates,
             metadata_keys,
             depends_on,
-        })
+        }
     }
 
     fn insert_task_indexes(
@@ -699,7 +703,6 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             .saturating_add(value.len())
             .saturating_add(1);
         let mut out = String::with_capacity(capacity);
-        use std::fmt::Write as _;
         #[expect(
             clippy::let_underscore_must_use,
             reason = "Writing to String is infallible"
@@ -780,10 +783,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
 
 impl Repository for RedbRepository<'_, '_> {
     type Error = DbError;
-    type NoteArchived<'archived>
-        = &'archived rkyv::Archived<NoteView>
-    where
-        Self: 'archived;
+    type NoteArchived<'archived> = &'archived rkyv::Archived<NoteView>;
 
     #[inline]
     fn rebuild_note_indexes(&self) -> Result<usize, Self::Error> {
@@ -792,7 +792,7 @@ impl Repository for RedbRepository<'_, '_> {
 
         for stored in &stored_notes {
             let note_id = stored.id();
-            let index_data = self.collect_index_data_from_facts(stored)?;
+            let index_data = self.collect_index_data_from_facts(stored);
             let id = Uuid::from(note_id);
             let mut id_buffer = Uuid::encode_buffer();
             let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
@@ -819,8 +819,7 @@ impl Repository for RedbRepository<'_, '_> {
         let mut total_tasks = 0usize;
 
         for note in &stored_notes {
-            let task_indexes =
-                Self::task_indexes_from_facts(note, self.config)?;
+            let task_indexes = Self::task_indexes_from_facts(note, self.config);
             total_tasks = total_tasks.saturating_add(note.tasks().len());
             let id = Uuid::from(note.id());
             let mut id_buffer = Uuid::encode_buffer();
@@ -850,7 +849,7 @@ impl Repository for RedbRepository<'_, '_> {
         let stored = self.db.get_owned::<NoteFacts>(STORED_NOTES, id_str)?;
 
         if let Some(stored) = stored {
-            let index_data = self.collect_index_data_from_facts(&stored)?;
+            let index_data = self.collect_index_data_from_facts(&stored);
             let event = Self::build_note_event_from_facts(
                 stored.id(),
                 stored.path(),
@@ -887,7 +886,7 @@ impl Repository for RedbRepository<'_, '_> {
         } else {
             facts.clone().with_id(note_id)
         };
-        let index_data = self.collect_index_data_from_facts(&stored_note)?;
+        let index_data = self.collect_index_data_from_facts(&stored_note);
         let change_kind = if existing_id.is_some() {
             NoteChangeKind::Updated
         } else {
@@ -907,7 +906,7 @@ impl Repository for RedbRepository<'_, '_> {
                 if stored.path() != path {
                     self.ensure_unique_path(path, Some(id_str))?;
                 }
-                Some(self.collect_index_data_from_facts(&stored)?)
+                Some(self.collect_index_data_from_facts(&stored))
             } else {
                 None
             }
@@ -1018,7 +1017,6 @@ impl Repository for RedbRepository<'_, '_> {
         key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        use std::fmt::Write as _;
         let mut combined_key =
             String::with_capacity(key.as_str().len() + value.len() + 1);
         #[expect(
@@ -1228,10 +1226,7 @@ impl SharedRepository {
 
 impl Repository for SharedRepository {
     type Error = DbError;
-    type NoteArchived<'archived>
-        = &'archived rkyv::Archived<NoteView>
-    where
-        Self: 'archived;
+    type NoteArchived<'archived> = &'archived rkyv::Archived<NoteView>;
 
     #[inline]
     fn rebuild_note_indexes(&self) -> Result<usize, Self::Error> {
@@ -1435,7 +1430,7 @@ mod tests {
             position::SourceByteOffset,
             raw::{
                 frontmatter::RawFrontmatter, note::RawNote, tags::RawTag,
-                tasks::RawTask,
+                task_tokens::RawTaskTokens, tasks::RawTask,
             },
         },
     };
@@ -1534,12 +1529,13 @@ mod tests {
         let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
+        let tokens = RawTaskTokens::parse(raw_task_text, &[]);
         let tasks = vec![RawTask::new(
             Some(' '),
             raw_task_text.into(),
             vec!["#task".into()],
-            Vec::new(),
-            Vec::new(),
+            tokens.inline_fields().to_vec(),
+            tokens.emoji_dates().to_vec(),
             SourceByteOffset::new(0),
         )];
 

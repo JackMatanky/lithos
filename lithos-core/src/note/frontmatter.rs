@@ -10,6 +10,10 @@
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
+#![expect(
+    dead_code,
+    reason = "Frontmatter parsing helpers retained for future use"
+)]
 
 use std::collections::HashMap;
 
