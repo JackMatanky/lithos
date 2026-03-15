@@ -502,7 +502,7 @@ mod tests {
             props.insert("z".into(), fixtures::inline_bool_entry());
             props.insert("a".into(), fixtures::inline_bool_entry());
             let raw = RawSchema {
-                version: crate::schema::raw::SCHEMA_VERSION.into(),
+                version: crate::schema::raw::RawSchemaVersion::SUPPORTED.into(),
                 name: "test".into(),
                 extends: None,
                 excludes: Vec::new(),
@@ -522,7 +522,7 @@ mod tests {
             let bank = PropertyBank::new();
             let ref_expander = RefExpander::new(&bank);
             let raw = RawSchema {
-                version: crate::schema::raw::SCHEMA_VERSION.into(),
+                version: crate::schema::raw::RawSchemaVersion::SUPPORTED.into(),
                 name: "child".into(),
                 extends: Some("parent".into()),
                 excludes: vec!["old-prop".into()],

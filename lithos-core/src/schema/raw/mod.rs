@@ -37,93 +37,6 @@ use std::{
 
 use super::error::{SchemaError, SchemaIngestionError};
 
-/// Current supported schema version.
-pub const SCHEMA_VERSION: &str = "1.0";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Version Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Schema format version.
-///
-/// Represents the version string from schema and property bank files.
-/// Validates against `SCHEMA_VERSION` constant.
-///
-/// # Design Note
-///
-/// This type uses the `validated()` pattern (validate after deserialization)
-/// rather than "parse, don't validate" because Raw types are meant to be
-/// direct representations of file contents, not domain types. A more idiomatic
-/// solution would use custom serde deserializers to validate during parsing,
-/// but that trades off error reporting quality and pipeline flexibility.
-///
-/// TODO: Revisit this design to find a more idiomatic Rust solution that
-/// maintains the benefits of separate parsing and validation phases.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-pub struct RawSchemaVersion(Box<str>);
-
-impl RawSchemaVersion {
-    /// Validates the version against the expected version.
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match the expected version.
-    #[inline]
-    pub fn validate(&self, path: &str) -> Result<(), SchemaIngestionError> {
-        if self.0.as_ref() != SCHEMA_VERSION {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.0.clone(),
-                expected: SCHEMA_VERSION.into(),
-            });
-        }
-        Ok(())
-    }
-
-    /// Returns the version string.
-    #[must_use]
-    #[inline]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Default for RawSchemaVersion {
-    #[inline]
-    fn default() -> Self {
-        Self(SCHEMA_VERSION.into())
-    }
-}
-
-impl From<&str> for RawSchemaVersion {
-    #[inline]
-    fn from(s: &str) -> Self {
-        Self(s.into())
-    }
-}
-
-impl From<Box<str>> for RawSchemaVersion {
-    #[inline]
-    fn from(s: Box<str>) -> Self {
-        Self(s)
-    }
-}
-
-impl From<String> for RawSchemaVersion {
-    #[inline]
-    fn from(s: String) -> Self {
-        Self(s.into())
-    }
-}
-
-impl AsRef<str> for RawSchemaVersion {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -408,7 +321,99 @@ impl RawSchemaMetadata {
         hashes
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Version Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Schema format version.
+///
+/// Represents the version string from schema and property bank files.
+/// Validates against the supported version constant.
+///
+/// # Design Note
+///
+/// This type uses the `validated()` pattern (validate after deserialization)
+/// rather than "parse, don't validate" because Raw types are meant to be
+/// direct representations of file contents, not domain types. A more idiomatic
+/// solution would use custom serde deserializers to validate during parsing,
+/// but that trades off error reporting quality and pipeline flexibility.
+///
+/// TODO: Revisit this design to find a more idiomatic Rust solution that
+/// maintains the benefits of separate parsing and validation phases.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct RawSchemaVersion(Box<str>);
+
+impl RawSchemaVersion {
+    /// Current supported schema version.
+    pub const SUPPORTED: &'static str = "1.0";
+
+    /// Validates the version against the expected version.
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
+    /// does not match the expected version.
+    #[inline]
+    pub fn validate(&self, path: &str) -> Result<(), SchemaIngestionError> {
+        if self.0.as_ref() != Self::SUPPORTED {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.0.clone(),
+                expected: Self::SUPPORTED.into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Returns the version string.
+    #[must_use]
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for RawSchemaVersion {
+    #[inline]
+    fn default() -> Self {
+        Self(Self::SUPPORTED.into())
+    }
+}
+
+impl From<&str> for RawSchemaVersion {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(s.into())
+    }
+}
+
+impl From<Box<str>> for RawSchemaVersion {
+    #[inline]
+    fn from(s: Box<str>) -> Self {
+        Self(s)
+    }
+}
+
+impl From<String> for RawSchemaVersion {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self(s.into())
+    }
+}
+
+impl AsRef<str> for RawSchemaVersion {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test helpers are grouped at the top for readability"
+)]
 mod tests {
     use std::collections::HashMap;
 
@@ -418,229 +423,234 @@ mod tests {
         "note".into()
     }
 
-    #[test]
-    fn raw_schema_defaults_to_empty_excludes() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: schema_name(),
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
+    mod raw_schema {
+        use super::*;
 
-        assert!(
-            schema.excludes.is_empty(),
-            "RawSchema should have empty excludes by default"
-        );
+        #[test]
+        fn defaults_to_empty_excludes() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: schema_name(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            assert!(
+                schema.excludes.is_empty(),
+                "RawSchema should have empty excludes by default"
+            );
+        }
+
+        #[test]
+        fn defaults_to_no_extends() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: schema_name(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            assert!(
+                schema.extends.is_none(),
+                "RawSchema should have no extends by default"
+            );
+        }
+
+        #[test]
+        fn validate_valid() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "test_schema".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap();
+        }
+
+        #[test]
+        fn validate_with_parent() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "child_schema".into(),
+                extends: Some("parent_schema".into()),
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap();
+        }
+
+        #[test]
+        fn validate_with_excludes() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "test".into(),
+                extends: Some("parent".into()),
+                excludes: vec!["prop1".into(), "prop2".into()],
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap();
+        }
+
+        #[test]
+        fn validate_invalid_name() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "Invalid Name".into(), // Uppercase + space
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap_err();
+        }
+
+        #[test]
+        fn validate_invalid_parent_name() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "child".into(),
+                extends: Some("Parent!Invalid".into()), /* Uppercase +
+                                                         * special char */
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap_err();
+        }
+
+        #[test]
+        fn validate_invalid_exclude_name() {
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "test".into(),
+                extends: Some("parent".into()),
+                excludes: vec!["Invalid Property".into()], // Space
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap_err();
+        }
+
+        #[test]
+        fn validate_with_valid_properties() {
+            let mut properties = HashMap::new();
+            properties.insert(
+                "valid_property".into(),
+                property::RawProperty::Inline(property::RawPropertyInline {
+                    required: false,
+                    multi: false,
+                    spec: property_spec::RawPropertySpec::Bool(
+                        property_spec::RawBoolSpec,
+                    ),
+                }),
+            );
+
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "test".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap();
+        }
+
+        #[test]
+        fn validate_invalid_property_name() {
+            let mut properties = HashMap::new();
+            properties.insert(
+                "Invalid Property!".into(), // Space + special char
+                property::RawProperty::Inline(property::RawPropertyInline {
+                    required: false,
+                    multi: false,
+                    spec: property_spec::RawPropertySpec::Bool(
+                        property_spec::RawBoolSpec,
+                    ),
+                }),
+            );
+
+            let schema = RawSchema {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                name: "test".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            schema.validated("test").unwrap_err();
+        }
     }
 
-    #[test]
-    fn raw_schema_defaults_to_no_extends() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: schema_name(),
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
+    mod raw_property_bank {
+        use super::*;
 
-        assert!(
-            schema.extends.is_none(),
-            "RawSchema should have no extends by default"
-        );
-    }
-
-    // ───────────────────────────────────────────────────────────────────────
-    //  Raw Validation Tests
-    // ───────────────────────────────────────────────────────────────────────
-
-    #[test]
-    fn raw_schema_validate_valid() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "test_schema".into(),
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap();
-    }
-
-    #[test]
-    fn raw_schema_validate_with_parent() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "child_schema".into(),
-            extends: Some("parent_schema".into()),
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap();
-    }
-
-    #[test]
-    fn raw_schema_validate_with_excludes() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "test".into(),
-            extends: Some("parent".into()),
-            excludes: vec!["prop1".into(), "prop2".into()],
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap();
-    }
-
-    #[test]
-    fn raw_schema_validate_invalid_name() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "Invalid Name".into(), // Uppercase + space
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap_err();
-    }
-
-    #[test]
-    fn raw_schema_validate_invalid_parent_name() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "child".into(),
-            extends: Some("Parent!Invalid".into()), // Uppercase + special char
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap_err();
-    }
-
-    #[test]
-    fn raw_schema_validate_invalid_exclude_name() {
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "test".into(),
-            extends: Some("parent".into()),
-            excludes: vec!["Invalid Property".into()], // Space
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        schema.validated("test").unwrap_err();
-    }
-
-    #[test]
-    fn raw_schema_validate_with_valid_properties() {
-        let mut properties = HashMap::new();
-        properties.insert(
-            "valid_property".into(),
-            property::RawProperty::Inline(property::RawPropertyInline {
-                required: false,
+        #[test]
+        fn validate_valid() {
+            let mut properties = HashMap::new();
+            properties.insert("title".into(), property::RawPropertyBankEntry {
                 multi: false,
-                spec: property_spec::RawPropertySpec::Bool(
-                    property_spec::RawBoolSpec,
+                spec: property_spec::RawPropertySpec::String(
+                    property_spec::RawStringSpec::default(),
                 ),
-            }),
-        );
+            });
 
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "test".into(),
-            extends: None,
-            excludes: Vec::new(),
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        };
+            let bank = RawPropertyBank {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                properties,
+                metadata: RawSchemaMetadata::default(),
+            };
 
-        schema.validated("test").unwrap();
-    }
+            bank.validated("test").unwrap();
+        }
 
-    #[test]
-    fn raw_schema_validate_invalid_property_name() {
-        let mut properties = HashMap::new();
-        properties.insert(
-            "Invalid Property!".into(), // Space + special char
-            property::RawProperty::Inline(property::RawPropertyInline {
-                required: false,
-                multi: false,
-                spec: property_spec::RawPropertySpec::Bool(
-                    property_spec::RawBoolSpec,
-                ),
-            }),
-        );
+        #[test]
+        fn validate_empty() {
+            let bank = RawPropertyBank {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
 
-        let schema = RawSchema {
-            version: SCHEMA_VERSION.into(),
-            name: "test".into(),
-            extends: None,
-            excludes: Vec::new(),
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        };
+            bank.validated("test").unwrap();
+        }
 
-        schema.validated("test").unwrap_err();
-    }
+        #[test]
+        fn validate_invalid_property_name() {
+            let mut properties = HashMap::new();
+            properties.insert(
+                "Invalid Name!".into(), // Space + special char
+                property::RawPropertyBankEntry {
+                    multi: false,
+                    spec: property_spec::RawPropertySpec::Bool(
+                        property_spec::RawBoolSpec,
+                    ),
+                },
+            );
 
-    #[test]
-    fn raw_property_bank_validate_valid() {
-        let mut properties = HashMap::new();
-        properties.insert("title".into(), property::RawPropertyBankEntry {
-            multi: false,
-            spec: property_spec::RawPropertySpec::String(
-                property_spec::RawStringSpec::default(),
-            ),
-        });
+            let bank = RawPropertyBank {
+                version: RawSchemaVersion::SUPPORTED.into(),
+                properties,
+                metadata: RawSchemaMetadata::default(),
+            };
 
-        let bank = RawPropertyBank {
-            version: SCHEMA_VERSION.into(),
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        bank.validated("test").unwrap();
-    }
-
-    #[test]
-    fn raw_property_bank_validate_empty() {
-        let bank = RawPropertyBank {
-            version: SCHEMA_VERSION.into(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        bank.validated("test").unwrap();
-    }
-
-    #[test]
-    fn raw_property_bank_validate_invalid_property_name() {
-        let mut properties = HashMap::new();
-        properties.insert(
-            "Invalid Name!".into(), // Space + special char
-            property::RawPropertyBankEntry {
-                multi: false,
-                spec: property_spec::RawPropertySpec::Bool(
-                    property_spec::RawBoolSpec,
-                ),
-            },
-        );
-
-        let bank = RawPropertyBank {
-            version: SCHEMA_VERSION.into(),
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        };
-
-        bank.validated("test").unwrap_err();
+            bank.validated("test").unwrap_err();
+        }
     }
 }
