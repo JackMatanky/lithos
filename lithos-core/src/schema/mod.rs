@@ -11,16 +11,11 @@
 /// Schema aggregate and identifier types.
 pub mod aggregate;
 
-/// Unified repository trait for schema persistence.
-pub mod repository;
-
-/// Redb-backed repository implementation.
+/// Unified repository trait and implementations for schema persistence.
 ///
-/// **Migration Status**: Skeleton created - full implementation pending.
-/// Methods are being migrated incrementally from `db_query.rs` and
-/// `db_command.rs`.
-#[doc(hidden)]
-pub mod redb_repository;
+/// Provides the `Repository` trait and `RedbRepository` implementation,
+/// replacing the old CQRS Command/Query pattern.
+pub mod storage;
 
 /// View types for storage and queries.
 ///
@@ -38,20 +33,6 @@ pub mod bank;
 #[doc(hidden)]
 pub mod expander;
 
-/// Database command adapter for schema CQRS write operations.
-///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the command adapter while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod db_command;
-/// Database query adapter for schema CQRS read operations.
-///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the query adapter while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod db_query;
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
@@ -63,8 +44,6 @@ pub mod events;
 /// documentation.
 #[doc(hidden)]
 pub mod ingestor;
-/// Storage types for raw file versions and resolved data (read models).
-pub mod storage;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///
@@ -76,8 +55,6 @@ pub mod extender;
 
 /// Schema loader — orchestrates file ingestion and resolution.
 pub mod loader;
-/// Schema ports for CQRS.
-pub mod ports;
 /// Property domain entities.
 pub mod property;
 /// Property specification variants.
@@ -100,28 +77,58 @@ pub(crate) mod db_table {
         TableDefinition::new("schema_by_id");
     pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_id_by_name");
+    #[expect(
+        dead_code,
+        reason = "Reserved for future schema metadata storage - part of \
+                  planned database schema"
+    )]
     pub(crate) const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_metadata");
     pub(crate) const BANK_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("bank_metadata");
     pub(crate) const BANK_PROPERTY_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("bank_property_by_id");
+    #[expect(
+        dead_code,
+        reason = "Reserved for property lookup by name - part of planned \
+                  database schema"
+    )]
     pub(crate) const BANK_PROPERTY_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("bank_property_by_name");
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 
-    // Raw file storage tables
+    // Raw file storage tables (old format - to be deprecated)
     /// Raw schema files (key: `file_path`, value: rkyv-serialized
     /// `RawSchemaFile`).
+    #[expect(
+        dead_code,
+        reason = "Deprecated table - kept for backwards compatibility, will \
+                  be removed in future version"
+    )]
     pub(crate) const RAW_SCHEMA_FILES: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_schema_files");
 
     /// Raw property bank file (singleton: key = `"property-bank"`).
+    #[expect(
+        dead_code,
+        reason = "Deprecated table - kept for backwards compatibility, will \
+                  be removed in future version"
+    )]
     pub(crate) const RAW_PROPERTY_BANK_FILE: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_property_bank_file");
 
     /// Key for raw property bank singleton.
     pub(crate) const RAW_PROPERTY_BANK_KEY: &str = "property-bank";
+
+    // Raw view storage tables (new format - for staleness detection)
+    /// Raw schema views (key: `SchemaId` as UUID string, value: rkyv-serialized
+    /// `RawSchemaView`).
+    pub(crate) const RAW_SCHEMA_VIEWS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_schema_views");
+
+    /// Raw property bank view (singleton: key = `"property-bank"`).
+    pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_property_bank_view");
 
     // Inheritance tracking tables
     /// Multimap: parent `SchemaId` → multiple child schema records.
@@ -137,6 +144,6 @@ pub(crate) mod db_table {
 }
 
 // --- Public API ---
-// Note: Generic wrapper boilerplate removed in Phase 6 Part B.
-// Applications now use concrete types (db_command::Command, db_query::Query)
-// directly.
+// Use explicit paths like `schema::aggregate::Schema` or
+// `schema::storage::Repository` instead of re-exports to maintain clear module
+// boundaries

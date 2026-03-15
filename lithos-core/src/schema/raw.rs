@@ -27,9 +27,9 @@
     reason = "Raw* types follow naming conventions for input layer types"
 )]
 
-use std::{collections::BTreeMap, time::SystemTime};
+use std::{collections::{BTreeMap, HashMap}, time::SystemTime};
 
-use super::error::{SchemaError, SchemaIngestionError};
+use super::error::SchemaIngestionError;
 
 /// Current supported schema version.
 pub const SCHEMA_VERSION: &str = "1.0";
@@ -81,7 +81,7 @@ pub struct RawSchema {
     #[serde(default)]
     pub excludes: Vec<Box<str>>,
     /// Map of property name to property definition.
-    pub properties: std::collections::HashMap<Box<str>, RawProperty>,
+    pub properties: HashMap<Box<str>, RawProperty>,
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
@@ -182,7 +182,7 @@ pub struct RawPropertyBank {
     #[serde(rename = "$version", default = "default_schema_version")]
     pub version: Box<str>,
     /// Map of property name to property definition.
-    pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+    pub properties: HashMap<Box<str>, RawPropertyBankEntry>,
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
@@ -874,8 +874,15 @@ impl RawSchemaMetadata {
     /// let hashes = RawSchemaMetadata::compute_property_hashes(&properties);
     /// assert_eq!(hashes.len(), 1);
     /// ```
+    #[must_use]
+    #[inline]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Iteration order doesn't matter - we're collecting into \
+                  BTreeMap which provides deterministic ordering"
+    )]
     pub fn compute_property_hashes(
-        properties: &std::collections::HashMap<Box<str>, RawProperty>,
+        properties: &HashMap<Box<str>, RawProperty>,
     ) -> BTreeMap<Box<str>, [u8; 32]> {
         let mut hashes = BTreeMap::new();
 

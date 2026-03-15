@@ -515,7 +515,7 @@ fn bench_property_bank_validation(c: &mut Criterion) {
     let ingestor =
         Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
     let raw_bank =
-        ingestor.load_raw_property_bank().expect("Failed to load raw bank");
+        ingestor.property_bank().expect("Failed to load raw bank");
 
     group.bench_function("validate", |b| {
         b.iter(|| {
@@ -542,7 +542,7 @@ fn bench_property_bank_lookup(c: &mut Criterion) {
     let config = bench_config(vault.path());
     let ingestor =
         Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
-    let raw_bank = ingestor.load_raw_property_bank().expect("Failed to load");
+    let raw_bank = ingestor.property_bank().expect("Failed to load");
     let bank =
         PropertyBank::try_from_raw(raw_bank, None).expect("Failed to validate");
 

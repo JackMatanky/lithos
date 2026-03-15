@@ -190,7 +190,7 @@ impl RawSchemaView {
         &self,
         metadata: &super::super::raw::RawSchemaMetadata,
     ) -> bool {
-        self.current().is_some_and(|current| {
+        self.current().is_some_and(|_current| {
             self.is_timestamp_match(metadata)
                 || (self.is_content_match(metadata)
                     && self.is_properties_match(metadata))
@@ -262,40 +262,43 @@ impl RawSchemaView {
     /// }
     /// ```
     #[must_use]
+    #[inline]
     pub fn filter_changed_properties(
         &self,
         metadata: &super::super::raw::RawSchemaMetadata,
     ) -> Vec<PropertyName> {
-        self.current().map_or_else(Vec::new, |current| {
-            let mut changed = Vec::new();
+        let Some(current) = self.current() else {
+            return Vec::new();
+        };
 
-            // Check for added or modified properties
-            for (name, new_hash) in &metadata.property_hashes {
-                if let Ok(prop_name) = PropertyName::try_new(name.as_ref()) {
-                    match current.property_hashes.get(&prop_name) {
-                        Some(old_hash) if old_hash != new_hash => {
-                            // Property modified
-                            changed.push(prop_name);
-                        }
-                        None => {
-                            // Property added
-                            changed.push(prop_name);
-                        }
-                        _ => {} // Property unchanged
-                    }
-                }
+        let mut changed = Vec::new();
+
+        // Check for added or modified properties
+        for (name, new_hash) in &metadata.property_hashes {
+            let Ok(prop_name) = PropertyName::try_new(name.as_ref()) else {
+                continue;
+            };
+
+            let is_changed = match current.property_hashes.get(&prop_name) {
+                Some(old_hash) if old_hash != new_hash => true, // Modified
+                None => true,                                   // Added
+                _ => false,                                     // Unchanged
+            };
+
+            if is_changed {
+                changed.push(prop_name);
             }
+        }
 
-            // Check for removed properties (in current but not in metadata)
-            for prop_name in current.property_hashes.keys() {
-                let name_str: &str = prop_name.as_ref();
-                if !metadata.property_hashes.contains_key(name_str) {
-                    changed.push(prop_name.clone());
-                }
+        // Check for removed properties (in current but not in metadata)
+        for prop_name in current.property_hashes.keys() {
+            let name_str: &str = prop_name.as_ref();
+            if !metadata.property_hashes.contains_key(name_str) {
+                changed.push(prop_name.clone());
             }
+        }
 
-            changed
-        })
+        changed
     }
 }
 
@@ -403,7 +406,7 @@ impl RawPropertyBankView {
         &self,
         metadata: &super::super::raw::RawSchemaMetadata,
     ) -> bool {
-        self.current().is_some_and(|current| {
+        self.current().is_some_and(|_current| {
             self.is_timestamp_match(metadata)
                 || (self.is_content_match(metadata)
                     && self.is_properties_match(metadata))
@@ -466,40 +469,43 @@ impl RawPropertyBankView {
     /// - Were removed (in current version but not in metadata)
     /// - Were modified (different hash)
     #[must_use]
+    #[inline]
     pub fn filter_changed_properties(
         &self,
         metadata: &super::super::raw::RawSchemaMetadata,
     ) -> Vec<PropertyName> {
-        self.current().map_or_else(Vec::new, |current| {
-            let mut changed = Vec::new();
+        let Some(current) = self.current() else {
+            return Vec::new();
+        };
 
-            // Check for added or modified properties
-            for (name, new_hash) in &metadata.property_hashes {
-                if let Ok(prop_name) = PropertyName::try_new(name.as_ref()) {
-                    match current.property_hashes.get(&prop_name) {
-                        Some(old_hash) if old_hash != new_hash => {
-                            // Property modified
-                            changed.push(prop_name);
-                        }
-                        None => {
-                            // Property added
-                            changed.push(prop_name);
-                        }
-                        _ => {} // Property unchanged
-                    }
-                }
+        let mut changed = Vec::new();
+
+        // Check for added or modified properties
+        for (name, new_hash) in &metadata.property_hashes {
+            let Ok(prop_name) = PropertyName::try_new(name.as_ref()) else {
+                continue;
+            };
+
+            let is_changed = match current.property_hashes.get(&prop_name) {
+                Some(old_hash) if old_hash != new_hash => true, // Modified
+                None => true,                                   // Added
+                _ => false,                                     // Unchanged
+            };
+
+            if is_changed {
+                changed.push(prop_name);
             }
+        }
 
-            // Check for removed properties (in current but not in metadata)
-            for prop_name in current.property_hashes.keys() {
-                let name_str: &str = prop_name.as_ref();
-                if !metadata.property_hashes.contains_key(name_str) {
-                    changed.push(prop_name.clone());
-                }
+        // Check for removed properties (in current but not in metadata)
+        for prop_name in current.property_hashes.keys() {
+            let name_str: &str = prop_name.as_ref();
+            if !metadata.property_hashes.contains_key(name_str) {
+                changed.push(prop_name.clone());
             }
+        }
 
-            changed
-        })
+        changed
     }
 }
 

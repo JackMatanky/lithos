@@ -1,4 +1,4 @@
-//! `Resolver` — assembles fully-resolved [`StoredSchema`] entities from a
+//! `Resolver` — assembles fully-resolved [`Schema`] entities from a
 //! [`SchemaTree`].
 //!
 //! # Pipeline position
@@ -6,7 +6,7 @@
 //! ```text
 //! Extender → SchemaTree
 //! Resolver        ← here
-//! → Vec<StoredSchema>
+//! → Vec<Schema>
 //! ```
 //!
 //! # Design
@@ -22,11 +22,10 @@
 use std::collections::HashMap;
 
 use super::{
-    aggregate::{SchemaId, SchemaName},
+    aggregate::{Schema, SchemaId, SchemaName},
     error::SchemaError,
     extender::SchemaTree,
-    property::{Multiplicity, Optionality, Property, PropertyName},
-    storage::{StoredProperty, StoredSchema},
+    property::{Property, PropertyName},
 };
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
@@ -38,7 +37,7 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 //  Resolver
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Assembles fully-resolved [`StoredSchema`] entities from a [`SchemaTree`].
+/// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
 ///
 /// Stateless: all resolution state is threaded through the arguments.
 ///
@@ -49,7 +48,7 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 pub struct Resolver;
 
 impl Resolver {
-    /// Resolve all schemas in `tree`, returning them as [`StoredSchema`]
+    /// Resolve all schemas in `tree`, returning them as [`Schema`]
     /// values.
     ///
     /// Walks `tree` in topological order (parents before children).  For each
@@ -60,7 +59,7 @@ impl Resolver {
     ///    (a DB-fresh parent), or uses an empty slice for root schemas.
     /// 2. Calls private `merge_properties` to produce the final sorted property
     ///    list.
-    /// 3. Constructs a [`StoredSchema`] directly.
+    /// 3. Constructs a [`Schema`] directly.
     /// 4. Caches the result for use by downstream children.
     ///
     /// # Errors
@@ -73,12 +72,12 @@ impl Resolver {
     #[doc(hidden)]
     pub fn resolve(
         tree: &SchemaTree,
-        known_parents: &HashMap<SchemaId, StoredSchema>,
-    ) -> Result<Vec<StoredSchema>, SchemaError> {
+        known_parents: &HashMap<SchemaId, Schema>,
+    ) -> Result<Vec<Schema>, SchemaError> {
         let order = tree.nodes();
-        let mut resolved_cache: HashMap<SchemaId, StoredSchema> =
+        let mut resolved_cache: HashMap<SchemaId, Schema> =
             HashMap::with_capacity(order.len());
-        let mut results: Vec<StoredSchema> = Vec::with_capacity(order.len());
+        let mut results: Vec<Schema> = Vec::with_capacity(order.len());
 
         for &id in order {
             let node = tree.get(id).ok_or_else(|| {
@@ -99,68 +98,53 @@ impl Resolver {
             }
 
             // Obtain parent's resolved properties.
-            let parent_props: Vec<Property> =
+            let parent_props: &[Property] =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
                         .or_else(|| known_parents.get(&parent_id))
-                        .map(|stored| {
-                            stored
-                                .properties
-                                .iter()
-                                .map(Self::stored_to_property)
-                                .collect::<Result<Vec<_>, _>>()
-                        })
-                        .transpose()?
-                        .unwrap_or_else(|| {
-                            // This should not happen if Extender worked
-                            // correctly - all parents should be in
-                            // resolved_cache or known_parents
-                            tracing::warn!(
-                                schema_id = %id,
-                                parent_id = %parent_id,
-                                "Parent schema not found in \
-                                 resolved_cache or known_parents, using \
-                                 empty properties. This may indicate a bug \
-                                 in Extender or missing parent in database."
-                            );
-                            Vec::new()
-                        })
+                        .map_or_else(
+                            || {
+                                // This should not happen if Extender worked
+                                // correctly - all parents should be in
+                                // resolved_cache or known_parents
+                                tracing::warn!(
+                                    schema_id = %id,
+                                    parent_id = %parent_id,
+                                    "Parent schema not found in \
+                                     resolved_cache or known_parents, using \
+                                     empty properties. This may indicate a bug \
+                                     in Extender or missing parent in database."
+                                );
+                                &[]
+                            },
+                            super::aggregate::Schema::properties,
+                        )
                 } else {
-                    vec![]
+                    &[]
                 };
 
             let merged = Self::merge_properties(
-                &parent_props,
+                parent_props,
                 &node.properties,
                 &node.excludes,
             );
 
             // Validate name (should always succeed since it passed earlier
             // validation)
-            let _name_check = SchemaName::try_new(&node.name)?;
+            let schema_name = SchemaName::try_new(&node.name)?;
 
-            // Build StoredSchema directly
-            let stored_properties: Vec<StoredProperty> = merged
-                .into_iter()
-                .map(|p| StoredProperty {
-                    id: p.id(),
-                    name: p.name().as_str().into(),
-                    required: p.optionality() == Optionality::Required,
-                    multi: p.multiplicity() == Multiplicity::Many,
-                    spec: p.spec().clone(),
-                })
-                .collect();
-
-            let stored = StoredSchema {
+            // Build Schema directly
+            let schema = Schema::new(
                 id,
-                name: node.name.clone(),
-                parent_id: node.parent_id,
-                properties: stored_properties,
-            };
+                schema_name,
+                node.parent_id,
+                node.children.clone(),
+                merged,
+            );
 
-            resolved_cache.insert(id, stored.clone());
-            results.push(stored);
+            resolved_cache.insert(id, schema.clone());
+            results.push(schema);
         }
 
         Ok(results)
@@ -169,21 +153,6 @@ impl Resolver {
     /// Convert a `StoredProperty` to a `Property`.
     ///
     /// Used when retrieving parent properties from the cache.
-    fn stored_to_property(
-        sp: &StoredProperty,
-    ) -> Result<Property, SchemaError> {
-        let name = PropertyName::try_new(&sp.name)?;
-        let optionality = Optionality::from(sp.required);
-        let multiplicity = Multiplicity::from(sp.multi);
-        Ok(Property::new(
-            sp.id,
-            name,
-            optionality,
-            multiplicity,
-            sp.spec.clone(),
-        ))
-    }
-
     /// Merge parent and own properties into a single sorted vector, applying
     /// child overrides and excludes.
     ///
@@ -285,10 +254,10 @@ impl Resolver {
     #[doc(hidden)]
     #[inline]
     pub fn resolve_affected_properties(
-        schema: &StoredSchema,
+        schema: &Schema,
         affected_properties: &[PropertyName],
         bank: &super::bank::PropertyBank,
-    ) -> Result<StoredSchema, SchemaError> {
+    ) -> Result<Schema, SchemaError> {
         if affected_properties.is_empty() {
             return Ok(schema.clone());
         }
@@ -298,47 +267,44 @@ impl Resolver {
             affected_properties.iter().collect();
 
         // Update affected properties with new definitions from bank
-        let updated_properties: Result<Vec<StoredProperty>, SchemaError> =
-            schema
-                .properties
-                .iter()
-                .map(|stored_prop| {
-                    let prop_name = PropertyName::try_new(&stored_prop.name)?;
+        let updated_properties: Result<Vec<Property>, SchemaError> = schema
+            .properties()
+            .iter()
+            .map(|prop| {
+                // If this property is affected, look up new definition from
+                // bank
+                if affected_set.contains(prop.name()) {
+                    let bank_prop = bank.get(prop.name()).ok_or_else(|| {
+                        SchemaError::PropertyRefNotFound(format!(
+                            "property_bank#/{}",
+                            prop.name()
+                        ))
+                    })?;
 
-                    // If this property is affected, look up new definition
-                    // from bank
-                    if affected_set.contains(&prop_name) {
-                        let bank_prop =
-                            bank.get(&prop_name).ok_or_else(|| {
-                                SchemaError::PropertyRefNotFound(format!(
-                                    "property_bank#/{}",
-                                    stored_prop.name
-                                ))
-                            })?;
+                    // Update the spec from the bank, keep other fields
+                    // (required, multi) Properties in schemas can override
+                    // optionality/multiplicity
+                    Ok(Property::new(
+                        bank_prop.id(),
+                        prop.name().clone(),
+                        prop.optionality(),
+                        prop.multiplicity(),
+                        bank_prop.spec().clone(),
+                    ))
+                } else {
+                    // Property not affected, keep as-is
+                    Ok(prop.clone())
+                }
+            })
+            .collect();
 
-                        // Update the spec from the bank, keep other fields
-                        // (required, multi) Properties in schemas can override
-                        // optionality/multiplicity
-                        Ok(StoredProperty {
-                            id: bank_prop.id(),
-                            name: stored_prop.name.clone(),
-                            required: stored_prop.required,
-                            multi: stored_prop.multi,
-                            spec: bank_prop.spec().clone(),
-                        })
-                    } else {
-                        // Property not affected, keep as-is
-                        Ok(stored_prop.clone())
-                    }
-                })
-                .collect();
-
-        Ok(StoredSchema {
-            id: schema.id,
-            name: schema.name.clone(),
-            parent_id: schema.parent_id,
-            properties: updated_properties?,
-        })
+        Ok(Schema::new(
+            *schema.id(),
+            schema.name().clone(),
+            schema.parent_id().copied(),
+            schema.children().to_vec(),
+            updated_properties?,
+        ))
     }
 }
 
@@ -358,7 +324,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::SchemaId,
+        aggregate::{Schema, SchemaId, SchemaName},
         error::SchemaError,
         expander::RefExpandedSchema,
         extender::Extender,
@@ -366,7 +332,6 @@ mod tests {
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
-        storage::StoredSchema,
     };
 
     mod fixtures {
@@ -449,8 +414,8 @@ mod tests {
 
             assert_eq!(result.len(), 1);
             let stored = &result[0];
-            assert_eq!(stored.name.as_ref(), "root");
-            assert_eq!(stored.properties.len(), 1);
+            assert_eq!(stored.name().as_ref(), "root");
+            assert_eq!(stored.properties().len(), 1);
             Ok(())
         }
 
@@ -478,11 +443,11 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name.as_ref() == "child")
+                .find(|s| s.name().as_ref() == "child")
                 .expect("child schema in result");
 
             let prop_names: Vec<&str> =
-                child.properties.iter().map(|p| p.name.as_ref()).collect();
+                child.properties().iter().map(|p| p.name().as_ref()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -531,17 +496,18 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name.as_ref() == "child")
+                .find(|s| s.name().as_ref() == "child")
                 .expect("child in result");
             let shared = child
-                .properties
+                .properties()
                 .iter()
-                .find(|p| p.name.as_ref() == "shared")
+                .find(|p| p.name().as_ref() == "shared")
                 .expect("shared property");
-            assert!(
-                !shared.required,
+            assert_eq!(
+                shared.optionality(),
+                Optionality::Optional,
                 "Child should override parent's optionality (should be \
-                 optional/not required)"
+                 optional)"
             );
             Ok(())
         }
@@ -569,12 +535,14 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name.as_ref() == "child")
+                .find(|s| s.name().as_ref() == "child")
                 .expect("child in result");
-            let has_excluded =
-                child.properties.iter().any(|p| p.name.as_ref() == "excluded");
+            let has_exclude = child
+                .properties()
+                .iter()
+                .any(|p| p.name().as_ref() == "excluded");
             assert!(
-                !has_excluded,
+                !has_exclude,
                 "Excluded property should be absent from child"
             );
             Ok(())
@@ -586,21 +554,15 @@ mod tests {
             let child_id = SchemaId::from_uuid(CHILD_ID);
 
             let parent_prop = fixtures::bool_property("db-prop")?;
-            let parent_stored = StoredSchema {
-                id: parent_id,
-                name: "parent".into(),
-                parent_id: None,
-                properties: vec![StoredProperty {
-                    id: parent_prop.id(),
-                    name: parent_prop.name().as_str().into(),
-                    required: parent_prop.optionality()
-                        == Optionality::Required,
-                    multi: parent_prop.multiplicity() == Multiplicity::Many,
-                    spec: parent_prop.spec().clone(),
-                }],
-            };
+            let parent_schema = Schema::new(
+                parent_id,
+                SchemaName::try_new("parent")?,
+                None,
+                Vec::new(),
+                vec![parent_prop.clone()],
+            );
             let mut known_parents = HashMap::new();
-            known_parents.insert(parent_id, parent_stored);
+            known_parents.insert(parent_id, parent_schema);
 
             let expanded = vec![fixtures::simple_expanded(
                 child_id,
@@ -613,10 +575,12 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name.as_ref() == "child")
+                .find(|s| s.name().as_ref() == "child")
                 .expect("child in result");
-            let has_db_prop =
-                child.properties.iter().any(|p| p.name.as_ref() == "db-prop");
+            let has_db_prop = child
+                .properties()
+                .iter()
+                .any(|p| p.name().as_ref() == "db-prop");
             assert!(
                 has_db_prop,
                 "Child should inherit DB-fresh parent property"
@@ -654,7 +618,11 @@ mod tests {
             use uuid::Uuid;
 
             use crate::schema::{
-                expander::RefExpandedSchema, extender::Extender,
+                error::SchemaError,
+                aggregate::SchemaId,
+                extender::Extender,
+                property::{Property, PropertyName},
+                raw::RawProperty,
             };
 
             // Create a chain of 11 schemas: root → s1 → s2 → ... → s10

@@ -12,6 +12,9 @@
     reason = "Integration tests are top-level by default."
 )]
 
+// IGNORE REASON: These tests use the old CQRS pattern (db_command::Command,
+// db_query::Query) which has been replaced by the unified Repository trait.
+
 mod common;
 
 use std::path::Path;

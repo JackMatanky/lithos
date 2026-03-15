@@ -23,6 +23,10 @@
     reason = "Test constants grouped before modules for clarity"
 )]
 
+// IGNORE REASON: These tests are specifically for the CQRS pattern
+// (db_command::Command, db_query::Query) which has been replaced by the unified
+// Repository trait. This file tests the OLD pattern.
+
 mod common;
 
 use common::*;

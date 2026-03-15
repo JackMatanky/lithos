@@ -4,7 +4,7 @@
 
 The ingestor has been successfully refactored to:
 - Use `property_bank()` → `Option<RawPropertyBank>` with embedded metadata
-- Use `all_schemas()` → `Vec<RawSchema>` with embedded metadata  
+- Use `all_schemas()` → `Vec<RawSchema>` with embedded metadata
 - Implement parse-don't-validate via `validated()` pattern
 
 ## Remaining Work for Loader
@@ -45,4 +45,3 @@ The loader refactor should be done in phases:
 3. Migrate to Repository pattern
 4. Migrate StoredSchema → Schema
 5. Delete old CQRS files
-

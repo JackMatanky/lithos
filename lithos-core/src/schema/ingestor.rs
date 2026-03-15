@@ -127,17 +127,26 @@ impl Ingestor<'_> {
         // Parse and validate structured data
         let mut bank: RawPropertyBank = self
             .source
-            .parse_structured(&path)?
+            .parse_structured::<RawPropertyBank>(&path)?
             .validated(&path.to_string_lossy())?;
 
         // Populate metadata with property hashes
+        let property_hashes = bank
+            .properties
+            .iter()
+            .filter_map(|(name, entry)| {
+                serde_json::to_string(entry).ok().map(|json| {
+                    let hash = blake3::hash(json.as_bytes());
+                    (name.clone(), *hash.as_bytes())
+                })
+            })
+            .collect();
+
         bank.metadata = RawSchemaMetadata {
             created_at,
             modified_at,
             content_hash: Some(*content_hash.as_bytes()),
-            property_hashes: RawSchemaMetadata::compute_property_hashes(
-                &bank.properties,
-            ),
+            property_hashes,
         };
 
         Ok(Some(bank))

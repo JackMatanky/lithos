@@ -54,23 +54,19 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
-use std::{collections::HashMap, time::SystemTime};
+use std::collections::HashMap;
 
 use crate::schema::{
-    aggregate::{SchemaId, SchemaName},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    db_command, db_query,
-    error::{
-        SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
-    },
+    error::{SchemaError, SchemaIngestionError},
     events::{PropertyBankEvent, SchemaEvent, SchemaEventHandler},
     expander::RefExpander,
     extender::Extender,
     ingestor::Ingestor,
-    ports::{Command as _, Query as _},
     raw::RawSchema,
     resolver::Resolver,
-    storage::{StoredMetadata, StoredSchema},
+    storage::Repository,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,13 +85,9 @@ pub enum LoaderError {
     #[error("domain error: {0}")]
     Domain(#[from] SchemaError),
 
-    /// Storage query failed.
-    #[error("query error: {0}")]
-    Query(#[from] SchemaQueryError),
-
-    /// Storage command failed.
-    #[error("command error: {0}")]
-    Command(#[from] SchemaCommandError),
+    /// Storage operation failed.
+    #[error("storage error: {0}")]
+    Storage(String),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,11 +96,10 @@ pub enum LoaderError {
 
 /// Schema loader — orchestrates file ingestion and resolution.
 ///
-/// Uses concrete redb adapters for production use. If testing with mocks
-/// is needed in the future, this can be made generic again.
-pub struct Loader<'db> {
-    query: db_query::Query<'db>,
-    command: db_command::Command<'db>,
+/// Generic over `Repository` to support both production (redb) and test
+/// implementations.
+pub struct Loader<R> {
+    repository: R,
     event_handlers: Vec<Box<dyn SchemaEventHandler>>,
 }
 
@@ -118,17 +109,16 @@ pub struct Loader<'db> {
 type SchemaWithId = (SchemaId, RawSchema);
 type PartitionResult = (Vec<SchemaWithId>, Vec<SchemaId>);
 
-impl<'db> Loader<'db> {
-    /// Create a new `Loader` with query and command adapters.
+impl<R> Loader<R>
+where
+    R: Repository,
+{
+    /// Create a new `Loader` with a repository.
     #[inline]
     #[must_use]
-    pub fn new(
-        query: db_query::Query<'db>,
-        command: db_command::Command<'db>,
-    ) -> Self {
+    pub fn new(repository: R) -> Self {
         Self {
-            query,
-            command,
+            repository,
             event_handlers: Vec::new(),
         }
     }
@@ -175,13 +165,13 @@ impl<'db> Loader<'db> {
     ///
     /// # Errors
     ///
-    /// Returns [`LoaderError`] on any I/O, parsing, domain, query, or
-    /// command failure.
+    /// Returns [`LoaderError`] on any I/O, parsing, domain, or storage
+    /// failure.
     #[inline]
     pub fn load(
         &self,
         ingestor: &Ingestor<'_>,
-    ) -> Result<Vec<StoredSchema>, LoaderError> {
+    ) -> Result<Vec<Schema>, LoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
@@ -220,24 +210,25 @@ impl<'db> Loader<'db> {
                 bank_stale,
                 &changed_properties,
                 &bank,
-                current_bank_version,
             )?;
 
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         // Batch load: O(1) transaction for all fresh schemas
-        let known_parents = self
-            .query
-            .find_many_by_ids(&fresh_ids)
-            .map_err(SchemaQueryError::from)?;
+        let fresh_schemas = self
+            .repository
+            .find_schemas_by_ids(&fresh_ids)
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+
+        // Convert to HashMap for Extender/Resolver
+        let known_parents: HashMap<SchemaId, Schema> = fresh_schemas
+            .into_iter()
+            .map(|schema| (*schema.id(), schema))
+            .collect();
 
         // ── Step 6: pipeline (RefExpander → Extender → Resolver) ───────────
-        // Extract just (id, raw_schema) for reference expansion, keep
-        // timestamps separate
-        let stale_with_times = stale_for_full_resolution;
-        let stale_for_expand: Vec<(SchemaId, RawSchema)> = stale_with_times
-            .iter()
-            .map(|entry| (entry.0, entry.1.clone()))
-            .collect();
+        let stale_with_raw = stale_for_full_resolution;
+        let stale_for_expand: Vec<(SchemaId, RawSchema)> =
+            stale_with_raw.clone();
 
         let mut resolved = if stale_for_expand.is_empty() {
             Vec::new()
@@ -257,10 +248,10 @@ impl<'db> Loader<'db> {
         resolved.extend(incrementally_resolved);
 
         // Emit per-schema resolution events
-        for stored in &resolved {
+        for schema in &resolved {
             self.emit_schema(&SchemaEvent::SchemaResolved {
-                name: stored.name.to_string().into_boxed_str(),
-                id: stored.id,
+                name: schema.name().to_string().into_boxed_str(),
+                id: *schema.id(),
             });
         }
 
@@ -270,16 +261,12 @@ impl<'db> Loader<'db> {
 
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
-            self.persist_schemas(
-                &resolved,
-                stale_with_times,
-                current_bank_version,
-            )?;
+            self.persist_schemas(&resolved, stale_with_raw)?;
         }
 
-        self.command
+        self.repository
             .save_property_bank(&bank)
-            .map_err(SchemaCommandError::from)?;
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
         self.emit_property_bank(&PropertyBankEvent::Persisted {
             version: current_bank_version,
         });
@@ -291,8 +278,10 @@ impl<'db> Loader<'db> {
     fn load_name_to_id_map(
         &self,
     ) -> Result<HashMap<SchemaName, SchemaId>, LoaderError> {
-        let existing_pairs =
-            self.query.list_name_id_pairs().map_err(SchemaQueryError::from)?;
+        let existing_pairs = self
+            .repository
+            .list_schema_name_id_pairs()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
         let mut name_to_id: HashMap<SchemaName, SchemaId> =
             HashMap::with_capacity(existing_pairs.len());
         for (name, id) in existing_pairs {
@@ -315,179 +304,114 @@ impl<'db> Loader<'db> {
         (PropertyBank, bool, Vec<super::property::PropertyName>),
         LoaderError,
     > {
-        let stored_bank =
-            self.query.get_property_bank().map_err(SchemaQueryError::from)?;
+        // Step 1: Load stored bank and view from repository
+        let stored_bank = self
+            .repository
+            .get_property_bank()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
+        let bank_view = self
+            .repository
+            .get_raw_property_bank_view()
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        let (bank, bank_stale, changed_properties) = if let Some(stored) =
-            stored_bank
-        {
-            let stored_version = stored.version();
-            let is_stale = self
-                .query
-                .is_bank_stale(stored_version)
-                .map_err(SchemaQueryError::from)?;
+        // Step 2: Ingest raw bank from filesystem
+        let raw_bank_opt = ingestor.property_bank()?;
 
-            if is_stale {
-                self.emit_property_bank(
-                    &crate::schema::events::PropertyBankEvent::Stale {
-                        reason: crate::schema::events::StalenessReason::ContentChanged,
-                    },
-                );
-                self.emit_property_bank(
-                    &crate::schema::events::PropertyBankEvent::ResolutionStarted,
-                );
-                let raw_bank = ingestor.property_bank()?.ok_or_else(|| {
-                    LoaderError::Ingestion(SchemaIngestionError::FileSystem(
-                        "Property bank file not found".into(),
-                    ))
-                })?;
-                let content = String::new(); // TODO: Store raw content in metadata
-                let modified = raw_bank.metadata.modified_at;
-                let created = raw_bank.metadata.created_at;
-                let rebuilt_bank =
-                    PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
+        // Step 3: Determine staleness based on view.is_fresh()
+        let (bank, bank_stale, changed_properties) = match (
+            raw_bank_opt,
+            stored_bank,
+            bank_view,
+        ) {
+            (Some(raw_bank), Some(stored), Some(view)) => {
+                // Check if bank is fresh
+                if view.is_fresh(&raw_bank.metadata) {
+                    // Fresh - reuse stored bank
+                    self.emit_property_bank(&PropertyBankEvent::Fresh {
+                        version: stored.version(),
+                    });
+                    (stored, false, Vec::new())
+                } else {
+                    // Stale - rebuild bank
+                    self.emit_property_bank(&PropertyBankEvent::Stale {
+                            reason: crate::schema::events::StalenessReason::ContentChanged,
+                        });
+                    self.emit_property_bank(
+                        &PropertyBankEvent::ResolutionStarted,
+                    );
 
-                // Compute changed properties for incremental resolution
-                let changed_props = rebuilt_bank.diff_property_bank(&stored);
+                    let rebuilt_bank = PropertyBank::try_from_raw(
+                        raw_bank.clone(),
+                        Some(&stored),
+                    )?;
 
-                // Persist raw property bank file
-                let raw_bank_file =
-                    crate::schema::storage::RawPropertyBankFile::new(
-                        &content, created, modified,
-                    )
-                    .map_err(|e| {
-                        LoaderError::from(SchemaCommandError::Storage(
-                            crate::db::DbError::Database(e.to_string()),
-                        ))
-                    })?;
-                self.command
-                    .save_raw_property_bank_file(&raw_bank_file)
-                    .map_err(SchemaCommandError::from)?;
+                    // Compute changed properties using view helper
+                    let changed_props =
+                        view.filter_changed_properties(&raw_bank.metadata);
 
-                self.emit_property_bank(
-                    &crate::schema::events::PropertyBankEvent::Resolved {
+                    self.emit_property_bank(&PropertyBankEvent::Resolved {
                         property_count: rebuilt_bank.all().count(),
                         version: rebuilt_bank.version(),
-                    },
-                );
-                (rebuilt_bank, true, changed_props)
-            } else {
-                self.emit_property_bank(
-                    &crate::schema::events::PropertyBankEvent::Fresh {
-                        version: stored_version,
-                    },
-                );
-                (stored, false, Vec::new())
+                    });
+
+                    (rebuilt_bank, true, changed_props)
+                }
             }
-        } else {
-            // New bank (no stored version) - always requires resolution
-            // All properties are "changed" in this case
-            self.emit_property_bank(
-                &crate::schema::events::PropertyBankEvent::Stale {
+            (Some(raw_bank), None, _) | (Some(raw_bank), _, None) => {
+                // New bank (no stored version or no view) - always rebuild
+                self.emit_property_bank(&PropertyBankEvent::Stale {
                     reason: crate::schema::events::StalenessReason::New,
-                },
-            );
-            self.emit_property_bank(
-                &crate::schema::events::PropertyBankEvent::ResolutionStarted,
-            );
-            let raw_bank = ingestor.property_bank()?.ok_or_else(|| {
-                LoaderError::Ingestion(SchemaIngestionError::FileSystem(
-                    "Property bank file not found".into(),
-                ))
-            })?;
-            let content = String::new(); // TODO: Store raw content in metadata
-            let modified = raw_bank.metadata.modified_at;
-            let created = raw_bank.metadata.created_at;
-            let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
+                });
+                self.emit_property_bank(&PropertyBankEvent::ResolutionStarted);
 
-            // Persist raw property bank file
-            let raw_bank_file =
-                crate::schema::storage::RawPropertyBankFile::new(
-                    &content, created, modified,
-                )
-                .map_err(|e| {
-                    LoaderError::from(SchemaCommandError::Storage(
-                        crate::db::DbError::Database(e.to_string()),
-                    ))
-                })?;
-            self.command
-                .save_raw_property_bank_file(&raw_bank_file)
-                .map_err(SchemaCommandError::from)?;
+                let new_bank =
+                    PropertyBank::try_from_raw(raw_bank.clone(), None)?;
 
-            self.emit_property_bank(
-                &crate::schema::events::PropertyBankEvent::Resolved {
+                // All properties are "changed"
+                let all_props: Vec<_> =
+                    new_bank.all().map(|p| p.name().clone()).collect();
+
+                self.emit_property_bank(&PropertyBankEvent::Resolved {
                     property_count: new_bank.all().count(),
                     version: new_bank.version(),
-                },
-            );
-            // For new bank, consider all properties as changed
-            let all_props: Vec<_> =
-                new_bank.all().map(|p| p.name().clone()).collect();
-            (new_bank, true, all_props)
+                });
+
+                (new_bank, true, all_props)
+            }
+            (None, Some(stored), _) => {
+                // File disappeared but bank exists in DB - treat as fresh
+                // (could be temporary file system issue)
+                self.emit_property_bank(&PropertyBankEvent::Fresh {
+                    version: stored.version(),
+                });
+                (stored, false, Vec::new())
+            }
+            (None, None, _) => {
+                // No file and no stored bank - error
+                return Err(LoaderError::Ingestion(
+                    SchemaIngestionError::FileSystem(
+                        "Property bank file not found".into(),
+                    ),
+                ));
+            }
         };
 
         Ok((bank, bank_stale, changed_properties))
     }
 
-    /// Refine staleness by checking content hash for timestamp-stale schemas.
+    /// Partition schemas into stale and fresh based on view staleness checks.
     ///
-    /// This is the "slow path" that verifies whether a timestamp-based stale
-    /// detection was a real content change or just a file touch.
-    fn refine_staleness_by_hash(
-        &self,
-        staleness_map: &mut HashMap<SchemaId, bool>,
-        hash_map: &HashMap<SchemaId, [u8; 32]>,
-    ) -> Result<(), LoaderError> {
-        // Iteration over HashMap is intentional - order doesn't matter
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Iteration order doesn't matter for hash comparison"
-        )]
-        for (&id, is_stale) in staleness_map {
-            if !*is_stale {
-                continue; // Skip schemas already marked as fresh
-            }
-
-            // Check if hash actually changed (slow path)
-            let Some(&current_hash) = hash_map.get(&id) else {
-                continue;
-            };
-            let Some(stored_hash) = self
-                .query
-                .get_schema_hash(id)
-                .map_err(SchemaQueryError::from)?
-            else {
-                continue;
-            };
-
-            if current_hash == stored_hash {
-                // Hash unchanged - this is a touch-only change
-                *is_stale = false;
-                tracing::debug!(
-                    schema_id = %id,
-                    "Touch-only change detected (hash unchanged)"
-                );
-            }
-        }
-        Ok(())
-    }
-
-    /// Partition schemas into stale and fresh based on staleness checks.
+    /// Uses the view-based `is_fresh()` pattern for hybrid staleness detection
+    /// (timestamps + content hash). Bank staleness forces all schemas stale.
     fn partition_by_staleness(
         &self,
         raw_schemas: &[RawSchema],
         name_to_id: &HashMap<SchemaName, SchemaId>,
-        current_bank_version: crate::schema::bank::BankVersion,
+        _current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
     ) -> Result<PartitionResult, LoaderError> {
-        type StalenessCheck =
-            (SchemaId, Option<SystemTime>, Option<SystemTime>);
-
-        // Build schema IDs and staleness checks from embedded metadata
-        let mut schema_ids: Vec<SchemaId> =
-            Vec::with_capacity(raw_schemas.len());
-        let mut staleness_checks: Vec<StalenessCheck> =
-            Vec::with_capacity(raw_schemas.len());
+        let mut stale = Vec::new();
+        let mut fresh_ids = Vec::new();
 
         for raw_schema in raw_schemas {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
@@ -495,53 +419,30 @@ impl<'db> Loader<'db> {
                 .get(&schema_name)
                 .copied()
                 .unwrap_or_else(SchemaId::new);
-            schema_ids.push(id);
-            staleness_checks.push((
-                id,
-                raw_schema.metadata.created_at,
-                raw_schema.metadata.modified_at,
-            ));
-        }
 
-        // Step 1: Check staleness with cascade (timestamp-based fast path)
-        let mut staleness_map = self
-            .query
-            .are_many_stale(&staleness_checks, current_bank_version)
-            .map_err(SchemaQueryError::from)?;
-        self.query
-            .cascade_staleness(&mut staleness_map)
-            .map_err(SchemaQueryError::from)?;
+            // Check if schema is new (ID not in name_to_id means newly created)
+            let is_new =
+                !name_to_id.values().any(|&existing_id| existing_id == id);
 
-        // Step 2: Build hash map for content comparison from metadata
-        let mut hash_map: HashMap<SchemaId, [u8; 32]> =
-            HashMap::with_capacity(raw_schemas.len());
+            // Load view for staleness check (only if not new)
+            let schema_stale = if is_new {
+                true // New schemas are always stale
+            } else {
+                // Get view and check freshness
+                let view = self
+                    .repository
+                    .get_raw_schema_view(id)
+                    .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        for raw_schema in raw_schemas {
-            let schema_name = SchemaName::try_new(&raw_schema.name)?;
-            if let Some(&id) = name_to_id.get(&schema_name) {
-                if let Some(hash) = raw_schema.metadata.content_hash {
-                    hash_map.insert(id, hash);
+                match view {
+                    Some(v) => !v.is_fresh(&raw_schema.metadata),
+                    None => true, // No view = never loaded = stale
                 }
-            }
-        }
+            };
 
-        // Step 3: Refine staleness by checking content hash (slow path)
-        self.refine_staleness_by_hash(&mut staleness_map, &hash_map)?;
-
-        // Partition into stale and fresh
-        let mut stale = Vec::new();
-        let mut fresh_ids = Vec::new();
-
-        for (id, raw_schema) in
-            schema_ids.into_iter().zip(raw_schemas.iter().cloned())
-        {
-            let schema_stale = staleness_map.get(&id).copied().unwrap_or(true);
             let is_stale = bank_stale || schema_stale;
 
             if is_stale {
-                // Determine staleness reason: new if ID not in name_to_id
-                let is_new =
-                    !name_to_id.values().any(|&existing_id| existing_id == id);
                 let reason = if is_new {
                     crate::schema::events::StalenessReason::New
                 } else if bank_stale {
@@ -556,7 +457,7 @@ impl<'db> Loader<'db> {
                         reason,
                     },
                 );
-                stale.push((id, raw_schema));
+                stale.push((id, raw_schema.clone()));
             } else {
                 self.emit_schema(
                     &crate::schema::events::SchemaEvent::SchemaFresh {
@@ -570,87 +471,97 @@ impl<'db> Loader<'db> {
         Ok((stale, fresh_ids))
     }
 
-    /// Persist resolved schemas with metadata and inheritance relationships.
+    /// Persist resolved schemas with raw views for staleness tracking.
     fn persist_schemas(
         &self,
-        resolved: &[StoredSchema],
-        stale_with_times: Vec<SchemaWithTimes>,
-        current_bank_version: crate::schema::bank::BankVersion,
+        resolved: &[Schema],
+        stale_with_raw: Vec<SchemaWithId>,
     ) -> Result<(), LoaderError> {
-        use crate::schema::ports::InheritanceRelationship;
-        type MetadataTriple =
-            ([u8; 32], Option<SystemTime>, Option<SystemTime>);
+        // Save resolved schemas
+        self.repository
+            .save_schemas(resolved)
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        // Build metadata and inheritance maps, persist raw files
-        let mut metadata_map: HashMap<SchemaId, MetadataTriple> =
-            HashMap::with_capacity(stale_with_times.len());
-        let mut raw_map: HashMap<SchemaId, Vec<Box<str>>> =
-            HashMap::with_capacity(stale_with_times.len());
+        // Save raw views for staleness tracking
+        for (id, raw) in stale_with_raw {
+            // Create or update raw schema view
+            if let Some(mut view) = self
+                .repository
+                .get_raw_schema_view(id)
+                .map_err(|e| LoaderError::Storage(e.to_string()))?
+            {
+                // View exists - add new version
+                // TODO: Get raw content from ingestor for compression
+                let content = String::new(); // Placeholder
+                view.add_version(
+                    &content,
+                    raw.metadata
+                        .property_hashes
+                        .clone()
+                        .into_iter()
+                        .filter_map(|(k, v)| {
+                            super::property::PropertyName::try_new(k.as_ref())
+                                .ok()
+                                .map(|name| (name, v))
+                        })
+                        .collect(),
+                    raw.metadata.created_at,
+                    raw.metadata.modified_at,
+                )
+                .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-        for (id, raw, content, hash, modified, created) in stale_with_times {
-            metadata_map.insert(id, (hash, modified, created));
-            raw_map.insert(id, raw.excludes);
+                self.repository
+                    .save_raw_schema_view(id, &view)
+                    .map_err(|e| LoaderError::Storage(e.to_string()))?;
+            } else {
+                // New view - create it
+                // TODO: Get raw content from ingestor
+                let content = String::new(); // Placeholder
+                let view = super::views::RawSchemaView::new(
+                    format!("schemas/{}.toml", raw.name).into_boxed_str(),
+                    raw.extends.clone().and_then(|name| {
+                        super::aggregate::SchemaName::try_new(&name).ok()
+                    }),
+                    raw.excludes
+                        .iter()
+                        .filter_map(|name| {
+                            super::property::PropertyName::try_new(
+                                name.as_ref(),
+                            )
+                            .ok()
+                        })
+                        .collect(),
+                    &content,
+                    raw.metadata
+                        .property_hashes
+                        .clone()
+                        .into_iter()
+                        .filter_map(|(k, v)| {
+                            super::property::PropertyName::try_new(k.as_ref())
+                                .ok()
+                                .map(|prop| (prop, v))
+                        })
+                        .collect(),
+                    raw.metadata.created_at,
+                    raw.metadata.modified_at,
+                )
+                .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-            // Persist raw file with version history
-            let file_path = format!("schemas/{}.toml", raw.name);
-            let raw_file = crate::schema::storage::RawSchemaFile::new(
-                file_path, &content, created, modified,
-            )
-            .map_err(|e| {
-                LoaderError::from(SchemaCommandError::Storage(
-                    crate::db::DbError::Database(e.to_string()),
-                ))
-            })?;
-            self.command
-                .save_raw_schema_file(&raw_file)
-                .map_err(SchemaCommandError::from)?;
+                self.repository
+                    .save_raw_schema_view(id, &view)
+                    .map_err(|e| LoaderError::Storage(e.to_string()))?;
+            }
         }
 
-        // Build metadata vector
-        let metadata: Vec<StoredMetadata> = resolved
-            .iter()
-            .map(|stored| {
-                let (hash, modified, created) = metadata_map
-                    .get(&stored.id)
-                    .copied()
-                    .unwrap_or(([0u8; 32], None, None));
-                StoredMetadata::new(
-                    current_bank_version,
-                    hash,
-                    created,
-                    modified,
-                )
-            })
-            .collect();
-
-        // Save schemas with metadata
-        self.command
-            .save_many_with_metadata(resolved, &metadata)
-            .map_err(SchemaCommandError::from)?;
-
-        // Emit persistence events for each schema
-        for stored in resolved {
+        // Emit persistence events
+        for schema in resolved {
             self.emit_schema(
                 &crate::schema::events::SchemaEvent::SchemaPersisted {
-                    name: stored.name.to_string().into_boxed_str(),
-                    id: stored.id,
+                    name: schema.name().to_string().into_boxed_str(),
+                    id: *schema.id(),
                 },
             );
         }
-
-        // Build and save inheritance relationships
-        let inheritance_data: Vec<InheritanceRelationship> = resolved
-            .iter()
-            .map(|stored| {
-                let excludes =
-                    raw_map.get(&stored.id).cloned().unwrap_or_default();
-                (stored.id, stored.parent_id, excludes)
-            })
-            .collect();
-
-        self.command
-            .save_inheritance_many(&inheritance_data)
-            .map_err(SchemaCommandError::from)?;
 
         Ok(())
     }
@@ -665,26 +576,16 @@ impl<'db> Loader<'db> {
     /// For the second group, it applies `resolve_affected_properties()` to
     /// update only the properties that reference changed bank properties.
     #[expect(
-        clippy::too_many_arguments,
-        reason = "Method needs bank version, changed properties, and bank to \
-                  apply incremental resolution"
-    )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Tuple destructuring requires ref patterns"
-    )]
-    #[expect(
         clippy::type_complexity,
         reason = "Return tuple is clearest for pipeline result partitioning"
     )]
     fn apply_incremental_resolution(
         &self,
-        stale: Vec<SchemaWithTimes>,
+        stale: Vec<SchemaWithId>,
         bank_stale: bool,
         changed_properties: &[super::property::PropertyName],
         bank: &PropertyBank,
-        current_bank_version: crate::schema::bank::BankVersion,
-    ) -> Result<(Vec<SchemaWithTimes>, Vec<StoredSchema>), LoaderError> {
+    ) -> Result<(Vec<SchemaWithId>, Vec<Schema>), LoaderError> {
         // Early return if bank is not stale or no properties changed
         if !bank_stale || changed_properties.is_empty() {
             return Ok((stale, Vec::new()));
@@ -692,38 +593,29 @@ impl<'db> Loader<'db> {
 
         // Find schemas that reference changed properties
         let affected_map = self
-            .query
+            .repository
             .find_schemas_using_properties(changed_properties)
-            .map_err(SchemaQueryError::from)?;
+            .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
         // Partition stale schemas: file-changed vs. bank-only-changed
         let mut full_resolution = Vec::new();
         let mut incremental_ids = Vec::new();
-        let staleness_map = self
-            .query
-            .are_many_stale(
-                &stale
-                    .iter()
-                    .map(|(id, _, _, _hash, modified, created)| {
-                        (*id, *created, *modified)
-                    })
-                    .collect::<Vec<_>>(),
-                current_bank_version,
-            )
-            .map_err(SchemaQueryError::from)?;
 
-        for entry in stale {
-            let (id, _raw, _content, _hash, _modified, _created) = &entry;
-            // Schema is file-stale if marked stale even without bank staleness
-            // We check original staleness (before bank cascade)
-            let file_stale = staleness_map.get(id).copied().unwrap_or(true);
+        for (id, raw) in stale {
+            // Check if schema file itself is stale (has view and is fresh)
+            let view = self
+                .repository
+                .get_raw_schema_view(id)
+                .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-            if !file_stale && affected_map.contains_key(id) {
+            let file_fresh = view.is_some_and(|v| v.is_fresh(&raw.metadata));
+
+            if file_fresh && affected_map.contains_key(&id) {
                 // Schema file is fresh but references changed bank properties
-                incremental_ids.push(*id);
+                incremental_ids.push(id);
             } else {
                 // Schema file changed OR doesn't reference changed properties
-                full_resolution.push(entry);
+                full_resolution.push((id, raw));
             }
         }
 
@@ -731,19 +623,14 @@ impl<'db> Loader<'db> {
         let mut resolved_incremental = Vec::new();
         if !incremental_ids.is_empty() {
             let stored_schemas = self
-                .query
-                .find_many_by_ids(&incremental_ids)
-                .map_err(SchemaQueryError::from)?;
+                .repository
+                .find_schemas_by_ids(&incremental_ids)
+                .map_err(|e| LoaderError::Storage(e.to_string()))?;
 
-            #[expect(
-                clippy::iter_over_hash_type,
-                reason = "HashMap iteration order doesn't matter - we process \
-                          all affected schemas"
-            )]
-            for (id, affected_props) in &affected_map {
-                if let Some(stored) = stored_schemas.get(id) {
+            for schema in &stored_schemas {
+                if let Some(affected_props) = affected_map.get(schema.id()) {
                     let updated = Resolver::resolve_affected_properties(
-                        stored,
+                        schema,
                         affected_props,
                         bank,
                     )?;

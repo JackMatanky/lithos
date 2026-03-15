@@ -163,6 +163,11 @@ impl PropertyBank {
     /// Reconstruct a `PropertyBank` from stored properties.
     ///
     /// This skips event emission and preserves the provided version.
+    #[expect(
+        dead_code,
+        reason = "Used for deserialization from database - will be needed \
+                  when PropertyBank persistence is fully implemented"
+    )]
     pub(crate) fn try_reconstruct(
         properties: Vec<Property>,
         version: BankVersion,
