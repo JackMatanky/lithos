@@ -332,7 +332,7 @@ where
                     });
                     (stored, false, Vec::new())
                 } else {
-                    // Stale - rebuild bank
+                    // Stale - update changed properties incrementally
                     self.emit_property_bank(&PropertyBankEvent::Stale {
                             reason: crate::schema::events::StalenessReason::ContentChanged,
                         });
@@ -340,32 +340,31 @@ where
                         &PropertyBankEvent::ResolutionStarted,
                     );
 
-                    let rebuilt_bank = PropertyBank::try_from_raw(
-                        raw_bank.clone(),
-                        Some(&stored),
-                    )?;
-
-                    // Compute changed properties using view helper
+                    // Compute changed properties FIRST using view helper
                     let changed_props =
                         view.filter_changed_properties(&raw_bank.metadata);
 
+                    // Update only the changed properties
+                    let mut updated_bank = stored;
+                    updated_bank
+                        .update_properties(&raw_bank, &changed_props)?;
+
                     self.emit_property_bank(&PropertyBankEvent::Resolved {
-                        property_count: rebuilt_bank.all().count(),
-                        version: rebuilt_bank.version(),
+                        property_count: updated_bank.all().count(),
+                        version: updated_bank.version(),
                     });
 
-                    (rebuilt_bank, true, changed_props)
+                    (updated_bank, true, changed_props)
                 }
             }
             (Some(raw_bank), None, _) | (Some(raw_bank), _, None) => {
-                // New bank (no stored version or no view) - always rebuild
+                // New bank (no stored version or no view) - build from scratch
                 self.emit_property_bank(&PropertyBankEvent::Stale {
                     reason: crate::schema::events::StalenessReason::New,
                 });
                 self.emit_property_bank(&PropertyBankEvent::ResolutionStarted);
 
-                let new_bank =
-                    PropertyBank::try_from_raw(raw_bank.clone(), None)?;
+                let new_bank = PropertyBank::try_from(raw_bank.clone())?;
 
                 // All properties are "changed"
                 let all_props: Vec<_> =
