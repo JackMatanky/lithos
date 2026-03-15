@@ -1,54 +1,27 @@
 //! Ingestor adapter for loading raw schema files from the filesystem.
 //!
 //! Pure file-to-raw translation. No DB access. No ID assignment.
+//!
+//! ## Pattern
+//!
+//! Following the config ingestor pattern:
+//! - Single method per entity (`property_bank()`, `schema()`, `all_schemas()`)
+//! - Metadata populated in Raw* types (no separate tuples)
+//! - Returns `Option<T>` for optional files, `Result<Vec<T>>` for collections
 
-use std::time::SystemTime;
+use std::{collections::BTreeMap, path::Path};
 
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
     schema::{
         error::SchemaIngestionError,
-        raw::{RawPropertyBank, RawSchema},
+        raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
     },
 };
 
 /// Supported schema file extensions.
 const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
-
-/// A raw schema with filesystem timestamps and content hash.
-///
-/// Tuple fields: (`schema`, `content_hash`, `modified_at`, `created_at`).
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::ingestor::RawSchemaWithMetadata;
-///
-/// let _tuple: RawSchemaWithMetadata = todo!("Provide raw schema data");
-/// ```
-pub type RawSchemaWithMetadata = (
-    RawSchema,
-    String,             // raw file content
-    [u8; 32],           // content hash
-    Option<SystemTime>, // modified_at
-    Option<SystemTime>, // created_at
-);
-
-/// Property bank with filesystem timestamps and content hash.
-///
-/// Tuple fields: (`bank`, `raw_content`, `content_hash`, `modified_at`,
-/// `created_at`).
-pub type RawPropertyBankWithMetadata = (
-    RawPropertyBank,
-    String,             // raw file content
-    [u8; 32],           // content hash
-    Option<SystemTime>, // modified_at
-    Option<SystemTime>, // created_at
-);
-
-/// Old type alias for backward compatibility.
-#[deprecated(since = "0.1.0", note = "Use RawSchemaWithMetadata instead")]
-pub type RawSchemaWithFileTimes = RawSchemaWithMetadata;
 
 /// Ingestor for loading raw schema files from a file source.
 ///
@@ -106,91 +79,151 @@ impl<'config> Ingestor<'config> {
 }
 
 impl Ingestor<'_> {
-    /// Load and deserialize the property bank file.
+    /// Get the property bank file with metadata extraction.
+    ///
+    /// Reads from the configured property bank path, then:
+    /// - Extracts filesystem timestamps (`created_at`, `modified_at`)
+    /// - Computes BLAKE3 content hash
+    /// - Parses content into [`RawPropertyBank`]
+    /// - Populates metadata fields on the returned type
     ///
     /// Supports JSON, TOML, and YAML formats (detected by extension or
     /// content).
     ///
+    /// Returns `None` if the property bank file doesn't exist.
+    ///
     /// # Errors
-    /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
+    ///
+    /// Returns [`SchemaIngestionError`] if:
+    /// - File reading fails (I/O error)
+    /// - Parsing fails (syntax error)
+    /// - Version validation fails
     ///
     /// # Examples
     /// ```ignore
     /// # use lithos_core::schema::ingestor::Ingestor;
     /// # let ingestor = todo!("Provide an Ingestor instance");
-    /// let _bank = ingestor.load_raw_property_bank()?;
+    /// let bank = ingestor.property_bank()?;
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
     /// ```
     #[inline]
-    pub fn load_raw_property_bank(
+    pub fn property_bank(
         &self,
-    ) -> Result<RawPropertyBank, SchemaIngestionError> {
-        let path = self.config.paths().property_bank_path();
-        let bank: RawPropertyBank = self
-            .source
-            .parse_structured(&path)
-            .map_err(SchemaIngestionError::from)?;
-        bank.validate_version(&path.to_string_lossy())?;
-        bank.validate().map_err(SchemaIngestionError::from)?;
-        Ok(bank)
-    }
-
-    /// Load property bank with content hash and timestamps.
-    ///
-    /// Returns (`RawPropertyBank`, `raw_content`, `content_hash`,
-    /// `modified_at`, `created_at`).
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
-    #[inline]
-    pub fn load_raw_property_bank_with_metadata(
-        &self,
-    ) -> Result<RawPropertyBankWithMetadata, SchemaIngestionError> {
+    ) -> Result<Option<RawPropertyBank>, SchemaIngestionError> {
         let path = self.config.paths().property_bank_path();
 
-        // Read raw content for hashing
-        let content = self
-            .source
-            .read_to_string(&path)
-            .map_err(SchemaIngestionError::from)?;
-        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
-
-        // Parse structured data
-        let bank: RawPropertyBank = self
-            .source
-            .parse_structured(&path)
-            .map_err(SchemaIngestionError::from)?;
-        bank.validate_version(&path.to_string_lossy())?;
-        bank.validate().map_err(SchemaIngestionError::from)?;
+        if !self.source.exists(&path) {
+            return Ok(None);
+        }
 
         // Extract timestamps
-        let modified = self.source.modified_at(&path);
-        let created = self.source.created_at(&path);
+        let created_at = self.source.created_at(&path);
+        let modified_at = self.source.modified_at(&path);
 
-        Ok((bank, content, content_hash, modified, created))
+        // Read raw bytes for content hashing (before parsing)
+        let raw_bytes = self.source.read_bytes(&path)?;
+        let content_hash = blake3::hash(&raw_bytes);
+
+        // Parse structured data
+        let mut bank: RawPropertyBank = self.source.parse_structured(&path)?;
+        bank.validate_version(&path.to_string_lossy())?;
+        bank.validate()?;
+
+        // Populate metadata
+        bank.metadata = RawSchemaMetadata {
+            created_at,
+            modified_at,
+            content_hash: Some(*content_hash.as_bytes()),
+            property_hashes: BTreeMap::new(), /* Not applicable for property
+                                               * bank */
+        };
+
+        Ok(Some(bank))
+    }
+
+    /// Load a single schema file with metadata extraction.
+    ///
+    /// Reads the schema file at the given path, then:
+    /// - Derives schema name from filename (without extension)
+    /// - Extracts filesystem timestamps (`created_at`, `modified_at`)
+    /// - Computes BLAKE3 content hash
+    /// - Computes per-property hashes for incremental resolution
+    /// - Parses content into [`RawSchema`]
+    /// - Populates metadata fields on the returned type
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaIngestionError`] if:
+    /// - File reading fails (I/O error)
+    /// - Parsing fails (syntax error)
+    /// - Version validation fails
+    /// - Filename is invalid
+    #[inline]
+    pub fn schema(
+        &self,
+        path: &Path,
+    ) -> Result<RawSchema, SchemaIngestionError> {
+        // Derive schema name from filename (without extension)
+        let filename_stem =
+            path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+                SchemaIngestionError::FileSystem(
+                    format!("Invalid filename for schema: {}", path.display())
+                        .into(),
+                )
+            })?;
+
+        // Extract timestamps
+        let created_at = self.source.created_at(path);
+        let modified_at = self.source.modified_at(path);
+
+        // Read raw bytes for content hashing (before parsing)
+        let raw_bytes = self.source.read_bytes(path)?;
+        let content_hash = blake3::hash(&raw_bytes);
+
+        // Parse structured data
+        let mut raw: RawSchema = self.source.parse_structured(path)?;
+        raw.validate_version(&path.to_string_lossy())?;
+
+        // Set name from filename (always, not from file content)
+        raw.name = filename_stem.into();
+
+        // Validate syntax
+        raw.validate()?;
+
+        // Compute per-property hashes for incremental resolution
+        let property_hashes = self.compute_property_hashes(&raw);
+
+        // Populate metadata
+        raw.metadata = RawSchemaMetadata {
+            created_at,
+            modified_at,
+            content_hash: Some(*content_hash.as_bytes()),
+            property_hashes,
+        };
+
+        Ok(raw)
     }
 
     /// Scan the schemas directory for all schema files.
     ///
-    /// Returns a vector of (`schema`, `content_hash`, `modified_at`,
-    /// `created_at`) tuples. Supports JSON, TOML, and YAML formats. The
-    /// property bank file is excluded.
+    /// Uses [`schema()`](Self::schema) internally for each discovered file.
+    /// Supports JSON, TOML, and YAML formats. The property bank file is
+    /// excluded.
     ///
     /// # Errors
-    /// Returns `SchemaIngestionError` if the directory cannot be scanned or
-    /// files cannot be read or parsed.
+    ///
+    /// Returns [`SchemaIngestionError`] if the directory cannot be scanned or
+    /// any schema file cannot be read or parsed.
     ///
     /// # Examples
     /// ```ignore
     /// # use lithos_core::schema::ingestor::Ingestor;
     /// # let ingestor = todo!("Provide an Ingestor instance");
-    /// let _schemas = ingestor.scan_raw_schemas()?;
+    /// let schemas = ingestor.all_schemas()?;
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
     /// ```
     #[inline]
-    pub fn scan_raw_schemas(
-        &self,
-    ) -> Result<Vec<RawSchemaWithMetadata>, SchemaIngestionError> {
+    pub fn all_schemas(&self) -> Result<Vec<RawSchema>, SchemaIngestionError> {
         let paths = self.config.paths();
         let schemas_dir = paths.schema.schemas_dir().as_path();
         let property_bank_filename = paths.property_bank.as_str();
@@ -213,49 +246,35 @@ impl Ingestor<'_> {
                     continue;
                 }
 
-                // Derive schema name from filename (without extension)
-                let filename_stem = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| {
-                    SchemaIngestionError::FileSystem(
-                        format!(
-                            "Invalid filename for schema: {}",
-                            path.display()
-                        )
-                        .into(),
-                    )
-                })?;
-
-                // Read raw content for hashing
-                let content = self
-                    .source
-                    .read_to_string(&path)
-                    .map_err(SchemaIngestionError::from)?;
-                let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
-
-                // Parse the schema file
-                let mut raw: RawSchema = self
-                    .source
-                    .parse_structured(&path)
-                    .map_err(SchemaIngestionError::from)?;
-                raw.validate_version(&path.to_string_lossy())?;
-
-                // Set name from filename (always, not from file content)
-                raw.name = filename_stem.into();
-
-                // Validate syntax (name, parent, properties, excludes)
-                raw.validate().map_err(SchemaIngestionError::from)?;
-
-                // Extract timestamps using FsReader methods
-                let modified = self.source.modified_at(&path);
-                let created = self.source.created_at(&path);
-
-                results.push((raw, content, content_hash, modified, created));
+                // Use schema() method to load each file
+                let raw = self.schema(&path)?;
+                results.push(raw);
             }
         }
 
         Ok(results)
+    }
+
+    /// Compute per-property hashes for incremental resolution.
+    ///
+    /// Hashes each property definition in the schema to detect which properties
+    /// changed without re-parsing the entire file.
+    fn compute_property_hashes(
+        &self,
+        raw: &RawSchema,
+    ) -> BTreeMap<Box<str>, [u8; 32]> {
+        let mut hashes = BTreeMap::new();
+
+        for (name, prop) in &raw.properties {
+            // Serialize property to JSON for stable hashing
+            // (TOML/YAML order is unstable, JSON is canonical)
+            if let Ok(json) = serde_json::to_string(prop) {
+                let hash = blake3::hash(json.as_bytes());
+                hashes.insert(name.clone(), *hash.as_bytes());
+            }
+        }
+
+        hashes
     }
 }
 
@@ -302,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn load_raw_property_bank_parses_valid_json() {
+    fn property_bank_parses_valid_json() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -312,15 +331,17 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank = result.expect("Should parse property bank");
+        let bank = result
+            .expect("Should parse property bank")
+            .expect("Should have bank");
         assert!(bank.properties.is_empty());
     }
 
     #[test]
-    fn load_raw_property_bank_parses_valid_yaml() {
+    fn property_bank_parses_valid_yaml() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -330,15 +351,17 @@ mod tests {
 
         let config = test_config(dir.path(), Some("property_bank.yaml"));
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank = result.expect("Should parse property bank");
+        let bank = result
+            .expect("Should parse property bank")
+            .expect("Should have bank");
         assert!(bank.properties.is_empty());
     }
 
     #[test]
-    fn load_raw_property_bank_parses_valid_toml() {
+    fn property_bank_parses_valid_toml() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -348,21 +371,23 @@ mod tests {
 
         let config = test_config(dir.path(), Some("property_bank.toml"));
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank = result.expect("Should parse property bank");
+        let bank = result
+            .expect("Should parse property bank")
+            .expect("Should have bank");
         assert!(bank.properties.is_empty());
     }
 
     #[test]
-    fn load_raw_property_bank_returns_error_for_invalid_json() {
+    fn property_bank_returns_error_for_invalid_json() {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/property_bank.json", "not valid json");
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_err());
         let err = result.expect_err("Should fail to parse");
@@ -370,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn load_raw_property_bank_returns_error_for_unsupported_format() {
+    fn property_bank_returns_error_for_unsupported_format() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -380,7 +405,7 @@ mod tests {
 
         let config = test_config(dir.path(), Some("property_bank.xml"));
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_err());
         let err = result.expect_err("Should fail for unsupported format");
@@ -388,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_raw_schemas_returns_schemas() {
+    fn all_schemas_returns_schemas() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -408,20 +433,20 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.scan_raw_schemas();
+        let result = ingestor.all_schemas();
 
         assert!(result.is_ok());
         let schemas = result.expect("Should scan schemas");
         assert_eq!(schemas.len(), 2);
 
         let names: Vec<&str> =
-            schemas.iter().map(|tuple| tuple.0.name.as_ref()).collect();
+            schemas.iter().map(|s| s.name.as_ref()).collect();
         assert!(names.contains(&"note"));
         assert!(names.contains(&"task"));
     }
 
     #[test]
-    fn scan_raw_schemas_supports_toml_format() {
+    fn all_schemas_supports_toml_format() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -432,17 +457,17 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.scan_raw_schemas();
+        let result = ingestor.all_schemas();
 
         assert!(result.is_ok());
         let schemas = result.expect("Should scan schemas");
         assert_eq!(schemas.len(), 1);
         let schema = schemas.first().expect("should have one schema");
-        assert_eq!(schema.0.name.as_ref(), "project");
+        assert_eq!(schema.name.as_ref(), "project");
     }
 
     #[test]
-    fn scan_raw_schemas_excludes_property_bank() {
+    fn all_schemas_excludes_property_bank() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -452,7 +477,7 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.scan_raw_schemas();
+        let result = ingestor.all_schemas();
 
         assert!(result.is_ok());
         let schemas = result.expect("Should scan schemas");
@@ -460,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn load_raw_property_bank_defaults_version_when_omitted() {
+    fn property_bank_defaults_version_when_omitted() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -470,15 +495,17 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.load_raw_property_bank();
+        let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank = result.expect("Should parse property bank");
+        let bank = result
+            .expect("Should parse property bank")
+            .expect("Should have bank");
         assert_eq!(bank.version.as_ref(), "1.0");
     }
 
     #[test]
-    fn scan_raw_schemas_defaults_version_when_omitted() {
+    fn all_schemas_defaults_version_when_omitted() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -488,12 +515,12 @@ mod tests {
 
         let config = test_config(dir.path(), None);
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-        let result = ingestor.scan_raw_schemas();
+        let result = ingestor.all_schemas();
 
         assert!(result.is_ok());
         let schemas = result.expect("Should scan schemas");
         assert_eq!(schemas.len(), 1);
         let schema = schemas.first().expect("should have one schema");
-        assert_eq!(schema.0.version.as_ref(), "1.0");
+        assert_eq!(schema.version.as_ref(), "1.0");
     }
 }

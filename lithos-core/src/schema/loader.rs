@@ -27,7 +27,7 @@
 //!      - Fresh → **reuse cached bank**
 //!
 //! 3. **Scan all schema files** (always from filesystem):
-//!    - `Ingestor::scan_raw_schemas()` → `Vec<(RawSchema, timestamps)>`
+//!    - `Ingestor::all_schemas()` → `Vec<(RawSchema, timestamps)>`
 //!    - Schema names derived from filenames
 //!
 //! 4. **Schema staleness partitioning**:
@@ -203,7 +203,7 @@ impl<'db> Loader<'db> {
         let current_bank_version = bank.version();
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
-        let raw_schemas_with_times = ingestor.scan_raw_schemas()?;
+        let raw_schemas_with_times = ingestor.all_schemas()?;
         self.emit_schema(&SchemaEvent::ScanCompleted {
             file_count: raw_schemas_with_times.len(),
         });
@@ -349,7 +349,7 @@ impl<'db> Loader<'db> {
                     &crate::schema::events::PropertyBankEvent::ResolutionStarted,
                 );
                 let (raw_bank, content, _hash, modified, created) =
-                    ingestor.load_raw_property_bank_with_metadata()?;
+                    ingestor.property_bank()?;
                 let rebuilt_bank =
                     PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
 
@@ -397,7 +397,7 @@ impl<'db> Loader<'db> {
                 &crate::schema::events::PropertyBankEvent::ResolutionStarted,
             );
             let (raw_bank, content, _hash, modified, created) =
-                ingestor.load_raw_property_bank_with_metadata()?;
+                ingestor.property_bank()?;
             let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
 
             // Persist raw property bank file
