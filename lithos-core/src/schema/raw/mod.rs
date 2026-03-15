@@ -40,6 +40,94 @@ use super::error::{SchemaError, SchemaIngestionError};
 /// Current supported schema version.
 pub const SCHEMA_VERSION: &str = "1.0";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Version Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Schema format version.
+///
+/// Represents the version string from schema and property bank files.
+/// Validates against `SCHEMA_VERSION` constant.
+///
+/// # Design Note
+///
+/// This type uses the `validated()` pattern (validate after deserialization)
+/// rather than "parse, don't validate" because Raw types are meant to be
+/// direct representations of file contents, not domain types. A more idiomatic
+/// solution would use custom serde deserializers to validate during parsing,
+/// but that trades off error reporting quality and pipeline flexibility.
+///
+/// TODO: Revisit this design to find a more idiomatic Rust solution that
+/// maintains the benefits of separate parsing and validation phases.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct RawSchemaVersion(Box<str>);
+
+impl RawSchemaVersion {
+    /// Validates the version against the expected version.
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
+    /// does not match the expected version.
+    #[inline]
+    pub fn validate(&self, path: &str) -> Result<(), SchemaIngestionError> {
+        if self.0.as_ref() != SCHEMA_VERSION {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.0.clone(),
+                expected: SCHEMA_VERSION.into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Returns the version string.
+    #[must_use]
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for RawSchemaVersion {
+    #[inline]
+    fn default() -> Self {
+        Self(SCHEMA_VERSION.into())
+    }
+}
+
+impl From<&str> for RawSchemaVersion {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(s.into())
+    }
+}
+
+impl From<Box<str>> for RawSchemaVersion {
+    #[inline]
+    fn from(s: Box<str>) -> Self {
+        Self(s)
+    }
+}
+
+impl From<String> for RawSchemaVersion {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self(s.into())
+    }
+}
+
+impl AsRef<str> for RawSchemaVersion {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schema Types
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Raw schema definition loaded from vault files.
 ///
 /// # Examples
@@ -72,8 +160,8 @@ pub const SCHEMA_VERSION: &str = "1.0";
 #[non_exhaustive]
 pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
-    #[serde(rename = "$version", default = "default_schema_version")]
-    pub version: Box<str>,
+    #[serde(rename = "$version", default)]
+    pub version: RawSchemaVersion,
     /// Schema name (always derived from filename by Ingestor).
     ///
     /// This field is NOT read from the file - it is always set by the Ingestor
@@ -95,11 +183,6 @@ pub struct RawSchema {
     pub metadata: RawSchemaMetadata,
 }
 
-/// Default function for schema version field.
-fn default_schema_version() -> Box<str> {
-    SCHEMA_VERSION.into()
-}
-
 impl RawSchema {
     /// Validate the schema version matches the expected version.
     ///
@@ -111,14 +194,7 @@ impl RawSchema {
         &self,
         path: &str,
     ) -> Result<(), SchemaIngestionError> {
-        if self.version.as_ref() != SCHEMA_VERSION {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.version.clone(),
-                expected: SCHEMA_VERSION.into(),
-            });
-        }
-        Ok(())
+        self.version.validate(path)
     }
 
     /// Validate raw schema syntax and structure.
@@ -198,8 +274,8 @@ impl RawSchema {
 #[non_exhaustive]
 pub struct RawPropertyBank {
     /// Property bank format version (defaults to "1.0" if not specified).
-    #[serde(rename = "$version", default = "default_schema_version")]
-    pub version: Box<str>,
+    #[serde(rename = "$version", default)]
+    pub version: RawSchemaVersion,
     /// Map of property name to property definition.
     pub properties: HashMap<Box<str>, property::RawPropertyBankEntry>,
     /// File metadata for staleness detection.
@@ -220,14 +296,7 @@ impl RawPropertyBank {
         &self,
         path: &str,
     ) -> Result<(), SchemaIngestionError> {
-        if self.version.as_ref() != SCHEMA_VERSION {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.version.clone(),
-                expected: SCHEMA_VERSION.into(),
-            });
-        }
-        Ok(())
+        self.version.validate(path)
     }
 
     /// Validate raw property bank syntax and structure.
