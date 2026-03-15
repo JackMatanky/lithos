@@ -112,23 +112,11 @@ pub struct Loader<'db> {
     event_handlers: Vec<Box<dyn SchemaEventHandler>>,
 }
 
-// Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes = (
-    RawSchema,
-    String,             // raw file content
-    [u8; 32],           // content hash
-    Option<SystemTime>, // modified_at
-    Option<SystemTime>, // created_at
-);
-type SchemaWithTimes = (
-    SchemaId,
-    RawSchema,
-    String,             // raw file content
-    [u8; 32],           // content hash
-    Option<SystemTime>, // modified_at
-    Option<SystemTime>, // created_at
-);
-type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
+// Type aliases for loader operations
+// Metadata is now embedded in RawSchema.metadata, so we only track (ID,
+// RawSchema)
+type SchemaWithId = (SchemaId, RawSchema);
+type PartitionResult = (Vec<SchemaWithId>, Vec<SchemaId>);
 
 impl<'db> Loader<'db> {
     /// Create a new `Loader` with query and command adapters.
@@ -203,14 +191,14 @@ impl<'db> Loader<'db> {
         let current_bank_version = bank.version();
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
-        let raw_schemas_with_times = ingestor.all_schemas()?;
+        let raw_schemas = ingestor.all_schemas()?;
         self.emit_schema(&SchemaEvent::ScanCompleted {
-            file_count: raw_schemas_with_times.len(),
+            file_count: raw_schemas.len(),
         });
 
         // ── Step 4: staleness partitioning ─────────────────────────────────
         let (stale, fresh_ids) = self.partition_by_staleness(
-            &raw_schemas_with_times,
+            &raw_schemas,
             &name_to_id,
             current_bank_version,
             bank_stale,
@@ -348,8 +336,14 @@ impl<'db> Loader<'db> {
                 self.emit_property_bank(
                     &crate::schema::events::PropertyBankEvent::ResolutionStarted,
                 );
-                let (raw_bank, content, _hash, modified, created) =
-                    ingestor.property_bank()?;
+                let raw_bank = ingestor.property_bank()?.ok_or_else(|| {
+                    LoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                        "Property bank file not found".into(),
+                    ))
+                })?;
+                let content = String::new(); // TODO: Store raw content in metadata
+                let modified = raw_bank.metadata.modified_at;
+                let created = raw_bank.metadata.created_at;
                 let rebuilt_bank =
                     PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
 
@@ -396,8 +390,14 @@ impl<'db> Loader<'db> {
             self.emit_property_bank(
                 &crate::schema::events::PropertyBankEvent::ResolutionStarted,
             );
-            let (raw_bank, content, _hash, modified, created) =
-                ingestor.property_bank()?;
+            let raw_bank = ingestor.property_bank()?.ok_or_else(|| {
+                LoaderError::Ingestion(SchemaIngestionError::FileSystem(
+                    "Property bank file not found".into(),
+                ))
+            })?;
+            let content = String::new(); // TODO: Store raw content in metadata
+            let modified = raw_bank.metadata.modified_at;
+            let created = raw_bank.metadata.created_at;
             let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
 
             // Persist raw property bank file
