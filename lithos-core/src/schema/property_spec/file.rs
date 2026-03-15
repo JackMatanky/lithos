@@ -87,7 +87,9 @@ impl FileSpec {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::{property_spec::FileSpec, raw::RawFileSpec};
+    /// use lithos_core::schema::{
+    ///     property_spec::FileSpec, raw::property_spec::RawFileSpec,
+    /// };
     ///
     /// let base = FileSpec::try_new(None, None)?;
     /// let overrides = RawFileSpec::default();

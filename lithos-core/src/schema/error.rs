@@ -253,6 +253,72 @@ pub enum SchemaQueryError {
     PropertyBankNotFound,
 }
 
+/// Unified schema repository errors.
+///
+/// This error type combines query and command operations for the schema
+/// repository, providing a unified error type for storage operations.
+/// It replaces the old CQRS pattern (`SchemaQueryError`, `SchemaCommandError`).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaRepositoryError;
+///
+/// let error = SchemaRepositoryError::NotFound {
+///     name: "schema".into(),
+/// };
+/// match error {
+///     SchemaRepositoryError::NotFound {
+///         ..
+///     } => {}
+///     SchemaRepositoryError::Conflict {
+///         ..
+///     } => {}
+///     _ => {}
+/// }
+/// ```
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaRepositoryError {
+    /// Storage/database error.
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
+
+    /// Domain validation error.
+    #[error("domain error: {0}")]
+    Domain(#[from] SchemaError),
+
+    /// Entity not found.
+    #[error("not found: {name}")]
+    NotFound {
+        /// Name or identifier.
+        name: Box<str>,
+    },
+
+    /// Data corruption detected in storage.
+    #[error("data corruption: {reason}")]
+    Corruption {
+        /// Reason for corruption.
+        reason: Box<str>,
+    },
+
+    /// `PropertyBank` not found in database.
+    ///
+    /// This error indicates that the `PropertyBank` singleton has not been
+    /// initialized. `PropertyBank` must be created before querying schemas.
+    #[error(
+        "PropertyBank not found in database - initialize by loading schema \
+         files or creating properties"
+    )]
+    PropertyBankNotFound,
+
+    /// Conflict during save/delete operations.
+    #[error("conflict: {reason}")]
+    Conflict {
+        /// Reason for the conflict.
+        reason: Box<str>,
+    },
+}
+
 /// Schema ingestion errors.
 ///
 /// Errors that occur during file-to-raw translation (loading schema files

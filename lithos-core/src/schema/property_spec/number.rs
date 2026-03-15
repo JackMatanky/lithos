@@ -168,7 +168,9 @@ impl NumberSpec {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::{property_spec::NumberSpec, raw::RawNumberSpec};
+    /// use lithos_core::schema::{
+    ///     property_spec::NumberSpec, raw::property_spec::RawNumberSpec,
+    /// };
     ///
     /// let base = NumberSpec::try_new(None, None, None)?;
     /// let overrides = RawNumberSpec::default();

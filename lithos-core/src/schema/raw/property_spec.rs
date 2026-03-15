@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertySpec};
+/// use lithos_core::schema::raw::property_spec::{
+///     RawBoolSpec, RawPropertySpec,
+/// };
 ///
 /// let spec = RawPropertySpec::Bool(RawBoolSpec);
 /// match spec {
@@ -39,7 +41,7 @@ pub enum RawPropertySpec {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawBoolSpec;
+/// use lithos_core::schema::raw::property_spec::RawBoolSpec;
 ///
 /// let _spec = RawBoolSpec;
 /// ```
@@ -67,7 +69,7 @@ pub struct RawBoolSpec;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawDateSpec;
+/// use lithos_core::schema::raw::property_spec::RawDateSpec;
 ///
 /// let _spec = RawDateSpec::default();
 /// ```
@@ -87,7 +89,7 @@ pub struct RawDateSpec {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawFileSpec;
+/// use lithos_core::schema::raw::property_spec::RawFileSpec;
 ///
 /// let _spec = RawFileSpec::default();
 /// ```
@@ -109,7 +111,7 @@ pub struct RawFileSpec {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawNumberSpec;
+/// use lithos_core::schema::raw::property_spec::RawNumberSpec;
 ///
 /// let _spec = RawNumberSpec::default();
 /// ```
@@ -178,7 +180,7 @@ pub enum RawStringPattern {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawStringSpec;
+/// use lithos_core::schema::raw::property_spec::RawStringSpec;
 ///
 /// let _spec = RawStringSpec::default();
 /// ```
@@ -212,7 +214,7 @@ pub struct RawStringSpec {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::RawOptions;
+/// use lithos_core::schema::raw::property_spec::RawOptions;
 ///
 /// let options = RawOptions::List(vec!["open".into(), "closed".into()]);
 /// match options {
@@ -235,7 +237,7 @@ pub enum RawOptions {
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::RawOptionEntry;
+/// use lithos_core::schema::raw::property_spec::RawOptionEntry;
 ///
 /// let entry = RawOptionEntry {
 ///     value: "open".into(),
@@ -378,7 +380,7 @@ impl RawOptions {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::raw::RawOptions;
+    /// use lithos_core::schema::raw::property_spec::RawOptions;
     ///
     /// let entries = RawOptions::List(vec!["open".into()]).into_entries();
     /// assert_eq!(entries.len(), 1);

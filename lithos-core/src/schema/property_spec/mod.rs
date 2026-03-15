@@ -75,7 +75,7 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{raw::{RawPropertySpec, RawBoolSpec}, property_spec::PropertySpec};
+    /// # use lithos_core::schema::{raw::property_spec::{RawPropertySpec, RawBoolSpec}, property_spec::PropertySpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let def = RawPropertySpec::Bool(RawBoolSpec);
     /// let spec = PropertySpec::try_from(def)?;
