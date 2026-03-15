@@ -163,13 +163,16 @@ impl<'bank> RefExpander<'bank> {
             }
 
             RawProperty::Ref(ref_entry) => {
-                Self::apply_ref_overrides(self.bank, name, &ref_entry)
+                Self::apply_ref_overrides(self.bank, &ref_entry)
             }
         }
     }
 
     /// Resolve a `$ref` entry: look up the base property in the bank, then
     /// apply any `required`/`multi` and type-specific overrides.
+    ///
+    /// The property name is extracted from the `ref_path` (e.g.,
+    /// `property_bank#/original_name`).
     ///
     /// # Errors
     ///
@@ -178,11 +181,14 @@ impl<'bank> RefExpander<'bank> {
     /// any override field is incompatible with the base property type (R-10).
     fn apply_ref_overrides(
         bank: &PropertyBank,
-        name: &str,
         ref_entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
+        // Extract property name from ref_path (e.g., "property_bank#/date" ->
+        // "date")
         let prop_ref = BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
-        let base = bank.get(prop_ref.name()).ok_or_else(|| {
+        let bank_name = prop_ref.name();
+
+        let base = bank.get(bank_name).ok_or_else(|| {
             SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
         })?;
 
@@ -193,8 +199,14 @@ impl<'bank> RefExpander<'bank> {
 
         let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
 
-        let prop_name = PropertyName::try_new(name)?;
-        Ok(Property::new(base.id(), prop_name, optionality, multiplicity, spec))
+        // Use the bank property name as the schema property name
+        Ok(Property::new(
+            base.id(),
+            bank_name.clone(),
+            optionality,
+            multiplicity,
+            spec,
+        ))
     }
 
     /// Apply type-specific spec overrides, rejecting type changes (R-10).
