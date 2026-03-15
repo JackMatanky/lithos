@@ -95,31 +95,16 @@ fn default_schema_version() -> Box<str> {
 }
 
 impl RawSchema {
-    /// Validate the schema version matches the expected version.
+    /// Validate a deserialized schema and return it if valid.
     ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match.
-    #[inline]
-    pub fn validate_version(
-        &self,
-        path: &str,
-    ) -> Result<(), SchemaIngestionError> {
-        if self.version.as_ref() != SCHEMA_VERSION {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.version.clone(),
-                expected: SCHEMA_VERSION.into(),
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate raw schema syntax and structure.
+    /// Should be called immediately after serde deserialization to enforce
+    /// syntactic validation. This implements "parse, don't validate" by
+    /// consuming the deserialized value and returning it only if valid.
     ///
-    /// This performs syntactic validation only:
+    /// Performs syntactic validation only:
+    /// - Schema version matches expected
     /// - Schema name syntax (via `SchemaName`)
-    /// - Unique property names
+    /// - Property names are valid
     /// - Parent schema name syntax (if present)
     /// - Exclude property name syntax
     ///
@@ -127,29 +112,42 @@ impl RawSchema {
     /// happens during resolution.
     ///
     /// # Errors
-    /// Returns `SchemaError` if validation fails.
+    ///
+    /// Returns [`SchemaIngestionError`] if validation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let raw: RawSchema = serde_json::from_str(json)?;
+    /// let validated = raw.validated("/path/to/file")?;
+    /// ```
     #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
+    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
+        use super::{aggregate::SchemaName, property::PropertyName};
+
+        // Validate version
+        if self.version.as_ref() != SCHEMA_VERSION {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.version.clone(),
+                expected: SCHEMA_VERSION.into(),
+            });
+        }
+
         // Validate schema name syntax
-        use super::aggregate::SchemaName;
-        SchemaName::try_new(self.name.as_ref())?;
+        SchemaName::try_new(self.name.as_ref())
+            .map_err(SchemaIngestionError::from)?;
 
         // Validate parent schema name syntax (if present)
         if let Some(parent) = self.extends.as_ref() {
-            SchemaName::try_new(parent.as_ref())?;
+            SchemaName::try_new(parent.as_ref())
+                .map_err(SchemaIngestionError::from)?;
         }
 
         // Validate excludes syntax
         for excluded in &self.excludes {
-            use super::property::PropertyName;
-            PropertyName::try_new(excluded.as_ref())?;
-        }
-
-        // Check for duplicate property names
-        // (HashMap ensures uniqueness, but check for clarity)
-        if self.properties.is_empty() {
-            // Empty properties is valid (may inherit all from parent)
-            return Ok(());
+            PropertyName::try_new(excluded.as_ref())
+                .map_err(SchemaIngestionError::from)?;
         }
 
         // Validate property name syntax
@@ -158,11 +156,11 @@ impl RawSchema {
             reason = "Validation does not depend on iteration order"
         )]
         for prop_name in self.properties.keys() {
-            use super::property::PropertyName;
-            PropertyName::try_new(prop_name.as_ref())?;
+            PropertyName::try_new(prop_name.as_ref())
+                .map_err(SchemaIngestionError::from)?;
         }
 
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -193,16 +191,32 @@ pub struct RawPropertyBank {
 }
 
 impl RawPropertyBank {
-    /// Validate the property bank version matches the expected version.
+    /// Validate a deserialized property bank and return it if valid.
+    ///
+    /// Should be called immediately after serde deserialization to enforce
+    /// syntactic validation. This implements "parse, don't validate" by
+    /// consuming the deserialized value and returning it only if valid.
+    ///
+    /// Performs syntactic validation only:
+    /// - Property bank version matches expected
+    /// - Property names are valid
+    /// - Property specs are valid (enforced by serde deserialization)
     ///
     /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match.
+    ///
+    /// Returns [`SchemaIngestionError`] if validation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let raw: RawPropertyBank = serde_json::from_str(json)?;
+    /// let validated = raw.validated("/path/to/file")?;
+    /// ```
     #[inline]
-    pub fn validate_version(
-        &self,
-        path: &str,
-    ) -> Result<(), SchemaIngestionError> {
+    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
+        use super::property::PropertyName;
+
+        // Validate version
         if self.version.as_ref() != SCHEMA_VERSION {
             return Err(SchemaIngestionError::UnsupportedVersion {
                 path: path.into(),
@@ -210,31 +224,18 @@ impl RawPropertyBank {
                 expected: SCHEMA_VERSION.into(),
             });
         }
-        Ok(())
-    }
 
-    /// Validate raw property bank syntax and structure.
-    ///
-    /// This performs syntactic validation only:
-    /// - Property names are unique (enforced by `HashMap` structure)
-    /// - Property name syntax (via `PropertyName`)
-    /// - Property specs are valid (enforced by serde deserialization)
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
         // Validate property name syntax
         #[expect(
             clippy::iter_over_hash_type,
             reason = "Validation does not depend on iteration order"
         )]
         for prop_name in self.properties.keys() {
-            use super::property::PropertyName;
-            PropertyName::try_new(prop_name.as_ref())?;
+            PropertyName::try_new(prop_name.as_ref())
+                .map_err(SchemaIngestionError::from)?;
         }
 
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -1362,7 +1363,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap();
+        schema.validated("test").unwrap();
     }
 
     #[test]
@@ -1376,7 +1377,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap();
+        schema.validated("test").unwrap();
     }
 
     #[test]
@@ -1390,7 +1391,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap();
+        schema.validated("test").unwrap();
     }
 
     #[test]
@@ -1404,7 +1405,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap_err();
+        schema.validated("test").unwrap_err();
     }
 
     #[test]
@@ -1418,7 +1419,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap_err();
+        schema.validated("test").unwrap_err();
     }
 
     #[test]
@@ -1432,7 +1433,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap_err();
+        schema.validated("test").unwrap_err();
     }
 
     #[test]
@@ -1456,7 +1457,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap();
+        schema.validated("test").unwrap();
     }
 
     #[test]
@@ -1480,7 +1481,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        schema.validate().unwrap_err();
+        schema.validated("test").unwrap_err();
     }
 
     #[test]
@@ -1497,7 +1498,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        bank.validate().unwrap();
+        bank.validated("test").unwrap();
     }
 
     #[test]
@@ -1508,7 +1509,7 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        bank.validate().unwrap();
+        bank.validated("test").unwrap();
     }
 
     #[test]
@@ -1528,6 +1529,6 @@ mod tests {
             metadata: RawSchemaMetadata::default(),
         };
 
-        bank.validate().unwrap_err();
+        bank.validated("test").unwrap_err();
     }
 }

@@ -124,10 +124,11 @@ impl Ingestor<'_> {
         let raw_bytes = self.source.read_bytes(&path)?;
         let content_hash = blake3::hash(&raw_bytes);
 
-        // Parse structured data
-        let mut bank: RawPropertyBank = self.source.parse_structured(&path)?;
-        bank.validate_version(&path.to_string_lossy())?;
-        bank.validate()?;
+        // Parse and validate structured data
+        let mut bank: RawPropertyBank = self
+            .source
+            .parse_structured(&path)?
+            .validated(&path.to_string_lossy())?;
 
         // Populate metadata with property hashes
         bank.metadata = RawSchemaMetadata {
@@ -183,13 +184,12 @@ impl Ingestor<'_> {
 
         // Parse structured data
         let mut raw: RawSchema = self.source.parse_structured(path)?;
-        raw.validate_version(&path.to_string_lossy())?;
 
         // Set name from filename (always, not from file content)
         raw.name = filename_stem.into();
 
-        // Validate syntax
-        raw.validate()?;
+        // Validate syntax (after setting name)
+        let mut raw = raw.validated(&path.to_string_lossy())?;
 
         // Populate metadata with property hashes
         raw.metadata = RawSchemaMetadata {
@@ -226,9 +226,10 @@ impl Ingestor<'_> {
     pub fn all_schemas(&self) -> Result<Vec<RawSchema>, SchemaIngestionError> {
         let paths = self.config.paths();
         let schemas_dir = paths.schema.schemas_dir().as_path();
-        
-        // Property bank is always in schemas_dir (joined by property_bank_path())
-        // We exclude it from schema scanning since it's loaded separately
+
+        // Property bank is always in schemas_dir (joined by
+        // property_bank_path()) We exclude it from schema scanning
+        // since it's loaded separately
         let property_bank_filename = paths.property_bank.as_str();
 
         let mut results = Vec::new();
@@ -241,17 +242,15 @@ impl Ingestor<'_> {
             })?;
 
             for path in files {
-                // Exclude property bank file (glob crate doesn't support negation)
-                if path.file_name().is_some_and(|name| name == property_bank_filename) {
+                // Exclude property bank file (glob crate doesn't support
+                // negation)
+                if path
+                    .file_name()
+                    .is_some_and(|name| name == property_bank_filename)
+                {
                     continue;
                 }
 
-                let raw = self.schema(&path)?;
-                results.push(raw);
-            }
-        }
-
-                // Use schema() method to load each file
                 let raw = self.schema(&path)?;
                 results.push(raw);
             }
