@@ -17,7 +17,7 @@ use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     error::SchemaError,
-    property::{Property, PropertyId, PropertyName},
+    property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
 use crate::db::{BatchReader, Database};
@@ -178,18 +178,6 @@ pub trait Repository: Send + Sync {
     ///
     /// Returns storage-specific error if the query fails.
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
-
-    /// Finds a property by ID in the property bank.
-    ///
-    /// Returns `None` if the property does not exist.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    fn find_property_by_id(
-        &self,
-        id: PropertyId,
-    ) -> Result<Option<Property>, Self::Error>;
 
     /// Finds schemas that use any of the given property names.
     ///
@@ -470,24 +458,11 @@ impl Repository for RedbRepository {
 
     #[inline]
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        use crate::schema::db_table::{BANK_METADATA, PROPERTY_BANK_KEY};
+        use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
 
         Ok(self
             .db
-            .get_owned::<PropertyBank>(BANK_METADATA, PROPERTY_BANK_KEY)?)
-    }
-
-    #[inline]
-    fn find_property_by_id(
-        &self,
-        id: PropertyId,
-    ) -> Result<Option<Property>, Self::Error> {
-        use crate::schema::db_table::BANK_PROPERTY_BY_ID;
-
-        Ok(self.db.get_owned_by_uuid::<Property>(
-            BANK_PROPERTY_BY_ID,
-            id.into_uuid(),
-        )?)
+            .get_owned::<PropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)?)
     }
 
     #[inline]
@@ -559,7 +534,7 @@ impl Repository for RedbRepository {
 
         use crate::schema::{
             db_table::{SCHEMA_CHILDREN, SCHEMA_PARENT},
-            views::{ChildSchemaView, ParentSchemaView},
+            views::inheritance::{ChildSchemaView, ParentSchemaView},
         };
 
         #[expect(
@@ -608,10 +583,10 @@ impl Repository for RedbRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::{BANK_METADATA, PROPERTY_BANK_KEY};
+        use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
 
         self.db.batch_write(|batch| {
-            batch.put(BANK_METADATA, PROPERTY_BANK_KEY, bank)?;
+            batch.put(PROPERTY_BANK, PROPERTY_BANK_KEY, bank)?;
             Ok(())
         })?;
 

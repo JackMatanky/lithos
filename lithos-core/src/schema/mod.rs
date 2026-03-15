@@ -73,64 +73,55 @@ pub mod resolver;
 pub(crate) mod db_table {
     use redb::{MultimapTableDefinition, TableDefinition};
 
+    // ========================================================================
+    // Schema Storage Tables
+    // ========================================================================
+
+    /// Schema aggregates (key: `SchemaId` as UUID string, value:
+    /// rkyv-serialized `Schema`).
     pub(crate) const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_by_id");
+
+    /// Schema name→ID index (key: `SchemaName`, value: rkyv-serialized
+    /// `SchemaId`).
     pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_id_by_name");
-    #[expect(
-        dead_code,
-        reason = "Reserved for future schema metadata storage - part of \
-                  planned database schema"
-    )]
-    pub(crate) const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_metadata");
-    pub(crate) const BANK_METADATA: TableDefinition<&str, &[u8]> =
+
+    // ========================================================================
+    // PropertyBank Storage
+    // ========================================================================
+
+    /// `PropertyBank` singleton (key: `PROPERTY_BANK_KEY`, value: rkyv-serialized
+    /// `PropertyBank`).
+    ///
+    /// Note: Uses legacy table name "`bank_metadata`" for backward compatibility.
+    pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
         TableDefinition::new("bank_metadata");
-    pub(crate) const BANK_PROPERTY_BY_ID: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_property_by_id");
-    #[expect(
-        dead_code,
-        reason = "Reserved for property lookup by name - part of planned \
-                  database schema"
-    )]
-    pub(crate) const BANK_PROPERTY_BY_NAME: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_property_by_name");
+
+    /// Key for `PropertyBank` singleton table.
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 
-    // Raw file storage tables (old format - to be deprecated)
-    /// Raw schema files (key: `file_path`, value: rkyv-serialized
-    /// `RawSchemaFile`).
-    #[expect(
-        dead_code,
-        reason = "Deprecated table - kept for backwards compatibility, will \
-                  be removed in future version"
-    )]
-    pub(crate) const RAW_SCHEMA_FILES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_schema_files");
-
-    /// Raw property bank file (singleton: key = `"property-bank"`).
-    #[expect(
-        dead_code,
-        reason = "Deprecated table - kept for backwards compatibility, will \
-                  be removed in future version"
-    )]
-    pub(crate) const RAW_PROPERTY_BANK_FILE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_property_bank_file");
-
-    /// Key for raw property bank singleton.
+    /// Key for `RawPropertyBankView` singleton table.
     pub(crate) const RAW_PROPERTY_BANK_KEY: &str = "property-bank";
 
-    // Raw view storage tables (new format - for staleness detection)
+    // ========================================================================
+    // Raw View Storage (for staleness detection)
+    // ========================================================================
+
     /// Raw schema views (key: `SchemaId` as UUID string, value: rkyv-serialized
     /// `RawSchemaView`).
     pub(crate) const RAW_SCHEMA_VIEWS: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_schema_views");
 
-    /// Raw property bank view (singleton: key = `"property-bank"`).
+    /// Raw property bank view singleton (key: `PROPERTY_BANK_KEY`, value:
+    /// rkyv-serialized `RawPropertyBankView`).
     pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_property_bank_view");
 
-    // Inheritance tracking tables
+    // ========================================================================
+    // Inheritance Tracking Tables
+    // ========================================================================
+
     /// Multimap: parent `SchemaId` → multiple child schema records.
     /// Enables O(1) cascade staleness queries: "find all children of parent P".
     pub(crate) const SCHEMA_CHILDREN: MultimapTableDefinition<&str, &[u8]> =
