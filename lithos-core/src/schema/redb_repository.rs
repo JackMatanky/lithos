@@ -200,13 +200,11 @@ impl Repository for RedbRepository {
     // ========================================================================
 
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        // TODO: Implement property bank retrieval
-        // PropertyBank needs Archive derives or we need to reconstruct from
-        // StoredPropertyBank
-        todo!(
-            "Property bank retrieval - needs PropertyBank serialization \
-             support"
-        )
+        use crate::schema::db_table::{BANK_METADATA, PROPERTY_BANK_KEY};
+
+        Ok(self
+            .db
+            .get_owned::<PropertyBank>(BANK_METADATA, PROPERTY_BANK_KEY)?)
     }
 
     fn find_property_by_id(
@@ -333,15 +331,16 @@ impl Repository for RedbRepository {
 
     fn save_property_bank(
         &self,
-        _bank: &PropertyBank,
+        bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        // TODO: Implement property bank persistence
-        // PropertyBank needs Archive derives or we need to serialize to
-        // StoredPropertyBank
-        todo!(
-            "Property bank persistence - needs PropertyBank serialization \
-             support"
-        )
+        use crate::schema::db_table::{BANK_METADATA, PROPERTY_BANK_KEY};
+
+        self.db.batch_write(|batch| {
+            batch.put(BANK_METADATA, PROPERTY_BANK_KEY, bank)?;
+            Ok(())
+        })?;
+
+        Ok(())
     }
 
     fn delete_schema(&self, _id: SchemaId) -> Result<(), Self::Error> {

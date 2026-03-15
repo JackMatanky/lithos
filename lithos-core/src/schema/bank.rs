@@ -52,7 +52,7 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Registered properties keyed by name.
@@ -62,6 +62,10 @@ pub struct PropertyBank {
     /// Version counter for staleness detection.
     version: BankVersion,
     /// Domain events pending emission.
+    ///
+    /// Always `None` after deserialization - events are emitted before
+    /// persistence.
+    #[rkyv(with = rkyv::with::AsBox)]
     pending_events: Option<Vec<Events>>,
 }
 
