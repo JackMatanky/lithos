@@ -136,7 +136,9 @@ where
         let raw_schemas = self.ingestor.all_schemas()?;
 
         // ── Step 4: check staleness for each schema ─────────────────────────
+        // Track whether each schema's FILE changed (not just bank cascade)
         let mut stale = Vec::new();
+        let mut file_changed_ids = std::collections::HashSet::new();
         let mut fresh_ids = Vec::new();
 
         for raw_schema in &raw_schemas {
@@ -148,6 +150,11 @@ where
             match (is_stale, existing_id) {
                 (true, _) => {
                     let id = existing_id.unwrap_or_else(SchemaId::new);
+                    // Track if this is file-stale (not just bank cascade)
+                    // New schemas and schemas with file changes are file-stale
+                    if existing_id.is_none() || is_stale {
+                        file_changed_ids.insert(id);
+                    }
                     stale.push((id, raw_schema.clone()));
                 }
                 (false, Some(id)) => {
@@ -160,27 +167,29 @@ where
             }
         }
 
-        // ── Step 5: Partition stale into new vs existing ────────────────────
-        #[expect(
-            clippy::type_complexity,
-            reason = "Partition result type is clearest as tuple for \
-                      destructuring"
-        )]
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Partition closure pattern matching requires this form"
-        )]
-        let (new_schemas, existing_schemas): (
-            Vec<(SchemaId, RawSchema)>,
-            Vec<(SchemaId, RawSchema)>,
-        ) = stale.into_iter().partition(|(id, _)| {
-            !name_to_id.values().any(|&existing| existing == *id)
-        });
+        // ── Step 5: Partition stale into categories ─────────────────────────
+        let mut new_schemas = Vec::new();
+        let mut existing_file_changed = Vec::new();
+        let mut existing_file_unchanged = Vec::new();
 
-        // ── Step 6: Incremental resolution for existing schemas ─────────────
+        for (id, raw) in stale {
+            if !name_to_id.values().any(|&existing| existing == id) {
+                // NEW schema
+                new_schemas.push((id, raw));
+            } else if file_changed_ids.contains(&id) {
+                // EXISTING schema with FILE changes
+                existing_file_changed.push((id, raw));
+            } else {
+                // EXISTING schema with UNCHANGED file (only bank-cascade stale)
+                existing_file_unchanged.push((id, raw));
+            }
+        }
+
+        // ── Step 6: Incremental resolution for existing unchanged files ─────
         let mut resolved = Vec::new();
 
-        if !existing_schemas.is_empty() && !changed_properties.is_empty() {
+        if !existing_file_unchanged.is_empty() && !changed_properties.is_empty()
+        {
             // Find which existing schemas use the changed properties
             let affected_map = self
                 .repository
@@ -192,11 +201,11 @@ where
                 clippy::pattern_type_mismatch,
                 reason = "Tuple destructuring requires ref pattern"
             )]
-            let existing_ids: Vec<SchemaId> =
-                existing_schemas.iter().map(|(id, _)| *id).collect();
+            let unchanged_ids: Vec<SchemaId> =
+                existing_file_unchanged.iter().map(|(id, _)| *id).collect();
             let stored_schemas = self
                 .repository
-                .find_schemas_by_ids(&existing_ids)
+                .find_schemas_by_ids(&unchanged_ids)
                 .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
             // Apply incremental resolution to affected schemas
@@ -212,8 +221,11 @@ where
             }
         }
 
-        // ── Step 7: Full resolution for new schemas ─────────────────────────
-        if !new_schemas.is_empty() {
+        // ── Step 7: Full resolution for new + file-changed schemas ──────────
+        let schemas_for_full_resolution: Vec<(SchemaId, RawSchema)> =
+            new_schemas.into_iter().chain(existing_file_changed).collect();
+
+        if !schemas_for_full_resolution.is_empty() {
             // Load fresh schemas as known_parents for inheritance
             let fresh_schemas = self
                 .repository
@@ -225,25 +237,28 @@ where
                 .map(|schema| (*schema.id(), schema))
                 .collect();
 
-            // Run full resolution pipeline for new schemas
-            let expanded =
-                RefExpander::new(&bank).expand_all(new_schemas.clone())?;
+            // Run full resolution pipeline
+            let expanded = RefExpander::new(&bank)
+                .expand_all(schemas_for_full_resolution.clone())?;
             let tree = Extender::build(expanded, &known_parents)?;
             tracing::debug!(
                 root_count = tree.roots().len(),
                 total_count = tree.nodes().len(),
-                "schema tree built for new schemas"
+                "schema tree built for full resolution"
             );
-            let new_resolved = Resolver::resolve(&tree, &known_parents)?;
-            resolved.extend(new_resolved);
+            let full_resolved = Resolver::resolve(&tree, &known_parents)?;
+            resolved.extend(full_resolved);
         }
 
         // ── Step 8: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
             self.persist_resolved_schemas(&resolved)?;
-            // Persist views for both new and existing (all were in stale list)
+            // Persist views for all processed schemas
             let all_stale: Vec<(SchemaId, RawSchema)> =
-                new_schemas.into_iter().chain(existing_schemas).collect();
+                schemas_for_full_resolution
+                    .into_iter()
+                    .chain(existing_file_unchanged)
+                    .collect();
             self.persist_raw_views(&all_stale)?;
         }
 
