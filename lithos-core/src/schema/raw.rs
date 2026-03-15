@@ -27,7 +27,10 @@
     reason = "Raw* types follow naming conventions for input layer types"
 )]
 
-use std::{collections::{BTreeMap, HashMap}, time::SystemTime};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::SystemTime,
+};
 
 use super::error::SchemaIngestionError;
 

@@ -618,11 +618,7 @@ mod tests {
             use uuid::Uuid;
 
             use crate::schema::{
-                error::SchemaError,
-                aggregate::SchemaId,
-                extender::Extender,
-                property::{Property, PropertyName},
-                raw::RawProperty,
+                aggregate::SchemaId, error::SchemaError, extender::Extender,
             };
 
             // Create a chain of 11 schemas: root → s1 → s2 → ... → s10

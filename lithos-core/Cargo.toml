@@ -73,10 +73,11 @@ name = "note_parsing"
 harness = false
 path = "benches/note_parsing.rs"
 
-[[bench]]
-name = "schema_loader"
-harness = false
-path = "benches/schema_loader.rs"
+# [[bench]]
+# name = "schema_loader"
+# harness = false
+# path = "benches/schema_loader.rs"
+# DISABLED: Pending migration to Repository pattern - see INTEGRATION_TESTS_TODO.md
 
 [features]
 default = []

@@ -17,65 +17,39 @@ use std::{error::Error, path::PathBuf};
 use lithos_core::{
     db::Database,
     schema::{
-        aggregate::{SchemaId, SchemaName},
-        db_command, db_query, ports,
+        aggregate::{Schema, SchemaId, SchemaName},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        storage::{StoredProperty, StoredSchema},
+        storage::Repository,
     },
 };
-// Re-export port traits - tests using wildcard import need these in scope
-pub use ports::{Command as CommandPort, Query as QueryPort};
 use tempfile::TempDir;
 
-/// Extension trait providing convenience methods for Query operations in tests.
-///
-/// Provides `find_by_name` as a convenience that combines `find_id_by_name` +
-/// `find_by_id`.
-pub trait QueryExt {
-    /// Find a schema by name (convenience wrapper for `find_id_by_name` +
-    /// `find_by_id`).
-    fn find_by_name(
-        &self,
-        name: &SchemaName,
-    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>>;
-}
-
-impl QueryExt for db_query::Query<'_> {
-    fn find_by_name(
-        &self,
-        name: &SchemaName,
-    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>> {
-        use ports::Query as _;
-        let Some(id) = self.find_id_by_name(name)? else {
-            return Ok(None);
-        };
-        Ok(self.find_by_id(id)?)
-    }
-}
-
-/// Extension trait providing convenience methods for Command operations in
+/// Extension trait providing convenience methods for Repository operations in
 /// tests.
 ///
-/// Provides `save` as a convenience that calls `save_many` with a single
-/// schema.
-pub trait CommandExt {
-    /// Save a single schema (convenience wrapper for `save_many`).
-    fn save(
+/// Provides `find_by_name` as a convenience that combines
+/// `find_schema_id_by_name` + `find_schema_by_id`.
+pub trait RepositoryExt {
+    /// Find a schema by name (convenience wrapper for `find_schema_id_by_name`
+    /// + `find_schema_by_id`).
+    fn find_by_name(
         &self,
-        schema: &StoredSchema,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>>;
 }
 
-impl CommandExt for db_command::Command<'_> {
-    fn save(
+impl<R: Repository> RepositoryExt for R {
+    fn find_by_name(
         &self,
-        schema: &StoredSchema,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use ports::Command as _;
-        Ok(self.save_many(std::slice::from_ref(schema))?)
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>> {
+        let Some(id) = self.find_schema_id_by_name(name)? else {
+            return Ok(None);
+        };
+        self.find_schema_by_id(id).map_err(Into::into)
     }
 }
 

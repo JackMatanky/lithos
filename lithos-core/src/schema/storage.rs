@@ -355,6 +355,7 @@ impl Repository for RedbRepository {
 
         Ok(self.db.get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())?)
     }
+
     #[inline]
     fn find_schema_id_by_name(
         &self,
@@ -729,7 +730,6 @@ impl Repository for RedbRepository {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     #[ignore = "RedbRepository implementation pending - migrate from \
