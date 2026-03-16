@@ -76,10 +76,10 @@ pub enum AstNodeKind {
     ListItem {
         /// List item text with inline styles preserved.
         text: Text,
-        /// Task marker state when this list item is a task.
+        /// Task marker presence emitted by the parser.
         ///
         /// `Some(true)` means checked, `Some(false)` means unchecked.
-        task: Option<bool>,
+        task_marker: Option<bool>,
         /// Inline links captured within the list item text.
         links: Vec<AstInlineLink>,
         /// Nested nodes contained by this list item.

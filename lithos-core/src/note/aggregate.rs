@@ -93,7 +93,8 @@ mod tests {
         note::{
             position::SourceByteOffset,
             raw::{
-                tags::scan_raw_tags, task_tokens::RawTaskTokens, tasks::RawTask,
+                list_items::RawTaskKind, tags::scan_raw_tags,
+                task_tokens::RawTaskTokens, tasks::RawTask,
             },
         },
     };
@@ -235,7 +236,7 @@ mod tests {
             .collect();
         let tokens = RawTaskTokens::parse(text, emoji_markers);
         RawTask::new(
-            Some(' '),
+            RawTaskKind::Unchecked(' '),
             text.into(),
             tags,
             tokens.inline_fields().to_vec(),
@@ -1083,10 +1084,8 @@ impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
 
     #[inline]
     fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
-        let Some(symbol) = ctx.raw.status_symbol() else {
-            return Ok(None);
-        };
-        let status_symbol = StatusSymbol::try_new(symbol)?;
+        let status_symbol =
+            StatusSymbol::try_new(ctx.raw.task_kind().marker())?;
         let tags = ctx
             .raw
             .tags()

@@ -8,7 +8,7 @@ use super::{
     headings::RawHeading,
     inline_fields::{RawInlineField, scan_inline_fields},
     links::{RawLink, RawLinkStyle},
-    list_items::{RawListDepth, RawListItem, RawListType},
+    list_items::{RawListDepth, RawListItem, RawListType, RawTaskKind},
     note::RawNote,
     reference_links::RawReferenceLink,
     sections::{RawSection, RawSectionKind, extract_sections},
@@ -73,6 +73,7 @@ pub fn extract_raw_note(
     let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
 
     walk_nodes(
+        source,
         nodes,
         &mut list_stack,
         &mut open_item_by_depth,
@@ -124,6 +125,7 @@ pub fn extract_raw_note(
     reason = "Traversal handles all node variants"
 )]
 fn walk_nodes(
+    source: &str,
     nodes: &[AstNode],
     list_stack: &mut Vec<RawListType>,
     open_item_by_depth: &mut Vec<SourceByteOffset>,
@@ -174,6 +176,7 @@ fn walk_nodes(
                 };
                 list_stack.push(list_type);
                 walk_nodes(
+                    source,
                     items,
                     list_stack,
                     open_item_by_depth,
@@ -188,7 +191,7 @@ fn walk_nodes(
             }
             AstNodeKind::ListItem {
                 text,
-                task,
+                task_marker,
                 links: inline_links,
                 children,
             } => {
@@ -216,25 +219,26 @@ fn walk_nodes(
                     RawListDepth::Nested(depth_value)
                 };
 
-                let (is_checkbox, status_symbol) = match task {
-                    Some(checked) => (
-                        true,
-                        Some(if *checked {
+                let task_kind = match task_marker {
+                    Some(checked) => {
+                        let fallback = if *checked {
                             'x'
                         } else {
                             ' '
-                        }),
-                    ),
-                    None => (false, None),
+                        };
+                        let marker = task_marker_from_source(source, position)
+                            .unwrap_or(fallback);
+                        Some(raw_task_kind_from_marker(marker))
+                    }
+                    None => None,
                 };
                 let raw_text = list_item_text(text, children);
-                if is_checkbox {
+                if let Some(task_kind) = task_kind {
                     list_items.push(RawListItem::new(
                         list_type,
                         depth,
                         raw_text.clone(),
-                        is_checkbox,
-                        status_symbol,
+                        Some(task_kind),
                         position,
                         parent,
                     ));
@@ -245,7 +249,7 @@ fn walk_nodes(
                         .collect();
                     let tokens = RawTaskTokens::parse(raw_text.as_ref(), &[]);
                     tasks.push(RawTask::new(
-                        status_symbol,
+                        task_kind,
                         raw_text,
                         tags_for_task,
                         tokens.inline_fields().to_vec(),
@@ -254,13 +258,7 @@ fn walk_nodes(
                     ));
                 } else {
                     list_items.push(RawListItem::new(
-                        list_type,
-                        depth,
-                        raw_text,
-                        is_checkbox,
-                        status_symbol,
-                        position,
-                        parent,
+                        list_type, depth, raw_text, None, position, parent,
                     ));
                 }
 
@@ -268,6 +266,7 @@ fn walk_nodes(
                 scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
                 walk_nodes(
+                    source,
                     children,
                     list_stack,
                     open_item_by_depth,
@@ -284,6 +283,7 @@ fn walk_nodes(
                 ..
             } => {
                 walk_nodes(
+                    source,
                     quote_nodes,
                     list_stack,
                     open_item_by_depth,
@@ -325,6 +325,74 @@ fn list_item_text(
         }
     }
     "".into()
+}
+
+fn task_marker_from_source(
+    source: &str,
+    position: SourceByteOffset,
+) -> Option<char> {
+    let start = usize::try_from(u32::from(position)).ok()?;
+    let tail = source.get(start..)?;
+    let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
+    checkbox_marker_from_line(line)
+}
+
+fn checkbox_marker_from_line(line: &str) -> Option<char> {
+    let mut chars = line.chars().peekable();
+    skip_whitespace(&mut chars);
+    consume_list_marker(&mut chars)?;
+    skip_whitespace(&mut chars);
+    parse_checkbox_marker(&mut chars)
+}
+
+fn skip_whitespace(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    while matches!(chars.peek(), Some(ch) if ch.is_whitespace()) {
+        chars.next();
+    }
+}
+
+fn consume_list_marker(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+) -> Option<()> {
+    let first = chars.peek().copied()?;
+    if matches!(first, '-' | '*' | '+') {
+        chars.next();
+        return Some(());
+    }
+    if !first.is_ascii_digit() {
+        return None;
+    }
+    while matches!(chars.peek(), Some(ch) if ch.is_ascii_digit()) {
+        chars.next();
+    }
+    match chars.peek().copied()? {
+        '.' | ')' => {
+            chars.next();
+            Some(())
+        }
+        _ => None,
+    }
+}
+
+fn parse_checkbox_marker(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+) -> Option<char> {
+    if chars.next()? != '[' {
+        return None;
+    }
+    let marker = chars.next()?;
+    if chars.next()? != ']' {
+        return None;
+    }
+    Some(marker)
+}
+
+fn raw_task_kind_from_marker(marker: char) -> RawTaskKind {
+    match marker {
+        ' ' => RawTaskKind::Unchecked(marker),
+        'x' | 'X' => RawTaskKind::Checked(marker),
+        _ => RawTaskKind::Other(marker),
+    }
 }
 
 /// Resolve the parent list item position for a given depth.
@@ -392,7 +460,7 @@ fn collect_inline_links(
 )]
 mod tests {
     use super::*;
-    use crate::note::{parser, paths::NotePath};
+    use crate::note::{parser, paths::NotePath, raw::list_items::RawTaskKind};
 
     #[test]
     fn extract_raw_note_collects_task_tokens() -> Result<(), NoteError> {
@@ -417,11 +485,37 @@ mod tests {
 
         assert_eq!(raw.tasks().len(), 1);
         let task = raw.tasks().first().expect("task should exist");
-        assert_eq!(task.status_symbol(), Some(' '));
+        assert_eq!(task.task_kind().marker(), ' ');
         assert!(task.tags().iter().any(|tag| tag.as_ref() == "#task"));
         assert!(task.inline_fields().iter().any(|pair| pair.0.as_ref()
             == "priority"
             && pair.1.as_ref() == "1"));
+        Ok(())
+    }
+
+    #[test]
+    fn extract_raw_note_preserves_task_marker_case() -> Result<(), NoteError> {
+        let markdown = "- [X] #task Done";
+        let parsed: parser::note::ParsedNote =
+            parser::parse_markdown(markdown, parser::obsidian_options())
+                .map_err(NoteError::from)?;
+        let path = NotePath::try_new("notes/task.md")?;
+        let raw = extract_raw_note(
+            parsed.nodes(),
+            parsed.frontmatter().cloned(),
+            parsed.reference_links().to_vec(),
+            markdown,
+            path,
+            "hash".into(),
+            u64::try_from(markdown.len()).map_err(|_error| {
+                NoteError::Structure("source length out of range")
+            })?,
+            None,
+            None,
+        )?;
+
+        let task = raw.tasks().first().expect("task should exist");
+        assert!(matches!(task.task_kind(), RawTaskKind::Checked('X')));
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 //! Raw task extraction helpers.
 
-use crate::note::position::SourceByteOffset;
+use crate::note::{position::SourceByteOffset, raw::list_items::RawTaskKind};
 
 type RawInlineField = (Box<str>, Box<str>);
 
@@ -8,7 +8,7 @@ type RawInlineField = (Box<str>, Box<str>);
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawTask {
-    status_symbol: Option<char>,
+    task_kind: RawTaskKind,
     text: Box<str>,
     tags: Vec<Box<str>>,
     inline_fields: Vec<RawInlineField>,
@@ -25,7 +25,7 @@ impl RawTask {
         reason = "Raw tasks capture full source metadata"
     )]
     pub fn new(
-        status_symbol: Option<char>,
+        task_kind: RawTaskKind,
         text: Box<str>,
         tags: Vec<Box<str>>,
         inline_fields: Vec<RawInlineField>,
@@ -33,7 +33,7 @@ impl RawTask {
         position: SourceByteOffset,
     ) -> Self {
         Self {
-            status_symbol,
+            task_kind,
             text,
             tags,
             inline_fields,
@@ -42,11 +42,11 @@ impl RawTask {
         }
     }
 
-    /// Return the raw status symbol.
+    /// Return the task marker kind.
     #[inline]
     #[must_use]
-    pub const fn status_symbol(&self) -> Option<char> {
-        self.status_symbol
+    pub const fn task_kind(&self) -> RawTaskKind {
+        self.task_kind
     }
 
     /// Return the raw task text.

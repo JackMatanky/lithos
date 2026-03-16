@@ -11,6 +11,31 @@ use crate::{
     },
 };
 
+/// Raw task marker kind extracted from a list item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawTaskKind {
+    /// Unchecked task marker (typically `[ ]`).
+    Unchecked(char),
+    /// Checked task marker (typically `[x]`).
+    Checked(char),
+    /// Task marker with a non-standard symbol.
+    Other(char),
+}
+
+impl RawTaskKind {
+    /// Returns the raw marker character.
+    #[inline]
+    #[must_use]
+    pub const fn marker(self) -> char {
+        match self {
+            Self::Unchecked(marker)
+            | Self::Checked(marker)
+            | Self::Other(marker) => marker,
+        }
+    }
+}
+
 /// Raw list type extracted from markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -36,8 +61,7 @@ pub struct RawListItem {
     list_type: RawListType,
     depth: RawListDepth,
     text: Box<str>,
-    is_checkbox: bool,
-    status_symbol: Option<char>,
+    task_kind: Option<RawTaskKind>,
     position: SourceByteOffset,
     parent: Option<SourceByteOffset>,
 }
@@ -54,8 +78,7 @@ impl RawListItem {
         list_type: RawListType,
         depth: RawListDepth,
         text: Box<str>,
-        is_checkbox: bool,
-        status_symbol: Option<char>,
+        task_kind: Option<RawTaskKind>,
         position: SourceByteOffset,
         parent: Option<SourceByteOffset>,
     ) -> Self {
@@ -63,8 +86,7 @@ impl RawListItem {
             list_type,
             depth,
             text,
-            is_checkbox,
-            status_symbol,
+            task_kind,
             position,
             parent,
         }
@@ -91,18 +113,11 @@ impl RawListItem {
         &self.text
     }
 
-    /// Return true if this list item is a checkbox.
+    /// Return the raw task marker kind, if present.
     #[inline]
     #[must_use]
-    pub const fn is_checkbox(&self) -> bool {
-        self.is_checkbox
-    }
-
-    /// Return the raw status symbol, if present.
-    #[inline]
-    #[must_use]
-    pub const fn status_symbol(&self) -> Option<char> {
-        self.status_symbol
+    pub const fn task_kind(&self) -> Option<RawTaskKind> {
+        self.task_kind
     }
 
     /// Return the source byte position.
@@ -145,11 +160,10 @@ impl TryFrom<RawListItem> for ListItemEntry {
                 ListDepth::try_new(usize::from(value))?
             }
         };
-        let status = if raw.is_checkbox() {
-            raw.status_symbol().map(StatusSymbol::try_new).transpose()?
-        } else {
-            None
-        };
+        let status = raw
+            .task_kind()
+            .map(|kind| StatusSymbol::try_new(kind.marker()))
+            .transpose()?;
 
         Ok(ListItemEntry::new(
             raw.position(),
@@ -191,8 +205,7 @@ pub(crate) struct ListItemBuilder {
     position: SourceByteOffset,
     depth: crate::note::list::ListDepth,
     text: InlineText,
-    is_checkbox: bool,
-    status_symbol: Option<char>,
+    task_kind: Option<RawTaskKind>,
 }
 
 impl ListItemBuilder {
@@ -204,17 +217,15 @@ impl ListItemBuilder {
             position,
             depth,
             text: InlineText::new(),
-            is_checkbox: false,
-            status_symbol: None,
+            task_kind: None,
         }
     }
 
     pub(crate) fn mark_as_checkbox(&mut self, checked: bool) {
-        self.is_checkbox = true;
-        self.status_symbol = Some(if checked {
-            'x'
+        self.task_kind = Some(if checked {
+            RawTaskKind::Checked('x')
         } else {
-            ' '
+            RawTaskKind::Unchecked(' ')
         });
     }
 
@@ -226,12 +237,8 @@ impl ListItemBuilder {
         self.depth
     }
 
-    pub(crate) const fn is_checkbox(&self) -> bool {
-        self.is_checkbox
-    }
-
-    pub(crate) const fn status_symbol(&self) -> Option<char> {
-        self.status_symbol
+    pub(crate) const fn task_kind(&self) -> Option<RawTaskKind> {
+        self.task_kind
     }
 
     pub(crate) fn add_text(&mut self, text: &str) {
@@ -256,8 +263,7 @@ impl ListItemBuilder {
             list_type,
             RawListDepth::from_list_depth(self.depth),
             self.text.finish().into_boxed_str(),
-            self.is_checkbox,
-            self.status_symbol,
+            self.task_kind,
             self.position,
             parent,
         )

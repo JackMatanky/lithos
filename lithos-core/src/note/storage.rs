@@ -1429,8 +1429,9 @@ mod tests {
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
             raw::{
-                frontmatter::RawFrontmatter, note::RawNote, tags::RawTag,
-                task_tokens::RawTaskTokens, tasks::RawTask,
+                frontmatter::RawFrontmatter, list_items::RawTaskKind,
+                note::RawNote, tags::RawTag, task_tokens::RawTaskTokens,
+                tasks::RawTask,
             },
         },
     };
@@ -1538,7 +1539,7 @@ mod tests {
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
         let tokens = RawTaskTokens::parse(raw_task_text, &[]);
         let tasks = vec![RawTask::new(
-            Some(' '),
+            RawTaskKind::Unchecked(' '),
             raw_task_text.into(),
             vec!["#task".into()],
             tokens.inline_fields().to_vec(),

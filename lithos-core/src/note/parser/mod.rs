@@ -231,7 +231,7 @@ impl<'source> ParserState<'source> {
         let mut inline_links = Vec::new();
         let mut inline_styles = Vec::new();
         let mut current_link: Option<LinkFrame> = None;
-        let mut task: Option<bool> = None;
+        let mut task_marker: Option<bool> = None;
         let mut code_text = String::new();
 
         let accepts_text =
@@ -324,7 +324,7 @@ impl<'source> ParserState<'source> {
                         info,
                         text_nodes,
                         inline_links,
-                        task,
+                        task_marker,
                         children,
                         code_text,
                     ));
@@ -335,7 +335,7 @@ impl<'source> ParserState<'source> {
                     }
                 }
                 Event::TaskListMarker(checked) => {
-                    task = Some(checked);
+                    task_marker = Some(checked);
                 }
                 Event::Text(text) => match (is_code_block, accepts_text) {
                     (true, _) => code_text.push_str(&text),
@@ -565,7 +565,7 @@ fn build_node(
     info: Option<Box<str>>,
     text_nodes: Vec<TextNode>,
     inline_links: Vec<AstInlineLink>,
-    task: Option<bool>,
+    task_marker: Option<bool>,
     children: Vec<AstNode>,
     code_text: String,
 ) -> Option<AstNode> {
@@ -587,7 +587,7 @@ fn build_node(
         },
         &Tag::Item => AstNodeKind::ListItem {
             text: Text::new(text_nodes),
-            task,
+            task_marker,
             links: inline_links,
             children,
         },
@@ -760,7 +760,7 @@ mod tests {
         let parsed = parse_markdown("- [ ] task", options)?;
         let found = contains_list_item(parsed.nodes(), &|item| {
             matches!(item.kind(), AstNodeKind::ListItem {
-                task: Some(false),
+                task_marker: Some(false),
                 ..
             })
         });
