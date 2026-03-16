@@ -70,19 +70,14 @@ where
     ) -> Result<NoteId, LoadError> {
         let parsed: parser::note::ParsedNote =
             parser::parse_markdown(markdown, parser::obsidian_options())?;
-        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
-            NoteIngestError::Source("source length out of range".into())
-        })?;
-        let source_hash =
-            blake3::hash(markdown.as_bytes()).to_hex().to_string();
         let raw_note = extract_raw_note(
             parsed.nodes(),
             parsed.frontmatter().cloned(),
             parsed.reference_links().to_vec(),
             markdown,
             path.clone(),
-            source_hash.into_boxed_str(),
-            source_bytes,
+            parsed.source_hash_boxed(),
+            parsed.source_bytes(),
             created_at,
             modified_at,
         )?;

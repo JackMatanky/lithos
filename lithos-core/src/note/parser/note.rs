@@ -13,6 +13,8 @@ pub struct ParsedNote {
     nodes: Vec<AstNode>,
     frontmatter: Option<MetadataBlock>,
     reference_links: Vec<ReferenceLinkDefinition>,
+    source_hash: Box<str>,
+    source_bytes: u64,
 }
 
 impl ParsedNote {
@@ -23,11 +25,15 @@ impl ParsedNote {
         nodes: Vec<AstNode>,
         frontmatter: Option<MetadataBlock>,
         reference_links: Vec<ReferenceLinkDefinition>,
+        source_hash: Box<str>,
+        source_bytes: u64,
     ) -> Self {
         Self {
             nodes,
             frontmatter,
             reference_links,
+            source_hash,
+            source_bytes,
         }
     }
 
@@ -50,6 +56,27 @@ impl ParsedNote {
     #[must_use]
     pub fn reference_links(&self) -> &[ReferenceLinkDefinition] {
         &self.reference_links
+    }
+
+    /// Returns the source hash for this markdown input.
+    #[inline]
+    #[must_use]
+    pub fn source_hash(&self) -> &str {
+        &self.source_hash
+    }
+
+    /// Returns the source hash as an owned string.
+    #[inline]
+    #[must_use]
+    pub fn source_hash_boxed(&self) -> Box<str> {
+        self.source_hash.clone()
+    }
+
+    /// Returns the source byte length.
+    #[inline]
+    #[must_use]
+    pub const fn source_bytes(&self) -> u64 {
+        self.source_bytes
     }
 }
 

@@ -72,8 +72,16 @@ pub fn parse_markdown(
     markdown: &str,
     options: Options,
 ) -> Result<ParsedNote, NoteIngestError> {
+    let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
+        NoteIngestError::Source("source length out of range".into())
+    })?;
+    let source_hash = blake3::hash(markdown.as_bytes()).to_hex().to_string();
     let reference_links = extract_reference_link_definitions(markdown)?;
-    ParserState::new(markdown, options).parse(reference_links)
+    ParserState::new(markdown, options).parse(
+        reference_links,
+        source_hash.into_boxed_str(),
+        source_bytes,
+    )
 }
 
 struct ParserState<'source> {
@@ -96,6 +104,8 @@ impl<'source> ParserState<'source> {
     fn parse(
         mut self,
         reference_links: Vec<ReferenceLinkDefinition>,
+        source_hash: Box<str>,
+        source_bytes: u64,
     ) -> Result<ParsedNote, NoteIngestError> {
         let mut nodes = Vec::new();
         let mut frontmatter = None;
@@ -122,7 +132,13 @@ impl<'source> ParserState<'source> {
             }
         }
 
-        Ok(ParsedNote::new(nodes, frontmatter, reference_links))
+        Ok(ParsedNote::new(
+            nodes,
+            frontmatter,
+            reference_links,
+            source_hash,
+            source_bytes,
+        ))
     }
 
     #[expect(
