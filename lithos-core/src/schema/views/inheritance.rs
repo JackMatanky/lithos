@@ -86,12 +86,13 @@ impl ChildSchemaView {
 /// - No redundant `schema_id` field (it's the table key)
 /// - No redundant `depth` field (derivable from `ancestors.len() + 1`)
 ///
-/// **Size:** 97 bytes (typical case: 3 ancestors, 2 excludes).
+/// **Size:** 113 bytes (typical case: 3 ancestors, 2 excludes).
+/// - `parent`: 16 bytes (Option<SchemaId> with Some)
 /// - `ancestors`: 24 bytes (Vec header) + 16 bytes/ancestor × 3 = 72 bytes
 /// - `excludes`: 24 bytes (Vec header) + ~8 bytes/exclude × 2 = 40 bytes
 /// - `ancestors_hash`: 8 bytes
 /// - `resolved_at`: 12 bytes
-/// - Total: ~132 bytes worst case, 97 bytes typical
+/// - Total: ~172 bytes worst case, 113 bytes typical
 ///
 /// # Examples
 ///
@@ -99,6 +100,7 @@ impl ChildSchemaView {
 /// use lithos_core::schema::views::SchemaInheritanceView;
 ///
 /// let view = SchemaInheritanceView {
+///     parent: Some(parent_id),
 ///     ancestors: vec![parent_id, grandparent_id],
 ///     excludes: vec!["created_at".into(), "internal_ref".into()],
 ///     ancestors_hash: compute_ancestors_hash(&parent_metadata),
@@ -108,10 +110,19 @@ impl ChildSchemaView {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SchemaInheritanceView {
+    /// Parent schema ID, or None for root schemas.
+    ///
+    /// While technically redundant with `ancestors[0]`, this explicit field
+    /// provides clearer API ergonomics and matches the existing
+    /// `ParentSchemaView` pattern. Root detection becomes trivial:
+    /// `parent.is_none()`.
+    pub parent: Option<SchemaId>,
+
     /// Ordered list of ancestor schema IDs: [parent, grandparent, ...].
     ///
     /// Topological order from closest (parent) to farthest (root).
-    /// Empty for root schemas (no parent).
+    /// Empty for root schemas (no parent). Note: `ancestors[0]` equals
+    /// `parent` when `parent.is_some()`.
     pub ancestors: Vec<SchemaId>,
 
     /// Property names to exclude from inherited properties.
@@ -195,6 +206,7 @@ mod tests {
 
         // Base schema (root)
         let base_view = SchemaInheritanceView {
+            parent: None,
             ancestors: vec![],
             excludes: vec![],
             ancestors_hash: 0,
@@ -233,6 +245,7 @@ mod tests {
 
         // Base schema (root)
         let base_view = SchemaInheritanceView {
+            parent: None,
             ancestors: vec![],
             excludes: vec![],
             ancestors_hash: 0,
@@ -243,6 +256,7 @@ mod tests {
         let course_hash =
             SchemaInheritanceView::compute_hash(Some((base_id, &base_view)));
         let course_view = SchemaInheritanceView {
+            parent: Some(base_id),
             ancestors: vec![base_id],
             excludes: vec![],
             ancestors_hash: course_hash,
@@ -280,6 +294,7 @@ mod tests {
         let course_id = SchemaId::from_uuid(COURSE_UUID);
 
         let view = SchemaInheritanceView {
+            parent: Some(course_id),
             ancestors: vec![course_id, base_id],
             excludes: vec!["created_at".into(), "internal_ref".into()],
             ancestors_hash: 12345,
@@ -308,6 +323,48 @@ mod tests {
                 .expect("full deserialization should succeed");
 
         assert_eq!(deserialized, view);
+    }
+
+    #[test]
+    fn parent_field_matches_ancestors_first() {
+        let base_id = SchemaId::from_uuid(BASE_UUID);
+        let course_id = SchemaId::from_uuid(COURSE_UUID);
+
+        // Root schema: parent = None, ancestors = []
+        let root_view = SchemaInheritanceView {
+            parent: None,
+            ancestors: vec![],
+            excludes: vec![],
+            ancestors_hash: 0,
+            resolved_at: SystemTime::now(),
+        };
+        assert_eq!(root_view.parent, None);
+        assert!(root_view.ancestors.is_empty());
+
+        // Child schema: parent = Some(base), ancestors = [base]
+        let child_view = SchemaInheritanceView {
+            parent: Some(base_id),
+            ancestors: vec![base_id],
+            excludes: vec![],
+            ancestors_hash: 123,
+            resolved_at: SystemTime::now(),
+        };
+        assert_eq!(child_view.parent, Some(base_id));
+        assert_eq!(child_view.ancestors.first(), child_view.parent.as_ref());
+
+        // Grandchild schema: parent = Some(course), ancestors = [course, base]
+        let grandchild_view = SchemaInheritanceView {
+            parent: Some(course_id),
+            ancestors: vec![course_id, base_id],
+            excludes: vec![],
+            ancestors_hash: 456,
+            resolved_at: SystemTime::now(),
+        };
+        assert_eq!(grandchild_view.parent, Some(course_id));
+        assert_eq!(
+            grandchild_view.ancestors.first(),
+            grandchild_view.parent.as_ref()
+        );
     }
 }
 
