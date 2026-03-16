@@ -205,55 +205,45 @@ where
         let created_at = self.source.created_at(&path);
         let modified_at = self.source.modified_at(&path);
 
-        // Try fast cache paths first
-        if let Some(view) = self
+        // Load cached view if exists
+        let cached_view = self
             .repository
             .get_raw_property_bank_view()
             .map_err(|e| SchemaIngestionError::Io {
                 path: path.to_string_lossy().into(),
                 reason: format!("Failed to query property bank view: {e}")
                     .into(),
-            })?
-        {
-            // Fast path: Check timestamps (no file I/O)
-            if view
+            })?;
+
+        // Fast path: Check timestamps (no file I/O)
+        if let Some(view) = cached_view.as_ref()
+            && view
                 .current()
                 .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-                && let Some(raw) = view.to_raw()
-            {
-                return Ok(Some(IngestResult::Fresh(raw)));
-            }
-
-            // Slow path: Check content hash (requires file read)
-            let raw_bytes = self.source.read_bytes(&path)?;
-            let content_str = String::from_utf8(raw_bytes).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("UTF-8 decode failed: {e}").into(),
-                }
-            })?;
-
-            if view.current().is_some_and(|v| v.is_content_match(&content_str))
-                && let Some(raw) = view.to_raw()
-            {
-                return Ok(Some(IngestResult::Fresh(raw)));
-            }
-            // Fall through to parse - we already have content_str
+            && let Some(raw) = view.to_raw()
+        {
+            return Ok(Some(IngestResult::Fresh(raw)));
         }
 
-        // File is stale or no cache - read file if not already read
-        let (content_hash, content_str) = {
-            // TODO: avoid re-reading if we already read for hash check
-            let raw_bytes = self.source.read_bytes(&path)?;
-            let hash = blake3::hash(&raw_bytes);
-            let str = String::from_utf8(raw_bytes).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("UTF-8 decode failed: {e}").into(),
-                }
-            })?;
-            (hash, str)
-        };
+        // Slow path: Read file for content hash check or parsing
+        let raw_bytes = self.source.read_bytes(&path)?;
+        let content_hash = blake3::hash(&raw_bytes);
+        let content_str = String::from_utf8(raw_bytes).map_err(|e| {
+            SchemaIngestionError::Io {
+                path: path.to_string_lossy().into(),
+                reason: format!("UTF-8 decode failed: {e}").into(),
+            }
+        })?;
+
+        // Check content hash if we have a cached view
+        if let Some(view) = cached_view.as_ref()
+            && view.current().is_some_and(|v| v.is_content_match(&content_str))
+            && let Some(raw) = view.to_raw()
+        {
+            return Ok(Some(IngestResult::Fresh(raw)));
+        }
+
+        // File is stale or no cache - parse and persist
 
         let compressed_content = RawFileVersion::compress_content(&content_str)
             .map_err(|e| SchemaIngestionError::Io {
@@ -344,54 +334,44 @@ where
         let created_at = self.source.created_at(path);
         let modified_at = self.source.modified_at(path);
 
-        // Try fast cache paths first
-        if let Some(view) = self
+        // Load cached view if exists
+        let cached_view = self
             .repository
             .find_raw_schema_view_by_path(&rel_path)
             .map_err(|e| SchemaIngestionError::Io {
                 path: rel_path.to_string().into(),
                 reason: format!("Failed to query schema view: {e}").into(),
-            })?
-        {
-            // Fast path: Check timestamps (no file I/O)
-            if view
+            })?;
+
+        // Fast path: Check timestamps (no file I/O)
+        if let Some(view) = cached_view.as_ref()
+            && view
                 .current()
                 .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-                && let Some(raw) = view.to_raw()
-            {
-                return Ok(IngestResult::Fresh(raw));
-            }
-
-            // Slow path: Check content hash (requires file read)
-            let raw_bytes = self.source.read_bytes(path)?;
-            let content_str = String::from_utf8(raw_bytes).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("UTF-8 decode failed: {e}").into(),
-                }
-            })?;
-
-            if view.current().is_some_and(|v| v.is_content_match(&content_str))
-                && let Some(raw) = view.to_raw()
-            {
-                return Ok(IngestResult::Fresh(raw));
-            }
-            // Fall through to parse - we already have content_str
+            && let Some(raw) = view.to_raw()
+        {
+            return Ok(IngestResult::Fresh(raw));
         }
 
-        // File is stale or no cache - read file if not already read
-        let (content_hash, content_str) = {
-            // TODO: avoid re-reading if we already read for hash check
-            let raw_bytes = self.source.read_bytes(path)?;
-            let hash = blake3::hash(&raw_bytes);
-            let str = String::from_utf8(raw_bytes).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("UTF-8 decode failed: {e}").into(),
-                }
-            })?;
-            (hash, str)
-        };
+        // Slow path: Read file for content hash check or parsing
+        let raw_bytes = self.source.read_bytes(path)?;
+        let content_hash = blake3::hash(&raw_bytes);
+        let content_str = String::from_utf8(raw_bytes).map_err(|e| {
+            SchemaIngestionError::Io {
+                path: path.to_string_lossy().into(),
+                reason: format!("UTF-8 decode failed: {e}").into(),
+            }
+        })?;
+
+        // Check content hash if we have a cached view
+        if let Some(view) = cached_view.as_ref()
+            && view.current().is_some_and(|v| v.is_content_match(&content_str))
+            && let Some(raw) = view.to_raw()
+        {
+            return Ok(IngestResult::Fresh(raw));
+        }
+
+        // File is stale or no cache - parse and persist
 
         let compressed_content = RawFileVersion::compress_content(&content_str)
             .map_err(|e| SchemaIngestionError::Io {
