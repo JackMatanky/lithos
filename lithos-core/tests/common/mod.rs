@@ -12,17 +12,17 @@
     reason = "Test module re-exports port traits for test convenience"
 )]
 
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use lithos_core::{
     db::Database,
     schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::{Schema, SchemaName},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        storage::Repository,
+        storage::{RedbRepository, Repository},
     },
 };
 use tempfile::TempDir;
@@ -33,15 +33,20 @@ use tempfile::TempDir;
 /// Provides `find_by_name` as a convenience that combines
 /// `find_schema_id_by_name` + `find_schema_by_id`.
 pub trait RepositoryExt {
-    /// Find a schema by name (convenience wrapper for `find_schema_id_by_name`
-    /// + `find_schema_by_id`).
+    /// Find a schema by name.
+    ///
+    /// Convenience wrapper for `find_schema_id_by_name` + `find_schema_by_id`.
     fn find_by_name(
         &self,
         name: &SchemaName,
     ) -> Result<Option<Schema>, Box<dyn std::error::Error>>;
 }
 
-impl<R: Repository> RepositoryExt for R {
+impl<R> RepositoryExt for R
+where
+    R: Repository,
+    R::Error: 'static,
+{
     fn find_by_name(
         &self,
         name: &SchemaName,
@@ -67,8 +72,8 @@ pub type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 pub struct TestDb {
     /// Temporary directory (cleanup on drop).
     dir: TempDir,
-    /// Database instance.
-    db: Database,
+    /// Database instance wrapped in Arc for sharing with Repository.
+    db: Arc<Database>,
 }
 
 impl TestDb {
@@ -90,17 +95,17 @@ impl TestDb {
     pub fn new() -> TestResult<Self> {
         let dir = tempfile::tempdir()?;
         let db_path = dir.path().join("lithos.redb");
-        let db = Database::open(&db_path)?;
+        let db = Arc::new(Database::open(&db_path)?);
         Ok(Self {
             dir,
             db,
         })
     }
 
-    /// Get reference to the database.
+    /// Get reference to the database Arc (for cloning into Repository).
     #[inline]
     #[must_use]
-    pub const fn db(&self) -> &Database {
+    pub fn db(&self) -> &Arc<Database> {
         &self.db
     }
 
@@ -110,33 +115,81 @@ impl TestDb {
     pub fn path(&self) -> PathBuf {
         self.dir.path().join("lithos.redb")
     }
+
+    /// Reopen the database (workaround for rkyv deserialization limitations).
+    ///
+    /// Replaces the internal database Arc with a fresh Database instance.
+    /// This allows simulating multiple load sessions in the same test by
+    /// forcing the old database to close.
+    ///
+    /// **IMPORTANT**: All clones of the previous `db()` Arc must be dropped
+    /// before calling this method, otherwise redb will fail with "Database
+    /// already open" error.
+    ///
+    /// # Errors
+    /// Returns error if database cannot be reopened (including if the old
+    /// database is still in use).
+    pub fn reopen(&mut self) -> TestResult<Arc<Database>> {
+        let path = self.path();
+
+        // Open the new database first (this will fail if old one is still open)
+        let new_db = Arc::new(Database::open(&path)?);
+
+        // Replace the old Arc with the new one
+        // The old Arc will be dropped here
+        self.db = new_db;
+
+        Ok(Arc::clone(&self.db))
+    }
 }
 
 // ----------------------------------------------------------- //
-//                    CQRS Setup Helpers                       //
+//                    Repository Setup Helpers                 //
 // ----------------------------------------------------------- //
 
-/// Setup CQRS command and query adapters for a database.
+/// Create a Repository implementation for testing.
 ///
-/// Returns (command, query) pair for easy destructuring.
+/// Returns a `RedbRepository` that implements the unified Repository trait.
+/// This replaces the old CQRS pattern (command, query) with a single
+/// Repository interface combining both read and write operations.
 ///
 /// # Examples
 /// ```no_run
-/// # use tests::common::{setup_cqrs, TestDb, TestResult};
+/// # use tests::common::{setup_repository, TestDb, TestResult};
 /// # fn test() -> TestResult {
 /// let test_db = TestDb::new()?;
-/// let (command, query) = setup_cqrs(test_db.db());
+/// let repository = setup_repository(test_db.db());
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
 #[must_use]
-pub fn setup_cqrs(
-    db: &Database,
-) -> (db_command::Command<'_>, db_query::Query<'_>) {
-    let command = db_command::Command::new(db);
-    let query = db_query::Query::new(db);
-    (command, query)
+pub fn setup_repository(db: &Arc<Database>) -> RedbRepository {
+    RedbRepository::new(Arc::clone(db))
+}
+
+/// Legacy CQRS setup - DEPRECATED.
+///
+/// Returns two Repository instances (for backwards compatibility with old test
+/// code that destructured into (command, query)).
+///
+/// Both instances share the same underlying database, so writes from one are
+/// immediately visible to the other.
+///
+/// # Deprecated
+/// Use `setup_repository()` instead. The CQRS pattern has been replaced with
+/// a unified Repository trait that combines read and write operations.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use setup_repository() - CQRS pattern replaced with unified \
+            Repository trait"
+)]
+#[track_caller]
+#[must_use]
+pub fn setup_cqrs(db: &Arc<Database>) -> (RedbRepository, RedbRepository) {
+    let repo1 = RedbRepository::new(Arc::clone(db));
+    let repo2 = RedbRepository::new(Arc::clone(db));
+    (repo1, repo2)
 }
 
 // ----------------------------------------------------------- //
@@ -285,6 +338,12 @@ pub fn string_property(name: &str) -> TestResult<Property> {
 // ----------------------------------------------------------- //
 //                    Schema Builders                          //
 // ----------------------------------------------------------- //
+
+// NOTE: SchemaBuilder and assertion helpers commented out pending migration
+// from StoredSchema/StoredProperty to new Schema/Property aggregates.
+// See schema_incremental_resolution.rs for modern test patterns using Loader.
+
+/* DISABLED - Pending migration to new Schema aggregate
 
 /// Builder for creating test `StoredSchema` instances.
 ///
@@ -503,3 +562,6 @@ pub fn assert_not_has_property(
         "{context}: Schema should NOT have property '{property_name}'"
     );
 }
+
+*/
+// End of disabled SchemaBuilder and assertion helpers
