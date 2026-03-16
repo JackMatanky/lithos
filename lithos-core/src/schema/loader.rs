@@ -413,6 +413,7 @@ where
                     .collect(),
                 raw_bank.metadata.created_at,
                 raw_bank.metadata.modified_at,
+                None, // TODO(Phase 3): Pass compressed content from Ingestor
             );
 
             self.repository

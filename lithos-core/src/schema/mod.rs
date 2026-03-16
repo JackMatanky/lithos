@@ -116,6 +116,12 @@ pub(crate) mod db_table {
     pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_property_bank_view");
 
+    /// Maps file path to `SchemaId` for raw view lookup by path.
+    /// Key: `file_path` (e.g., "schemas/note.toml")
+    /// Value: rkyv-serialized `SchemaId`.
+    pub(crate) const RAW_SCHEMA_VIEW_BY_PATH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_schema_view_by_path");
+
     // ========================================================================
     // Inheritance Tracking Tables
     // ========================================================================

@@ -78,6 +78,7 @@ impl RawSchemaView {
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         let version = RawFileVersion::new(
@@ -85,6 +86,7 @@ impl RawSchemaView {
             property_hashes,
             created_at,
             modified_at,
+            compressed_content,
         );
         versions.push_front(version);
 
@@ -139,6 +141,11 @@ impl RawSchemaView {
     }
 
     /// Adds a new version (evicts oldest if at capacity).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Consistent with RawFileVersion::new signature - represents \
+                  file metadata"
+    )]
     #[inline]
     pub fn add_version(
         &mut self,
@@ -146,12 +153,14 @@ impl RawSchemaView {
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        compressed_content: Option<Vec<u8>>,
     ) {
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
             created_at,
             modified_at,
+            compressed_content,
         );
 
         if self.versions.len() >= MAX_VERSIONS {
@@ -293,6 +302,28 @@ impl RawSchemaView {
 
         changed
     }
+
+    /// Reconstructs `RawSchema` from cached compressed content.
+    ///
+    /// This enables reusing cached schema data without re-reading files.
+    /// Returns `None` if no compressed content is stored, or if
+    /// decompression/parsing fails.
+    ///
+    /// # Design Note
+    ///
+    /// TODO(Phase 3): Currently returns `None` - full implementation requires
+    /// integrating with Ingestor's format detection and parsing logic.
+    /// The format (JSON/TOML/YAML) will be detected from the `file_path`
+    /// extension.
+    #[must_use]
+    #[inline]
+    pub fn to_raw(&self) -> Option<super::super::raw::RawSchema> {
+        // TODO(Phase 3): Implement full reconstruction
+        // let version = self.current()?;
+        // let content = version.decompress_content()?.ok()?;
+        // Parse based on file extension in self.file_path
+        None
+    }
 }
 
 /// Raw property bank file with version history.
@@ -322,6 +353,7 @@ impl RawPropertyBankView {
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         let version = RawFileVersion::new(
@@ -329,6 +361,7 @@ impl RawPropertyBankView {
             property_hashes,
             created_at,
             modified_at,
+            compressed_content,
         );
         versions.push_front(version);
 
@@ -359,6 +392,11 @@ impl RawPropertyBankView {
     }
 
     /// Adds a new version (evicts oldest if at capacity).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Consistent with RawFileVersion::new signature - represents \
+                  file metadata"
+    )]
     #[inline]
     pub fn add_version(
         &mut self,
@@ -366,12 +404,14 @@ impl RawPropertyBankView {
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        compressed_content: Option<Vec<u8>>,
     ) {
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
             created_at,
             modified_at,
+            compressed_content,
         );
 
         if self.versions.len() >= MAX_VERSIONS {
@@ -494,6 +534,26 @@ impl RawPropertyBankView {
 
         changed
     }
+
+    /// Reconstructs `RawPropertyBank` from cached compressed content.
+    ///
+    /// This enables reusing cached property bank data without re-reading files.
+    /// Returns `None` if no compressed content is stored, or if
+    /// decompression/parsing fails.
+    ///
+    /// # Design Note
+    ///
+    /// TODO(Phase 3): Currently returns `None` - full implementation requires
+    /// integrating with Ingestor's format detection and parsing logic.
+    #[must_use]
+    #[inline]
+    pub fn to_raw(&self) -> Option<super::super::raw::RawPropertyBank> {
+        // TODO(Phase 3): Implement full reconstruction
+        // let version = self.current()?;
+        // let content = version.decompress_content()?.ok()?;
+        // Parse based on configured property bank path extension
+        None
+    }
 }
 
 /// A single version of a raw file with hash and metadata.
@@ -532,13 +592,16 @@ pub struct RawFileVersion {
     /// When this version was recorded in the database.
     #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
+    /// Compressed original file content (zstd level 3) - enables exact
+    /// reconstruction.
+    ///
+    /// Stored as `Option<Vec<u8>>` to support legacy versions without content,
+    /// but all new versions should include this for cache reconstruction.
+    compressed_content: Option<Vec<u8>>,
 }
 
 impl RawFileVersion {
     /// Creates a new file version from metadata.
-    ///
-    /// The content hash and property hashes are computed from the raw metadata
-    /// passed in - we don't store the raw content.
     ///
     /// # Parameters
     /// - `content_hash`: Blake3 hash of file content (computed by caller)
@@ -546,9 +609,8 @@ impl RawFileVersion {
     ///   (computed by caller)
     /// - `created_at`: File creation timestamp
     /// - `modified_at`: File modification timestamp
-    ///
-    /// # Errors
-    /// Currently infallible - kept for API compatibility.
+    /// - `compressed_content`: Optional zstd-compressed file content for
+    ///   reconstruction
     #[inline]
     #[must_use]
     pub fn new(
@@ -556,6 +618,7 @@ impl RawFileVersion {
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let recorded_at = SystemTime::now();
 
@@ -565,6 +628,7 @@ impl RawFileVersion {
             created_at,
             modified_at,
             recorded_at,
+            compressed_content,
         }
     }
 
@@ -659,6 +723,47 @@ impl RawFileVersion {
         let hash = blake3::hash(content.as_bytes());
         hash.as_bytes() == &self.content_hash
     }
+
+    /// Decompresses the stored content.
+    ///
+    /// Returns `None` if no content is stored, or an error if decompression
+    /// fails.
+    ///
+    /// # Errors
+    /// Returns error if zstd decompression fails.
+    #[inline]
+    #[must_use]
+    pub fn decompress_content(&self) -> Option<Result<String, std::io::Error>> {
+        let compressed = self.compressed_content.as_ref()?;
+
+        match zstd::decode_all(compressed.as_slice()) {
+            Ok(bytes) => {
+                // Convert decompressed bytes to UTF-8 string
+                match String::from_utf8(bytes) {
+                    Ok(s) => Some(Ok(s)),
+                    Err(e) => Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("UTF-8 decode failed: {e}"),
+                    ))),
+                }
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+
+    /// Compresses content using zstd level 3 (balanced speed/size).
+    ///
+    /// # Errors
+    /// Returns error if zstd compression fails.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Will be used in Phase 3")
+    )]
+    #[inline]
+    pub(crate) fn compress_content(content: &str) -> std::io::Result<Vec<u8>> {
+        const COMPRESSION_LEVEL: i32 = 3;
+        zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
+    }
 }
 
 // ============================================================================
@@ -694,6 +799,7 @@ impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
             property_hashes,
             raw.metadata.created_at,
             raw.metadata.modified_at,
+            None, // TODO(Phase 3): Pass compressed content from Ingestor
         ))
     }
 }
@@ -741,6 +847,167 @@ impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
             property_hashes,
             raw.metadata.created_at,
             raw.metadata.modified_at,
+            None, // TODO(Phase 3): Pass compressed content from Ingestor
         ))
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compress_content_succeeds_for_valid_string() {
+        let content = "Test content for compression";
+        let result = RawFileVersion::compress_content(content);
+        assert!(result.is_ok());
+        let compressed = result.unwrap();
+        assert!(!compressed.is_empty());
+        // Compressed data should be smaller or similar size for short strings
+        // (zstd might not compress very short strings well)
+    }
+
+    #[test]
+    fn compress_content_handles_empty_string() {
+        let content = "";
+        let result = RawFileVersion::compress_content(content);
+        result.unwrap();
+    }
+
+    #[test]
+    fn compress_content_handles_unicode() {
+        let content = "Hello \u{4e16}\u{754c} \u{1f980}";
+        let result = RawFileVersion::compress_content(content);
+        result.unwrap();
+    }
+
+    #[test]
+    fn decompress_content_returns_none_when_no_content_stored() {
+        let version = RawFileVersion::new(
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            None, // No compressed content
+        );
+        assert!(version.decompress_content().is_none());
+    }
+
+    #[test]
+    fn decompress_content_roundtrip_succeeds() {
+        let original = "Test content for compression roundtrip";
+        let compressed = RawFileVersion::compress_content(original)
+            .expect("compression failed");
+
+        let version = RawFileVersion::new(
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            Some(compressed),
+        );
+
+        let decompressed = version
+            .decompress_content()
+            .expect("should have content")
+            .expect("decompression should succeed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn decompress_content_handles_unicode_roundtrip() {
+        let original = "Hello \u{4e16}\u{754c} \u{1f980} with special chars: \
+                        \n\t\"quotes\"";
+        let compressed = RawFileVersion::compress_content(original)
+            .expect("compression failed");
+
+        let version = RawFileVersion::new(
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            Some(compressed),
+        );
+
+        let decompressed = version
+            .decompress_content()
+            .expect("should have content")
+            .expect("decompression should succeed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn decompress_content_fails_for_invalid_compressed_data() {
+        let invalid_data = vec![0xFF, 0xFF, 0xFF, 0xFF];
+        let version = RawFileVersion::new(
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            Some(invalid_data),
+        );
+
+        let result = version.decompress_content().expect("should have content");
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn raw_schema_view_to_raw_returns_none_currently() {
+        // TODO(Phase 3): Update this test when to_raw() is fully implemented
+        let view = RawSchemaView::new(
+            "schemas/test.toml".into(),
+            None,
+            vec![],
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+        );
+
+        assert!(view.to_raw().is_none());
+    }
+
+    #[test]
+    fn raw_property_bank_view_to_raw_returns_none_currently() {
+        // TODO(Phase 3): Update this test when to_raw() is fully implemented
+        let view = RawPropertyBankView::new(
+            [0; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+        );
+
+        assert!(view.to_raw().is_none());
+    }
+
+    #[test]
+    fn raw_file_version_stores_compressed_content() {
+        let content = "Test content";
+        let compressed = RawFileVersion::compress_content(content)
+            .expect("compression failed");
+
+        let version = RawFileVersion::new(
+            [1; 32],
+            BTreeMap::new(),
+            None,
+            None,
+            Some(compressed.clone()),
+        );
+
+        // Verify the compressed content is stored
+        let decompressed = version
+            .decompress_content()
+            .expect("should have content")
+            .expect("decompression should succeed");
+
+        assert_eq!(decompressed, content);
     }
 }

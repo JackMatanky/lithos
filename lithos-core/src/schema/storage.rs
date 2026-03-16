@@ -280,6 +280,30 @@ pub trait Repository: Send + Sync {
         view: &super::views::RawPropertyBankView,
     ) -> Result<(), Self::Error>;
 
+    /// Finds a raw schema view by file path.
+    ///
+    /// Returns `None` if no view exists for the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_raw_schema_view_by_path(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<super::views::RawSchemaView>, Self::Error>;
+
+    /// Finds the `SchemaId` for a file path.
+    ///
+    /// Returns `None` if no schema exists at that path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_id_by_path(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<SchemaId>, Self::Error>;
+
     // ========================================================================
     // Inheritance Metadata Cache Operations
     // ========================================================================
@@ -737,12 +761,18 @@ impl Repository for RedbRepository {
         id: SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::RAW_SCHEMA_VIEWS;
+        use crate::schema::db_table::{
+            RAW_SCHEMA_VIEW_BY_PATH, RAW_SCHEMA_VIEWS,
+        };
 
         let key = id.to_string();
-        self.db
-            .put(RAW_SCHEMA_VIEWS, key.as_str(), view)
-            .map_err(SchemaError::from)
+        self.db.batch_write(|batch| {
+            batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
+            batch.put(RAW_SCHEMA_VIEW_BY_PATH, view.file_path(), &id)?;
+            Ok(())
+        })?;
+
+        Ok(())
     }
 
     #[inline]
@@ -769,6 +799,36 @@ impl Repository for RedbRepository {
 
         self.db
             .put(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY, view)
+            .map_err(SchemaError::from)
+    }
+
+    #[inline]
+    fn find_raw_schema_view_by_path(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+
+        // First lookup SchemaId by path
+        let id = self
+            .db
+            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)?;
+
+        match id {
+            Some(id) => self.get_raw_schema_view(id),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    fn find_schema_id_by_path(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<SchemaId>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+
+        self.db
+            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)
             .map_err(SchemaError::from)
     }
 
