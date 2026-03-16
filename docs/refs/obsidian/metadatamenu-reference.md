@@ -89,17 +89,17 @@ FileClasses support single-parent inheritance via the `extends` field and select
 ```yaml
 # physics.md (child fileClass)
 ---
-extends: course           # Single parent reference (fileClass name)
-excludes: [grade, fees]   # Array of field names to exclude from ancestors
+extends: course # Single parent reference (fileClass name)
+excludes: [grade, fees] # Array of field names to exclude from ancestors
 fields:
-  - name: lecture         # Own field definition
+  - name: lecture # Own field definition
     type: Select
     id: abc123
     options:
       - "0": Mechanics
       - "1": Optics
 
-  - name: type            # Override parent's 'type' field
+  - name: type # Override parent's 'type' field
     type: Select
     id: def456
     options:
@@ -183,6 +183,7 @@ fields:
 ```
 
 **Result for physics**:
+
 - From grandparent (base): `id`, `created_at` (excludes `internal_ref`)
 - From parent (course): `teacher` (excludes `grade`)
 - From self: `lecture`
@@ -193,6 +194,7 @@ fields:
 When a child defines a field with the same name as an ancestor, the child's definition **fully replaces** the parent's.
 
 **Override behavior**:
+
 - Match by field `name` (case-sensitive)
 - Child definition used, parent definition ignored
 - No partial merge (can't keep parent options and add more)
@@ -200,6 +202,7 @@ When a child defines a field with the same name as an ancestor, the child's defi
 - Options can narrow (parent has 3 choices, child has 2)
 
 **Example**:
+
 ```yaml
 # Parent (course.md)
 fields:
@@ -223,32 +226,109 @@ fields:
 
 **Result**: Child's `status` used (Multi with 2 options). Parent's `status` ignored.
 
+### Exclude vs Override
+
+Two ways to handle unwanted parent fields:
+
+| Approach     | Syntax                  | Result                | Use Case                         |
+| ------------ | ----------------------- | --------------------- | -------------------------------- |
+| **Exclude**  | `excludes: [fieldName]` | Field not inherited   | Don't want field at all          |
+| **Override** | Redefine field          | Child definition used | Want field with different config |
+
+**Example**:
+
+```yaml
+extends: course
+excludes: [grade] # Exclude: don't want 'grade' field
+fields:
+  - name: teacher # Override: want 'teacher' but with different options
+    type: MultiFile # Changed from File to MultiFile
+    options:
+      query: "dv.pages('#instructor')"
+```
+
 ### Edge Cases
 
 **Missing Parent**
+
 ```yaml
 extends: nonexistent
 ```
+
 Behavior: Treated as root class (no inheritance). No error.
 
 **Exclude Non-Existent Field**
+
 ```yaml
 excludes: [nonexistent, grade]
 ```
+
 Behavior: `nonexistent` silently ignored. Only `grade` excluded if exists.
 
 **Cycle Detection**
+
 ```yaml
 # a.md extends b
 # b.md extends a
 ```
+
 Behavior: Each gets one level (a → [b], b → [a]). Cycle breaks chain.
 
 **Deep Inheritance**
+
 ```yaml
 # specific → medium → general → base
 ```
+
 Behavior: All ancestors tracked. Excludes filter entire chain.
+
+**Multiple FileClasses per Note**
+
+```yaml
+# note.md
+fileClass: [physics, chemistry]
+```
+
+Behavior: Both fileClasses contribute fields. If both define same field name, priority determined by array order (first wins).
+
+**Exclude + Override Same Field**
+
+```yaml
+extends: course
+excludes: [status]
+fields:
+  - name: status # Define own 'status'
+```
+
+Behavior: Child's `status` used. Exclude applies to **parent's** status, not child's own definition.
+
+### Implementation Notes
+
+**Ancestor Chain Storage**:
+
+- Built once at plugin startup
+- Stored in global index: `Map<fileClassName, ancestorNames[]>`
+- O(1) lookup after initial build
+
+**Field Merge Priority**:
+
+1. Child's own fields (first in merge order)
+2. Parent's fields (if not excluded, if name not in child)
+3. Grandparent's fields (if not excluded, if name not already present)
+4. ... (continue up ancestor chain)
+
+**Name Collision Resolution**:
+
+- First occurrence wins
+- Child defines first → child's definition used
+- If child doesn't define, parent's used
+- If parent doesn't define, grandparent's used
+
+**Performance**:
+
+- Ancestor chain: O(n) build per fileClass, O(1) lookup
+- Field merge: O(m × a) where m = fields per ancestor, a = ancestor count
+- Typical chains are shallow (1-3 levels), so performance is acceptable
 
 ## Indexed Path (nested fields)
 
@@ -468,6 +548,7 @@ This appendix translates MetadataMenu's inheritance model to Lithos implementati
 ### Current Lithos Architecture
 
 **What we have**:
+
 - Single-parent inheritance via `extends` field in schema JSON
 - `excludes` array for selective property filtering
 - `Extender` module builds inheritance tree
@@ -475,6 +556,7 @@ This appendix translates MetadataMenu's inheritance model to Lithos implementati
 - Property-level conflict resolution
 
 **Where we differ**:
+
 - Exclude scope: parent-only vs any-ancestor (MetadataMenu)
 - Ancestor tracking: per-load rebuild vs cached (MetadataMenu)
 - Override semantics: unclear vs documented (MetadataMenu)
@@ -484,12 +566,14 @@ This appendix translates MetadataMenu's inheritance model to Lithos implementati
 #### 1. Expand Exclude Scope (Priority: HIGH)
 
 **Current Behavior**:
+
 ```rust
 // Resolver only checks immediate parent's excludes
 let excluded_from_parent: HashSet<PropertyName> = schema.excludes();
 ```
 
 **Target Behavior** (MetadataMenu style):
+
 ```rust
 // Check excludes against ALL ancestors
 fn filter_inherited_properties(
@@ -524,6 +608,7 @@ fn filter_inherited_properties(
 ```
 
 **Benefits**:
+
 - More flexible schema composition
 - Can exclude grandparent fields without touching parent
 - Matches user mental model ("I don't want X from anywhere")
@@ -533,6 +618,7 @@ fn filter_inherited_properties(
 #### 2. Cache Ancestor Chains (Priority: HIGH)
 
 **Current Behavior**:
+
 ```rust
 // Extender::build() creates SchemaTree each load
 pub fn build(&self, raw_schemas: Vec<RawSchema>) -> Result<SchemaTree> {
@@ -542,6 +628,7 @@ pub fn build(&self, raw_schemas: Vec<RawSchema>) -> Result<SchemaTree> {
 ```
 
 **Target Behavior** (MetadataMenu style):
+
 ```rust
 // Store ancestors in RawSchemaView (persisted)
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
@@ -571,12 +658,14 @@ fn build_ancestor_chain(schema_name: &SchemaName) -> Vec<SchemaName> {
 ```
 
 **Benefits**:
+
 - O(1) ancestor lookup (vs O(n) tree traversal)
 - Enables "find all descendants" queries
 - Incremental resolution can check if ancestor changed
 - Simpler cycle detection (check if name in ancestors vec)
 
 **Trade-offs**:
+
 - Must invalidate on parent schema changes
 - Slightly more storage (Vec<SchemaName> per schema)
 
@@ -588,14 +677,15 @@ fn build_ancestor_chain(schema_name: &SchemaName) -> Vec<SchemaName> {
 
 **Decision Points**:
 
-| Aspect | Options | Recommendation |
-|--------|---------|----------------|
-| **Override trigger** | Name match, ID match | Name match (simpler, matches MetadataMenu) |
-| **Override scope** | Full replacement, Partial merge | Full replacement (predictable) |
-| **Type compatibility** | Must match, Can change | Can change (flexibility) |
-| **Spec compatibility** | Must match, Can change | Can change (but validate at boundary) |
+| Aspect                 | Options                         | Recommendation                             |
+| ---------------------- | ------------------------------- | ------------------------------------------ |
+| **Override trigger**   | Name match, ID match            | Name match (simpler, matches MetadataMenu) |
+| **Override scope**     | Full replacement, Partial merge | Full replacement (predictable)             |
+| **Type compatibility** | Must match, Can change          | Can change (flexibility)                   |
+| **Spec compatibility** | Must match, Can change          | Can change (but validate at boundary)      |
 
 **Proposed Rules**:
+
 1. Child property with same `PropertyName` fully replaces parent's
 2. Type can change (Select → Multi, String → Number, etc.)
 3. Spec can change (3 options → 2 options, range narrowing, etc.)
@@ -603,6 +693,7 @@ fn build_ancestor_chain(schema_name: &SchemaName) -> Vec<SchemaName> {
 5. First occurrence wins (child > parent > grandparent)
 
 **Example**:
+
 ```rust
 // Parent: status (Select with 3 options)
 // Child: status (Multi with 2 options)
@@ -668,12 +759,14 @@ fn ancestor_cache_invalidation() {
 #### 5. Lenient Error Handling (Priority: LOW)
 
 **Current Behavior**:
+
 ```rust
 // Missing parent = error, abort load
 let parent = self.resolve_parent(schema_name)?;
 ```
 
 **Target Behavior** (MetadataMenu style):
+
 ```rust
 // Missing parent = warning, continue as root
 let parent = match self.resolve_parent(schema_name) {
@@ -686,11 +779,13 @@ let parent = match self.resolve_parent(schema_name) {
 ```
 
 **Benefits**:
+
 - More resilient to vault restructuring
 - Easier incremental schema development
 - Typos don't crash entire load
 
 **Trade-offs**:
+
 - Silent failures harder to debug
 - May hide intentional errors
 
@@ -701,15 +796,14 @@ let parent = match self.resolve_parent(schema_name) {
 ### Implementation Priority
 
 **Phase 1: Core Improvements** (Est. 1 day)
+
 1. ✅ Expand exclude scope to all ancestors (2-4h)
 2. ✅ Add comprehensive inheritance tests (2-4h)
 3. ✅ Document override semantics in ADR (2-3h)
 
-**Phase 2: Performance** (Est. 4-6 hours)
-4. ⚠️ Cache ancestor chains in RawSchemaView (4-6h)
+**Phase 2: Performance** (Est. 4-6 hours) 4. ⚠️ Cache ancestor chains in RawSchemaView (4-6h)
 
-**Phase 3: Polish** (Est. 1-2 hours)
-5. ❓ Add lenient error handling config (1-2h)
+**Phase 3: Polish** (Est. 1-2 hours) 5. ❓ Add lenient error handling config (1-2h)
 
 **Total Estimate**: 1.5-2 days
 
@@ -819,6 +913,7 @@ impl RawSchemaView {
 4. **Week 4**: Integration testing, performance benchmarks
 
 **Rollout Strategy**:
+
 - Phase 1 changes are backwards compatible (exclude scope expansion)
 - Phase 2 requires RawSchemaView migration (add ancestors field)
 - Phase 3 is opt-in (config flag for lenient mode)

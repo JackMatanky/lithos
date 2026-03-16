@@ -18,16 +18,16 @@ MetadataMenu (Obsidian plugin) implements a mature schema inheritance system wit
 // FileClass structure
 class FileClass {
   name: string;
-  attributes: FileClassAttribute[];  // Own + inherited fields
+  attributes: FileClassAttribute[]; // Own + inherited fields
   options: {
-    parent?: FileClass;              // Single parent (no multiple inheritance)
+    parent?: FileClass; // Single parent (no multiple inheritance)
     excludes?: FileClassAttribute[]; // Fields to exclude from ancestors
     // ... other options
   };
 }
 
 // Ancestry tracking (global index)
-fileClassesAncestors: Map<string, string[]>
+fileClassesAncestors: Map<string, string[]>;
 // Example: "physics" -> ["course", "base"]  (ordered: immediate parent first)
 ```
 
@@ -36,15 +36,15 @@ fileClassesAncestors: Map<string, string[]>
 ```yaml
 # physics.md fileClass
 ---
-extends: course           # Single parent reference
-excludes: [grade, fees]   # Array of field names to exclude
+extends: course # Single parent reference
+excludes: [grade, fees] # Array of field names to exclude
 fields:
   - name: lecture
     type: Select
     options: ["Mechanics", "Optics"]
-  - name: type            # Override parent's 'type' field
+  - name: type # Override parent's 'type' field
     type: Select
-    options: ["at school", "online"]  # Fewer options than parent
+    options: ["at school", "online"] # Fewer options than parent
 ---
 ```
 
@@ -55,6 +55,7 @@ fields:
 **Location**: `FieldIndex.ts` - `buildFileClassesAncestors()`
 
 **Algorithm**:
+
 ```typescript
 // Phase 1: Initialize with immediate parent
 for each fileClass:
@@ -80,6 +81,7 @@ function getAncestorsRecursively(fileClassName):
 ```
 
 **Example**:
+
 ```
 physics extends course
 course extends base
@@ -100,6 +102,7 @@ After phase 2 (recursive expansion):
 **Location**: `fileClass.ts` - `getFileClassOptions()`
 
 **Algorithm**:
+
 ```typescript
 // Step 1: Parse excludes from frontmatter
 excludedNames = getExcludedFieldsFromFrontmatter(frontmatter.excludes)
@@ -123,6 +126,7 @@ for each ancestorName in ancestors[this.fileClass]:
 **Location**: `fileClass.ts` - `buildAttributes()`
 
 **Algorithm**:
+
 ```typescript
 // Step 1: Load excludes list (from step 2 above)
 excludedFields = getExcludedFieldsFromFrontmatter(frontmatter.excludes)
@@ -151,6 +155,7 @@ for each [fileClassName, fileClassAttributes] in ancestorsAttributes:
 ```
 
 **Key Insights**:
+
 1. **Own fields first** = they override inherited fields with same name
 2. **Excludes cascade down**: Each level's excludes filter all descendants
 3. **Name-based merge**: Simple deduplication by field name (not by ID or type)
@@ -163,6 +168,7 @@ When multiple fileClasses are mapped to same note:
 **Location**: Documentation - "File mapping"
 
 **Priority Order** (highest to lowest):
+
 1. `fileClass` in frontmatter (explicit)
 2. Tag match
 3. Path match
@@ -182,6 +188,7 @@ When multiple fileClasses are mapped to same note:
 **Behavior**: Stops recursion when cycle detected
 
 **Example**:
+
 ```
 A extends B
 B extends A
@@ -200,6 +207,7 @@ Result:
 **Behavior**: Set ancestors to empty array `[]`, continue without parent
 
 **Example**:
+
 ```yaml
 extends: nonexistent
 ```
@@ -215,9 +223,10 @@ Result: Treated as root class (no inheritance)
 **Algorithm**: Filter only matches existing ancestor fields
 
 **Example**:
+
 ```yaml
 extends: course
-excludes: [nonexistent, grade]  # Only 'grade' excluded if exists
+excludes: [nonexistent, grade] # Only 'grade' excluded if exists
 ```
 
 **Lithos Implication**: Current implementation errors on invalid excludes. Consider: should we be lenient?
@@ -227,6 +236,7 @@ excludes: [nonexistent, grade]  # Only 'grade' excluded if exists
 **Behavior**: Fully replaces field definition (not merge)
 
 **Example**:
+
 ```yaml
 # Parent (course)
 fields:
@@ -244,6 +254,7 @@ fields:
 Result: Child's definition completely replaces parent's.
 
 **Lithos Implication**: We need to decide:
+
 - Allow type changes? (Current: probably not validated)
 - Allow option narrowing? (Current: we support excludes for properties)
 - Full replace or merge semantics?
@@ -251,6 +262,7 @@ Result: Child's definition completely replaces parent's.
 ### 5. Deep Inheritance Chain
 
 **Example**:
+
 ```
 specific extends medium
 medium extends general
@@ -265,18 +277,18 @@ general extends base
 
 ## Differences from Lithos Schema System
 
-| Aspect | MetadataMenu | Lithos (Current) |
-|--------|--------------|------------------|
-| **Inheritance** | Single parent via `extends` | Single parent via `extends` field |
-| **Excludes** | Array of field names | Array of `PropertyName` |
-| **Exclude scope** | Any ancestor field | Only parent fields |
-| **Ancestor tracking** | Persistent map in index | Built per-load in `Extender` |
-| **Field merge** | Name-based deduplication | ID-based with rkyv |
-| **Override semantics** | Full replacement by name | Not explicitly handled |
-| **Missing parent** | Warning, continue | Error, abort load |
-| **Circular detection** | Name-based recursion check | DAG validation in `Extender` |
-| **Multiple parents** | No | No |
-| **Field priority** | First occurrence wins (child first) | Schema inheritance + property bank refs |
+| Aspect                 | MetadataMenu                        | Lithos (Current)                        |
+| ---------------------- | ----------------------------------- | --------------------------------------- |
+| **Inheritance**        | Single parent via `extends`         | Single parent via `extends` field       |
+| **Excludes**           | Array of field names                | Array of `PropertyName`                 |
+| **Exclude scope**      | Any ancestor field                  | Only parent fields                      |
+| **Ancestor tracking**  | Persistent map in index             | Built per-load in `Extender`            |
+| **Field merge**        | Name-based deduplication            | ID-based with rkyv                      |
+| **Override semantics** | Full replacement by name            | Not explicitly handled                  |
+| **Missing parent**     | Warning, continue                   | Error, abort load                       |
+| **Circular detection** | Name-based recursion check          | DAG validation in `Extender`            |
+| **Multiple parents**   | No                                  | No                                      |
+| **Field priority**     | First occurrence wins (child first) | Schema inheritance + property bank refs |
 
 ## Recommendations for Lithos
 
@@ -286,6 +298,7 @@ general extends base
 **Proposed**: Excludes filter any ancestor field
 
 **Implementation**:
+
 ```rust
 // In Resolver::resolve_schema()
 fn filter_inherited_properties(
@@ -314,6 +327,7 @@ fn filter_inherited_properties(
 ```
 
 **Benefits**:
+
 - More flexible schema design
 - Can exclude fields from any level (grandparent, etc.)
 - Matches user mental model
@@ -324,6 +338,7 @@ fn filter_inherited_properties(
 **Proposed**: Persist ancestor chains in `RawSchemaView`
 
 **Implementation**:
+
 ```rust
 // In views/raw.rs
 pub struct RawSchemaView {
@@ -336,11 +351,13 @@ pub struct RawSchemaView {
 ```
 
 **Benefits**:
+
 - O(1) ancestor lookup for incremental resolution
 - Easier to detect cycles (check if name in ancestors)
 - Supports "affected schemas" query (find all descendants)
 
 **Trade-offs**:
+
 - Must invalidate on parent schema changes
 - Slightly more storage (ancestor list per schema)
 
@@ -350,6 +367,7 @@ pub struct RawSchemaView {
 **Proposed**: Validate override compatibility
 
 **Options**:
+
 ```rust
 enum OverridePolicy {
     FullReplace,    // MetadataMenu approach - any change allowed
@@ -366,6 +384,7 @@ enum OverridePolicy {
 **Proposed**: Missing parent = warning, continue as root class
 
 **Implementation**:
+
 ```rust
 // In Loader::load()
 match self.resolve_parent(schema_name) {
@@ -378,11 +397,13 @@ match self.resolve_parent(schema_name) {
 ```
 
 **Benefits**:
+
 - More resilient to vault restructuring
 - Easier incremental schema development
 - Matches MetadataMenu behavior
 
 **Trade-offs**:
+
 - Silent failures harder to debug
 - May hide typos in parent names
 
@@ -392,6 +413,7 @@ match self.resolve_parent(schema_name) {
 **Proposed**: Excludes cascade to children
 
 **Example**:
+
 ```yaml
 # course.yaml
 extends: base
@@ -464,6 +486,7 @@ MetadataMenu's inheritance system is mature and well-tested. Key learnings:
 4. **Lenient resolution** - Warn on issues, don't fail
 
 Our current system is solid but could benefit from:
+
 - Expanded exclude scope (ancestors, not just parent)
 - Cached ancestor chains for performance
 - More comprehensive tests for edge cases
