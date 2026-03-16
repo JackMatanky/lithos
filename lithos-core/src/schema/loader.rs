@@ -260,6 +260,8 @@ where
                     .chain(existing_file_unchanged)
                     .collect();
             self.persist_raw_views(&all_stale)?;
+            // Persist inheritance metadata for caching
+            self.persist_inheritance_metadata(&all_stale, &name_to_id)?;
         }
 
         Ok(resolved)
@@ -465,6 +467,76 @@ where
                 .save_raw_schema_view(*id, &view)
                 .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
         }
+        Ok(())
+    }
+
+    /// Persist inheritance metadata for caching.
+    ///
+    /// Computes and saves `SchemaInheritanceView` for each schema, enabling
+    /// future optimizations like skipping tree rebuilds when inheritance is
+    /// unchanged.
+    ///
+    /// Note: This first implementation saves immediate parent only. Ancestors
+    /// list will be computed on-demand during staleness checks.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Reference pattern needed for iteration over slice"
+    )]
+    fn persist_inheritance_metadata(
+        &self,
+        schemas: &[(SchemaId, RawSchema)],
+        name_to_id: &HashMap<SchemaName, SchemaId>,
+    ) -> Result<(), SchemaLoaderError> {
+        use std::time::SystemTime;
+
+        use super::views::SchemaInheritanceView;
+
+        for (schema_id, raw) in schemas {
+            // Resolve parent name to ID
+            let parent = if let Some(parent_name) = &raw.extends {
+                let pid =
+                    *name_to_id.get(parent_name.as_ref()).ok_or_else(|| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
+                            path: format!("schema: {}", raw.name).into(),
+                            reason: format!("Parent not found: {parent_name}")
+                                .into(),
+                        })
+                    })?;
+                Some(pid)
+            } else {
+                None
+            };
+
+            // For now, ancestors list is empty - will be computed on-demand
+            // This simplifies the implementation and avoids topological
+            // ordering issues
+            let ancestors = Vec::new();
+
+            // Compute ancestors hash from parent (or 0 if root)
+            let ancestors_hash = if let Some(pid) = parent {
+                use std::hash::{Hash as _, Hasher as _};
+                let mut hasher =
+                    std::collections::hash_map::DefaultHasher::new();
+                pid.hash(&mut hasher);
+                hasher.finish()
+            } else {
+                0
+            };
+
+            let metadata = SchemaInheritanceView {
+                parent,
+                ancestors,
+                excludes: raw.excludes.clone(),
+                ancestors_hash,
+                resolved_at: SystemTime::now(),
+            };
+
+            // Persist to database
+            self.repository
+                .save_inheritance_metadata(*schema_id, &metadata)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+        }
+
         Ok(())
     }
 }
