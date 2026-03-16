@@ -30,7 +30,7 @@ use std::ops::Range;
 
 use note::{ParsedNote, ReferenceLinkDefinition};
 use pulldown_cmark::{
-    CodeBlockKind, Event, LinkType, OffsetIter, Options, Parser, Tag, TagEnd,
+    CodeBlockKind, Event, OffsetIter, Options, Parser, Tag, TagEnd,
     utils::TextMergeWithOffset,
 };
 
@@ -287,7 +287,7 @@ impl<'source> ParserState<'source> {
                     ..
                 }) => {
                     current_link = Some(LinkFrame::new(
-                        Self::link_style(link_type),
+                        LinkStyle::from_cmark(link_type),
                         false,
                         dest_url.as_ref().into(),
                         range.start(),
@@ -299,7 +299,7 @@ impl<'source> ParserState<'source> {
                     ..
                 }) => {
                     current_link = Some(LinkFrame::new(
-                        Self::link_style(link_type),
+                        LinkStyle::from_cmark(link_type),
                         true,
                         dest_url.as_ref().into(),
                         range.start(),
@@ -311,7 +311,7 @@ impl<'source> ParserState<'source> {
                     }
                 }
                 Event::Start(inner) => {
-                    if let Some(style) = Self::inline_style(&inner) {
+                    if let Some(style) = TextStyle::from_tag(&inner) {
                         inline_styles.push(style);
                     }
                 }
@@ -334,7 +334,7 @@ impl<'source> ParserState<'source> {
                     ));
                 }
                 Event::End(end) => {
-                    if let Some(style) = Self::inline_style_end(end) {
+                    if let Some(style) = TextStyle::from_tag_end(end) {
                         Self::pop_style(&mut inline_styles, style);
                     }
                 }
@@ -345,7 +345,7 @@ impl<'source> ParserState<'source> {
                     (true, _) => code_text.push_str(&text),
                     (false, true) => {
                         let style = Self::current_style(&inline_styles);
-                        let origin = Self::link_origin(current_link.as_ref());
+                        let origin = LinkFrame::origin(current_link.as_ref());
                         Self::push_text_node(
                             &mut text_nodes,
                             &mut current_link,
@@ -360,7 +360,7 @@ impl<'source> ParserState<'source> {
                 Event::Code(text) => match (is_code_block, accepts_text) {
                     (true, _) => code_text.push_str(&text),
                     (false, true) => {
-                        let origin = Self::link_origin(current_link.as_ref());
+                        let origin = LinkFrame::origin(current_link.as_ref());
                         Self::push_text_node(
                             &mut text_nodes,
                             &mut current_link,
@@ -377,7 +377,7 @@ impl<'source> ParserState<'source> {
                         (true, _) => code_text.push('\n'),
                         (false, true) => {
                             let origin =
-                                Self::link_origin(current_link.as_ref());
+                                LinkFrame::origin(current_link.as_ref());
                             Self::push_break_node(
                                 &mut text_nodes,
                                 &mut current_link,
@@ -416,53 +416,6 @@ impl<'source> ParserState<'source> {
         )
     }
 
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &Tag"
-    )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Inline style ignores other tags"
-    )]
-    fn inline_style(tag: &Tag<'_>) -> Option<TextStyle> {
-        match tag {
-            Tag::Emphasis => Some(TextStyle::Emphasis),
-            Tag::Strong => Some(TextStyle::Strong),
-            Tag::Strikethrough => Some(TextStyle::Strikethrough),
-            _ => None,
-        }
-    }
-
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Inline style ignores other end tags"
-    )]
-    fn inline_style_end(tag: TagEnd) -> Option<TextStyle> {
-        match tag {
-            TagEnd::Emphasis => Some(TextStyle::Emphasis),
-            TagEnd::Strong => Some(TextStyle::Strong),
-            TagEnd::Strikethrough => Some(TextStyle::Strikethrough),
-            _ => None,
-        }
-    }
-
-    fn link_style(link_type: LinkType) -> LinkStyle {
-        match link_type {
-            LinkType::WikiLink {
-                ..
-            } => LinkStyle::Wiki,
-            LinkType::Inline
-            | LinkType::Reference
-            | LinkType::ReferenceUnknown
-            | LinkType::Collapsed
-            | LinkType::CollapsedUnknown
-            | LinkType::Shortcut
-            | LinkType::ShortcutUnknown
-            | LinkType::Autolink
-            | LinkType::Email => LinkStyle::Markdown,
-        }
-    }
-
     fn current_style(stack: &[TextStyle]) -> TextStyle {
         stack.last().copied().unwrap_or(TextStyle::Plain)
     }
@@ -470,14 +423,6 @@ impl<'source> ParserState<'source> {
     fn pop_style(stack: &mut Vec<TextStyle>, style: TextStyle) {
         if let Some(pos) = stack.iter().rposition(|item| *item == style) {
             stack.remove(pos);
-        }
-    }
-
-    fn link_origin(current_link: Option<&LinkFrame>) -> TextOrigin {
-        if current_link.is_some() {
-            TextOrigin::LinkAlias
-        } else {
-            TextOrigin::Normal
         }
     }
 
@@ -706,6 +651,14 @@ impl LinkFrame {
             Text::new(self.alias),
             range,
         ))
+    }
+
+    fn origin(current_link: Option<&Self>) -> TextOrigin {
+        if current_link.is_some() {
+            TextOrigin::LinkAlias
+        } else {
+            TextOrigin::Normal
+        }
     }
 }
 

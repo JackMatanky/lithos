@@ -318,6 +318,38 @@ pub enum TextStyle {
     Strikethrough,
 }
 
+impl TextStyle {
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &Tag"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Inline style ignores other tags"
+    )]
+    pub(super) fn from_tag(tag: &pulldown_cmark::Tag<'_>) -> Option<Self> {
+        match tag {
+            pulldown_cmark::Tag::Emphasis => Some(Self::Emphasis),
+            pulldown_cmark::Tag::Strong => Some(Self::Strong),
+            pulldown_cmark::Tag::Strikethrough => Some(Self::Strikethrough),
+            _ => None,
+        }
+    }
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Inline style ignores other end tags"
+    )]
+    pub(super) fn from_tag_end(tag: pulldown_cmark::TagEnd) -> Option<Self> {
+        match tag {
+            pulldown_cmark::TagEnd::Emphasis => Some(Self::Emphasis),
+            pulldown_cmark::TagEnd::Strong => Some(Self::Strong),
+            pulldown_cmark::TagEnd::Strikethrough => Some(Self::Strikethrough),
+            _ => None,
+        }
+    }
+}
+
 /// Classification for the source of a text fragment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -349,6 +381,25 @@ pub enum LinkStyle {
     Wiki,
     /// Markdown link.
     Markdown,
+}
+
+impl LinkStyle {
+    pub(super) fn from_cmark(link_type: pulldown_cmark::LinkType) -> Self {
+        match link_type {
+            pulldown_cmark::LinkType::WikiLink {
+                ..
+            } => Self::Wiki,
+            pulldown_cmark::LinkType::Inline
+            | pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+            | pulldown_cmark::LinkType::Autolink
+            | pulldown_cmark::LinkType::Email => Self::Markdown,
+        }
+    }
 }
 
 /// Optional callout kinds for block quotes.
