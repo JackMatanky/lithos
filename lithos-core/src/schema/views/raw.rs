@@ -755,10 +755,6 @@ impl RawFileVersion {
     ///
     /// # Errors
     /// Returns error if zstd compression fails.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Will be used in Phase 3")
-    )]
     #[inline]
     pub(crate) fn compress_content(content: &str) -> std::io::Result<Vec<u8>> {
         const COMPRESSION_LEVEL: i32 = 3;
