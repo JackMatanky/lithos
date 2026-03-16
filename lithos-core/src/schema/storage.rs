@@ -281,6 +281,76 @@ pub trait Repository: Send + Sync {
     ) -> Result<(), Self::Error>;
 
     // ========================================================================
+    // Inheritance Metadata Cache Operations
+    // ========================================================================
+
+    /// Gets the inheritance metadata for a given schema ID.
+    ///
+    /// Returns `None` if no metadata exists (schema never resolved or cache
+    /// stale).
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_inheritance_metadata(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<super::views::SchemaInheritanceView>, Self::Error>;
+
+    /// Saves inheritance metadata for a schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_inheritance_metadata(
+        &self,
+        id: SchemaId,
+        metadata: &super::views::SchemaInheritanceView,
+    ) -> Result<(), Self::Error>;
+
+    /// Deletes inheritance metadata for a schema.
+    ///
+    /// Used when a schema's inheritance chain changes and the cached metadata
+    /// becomes stale.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the deletion fails.
+    fn delete_inheritance_metadata(
+        &self,
+        id: SchemaId,
+    ) -> Result<(), Self::Error>;
+
+    /// Provides zero-copy access to archived inheritance metadata.
+    ///
+    /// The closure receives a reference to the archived metadata without
+    /// deserialization. This is the most efficient way to read cached metadata.
+    ///
+    /// Returns `None` if no metadata exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Check if metadata is fresh without full deserialization
+    /// let is_fresh = repo.with_inheritance_metadata(id, |archived| {
+    ///     archived.ancestors_hash == expected_hash
+    /// })?.unwrap_or(false);
+    /// ```
+    fn with_inheritance_metadata<F, R>(
+        &self,
+        id: SchemaId,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(
+            &'archived rkyv::Archived<super::views::SchemaInheritanceView>,
+        ) -> R;
+
+    // ========================================================================
     // Batch Operations (for complex multi-table queries)
     // ========================================================================
 
@@ -699,6 +769,74 @@ impl Repository for RedbRepository {
 
         self.db
             .put(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY, view)
+            .map_err(SchemaError::from)
+    }
+
+    // ========================================================================
+    // Inheritance Metadata Cache Operations
+    // ========================================================================
+
+    #[inline]
+    fn get_inheritance_metadata(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<super::views::SchemaInheritanceView>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_INHERITANCE;
+
+        let key = id.to_string();
+        self.db
+            .get_owned(SCHEMA_INHERITANCE, key.as_str())
+            .map_err(SchemaError::from)
+    }
+
+    #[inline]
+    fn save_inheritance_metadata(
+        &self,
+        id: SchemaId,
+        metadata: &super::views::SchemaInheritanceView,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::SCHEMA_INHERITANCE;
+
+        let key = id.to_string();
+        self.db
+            .put(SCHEMA_INHERITANCE, key.as_str(), metadata)
+            .map_err(SchemaError::from)
+    }
+
+    #[inline]
+    fn delete_inheritance_metadata(
+        &self,
+        id: SchemaId,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::SCHEMA_INHERITANCE;
+
+        let key = id.to_string();
+        self.db
+            .delete(SCHEMA_INHERITANCE, key.as_str())
+            .map(|_deleted| ()) // Discard bool return value
+            .map_err(SchemaError::from)
+    }
+
+    #[inline]
+    fn with_inheritance_metadata<F, R>(
+        &self,
+        id: SchemaId,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(
+            &'archived rkyv::Archived<super::views::SchemaInheritanceView>,
+        ) -> R,
+    {
+        use crate::schema::db_table::SCHEMA_INHERITANCE;
+
+        let key = id.to_string();
+        self.db
+            .get::<super::views::SchemaInheritanceView, _, R>(
+                SCHEMA_INHERITANCE,
+                key.as_str(),
+                f,
+            )
             .map_err(SchemaError::from)
     }
 }

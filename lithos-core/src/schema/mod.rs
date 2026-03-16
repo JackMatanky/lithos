@@ -138,11 +138,6 @@ pub(crate) mod db_table {
     /// to enable fast-path resolution when inheritance chains are unchanged.
     /// Read-heavy workload (every resolution) vs rare writes (schema
     /// restructuring).
-    #[expect(
-        dead_code,
-        reason = "Will be used in Phase 2-6 of inheritance caching \
-                  implementation"
-    )]
     pub(crate) const SCHEMA_INHERITANCE: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_inheritance");
 }
