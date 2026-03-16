@@ -30,14 +30,14 @@ use std::ops::Range;
 
 use note::{ParsedNote, ReferenceLinkDefinition};
 use pulldown_cmark::{
-    BlockQuoteKind, CodeBlockKind, Event, LinkType, OffsetIter, Options,
-    Parser, Tag, TagEnd, utils::TextMergeWithOffset,
+    BlockQuoteKind as CmarkBlockQuoteKind, CodeBlockKind, Event, LinkType,
+    OffsetIter, Options, Parser, Tag, TagEnd, utils::TextMergeWithOffset,
 };
 
 use self::{
     ast::{
-        AstBlockQuoteKind, AstInlineLink, AstLinkStyle, AstListType, AstNode,
-        AstNodeKind, Text, TextNode, TextOrigin, TextStyle,
+        BlockQuoteKind, InlineLink, LinkStyle, ListStyle, Node, NodeKind, Text,
+        TextNode, TextOrigin, TextStyle,
     },
     frontmatter::MetadataBlock,
 };
@@ -225,7 +225,7 @@ impl<'source> ParserState<'source> {
         &mut self,
         tag: Tag<'source>,
         start: SourceByteOffset,
-    ) -> Result<Option<AstNode>, NoteIngestError> {
+    ) -> Result<Option<Node>, NoteIngestError> {
         let mut children = Vec::new();
         let mut text_nodes = Vec::new();
         let mut inline_links = Vec::new();
@@ -239,10 +239,10 @@ impl<'source> ParserState<'source> {
         let is_code_block = matches!(tag, Tag::CodeBlock(_));
         let list_type = match &tag {
             Tag::List(list_start) => Some(match list_start {
-                Some(start_num) => AstListType::Ordered {
+                Some(start_num) => ListStyle::Ordered {
                     start: *start_num,
                 },
-                None => AstListType::Unordered,
+                None => ListStyle::Unordered,
             }),
             _ => None,
         };
@@ -559,43 +559,43 @@ fn build_node(
     tag: &Tag<'_>,
     range: SourceByteRange,
     heading_level: Option<u8>,
-    list_type: Option<AstListType>,
-    block_quote_kind: Option<AstBlockQuoteKind>,
+    list_type: Option<ListStyle>,
+    block_quote_kind: Option<BlockQuoteKind>,
     fenced: bool,
     info: Option<Box<str>>,
     text_nodes: Vec<TextNode>,
-    inline_links: Vec<AstInlineLink>,
+    inline_links: Vec<InlineLink>,
     task_marker: Option<bool>,
-    children: Vec<AstNode>,
+    children: Vec<Node>,
     code_text: String,
-) -> Option<AstNode> {
+) -> Option<Node> {
     let kind = match tag {
         &Tag::Heading {
             ..
-        } => AstNodeKind::Heading {
+        } => NodeKind::Heading {
             level: heading_level.unwrap_or(1),
             text: Text::new(text_nodes),
             links: inline_links,
         },
-        &Tag::Paragraph => AstNodeKind::Paragraph {
+        &Tag::Paragraph => NodeKind::Paragraph {
             text: Text::new(text_nodes),
             links: inline_links,
         },
-        &Tag::List(..) => AstNodeKind::List {
-            list_type: list_type.unwrap_or(AstListType::Unordered),
+        &Tag::List(..) => NodeKind::List {
+            list_type: list_type.unwrap_or(ListStyle::Unordered),
             items: children,
         },
-        &Tag::Item => AstNodeKind::ListItem {
+        &Tag::Item => NodeKind::ListItem {
             text: Text::new(text_nodes),
             task_marker,
             links: inline_links,
             children,
         },
-        &Tag::BlockQuote(..) => AstNodeKind::BlockQuote {
+        &Tag::BlockQuote(..) => NodeKind::BlockQuote {
             kind: block_quote_kind,
             nodes: children,
         },
-        &Tag::CodeBlock(..) => AstNodeKind::CodeBlock {
+        &Tag::CodeBlock(..) => NodeKind::CodeBlock {
             fenced,
             info,
             text: code_text.into_boxed_str(),
@@ -622,12 +622,12 @@ fn build_node(
             ..
         } => return None,
     };
-    Some(AstNode::new(kind, range))
+    Some(Node::new(kind, range))
 }
 
 /// Parse-time state for link nodes.
 struct LinkFrame {
-    style: AstLinkStyle,
+    style: LinkStyle,
     is_embed: bool,
     target: Box<str>,
     alias: Vec<TextNode>,
@@ -636,7 +636,7 @@ struct LinkFrame {
 
 impl LinkFrame {
     fn new(
-        style: AstLinkStyle,
+        style: LinkStyle,
         is_embed: bool,
         target: Box<str>,
         start: SourceByteOffset,
@@ -653,10 +653,10 @@ impl LinkFrame {
     fn into_inline(
         self,
         end: SourceByteOffset,
-    ) -> Result<AstInlineLink, NoteIngestError> {
+    ) -> Result<InlineLink, NoteIngestError> {
         let range = SourceByteRange::new(self.start, end)
             .map_err(NoteIngestError::Domain)?;
-        Ok(AstInlineLink::new(
+        Ok(InlineLink::new(
             self.style,
             self.is_embed,
             self.target,
@@ -685,11 +685,11 @@ fn heading_level(level: pulldown_cmark::HeadingLevel) -> u8 {
     }
 }
 
-fn link_style(link_type: LinkType) -> AstLinkStyle {
+fn link_style(link_type: LinkType) -> LinkStyle {
     match link_type {
         LinkType::WikiLink {
             ..
-        } => AstLinkStyle::Wiki,
+        } => LinkStyle::Wiki,
         LinkType::Inline
         | LinkType::Reference
         | LinkType::ReferenceUnknown
@@ -698,17 +698,17 @@ fn link_style(link_type: LinkType) -> AstLinkStyle {
         | LinkType::Shortcut
         | LinkType::ShortcutUnknown
         | LinkType::Autolink
-        | LinkType::Email => AstLinkStyle::Markdown,
+        | LinkType::Email => LinkStyle::Markdown,
     }
 }
 
-fn map_block_quote_kind(kind: BlockQuoteKind) -> AstBlockQuoteKind {
+fn map_block_quote_kind(kind: CmarkBlockQuoteKind) -> BlockQuoteKind {
     match kind {
-        BlockQuoteKind::Note => AstBlockQuoteKind::Note,
-        BlockQuoteKind::Tip => AstBlockQuoteKind::Tip,
-        BlockQuoteKind::Important => AstBlockQuoteKind::Important,
-        BlockQuoteKind::Warning => AstBlockQuoteKind::Warning,
-        BlockQuoteKind::Caution => AstBlockQuoteKind::Caution,
+        CmarkBlockQuoteKind::Note => BlockQuoteKind::Note,
+        CmarkBlockQuoteKind::Tip => BlockQuoteKind::Tip,
+        CmarkBlockQuoteKind::Important => BlockQuoteKind::Important,
+        CmarkBlockQuoteKind::Warning => BlockQuoteKind::Warning,
+        CmarkBlockQuoteKind::Caution => BlockQuoteKind::Caution,
     }
 }
 
@@ -741,7 +741,7 @@ fn link_origin(current_link: Option<&LinkFrame>) -> TextOrigin {
 )]
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &AstNodeKind"
+    reason = "Match ergonomics on &NodeKind"
 )]
 #[expect(
     clippy::shadow_unrelated,
@@ -759,7 +759,7 @@ mod tests {
         let options = Options::ENABLE_TASKLISTS;
         let parsed = parse_markdown("- [ ] task", options)?;
         let found = contains_list_item(parsed.nodes(), &|item| {
-            matches!(item.kind(), AstNodeKind::ListItem {
+            matches!(item.kind(), NodeKind::ListItem {
                 task_marker: Some(false),
                 ..
             })
@@ -774,7 +774,7 @@ mod tests {
         let parsed = parse_markdown("# Title", options)?;
         let mut found = false;
         for node in parsed.nodes() {
-            if let AstNodeKind::Heading {
+            if let NodeKind::Heading {
                 level,
                 ..
             } = node.kind()
@@ -797,7 +797,7 @@ mod tests {
         let parsed = parse_markdown("- one\n- two", options)?;
         let list = find_list(parsed.nodes()).expect("list node");
 
-        if let AstNodeKind::List {
+        if let NodeKind::List {
             items,
             ..
         } = list.kind()
@@ -822,7 +822,7 @@ mod tests {
         let parsed = parse_markdown(markdown, obsidian_options())?;
 
         let heading = find_heading(parsed.nodes()).expect("heading node");
-        if let AstNodeKind::Heading {
+        if let NodeKind::Heading {
             links,
             ..
         } = heading.kind()
@@ -831,7 +831,7 @@ mod tests {
         }
 
         let paragraph = find_paragraph(parsed.nodes()).expect("paragraph node");
-        if let AstNodeKind::Paragraph {
+        if let NodeKind::Paragraph {
             links,
             ..
         } = paragraph.kind()
@@ -840,7 +840,7 @@ mod tests {
         }
 
         let list_item = find_list_item(parsed.nodes()).expect("list item node");
-        if let AstNodeKind::ListItem {
+        if let NodeKind::ListItem {
             links,
             ..
         } = list_item.kind()
@@ -850,16 +850,16 @@ mod tests {
         Ok(())
     }
 
-    fn contains_list_item<F>(nodes: &[AstNode], predicate: &F) -> bool
+    fn contains_list_item<F>(nodes: &[Node], predicate: &F) -> bool
     where
-        F: Fn(&AstNode) -> bool,
+        F: Fn(&Node) -> bool,
     {
         for node in nodes {
             if predicate(node) {
                 return true;
             }
             match node.kind() {
-                AstNodeKind::List {
+                NodeKind::List {
                     items,
                     ..
                 } => {
@@ -867,7 +867,7 @@ mod tests {
                         return true;
                     }
                 }
-                AstNodeKind::ListItem {
+                NodeKind::ListItem {
                     children,
                     ..
                 } => {
@@ -875,7 +875,7 @@ mod tests {
                         return true;
                     }
                 }
-                AstNodeKind::BlockQuote {
+                NodeKind::BlockQuote {
                     nodes,
                     ..
                 } => {
@@ -889,24 +889,22 @@ mod tests {
         false
     }
 
-    fn find_list(nodes: &[AstNode]) -> Option<&AstNode> {
-        nodes
-            .iter()
-            .find(|node| matches!(node.kind(), AstNodeKind::List { .. }))
+    fn find_list(nodes: &[Node]) -> Option<&Node> {
+        nodes.iter().find(|node| matches!(node.kind(), NodeKind::List { .. }))
     }
 
-    fn find_heading(nodes: &[AstNode]) -> Option<&AstNode> {
+    fn find_heading(nodes: &[Node]) -> Option<&Node> {
         nodes
             .iter()
-            .find(|node| matches!(node.kind(), AstNodeKind::Heading { .. }))
+            .find(|node| matches!(node.kind(), NodeKind::Heading { .. }))
     }
 
-    fn find_paragraph(nodes: &[AstNode]) -> Option<&AstNode> {
+    fn find_paragraph(nodes: &[Node]) -> Option<&Node> {
         for node in nodes {
-            if matches!(node.kind(), AstNodeKind::Paragraph { .. }) {
+            if matches!(node.kind(), NodeKind::Paragraph { .. }) {
                 return Some(node);
             }
-            if let AstNodeKind::BlockQuote {
+            if let NodeKind::BlockQuote {
                 nodes: children,
                 ..
             } = node.kind()
@@ -918,13 +916,13 @@ mod tests {
         None
     }
 
-    fn find_list_item(nodes: &[AstNode]) -> Option<&AstNode> {
+    fn find_list_item(nodes: &[Node]) -> Option<&Node> {
         for node in nodes {
-            if matches!(node.kind(), AstNodeKind::ListItem { .. }) {
+            if matches!(node.kind(), NodeKind::ListItem { .. }) {
                 return Some(node);
             }
             match node.kind() {
-                AstNodeKind::List {
+                NodeKind::List {
                     items,
                     ..
                 } => {
@@ -932,7 +930,7 @@ mod tests {
                         return Some(found);
                     }
                 }
-                AstNodeKind::ListItem {
+                NodeKind::ListItem {
                     children,
                     ..
                 } => {
@@ -940,7 +938,7 @@ mod tests {
                         return Some(found);
                     }
                 }
-                AstNodeKind::BlockQuote {
+                NodeKind::BlockQuote {
                     nodes,
                     ..
                 } => {
@@ -954,14 +952,14 @@ mod tests {
         None
     }
 
-    fn list_item_has_paragraph(node: &AstNode) -> bool {
-        if let AstNodeKind::ListItem {
+    fn list_item_has_paragraph(node: &Node) -> bool {
+        if let NodeKind::ListItem {
             children,
             ..
         } = node.kind()
         {
             return children.iter().any(|child| {
-                matches!(child.kind(), AstNodeKind::Paragraph { .. })
+                matches!(child.kind(), NodeKind::Paragraph { .. })
             });
         }
         false

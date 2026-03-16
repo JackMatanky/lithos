@@ -4,13 +4,13 @@
 //! parser boundary. This type is consumed by raw extraction rather than domain
 //! conversion.
 
-use super::{ast::AstNode, frontmatter::MetadataBlock};
+use super::{ast::Node, frontmatter::MetadataBlock};
 
 /// Parsed note output containing the minimal AST plus raw frontmatter block.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ParsedNote {
-    nodes: Vec<AstNode>,
+    nodes: Vec<Node>,
     frontmatter: Option<MetadataBlock>,
     reference_links: Vec<ReferenceLinkDefinition>,
     source_hash: Box<str>,
@@ -22,7 +22,7 @@ impl ParsedNote {
     #[inline]
     #[must_use]
     pub fn new(
-        nodes: Vec<AstNode>,
+        nodes: Vec<Node>,
         frontmatter: Option<MetadataBlock>,
         reference_links: Vec<ReferenceLinkDefinition>,
         source_hash: Box<str>,
@@ -40,7 +40,7 @@ impl ParsedNote {
     /// Returns parsed AST nodes in source order.
     #[inline]
     #[must_use]
-    pub fn nodes(&self) -> &[AstNode] {
+    pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
 

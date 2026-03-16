@@ -14,16 +14,16 @@ use crate::note::position::SourceByteRange;
 /// Minimal AST node wrapper with byte range information.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct AstNode {
-    kind: AstNodeKind,
+pub struct Node {
+    kind: NodeKind,
     range: SourceByteRange,
 }
 
-impl AstNode {
+impl Node {
     /// Creates a new AST node.
     #[inline]
     #[must_use]
-    pub const fn new(kind: AstNodeKind, range: SourceByteRange) -> Self {
+    pub const fn new(kind: NodeKind, range: SourceByteRange) -> Self {
         Self {
             kind,
             range,
@@ -33,7 +33,7 @@ impl AstNode {
     /// Returns the node kind.
     #[inline]
     #[must_use]
-    pub const fn kind(&self) -> &AstNodeKind {
+    pub const fn kind(&self) -> &NodeKind {
         &self.kind
     }
 
@@ -48,7 +48,7 @@ impl AstNode {
 /// Structural node types required by raw extraction.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum AstNodeKind {
+pub enum NodeKind {
     /// Heading block with inline text.
     Heading {
         /// Heading level, from 1 through 6.
@@ -56,21 +56,21 @@ pub enum AstNodeKind {
         /// Heading text with inline styles preserved.
         text: Text,
         /// Inline links captured within the heading text.
-        links: Vec<AstInlineLink>,
+        links: Vec<InlineLink>,
     },
     /// Paragraph block with inline text.
     Paragraph {
         /// Paragraph text with inline styles preserved.
         text: Text,
         /// Inline links captured within the paragraph text.
-        links: Vec<AstInlineLink>,
+        links: Vec<InlineLink>,
     },
     /// List container with ordered or unordered metadata.
     List {
         /// Ordered or unordered list type, as reported by the parser.
-        list_type: AstListType,
+        list_type: ListStyle,
         /// List items in source order.
-        items: Vec<AstNode>,
+        items: Vec<Node>,
     },
     /// List item with optional task marker.
     ListItem {
@@ -81,9 +81,9 @@ pub enum AstNodeKind {
         /// `Some(true)` means checked, `Some(false)` means unchecked.
         task_marker: Option<bool>,
         /// Inline links captured within the list item text.
-        links: Vec<AstInlineLink>,
+        links: Vec<InlineLink>,
         /// Nested nodes contained by this list item.
-        children: Vec<AstNode>,
+        children: Vec<Node>,
     },
     /// Code block boundary used for sectioning and tag exclusion.
     CodeBlock {
@@ -97,29 +97,29 @@ pub enum AstNodeKind {
     /// Block quote boundary, including callouts.
     BlockQuote {
         /// Optional callout kind.
-        kind: Option<AstBlockQuoteKind>,
+        kind: Option<BlockQuoteKind>,
         /// Nested nodes contained by this block quote.
-        nodes: Vec<AstNode>,
+        nodes: Vec<Node>,
     },
 }
 
 /// Inline link captured within a text container.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct AstInlineLink {
-    style: AstLinkStyle,
+pub struct InlineLink {
+    style: LinkStyle,
     is_embed: bool,
     target: Box<str>,
     alias: Text,
     range: SourceByteRange,
 }
 
-impl AstInlineLink {
+impl InlineLink {
     /// Creates a new inline link descriptor.
     #[inline]
     #[must_use]
     pub fn new(
-        style: AstLinkStyle,
+        style: LinkStyle,
         is_embed: bool,
         target: Box<str>,
         alias: Text,
@@ -137,7 +137,7 @@ impl AstInlineLink {
     /// Returns the link style.
     #[inline]
     #[must_use]
-    pub const fn style(&self) -> AstLinkStyle {
+    pub const fn style(&self) -> LinkStyle {
         self.style
     }
 
@@ -311,7 +311,7 @@ pub enum TextOrigin {
 /// List type metadata for list item nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum AstListType {
+pub enum ListStyle {
     /// Ordered list with a starting number.
     Ordered {
         /// Starting index for the ordered list.
@@ -324,7 +324,7 @@ pub enum AstListType {
 /// Link style metadata for link nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum AstLinkStyle {
+pub enum LinkStyle {
     /// Obsidian-style wiki link.
     Wiki,
     /// Markdown link.
@@ -334,7 +334,7 @@ pub enum AstLinkStyle {
 /// Optional callout kinds for block quotes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum AstBlockQuoteKind {
+pub enum BlockQuoteKind {
     /// `> [!note]`.
     Note,
     /// `> [!tip]`.

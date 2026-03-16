@@ -2,7 +2,7 @@
 
 use crate::note::{
     error::NoteError,
-    parser::ast::{AstNode, AstNodeKind},
+    parser::ast::{Node, NodeKind},
     position::SourceByteRange,
 };
 
@@ -73,7 +73,7 @@ impl RawSection {
 
 /// Build raw sections from AST nodes.
 pub(crate) fn extract_sections(
-    nodes: &[AstNode],
+    nodes: &[Node],
 ) -> Result<Vec<RawSection>, NoteError> {
     let mut sections = Vec::new();
     walk_sections(nodes, 0, &mut sections)?;
@@ -82,16 +82,16 @@ pub(crate) fn extract_sections(
 
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &AstNodeKind"
+    reason = "Match ergonomics on &NodeKind"
 )]
 fn walk_sections(
-    nodes: &[AstNode],
+    nodes: &[Node],
     depth: u32,
     sections: &mut Vec<RawSection>,
 ) -> Result<(), NoteError> {
     for node in nodes {
         match node.kind() {
-            AstNodeKind::Heading {
+            NodeKind::Heading {
                 ..
             } => {
                 sections.push(RawSection::new(
@@ -100,7 +100,7 @@ fn walk_sections(
                     depth,
                 ));
             }
-            AstNodeKind::Paragraph {
+            NodeKind::Paragraph {
                 ..
             } => {
                 sections.push(RawSection::new(
@@ -109,13 +109,13 @@ fn walk_sections(
                     depth,
                 ));
             }
-            AstNodeKind::List {
+            NodeKind::List {
                 items,
                 ..
             } => {
                 walk_sections(items, depth.saturating_add(1), sections)?;
             }
-            AstNodeKind::ListItem {
+            NodeKind::ListItem {
                 children,
                 ..
             } => {
@@ -126,7 +126,7 @@ fn walk_sections(
                 ));
                 walk_sections(children, depth.saturating_add(1), sections)?;
             }
-            AstNodeKind::CodeBlock {
+            NodeKind::CodeBlock {
                 ..
             } => {
                 sections.push(RawSection::new(
@@ -135,7 +135,7 @@ fn walk_sections(
                     depth,
                 ));
             }
-            AstNodeKind::BlockQuote {
+            NodeKind::BlockQuote {
                 nodes: quote_nodes,
                 ..
             } => {

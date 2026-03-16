@@ -19,10 +19,7 @@ use super::{
 use crate::note::{
     error::NoteError,
     parser::{
-        ast::{
-            AstInlineLink, AstLinkStyle, AstListType, AstNode, AstNodeKind,
-            TextOrigin,
-        },
+        ast::{InlineLink, LinkStyle, ListStyle, Node, NodeKind, TextOrigin},
         frontmatter::MetadataBlock,
         note::ReferenceLinkDefinition,
     },
@@ -40,7 +37,7 @@ use crate::note::{
 )]
 #[inline]
 pub fn extract_raw_note(
-    nodes: &[AstNode],
+    nodes: &[Node],
     frontmatter_block: Option<MetadataBlock>,
     reference_links: Vec<ReferenceLinkDefinition>,
     source: &str,
@@ -114,7 +111,7 @@ pub fn extract_raw_note(
 
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &AstNodeKind"
+    reason = "Match ergonomics on &NodeKind"
 )]
 #[expect(
     clippy::too_many_arguments,
@@ -126,7 +123,7 @@ pub fn extract_raw_note(
 )]
 fn walk_nodes(
     source: &str,
-    nodes: &[AstNode],
+    nodes: &[Node],
     list_stack: &mut Vec<RawListType>,
     open_item_by_depth: &mut Vec<SourceByteOffset>,
     headings: &mut Vec<RawHeading>,
@@ -138,7 +135,7 @@ fn walk_nodes(
 ) -> Result<(), NoteError> {
     for node in nodes {
         match node.kind() {
-            AstNodeKind::Heading {
+            NodeKind::Heading {
                 level,
                 text,
                 links: inline_links,
@@ -154,7 +151,7 @@ fn walk_nodes(
                 scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
             }
-            AstNodeKind::Paragraph {
+            NodeKind::Paragraph {
                 text,
                 links: inline_links,
             } => {
@@ -162,17 +159,17 @@ fn walk_nodes(
                 scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
             }
-            AstNodeKind::List {
+            NodeKind::List {
                 list_type,
                 items,
             } => {
                 let list_type = match list_type {
-                    AstListType::Ordered {
+                    ListStyle::Ordered {
                         start,
                     } => RawListType::Ordered {
                         start: *start,
                     },
-                    AstListType::Unordered => RawListType::Unordered,
+                    ListStyle::Unordered => RawListType::Unordered,
                 };
                 list_stack.push(list_type);
                 walk_nodes(
@@ -189,7 +186,7 @@ fn walk_nodes(
                 )?;
                 list_stack.pop();
             }
-            AstNodeKind::ListItem {
+            NodeKind::ListItem {
                 text,
                 task_marker,
                 links: inline_links,
@@ -278,7 +275,7 @@ fn walk_nodes(
                     inline_fields,
                 )?;
             }
-            AstNodeKind::BlockQuote {
+            NodeKind::BlockQuote {
                 nodes: quote_nodes,
                 ..
             } => {
@@ -295,7 +292,7 @@ fn walk_nodes(
                     inline_fields,
                 )?;
             }
-            AstNodeKind::CodeBlock {
+            NodeKind::CodeBlock {
                 ..
             } => {}
         }
@@ -305,17 +302,17 @@ fn walk_nodes(
 
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &AstNodeKind"
+    reason = "Match ergonomics on &NodeKind"
 )]
 fn list_item_text(
     text: &crate::note::parser::ast::Text,
-    children: &[AstNode],
+    children: &[Node],
 ) -> Box<str> {
     if !text.is_empty() {
         return text.to_boxed_str();
     }
     for child in children {
-        if let AstNodeKind::Paragraph {
+        if let NodeKind::Paragraph {
             text: child_text,
             ..
         } = child.kind()
@@ -421,14 +418,11 @@ fn scan_text_nodes(
     Ok(())
 }
 
-fn collect_inline_links(
-    inline_links: &[AstInlineLink],
-    links: &mut Vec<RawLink>,
-) {
+fn collect_inline_links(inline_links: &[InlineLink], links: &mut Vec<RawLink>) {
     for link in inline_links {
         let raw_style = match link.style() {
-            AstLinkStyle::Wiki => RawLinkStyle::Wiki,
-            AstLinkStyle::Markdown => RawLinkStyle::Markdown,
+            LinkStyle::Wiki => RawLinkStyle::Wiki,
+            LinkStyle::Markdown => RawLinkStyle::Markdown,
         };
         let alias = if link.alias().is_empty() {
             None
