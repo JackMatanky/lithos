@@ -290,3 +290,297 @@ Suggested conceptual mapping for Lithos schema module design.
   - Metadata Menu: computed, persisted fields
   - Lithos: derived field pipeline; explicitly model evaluation phase and
     persistence into projection cache
+
+## Appendix C: Schema Inheritance with `extends` and `excludes`
+
+### Overview
+
+Metadata Menu fileClasses support single-parent inheritance via the `extends` field and selective field exclusion via the `excludes` array. This enables schema reuse and composition without duplication.
+
+**Key Characteristics**:
+- Single-parent inheritance (no multiple inheritance)
+- Transitive inheritance (grandparent fields inherited)
+- Field override by name (child redefines parent field)
+- Selective field exclusion from any ancestor
+- Cycle detection prevents infinite loops
+
+### Schema File Syntax
+
+```yaml
+# physics.md (child fileClass)
+---
+extends: course           # Single parent reference (fileClass name)
+excludes: [grade, fees]   # Array of field names to exclude from ancestors
+fields:
+  - name: lecture         # Own field definition
+    type: Select
+    id: abc123
+    options:
+      - "0": Mechanics
+      - "1": Optics
+      - "2": Electricity
+
+  - name: type            # Override parent's 'type' field
+    type: Select
+    id: def456
+    options:
+      - "0": "at school"
+      - "1": "online"
+    # Note: parent had 3 options, child has only 2
+---
+
+Body content (ignored by plugin)
+```
+
+### Inheritance Resolution Algorithm
+
+**Phase 1: Build Ancestor Chain** (one-time, global index)
+
+```
+1. For each fileClass, read frontmatter `extends` field
+2. Build immediate parent map: fileClass -> parent
+3. Recursively expand to full ancestor chain:
+   - Start with [parent]
+   - Add parent's parent, parent's parent's parent, etc.
+   - Stop when cycle detected (ancestor == current fileClass)
+
+Example:
+  physics extends course
+  course extends base
+
+  Result:
+    physics -> [course, base]  # Full chain
+    course -> [base]
+```
+
+**Phase 2: Resolve Excludes** (per fileClass load)
+
+```
+1. Parse `excludes` array from frontmatter (string or array)
+2. Build exclusion list from ALL ancestors:
+   - For each ancestor in chain:
+     - Get ancestor's field definitions
+     - If field.name in excludes list:
+       - Add to excluded_fields (deduplicate)
+
+Result: Set of FileClassAttribute to exclude
+```
+
+**Phase 3: Merge Fields** (per fileClass load)
+
+```
+1. Start with empty attributes list
+2. Add own fields first (from this fileClass's frontmatter)
+3. For each ancestor (in order: parent, grandparent, ...):
+   - Get ancestor's field definitions
+   - Filter out excluded fields
+   - For each ancestor field:
+     - If field.name not already in attributes:
+       - Add to attributes
+     # Note: First occurrence wins (child override)
+
+Result: Merged list of fields for fileClass
+```
+
+### Exclude Scope: Any Ancestor
+
+Unlike simple parent-child inheritance, `excludes` filters fields from **any ancestor**, not just the immediate parent.
+
+**Example**:
+```yaml
+# base.md
+fields:
+  - name: id
+  - name: created_at
+  - name: internal_ref
+
+# course.md
+extends: base
+fields:
+  - name: teacher
+  - name: grade
+
+# physics.md
+extends: course
+excludes: [internal_ref, grade]  # Excludes from grandparent AND parent
+fields:
+  - name: lecture
+```
+
+**Result for physics**:
+- From grandparent (base): `id`, `created_at` (excludes `internal_ref`)
+- From parent (course): `teacher` (excludes `grade`)
+- From self (physics): `lecture`
+- **Final**: `[id, created_at, teacher, lecture]`
+
+### Field Override Semantics
+
+When a child defines a field with the same name as an ancestor, the child's definition **fully replaces** the parent's definition.
+
+**Override Behavior**:
+- Match by field `name` (case-sensitive)
+- Child definition used (parent definition ignored)
+- No partial merge (e.g., can't keep parent options and add more)
+- Type can change (parent `Select` → child `Multi`)
+
+**Example**:
+```yaml
+# Parent (course.md)
+fields:
+  - name: status
+    type: Select
+    options:
+      - "0": Active
+      - "1": Completed
+      - "2": Dropped
+
+# Child (physics.md)
+extends: course
+fields:
+  - name: status      # Same name = override
+    type: Multi       # Different type allowed
+    options:
+      - "0": Active
+      - "1": Completed
+    # Only 2 options (narrowed from parent)
+```
+
+**Result**: Child's `status` field is used (Multi with 2 options). Parent's `status` (Select with 3 options) is ignored.
+
+### Exclude vs Override
+
+Two ways to handle unwanted parent fields:
+
+| Approach | Syntax | Result | Use Case |
+|----------|--------|--------|----------|
+| **Exclude** | `excludes: [fieldName]` | Field not inherited | Don't want field at all |
+| **Override** | Redefine field | Child definition used | Want field with different config |
+
+**Example**:
+```yaml
+extends: course
+excludes: [grade]     # Exclude: don't want 'grade' field
+fields:
+  - name: teacher     # Override: want 'teacher' but with different options
+    type: MultiFile   # Changed from File to MultiFile
+    options:
+      query: "dv.pages('#instructor')"
+```
+
+### Cycle Detection
+
+Cycles are detected during ancestor chain building:
+
+**Algorithm**:
+```
+while building ancestor chain:
+  if next_ancestor == current_fileClass:
+    stop recursion  # Cycle detected
+```
+
+**Example**:
+```yaml
+# a.md
+extends: b
+
+# b.md
+extends: a
+```
+
+**Result**:
+- a -> [b] (stops when detecting 'a' again)
+- b -> [a] (stops when detecting 'b' again)
+
+**Behavior**: Cycle breaks the chain but doesn't error. Each fileClass gets one level of inheritance only.
+
+### Edge Cases
+
+**1. Missing Parent**
+
+```yaml
+extends: nonexistent
+```
+
+**Behavior**: Treated as root class (no inheritance). No error thrown.
+
+**2. Exclude Non-Existent Field**
+
+```yaml
+extends: course
+excludes: [nonexistent, grade]
+```
+
+**Behavior**: `nonexistent` silently ignored. Only `grade` excluded if it exists.
+
+**3. Deep Inheritance Chain**
+
+```yaml
+# specific.md extends medium
+# medium.md extends general
+# general.md extends base
+```
+
+**Behavior**: All ancestors tracked (`specific -> [medium, general, base]`). Excludes filter entire chain.
+
+**4. Multiple FileClasses per Note**
+
+```yaml
+# note.md
+fileClass: [physics, chemistry]
+```
+
+**Behavior**: Both fileClasses contribute fields. If both define same field name, priority determined by array order (first wins).
+
+**5. Exclude + Override Same Field**
+
+```yaml
+extends: course
+excludes: [status]
+fields:
+  - name: status  # Define own 'status'
+```
+
+**Behavior**: Child's `status` used. Exclude applies to **parent's** status, not child's own definition.
+
+### Implementation Notes
+
+**Ancestor Chain Storage**:
+- Built once at plugin startup
+- Stored in global index: `Map<fileClassName, ancestorNames[]>`
+- O(1) lookup after initial build
+
+**Field Merge Priority**:
+1. Child's own fields (first in merge order)
+2. Parent's fields (if not excluded, if name not in child)
+3. Grandparent's fields (if not excluded, if name not already present)
+4. ... (continue up ancestor chain)
+
+**Name Collision Resolution**:
+- First occurrence wins
+- Child defines first → child's definition used
+- If child doesn't define, parent's used
+- If parent doesn't define, grandparent's used
+- Etc.
+
+**Performance**:
+- Ancestor chain: O(n) build per fileClass, O(1) lookup
+- Field merge: O(m × a) where m = fields per ancestor, a = ancestor count
+- Typical chains are shallow (1-3 levels), so performance is acceptable
+
+### Lithos Implications
+
+**Current Gaps**:
+1. ❌ Exclude scope limited to parent only (should extend to all ancestors)
+2. ❌ Ancestor chain rebuilt each load (should be cached in RawSchemaView)
+3. ❌ Override semantics unclear/untested (should document and validate)
+4. ⚠️ Missing parent = error (consider warning mode like Metadata Menu)
+
+**Recommended Changes**:
+1. Expand `excludes` to filter any ancestor field (not just parent)
+2. Cache ancestor chain in `RawSchemaView.ancestors: Vec<SchemaName>`
+3. Document override behavior in ADR (full replace vs partial merge)
+4. Add tests for deep inheritance (3+ levels)
+5. Add tests for exclude from grandparent
+6. Add tests for field override with type change
+
+**Priority**: High - inheritance is core to schema reuse. Metadata Menu's approach is mature and well-tested.
