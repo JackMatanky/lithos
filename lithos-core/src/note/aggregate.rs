@@ -16,14 +16,19 @@ use crate::{
         error::{NoteError, NoteMetadataError, TaskError},
         frontmatter::Frontmatter,
         heading::{Heading, HeadingLevel},
-        link::{Anchor, EmbedType, FrontmatterLink, Link, Target},
+        inline_fields::InlineField,
+        link::{
+            Anchor, EmbedType, FrontmatterLink, Link, ReferenceLink, Target,
+        },
         list::ListItemEntry,
         paths::NotePath,
         raw::{
             block_refs::RawBlockRef,
             headings::RawHeading,
+            inline_fields::RawInlineField as RawNoteInlineField,
             links::{RawLink, RawLinkStyle},
             note::RawNote,
+            reference_links::RawReferenceLink,
             sections::{RawSection, RawSectionKind},
             tasks::RawTask,
         },
@@ -37,7 +42,7 @@ use crate::{
     },
 };
 
-type RawInlineField = (Box<str>, Box<str>);
+type RawTaskInlineField = (Box<str>, Box<str>);
 
 /// Stable identifier for a note.
 #[derive(
@@ -419,6 +424,7 @@ pub struct NoteFacts {
     modified_at: Option<SystemTime>,
     frontmatter: Option<Frontmatter>,
     frontmatter_links: Vec<FrontmatterLink>,
+    reference_links: Vec<ReferenceLink>,
     tags: Vec<Tag>,
     headings: Vec<Heading>,
     sections: Vec<Section>,
@@ -426,6 +432,7 @@ pub struct NoteFacts {
     block_refs: Vec<BlockRef>,
     list_items: Vec<ListItemEntry>,
     tasks: Vec<Task>,
+    inline_fields: Vec<InlineField>,
 }
 
 impl NoteFacts {
@@ -443,6 +450,7 @@ impl NoteFacts {
         modified_at: Option<SystemTime>,
         frontmatter: Option<Frontmatter>,
         frontmatter_links: Vec<FrontmatterLink>,
+        reference_links: Vec<ReferenceLink>,
         tags: Vec<Tag>,
         headings: Vec<Heading>,
         sections: Vec<Section>,
@@ -450,6 +458,7 @@ impl NoteFacts {
         block_refs: Vec<BlockRef>,
         list_items: Vec<ListItemEntry>,
         tasks: Vec<Task>,
+        inline_fields: Vec<InlineField>,
     ) -> Self {
         Self {
             id,
@@ -460,6 +469,7 @@ impl NoteFacts {
             modified_at,
             frontmatter,
             frontmatter_links,
+            reference_links,
             tags,
             headings,
             sections,
@@ -467,6 +477,7 @@ impl NoteFacts {
             block_refs,
             list_items,
             tasks,
+            inline_fields,
         }
     }
 
@@ -482,6 +493,7 @@ impl NoteFacts {
             modified_at: None,
             frontmatter: None,
             frontmatter_links: Vec::new(),
+            reference_links: Vec::new(),
             tags: Vec::new(),
             headings: Vec::new(),
             sections: Vec::new(),
@@ -489,6 +501,7 @@ impl NoteFacts {
             block_refs: Vec::new(),
             list_items: Vec::new(),
             tasks: Vec::new(),
+            inline_fields: Vec::new(),
         }
     }
 
@@ -550,6 +563,12 @@ impl NoteFacts {
 
     #[inline]
     #[must_use]
+    pub fn reference_links(&self) -> &[ReferenceLink] {
+        &self.reference_links
+    }
+
+    #[inline]
+    #[must_use]
     pub fn tags(&self) -> &[Tag] {
         &self.tags
     }
@@ -589,6 +608,12 @@ impl NoteFacts {
     pub fn tasks(&self) -> &[Task] {
         &self.tasks
     }
+
+    #[inline]
+    #[must_use]
+    pub fn inline_fields(&self) -> &[InlineField] {
+        &self.inline_fields
+    }
 }
 
 impl TryFrom<RawHeading> for Heading {
@@ -612,6 +637,7 @@ impl TryFrom<RawSection> for Section {
             RawSectionKind::CodeBlock => SectionKind::Code,
             RawSectionKind::BlockQuote => SectionKind::BlockQuote,
             RawSectionKind::List => SectionKind::List,
+            RawSectionKind::Frontmatter => SectionKind::Frontmatter,
         };
         Ok(Section::new(kind, None, raw.range()))
     }
@@ -736,6 +762,14 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
             collect_frontmatter_links(frontmatter, &mut frontmatter_links);
         }
 
+        let reference_links = ctx
+            .raw
+            .reference_links()
+            .iter()
+            .cloned()
+            .map(ReferenceLink::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
         let headings = ctx
             .raw
             .headings()
@@ -774,6 +808,13 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
         list_items.sort_by_key(ListItemEntry::position);
 
         let tasks = build_tasks(ctx.raw, ctx.config)?;
+        let inline_fields = ctx
+            .raw
+            .inline_fields()
+            .iter()
+            .cloned()
+            .map(InlineField::from)
+            .collect::<Vec<_>>();
 
         Ok(Self::from_parts(
             ctx.id,
@@ -784,6 +825,7 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
             ctx.raw.modified_at(),
             frontmatter,
             frontmatter_links,
+            reference_links,
             tags,
             headings,
             sections,
@@ -791,7 +833,34 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
             block_refs,
             list_items,
             tasks,
+            inline_fields,
         ))
+    }
+}
+
+impl From<RawNoteInlineField> for InlineField {
+    #[inline]
+    fn from(raw: RawNoteInlineField) -> Self {
+        InlineField::new(raw.key().into(), raw.value().into(), raw.position())
+    }
+}
+
+impl TryFrom<RawReferenceLink> for ReferenceLink {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawReferenceLink) -> Result<Self, Self::Error> {
+        let target_text = raw.target();
+        let target = if is_external_target(target_text) {
+            Target::External {
+                url: target_text.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_text.into(),
+            }
+        };
+        Ok(ReferenceLink::new(raw.id().into(), target, raw.position()))
     }
 }
 
@@ -1110,8 +1179,8 @@ impl<'config> TaskBuilder<'config> {
 
     fn parse_inline_fields(
         &self,
-        inline_fields: &[RawInlineField],
-        emoji_dates: &[RawInlineField],
+        inline_fields: &[RawTaskInlineField],
+        emoji_dates: &[RawTaskInlineField],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
@@ -1272,7 +1341,7 @@ impl InlineFieldState {
     fn fill_emoji_dates_from_tokens(
         &mut self,
         config: &crate::config::task::Task,
-        tokens: &[RawInlineField],
+        tokens: &[RawTaskInlineField],
     ) -> Result<(), NoteError> {
         for (emoji, value) in
             tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
@@ -1293,7 +1362,7 @@ impl InlineFieldState {
 
     fn fill_default_emoji_dates_from_tokens(
         &mut self,
-        tokens: &[RawInlineField],
+        tokens: &[RawTaskInlineField],
     ) -> Result<(), NoteError> {
         for (emoji, value) in
             tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))

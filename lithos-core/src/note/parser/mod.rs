@@ -29,6 +29,7 @@ pub(crate) mod note;
 use std::ops::Range;
 
 pub(crate) use note::ParsedNote;
+use note::ReferenceLinkDefinition;
 use pulldown_cmark::{
     BlockQuoteKind, CodeBlockKind, Event, LinkType, OffsetIter, Options,
     Parser, Tag, TagEnd, utils::TextMergeWithOffset,
@@ -72,7 +73,8 @@ pub fn parse_markdown(
     markdown: &str,
     options: Options,
 ) -> Result<ParsedNote, NoteIngestError> {
-    ParserState::new(markdown, options).parse()
+    let reference_links = extract_reference_link_definitions(markdown)?;
+    ParserState::new(markdown, options).parse(reference_links)
 }
 
 struct ParserState<'source> {
@@ -92,7 +94,10 @@ impl<'source> ParserState<'source> {
         clippy::wildcard_enum_match_arm,
         reason = "Parser ignores unrelated events"
     )]
-    fn parse(mut self) -> Result<ParsedNote, NoteIngestError> {
+    fn parse(
+        mut self,
+        reference_links: Vec<ReferenceLinkDefinition>,
+    ) -> Result<ParsedNote, NoteIngestError> {
         let mut nodes = Vec::new();
         let mut frontmatter = None;
 
@@ -101,7 +106,7 @@ impl<'source> ParserState<'source> {
             match event {
                 Event::Start(Tag::MetadataBlock(kind)) => {
                     if frontmatter.is_none() {
-                        let block = self.parse_metadata(kind)?;
+                        let block = self.parse_metadata(kind, range.start())?;
                         frontmatter = Some(block);
                     } else {
                         self.consume_container(Tag::MetadataBlock(kind))?;
@@ -118,7 +123,7 @@ impl<'source> ParserState<'source> {
             }
         }
 
-        Ok(ParsedNote::new(nodes, frontmatter))
+        Ok(ParsedNote::new(nodes, frontmatter, reference_links))
     }
 
     #[expect(
@@ -128,9 +133,10 @@ impl<'source> ParserState<'source> {
     fn parse_metadata(
         &mut self,
         kind: pulldown_cmark::MetadataBlockKind,
+        start: SourceByteOffset,
     ) -> Result<MetadataBlock, NoteIngestError> {
         let mut text = String::new();
-        for (event, _range) in self.by_ref() {
+        for (event, range) in self.by_ref() {
             match event {
                 Event::Text(value) | Event::Code(value) => {
                     text.push_str(&value);
@@ -141,9 +147,13 @@ impl<'source> ParserState<'source> {
                 Event::End(TagEnd::MetadataBlock(end_kind))
                     if end_kind == kind =>
                 {
+                    let end = to_range(range)?.end();
+                    let block_range = SourceByteRange::new(start, end)
+                        .map_err(NoteIngestError::from)?;
                     return Ok(MetadataBlock::new(
                         kind.into(),
                         text.into_boxed_str(),
+                        block_range,
                     ));
                 }
                 _ => {}
@@ -388,7 +398,6 @@ fn is_container_tag(tag: &Tag<'_>) -> bool {
             | Tag::HtmlBlock
             | Tag::List(..)
             | Tag::Item
-            | Tag::FootnoteDefinition(..)
             | Tag::Table(..)
             | Tag::TableHead
             | Tag::TableRow
@@ -425,6 +434,68 @@ fn inline_style_end(tag: TagEnd) -> Option<TextStyle> {
         TagEnd::Strikethrough => Some(TextStyle::Strikethrough),
         _ => None,
     }
+}
+
+fn extract_reference_link_definitions(
+    markdown: &str,
+) -> Result<Vec<ReferenceLinkDefinition>, NoteIngestError> {
+    let mut defs = Vec::new();
+    let mut offset = 0usize;
+    for line in markdown.split_inclusive(['\n', '\r']) {
+        let trimmed_line = line.trim_end_matches(['\n', '\r']);
+        let leading =
+            trimmed_line.chars().take_while(|ch| ch.is_whitespace()).count();
+        let content = trimmed_line.get(leading..).unwrap_or("");
+        if !content.starts_with('[') {
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+        let Some(close) = content.find("]:") else {
+            offset = offset.saturating_add(line.len());
+            continue;
+        };
+        let label = content.get(1..close).unwrap_or("");
+        let after_colon = close.saturating_add(2);
+        let mut rest = content.get(after_colon..).unwrap_or("");
+        if let Some(stripped) = rest.strip_prefix(' ') {
+            rest = stripped;
+        }
+        let dest = rest.trim_start();
+        if label.trim().is_empty() || dest.is_empty() {
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+        let target = if let Some(stripped) = dest.strip_prefix('<')
+            && let Some(end) = stripped.find('>')
+        {
+            stripped.get(..end).unwrap_or("")
+        } else {
+            dest.split_whitespace().next().unwrap_or("")
+        };
+        if target.is_empty() {
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+        let normalized = label
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase();
+        let position =
+            SourceByteOffset::try_from_usize(offset.saturating_add(leading))
+                .map_err(|_error| {
+                    NoteIngestError::Source(
+                        "reference link offset out of range".into(),
+                    )
+                })?;
+        defs.push(ReferenceLinkDefinition::new(
+            normalized.into_boxed_str(),
+            target.into(),
+            position,
+        ));
+        offset = offset.saturating_add(line.len());
+    }
+    Ok(defs)
 }
 
 #[expect(

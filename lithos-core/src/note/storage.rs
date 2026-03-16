@@ -1427,7 +1427,7 @@ mod tests {
         note::{
             aggregate::{NoteFacts, NoteId, RawNoteContext},
             paths::NotePath,
-            position::SourceByteOffset,
+            position::{SourceByteOffset, SourceByteRange},
             raw::{
                 frontmatter::RawFrontmatter, note::RawNote, tags::RawTag,
                 task_tokens::RawTaskTokens, tasks::RawTask,
@@ -1517,6 +1517,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
+            Vec::new(),
         )
     }
 
@@ -1524,6 +1526,11 @@ mod tests {
         let frontmatter = RawFrontmatter::new(
             crate::note::parser::frontmatter::MetadataBlockKind::YamlStyle,
             "aliases:\n  - Alias\nfile_class: Class\ncategory: docs\n".into(),
+            SourceByteRange::new(
+                SourceByteOffset::new(0),
+                SourceByteOffset::new(0),
+            )
+            .expect("frontmatter range"),
         );
         let tags = vec![RawTag::new("#tag".into(), SourceByteOffset::new(0))];
         let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
@@ -1552,6 +1559,8 @@ mod tests {
             tags,
             Vec::new(),
             tasks,
+            Vec::new(),
+            Vec::new(),
             Vec::new(),
         )
     }

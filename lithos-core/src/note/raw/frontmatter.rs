@@ -17,16 +17,22 @@ use crate::note::{
 pub struct RawFrontmatter {
     kind: MetadataBlockKind,
     text: Box<str>,
+    range: crate::note::position::SourceByteRange,
 }
 
 impl RawFrontmatter {
     /// Create a raw frontmatter block.
     #[inline]
     #[must_use]
-    pub fn new(kind: MetadataBlockKind, text: Box<str>) -> Self {
+    pub fn new(
+        kind: MetadataBlockKind,
+        text: Box<str>,
+        range: crate::note::position::SourceByteRange,
+    ) -> Self {
         Self {
             kind,
             text,
+            range,
         }
     }
 
@@ -42,6 +48,13 @@ impl RawFrontmatter {
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Return the source byte range for the frontmatter block.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> crate::note::position::SourceByteRange {
+        self.range
     }
 }
 

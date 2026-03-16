@@ -20,6 +20,8 @@ pub enum RawSectionKind {
     BlockQuote,
     /// List section.
     List,
+    /// Frontmatter section.
+    Frontmatter,
 }
 
 /// Raw section range with optional heading reference id.

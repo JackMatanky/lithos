@@ -6,10 +6,12 @@ use super::{
     block_refs::collect_block_refs,
     frontmatter::RawFrontmatter,
     headings::RawHeading,
+    inline_fields::{RawInlineField, scan_inline_fields},
     links::{RawLink, RawLinkStyle},
     list_items::{RawListDepth, RawListItem, RawListType},
     note::RawNote,
-    sections::extract_sections,
+    reference_links::RawReferenceLink,
+    sections::{RawSection, RawSectionKind, extract_sections},
     tags::scan_raw_tags,
     task_tokens::RawTaskTokens,
     tasks::RawTask,
@@ -22,6 +24,7 @@ use crate::note::{
             TextOrigin,
         },
         frontmatter::MetadataBlock,
+        note::ReferenceLinkDefinition,
     },
     position::SourceByteOffset,
 };
@@ -39,6 +42,7 @@ use crate::note::{
 pub fn extract_raw_note(
     nodes: &[AstNode],
     frontmatter_block: Option<MetadataBlock>,
+    reference_links: Vec<ReferenceLinkDefinition>,
     source: &str,
     path: crate::note::paths::NotePath,
     source_hash: Box<str>,
@@ -51,9 +55,20 @@ pub fn extract_raw_note(
     let mut tags = Vec::new();
     let mut list_items = Vec::new();
     let mut tasks = Vec::new();
+    let mut inline_fields = Vec::new();
+    let reference_links = reference_links
+        .into_iter()
+        .map(|definition| {
+            RawReferenceLink::new(
+                definition.id().into(),
+                definition.target().into(),
+                definition.position(),
+            )
+        })
+        .collect::<Vec<_>>();
     let mut list_stack: Vec<RawListType> = Vec::new();
 
-    let sections = extract_sections(nodes)?;
+    let mut sections = extract_sections(nodes)?;
 
     let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
 
@@ -66,10 +81,15 @@ pub fn extract_raw_note(
         &mut tags,
         &mut list_items,
         &mut tasks,
+        &mut inline_fields,
     )?;
 
-    let frontmatter = frontmatter_block
-        .map(|block| RawFrontmatter::new(block.kind(), block.text().into()));
+    let frontmatter = frontmatter_block.map(|block| {
+        let range = block.range();
+        sections.push(RawSection::new(RawSectionKind::Frontmatter, range, 0));
+        RawFrontmatter::new(block.kind(), block.text().into(), range)
+    });
+    sections.sort_by_key(|section| u32::from(section.range().start()));
     let block_refs = collect_block_refs(source)?;
 
     Ok(RawNote::new(
@@ -85,6 +105,8 @@ pub fn extract_raw_note(
         tags,
         list_items,
         tasks,
+        inline_fields,
+        reference_links,
         block_refs,
     ))
 }
@@ -110,6 +132,7 @@ fn walk_nodes(
     tags: &mut Vec<super::tags::RawTag>,
     list_items: &mut Vec<RawListItem>,
     tasks: &mut Vec<RawTask>,
+    inline_fields: &mut Vec<RawInlineField>,
 ) -> Result<(), NoteError> {
     for node in nodes {
         match node.kind() {
@@ -126,6 +149,7 @@ fn walk_nodes(
                 );
                 headings.push(raw);
                 scan_text_nodes(text, tags)?;
+                scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
             }
             AstNodeKind::Paragraph {
@@ -133,6 +157,7 @@ fn walk_nodes(
                 links: inline_links,
             } => {
                 scan_text_nodes(text, tags)?;
+                scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
             }
             AstNodeKind::List {
@@ -157,6 +182,7 @@ fn walk_nodes(
                     tags,
                     list_items,
                     tasks,
+                    inline_fields,
                 )?;
                 list_stack.pop();
             }
@@ -239,6 +265,7 @@ fn walk_nodes(
                 }
 
                 scan_text_nodes(text, tags)?;
+                scan_inline_fields(text, inline_fields)?;
                 collect_inline_links(inline_links, links);
                 walk_nodes(
                     children,
@@ -249,6 +276,7 @@ fn walk_nodes(
                     tags,
                     list_items,
                     tasks,
+                    inline_fields,
                 )?;
             }
             AstNodeKind::BlockQuote {
@@ -264,6 +292,7 @@ fn walk_nodes(
                     tags,
                     list_items,
                     tasks,
+                    inline_fields,
                 )?;
             }
             AstNodeKind::CodeBlock {
@@ -375,6 +404,7 @@ mod tests {
         let raw = extract_raw_note(
             parsed.nodes(),
             parsed.frontmatter().cloned(),
+            parsed.reference_links().to_vec(),
             markdown,
             path,
             "hash".into(),

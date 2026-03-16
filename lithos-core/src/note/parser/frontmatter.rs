@@ -19,16 +19,22 @@ pub enum MetadataBlockKind {
 pub struct MetadataBlock {
     kind: MetadataBlockKind,
     text: Box<str>,
+    range: crate::note::position::SourceByteRange,
 }
 
 impl MetadataBlock {
     /// Creates a new metadata block payload.
     #[inline]
     #[must_use]
-    pub fn new(kind: MetadataBlockKind, text: Box<str>) -> Self {
+    pub fn new(
+        kind: MetadataBlockKind,
+        text: Box<str>,
+        range: crate::note::position::SourceByteRange,
+    ) -> Self {
         Self {
             kind,
             text,
+            range,
         }
     }
 
@@ -44,6 +50,13 @@ impl MetadataBlock {
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Returns the byte range for the metadata block.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> crate::note::position::SourceByteRange {
+        self.range
     }
 }
 

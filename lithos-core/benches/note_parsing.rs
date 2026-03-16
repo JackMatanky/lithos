@@ -408,6 +408,7 @@ fn bench_ingest_group(
             let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
+                parsed.reference_links().to_vec(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),
@@ -438,6 +439,7 @@ fn bench_ingest_group(
             let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
+                parsed.reference_links().to_vec(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),
@@ -469,6 +471,7 @@ fn bench_ingest_group(
             let raw_note = raw::extract::extract_raw_note(
                 parsed.nodes(),
                 parsed.frontmatter().cloned(),
+                parsed.reference_links().to_vec(),
                 &markdown,
                 path,
                 source_hash.into_boxed_str(),

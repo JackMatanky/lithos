@@ -55,6 +55,8 @@ pub mod storage;
 pub mod frontmatter;
 /// Heading value objects.
 pub mod heading;
+/// Inline field value objects.
+pub mod inline_fields;
 /// Link value object.
 pub mod link;
 /// List value objects.

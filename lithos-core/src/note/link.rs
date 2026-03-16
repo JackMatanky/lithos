@@ -70,6 +70,18 @@ pub struct FrontmatterLink {
     embed_type: Option<EmbedType>,
 }
 
+/// Reference-style link definition.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ReferenceLink {
+    id: Box<str>,
+    target: Target,
+    position: SourceByteOffset,
+}
+
 /// Target of a link - may or may not resolve to an existing note.
 ///
 /// # Examples
@@ -361,6 +373,44 @@ impl FrontmatterLink {
     #[must_use]
     pub const fn is_embed(&self) -> bool {
         self.embed_type.is_some()
+    }
+}
+
+impl ReferenceLink {
+    /// Creates a reference-style link definition.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        id: Box<str>,
+        target: Target,
+        position: SourceByteOffset,
+    ) -> Self {
+        Self {
+            id,
+            target,
+            position,
+        }
+    }
+
+    /// Returns the definition id.
+    #[inline]
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Returns the link target.
+    #[inline]
+    #[must_use]
+    pub const fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Returns the source byte position.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
     }
 }
 

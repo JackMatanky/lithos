@@ -78,6 +78,7 @@ where
         let raw_note = extract_raw_note(
             parsed.nodes(),
             parsed.frontmatter().cloned(),
+            parsed.reference_links().to_vec(),
             markdown,
             path.clone(),
             source_hash.into_boxed_str(),

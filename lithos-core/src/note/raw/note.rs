@@ -4,8 +4,9 @@ use std::time::SystemTime;
 
 use super::{
     block_refs::RawBlockRef, frontmatter::RawFrontmatter, headings::RawHeading,
-    links::RawLink, list_items::RawListItem, sections::RawSection,
-    tags::RawTag, tasks::RawTask,
+    inline_fields::RawInlineField, links::RawLink, list_items::RawListItem,
+    reference_links::RawReferenceLink, sections::RawSection, tags::RawTag,
+    tasks::RawTask,
 };
 use crate::note::paths::NotePath;
 
@@ -25,6 +26,8 @@ pub struct RawNote {
     tags: Vec<RawTag>,
     list_items: Vec<RawListItem>,
     tasks: Vec<RawTask>,
+    inline_fields: Vec<RawInlineField>,
+    reference_links: Vec<RawReferenceLink>,
     block_refs: Vec<RawBlockRef>,
 }
 
@@ -49,6 +52,8 @@ impl RawNote {
         tags: Vec<RawTag>,
         list_items: Vec<RawListItem>,
         tasks: Vec<RawTask>,
+        inline_fields: Vec<RawInlineField>,
+        reference_links: Vec<RawReferenceLink>,
         block_refs: Vec<RawBlockRef>,
     ) -> Self {
         Self {
@@ -64,6 +69,8 @@ impl RawNote {
             tags,
             list_items,
             tasks,
+            inline_fields,
+            reference_links,
             block_refs,
         }
     }
@@ -150,6 +157,20 @@ impl RawNote {
     #[must_use]
     pub fn tasks(&self) -> &[RawTask] {
         &self.tasks
+    }
+
+    /// Return extracted raw inline fields.
+    #[inline]
+    #[must_use]
+    pub fn inline_fields(&self) -> &[RawInlineField] {
+        &self.inline_fields
+    }
+
+    /// Return extracted raw reference link definitions.
+    #[inline]
+    #[must_use]
+    pub fn reference_links(&self) -> &[RawReferenceLink] {
+        &self.reference_links
     }
 
     /// Return extracted raw block references.
