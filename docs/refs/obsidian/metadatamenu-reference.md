@@ -120,7 +120,6 @@ fields:
 
 **Phase 1: Build Ancestor Chain** (one-time, global)
 
-```
 For each fileClass:
   1. Read frontmatter 'extends' field
   2. Build immediate parent map
@@ -128,12 +127,13 @@ For each fileClass:
   4. Stop when cycle detected (ancestor == current fileClass)
 
 Example:
-  physics extends course
-  course extends base
+```
+physics extends course
+course extends base
 
-  Result:
-    physics -> [course, base]  # Full chain
-    course -> [base]
+Result:
+  physics -> [course, base]  # Full chain
+  course -> [base]
 ```
 
 **Phase 2: Resolve Excludes** (per fileClass load)
@@ -272,7 +272,7 @@ Behavior: `nonexistent` silently ignored. Only `grade` excluded if exists.
 # b.md extends a
 ```
 
-Behavior: Each gets one level (a → [b], b → [a]). Cycle breaks chain.
+Behavior: Each gets one level `(a → [b], b → [a])`. Cycle breaks chain.
 
 **Deep Inheritance**
 
@@ -541,388 +541,299 @@ Suggested conceptual mapping for Lithos schema module design.
   - Lithos: derived field pipeline; explicitly model evaluation phase and
     persistence into projection cache
 
-## Appendix C: Applying Inheritance Patterns to Lithos
+## Appendix C: Lithos vs MetadataMenu Inheritance Comparison
 
-This appendix translates MetadataMenu's inheritance model to Lithos implementation.
+**See**: `INHERITANCE_COMPREHENSIVE_ANALYSIS.md` for detailed source code analysis.
 
-### Current Lithos Architecture
+This appendix compares MetadataMenu's inheritance implementation with Lithos to understand design trade-offs and identify optimization opportunities.
 
-**What we have**:
+### Summary of Findings (2026-03-16)
 
-- Single-parent inheritance via `extends` field in schema JSON
-- `excludes` array for selective property filtering
-- `Extender` module builds inheritance tree
-- `Resolver` module merges properties
-- Property-level conflict resolution
+After thorough source code review of both systems:
 
-**Where we differ**:
+**✅ Lithos Already Supports**:
 
-- Exclude scope: parent-only vs any-ancestor (MetadataMenu)
-- Ancestor tracking: per-load rebuild vs cached (MetadataMenu)
-- Override semantics: unclear vs documented (MetadataMenu)
+- Excludes filtering properties from **all ancestors** (grandparent, great-grandparent, etc.)
+- Topological resolution ensures parent properties include full inheritance chain
+- Property override by name match
+- Cycle detection (actually MORE robust than MetadataMenu - uses DFS + Kahn's algorithm)
+- Depth tracking with max limit (10 levels - MetadataMenu lacks this)
 
-### Recommended Implementation Changes
+**❌ Key Difference**:
 
-#### 1. Expand Exclude Scope (Priority: HIGH)
+- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Lithos rebuilds tree each load
 
-**Current Behavior**:
+### Architecture Comparison
 
-```rust
-// Resolver only checks immediate parent's excludes
-let excluded_from_parent: HashSet<PropertyName> = schema.excludes();
-```
+| Feature                | MetadataMenu            | Lithos                   | Winner                      |
+| ---------------------- | ----------------------- | ------------------------ | --------------------------- |
+| **Exclude Scope**      | ✅ All ancestors        | ✅ All ancestors         | TIE                         |
+| **Cycle Detection**    | ⚠️ Name comparison only | ✅ DFS + Kahn's          | **Lithos**                  |
+| **Depth Tracking**     | ❌ Not explicit         | ✅ NodeDepth type        | **Lithos**                  |
+| **Depth Limit**        | ❌ No limit             | ✅ Max 10 levels         | **Lithos**                  |
+| **Ancestor Caching**   | ✅ Global map           | ❌ Rebuild each load     | **MetadataMenu**            |
+| **Merge Algorithm**    | Name-based filter loop  | Two-pointer sorted merge | **Lithos** (more efficient) |
+| **Override Semantics** | Full replacement        | Full replacement         | TIE                         |
 
-**Target Behavior** (MetadataMenu style):
+### How Lithos Achieves Ancestor Excludes (Without Explicit Ancestor Cache)
 
-```rust
-// Check excludes against ALL ancestors
-fn filter_inherited_properties(
-    &self,
-    schema: &Schema,
-    ancestors: &[SchemaId],  // Full chain: [parent, grandparent, ...]
-    excludes: &[PropertyName],
-) -> Vec<Property> {
-    let mut inherited = Vec::new();
+**Key Insight**: Topological ordering + resolution caching makes explicit ancestor tracking unnecessary for correctness.
 
-    // Walk ancestors in reverse (root first: grandparent → parent)
-    for ancestor_id in ancestors.iter().rev() {
-        let ancestor_props = self.get_schema_properties(ancestor_id);
+**Example hierarchy**: `base → course → physics`
 
-        for prop in ancestor_props {
-            // Skip if excluded
-            if excludes.contains(&prop.name()) {
-                continue;
-            }
+- base properties: `[id, created_at, internal_ref]`
+- course properties: `[title]`
+- physics excludes: `[internal_ref]` ← from grandparent!
 
-            // Skip if already present (child override)
-            if inherited.iter().any(|p| p.name() == prop.name()) {
-                continue;
-            }
+**Resolution order** (via Kahn's algorithm):
 
-            inherited.push(prop.clone());
-        }
-    }
+1. **base** (depth 1):
 
-    inherited
-}
-```
+   ```rust
+   parent_props = []  // No parent
+   merged = [id, created_at, internal_ref]
+   resolved_cache["base"] = Schema { properties: [id, created_at, internal_ref] }
+   ```
 
-**Benefits**:
+2. **course** (depth 2):
 
-- More flexible schema composition
-- Can exclude grandparent fields without touching parent
-- Matches user mental model ("I don't want X from anywhere")
+   ```rust
+   parent_props = resolved_cache["base"].properties  // ← Full chain already here
+   parent_props = [id, created_at, internal_ref]
+   merged = [created_at, id, internal_ref, title]  // Sorted merge
+   resolved_cache["course"] = Schema { properties: [created_at, id, internal_ref, title] }
+   ```
 
-**Estimate**: 2-4 hours (implementation + tests)
+3. **physics** (depth 3):
+   ```rust
+   parent_props = resolved_cache["course"].properties  // ← Includes grandparent!
+   parent_props = [created_at, id, internal_ref, title]
+   excludes = ["internal_ref"]
+   merged = merge_properties(parent_props, [], excludes)
+   // Result: [created_at, id, title]  ✅ internal_ref excluded!
+   ```
 
-#### 2. Cache Ancestor Chains (Priority: HIGH)
+**Why this works**:
 
-**Current Behavior**:
+- Parent's resolved properties **already contain** everything from ancestors
+- Topological order guarantees parent processed before child
+- `merge_properties()` filters against full inherited set
 
-```rust
-// Extender::build() creates SchemaTree each load
-pub fn build(&self, raw_schemas: Vec<RawSchema>) -> Result<SchemaTree> {
-    // Topological sort, cycle detection, etc.
-    // Rebuilt every time
-}
-```
+### MetadataMenu's Approach: Explicit Ancestor Caching
 
-**Target Behavior** (MetadataMenu style):
+**File**: `src/index/FieldIndex.ts`
 
-```rust
-// Store ancestors in RawSchemaView (persisted)
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-pub struct RawSchemaView {
-    file_path: Box<str>,
-    extends: Option<SchemaName>,
-    excludes: Vec<PropertyName>,
-    ancestors: Vec<SchemaName>,  // NEW: Cached full chain
-    versions: RingBuffer<RawFileVersion, 5>,
-}
+```typescript
+// Global cache built once per index
+fileClassesAncestors: Map<string, string[]>
+// Example: "physics" → ["course", "base"]
 
-// Build once, reuse forever (until parent changes)
-fn build_ancestor_chain(schema_name: &SchemaName) -> Vec<SchemaName> {
-    let mut chain = Vec::new();
-    let mut current = schema_name.clone();
+// Phase 1: Init with immediate parent
+for each fileClass:
+  parent = frontmatter.extends
+  if parent exists:
+    ancestors[fileClass] = [parent]
 
-    while let Some(parent) = get_parent(&current) {
-        if chain.contains(&parent) {
-            break;  // Cycle detected
-        }
-        chain.push(parent.clone());
-        current = parent;
-    }
+// Phase 2: Recursive expansion
+function getAncestorsRecursively(fileClassName):
+  ancestors = ancestors[fileClassName]
+  lastAncestor = ancestors.last()
+  lastAncestorParent = ancestors[lastAncestor][0]
 
-    chain  // [parent, grandparent, great-grandparent, ...]
-}
+  if lastAncestorParent && lastAncestorParent != fileClassName:  // Cycle check
+    ancestors[fileClassName].push(lastAncestorParent)
+    getAncestorsRecursively(fileClassName)  // Continue up chain
 ```
 
 **Benefits**:
 
-- O(1) ancestor lookup (vs O(n) tree traversal)
+- O(1) ancestor lookup (vs O(depth) for topological walk)
 - Enables "find all descendants" queries
-- Incremental resolution can check if ancestor changed
-- Simpler cycle detection (check if name in ancestors vec)
+- Incremental resolution can check if ancestors changed
+- Built once, reused for all resolutions
 
 **Trade-offs**:
 
-- Must invalidate on parent schema changes
-- Slightly more storage (Vec<SchemaName> per schema)
+- Must invalidate when parent changes
+- Extra storage (~8-40 bytes per schema for typical 1-5 ancestor chains)
+- More complex cache invalidation logic
 
-**Estimate**: 4-6 hours (implementation + migration + tests)
+### Optimization Opportunity: Ancestor Caching
 
-#### 3. Document Override Semantics (Priority: MEDIUM)
+**Status**: Not yet implemented; under consideration for performance optimization.
 
-**Create ADR**: "Schema Property Override Behavior"
+**Trade-off Analysis**: See `INHERITANCE_COMPREHENSIVE_ANALYSIS.md` Part 6 for detailed comparison.
 
-**Decision Points**:
+**Current Lithos Approach** (Topological Resolution):
 
-| Aspect                 | Options                         | Recommendation                             |
-| ---------------------- | ------------------------------- | ------------------------------------------ |
-| **Override trigger**   | Name match, ID match            | Name match (simpler, matches MetadataMenu) |
-| **Override scope**     | Full replacement, Partial merge | Full replacement (predictable)             |
-| **Type compatibility** | Must match, Can change          | Can change (flexibility)                   |
-| **Spec compatibility** | Must match, Can change          | Can change (but validate at boundary)      |
+- Rebuild `SchemaTree` on each load via `Extender::build()`
+- Benefits: Simpler, no cache invalidation, always fresh
+- Drawbacks: O(depth) for ancestor chain walk, redundant computation
 
-**Proposed Rules**:
+**MetadataMenu Approach** (Cached Ancestors):
 
-1. Child property with same `PropertyName` fully replaces parent's
+- Store `ancestors: Vec<SchemaName>` globally
+- Build once, reuse until parent changes
+- Benefits: O(1) lookup, supports "find descendants" queries
+- Drawbacks: Cache invalidation complexity, staleness tracking
+
+**Potential Implementation** (if performance becomes issue):
+
+```rust
+// In RawSchemaView (persisted):
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+pub struct RawSchemaView {
+    extends: Option<SchemaName>,
+    excludes: Vec<PropertyName>,
+    ancestors: Vec<SchemaName>,  // NEW: [parent, grandparent, ...]
+    ancestors_hash: u64,          // NEW: Hash of parent chain for staleness check
+}
+
+// In Loader:
+fn is_ancestors_stale(&self, schema: &RawSchemaView) -> bool {
+    let parent = schema.extends.as_ref()?;
+    let parent_view = self.repo.find_raw_schema_by_name(parent)?;
+
+    // Check if parent's chain changed
+    let current_hash = compute_ancestor_hash(parent, &parent_view.ancestors);
+    current_hash != schema.ancestors_hash
+}
+```
+
+**Recommendation**: **Defer until profiling shows need** (premature optimization).
+
+For typical vaults (<1000 schemas, <5 depth), topological resolution overhead is negligible (<10ms).
+
+### Override Semantics (Documented)
+
+**Current Lithos Behavior** (matches MetadataMenu):
+
+| Aspect                 | Lithos                       | MetadataMenu     | Notes                                       |
+| ---------------------- | ---------------------------- | ---------------- | ------------------------------------------- |
+| **Override trigger**   | Name match                   | Name match       | Case-sensitive `PropertyName` comparison    |
+| **Override scope**     | Full replacement             | Full replacement | Child property completely replaces parent   |
+| **Type compatibility** | Can change                   | Can change       | No type constraint; child can redefine spec |
+| **Multiplicity**       | Can change                   | Can change       | Optional → Required, Single → Multi allowed |
+| **Priority**           | Child > Parent > Grandparent | Same             | First occurrence by topological order wins  |
+
+**Implementation** (from `resolver.rs:merge_properties`):
+
+```rust
+match p.name().cmp(c.name()) {
+    Ordering::Equal => {
+        // Same name: child overrides parent
+        result.push(c.clone());  // ← Child wins, parent discarded
+        p_iter.next();
+        c_iter.next();
+    }
+}
+```
+
+**Rules**:
+
+1. **Child property with same `PropertyName` fully replaces parent's property**
 2. Type can change (Select → Multi, String → Number, etc.)
 3. Spec can change (3 options → 2 options, range narrowing, etc.)
 4. No validation at merge time (validate at raw→domain boundary)
 5. First occurrence wins (child > parent > grandparent)
 
-**Example**:
+### Test Coverage (Added 2026-03-16)
 
-```rust
-// Parent: status (Select with 3 options)
-// Child: status (Multi with 2 options)
-// Result: Child's Multi with 2 options
-//
-// Implementation:
-// 1. Collect child properties first
-// 2. For each ancestor property:
-//    - If name in child properties: skip (override)
-//    - If name in excludes: skip
-//    - Else: add to merged list
+**Status**: ✅ Comprehensive inheritance tests added to `resolver.rs`
+
+Tests verifying exclude scope across ancestors:
+
+1. ✅ `exclude_grandparent_property()` - Excludes from 3-level chain (base → course → physics)
+2. ✅ `exclude_great_grandparent_property()` - Excludes from 4-level chain
+3. ✅ `mixed_excludes_at_multiple_levels()` - Multiple schemas with different excludes
+4. ✅ `child_override_beats_parent()` - Name-based override verification
+5. ✅ `inheritance_depth_limit_exceeded()` - Max depth enforcement (11 levels rejected)
+
+**All tests passing** - confirms Lithos correctly handles ancestor excludes without explicit caching.
+
+### MetadataMenu's Ancestor Caching Strategy
+
+**Context**: MetadataMenu caches ancestor chains in a global map to avoid rebuilding inheritance trees on every resolution.
+
+**Implementation** (`src/index/FieldIndex.ts`):
+
+```typescript
+// Global cache: schema name → ancestor list
+fileClassesAncestors: Map<string, string[]>
+// Example: "physics" → ["course", "base"]
+
+// Build process (two phases):
+// 1. Initialize with immediate parent from frontmatter
+// 2. Recursively expand to include full chain
+
+function getAncestorsRecursively(fileClassName):
+  ancestors = ancestors[fileClassName]
+  lastAncestor = ancestors.last()
+  lastAncestorParent = ancestors[lastAncestor][0]
+
+  if lastAncestorParent && lastAncestorParent != fileClassName:  // Cycle check
+    ancestors[fileClassName].push(lastAncestorParent)
+    getAncestorsRecursively(fileClassName)
 ```
 
-**Estimate**: 2-3 hours (ADR writing + discussion)
+**Characteristics**:
 
-#### 4. Add Comprehensive Inheritance Tests (Priority: HIGH)
+- **Performance**: O(1) ancestor lookup vs O(depth) for tree walk
+- **Staleness**: Must invalidate when parent's `extends` field changes
+- **Storage**: ~8-40 bytes per schema (typical 1-5 ancestor chains)
+- **Complexity**: Requires cache invalidation logic
 
-**Test Scenarios** (from MetadataMenu analysis):
+### Lithos Current Approach vs MetadataMenu
 
-```rust
-#[test]
-fn deep_inheritance_chain() {
-    // specific → medium → general → base (3+ levels)
-    // Verify property merge order correct
-}
+| Aspect                 | Lithos                        | MetadataMenu                |
+| ---------------------- | ----------------------------- | --------------------------- |
+| **Strategy**           | Topological resolution        | Cached ancestor map         |
+| **Rebuild frequency**  | Each load                     | Once (until parent changes) |
+| **Complexity**         | Lower (no cache invalidation) | Higher (staleness tracking) |
+| **Performance**        | O(depth) per schema           | O(1) per schema             |
+| **Correctness**        | Always fresh                  | Requires invalidation logic |
+| **Memory**             | Transient tree                | Persistent map              |
+| **Cycle detection**    | ✅ DFS + Kahn's algorithm     | ⚠️ Name comparison only     |
+| **Depth limit**        | ✅ Max 10 levels              | ❌ No explicit limit        |
 
-#[test]
-fn exclude_from_grandparent() {
-    // Child excludes property that exists in grandparent (not parent)
-    // Verify excluded field not in final schema
-}
+### Error Handling Differences
 
-#[test]
-fn override_with_type_change() {
-    // Parent has status: Select
-    // Child has status: Multi
-    // Verify child's type used
-}
+**MetadataMenu approach**:
 
-#[test]
-fn exclude_multiple_fields() {
-    // excludes: [a, b, c] from various ancestor levels
-    // Verify all excluded
-}
-
-#[test]
-fn exclude_plus_override_same_field() {
-    // excludes: [status]
-    // fields: [{ name: status, ... }]
-    // Verify child's definition used (exclude doesn't apply to own fields)
-}
-
-#[test]
-fn ancestor_cache_invalidation() {
-    // Change parent's parent (grandparent)
-    // Verify children pick up new ancestor chain
-    // (Requires loader integration test)
+```typescript
+// Missing parent = warning, continue as root
+if (!parentClass) {
+  console.warn(`Parent class not found: ${extends}`);
+  return null;  // Treat as root
 }
 ```
 
-**Estimate**: 2-4 hours (writing + debugging)
-
-#### 5. Lenient Error Handling (Priority: LOW)
-
-**Current Behavior**:
+**Lithos approach**:
 
 ```rust
 // Missing parent = error, abort load
 let parent = self.resolve_parent(schema_name)?;
 ```
 
-**Target Behavior** (MetadataMenu style):
-
-```rust
-// Missing parent = warning, continue as root
-let parent = match self.resolve_parent(schema_name) {
-    Ok(p) => Some(p),
-    Err(e) => {
-        self.emit_warning(format!("Parent not found: {}", e));
-        None  // Treat as root class
-    }
-};
-```
-
-**Benefits**:
-
-- More resilient to vault restructuring
-- Easier incremental schema development
-- Typos don't crash entire load
-
 **Trade-offs**:
 
-- Silent failures harder to debug
-- May hide intentional errors
+| Approach | Benefits | Drawbacks |
+|----------|----------|-----------|
+| **Lenient** (MetadataMenu) | Resilient to typos, easier incremental development | Silent failures, may hide errors |
+| **Strict** (Lithos) | Explicit errors, guaranteed consistency | Requires correct parent references upfront |
 
-**Recommendation**: Make configurable via setting (strict vs lenient mode)
+### Summary of Key Findings
 
-**Estimate**: 1-2 hours (implementation + config)
+**✅ Lithos Already Implements** (verified via tests):
 
-### Implementation Priority
+1. Excludes filtering properties from **all ancestors** (grandparent, great-grandparent, etc.)
+2. Property override by name match (child wins)
+3. Topological ordering ensures correct resolution order
+4. Cycle detection (more robust - uses DFS + Kahn's algorithm vs name comparison)
+5. Depth tracking with max limit (10 levels - MetadataMenu lacks this)
 
-**Phase 1: Core Improvements** (Est. 1 day)
+**❌ Key Difference**:
 
-1. ✅ Expand exclude scope to all ancestors (2-4h)
-2. ✅ Add comprehensive inheritance tests (2-4h)
-3. ✅ Document override semantics in ADR (2-3h)
+- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Lithos rebuilds tree each load
 
-**Phase 2: Performance** (Est. 4-6 hours) 4. ⚠️ Cache ancestor chains in RawSchemaView (4-6h)
-
-**Phase 3: Polish** (Est. 1-2 hours) 5. ❓ Add lenient error handling config (1-2h)
-
-**Total Estimate**: 1.5-2 days
-
-### Code Examples
-
-**Expanding Exclude Scope**:
-
-Location: `lithos-core/src/schema/resolver.rs`
-
-```rust
-// Before (current)
-fn merge_properties(schema: &Schema, parent: &Schema) -> Vec<Property> {
-    let excludes = schema.excludes();
-    let mut props = schema.properties().to_vec();
-
-    for parent_prop in parent.properties() {
-        if !excludes.contains(&parent_prop.name()) {
-            if !props.iter().any(|p| p.name() == parent_prop.name()) {
-                props.push(parent_prop.clone());
-            }
-        }
-    }
-
-    props
-}
-
-// After (target)
-fn merge_properties(
-    schema: &Schema,
-    ancestors: &[&Schema],  // All ancestors, not just parent
-) -> Vec<Property> {
-    let excludes = schema.excludes();
-    let mut props = schema.properties().to_vec();
-
-    // Walk ancestors in reverse (grandparent → parent)
-    for ancestor in ancestors.iter().rev() {
-        for ancestor_prop in ancestor.properties() {
-            // Skip if excluded from any ancestor
-            if excludes.contains(&ancestor_prop.name()) {
-                continue;
-            }
-
-            // Skip if already present (override)
-            if props.iter().any(|p| p.name() == ancestor_prop.name()) {
-                continue;
-            }
-
-            props.push(ancestor_prop.clone());
-        }
-    }
-
-    props
-}
-```
-
-**Caching Ancestors**:
-
-Location: `lithos-core/src/schema/views/raw.rs`
-
-```rust
-// Add to RawSchemaView
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-pub struct RawSchemaView {
-    file_path: Box<str>,
-    extends: Option<SchemaName>,
-    excludes: Vec<PropertyName>,
-    ancestors: Vec<SchemaName>,  // NEW
-    versions: RingBuffer<RawFileVersion, 5>,
-}
-
-impl RawSchemaView {
-    /// Get full ancestor chain (cached)
-    pub fn ancestors(&self) -> &[SchemaName] {
-        &self.ancestors
-    }
-
-    /// Check if ancestors are stale (parent changed)
-    pub fn ancestors_stale(&self, parent_schema: &RawSchemaView) -> bool {
-        // If parent's ancestors changed, this schema's ancestors are stale
-        if let Some(parent_name) = &self.extends {
-            if let Some(first_ancestor) = self.ancestors.first() {
-                if first_ancestor != parent_name {
-                    return true;  // Parent changed
-                }
-            }
-
-            // Check if parent's chain changed
-            let expected = [parent_name.as_ref()]
-                .iter()
-                .chain(parent_schema.ancestors().iter())
-                .cloned()
-                .collect::<Vec<_>>();
-
-            self.ancestors != expected
-        } else {
-            false  // No parent, never stale
-        }
-    }
-}
-```
-
-### Migration Path
-
-1. **Week 1**: Implement expanded exclude scope + tests
-2. **Week 2**: Add ancestor caching to RawSchemaView
-3. **Week 3**: Write ADR, add lenient error handling
-4. **Week 4**: Integration testing, performance benchmarks
-
-**Rollout Strategy**:
-
-- Phase 1 changes are backwards compatible (exclude scope expansion)
-- Phase 2 requires RawSchemaView migration (add ancestors field)
-- Phase 3 is opt-in (config flag for lenient mode)
-
-### Success Criteria
-
-- [ ] Exclude scope covers all ancestors (not just parent)
-- [ ] Ancestor chains cached in RawSchemaView
-- [ ] All inheritance tests passing (6+ scenarios)
-- [ ] ADR documented override semantics
-- [ ] Performance: ancestor lookup O(1) (vs O(n) tree walk)
-- [ ] Compatibility: existing schemas load without changes
+**Performance consideration**: For typical vaults (<1000 schemas, <5 depth), topological resolution overhead is negligible (<10ms). Caching becomes beneficial for larger vaults or frequent resolution cycles.

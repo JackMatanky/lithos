@@ -666,5 +666,232 @@ mod tests {
                 assert_eq!(depth, 11, "Error should report depth 11");
             }
         }
+
+        /// GAP-001: Test that excludes filter properties from ANY ancestor,
+        /// not just immediate parent.
+        ///
+        /// Hierarchy: base → course → physics.
+        ///
+        /// - base has: [id, `created_at`, `internal_ref`]
+        /// - course has: [title]
+        /// - physics excludes: [`internal_ref`]
+        ///
+        /// Expected: physics should NOT have `internal_ref` (from grandparent).
+        #[test]
+        fn exclude_grandparent_property() -> Result<(), SchemaError> {
+            use uuid::Uuid;
+
+            const BASE_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3001);
+            const COURSE_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3002);
+            const PHYSICS_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3003);
+
+            let base_id = SchemaId::from_uuid(BASE_ID);
+            let course_id = SchemaId::from_uuid(COURSE_ID);
+            let physics_id = SchemaId::from_uuid(PHYSICS_ID);
+
+            // Base schema properties
+            let id_prop = fixtures::bool_property("id")?;
+            let created_at_prop = fixtures::bool_property("created_at")?;
+            let internal_ref_prop = fixtures::bool_property("internal_ref")?;
+
+            // Course schema property
+            let title_prop = fixtures::bool_property("title")?;
+
+            let expanded = vec![
+                fixtures::simple_expanded(base_id, "base", None, vec![
+                    id_prop.clone(),
+                    created_at_prop.clone(),
+                    internal_ref_prop.clone(),
+                ]),
+                fixtures::simple_expanded(
+                    course_id,
+                    "course",
+                    Some("base"),
+                    vec![title_prop.clone()],
+                ),
+                fixtures::expanded_with_excludes(
+                    physics_id,
+                    "physics",
+                    Some("course"),
+                    vec!["internal_ref".into()],
+                ),
+            ];
+
+            let tree = Extender::build(expanded, &HashMap::new())?;
+            let result = Resolver::resolve(&tree, &HashMap::new())?;
+
+            let physics = result
+                .iter()
+                .find(|s| s.name().as_ref() == "physics")
+                .expect("physics schema in result");
+
+            let prop_names: Vec<&str> = physics
+                .properties()
+                .iter()
+                .map(|p| p.name().as_ref())
+                .collect();
+
+            // Should have properties from base (except internal_ref) and course
+            assert!(
+                prop_names.contains(&"id"),
+                "Should inherit 'id' from grandparent; got: {prop_names:?}"
+            );
+            assert!(
+                prop_names.contains(&"created_at"),
+                "Should inherit 'created_at' from grandparent; got: \
+                 {prop_names:?}"
+            );
+            assert!(
+                prop_names.contains(&"title"),
+                "Should inherit 'title' from parent; got: {prop_names:?}"
+            );
+
+            // CRITICAL: Should NOT have internal_ref (excluded from
+            // grandparent)
+            assert!(
+                !prop_names.contains(&"internal_ref"),
+                "Should exclude 'internal_ref' from grandparent; got: \
+                 {prop_names:?}"
+            );
+
+            Ok(())
+        }
+
+        /// Test that excludes work across 4 levels (great-grandparent).
+        #[test]
+        fn exclude_great_grandparent_property() -> Result<(), SchemaError> {
+            use uuid::Uuid;
+
+            const BASE_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4001);
+            const LEVEL1_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4002);
+            const LEVEL2_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4003);
+            const LEVEL3_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4004);
+
+            let base_id = SchemaId::from_uuid(BASE_ID);
+            let level1_id = SchemaId::from_uuid(LEVEL1_ID);
+            let level2_id = SchemaId::from_uuid(LEVEL2_ID);
+            let level3_id = SchemaId::from_uuid(LEVEL3_ID);
+
+            let deep_prop = fixtures::bool_property("deep_field")?;
+
+            let expanded = vec![
+                fixtures::simple_expanded(base_id, "base", None, vec![
+                    deep_prop.clone(),
+                ]),
+                fixtures::simple_expanded(
+                    level1_id,
+                    "level1",
+                    Some("base"),
+                    vec![],
+                ),
+                fixtures::simple_expanded(
+                    level2_id,
+                    "level2",
+                    Some("level1"),
+                    vec![],
+                ),
+                fixtures::expanded_with_excludes(
+                    level3_id,
+                    "level3",
+                    Some("level2"),
+                    vec!["deep_field".into()],
+                ),
+            ];
+
+            let tree = Extender::build(expanded, &HashMap::new())?;
+            let result = Resolver::resolve(&tree, &HashMap::new())?;
+
+            let level3 = result
+                .iter()
+                .find(|s| s.name().as_ref() == "level3")
+                .expect("level3 schema in result");
+
+            let has_deep_field = level3
+                .properties()
+                .iter()
+                .any(|p| p.name().as_ref() == "deep_field");
+
+            assert!(
+                !has_deep_field,
+                "Should exclude 'deep_field' from great-grandparent"
+            );
+
+            Ok(())
+        }
+
+        /// Test mixed excludes at different levels.
+        #[test]
+        fn mixed_excludes_at_multiple_levels() -> Result<(), SchemaError> {
+            use uuid::Uuid;
+
+            const BASE_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5001);
+            const MIDDLE_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5002);
+            const CHILD_ID: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5003);
+
+            let base_id = SchemaId::from_uuid(BASE_ID);
+            let middle_id = SchemaId::from_uuid(MIDDLE_ID);
+            let child_id = SchemaId::from_uuid(CHILD_ID);
+
+            let prop_a = fixtures::bool_property("prop_a")?;
+            let prop_b = fixtures::bool_property("prop_b")?;
+            let prop_c = fixtures::bool_property("prop_c")?;
+
+            let expanded = vec![
+                fixtures::simple_expanded(base_id, "base", None, vec![
+                    prop_a.clone(),
+                    prop_b.clone(),
+                ]),
+                fixtures::expanded_with_excludes(
+                    middle_id,
+                    "middle",
+                    Some("base"),
+                    vec!["prop_a".into()],
+                ),
+                fixtures::simple_expanded(
+                    child_id,
+                    "child",
+                    Some("middle"),
+                    vec![prop_c.clone()],
+                ),
+            ];
+
+            let tree = Extender::build(expanded, &HashMap::new())?;
+            let result = Resolver::resolve(&tree, &HashMap::new())?;
+
+            let child = result
+                .iter()
+                .find(|s| s.name().as_ref() == "child")
+                .expect("child schema in result");
+
+            let prop_names: Vec<&str> =
+                child.properties().iter().map(|p| p.name().as_ref()).collect();
+
+            assert!(
+                !prop_names.contains(&"prop_a"),
+                "Should NOT have prop_a (excluded by parent); got: \
+                 {prop_names:?}"
+            );
+            assert!(
+                prop_names.contains(&"prop_b"),
+                "Should have prop_b (inherited from grandparent); got: \
+                 {prop_names:?}"
+            );
+            assert!(
+                prop_names.contains(&"prop_c"),
+                "Should have prop_c (own property); got: {prop_names:?}"
+            );
+
+            Ok(())
+        }
     }
 }
