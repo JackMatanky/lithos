@@ -125,6 +125,10 @@ where
     /// Returns [`SchemaLoaderError`] on any I/O, parsing, domain, or
     /// storage failure.
     #[inline]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Loader orchestrates multi-phase resolution pipeline"
+    )]
     pub fn load(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
@@ -259,12 +263,41 @@ where
                     .into_iter()
                     .chain(existing_file_unchanged)
                     .collect();
+
+            // Extend name_to_id with new schemas for parent lookup
+            let complete_name_to_id =
+                Self::extend_name_to_id_map(&name_to_id, &all_stale)?;
+
             self.persist_raw_views(&all_stale)?;
             // Persist inheritance metadata for caching
-            self.persist_inheritance_metadata(&all_stale, &name_to_id)?;
+            self.persist_inheritance_metadata(
+                &all_stale,
+                &complete_name_to_id,
+            )?;
         }
 
         Ok(resolved)
+    }
+
+    /// Extend `name_to_id` map with new schemas for inheritance resolution.
+    ///
+    /// New schemas may reference other new schemas as parents (e.g., "task"
+    /// extends "base" when both are new), so we need to include them in the
+    /// lookup map before resolving inheritance.
+    fn extend_name_to_id_map(
+        name_to_id: &HashMap<SchemaName, SchemaId>,
+        new_schemas: &[(SchemaId, RawSchema)],
+    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaLoaderError> {
+        let mut complete = name_to_id.clone();
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Need explicit ref pattern for tuple in Vec iteration"
+        )]
+        for (id, raw) in new_schemas {
+            let name = SchemaName::try_new(&raw.name)?;
+            complete.insert(name, *id);
+        }
+        Ok(complete)
     }
 
     /// Load name-to-ID mapping from database.
