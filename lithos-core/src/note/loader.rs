@@ -68,7 +68,7 @@ where
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, LoadError> {
-        let parsed =
+        let parsed: parser::note::ParsedNote =
             parser::parse_markdown(markdown, parser::obsidian_options())?;
         let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
             NoteIngestError::Source("source length out of range".into())

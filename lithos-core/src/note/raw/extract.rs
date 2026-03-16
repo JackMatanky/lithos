@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn extract_raw_note_collects_task_tokens() -> Result<(), NoteError> {
         let markdown = "- [ ] #task Review PR [priority:: 1]";
-        let parsed =
+        let parsed: parser::note::ParsedNote =
             parser::parse_markdown(markdown, parser::obsidian_options())
                 .map_err(NoteError::from)?;
         let path = NotePath::try_new("notes/task.md")?;

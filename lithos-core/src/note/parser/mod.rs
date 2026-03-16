@@ -24,12 +24,11 @@
 
 pub(crate) mod ast;
 pub(crate) mod frontmatter;
-pub(crate) mod note;
+pub mod note;
 
 use std::ops::Range;
 
-pub(crate) use note::ParsedNote;
-use note::ReferenceLinkDefinition;
+use note::{ParsedNote, ReferenceLinkDefinition};
 use pulldown_cmark::{
     BlockQuoteKind, CodeBlockKind, Event, LinkType, OffsetIter, Options,
     Parser, Tag, TagEnd, utils::TextMergeWithOffset,

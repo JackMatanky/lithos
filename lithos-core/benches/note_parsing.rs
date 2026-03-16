@@ -399,7 +399,7 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/simple.md"))
                 .expect("read markdown");
-            let parsed =
+            let parsed: parser::note::ParsedNote =
                 parser::parse_markdown(&markdown, parser::obsidian_options())
                     .expect("parse markdown");
             let path = NotePath::try_new("notes/simple.md").expect("note path");
@@ -430,7 +430,7 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/medium.md"))
                 .expect("read markdown");
-            let parsed =
+            let parsed: parser::note::ParsedNote =
                 parser::parse_markdown(&markdown, parser::obsidian_options())
                     .expect("parse markdown");
             let path = NotePath::try_new("notes/medium.md").expect("note path");
@@ -461,7 +461,7 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/complex.md"))
                 .expect("read markdown");
-            let parsed =
+            let parsed: parser::note::ParsedNote =
                 parser::parse_markdown(&markdown, parser::obsidian_options())
                     .expect("parse markdown");
             let path =
