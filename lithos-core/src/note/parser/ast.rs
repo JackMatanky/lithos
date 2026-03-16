@@ -103,6 +103,20 @@ pub enum NodeKind {
     },
 }
 
+impl NodeKind {
+    /// Returns true when the node kind captures inline text containers.
+    #[inline]
+    #[must_use]
+    pub const fn is_text_container(&self) -> bool {
+        matches!(
+            self,
+            Self::Heading { .. }
+                | Self::Paragraph { .. }
+                | Self::ListItem { .. }
+        )
+    }
+}
+
 /// Inline link captured within a text container.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -213,6 +227,12 @@ impl Text {
 
     fn byte_len(&self) -> usize {
         self.nodes.iter().map(|node| node.content().len()).sum()
+    }
+
+    /// Appends a text node to the collection.
+    #[inline]
+    pub fn append(&mut self, node: TextNode) {
+        self.nodes.push(node);
     }
 }
 

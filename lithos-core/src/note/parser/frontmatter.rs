@@ -60,9 +60,10 @@ impl MetadataBlock {
     }
 }
 
-impl From<pulldown_cmark::MetadataBlockKind> for MetadataBlockKind {
+impl MetadataBlockKind {
     #[inline]
-    fn from(kind: pulldown_cmark::MetadataBlockKind) -> Self {
+    #[must_use]
+    pub const fn from_cmark(kind: pulldown_cmark::MetadataBlockKind) -> Self {
         match kind {
             pulldown_cmark::MetadataBlockKind::YamlStyle => Self::YamlStyle,
             pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::PlusesStyle,

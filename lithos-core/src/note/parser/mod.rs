@@ -169,7 +169,7 @@ impl<'source> ParserState<'source> {
                     let block_range = SourceByteRange::new(start, end)
                         .map_err(NoteIngestError::from)?;
                     return Ok(MetadataBlock::new(
-                        kind.into(),
+                        frontmatter::MetadataBlockKind::from_cmark(kind),
                         text.into_boxed_str(),
                         block_range,
                     ));
