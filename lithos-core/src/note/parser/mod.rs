@@ -318,7 +318,7 @@ impl<'source> ParserState<'source> {
                 Event::End(end) if tag.to_end() == end => {
                     let range = SourceByteRange::new(start, range.end())
                         .map_err(NoteIngestError::Domain)?;
-                    return Ok(build_node(
+                    return Ok(Self::build_node(
                         &tag,
                         range,
                         heading_level,
@@ -346,7 +346,7 @@ impl<'source> ParserState<'source> {
                     (false, true) => {
                         let style = Self::current_style(&inline_styles);
                         let origin = Self::link_origin(current_link.as_ref());
-                        push_text_node(
+                        Self::push_text_node(
                             &mut text_nodes,
                             &mut current_link,
                             &text,
@@ -361,7 +361,7 @@ impl<'source> ParserState<'source> {
                     (true, _) => code_text.push_str(&text),
                     (false, true) => {
                         let origin = Self::link_origin(current_link.as_ref());
-                        push_text_node(
+                        Self::push_text_node(
                             &mut text_nodes,
                             &mut current_link,
                             &text,
@@ -378,7 +378,7 @@ impl<'source> ParserState<'source> {
                         (false, true) => {
                             let origin =
                                 Self::link_origin(current_link.as_ref());
-                            push_break_node(
+                            Self::push_break_node(
                                 &mut text_nodes,
                                 &mut current_link,
                                 origin,
@@ -480,6 +480,118 @@ impl<'source> ParserState<'source> {
             TextOrigin::Normal
         }
     }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Parser node construction requires multiple fields"
+    )]
+    fn build_node(
+        tag: &Tag<'_>,
+        range: SourceByteRange,
+        heading_level: Option<u8>,
+        list_type: Option<ListStyle>,
+        block_quote_kind: Option<BlockQuoteKind>,
+        fenced: bool,
+        info: Option<Box<str>>,
+        text_nodes: Vec<TextNode>,
+        inline_links: Vec<InlineLink>,
+        task_marker: Option<bool>,
+        children: Vec<Node>,
+        code_text: String,
+    ) -> Option<Node> {
+        let kind = match tag {
+            &Tag::Heading {
+                ..
+            } => NodeKind::Heading {
+                level: heading_level.unwrap_or(1),
+                text: Text::new(text_nodes),
+                links: inline_links,
+            },
+            &Tag::Paragraph => NodeKind::Paragraph {
+                text: Text::new(text_nodes),
+                links: inline_links,
+            },
+            &Tag::List(..) => NodeKind::List {
+                list_type: list_type.unwrap_or(ListStyle::Unordered),
+                items: children,
+            },
+            &Tag::Item => NodeKind::ListItem {
+                text: Text::new(text_nodes),
+                task_marker,
+                links: inline_links,
+                children,
+            },
+            &Tag::BlockQuote(..) => NodeKind::BlockQuote {
+                kind: block_quote_kind,
+                nodes: children,
+            },
+            &Tag::CodeBlock(..) => NodeKind::CodeBlock {
+                fenced,
+                info,
+                text: code_text.into_boxed_str(),
+            },
+            &Tag::HtmlBlock
+            | &Tag::FootnoteDefinition(..)
+            | &Tag::Table(..)
+            | &Tag::TableHead
+            | &Tag::TableRow
+            | &Tag::TableCell
+            | &Tag::DefinitionList
+            | &Tag::DefinitionListTitle
+            | &Tag::DefinitionListDefinition
+            | &Tag::MetadataBlock(..)
+            | &Tag::Emphasis
+            | &Tag::Strong
+            | &Tag::Strikethrough
+            | &Tag::Superscript
+            | &Tag::Subscript
+            | &Tag::Link {
+                ..
+            }
+            | &Tag::Image {
+                ..
+            } => return None,
+        };
+        Some(Node::new(kind, range))
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Parser text node construction requires multiple fields"
+    )]
+    fn push_text_node(
+        text_nodes: &mut Vec<TextNode>,
+        current_link: &mut Option<LinkFrame>,
+        text: &str,
+        style: TextStyle,
+        origin: TextOrigin,
+        range: SourceByteRange,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let node = TextNode::new(text.into(), style, origin, range);
+        text_nodes.push(node.clone());
+        if let Some(link) = current_link.as_mut() {
+            link.alias.push(node);
+        }
+    }
+
+    fn push_break_node(
+        text_nodes: &mut Vec<TextNode>,
+        current_link: &mut Option<LinkFrame>,
+        origin: TextOrigin,
+        range: SourceByteRange,
+    ) {
+        if text_nodes.last().is_some_and(|node| node.content().ends_with(' ')) {
+            return;
+        }
+        let node = TextNode::new(" ".into(), TextStyle::Plain, origin, range);
+        text_nodes.push(node.clone());
+        if let Some(link) = current_link.as_mut() {
+            link.alias.push(node);
+        }
+    }
 }
 
 #[expect(
@@ -554,118 +666,6 @@ fn extract_reference_link_definitions(
         offset = offset.saturating_add(line.len());
     }
     Ok(defs)
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Parser text node construction requires multiple fields"
-)]
-fn push_text_node(
-    text_nodes: &mut Vec<TextNode>,
-    current_link: &mut Option<LinkFrame>,
-    text: &str,
-    style: TextStyle,
-    origin: TextOrigin,
-    range: SourceByteRange,
-) {
-    if text.is_empty() {
-        return;
-    }
-    let node = TextNode::new(text.into(), style, origin, range);
-    text_nodes.push(node.clone());
-    if let Some(link) = current_link.as_mut() {
-        link.alias.push(node);
-    }
-}
-
-fn push_break_node(
-    text_nodes: &mut Vec<TextNode>,
-    current_link: &mut Option<LinkFrame>,
-    origin: TextOrigin,
-    range: SourceByteRange,
-) {
-    if text_nodes.last().is_some_and(|node| node.content().ends_with(' ')) {
-        return;
-    }
-    let node = TextNode::new(" ".into(), TextStyle::Plain, origin, range);
-    text_nodes.push(node.clone());
-    if let Some(link) = current_link.as_mut() {
-        link.alias.push(node);
-    }
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Parser node construction requires multiple fields"
-)]
-fn build_node(
-    tag: &Tag<'_>,
-    range: SourceByteRange,
-    heading_level: Option<u8>,
-    list_type: Option<ListStyle>,
-    block_quote_kind: Option<BlockQuoteKind>,
-    fenced: bool,
-    info: Option<Box<str>>,
-    text_nodes: Vec<TextNode>,
-    inline_links: Vec<InlineLink>,
-    task_marker: Option<bool>,
-    children: Vec<Node>,
-    code_text: String,
-) -> Option<Node> {
-    let kind = match tag {
-        &Tag::Heading {
-            ..
-        } => NodeKind::Heading {
-            level: heading_level.unwrap_or(1),
-            text: Text::new(text_nodes),
-            links: inline_links,
-        },
-        &Tag::Paragraph => NodeKind::Paragraph {
-            text: Text::new(text_nodes),
-            links: inline_links,
-        },
-        &Tag::List(..) => NodeKind::List {
-            list_type: list_type.unwrap_or(ListStyle::Unordered),
-            items: children,
-        },
-        &Tag::Item => NodeKind::ListItem {
-            text: Text::new(text_nodes),
-            task_marker,
-            links: inline_links,
-            children,
-        },
-        &Tag::BlockQuote(..) => NodeKind::BlockQuote {
-            kind: block_quote_kind,
-            nodes: children,
-        },
-        &Tag::CodeBlock(..) => NodeKind::CodeBlock {
-            fenced,
-            info,
-            text: code_text.into_boxed_str(),
-        },
-        &Tag::HtmlBlock
-        | &Tag::FootnoteDefinition(..)
-        | &Tag::Table(..)
-        | &Tag::TableHead
-        | &Tag::TableRow
-        | &Tag::TableCell
-        | &Tag::DefinitionList
-        | &Tag::DefinitionListTitle
-        | &Tag::DefinitionListDefinition
-        | &Tag::MetadataBlock(..)
-        | &Tag::Emphasis
-        | &Tag::Strong
-        | &Tag::Strikethrough
-        | &Tag::Superscript
-        | &Tag::Subscript
-        | &Tag::Link {
-            ..
-        }
-        | &Tag::Image {
-            ..
-        } => return None,
-    };
-    Some(Node::new(kind, range))
 }
 
 /// Parse-time state for link nodes.
