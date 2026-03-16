@@ -313,329 +313,38 @@ where
 
 ### 3.2 Main Ingestor Methods (Same Names, Enhanced)
 
-```rust
-impl<R> Ingestor<'_, R>
-where
-    R: Repository,
-    R::Error: Into<SchemaIngestionError>,
-{
-    /// Get the property bank with staleness detection.
-    ///
-    /// Returns:
-    /// - `Ok(Some(IngestResult::Fresh(RawPropertyBank)))` if timestamps match
-    /// - `Ok(Some(IngestResult::Stale(RawPropertyBank)))` if stale, with newly loaded data
-    /// - `Ok(None)` if property bank file doesn't exist
-    ///
-    /// On Stale result, persists the RawPropertyBankView to database.
-    pub fn property_bank(&self) -> Result<Option<IngestResult<RawPropertyBank>>, SchemaIngestionError> {
-        let path = self.config.paths().property_bank_path();
+**Implementation details for the three main methods are left to implementation phase.**
 
-        if !self.source.exists(&path) {
-            return Ok(None);
-        }
+The core behavior for each method:
 
-        // Step 1: Get timestamps (fast - no content read)
-        let created_at = self.source.created_at(&path);
-        let modified_at = self.source.modified_at(&path);
+#### `property_bank() -> Option<IngestResult<RawPropertyBank>>`
 
-        // Step 2: Check staleness via embedded repository
-        let view = self.repository.get_raw_property_bank_view()
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into()
-            })?;
+1. Check if file exists, return `None` if not
+2. Try to load `RawPropertyBankView` from repository
+3. If view exists:
+   - Check timestamp match → if fresh, reconstruct and return `Fresh`
+   - Read file content and check hash → if fresh, reconstruct and return `Fresh`
+4. Parse file (stale or new)
+5. Create and persist `RawPropertyBankView` using `TryFrom`
+6. Return `Stale`
 
-        if let Some(view) = view {
-            // Existing property bank - check staleness
-            // Helper 1: Check timestamps
-            if let Some(fresh) = self.check_property_bank_timestamp_staleness(&view, &path)? {
-                return Ok(Some(IngestResult::Fresh(fresh)));
-            }
+#### `schema(path) -> IngestResult<RawSchema>`
 
-            // Helper 2: Check content hash
-            if let Some(fresh) = self.check_property_bank_content_staleness(&view, &path)? {
-                return Ok(Some(IngestResult::Fresh(fresh)));
-            }
-        }
+1. Derive relative path (path is already relative to vault root)
+2. Try to load `RawSchemaView` from repository by path
+3. If view exists:
+   - Check timestamp match → if fresh, reconstruct and return `Fresh`
+   - Read file content and check hash → if fresh, reconstruct and return `Fresh`
+4. Parse file (stale or new)
+5. Get or create SchemaId for this path
+6. Create and persist `RawSchemaView` using `TryFrom`
+7. Return `Stale`
 
-        // No view (new property bank) or stale - full parse required
-        let raw_bank = self.parse_and_persist_property_bank(&path)?;
-        Ok(Some(IngestResult::Stale(raw_bank)))
-    }
+#### `all_schemas() -> Vec<IngestResult<RawSchema>>`
 
-    /// Load all schema files with staleness detection.
-    ///
-    /// Returns Vec of IngestResult, one for each discovered schema file.
-    /// On Stale results, persists the RawSchemaView to database.
-    pub fn all_schemas(&self) -> Result<Vec<IngestResult<RawSchema>>, SchemaIngestionError> {
-        let paths = self.config.paths();
-        let schemas_dir = paths.schema.schemas_dir().as_path();
-        let property_bank_filename = paths.property_bank.as_str();
-
-        let mut results = Vec::new();
-
-        for ext in SCHEMA_EXTENSIONS {
-            let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
-            let files = self.source.list_files(&pattern).map_err(|error| {
-                SchemaIngestionError::FileSystem(error.to_string().into())
-            })?;
-
-            for path in files {
-                if path.file_name().is_some_and(|name| name == property_bank_filename) {
-                    continue;
-                }
-
-                // Derive relative path from the path itself, since schemas_dir is already relative
-                // Example: path="schemas/note.toml" (already relative to vault root)
-                let relative_path = path.to_string_lossy().into_boxed_str();
-
-                let result = self.schema_internal(&path, &relative_path)?;
-                results.push(result);
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Load a single schema file with staleness detection.
-    pub fn schema(&self, path: &Path) -> Result<IngestResult<RawSchema>, SchemaIngestionError> {
-        // Path is already relative to vault root (from Config.paths().schema.schemas_dir())
-        let relative_path = path.to_string_lossy().into_boxed_str();
-
-        self.schema_internal(path, &relative_path)
-    }
-
-    // --- Private helper methods ---
-
-    /// Internal implementation for schema loading with staleness.
-    fn schema_internal(
-        &self,
-        path: &Path,
-        relative_path: &str,
-    ) -> Result<IngestResult<RawSchema>, SchemaIngestionError> {
-        // Try to get view - if None, it's a new schema (not an error)
-        let view = self.repository.find_raw_schema_view_by_path(relative_path)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into()
-            })?;
-
-        if let Some(view) = view {
-            // Existing schema - check staleness
-            // Helper 1: Check timestamps and either return Raw* or timestamps
-            if let Some(fresh) = self.check_timestamp_staleness(&view, path)? {
-                return Ok(IngestResult::Fresh(fresh));
-            }
-
-            // Helper 2: Check content hash and either return Raw* or hash
-            if let Some(fresh) = self.check_content_staleness(&view, path)? {
-                return Ok(IngestResult::Fresh(fresh));
-            }
-        }
-        // No view (new schema) or stale - full parse required
-        let raw_schema = self.parse_and_persist_schema(path, relative_path)?;
-        Ok(IngestResult::Stale(raw_schema))
-    }
-
-    /// Helper: Check timestamp staleness.
-    /// Returns Some(RawSchema) if fresh, None if stale.
-    fn check_timestamp_staleness(
-        &self,
-        view: &RawSchemaView,
-        path: &Path,
-    ) -> Result<Option<RawSchema>, SchemaIngestionError> {
-        let created_at = self.source.created_at(path);
-        let modified_at = self.source.modified_at(path);
-
-        if view.is_timestamp_match(created_at, modified_at) {
-            // Fresh! Reconstruct from cached content
-            let cached = view.to_raw()
-                .ok_or_else(|| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: "failed to reconstruct from cache".into()
-                })?;
-            Ok(Some(cached))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Helper: Check content hash staleness.
-    /// Returns Some(RawSchema) if fresh, None if stale.
-    fn check_content_staleness(
-        &self,
-        view: &RawSchemaView,
-        path: &Path,
-    ) -> Result<Option<RawSchema>, SchemaIngestionError> {
-        let raw_bytes = self.source.read_bytes(path)?;
-        let content_hash = blake3::hash(&raw_bytes);
-
-        if view.is_content_match(&raw_bytes) {
-            // Content matches - timestamps were wrong (clock skew, etc)
-            let cached = view.to_raw()
-                .ok_or_else(|| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: "failed to reconstruct from cache".into()
-                })?;
-            Ok(Some(cached))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Parse schema and persist view.
-    fn parse_and_persist_schema(
-        &self,
-        path: &Path,
-        relative_path: &str,
-    ) -> Result<RawSchema, SchemaIngestionError> {
-        let raw_schema = self.parse_schema(path)?;
-
-        // Persist view (including compression) - uses existing TryFrom
-        // Get or create SchemaId for this path
-        let id = self.repository.find_schema_id_by_path(relative_path)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?
-            .unwrap_or_else(SchemaId::new);
-
-        let view = RawSchemaView::try_from(&raw_schema)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: relative_path.into(),
-                reason: e.to_string().into(),
-            })?;
-
-        self.repository.save_raw_schema_view(id, &view)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?;
-
-        Ok(raw_schema)
-    }
-
-    /// Helper: Check property bank timestamp staleness.
-    fn check_property_bank_timestamp_staleness(
-        &self,
-        view: &RawPropertyBankView,
-        path: &Path,
-    ) -> Result<Option<RawPropertyBank>, SchemaIngestionError> {
-        let created_at = self.source.created_at(path);
-        let modified_at = self.source.modified_at(path);
-
-        if view.is_timestamp_match(created_at, modified_at) {
-            let cached = view.to_raw()
-                .ok_or_else(|| SchemaIngestionError::Io {
-                    path: "property bank".into(),
-                    reason: "failed to reconstruct from cache".into()
-                })?;
-            Ok(Some(cached))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Helper: Check property bank content hash staleness.
-    fn check_property_bank_content_staleness(
-        &self,
-        view: &RawPropertyBankView,
-        path: &Path,
-    ) -> Result<Option<RawPropertyBank>, SchemaIngestionError> {
-        let raw_bytes = self.source.read_bytes(path)?;
-
-        if view.is_content_match(&raw_bytes) {
-            let cached = view.to_raw()
-                .ok_or_else(|| SchemaIngestionError::Io {
-                    path: "property bank".into(),
-                    reason: "failed to reconstruct from cache".into()
-                })?;
-            Ok(Some(cached))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Parse property bank and persist view.
-    fn parse_and_persist_property_bank(
-        &self,
-        path: &Path,
-    ) -> Result<RawPropertyBank, SchemaIngestionError> {
-        let raw_bank = self.parse_property_bank(path)?;
-
-        // Persist view (including compression) - uses existing TryFrom
-        let view = RawPropertyBankView::try_from(&raw_bank)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "property bank".into(),
-                reason: e.to_string().into(),
-            })?;
-
-        self.repository.save_raw_property_bank_view(&view)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "database".into(),
-                reason: e.to_string().into(),
-            })?;
-
-        Ok(raw_bank)
-    }
-
-    /// Parse property bank from file (current implementation).
-    fn parse_property_bank(&self, path: &Path) -> Result<RawPropertyBank, SchemaIngestionError> {
-        let created_at = self.source.created_at(path);
-        let modified_at = self.source.modified_at(path);
-        let raw_bytes = self.source.read_bytes(path)?;
-        let content_hash = blake3::hash(&raw_bytes);
-
-        let mut bank: RawPropertyBank = self.source.parse_structured(path)?
-            .validated(&path.to_string_lossy())?;
-
-        let property_hashes = bank.properties.iter()
-            .filter_map(|(name, entry)| {
-                serde_json::to_string(entry).ok().map(|json| {
-                    let hash = blake3::hash(json.as_bytes());
-                    (name.clone(), *hash.as_bytes())
-                })
-            })
-            .collect();
-
-        bank.metadata = RawSchemaMetadata {
-            created_at,
-            modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
-            property_hashes,
-        };
-
-        Ok(bank)
-    }
-
-    /// Parse schema from file (current implementation).
-    fn parse_schema(&self, path: &Path) -> Result<RawSchema, SchemaIngestionError> {
-        let filename_stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-            SchemaIngestionError::FileSystem(
-                format!("Invalid filename for schema: {}", path.display()).into()
-            )
-        })?;
-
-        let created_at = self.source.created_at(path);
-        let modified_at = self.source.modified_at(path);
-        let raw_bytes = self.source.read_bytes(path)?;
-        let content_hash = blake3::hash(&raw_bytes);
-
-        let mut raw: RawSchema = self.source.parse_structured(path)?;
-        raw.name = filename_stem.into();
-        let mut raw = raw.validated(&path.to_string_lossy())?;
-
-        raw.metadata = RawSchemaMetadata {
-            created_at,
-            modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
-            property_hashes: RawSchemaMetadata::compute_property_hashes(&raw.properties),
-        };
-
-        Ok(raw)
-    }
-}
-```
+1. Scan schemas directory for all schema files (exclude property bank)
+2. For each file, call the equivalent logic of `schema(path)`
+3. Return Vec of results
 
 ---
 
@@ -938,3 +647,4 @@ Options:
 | 2026-03-16 | Initial plan created                                          |
 | 2026-03-16 | Updated based on review: removed unnecessary helpers, use existing TryFrom and is_timestamp_match methods |
 | 2026-03-16 | Fixed relative path logic: schemas_dir is already relative to vault root; added helper methods for timestamp/content staleness checks; no error when view is None (new file case) |
+| 2026-03-16 | Simplified to focus on three main methods only (property_bank, schema, all_schemas); removed helper method details to avoid over-planning |
