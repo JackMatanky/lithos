@@ -111,7 +111,8 @@ impl<'source> ParserState<'source> {
         let mut frontmatter = None;
 
         while let Some((event, range)) = self.next() {
-            let range = to_range(range)?;
+            let range = SourceByteRange::try_from(range)
+                .map_err(NoteIngestError::Domain)?;
             match event {
                 Event::Start(Tag::MetadataBlock(kind)) => {
                     if frontmatter.is_none() {
@@ -162,7 +163,9 @@ impl<'source> ParserState<'source> {
                 Event::End(TagEnd::MetadataBlock(end_kind))
                     if end_kind == kind =>
                 {
-                    let end = to_range(range)?.end();
+                    let end = SourceByteRange::try_from(range)
+                        .map_err(NoteIngestError::Domain)?
+                        .end();
                     let block_range = SourceByteRange::new(start, end)
                         .map_err(NoteIngestError::from)?;
                     return Ok(MetadataBlock::new(
@@ -268,7 +271,8 @@ impl<'source> ParserState<'source> {
         };
 
         while let Some((event, range)) = self.next() {
-            let range = to_range(range)?;
+            let range = SourceByteRange::try_from(range)
+                .map_err(NoteIngestError::Domain)?;
             match event {
                 Event::Start(inner) if is_container_tag(&inner) => {
                     if let Some(node) =
@@ -664,14 +668,6 @@ impl LinkFrame {
             range,
         ))
     }
-}
-
-fn to_range(range: Range<usize>) -> Result<SourceByteRange, NoteIngestError> {
-    let start = SourceByteOffset::try_from_usize(range.start)
-        .map_err(NoteIngestError::Domain)?;
-    let end = SourceByteOffset::try_from_usize(range.end)
-        .map_err(NoteIngestError::Domain)?;
-    SourceByteRange::new(start, end).map_err(NoteIngestError::Domain)
 }
 
 fn heading_level(level: pulldown_cmark::HeadingLevel) -> u8 {

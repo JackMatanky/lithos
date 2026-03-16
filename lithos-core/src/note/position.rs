@@ -6,6 +6,8 @@
     reason = "rkyv generates exhaustive archived types"
 )]
 
+use std::ops::Range;
+
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::NoteError;
@@ -191,6 +193,17 @@ impl SourceByteRange {
             line_starts,
         )?;
         Ok(SourceLocationRange::new_unchecked(start, end))
+    }
+}
+
+impl TryFrom<Range<usize>> for SourceByteRange {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(range: Range<usize>) -> Result<Self, Self::Error> {
+        let start = SourceByteOffset::try_from_usize(range.start)?;
+        let end = SourceByteOffset::try_from_usize(range.end)?;
+        Self::new(start, end)
     }
 }
 
