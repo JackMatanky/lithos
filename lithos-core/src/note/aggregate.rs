@@ -74,6 +74,236 @@ impl NoteId {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::{
+        config::{
+            aggregate::Config,
+            raw::{RawConfig, RawFieldSpec, RawTaskConfig},
+            vault::{VaultId, VaultRoot},
+        },
+        note::{
+            position::SourceByteOffset,
+            raw::{
+                tags::scan_raw_tags, task_tokens::RawTaskTokens, tasks::RawTask,
+            },
+        },
+    };
+
+    #[test]
+    fn promotes_only_when_task_tag_present() {
+        let config = test_config_with_task_tag();
+
+        let promoted = promote_task("#task Do work", &config, &[])
+            .expect("task should be promoted");
+        assert_eq!(promoted.text(), "Do work");
+
+        let skipped = promote_task("Do work", &config, &[]);
+        assert!(skipped.is_none());
+
+        let skipped_partial = promote_task("#tasker Do work", &config, &[]);
+        assert!(skipped_partial.is_none());
+    }
+
+    #[test]
+    fn promoted_checkbox_extracts_text_and_metadata() {
+        let config = config_with_fields();
+        let task = promote_task(
+            "#task Review PR [priority:: 2] [project:: lithos]",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(task.text(), "Review PR");
+        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
+        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+    }
+
+    #[test]
+    fn promoted_checkbox_collects_hierarchical_tags() {
+        let config = test_config_with_task_tag();
+        let task =
+            promote_task("#task Fix #work/project/urgent issue", &config, &[])
+                .expect("task should be promoted");
+
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
+        assert!(
+            task.tags().any(|tag| tag.full_path() == "work/project/urgent")
+        );
+        assert_eq!(task.tags().count(), 2);
+    }
+
+    #[test]
+    fn promoted_checkbox_ignores_invalid_tags() {
+        let config = test_config_with_task_tag();
+        let task = promote_task("#task Review #bad/ tags", &config, &[])
+            .expect("task should be promoted");
+
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
+        assert_eq!(task.tags().count(), 1);
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_dates() {
+        let config = test_config_with_task_tag();
+        let task = promote_task(
+            "#task Test task with dates [created:: 2024-01-01] [due:: \
+             2024-12-31]",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        if let Some(created_at) = task.created_at() {
+            assert_eq!(created_at.as_i64(), 1_704_067_200);
+            if let Some(due_at) = task.due_at() {
+                assert!(created_at.is_past(Some(due_at)));
+            }
+        }
+
+        if let Some(due_at) = task.due_at() {
+            assert_eq!(due_at.as_i64(), 1_735_689_600);
+            if let Some(created_at) = task.created_at() {
+                assert!(due_at.is_future(Some(created_at)));
+            }
+        }
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_paren_inline_fields() {
+        let config = config_with_fields();
+        let task = promote_task(
+            "#task Review PR (priority:: 2) (project:: lithos)",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(task.text(), "Review PR");
+        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
+        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_default_emoji_dates() {
+        let config = test_config_with_task_tag();
+        let emojis = default_emoji_markers();
+        let task = promote_task(
+            "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
+             \u{2705}2025-01-01",
+            &config,
+            &emojis,
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(
+            task.created_at().map(|ts| ts.as_i64()),
+            Some(1_704_067_200)
+        );
+        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
+        assert_eq!(
+            task.completed_at().map(|ts| ts.as_i64()),
+            Some(1_735_689_600)
+        );
+    }
+
+    fn promote_task(
+        text: &str,
+        config: &Config,
+        emoji_markers: &[char],
+    ) -> Option<Task> {
+        let raw = raw_task_from_text(text, emoji_markers);
+        let ctx = RawTaskContext::new(&raw, config);
+        Option::<Task>::try_from(ctx).expect("task conversion")
+    }
+
+    fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
+        let base = SourceByteOffset::new(0);
+        let tags = scan_raw_tags(text, base)
+            .expect("raw tags")
+            .into_iter()
+            .map(|tag| tag.value().into())
+            .collect();
+        let tokens = RawTaskTokens::parse(text, emoji_markers);
+        RawTask::new(
+            Some(' '),
+            text.into(),
+            tags,
+            tokens.inline_fields().to_vec(),
+            tokens.emoji_dates().to_vec(),
+            base,
+        )
+    }
+
+    fn default_emoji_markers() -> Vec<char> {
+        vec![
+            '\u{2795}',
+            '\u{1f4c5}',
+            '\u{2705}',
+            '\u{23f3}',
+            '\u{1f6eb}',
+            '\u{274c}',
+        ]
+    }
+
+    fn test_config_with_task_tag() -> Config {
+        let raw = RawConfig {
+            task: Some(RawTaskConfig {
+                task_tags: Some(vec!["#task".into()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        Config::build(
+            &raw,
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                .expect("vault root"),
+            crate::config::aggregate::Version::initial(),
+        )
+        .expect("failed to build test config")
+    }
+
+    fn config_with_fields() -> Config {
+        let mut fields = HashMap::new();
+        fields.insert("priority".into(), RawFieldSpec::Integer {
+            min: None,
+            max: None,
+        });
+        fields.insert("project".into(), RawFieldSpec::String {
+            pattern: None,
+        });
+
+        let raw = RawConfig {
+            task: Some(RawTaskConfig {
+                enabled: Some(true),
+                task_tags: Some(vec!["#task".into()]),
+                status: None,
+                dates: None,
+                fields: Some(fields),
+                indexing: None,
+                dependencies: None,
+                use_emoji: None,
+            }),
+            ..Default::default()
+        };
+
+        Config::build(
+            &raw,
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                .expect("vault root"),
+            crate::config::aggregate::Version::initial(),
+        )
+        .expect("failed to build test config")
+    }
+}
+
 impl fmt::Display for NoteId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1244,13 +1474,28 @@ impl InlineFieldState {
         raw_value: &str,
         field: &str,
     ) -> Result<TaskTimestamp, NoteError> {
-        let parsed = raw_value.parse::<i64>().map_err(|_error| {
-            NoteError::Task(TaskError::InvalidMetadataField {
+        let formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"];
+        for format in formats {
+            if let Ok(naive) =
+                chrono::NaiveDateTime::parse_from_str(raw_value, format)
+            {
+                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
+            }
+        }
+
+        let date = chrono::NaiveDate::parse_from_str(raw_value, "%Y-%m-%d")
+            .map_err(|_error| {
+                NoteError::Task(TaskError::InvalidDate {
+                    keyword: field.into(),
+                    reason: "failed to parse date string",
+                })
+            })?;
+        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            NoteError::Task(TaskError::InvalidDateTime {
                 keyword: field.into(),
-                reason: "failed parsing",
             })
         })?;
-        Ok(TaskTimestamp::new(parsed))
+        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
     }
 
     fn match_date_spec_by_emoji<'config>(

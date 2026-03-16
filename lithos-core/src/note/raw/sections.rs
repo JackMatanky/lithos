@@ -28,7 +28,6 @@ pub enum RawSectionKind {
 pub struct RawSection {
     kind: RawSectionKind,
     range: SourceByteRange,
-    heading_id: Option<usize>,
     depth: u32,
 }
 
@@ -39,13 +38,11 @@ impl RawSection {
     pub fn new(
         kind: RawSectionKind,
         range: SourceByteRange,
-        heading_id: Option<usize>,
         depth: u32,
     ) -> Self {
         Self {
             kind,
             range,
-            heading_id,
             depth,
         }
     }
@@ -62,13 +59,6 @@ impl RawSection {
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
         self.range
-    }
-
-    /// Return the optional heading id reference.
-    #[inline]
-    #[must_use]
-    pub const fn heading_id(&self) -> Option<usize> {
-        self.heading_id
     }
 
     /// Return the section nesting depth.
@@ -105,7 +95,6 @@ fn walk_sections(
                 sections.push(RawSection::new(
                     RawSectionKind::Heading,
                     node.range(),
-                    None,
                     depth,
                 ));
             }
@@ -115,7 +104,6 @@ fn walk_sections(
                 sections.push(RawSection::new(
                     RawSectionKind::Paragraph,
                     node.range(),
-                    None,
                     depth,
                 ));
             }
@@ -132,7 +120,6 @@ fn walk_sections(
                 sections.push(RawSection::new(
                     RawSectionKind::List,
                     node.range(),
-                    None,
                     depth,
                 ));
                 walk_sections(children, depth.saturating_add(1), sections)?;
@@ -143,7 +130,6 @@ fn walk_sections(
                 sections.push(RawSection::new(
                     RawSectionKind::CodeBlock,
                     node.range(),
-                    None,
                     depth,
                 ));
             }
@@ -154,7 +140,6 @@ fn walk_sections(
                 sections.push(RawSection::new(
                     RawSectionKind::BlockQuote,
                     node.range(),
-                    None,
                     depth,
                 ));
                 walk_sections(quote_nodes, depth.saturating_add(1), sections)?;

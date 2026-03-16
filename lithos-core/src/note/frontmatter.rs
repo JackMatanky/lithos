@@ -15,7 +15,9 @@
     reason = "Frontmatter parsing helpers retained for future use"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write as _};
+
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone as _, Utc};
 
 use super::{
     error::{FrontmatterError, FrontmatterParseError},
@@ -225,7 +227,8 @@ impl Frontmatter {
             return Ok(FieldValue::Boolean(value));
         }
         if let Some(datetime) = value.as_datetime() {
-            return Ok(FieldValue::String(datetime.to_string().into()));
+            let timestamp = Self::toml_datetime_to_timestamp(datetime)?;
+            return Ok(FieldValue::Date(timestamp));
         }
         if let Some(values) = value.as_array() {
             let mut items = Vec::with_capacity(values.len());
@@ -247,6 +250,36 @@ impl Frontmatter {
 
         Err(FrontmatterParseError::InvalidTomlValue {
             reason: "unsupported toml value",
+        })
+    }
+
+    fn toml_datetime_to_timestamp(
+        datetime: &toml::value::Datetime,
+    ) -> Result<i64, FrontmatterParseError> {
+        let mut rendered = String::new();
+        write!(&mut rendered, "{datetime}").map_err(|_error| {
+            FrontmatterParseError::InvalidTomlValue {
+                reason: "failed to format datetime",
+            }
+        })?;
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(&rendered) {
+            return Ok(parsed.timestamp());
+        }
+        if let Ok(naive) =
+            NaiveDateTime::parse_from_str(&rendered, "%Y-%m-%dT%H:%M:%S%.f")
+        {
+            return Ok(Utc.from_utc_datetime(&naive).timestamp());
+        }
+        if let Ok(date) = NaiveDate::parse_from_str(&rendered, "%Y-%m-%d") {
+            let naive = date.and_hms_opt(0, 0, 0).ok_or(
+                FrontmatterParseError::InvalidTomlValue {
+                    reason: "invalid date components",
+                },
+            )?;
+            return Ok(Utc.from_utc_datetime(&naive).timestamp());
+        }
+        Err(FrontmatterParseError::InvalidTomlValue {
+            reason: "invalid toml datetime",
         })
     }
 

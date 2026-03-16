@@ -235,7 +235,7 @@ impl<'source> ParserState<'source> {
         let (fenced, info) = match &tag {
             Tag::CodeBlock(kind) => match kind {
                 CodeBlockKind::Fenced(info) => {
-                    (true, Some(info.to_string().into_boxed_str()))
+                    (true, Some(info.as_ref().into()))
                 }
                 CodeBlockKind::Indented => (false, None),
             },
@@ -260,7 +260,7 @@ impl<'source> ParserState<'source> {
                     current_link = Some(LinkFrame::new(
                         link_style(link_type),
                         false,
-                        dest_url.to_string().into_boxed_str(),
+                        dest_url.as_ref().into(),
                         range.start(),
                     ));
                 }
@@ -272,7 +272,7 @@ impl<'source> ParserState<'source> {
                     current_link = Some(LinkFrame::new(
                         link_style(link_type),
                         true,
-                        dest_url.to_string().into_boxed_str(),
+                        dest_url.as_ref().into(),
                         range.start(),
                     ));
                 }
