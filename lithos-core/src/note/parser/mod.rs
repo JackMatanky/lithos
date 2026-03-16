@@ -30,14 +30,14 @@ use std::ops::Range;
 
 use note::{ParsedNote, ReferenceLinkDefinition};
 use pulldown_cmark::{
-    BlockQuoteKind as CmarkBlockQuoteKind, CodeBlockKind, Event, LinkType,
-    OffsetIter, Options, Parser, Tag, TagEnd, utils::TextMergeWithOffset,
+    CodeBlockKind, Event, LinkType, OffsetIter, Options, Parser, Tag, TagEnd,
+    utils::TextMergeWithOffset,
 };
 
 use self::{
     ast::{
-        BlockQuoteKind, InlineLink, LinkStyle, ListStyle, Node, NodeKind, Text,
-        TextNode, TextOrigin, TextStyle,
+        BlockQuoteKind, HeadingLevel, InlineLink, LinkStyle, ListStyle, Node,
+        NodeKind, Text, TextNode, TextOrigin, TextStyle,
     },
     frontmatter::MetadataBlock,
 };
@@ -253,11 +253,11 @@ impl<'source> ParserState<'source> {
             Tag::Heading {
                 level,
                 ..
-            } => Some(heading_level(*level)),
+            } => Some(HeadingLevel::from_cmark(*level)),
             _ => None,
         };
         let block_quote_kind = match &tag {
-            Tag::BlockQuote(kind) => kind.map(map_block_quote_kind),
+            Tag::BlockQuote(kind) => kind.map(BlockQuoteKind::from_cmark),
             _ => None,
         };
         let (fenced, info) = match &tag {
@@ -488,7 +488,7 @@ impl<'source> ParserState<'source> {
     fn build_node(
         tag: &Tag<'_>,
         range: SourceByteRange,
-        heading_level: Option<u8>,
+        heading_level: Option<HeadingLevel>,
         list_type: Option<ListStyle>,
         block_quote_kind: Option<BlockQuoteKind>,
         fenced: bool,
@@ -503,7 +503,7 @@ impl<'source> ParserState<'source> {
             &Tag::Heading {
                 ..
             } => NodeKind::Heading {
-                level: heading_level.unwrap_or(1),
+                level: heading_level.unwrap_or(HeadingLevel::new(1)),
                 text: Text::new(text_nodes),
                 links: inline_links,
             },
@@ -709,27 +709,6 @@ impl LinkFrame {
     }
 }
 
-fn heading_level(level: pulldown_cmark::HeadingLevel) -> u8 {
-    match level {
-        pulldown_cmark::HeadingLevel::H1 => 1,
-        pulldown_cmark::HeadingLevel::H2 => 2,
-        pulldown_cmark::HeadingLevel::H3 => 3,
-        pulldown_cmark::HeadingLevel::H4 => 4,
-        pulldown_cmark::HeadingLevel::H5 => 5,
-        pulldown_cmark::HeadingLevel::H6 => 6,
-    }
-}
-
-fn map_block_quote_kind(kind: CmarkBlockQuoteKind) -> BlockQuoteKind {
-    match kind {
-        CmarkBlockQuoteKind::Note => BlockQuoteKind::Note,
-        CmarkBlockQuoteKind::Tip => BlockQuoteKind::Tip,
-        CmarkBlockQuoteKind::Important => BlockQuoteKind::Important,
-        CmarkBlockQuoteKind::Warning => BlockQuoteKind::Warning,
-        CmarkBlockQuoteKind::Caution => BlockQuoteKind::Caution,
-    }
-}
-
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
@@ -779,7 +758,7 @@ mod tests {
                 ..
             } = node.kind()
             {
-                assert_eq!(*level, 1);
+                assert_eq!(level.value(), 1);
                 let range = node.range();
                 assert!(!range.is_empty());
                 found = true;

@@ -68,7 +68,7 @@ impl<'source> RawCollector<'source> {
                     links: inline_links,
                 } => {
                     let raw = RawHeading::new(
-                        *level,
+                        level.value(),
                         text.to_boxed_str(),
                         node.range(),
                         node.range().start(),

@@ -52,7 +52,7 @@ pub enum NodeKind {
     /// Heading block with inline text.
     Heading {
         /// Heading level, from 1 through 6.
-        level: u8,
+        level: HeadingLevel,
         /// Heading text with inline styles preserved.
         text: Text,
         /// Inline links captured within the heading text.
@@ -365,4 +365,55 @@ pub enum BlockQuoteKind {
     Warning,
     /// `> [!caution]`.
     Caution,
+}
+
+impl BlockQuoteKind {
+    #[inline]
+    #[must_use]
+    pub(super) const fn from_cmark(
+        kind: pulldown_cmark::BlockQuoteKind,
+    ) -> Self {
+        match kind {
+            pulldown_cmark::BlockQuoteKind::Note => Self::Note,
+            pulldown_cmark::BlockQuoteKind::Tip => Self::Tip,
+            pulldown_cmark::BlockQuoteKind::Important => Self::Important,
+            pulldown_cmark::BlockQuoteKind::Warning => Self::Warning,
+            pulldown_cmark::BlockQuoteKind::Caution => Self::Caution,
+        }
+    }
+}
+
+/// Heading level metadata (1 through 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct HeadingLevel(u8);
+
+impl HeadingLevel {
+    #[inline]
+    #[must_use]
+    pub const fn new(level: u8) -> Self {
+        Self(level)
+    }
+
+    #[inline]
+    #[must_use]
+    pub(super) const fn from_cmark(
+        level: pulldown_cmark::HeadingLevel,
+    ) -> Self {
+        let value = match level {
+            pulldown_cmark::HeadingLevel::H1 => 1,
+            pulldown_cmark::HeadingLevel::H2 => 2,
+            pulldown_cmark::HeadingLevel::H3 => 3,
+            pulldown_cmark::HeadingLevel::H4 => 4,
+            pulldown_cmark::HeadingLevel::H5 => 5,
+            pulldown_cmark::HeadingLevel::H6 => 6,
+        };
+        Self::new(value)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self.0
+    }
 }
