@@ -19,12 +19,248 @@ use super::{
 use crate::note::{
     error::NoteError,
     parser::{
-        ast::{InlineLink, LinkStyle, ListStyle, Node, NodeKind, TextOrigin},
+        ast::{
+            InlineLink, LinkStyle, ListStyle, Node, NodeKind, Text, TextOrigin,
+        },
         frontmatter::MetadataBlock,
         note::ReferenceLinkDefinition,
     },
     position::SourceByteOffset,
 };
+
+struct RawCollector<'source> {
+    source: &'source str,
+    list_stack: Vec<RawListType>,
+    open_item_by_depth: Vec<SourceByteOffset>,
+    headings: Vec<RawHeading>,
+    links: Vec<RawLink>,
+    tags: Vec<super::tags::RawTag>,
+    list_items: Vec<RawListItem>,
+    tasks: Vec<RawTask>,
+    inline_fields: Vec<RawInlineField>,
+}
+
+impl<'source> RawCollector<'source> {
+    fn new(source: &'source str) -> Self {
+        Self {
+            source,
+            list_stack: Vec::new(),
+            open_item_by_depth: Vec::new(),
+            headings: Vec::new(),
+            links: Vec::new(),
+            tags: Vec::new(),
+            list_items: Vec::new(),
+            tasks: Vec::new(),
+            inline_fields: Vec::new(),
+        }
+    }
+
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &NodeKind"
+    )]
+    fn collect_nodes(&mut self, nodes: &[Node]) -> Result<(), NoteError> {
+        for node in nodes {
+            match node.kind() {
+                NodeKind::Heading {
+                    level,
+                    text,
+                    links: inline_links,
+                } => {
+                    let raw = RawHeading::new(
+                        *level,
+                        text.to_boxed_str(),
+                        node.range(),
+                        node.range().start(),
+                    );
+                    self.headings.push(raw);
+                    self.collect_text_nodes(text)?;
+                    self.collect_inline_links(inline_links);
+                }
+                NodeKind::Paragraph {
+                    text,
+                    links: inline_links,
+                } => {
+                    self.collect_text_nodes(text)?;
+                    self.collect_inline_links(inline_links);
+                }
+                NodeKind::List {
+                    list_type,
+                    items,
+                } => {
+                    let list_type = match list_type {
+                        ListStyle::Ordered {
+                            start,
+                        } => RawListType::Ordered {
+                            start: *start,
+                        },
+                        ListStyle::Unordered => RawListType::Unordered,
+                    };
+                    self.list_stack.push(list_type);
+                    self.collect_nodes(items)?;
+                    self.list_stack.pop();
+                }
+                NodeKind::ListItem {
+                    text,
+                    task_marker,
+                    links: inline_links,
+                    children,
+                } => {
+                    let list_item = ListItemContext {
+                        position: node.range().start(),
+                        text,
+                        task_marker: *task_marker,
+                        inline_links,
+                        children,
+                    };
+                    self.collect_list_item(&list_item)?;
+                }
+                NodeKind::BlockQuote {
+                    nodes: quote_nodes,
+                    ..
+                } => {
+                    self.collect_nodes(quote_nodes)?;
+                }
+                NodeKind::CodeBlock {
+                    ..
+                } => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_list_item(
+        &mut self,
+        list_item: &ListItemContext<'_>,
+    ) -> Result<(), NoteError> {
+        let position = list_item.position;
+        let depth_value =
+            u8::try_from(self.list_stack.len()).unwrap_or(u8::MAX);
+        let depth_index = usize::from(depth_value);
+        if self.open_item_by_depth.len() <= depth_index {
+            self.open_item_by_depth
+                .resize(depth_index.saturating_add(1), position);
+        }
+        if let Some(slot) = self.open_item_by_depth.get_mut(depth_index) {
+            *slot = position;
+        }
+        self.open_item_by_depth.truncate(depth_index.saturating_add(1));
+        let parent = parent_for_depth(depth_value, &self.open_item_by_depth);
+
+        let list_type =
+            self.list_stack.last().copied().unwrap_or(RawListType::Unordered);
+        let depth = if depth_value == 0 {
+            RawListDepth::Root
+        } else {
+            RawListDepth::Nested(depth_value)
+        };
+
+        let task_kind = match list_item.task_marker {
+            Some(checked) => {
+                let fallback = if checked {
+                    'x'
+                } else {
+                    ' '
+                };
+                let marker =
+                    self.task_marker_from_source(position).unwrap_or(fallback);
+                Some(raw_task_kind_from_marker(marker))
+            }
+            None => None,
+        };
+        let raw_text = list_item_text(list_item.text, list_item.children);
+        if let Some(task_kind) = task_kind {
+            self.list_items.push(RawListItem::new(
+                list_type,
+                depth,
+                raw_text.clone(),
+                Some(task_kind),
+                position,
+                parent,
+            ));
+            let raw_tags = scan_raw_tags(raw_text.as_ref(), position)?;
+            let tags_for_task =
+                raw_tags.into_iter().map(|tag| tag.value().into()).collect();
+            let tokens = RawTaskTokens::parse(raw_text.as_ref(), &[]);
+            self.tasks.push(RawTask::new(
+                task_kind,
+                raw_text,
+                tags_for_task,
+                tokens.inline_fields().to_vec(),
+                tokens.emoji_dates().to_vec(),
+                position,
+            ));
+        } else {
+            self.list_items.push(RawListItem::new(
+                list_type, depth, raw_text, None, position, parent,
+            ));
+        }
+
+        self.collect_text_nodes(list_item.text)?;
+        self.collect_inline_links(list_item.inline_links);
+        self.collect_nodes(list_item.children)?;
+        Ok(())
+    }
+
+    fn collect_text_nodes(&mut self, text: &Text) -> Result<(), NoteError> {
+        for node in text.nodes() {
+            if matches!(node.origin(), TextOrigin::LinkAlias) {
+                continue;
+            }
+            let raw = scan_raw_tags(node.content(), node.range().start())?;
+            self.tags.extend(raw);
+        }
+        scan_inline_fields(text, &mut self.inline_fields)?;
+        Ok(())
+    }
+
+    fn collect_inline_links(&mut self, inline_links: &[InlineLink]) {
+        for link in inline_links {
+            let raw_style = match link.style() {
+                LinkStyle::Wiki => RawLinkStyle::Wiki,
+                LinkStyle::Markdown => RawLinkStyle::Markdown,
+            };
+            let alias = if link.alias().is_empty() {
+                None
+            } else {
+                let alias_text = link.alias().to_boxed_str();
+                if alias_text.trim().is_empty() {
+                    None
+                } else {
+                    Some(alias_text)
+                }
+            };
+            let (target_raw, anchor) =
+                super::links::split_raw_target_and_anchor(link.target());
+            self.links.push(RawLink::new(
+                raw_style,
+                link.is_embed(),
+                target_raw.into(),
+                alias,
+                anchor.map(Into::into),
+                link.range().start(),
+            ));
+        }
+    }
+
+    fn task_marker_from_source(
+        &self,
+        position: SourceByteOffset,
+    ) -> Option<char> {
+        let start = usize::try_from(u32::from(position)).ok()?;
+        let tail = self.source.get(start..)?;
+        let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
+        checkbox_marker_from_line(line)
+    }
+}
+
+struct ListItemContext<'list_item> {
+    position: SourceByteOffset,
+    text: &'list_item Text,
+    task_marker: Option<bool>,
+    inline_links: &'list_item [InlineLink],
+    children: &'list_item [Node],
+}
 
 /// Extract raw note artifacts from AST nodes and metadata.
 ///
@@ -47,12 +283,7 @@ pub fn extract_raw_note(
     created_at: Option<SystemTime>,
     modified_at: Option<SystemTime>,
 ) -> Result<RawNote, NoteError> {
-    let mut headings = Vec::new();
-    let mut links = Vec::new();
-    let mut tags = Vec::new();
-    let mut list_items = Vec::new();
-    let mut tasks = Vec::new();
-    let mut inline_fields = Vec::new();
+    let mut collector = RawCollector::new(source);
     let reference_links = reference_links
         .into_iter()
         .map(|definition| {
@@ -63,24 +294,9 @@ pub fn extract_raw_note(
             )
         })
         .collect::<Vec<_>>();
-    let mut list_stack: Vec<RawListType> = Vec::new();
-
     let mut sections = extract_sections(nodes)?;
 
-    let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
-
-    walk_nodes(
-        source,
-        nodes,
-        &mut list_stack,
-        &mut open_item_by_depth,
-        &mut headings,
-        &mut links,
-        &mut tags,
-        &mut list_items,
-        &mut tasks,
-        &mut inline_fields,
-    )?;
+    collector.collect_nodes(nodes)?;
 
     let frontmatter = frontmatter_block.map(|block| {
         let range = block.range();
@@ -97,13 +313,13 @@ pub fn extract_raw_note(
         created_at,
         modified_at,
         frontmatter,
-        headings,
+        collector.headings,
         sections,
-        links,
-        tags,
-        list_items,
-        tasks,
-        inline_fields,
+        collector.links,
+        collector.tags,
+        collector.list_items,
+        collector.tasks,
+        collector.inline_fields,
         reference_links,
         block_refs,
     ))
@@ -113,201 +329,7 @@ pub fn extract_raw_note(
     clippy::pattern_type_mismatch,
     reason = "Match ergonomics on &NodeKind"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Traversal requires multiple accumulators"
-)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "Traversal handles all node variants"
-)]
-fn walk_nodes(
-    source: &str,
-    nodes: &[Node],
-    list_stack: &mut Vec<RawListType>,
-    open_item_by_depth: &mut Vec<SourceByteOffset>,
-    headings: &mut Vec<RawHeading>,
-    links: &mut Vec<RawLink>,
-    tags: &mut Vec<super::tags::RawTag>,
-    list_items: &mut Vec<RawListItem>,
-    tasks: &mut Vec<RawTask>,
-    inline_fields: &mut Vec<RawInlineField>,
-) -> Result<(), NoteError> {
-    for node in nodes {
-        match node.kind() {
-            NodeKind::Heading {
-                level,
-                text,
-                links: inline_links,
-            } => {
-                let raw = RawHeading::new(
-                    *level,
-                    text.to_boxed_str(),
-                    node.range(),
-                    node.range().start(),
-                );
-                headings.push(raw);
-                scan_text_nodes(text, tags)?;
-                scan_inline_fields(text, inline_fields)?;
-                collect_inline_links(inline_links, links);
-            }
-            NodeKind::Paragraph {
-                text,
-                links: inline_links,
-            } => {
-                scan_text_nodes(text, tags)?;
-                scan_inline_fields(text, inline_fields)?;
-                collect_inline_links(inline_links, links);
-            }
-            NodeKind::List {
-                list_type,
-                items,
-            } => {
-                let list_type = match list_type {
-                    ListStyle::Ordered {
-                        start,
-                    } => RawListType::Ordered {
-                        start: *start,
-                    },
-                    ListStyle::Unordered => RawListType::Unordered,
-                };
-                list_stack.push(list_type);
-                walk_nodes(
-                    source,
-                    items,
-                    list_stack,
-                    open_item_by_depth,
-                    headings,
-                    links,
-                    tags,
-                    list_items,
-                    tasks,
-                    inline_fields,
-                )?;
-                list_stack.pop();
-            }
-            NodeKind::ListItem {
-                text,
-                task_marker,
-                links: inline_links,
-                children,
-            } => {
-                let position = node.range().start();
-                let depth_value =
-                    u8::try_from(list_stack.len()).unwrap_or(u8::MAX);
-                let depth_index = usize::from(depth_value);
-                if open_item_by_depth.len() <= depth_index {
-                    open_item_by_depth
-                        .resize(depth_index.saturating_add(1), position);
-                }
-                if let Some(slot) = open_item_by_depth.get_mut(depth_index) {
-                    *slot = position;
-                }
-                open_item_by_depth.truncate(depth_index.saturating_add(1));
-                let parent = parent_for_depth(depth_value, open_item_by_depth);
-
-                let list_type = list_stack
-                    .last()
-                    .copied()
-                    .unwrap_or(RawListType::Unordered);
-                let depth = if depth_value == 0 {
-                    RawListDepth::Root
-                } else {
-                    RawListDepth::Nested(depth_value)
-                };
-
-                let task_kind = match task_marker {
-                    Some(checked) => {
-                        let fallback = if *checked {
-                            'x'
-                        } else {
-                            ' '
-                        };
-                        let marker = task_marker_from_source(source, position)
-                            .unwrap_or(fallback);
-                        Some(raw_task_kind_from_marker(marker))
-                    }
-                    None => None,
-                };
-                let raw_text = list_item_text(text, children);
-                if let Some(task_kind) = task_kind {
-                    list_items.push(RawListItem::new(
-                        list_type,
-                        depth,
-                        raw_text.clone(),
-                        Some(task_kind),
-                        position,
-                        parent,
-                    ));
-                    let raw_tags = scan_raw_tags(raw_text.as_ref(), position)?;
-                    let tags_for_task = raw_tags
-                        .into_iter()
-                        .map(|tag| tag.value().into())
-                        .collect();
-                    let tokens = RawTaskTokens::parse(raw_text.as_ref(), &[]);
-                    tasks.push(RawTask::new(
-                        task_kind,
-                        raw_text,
-                        tags_for_task,
-                        tokens.inline_fields().to_vec(),
-                        tokens.emoji_dates().to_vec(),
-                        position,
-                    ));
-                } else {
-                    list_items.push(RawListItem::new(
-                        list_type, depth, raw_text, None, position, parent,
-                    ));
-                }
-
-                scan_text_nodes(text, tags)?;
-                scan_inline_fields(text, inline_fields)?;
-                collect_inline_links(inline_links, links);
-                walk_nodes(
-                    source,
-                    children,
-                    list_stack,
-                    open_item_by_depth,
-                    headings,
-                    links,
-                    tags,
-                    list_items,
-                    tasks,
-                    inline_fields,
-                )?;
-            }
-            NodeKind::BlockQuote {
-                nodes: quote_nodes,
-                ..
-            } => {
-                walk_nodes(
-                    source,
-                    quote_nodes,
-                    list_stack,
-                    open_item_by_depth,
-                    headings,
-                    links,
-                    tags,
-                    list_items,
-                    tasks,
-                    inline_fields,
-                )?;
-            }
-            NodeKind::CodeBlock {
-                ..
-            } => {}
-        }
-    }
-    Ok(())
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &NodeKind"
-)]
-fn list_item_text(
-    text: &crate::note::parser::ast::Text,
-    children: &[Node],
-) -> Box<str> {
+fn list_item_text(text: &Text, children: &[Node]) -> Box<str> {
     if !text.is_empty() {
         return text.to_boxed_str();
     }
@@ -322,16 +344,6 @@ fn list_item_text(
         }
     }
     "".into()
-}
-
-fn task_marker_from_source(
-    source: &str,
-    position: SourceByteOffset,
-) -> Option<char> {
-    let start = usize::try_from(u32::from(position)).ok()?;
-    let tail = source.get(start..)?;
-    let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
-    checkbox_marker_from_line(line)
 }
 
 fn checkbox_marker_from_line(line: &str) -> Option<char> {
@@ -401,50 +413,6 @@ fn parent_for_depth(
         return None;
     }
     open_item_by_depth.get(usize::from(depth).saturating_sub(1)).copied()
-}
-
-/// Scan text nodes for tag tokens, excluding link alias text.
-fn scan_text_nodes(
-    text: &crate::note::parser::ast::Text,
-    tags: &mut Vec<super::tags::RawTag>,
-) -> Result<(), NoteError> {
-    for node in text.nodes() {
-        if matches!(node.origin(), TextOrigin::LinkAlias) {
-            continue;
-        }
-        let raw = scan_raw_tags(node.content(), node.range().start())?;
-        tags.extend(raw);
-    }
-    Ok(())
-}
-
-fn collect_inline_links(inline_links: &[InlineLink], links: &mut Vec<RawLink>) {
-    for link in inline_links {
-        let raw_style = match link.style() {
-            LinkStyle::Wiki => RawLinkStyle::Wiki,
-            LinkStyle::Markdown => RawLinkStyle::Markdown,
-        };
-        let alias = if link.alias().is_empty() {
-            None
-        } else {
-            let alias_text = link.alias().to_boxed_str();
-            if alias_text.trim().is_empty() {
-                None
-            } else {
-                Some(alias_text)
-            }
-        };
-        let (target_raw, anchor) =
-            super::links::split_raw_target_and_anchor(link.target());
-        links.push(RawLink::new(
-            raw_style,
-            link.is_embed(),
-            target_raw.into(),
-            alias,
-            anchor.map(Into::into),
-            link.range().start(),
-        ));
-    }
 }
 
 #[cfg(test)]
