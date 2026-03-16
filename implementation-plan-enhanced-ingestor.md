@@ -68,7 +68,13 @@ This avoids unnecessary file I/O at each decision point.
 
 ---
 
-## Phase 1: Database Changes
+## Implementation Phases
+
+This implementation is divided into 5 clearly defined phases, each with specific deliverables and validation steps.
+
+---
+
+## Phase 1: Database Schema Changes (Foundation)
 
 ### 1.1 Add Secondary Index Table
 
@@ -172,9 +178,24 @@ fn save_raw_schema_view(
 }
 ```
 
+### Phase 1 Deliverables
+
+- [ ] New table constant `RAW_SCHEMA_VIEW_BY_PATH` added to `schema/mod.rs`
+- [ ] New Repository trait methods added and documented
+- [ ] RedbRepository implementation for new methods
+- [ ] Updated `save_raw_schema_view` maintains both tables
+- [ ] Unit tests for path-based lookup (new methods)
+- [ ] All existing tests pass
+
+### Phase 1 Validation
+
+Run: `mise run test:unit:schema`
+
+Expected: All tests pass, including new tests for `find_raw_schema_view_by_path` and `find_schema_id_by_path`.
+
 ---
 
-## Phase 2: Raw*View Changes
+## Phase 2: Raw*View Enhancements (Content Storage & Reconstruction)
 
 ### 2.1 Existing Capabilities (No Changes Needed)
 
@@ -229,6 +250,23 @@ impl RawPropertyBankView {
     }
 }
 ```
+
+### Phase 2 Deliverables
+
+- [ ] `compressed_content` field added to `RawFileVersion`
+- [ ] Update `RawFileVersion::new()` to accept and store compressed content
+- [ ] Add `decompress_content()` method to `RawFileVersion`
+- [ ] Add `to_raw()` methods to `RawSchemaView` and `RawPropertyBankView`
+- [ ] Update `TryFrom` implementations to compress and store content
+- [ ] Unit tests for compression/decompression round-trip
+- [ ] Unit tests for `to_raw()` reconstruction
+- [ ] All existing tests pass
+
+### Phase 2 Validation
+
+Run: `mise run test:unit:schema`
+
+Expected: All tests pass, including new tests for content compression/decompression and Raw* reconstruction.
 
 ---
 
@@ -346,6 +384,25 @@ The core behavior for each method:
 2. For each file, call the equivalent logic of `schema(path)`
 3. Return Vec of results
 
+### Phase 3 Deliverables
+
+- [ ] `IngestResult<T>` enum added to `ingestor.rs`
+- [ ] Ingestor struct updated to embed `repository: R` field
+- [ ] Constructor updated: `new(source, config, repository)`
+- [ ] `property_bank()` method updated to return `Option<IngestResult<RawPropertyBank>>`
+- [ ] `schema(path)` method updated to return `IngestResult<RawSchema>`
+- [ ] `all_schemas()` method updated to return `Vec<IngestResult<RawSchema>>`
+- [ ] All three methods implement staleness checking and view persistence
+- [ ] Unit tests for each method covering Fresh and Stale cases
+- [ ] All existing tests updated to pass repository to Ingestor
+- [ ] Integration tests pass
+
+### Phase 3 Validation
+
+Run: `mise run test:unit:schema && mise run test:integration`
+
+Expected: All tests pass with new Ingestor behavior. Fresh files return cached data without re-parsing.
+
 ---
 
 ## Phase 4: Loader Changes
@@ -432,9 +489,25 @@ where
 }
 ```
 
+### Phase 4 Deliverables
+
+- [ ] Loader struct updated to embed `Ingestor<R>` instead of separate FsReader
+- [ ] Loader constructor updated to create Ingestor with repository
+- [ ] `load()` method updated to use `IngestResult` from Ingestor
+- [ ] Logic updated to handle Fresh vs Stale results
+- [ ] TODO resolved: Add path to IngestResult or alternative solution
+- [ ] All existing loader tests updated and passing
+- [ ] Integration tests for full pipeline
+
+### Phase 4 Validation
+
+Run: `mise run test`
+
+Expected: All tests pass, including integration tests showing end-to-end staleness detection working.
+
 ---
 
-## Phase 5: Test Suite Design
+## Phase 5: Comprehensive Test Suite
 
 ### 5.1 Unit Tests for Ingestor
 
@@ -586,6 +659,37 @@ mod repository_tests {
 }
 ```
 
+### Phase 5 Deliverables
+
+- [ ] Unit tests for all three Ingestor methods (property_bank, schema, all_schemas)
+- [ ] Unit tests for Repository path-based lookup methods
+- [ ] Unit tests covering Fresh and Stale scenarios
+- [ ] Unit tests for timestamp vs content hash priority
+- [ ] Integration tests for end-to-end staleness detection
+- [ ] Integration tests for property bank changes cascading to schemas
+- [ ] Test coverage for new file detection (no view case)
+- [ ] All tests documented with clear setup/action/assertion
+
+### Phase 5 Validation
+
+Run: `mise run verify`
+
+Expected: All tests pass with 100% coverage of new staleness detection logic.
+
+---
+
+## Implementation Order
+
+Execute phases in strict sequence:
+
+1. **Phase 1** (Database) → Validates schema changes and new methods work
+2. **Phase 2** (Views) → Enables content storage and reconstruction
+3. **Phase 3** (Ingestor) → Implements staleness detection using Phases 1-2
+4. **Phase 4** (Loader) → Integrates enhanced Ingestor into pipeline
+5. **Phase 5** (Tests) → Comprehensive validation of entire feature
+
+Each phase must be complete and validated before starting the next phase.
+
 ---
 
 ## Summary of File Changes
@@ -648,3 +752,4 @@ Options:
 | 2026-03-16 | Updated based on review: removed unnecessary helpers, use existing TryFrom and is_timestamp_match methods |
 | 2026-03-16 | Fixed relative path logic: schemas_dir is already relative to vault root; added helper methods for timestamp/content staleness checks; no error when view is None (new file case) |
 | 2026-03-16 | Simplified to focus on three main methods only (property_bank, schema, all_schemas); removed helper method details to avoid over-planning |
+| 2026-03-16 | Added clear phase structure with deliverables and validation steps for each phase |
