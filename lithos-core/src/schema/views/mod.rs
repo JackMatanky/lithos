@@ -37,5 +37,7 @@ pub mod inheritance;
 pub mod raw;
 
 // Re-export commonly used types for ergonomic access
-pub use inheritance::{ChildSchemaView, ParentSchemaView};
+pub use inheritance::{
+    ChildSchemaView, ParentSchemaView, SchemaInheritanceView,
+};
 pub use raw::{RawFileVersion, RawPropertyBankView, RawSchemaView};
