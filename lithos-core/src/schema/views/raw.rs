@@ -715,13 +715,26 @@ impl RawFileVersion {
 
     /// Checks if content matches via hash (accurate staleness check).
     ///
-    /// Returns `true` if the Blake3 hash of the provided content matches
-    /// the stored hash. This is slower but handles timestamp edge cases.
+    /// Returns `true` if the provided Blake3 hash matches the stored hash.
+    /// This is the accurate staleness check that handles timestamp edge cases
+    /// (e.g., file restored from backup, git checkout).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::schema::views::raw::RawFileVersion;
+    /// use std::time::SystemTime;
+    ///
+    /// let content = "schema content";
+    /// let version = RawFileVersion::new(/* ... */);
+    /// let hash = blake3::hash(content.as_bytes());
+    ///
+    /// assert!(version.is_content_match(hash.as_bytes()));
+    /// ```
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, content: &str) -> bool {
-        let hash = blake3::hash(content.as_bytes());
-        hash.as_bytes() == &self.content_hash
+    pub fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        &self.content_hash == content_hash
     }
 
     /// Decompresses the stored content.

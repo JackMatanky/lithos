@@ -239,14 +239,13 @@ where
         if let Some(view) = cached_view.as_ref()
             && view
                 .current()
-                .is_some_and(|v| v.content_hash() == content_hash.as_bytes())
+                .is_some_and(|v| v.is_content_match(content_hash.as_bytes()))
             && let Some(raw) = view.to_raw()
         {
             return Ok(Some(IngestResult::Fresh(raw)));
         }
 
         // File is stale or no cache - parse and persist
-
         let compressed_content = RawFileVersion::compress_content(&content_str)
             .map_err(|e| SchemaIngestionError::Io {
                 path: path.to_string_lossy().into(),
@@ -369,14 +368,13 @@ where
         if let Some(view) = cached_view.as_ref()
             && view
                 .current()
-                .is_some_and(|v| v.content_hash() == content_hash.as_bytes())
+                .is_some_and(|v| v.is_content_match(content_hash.as_bytes()))
             && let Some(raw) = view.to_raw()
         {
             return Ok(IngestResult::Fresh(raw));
         }
 
         // File is stale or no cache - parse and persist
-
         let compressed_content = RawFileVersion::compress_content(&content_str)
             .map_err(|e| SchemaIngestionError::Io {
                 path: path.to_string_lossy().into(),
