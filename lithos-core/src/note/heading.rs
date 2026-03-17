@@ -3,8 +3,6 @@
 //! Provides heading levels, text validation, and parsed heading values for
 //! markdown documents.
 
-#![expect(dead_code, reason = "Heading builders retained for legacy parsing")]
-
 use super::{
     error::{LinkError, NoteError, NoteMetadataError},
     raw::RawHeading,
@@ -40,40 +38,6 @@ pub struct Heading {
     text: HeadingText,
     /// Character position in the source document.
     position: SourceByteOffset,
-}
-
-/// Builder for accumulating heading data during parsing.
-#[derive(Debug)]
-pub(crate) struct HeadingBuilder {
-    level: HeadingLevel,
-    text: String,
-    position: SourceByteOffset,
-}
-
-impl HeadingBuilder {
-    #[inline]
-    pub(crate) fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
-        Self {
-            level,
-            text: String::new(),
-            position,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn push_text(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
-
-    #[inline]
-    pub(crate) fn push_break(&mut self) {
-        self.text.push(' ');
-    }
-
-    #[inline]
-    pub(crate) fn build(self) -> Result<Heading, NoteError> {
-        Heading::try_new(self.level, self.text, self.position)
-    }
 }
 
 impl Heading {

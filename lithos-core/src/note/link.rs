@@ -9,7 +9,6 @@
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
-#![expect(dead_code, reason = "Legacy link builders retained for future use")]
 
 use super::{
     aggregate::NoteId,
@@ -810,117 +809,6 @@ impl EmbedType {
             return Self::Pdf;
         }
         Self::Note
-    }
-}
-
-/// Whether a link is an embed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EmbedState {
-    /// Standard link.
-    Link,
-    /// Embedded content.
-    Embed,
-}
-
-/// Controls alias text collection behavior during parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AliasMode {
-    /// Ignore alias text.
-    Ignore,
-    /// Collect alias text.
-    Collect,
-}
-
-/// Builder for accumulating link data during parsing.
-#[derive(Debug)]
-pub(crate) struct LinkBuilder {
-    target: Box<str>,
-    alias: Option<String>,
-    position: SourceByteOffset,
-    style: Style,
-    embed: EmbedState,
-    alias_mode: AliasMode,
-}
-
-impl LinkBuilder {
-    #[inline]
-    pub(crate) fn new(
-        target: &str,
-        position: SourceByteOffset,
-        style: Style,
-        embed: EmbedState,
-        alias_mode: AliasMode,
-    ) -> Self {
-        Self {
-            target: target.into(),
-            alias: None,
-            position,
-            style,
-            embed,
-            alias_mode,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn add_alias_text(&mut self, text: &str) {
-        if self.alias_mode == AliasMode::Collect {
-            self.alias.get_or_insert_with(String::new).push_str(text);
-        }
-    }
-
-    pub(crate) fn build(self) -> Result<Link, NoteError> {
-        let raw_target = self.target.as_ref();
-        let is_external = Target::is_external_target(raw_target);
-
-        let (target_path, anchor) = if is_external {
-            (raw_target, None)
-        } else {
-            Anchor::split_target_and_anchor(raw_target)?
-        };
-
-        let target = if is_external {
-            Target::External {
-                url: target_path.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_path.into(),
-            }
-        };
-
-        match (self.embed, self.style) {
-            (EmbedState::Embed, Style::WikiLink) => {
-                let embed_type = EmbedType::from_extension(target_path);
-                Link::try_new_embed(
-                    target,
-                    embed_type,
-                    self.alias.as_deref(),
-                    anchor,
-                    self.position,
-                )
-            }
-            (EmbedState::Embed, Style::MdLink) => {
-                let embed_type = EmbedType::from_extension(target_path);
-                Link::try_new_markdown_embed(
-                    target,
-                    embed_type,
-                    self.alias.as_deref(),
-                    self.position,
-                )
-            }
-            (EmbedState::Link, Style::WikiLink) => Link::try_new_wikilink(
-                target,
-                self.alias.as_deref(),
-                anchor,
-                self.position,
-            ),
-            (EmbedState::Link, Style::MdLink) => Link::try_new_markdown_link(
-                target,
-                self.alias.as_deref(),
-                anchor,
-                self.position,
-            ),
-        }
     }
 }
 

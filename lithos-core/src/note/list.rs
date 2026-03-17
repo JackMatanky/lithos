@@ -6,7 +6,6 @@
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
-#![expect(dead_code, reason = "Legacy list builders retained for future use")]
 
 use std::fmt;
 
@@ -341,89 +340,6 @@ impl ListItem {
         {
             *slot = None;
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct InlineText {
-    buffer: String,
-}
-
-impl InlineText {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn push_text(&mut self, text: &str) {
-        self.buffer.push_str(text);
-    }
-
-    pub(crate) fn push_break(&mut self) {
-        if !self.buffer.ends_with(' ') {
-            self.buffer.push(' ');
-        }
-    }
-
-    pub(crate) fn finish(self) -> String {
-        self.buffer
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ListItemBuilder {
-    position: SourceByteOffset,
-    depth: ListDepth,
-    text: InlineText,
-    is_checkbox: bool,
-    status_symbol: Option<char>,
-}
-
-impl ListItemBuilder {
-    pub(crate) fn new(position: SourceByteOffset, depth: ListDepth) -> Self {
-        Self {
-            position,
-            depth,
-            text: InlineText::new(),
-            is_checkbox: false,
-            status_symbol: None,
-        }
-    }
-
-    pub(crate) fn mark_as_checkbox(&mut self, checked: bool) {
-        self.is_checkbox = true;
-        self.status_symbol = Some(if checked {
-            'x'
-        } else {
-            ' '
-        });
-    }
-
-    pub(crate) const fn position(&self) -> SourceByteOffset {
-        self.position
-    }
-
-    pub(crate) const fn depth(&self) -> ListDepth {
-        self.depth
-    }
-
-    pub(crate) const fn is_checkbox(&self) -> bool {
-        self.is_checkbox
-    }
-
-    pub(crate) const fn status_symbol(&self) -> Option<char> {
-        self.status_symbol
-    }
-
-    pub(crate) fn add_text(&mut self, text: &str) {
-        self.text.push_text(text);
-    }
-
-    pub(crate) fn add_break(&mut self) {
-        self.text.push_break();
-    }
-
-    pub(crate) fn into_text(self) -> String {
-        self.text.finish()
     }
 }
 
