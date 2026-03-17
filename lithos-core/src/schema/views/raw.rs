@@ -98,6 +98,42 @@ impl RawSchemaView {
         }
     }
 
+    /// Creates a new schema view with uncompressed content.
+    ///
+    /// This is a convenience constructor that compresses the content
+    /// internally.
+    ///
+    /// # Errors
+    /// Returns error if compression fails.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Builder pattern refactor tracked - need to preserve all \
+                  file metadata for staleness detection"
+    )]
+    #[inline]
+    pub fn with_content(
+        file_path: Box<str>,
+        extends: Option<SchemaName>,
+        excludes: Vec<PropertyName>,
+        content_hash: [u8; 32],
+        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        content: &str,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<Self, std::io::Error> {
+        let compressed = RawFileVersion::compress_content(content)?;
+        Ok(Self::new(
+            file_path,
+            extends,
+            excludes,
+            content_hash,
+            property_hashes,
+            Some(compressed),
+            created_at,
+            modified_at,
+        ))
+    }
+
     /// Returns the file path.
     #[inline]
     #[must_use]
@@ -206,6 +242,55 @@ impl RawSchemaView {
     }
 }
 
+impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
+    type Error = crate::schema::error::SchemaIngestionError;
+
+    /// Convert from a raw schema, using its metadata for the view.
+    #[inline]
+    fn try_from(
+        raw: &super::super::raw::RawSchema,
+    ) -> Result<Self, Self::Error> {
+        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
+            crate::schema::error::SchemaIngestionError::Io {
+                path: format!("schema {}", raw.name).into(),
+                reason: "missing content hash".into(),
+            }
+        })?;
+
+        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
+            .metadata
+            .property_hashes
+            .iter()
+            .filter_map(|(k, v)| {
+                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
+            })
+            .collect();
+
+        let extends = raw
+            .extends
+            .as_ref()
+            .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
+
+        let excludes: Vec<PropertyName> = raw
+            .excludes
+            .iter()
+            .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
+            .collect();
+
+        Ok(Self::new(
+            format!("schemas/{}.toml", raw.name).into_boxed_str(),
+            extends,
+            excludes,
+            content_hash,
+            property_hashes,
+            None, /* TryFrom doesn't have access to compressed content (only
+                   * Ingestor does) */
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
+        ))
+    }
+}
+
 /// Raw property bank file with version history.
 ///
 /// Tracks up to 5 versions of the property bank file for staleness detection.
@@ -248,6 +333,31 @@ impl RawPropertyBankView {
         Self {
             versions,
         }
+    }
+
+    /// Creates a new property bank view with uncompressed content.
+    ///
+    /// This is a convenience constructor that compresses the content
+    /// internally.
+    ///
+    /// # Errors
+    /// Returns error if compression fails.
+    #[inline]
+    pub fn with_content(
+        content_hash: [u8; 32],
+        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        content: &str,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<Self, std::io::Error> {
+        let compressed = RawFileVersion::compress_content(content)?;
+        Ok(Self::new(
+            content_hash,
+            property_hashes,
+            Some(compressed),
+            created_at,
+            modified_at,
+        ))
     }
 
     /// Returns the most recent version, if any.
@@ -330,6 +440,41 @@ impl RawPropertyBankView {
 
         // Parse based on file extension
         crate::fs::FsReader::parse_structured_from_str(path, &content).ok()
+    }
+}
+
+impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
+    type Error = crate::schema::error::SchemaIngestionError;
+
+    /// Convert from a raw property bank, using its metadata for the view.
+    #[inline]
+    fn try_from(
+        raw: &super::super::raw::RawPropertyBank,
+    ) -> Result<Self, Self::Error> {
+        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
+            crate::schema::error::SchemaIngestionError::Io {
+                path: "property bank".into(),
+                reason: "missing content hash".into(),
+            }
+        })?;
+
+        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
+            .metadata
+            .property_hashes
+            .iter()
+            .filter_map(|(k, v)| {
+                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
+            })
+            .collect();
+
+        Ok(Self::new(
+            content_hash,
+            property_hashes,
+            None, /* TryFrom doesn't have access to compressed content (only
+                   * Ingestor does) */
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
+        ))
     }
 }
 
@@ -549,94 +694,6 @@ impl RawFileVersion {
     pub(crate) fn compress_content(content: &str) -> std::io::Result<Vec<u8>> {
         const COMPRESSION_LEVEL: i32 = 3;
         zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
-    }
-}
-
-// ============================================================================
-// TryFrom implementations for convenient conversion
-// ============================================================================
-
-impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
-    type Error = crate::schema::error::SchemaIngestionError;
-
-    /// Convert from a raw property bank, using its metadata for the view.
-    #[inline]
-    fn try_from(
-        raw: &super::super::raw::RawPropertyBank,
-    ) -> Result<Self, Self::Error> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: "property bank".into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
-
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
-
-        Ok(Self::new(
-            content_hash,
-            property_hashes,
-            None, /* TryFrom doesn't have access to compressed content (only
-                   * Ingestor does) */
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
-        ))
-    }
-}
-
-impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
-    type Error = crate::schema::error::SchemaIngestionError;
-
-    /// Convert from a raw schema, using its metadata for the view.
-    #[inline]
-    fn try_from(
-        raw: &super::super::raw::RawSchema,
-    ) -> Result<Self, Self::Error> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: format!("schema {}", raw.name).into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
-
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
-
-        let extends = raw
-            .extends
-            .as_ref()
-            .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
-
-        let excludes: Vec<PropertyName> = raw
-            .excludes
-            .iter()
-            .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
-            .collect();
-
-        Ok(Self::new(
-            format!("schemas/{}.toml", raw.name).into_boxed_str(),
-            extends,
-            excludes,
-            content_hash,
-            property_hashes,
-            None, /* TryFrom doesn't have access to compressed content (only
-                   * Ingestor does) */
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
-        ))
     }
 }
 
