@@ -170,62 +170,6 @@ impl RawSchemaView {
         self.versions.push_front(version);
     }
 
-    /// Returns the list of properties that changed between the current version
-    /// and provided metadata.
-    ///
-    /// Returns property names that:
-    /// - Were added (in metadata but not in current version)
-    /// - Were removed (in current version but not in metadata)
-    /// - Were modified (different hash)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let changed = view.filter_changed_properties(&raw_schema.metadata);
-    /// if !changed.is_empty() {
-    ///     // Re-resolve only these properties
-    /// }
-    /// ```
-    #[must_use]
-    #[inline]
-    pub fn filter_changed_properties(
-        &self,
-        metadata: &super::super::raw::RawSchemaMetadata,
-    ) -> Vec<PropertyName> {
-        let Some(current) = self.current() else {
-            return Vec::new();
-        };
-
-        let mut changed = Vec::new();
-
-        // Check for added or modified properties
-        for (name, new_hash) in &metadata.property_hashes {
-            let Ok(prop_name) = PropertyName::try_new(name.as_ref()) else {
-                continue;
-            };
-
-            let is_changed = match current.property_hashes.get(&prop_name) {
-                Some(old_hash) if old_hash != new_hash => true, // Modified
-                None => true,                                   // Added
-                _ => false,                                     // Unchanged
-            };
-
-            if is_changed {
-                changed.push(prop_name);
-            }
-        }
-
-        // Check for removed properties (in current but not in metadata)
-        for prop_name in current.property_hashes.keys() {
-            let name_str: &str = prop_name.as_ref();
-            if !metadata.property_hashes.contains_key(name_str) {
-                changed.push(prop_name.clone());
-            }
-        }
-
-        changed
-    }
-
     /// Reconstructs `RawSchema` from cached compressed content.
     ///
     /// This enables reusing cached schema data without re-reading files.
@@ -355,53 +299,6 @@ impl RawPropertyBankView {
         }
 
         self.versions.push_front(version);
-    }
-
-    /// Returns the list of properties that changed between the current version
-    /// and provided metadata.
-    ///
-    /// Returns property names that:
-    /// - Were added (in metadata but not in current version)
-    /// - Were removed (in current version but not in metadata)
-    /// - Were modified (different hash)
-    #[must_use]
-    #[inline]
-    pub fn filter_changed_properties(
-        &self,
-        metadata: &super::super::raw::RawSchemaMetadata,
-    ) -> Vec<PropertyName> {
-        let Some(current) = self.current() else {
-            return Vec::new();
-        };
-
-        let mut changed = Vec::new();
-
-        // Check for added or modified properties
-        for (name, new_hash) in &metadata.property_hashes {
-            let Ok(prop_name) = PropertyName::try_new(name.as_ref()) else {
-                continue;
-            };
-
-            let is_changed = match current.property_hashes.get(&prop_name) {
-                Some(old_hash) if old_hash != new_hash => true, // Modified
-                None => true,                                   // Added
-                _ => false,                                     // Unchanged
-            };
-
-            if is_changed {
-                changed.push(prop_name);
-            }
-        }
-
-        // Check for removed properties (in current but not in metadata)
-        for prop_name in current.property_hashes.keys() {
-            let name_str: &str = prop_name.as_ref();
-            if !metadata.property_hashes.contains_key(name_str) {
-                changed.push(prop_name.clone());
-            }
-        }
-
-        changed
     }
 
     /// Reconstructs `RawPropertyBank` from cached compressed content.

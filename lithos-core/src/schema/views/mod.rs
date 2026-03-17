@@ -22,9 +22,9 @@
 //! Staleness detection is performed via `RawFileVersion` methods:
 //! - `is_timestamp_match()` - Fast timestamp-only check
 //! - `is_content_match()` - Accurate hash-based check
+//! - `changed_properties()` - Incremental change detection
 //!
-//! Views provide `current()` to access the most recent `RawFileVersion`,
-//! and `filter_changed_properties()` for incremental change detection.
+//! Views provide `current()` to access the most recent `RawFileVersion`.
 
 #![expect(
     clippy::pub_use,
