@@ -461,7 +461,7 @@ impl fmt::Display for FileClassName {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct NoteFacts {
+pub struct Note {
     id: NoteId,
     path: NotePath,
     source_hash: Box<str>,
@@ -483,11 +483,11 @@ pub struct NoteFacts {
     inline_fields: Vec<InlineField>,
 }
 
-impl NoteFacts {
+impl Note {
     /// Construct normalized facts from ingestion output.
     #[expect(
         clippy::too_many_arguments,
-        reason = "NoteFacts aggregates all note facts in one struct"
+        reason = "Note aggregates all note facts in one struct"
     )]
     pub(crate) fn from_parts(
         id: NoteId,
@@ -759,7 +759,7 @@ fn anchor_from_raw(text: &str) -> Result<Anchor, NoteError> {
     }
 }
 
-/// Conversion context for building `NoteFacts` from `RawNote` + Config.
+/// Conversion context for building `Note` from `RawNote` + Config.
 pub(crate) struct RawNoteContext<'raw> {
     raw: &'raw RawNote,
     config: &'raw Config,
@@ -782,7 +782,7 @@ impl<'raw> RawNoteContext<'raw> {
     }
 }
 
-impl<'raw> TryFrom<RawNoteContext<'raw>> for NoteFacts {
+impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
     type Error = NoteError;
 
     #[inline]

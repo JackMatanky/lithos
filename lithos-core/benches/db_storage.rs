@@ -218,7 +218,7 @@ use criterion::{
 use lithos_core::{
     db::Database,
     note::{
-        aggregate::{NoteFacts, NoteId},
+        aggregate::{Note, NoteId},
         paths::NotePath,
     },
 };
@@ -230,13 +230,13 @@ const STORED_NOTES_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("stored_notes");
 
 /// Creates a stored note value for benchmark fixtures.
-fn create_test_note(index: usize) -> NoteFacts {
+fn create_test_note(index: usize) -> Note {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
     let note_path = NotePath::try_new(&path).expect("valid path");
     let _hash = format!("hash-{index:04}");
-    NoteFacts::new(id, note_path)
+    Note::new(id, note_path)
 }
 
 fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
@@ -321,13 +321,9 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<NoteFacts, _, _>(
-                STORED_NOTES_TABLE,
-                &test_key,
-                |archived| {
-                    black_box(archived);
-                },
-            )
+            db.get::<Note, _, _>(STORED_NOTES_TABLE, &test_key, |archived| {
+                black_box(archived);
+            })
             .expect("get note")
         });
     });
@@ -395,7 +391,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<NoteFacts> = db
+            let note: Option<Note> = db
                 .get_owned(STORED_NOTES_TABLE, &test_key)
                 .expect("get owned note");
             black_box(note.expect("note exists"));
@@ -591,7 +587,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get::<NoteFacts, _, _>(
+            db.get::<Note, _, _>(
                 STORED_NOTES_TABLE,
                 hot_key.as_str(),
                 |archived| {
@@ -608,7 +604,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<NoteFacts, _, _>(STORED_NOTES_TABLE, cold_id, |archived| {
+            db.get::<Note, _, _>(STORED_NOTES_TABLE, cold_id, |archived| {
                 black_box(archived);
             })
             .expect("get note")
@@ -749,8 +745,7 @@ fn bench_scan_range(c: &mut Criterion) {
 
     // Pre-populate with 1000 notes using prefixed keys
     // Keys format: "notes/test-XXXX" where XXXX is 0000-0999
-    let notes: Vec<NoteFacts> =
-        (0..TOTAL_NOTES).map(create_test_note).collect();
+    let notes: Vec<Note> = (0..TOTAL_NOTES).map(create_test_note).collect();
 
     db.batch_write(|writer| {
         for (i, note) in notes.iter().enumerate() {
@@ -771,7 +766,7 @@ fn bench_scan_range(c: &mut Criterion) {
             let count = db
                 .batch_read(|reader| {
                     let results = reader
-                        .scan_range::<NoteFacts>(STORED_NOTES_TABLE, prefix)?;
+                        .scan_range::<Note>(STORED_NOTES_TABLE, prefix)?;
                     Ok(results.len())
                 })
                 .expect("batch_read");
@@ -785,9 +780,8 @@ fn bench_scan_range(c: &mut Criterion) {
             let prefix = "notes/test-01";
             let count = db
                 .batch_read(|reader| {
-                    let all_pairs = reader.list_key_value_pairs::<NoteFacts>(
-                        STORED_NOTES_TABLE,
-                    )?;
+                    let all_pairs = reader
+                        .list_key_value_pairs::<Note>(STORED_NOTES_TABLE)?;
                     let filtered = all_pairs
                         .into_iter()
                         .filter(|(key, _)| key.starts_with(prefix))

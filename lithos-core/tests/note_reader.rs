@@ -39,7 +39,7 @@ mod tests {
         },
         db::Database,
         note::{
-            aggregate::NoteFacts,
+            aggregate::Note,
             storage::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
@@ -51,7 +51,7 @@ mod tests {
     struct Fixture {
         _dir: TempDir,
         db: Arc<Database>,
-        note: NoteFacts,
+        note: Note,
         config: Config,
     }
 
@@ -116,7 +116,7 @@ mod tests {
         Ok((dir, config, db))
     }
 
-    fn sorted_tag_paths_from_note(note: &NoteFacts) -> Vec<Box<str>> {
+    fn sorted_tag_paths_from_note(note: &Note) -> Vec<Box<str>> {
         let mut tags: Vec<Box<str>> = note
             .tags()
             .iter()

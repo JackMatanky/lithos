@@ -302,7 +302,7 @@ note/
 
 1) **Create `aggregate.rs`**
    - Move `NoteId` from `identity.rs` into `aggregate.rs`
-   - Define `Note` aggregate or `NoteFacts` domain boundary
+   - Define `Note` aggregate or `Note` domain boundary
 
 2) **Introduce parser + raw extraction**
    - Add `parser/ast.rs` + `parser/parser.rs` (pulldown-cmark event boundary)

@@ -4,7 +4,7 @@ use crate::{
     config::aggregate::Config,
     db::DbError,
     note::{
-        aggregate::{NoteFacts, NoteId, RawNoteContext},
+        aggregate::{Note, NoteId, RawNoteContext},
         error::{NoteError, NoteIngestError},
         parser,
         paths::NotePath,
@@ -88,7 +88,7 @@ where
             .repository
             .find_by_path(raw_note.path())?
             .map_or_else(NoteId::new, |note| note.id());
-        let facts = NoteFacts::try_from(RawNoteContext::new(
+        let facts = Note::try_from(RawNoteContext::new(
             note_id,
             raw_note,
             self.config,

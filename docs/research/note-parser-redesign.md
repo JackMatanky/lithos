@@ -51,7 +51,7 @@ current violations, and defines how the redesign fixes them.
 - Parsing: pulldown-cmark parses markdown into AST + frontmatter only.
 - Validation/Normalization: normalizers validate domain constraints and
   canonicalize values (tags, task dates, link targets).
-- Command creation: normalized facts (`NoteFacts`) become a command payload
+- Command creation: normalized facts (`Note`) become a command payload
   for persistence.
 - Command handling: command adapter enforces invariants and persists write
   model (StoredNote) plus indexes.
@@ -71,7 +71,7 @@ current violations, and defines how the redesign fixes them.
 ### Redesign Fix
 - Parser emits only AST + frontmatter + timestamps.
 - Normalizers perform all validation/normalization, producing domain types.
-- Command adapter consumes `NoteFacts` only.
+- Command adapter consumes `Note` only.
 - Query adapters remain projection-only readers.
 
 ## Design Principles
@@ -217,11 +217,11 @@ each component focused on one responsibility.
 ### CQRS and Storage
 - `note/ports.rs`
   - Current: CQRS ports, uses `ParsedNote`.
-  - Change: use `ParsedMarkdown` or `NoteFacts` depending on pipeline.
+  - Change: use `ParsedMarkdown` or `Note` depending on pipeline.
 
 - `note/db_command.rs`
   - Current: storage + indexing + parsing concerns (uses ParsedNote).
-  - Change: consume `NoteFacts` only; no parsing here.
+  - Change: consume `Note` only; no parsing here.
   - Bloat risk: large file combining indexing, persistence, and parsing.
 
 - `note/db_query.rs`
@@ -230,7 +230,7 @@ each component focused on one responsibility.
 
 - `note/stored.rs`
   - Current: stored projections for queries.
-  - Keep: unchanged, but constructed from `NoteFacts`.
+  - Keep: unchanged, but constructed from `Note`.
   - Bloat risk: lower; mostly data containers.
 
 ## Target Module Layout (Post-Refactor)
@@ -242,7 +242,7 @@ each component focused on one responsibility.
 - `mod.rs`: `ParsedMarkdown` + `parse_note` entry point.
 
 ### note/normalize/
-- `mod.rs`: `NoteFacts` and constructor `from_parsed`.
+- `mod.rs`: `Note` and constructor `from_parsed`.
 - `headings.rs`: Heading normalization.
 - `tasks.rs`: Task normalization + task metadata parsing.
 - `links.rs`: Link normalization.
@@ -339,12 +339,12 @@ ParsedMarkdown {
 }
 ```
 
-### NoteFacts (normalization helper)
+### Note (normalization helper)
 Purpose: compute validated domain facts once and pass them through command
 handling. This is not a read projection.
 
 ```
-NoteFacts {
+Note {
   headings: Vec<Heading>,
   sections: Vec<Section>,
   links: Vec<Link>,
@@ -356,7 +356,7 @@ NoteFacts {
 }
 ```
 
-NoteFacts is not StoredNote; it is the in-memory validated domain facts used to
+Note is not StoredNote; it is the in-memory validated domain facts used to
 construct StoredNote. Read projections are built from StoredNote or events.
 
 ## Detailed Implementation Plan
@@ -429,8 +429,8 @@ construct StoredNote. Read projections are built from StoredNote or events.
   domain models with validation and accessors. Parsing moves out into projections.
 
 ### note/storage
-- `stored.rs`: write-model snapshots built from `NoteFacts`.
-- `db_command.rs`: persistence + index maintenance using NoteFacts only.
+- `stored.rs`: write-model snapshots built from `Note`.
+- `db_command.rs`: persistence + index maintenance using Note only.
 - `db_query.rs`: read/query path; consumes read projections.
 
 ## Open Decisions
@@ -644,11 +644,11 @@ resolved or explicitly accepted.
 ### Weak Point 8: Backwards compatibility
 - Risk: changing ParsedNote/ports/reader could break downstream crates.
 - Mitigation: introduce transitional adapters or feature flags; update ports to
-  accept ParsedMarkdown or NoteFacts with explicit migration plan.
+  accept ParsedMarkdown or Note with explicit migration plan.
 
 ### Weak Point 9: Performance regressions
 - Risk: multiple projections could re-walk AST and re-scan text.
-- Mitigation: ensure NoteFacts is built once; projections must use NoteFacts or
+- Mitigation: ensure Note is built once; projections must use Note or
   StoredNote, not re-parse AST repeatedly.
 
 ### Weak Point 10: Test surface gaps
