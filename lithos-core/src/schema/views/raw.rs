@@ -422,68 +422,112 @@ impl RawPropertyBankView {
 
 // ----------------------------------------------------------- //
 //                            Tests                            //
-// ----------------------------------------------------------- //
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
+    mod file_path_tests {
+        use super::super::FilePath;
 
-    use super::*;
+        #[test]
+        fn basename_extracts_filename_without_extension() {
+            let path = FilePath::new("schemas/note.toml".into());
+            assert_eq!(path.basename(), "note");
+        }
 
-    #[test]
-    fn raw_schema_view_to_raw_reconstructs_schema() {
-        use super::super::{FileTimesMetadata, HashMetadata};
-        use crate::schema::raw::{
-            RawSchema, RawSchemaMetadata, RawSchemaVersion,
-        };
+        #[test]
+        fn basename_handles_nested_paths() {
+            let path = FilePath::new("vault/schemas/base-note.toml".into());
+            assert_eq!(path.basename(), "base-note");
+        }
 
-        // Create a test RawSchema
-        let raw = RawSchema {
-            version: RawSchemaVersion::default(),
-            name: "test".into(),
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        };
+        #[test]
+        fn extension_returns_file_extension() {
+            let path = FilePath::new("schemas/note.toml".into());
+            assert_eq!(path.extension(), Some("toml"));
+        }
 
-        let file_times = FileTimesMetadata::new(None, None);
-        let hashes = HashMetadata::new([0; 32], BTreeMap::new());
-        let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
+        #[test]
+        fn extension_returns_none_for_no_extension() {
+            let path = FilePath::new("schemas/note".into());
+            assert_eq!(path.extension(), None);
+        }
 
-        let file_path = FilePath::new("schemas/test.toml".into());
-        let view = RawSchemaView::new(file_path, version);
-
-        let reconstructed =
-            view.to_raw().expect("should succeed").expect("should have value");
-        assert_eq!(reconstructed.name.as_ref(), "test");
+        #[test]
+        fn as_str_returns_full_path() {
+            let path = FilePath::new("schemas/note.toml".into());
+            assert_eq!(path.as_str(), "schemas/note.toml");
+        }
     }
 
-    #[test]
-    fn raw_property_bank_view_to_raw_reconstructs_property_bank() {
-        use std::collections::HashMap;
+    mod raw_schema_view_tests {
+        use std::collections::{BTreeMap, HashMap};
 
-        use super::super::{FileTimesMetadata, HashMetadata};
-        use crate::schema::raw::{
-            RawPropertyBank, RawSchemaMetadata, RawSchemaVersion,
+        use super::super::{FilePath, RawSchemaView, SchemaVersion};
+        use crate::schema::{
+            raw::{RawSchema, RawSchemaMetadata, RawSchemaVersion},
+            views::{FileTimesMetadata, HashMetadata},
         };
 
-        // Create a test RawPropertyBank
-        let raw = RawPropertyBank {
-            version: RawSchemaVersion::default(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
+        #[test]
+        fn to_raw_reconstructs_schema() {
+            // Create a test RawSchema
+            let raw = RawSchema {
+                version: RawSchemaVersion::default(),
+                name: "test".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            let file_times = FileTimesMetadata::new(None, None);
+            let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+            let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
+
+            let file_path = FilePath::new("schemas/test.toml".into());
+            let view = RawSchemaView::new(file_path, version);
+
+            let reconstructed = view
+                .to_raw()
+                .expect("should succeed")
+                .expect("should have value");
+            assert_eq!(reconstructed.name.as_ref(), "test");
+        }
+    }
+
+    mod raw_property_bank_view_tests {
+        use std::collections::{BTreeMap, HashMap};
+
+        use super::super::{PropertyBankVersion, RawPropertyBankView};
+        use crate::schema::{
+            raw::{RawPropertyBank, RawSchemaMetadata, RawSchemaVersion},
+            views::{FileTimesMetadata, HashMetadata},
         };
 
-        let file_times = FileTimesMetadata::new(None, None);
-        let hashes = HashMetadata::new([0; 32], BTreeMap::new());
-        let version =
-            PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
+        #[test]
+        fn to_raw_reconstructs_property_bank() {
+            // Create a test RawPropertyBank
+            let raw = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
 
-        let view = RawPropertyBankView::new(version);
+            let file_times = FileTimesMetadata::new(None, None);
+            let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+            let version =
+                PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
 
-        let reconstructed =
-            view.to_raw().expect("should succeed").expect("should have value");
-        assert_eq!(reconstructed.properties.len(), 0);
+            let view = RawPropertyBankView::new(version);
+
+            let reconstructed = view
+                .to_raw()
+                .expect("should succeed")
+                .expect("should have value");
+            assert_eq!(reconstructed.properties.len(), 0);
+        }
     }
 }
