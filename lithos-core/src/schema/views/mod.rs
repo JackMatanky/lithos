@@ -19,13 +19,12 @@
 //!
 //! ## Staleness Detection
 //!
-//! Raw views encapsulate staleness detection logic via comparison methods:
-//! - `is_fresh()` - Hybrid timestamp + content hash check
+//! Staleness detection is performed via `RawFileVersion` methods:
 //! - `is_timestamp_match()` - Fast timestamp-only check
 //! - `is_content_match()` - Accurate hash-based check
 //!
-//! The loader delegates to these methods instead of implementing comparison
-//! logic directly.
+//! Views provide `current()` to access the most recent `RawFileVersion`,
+//! and `filter_changed_properties()` for incremental change detection.
 
 #![expect(
     clippy::pub_use,
