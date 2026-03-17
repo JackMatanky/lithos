@@ -95,6 +95,13 @@ impl From<NoteIngestError> for NoteError {
     }
 }
 
+impl From<crate::fs::error::ParseError> for NoteIngestError {
+    #[inline]
+    fn from(error: crate::fs::error::ParseError) -> Self {
+        NoteIngestError::Source(error.to_string().into())
+    }
+}
+
 /// Errors surfaced when validating or parsing tags.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]

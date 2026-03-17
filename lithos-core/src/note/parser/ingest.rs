@@ -1,23 +1,10 @@
-//! Raw extraction entry points for AST → `RawNote`.
+//! Markdown ingestion entry points (File → `RawNote`).
 
 use std::time::SystemTime;
 
-use super::{
-    block_refs::collect_block_refs,
-    frontmatter::RawFrontmatter,
-    headings::RawHeading,
-    inline_fields::{RawInlineField, scan_inline_fields},
-    links::{RawLink, RawLinkStyle},
-    list_items::{RawListDepth, RawListItem, RawListType, RawTaskKind},
-    note::RawNote,
-    reference_links::RawReferenceLink,
-    sections::{RawSection, RawSectionKind, extract_sections},
-    tags::scan_raw_tags,
-    task_tokens::RawTaskTokens,
-    tasks::RawTask,
-};
+use super::{obsidian_options, parse_markdown};
 use crate::note::{
-    error::NoteError,
+    error::{NoteError, NoteIngestError},
     parser::{
         ast::{
             InlineLink, LinkStyle, ListStyle, Node, NodeKind, Text, TextOrigin,
@@ -25,7 +12,22 @@ use crate::note::{
         frontmatter::MetadataBlock,
         note::ReferenceLinkDefinition,
     },
+    paths::NotePath,
     position::SourceByteOffset,
+    raw::{
+        block_refs::collect_block_refs,
+        frontmatter::RawFrontmatter,
+        headings::RawHeading,
+        inline_fields::{RawInlineField, scan_inline_fields},
+        links::{RawLink, RawLinkStyle, split_raw_target_and_anchor},
+        list_items::{RawListDepth, RawListItem, RawListType, RawTaskKind},
+        note::RawNote,
+        reference_links::RawReferenceLink,
+        sections::{RawSection, RawSectionKind, extract_sections},
+        tags::{RawTag, scan_raw_tags},
+        task_tokens::RawTaskTokens,
+        tasks::RawTask,
+    },
 };
 
 struct RawCollector<'source> {
@@ -34,7 +36,7 @@ struct RawCollector<'source> {
     open_item_by_depth: Vec<SourceByteOffset>,
     headings: Vec<RawHeading>,
     links: Vec<RawLink>,
-    tags: Vec<super::tags::RawTag>,
+    tags: Vec<RawTag>,
     list_items: Vec<RawListItem>,
     tasks: Vec<RawTask>,
     inline_fields: Vec<RawInlineField>,
@@ -231,7 +233,7 @@ impl<'source> RawCollector<'source> {
                 }
             };
             let (target_raw, anchor) =
-                super::links::split_raw_target_and_anchor(link.target());
+                split_raw_target_and_anchor(link.target());
             self.links.push(RawLink::new(
                 raw_style,
                 link.is_embed(),
@@ -262,22 +264,47 @@ struct ListItemContext<'list_item> {
     children: &'list_item [Node],
 }
 
+/// Parse markdown and extract raw note artifacts.
+///
+/// # Errors
+/// Returns [`NoteIngestError`] when parsing or extraction fails.
+#[inline]
+pub fn ingest_markdown(
+    markdown: &str,
+    path: NotePath,
+    created_at: Option<SystemTime>,
+    modified_at: Option<SystemTime>,
+) -> Result<RawNote, NoteIngestError> {
+    let parsed = parse_markdown(markdown, obsidian_options())?;
+    extract_raw_note(
+        parsed.nodes(),
+        parsed.frontmatter().cloned(),
+        parsed.reference_links().to_vec(),
+        markdown,
+        path,
+        parsed.source_hash_boxed(),
+        parsed.source_bytes(),
+        created_at,
+        modified_at,
+    )
+    .map_err(NoteIngestError::Domain)
+}
+
 /// Extract raw note artifacts from AST nodes and metadata.
 ///
 /// # Errors
-///
 /// Returns [`NoteError`] when section extraction or token scanning fails.
 #[expect(
     clippy::too_many_arguments,
     reason = "Raw extraction requires full note context"
 )]
 #[inline]
-pub fn extract_raw_note(
+fn extract_raw_note(
     nodes: &[Node],
     frontmatter_block: Option<MetadataBlock>,
     reference_links: Vec<ReferenceLinkDefinition>,
     source: &str,
-    path: crate::note::paths::NotePath,
+    path: NotePath,
     source_hash: Box<str>,
     source_bytes: u64,
     created_at: Option<SystemTime>,
@@ -422,28 +449,13 @@ fn parent_for_depth(
 )]
 mod tests {
     use super::*;
-    use crate::note::{parser, paths::NotePath, raw::list_items::RawTaskKind};
+    use crate::note::{paths::NotePath, raw::list_items::RawTaskKind};
 
     #[test]
-    fn extract_raw_note_collects_task_tokens() -> Result<(), NoteError> {
+    fn ingest_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {
         let markdown = "- [ ] #task Review PR [priority:: 1]";
-        let parsed: parser::note::ParsedNote =
-            parser::parse_markdown(markdown, parser::obsidian_options())
-                .map_err(NoteError::from)?;
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = extract_raw_note(
-            parsed.nodes(),
-            parsed.frontmatter().cloned(),
-            parsed.reference_links().to_vec(),
-            markdown,
-            path,
-            "hash".into(),
-            u64::try_from(markdown.len()).map_err(|_error| {
-                NoteError::Structure("source length out of range")
-            })?,
-            None,
-            None,
-        )?;
+        let raw = ingest_markdown(markdown, path, None, None)?;
 
         assert_eq!(raw.tasks().len(), 1);
         let task = raw.tasks().first().expect("task should exist");
@@ -456,25 +468,11 @@ mod tests {
     }
 
     #[test]
-    fn extract_raw_note_preserves_task_marker_case() -> Result<(), NoteError> {
+    fn ingest_markdown_preserves_task_marker_case()
+    -> Result<(), NoteIngestError> {
         let markdown = "- [X] #task Done";
-        let parsed: parser::note::ParsedNote =
-            parser::parse_markdown(markdown, parser::obsidian_options())
-                .map_err(NoteError::from)?;
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = extract_raw_note(
-            parsed.nodes(),
-            parsed.frontmatter().cloned(),
-            parsed.reference_links().to_vec(),
-            markdown,
-            path,
-            "hash".into(),
-            u64::try_from(markdown.len()).map_err(|_error| {
-                NoteError::Structure("source length out of range")
-            })?,
-            None,
-            None,
-        )?;
+        let raw = ingest_markdown(markdown, path, None, None)?;
 
         let task = raw.tasks().first().expect("task should exist");
         assert!(matches!(task.task_kind(), RawTaskKind::Checked('X')));

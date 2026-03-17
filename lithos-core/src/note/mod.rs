@@ -30,7 +30,8 @@
 //!
 //! - [`aggregate`] - Stable note identifiers and normalized facts.
 //! - [`parser`] - Markdown parsing boundary (AST + frontmatter capture).
-//! - [`raw`] - Raw extraction helpers (AST → Raw*).
+//! - [`ingestor`] - File ingestion orchestration (File → Raw*).
+//! - [`raw`] - Raw note types.
 //! - [`storage`] - Unified repository + redb adapter.
 //! - [`task`], [`tag`], [`link`], [`list`] - Domain entities derived during
 //!   conversion.
@@ -42,11 +43,13 @@
 
 /// Note aggregate and identity types.
 pub mod aggregate;
+/// Note file ingestion adapter.
+pub mod ingestor;
 /// Note loader orchestration.
 pub mod loader;
 /// Markdown parser boundary.
 pub mod parser;
-/// Raw extraction helpers.
+/// Raw note types and helpers.
 pub mod raw;
 /// Unified repository storage.
 pub mod storage;

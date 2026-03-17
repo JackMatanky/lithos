@@ -11,6 +11,7 @@ use crate::{
     fs::FsReader,
     note::{
         error::NoteIngestError,
+        ingestor::Ingestor,
         loader::{LoadError, Loader as NoteLoader},
         paths::NotePath,
         storage::{RedbRepository, Repository as _},
@@ -60,8 +61,10 @@ impl<'db, 'config> Service<'db, 'config> {
     pub fn load(
         &self,
     ) -> Result<Vec<crate::note::aggregate::NoteId>, ServiceError> {
-        let fs = FsReader::new(self.config.vault_metadata().root().as_path());
-        let paths = Self::scan_note_paths(&fs)?;
+        let source =
+            FsReader::new(self.config.vault_metadata().root().as_path());
+        let ingestor = Ingestor::new(source, self.config);
+        let paths = Self::scan_note_paths(ingestor.source())?;
 
         let repository = RedbRepository::new(self.db, self.config);
         let loader = NoteLoader::new(&repository, self.config);
@@ -84,9 +87,12 @@ impl<'db, 'config> Service<'db, 'config> {
         let mut note_ids = Vec::with_capacity(paths.len());
         for note_path in paths {
             let stored = loader.repository().find_by_path(&note_path)?;
-            let metadata = fs.metadata(Path::new(note_path.as_str())).map_err(
-                |error| NoteIngestError::Source(error.to_string().into()),
-            )?;
+            let metadata = ingestor
+                .source()
+                .metadata(Path::new(note_path.as_str()))
+                .map_err(|error| {
+                    NoteIngestError::Source(error.to_string().into())
+                })?;
             let modified = metadata.modified().ok();
             let created = metadata.created().ok();
             let size = metadata.len();
@@ -101,7 +107,8 @@ impl<'db, 'config> Service<'db, 'config> {
                     continue;
                 }
 
-                let markdown = fs
+                let markdown = ingestor
+                    .source()
                     .read_to_string(Path::new(note_path.as_str()))
                     .map_err(|error| {
                         NoteIngestError::Source(error.to_string().into())
@@ -112,29 +119,23 @@ impl<'db, 'config> Service<'db, 'config> {
                     continue;
                 }
 
-                let note_id = loader
-                    .load_content(
+                let raw_note = ingestor
+                    .ingest_markdown(
                         &note_path,
                         markdown.as_str(),
                         created,
                         modified,
                     )
-                    .map_err(map_load_error)?;
+                    .map_err(ServiceError::from)?;
+                let note_id =
+                    loader.load_raw(&raw_note).map_err(map_load_error)?;
                 note_ids.push(note_id);
             } else {
-                let markdown = fs
-                    .read_to_string(Path::new(note_path.as_str()))
-                    .map_err(|error| {
-                        NoteIngestError::Source(error.to_string().into())
-                    })?;
-                let note_id = loader
-                    .load_content(
-                        &note_path,
-                        markdown.as_str(),
-                        created,
-                        modified,
-                    )
-                    .map_err(map_load_error)?;
+                let raw_note = ingestor
+                    .ingest_path(&note_path)
+                    .map_err(ServiceError::from)?;
+                let note_id =
+                    loader.load_raw(&raw_note).map_err(map_load_error)?;
                 note_ids.push(note_id);
             }
         }

@@ -8,7 +8,7 @@ use crate::{
         error::{NoteError, NoteIngestError},
         parser,
         paths::NotePath,
-        raw::extract::extract_raw_note,
+        raw::note::RawNote,
         storage::Repository,
     },
 };
@@ -68,27 +68,29 @@ where
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, LoadError> {
-        let parsed: parser::note::ParsedNote =
-            parser::parse_markdown(markdown, parser::obsidian_options())?;
-        let raw_note = extract_raw_note(
-            parsed.nodes(),
-            parsed.frontmatter().cloned(),
-            parsed.reference_links().to_vec(),
+        let raw_note = parser::ingest::ingest_markdown(
             markdown,
             path.clone(),
-            parsed.source_hash_boxed(),
-            parsed.source_bytes(),
             created_at,
             modified_at,
         )?;
+        self.load_raw(&raw_note)
+    }
 
+    /// Persist projections from a raw note.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoadError`] on storage or domain conversion failure.
+    #[inline]
+    pub fn load_raw(&self, raw_note: &RawNote) -> Result<NoteId, LoadError> {
         let note_id = self
             .repository
-            .find_by_path(path)?
+            .find_by_path(raw_note.path())?
             .map_or_else(NoteId::new, |note| note.id());
         let facts = NoteFacts::try_from(RawNoteContext::new(
             note_id,
-            &raw_note,
+            raw_note,
             self.config,
         ))?;
         let saved_id = self.repository.save_note_facts(&facts)?;

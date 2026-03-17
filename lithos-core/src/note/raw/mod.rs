@@ -1,7 +1,6 @@
-//! Raw note extraction layer (AST → Raw*).
+//! Raw note types and helpers.
 
 pub(crate) mod block_refs;
-pub mod extract;
 pub(crate) mod frontmatter;
 pub(crate) mod headings;
 pub(crate) mod inline_fields;

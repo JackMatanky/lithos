@@ -222,7 +222,7 @@ use criterion::{
 };
 use lithos_core::{
     fs::FsReader,
-    note::{parser, paths::NotePath, raw},
+    note::{parser, paths::NotePath},
 };
 
 /// Simple markdown sample: minimal note structure (~100 bytes).
@@ -399,24 +399,10 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/simple.md"))
                 .expect("read markdown");
-            let parsed: parser::note::ParsedNote =
-                parser::parse_markdown(&markdown, parser::obsidian_options())
-                    .expect("parse markdown");
             let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let source_hash =
-                blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract::extract_raw_note(
-                parsed.nodes(),
-                parsed.frontmatter().cloned(),
-                parsed.reference_links().to_vec(),
-                &markdown,
-                path,
-                source_hash.into_boxed_str(),
-                markdown.len() as u64,
-                None,
-                None,
-            )
-            .expect("extract raw");
+            let raw_note =
+                parser::ingest::ingest_markdown(&markdown, path, None, None)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -430,24 +416,10 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/medium.md"))
                 .expect("read markdown");
-            let parsed: parser::note::ParsedNote =
-                parser::parse_markdown(&markdown, parser::obsidian_options())
-                    .expect("parse markdown");
             let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let source_hash =
-                blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract::extract_raw_note(
-                parsed.nodes(),
-                parsed.frontmatter().cloned(),
-                parsed.reference_links().to_vec(),
-                &markdown,
-                path,
-                source_hash.into_boxed_str(),
-                markdown.len() as u64,
-                None,
-                None,
-            )
-            .expect("extract raw");
+            let raw_note =
+                parser::ingest::ingest_markdown(&markdown, path, None, None)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -461,25 +433,11 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/complex.md"))
                 .expect("read markdown");
-            let parsed: parser::note::ParsedNote =
-                parser::parse_markdown(&markdown, parser::obsidian_options())
-                    .expect("parse markdown");
             let path =
                 NotePath::try_new("notes/complex.md").expect("note path");
-            let source_hash =
-                blake3::hash(markdown.as_bytes()).to_hex().to_string();
-            let raw_note = raw::extract::extract_raw_note(
-                parsed.nodes(),
-                parsed.frontmatter().cloned(),
-                parsed.reference_links().to_vec(),
-                &markdown,
-                path,
-                source_hash.into_boxed_str(),
-                markdown.len() as u64,
-                None,
-                None,
-            )
-            .expect("extract raw");
+            let raw_note =
+                parser::ingest::ingest_markdown(&markdown, path, None, None)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
