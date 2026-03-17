@@ -26,7 +26,7 @@
 pub(crate) mod ast;
 pub mod extract;
 pub(crate) mod frontmatter;
-pub mod note;
+pub(crate) mod note;
 
 use std::ops::Range;
 
@@ -70,7 +70,7 @@ pub const fn obsidian_options() -> Options {
 /// Returns [`NoteIngestError`] if byte ranges cannot be represented or AST
 /// construction fails.
 #[inline]
-pub fn parse_markdown(
+pub(crate) fn parse_markdown(
     markdown: &str,
     options: Options,
 ) -> Result<ParsedNote, NoteIngestError> {

@@ -107,6 +107,7 @@ impl NodeKind {
     /// Returns true when the node kind captures inline text containers.
     #[inline]
     #[must_use]
+    #[expect(dead_code, reason = "Reserved for parser/extractor callers")]
     pub const fn is_text_container(&self) -> bool {
         matches!(
             self,
@@ -231,6 +232,7 @@ impl Text {
 
     /// Appends a text node to the collection.
     #[inline]
+    #[expect(dead_code, reason = "Reserved for future text accumulation")]
     pub fn append(&mut self, node: TextNode) {
         self.nodes.push(node);
     }
@@ -283,6 +285,7 @@ impl TextNode {
     /// Returns the inline style applied to this fragment.
     #[inline]
     #[must_use]
+    #[expect(dead_code, reason = "Reserved for parser/extractor consumers")]
     pub const fn style(&self) -> TextStyle {
         self.style
     }

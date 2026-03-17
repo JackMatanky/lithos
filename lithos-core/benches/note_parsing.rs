@@ -446,43 +446,53 @@ fn bench_ingest_group(
 }
 
 fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
-    let mut parse_group = c.benchmark_group("note_parsing_parse_only");
+    let mut parse_group = c.benchmark_group("note_parsing_ingest_only");
 
-    // Parse-only simple benchmark
+    // Ingest-only simple benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
-    parse_group.bench_function("parse_markdown/simple", |b| {
+    parse_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
-            let outcome = parser::parse_markdown(
+            let path = NotePath::try_new("notes/simple.md").expect("note path");
+            let outcome = parser::extract::ingest_markdown(
                 samples.simple,
-                parser::obsidian_options(),
+                path,
+                None,
+                None,
             )
-            .expect("parse markdown");
+            .expect("ingest markdown");
             black_box(outcome);
         });
     });
 
-    // Parse-only medium benchmark
+    // Ingest-only medium benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
-    parse_group.bench_function("parse_markdown/medium", |b| {
+    parse_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
-            let outcome = parser::parse_markdown(
+            let path = NotePath::try_new("notes/medium.md").expect("note path");
+            let outcome = parser::extract::ingest_markdown(
                 samples.medium,
-                parser::obsidian_options(),
+                path,
+                None,
+                None,
             )
-            .expect("parse markdown");
+            .expect("ingest markdown");
             black_box(outcome);
         });
     });
 
-    // Parse-only complex benchmark
+    // Ingest-only complex benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
-    parse_group.bench_function("parse_markdown/complex", |b| {
+    parse_group.bench_function("ingest_markdown/complex", |b| {
         b.iter(|| {
-            let outcome = parser::parse_markdown(
+            let path =
+                NotePath::try_new("notes/complex.md").expect("note path");
+            let outcome = parser::extract::ingest_markdown(
                 samples.complex,
-                parser::obsidian_options(),
+                path,
+                None,
+                None,
             )
-            .expect("parse markdown");
+            .expect("ingest markdown");
             black_box(outcome);
         });
     });

@@ -61,6 +61,7 @@ impl ParsedNote {
     /// Returns the source hash for this markdown input.
     #[inline]
     #[must_use]
+    #[expect(dead_code, reason = "Reserved for future parser consumers")]
     pub fn source_hash(&self) -> &str {
         &self.source_hash
     }
