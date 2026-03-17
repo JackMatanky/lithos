@@ -62,244 +62,6 @@ pub struct Task {
     schedule: TaskSchedule,
 }
 
-/// Unique identifier for a Task (UUID v7).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskId(Uuid);
-
-impl TaskId {
-    /// Creates a new random `TaskId` (UUID v7).
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for TaskId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<Uuid> for TaskId {
-    #[inline]
-    fn from(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl From<TaskId> for Uuid {
-    #[inline]
-    fn from(id: TaskId) -> Uuid {
-        id.0
-    }
-}
-
-/// Parsed task attributes captured from checkbox text.
-#[derive(Debug, Clone, Default)]
-pub struct TaskAttributes {
-    tags: Vec<Tag>,
-    metadata: TaskMetadata,
-    schedule: TaskSchedule,
-}
-
-impl TaskAttributes {
-    #[inline]
-    #[must_use]
-    pub fn builder() -> TaskAttributesBuilder {
-        TaskAttributesBuilder::default()
-    }
-
-    /// Returns the schedule timestamps for the task attributes.
-    #[inline]
-    #[must_use]
-    pub fn schedule(&self) -> &TaskSchedule {
-        &self.schedule
-    }
-}
-
-/// Builder for [`TaskAttributes`].
-#[derive(Debug, Default)]
-pub struct TaskAttributesBuilder {
-    tags: Vec<Tag>,
-    metadata: TaskMetadata,
-    schedule: TaskSchedule,
-}
-/// Task schedule timestamps.
-#[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-pub struct TaskSchedule {
-    created: Option<TaskTimestamp>,
-    due: Option<TaskTimestamp>,
-    reminder: Option<TaskTimestamp>,
-    completed: Option<TaskTimestamp>,
-}
-
-impl TaskSchedule {
-    #[inline]
-    #[must_use]
-    pub const fn created(&self) -> Option<TaskTimestamp> {
-        self.created
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn due(&self) -> Option<TaskTimestamp> {
-        self.due
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn reminder(&self) -> Option<TaskTimestamp> {
-        self.reminder
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn completed(&self) -> Option<TaskTimestamp> {
-        self.completed
-    }
-}
-
-/// Validated task text content.
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-pub struct TaskText(Box<str>);
-
-impl TaskText {
-    /// Creates a validated task text value.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Task`] if the text is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
-        }
-        Self::try_from_boxed(value.into())
-    }
-
-    /// Creates a validated task text value from a boxed string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Task`] if the text is empty.
-    #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
-        }
-        Ok(Self(value))
-    }
-
-    /// Returns the underlying text as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Borrowed iterator over task tags.
-pub struct TaskTags<'task> {
-    inner: std::slice::Iter<'task, Tag>,
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Iterator wrapper forwards core methods only."
-)]
-impl<'task> Iterator for TaskTags<'task> {
-    type Item = &'task Tag;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
-    }
-}
-
-impl TaskAttributesBuilder {
-    #[inline]
-    #[must_use]
-    pub fn tags(mut self, tags: Vec<Tag>) -> Self {
-        self.tags = tags;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn metadata(mut self, metadata: TaskMetadata) -> Self {
-        self.metadata = metadata;
-        self
-    }
-
-    /// Sets the task schedule timestamps.
-    #[inline]
-    #[must_use]
-    pub fn schedule(mut self, schedule: TaskSchedule) -> Self {
-        self.schedule = schedule;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.created = created_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.due = due_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.reminder = reminder_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.completed = completed_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn build(self) -> TaskAttributes {
-        TaskAttributes {
-            tags: self.tags,
-            metadata: self.metadata,
-            schedule: self.schedule,
-        }
-    }
-}
-
 impl Task {
     /// Creates a new [`Task`] from parsed attributes.
     ///
@@ -403,6 +165,245 @@ impl Task {
     #[must_use]
     pub fn schedule(&self) -> &TaskSchedule {
         &self.schedule
+    }
+}
+
+/// Unique identifier for a Task (UUID v7).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskId(Uuid);
+
+impl TaskId {
+    /// Creates a new random `TaskId` (UUID v7).
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for TaskId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Uuid> for TaskId {
+    #[inline]
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl From<TaskId> for Uuid {
+    #[inline]
+    fn from(id: TaskId) -> Uuid {
+        id.0
+    }
+}
+
+/// Parsed task attributes captured from checkbox text.
+#[derive(Debug, Clone, Default)]
+pub struct TaskAttributes {
+    tags: Vec<Tag>,
+    metadata: TaskMetadata,
+    schedule: TaskSchedule,
+}
+
+impl TaskAttributes {
+    #[inline]
+    #[must_use]
+    pub fn builder() -> TaskAttributesBuilder {
+        TaskAttributesBuilder::default()
+    }
+
+    /// Returns the schedule timestamps for the task attributes.
+    #[inline]
+    #[must_use]
+    pub fn schedule(&self) -> &TaskSchedule {
+        &self.schedule
+    }
+}
+
+/// Builder for [`TaskAttributes`].
+#[derive(Debug, Default)]
+pub struct TaskAttributesBuilder {
+    tags: Vec<Tag>,
+    metadata: TaskMetadata,
+    schedule: TaskSchedule,
+}
+
+impl TaskAttributesBuilder {
+    #[inline]
+    #[must_use]
+    pub fn tags(mut self, tags: Vec<Tag>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn metadata(mut self, metadata: TaskMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
+
+    /// Sets the task schedule timestamps.
+    #[inline]
+    #[must_use]
+    pub fn schedule(mut self, schedule: TaskSchedule) -> Self {
+        self.schedule = schedule;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
+        self.schedule.created = created_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
+        self.schedule.due = due_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
+        self.schedule.reminder = reminder_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
+        self.schedule.completed = completed_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn build(self) -> TaskAttributes {
+        TaskAttributes {
+            tags: self.tags,
+            metadata: self.metadata,
+            schedule: self.schedule,
+        }
+    }
+}
+
+/// Task schedule timestamps.
+#[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+pub struct TaskSchedule {
+    created: Option<TaskTimestamp>,
+    due: Option<TaskTimestamp>,
+    reminder: Option<TaskTimestamp>,
+    completed: Option<TaskTimestamp>,
+}
+
+impl TaskSchedule {
+    #[inline]
+    #[must_use]
+    pub const fn created(&self) -> Option<TaskTimestamp> {
+        self.created
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn due(&self) -> Option<TaskTimestamp> {
+        self.due
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn reminder(&self) -> Option<TaskTimestamp> {
+        self.reminder
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn completed(&self) -> Option<TaskTimestamp> {
+        self.completed
+    }
+}
+
+/// Validated task text content.
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+pub struct TaskText(Box<str>);
+
+impl TaskText {
+    /// Creates a validated task text value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the text is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Task(TaskError::EmptyText));
+        }
+        Self::try_from_boxed(value.into())
+    }
+
+    /// Creates a validated task text value from a boxed string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the text is empty.
+    #[inline]
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Task(TaskError::EmptyText));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the underlying text as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Borrowed iterator over task tags.
+pub struct TaskTags<'task> {
+    inner: std::slice::Iter<'task, Tag>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'task> Iterator for TaskTags<'task> {
+    type Item = &'task Tag;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 

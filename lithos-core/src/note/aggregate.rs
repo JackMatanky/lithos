@@ -74,289 +74,6 @@ impl NoteId {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use super::*;
-    use crate::{
-        config::{
-            aggregate::Config,
-            raw::{RawConfig, RawFieldSpec, RawTaskConfig},
-            vault::{VaultId, VaultRoot},
-        },
-        note::{
-            position::SourceByteOffset,
-            raw::{RawTask, RawTaskKind},
-            task_tokens::RawTaskTokens,
-        },
-    };
-
-    #[test]
-    fn promotes_only_when_task_tag_present() {
-        let config = test_config_with_task_tag();
-
-        let promoted = promote_task("#task Do work", &config, &[])
-            .expect("task should be promoted");
-        assert_eq!(promoted.text(), "Do work");
-
-        let skipped = promote_task("Do work", &config, &[]);
-        assert!(skipped.is_none());
-
-        let skipped_partial = promote_task("#tasker Do work", &config, &[]);
-        assert!(skipped_partial.is_none());
-    }
-
-    #[test]
-    fn promoted_checkbox_extracts_text_and_metadata() {
-        let config = config_with_fields();
-        let task = promote_task(
-            "#task Review PR [priority:: 2] [project:: lithos]",
-            &config,
-            &[],
-        )
-        .expect("task should be promoted");
-
-        assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
-    }
-
-    #[test]
-    fn promoted_checkbox_collects_hierarchical_tags() {
-        let config = test_config_with_task_tag();
-        let task =
-            promote_task("#task Fix #work/project/urgent issue", &config, &[])
-                .expect("task should be promoted");
-
-        assert!(task.tags().any(|tag| tag.full_path() == "task"));
-        assert!(
-            task.tags().any(|tag| tag.full_path() == "work/project/urgent")
-        );
-        assert_eq!(task.tags().count(), 2);
-    }
-
-    #[test]
-    fn promoted_checkbox_ignores_invalid_tags() {
-        let config = test_config_with_task_tag();
-        let task = promote_task("#task Review #bad/ tags", &config, &[])
-            .expect("task should be promoted");
-
-        assert!(task.tags().any(|tag| tag.full_path() == "task"));
-        assert_eq!(task.tags().count(), 1);
-    }
-
-    #[test]
-    fn promoted_checkbox_parses_dates() {
-        let config = test_config_with_task_tag();
-        let task = promote_task(
-            "#task Test task with dates [created:: 2024-01-01] [due:: \
-             2024-12-31]",
-            &config,
-            &[],
-        )
-        .expect("task should be promoted");
-
-        if let Some(created_at) = task.created_at() {
-            assert_eq!(created_at.as_i64(), 1_704_067_200);
-            if let Some(due_at) = task.due_at() {
-                assert!(created_at.is_past(Some(due_at)));
-            }
-        }
-
-        if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_689_600);
-            if let Some(created_at) = task.created_at() {
-                assert!(due_at.is_future(Some(created_at)));
-            }
-        }
-    }
-
-    #[test]
-    fn promoted_checkbox_parses_paren_inline_fields() {
-        let config = config_with_fields();
-        let task = promote_task(
-            "#task Review PR (priority:: 2) (project:: lithos)",
-            &config,
-            &[],
-        )
-        .expect("task should be promoted");
-
-        assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
-    }
-
-    #[test]
-    fn promoted_checkbox_parses_default_emoji_dates() {
-        let config = test_config_with_task_tag();
-        let emojis = default_emoji_markers();
-        let task = promote_task(
-            "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
-             \u{2705}2025-01-01",
-            &config,
-            &emojis,
-        )
-        .expect("task should be promoted");
-
-        assert_eq!(
-            task.created_at().map(|ts| ts.as_i64()),
-            Some(1_704_067_200)
-        );
-        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
-        assert_eq!(
-            task.completed_at().map(|ts| ts.as_i64()),
-            Some(1_735_689_600)
-        );
-    }
-
-    fn promote_task(
-        text: &str,
-        config: &Config,
-        emoji_markers: &[char],
-    ) -> Option<Task> {
-        let raw = raw_task_from_text(text, emoji_markers);
-        let ctx = RawTaskContext::new(&raw, config);
-        Option::<Task>::try_from(ctx).expect("task conversion")
-    }
-
-    fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
-        let base = SourceByteOffset::new(0);
-        let tags = scan_raw_tags(text, base)
-            .expect("raw tags")
-            .into_iter()
-            .map(|tag| tag.value().into())
-            .collect();
-        let tokens = RawTaskTokens::parse(text, emoji_markers);
-        RawTask::new(
-            RawTaskKind::Unchecked(' '),
-            text.into(),
-            tags,
-            tokens.inline_fields().to_vec(),
-            tokens.emoji_dates().to_vec(),
-            base,
-        )
-    }
-
-    fn scan_raw_tags(
-        text: &str,
-        base_offset: SourceByteOffset,
-    ) -> Result<Vec<crate::note::raw::RawTag>, NoteError> {
-        let mut tags = Vec::new();
-        let mut chars = text.char_indices().peekable();
-        let mut prev_is_alnum = false;
-        let base =
-            usize::try_from(u32::from(base_offset)).map_err(|_error| {
-                NoteError::Structure("tag offset out of range")
-            })?;
-
-        while let Some((start_idx, ch)) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-            while let Some(&(next_idx, next_ch)) = chars.peek() {
-                if !(next_ch.is_alphanumeric()
-                    || matches!(next_ch, '_' | '-' | '/'))
-                {
-                    break;
-                }
-                chars.next();
-                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
-                else {
-                    break;
-                };
-                end_idx = updated;
-            }
-
-            let Some(raw) = text.get(start_idx..end_idx) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-
-            if raw.len() > 1 {
-                let offset = base.saturating_add(start_idx);
-                let position = SourceByteOffset::try_from_usize(offset)?;
-                tags.push(crate::note::raw::RawTag::new(raw.into(), position));
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
-        }
-
-        Ok(tags)
-    }
-
-    fn default_emoji_markers() -> Vec<char> {
-        vec![
-            '\u{2795}',
-            '\u{1f4c5}',
-            '\u{2705}',
-            '\u{23f3}',
-            '\u{1f6eb}',
-            '\u{274c}',
-        ]
-    }
-
-    fn test_config_with_task_tag() -> Config {
-        let raw = RawConfig {
-            task: Some(RawTaskConfig {
-                task_tags: Some(vec!["#task".into()]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        Config::build(
-            &raw,
-            VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
-            crate::config::aggregate::Version::initial(),
-        )
-        .expect("failed to build test config")
-    }
-
-    fn config_with_fields() -> Config {
-        let mut fields = HashMap::new();
-        fields.insert("priority".into(), RawFieldSpec::Integer {
-            min: None,
-            max: None,
-        });
-        fields.insert("project".into(), RawFieldSpec::String {
-            pattern: None,
-        });
-
-        let raw = RawConfig {
-            task: Some(RawTaskConfig {
-                enabled: Some(true),
-                task_tags: Some(vec!["#task".into()]),
-                status: None,
-                dates: None,
-                fields: Some(fields),
-                indexing: None,
-                dependencies: None,
-                use_emoji: None,
-            }),
-            ..Default::default()
-        };
-
-        Config::build(
-            &raw,
-            VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
-            crate::config::aggregate::Version::initial(),
-        )
-        .expect("failed to build test config")
-    }
-}
-
 impl fmt::Display for NoteId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -662,6 +379,225 @@ impl Note {
     pub fn inline_fields(&self) -> &[InlineField] {
         &self.inline_fields
     }
+
+    fn anchor_from_raw(text: &str) -> Result<Anchor, NoteError> {
+        if let Some(block_ref) = text.strip_prefix('^') {
+            Anchor::block_ref(block_ref)
+        } else {
+            Anchor::heading(text)
+        }
+    }
+
+    fn build_tasks(
+        raw: &RawNote,
+        config: &Config,
+    ) -> Result<Vec<Task>, NoteError> {
+        if raw.tasks().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut tasks = Vec::new();
+        for raw_task in raw.tasks() {
+            let ctx = RawTaskContext::new(raw_task, config);
+            if let Some(task) = Option::<Task>::try_from(ctx)? {
+                tasks.push(task);
+            }
+        }
+        Ok(tasks)
+    }
+
+    fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
+        if !tags.iter().any(|existing| existing.full_path() == tag.full_path())
+        {
+            tags.push(tag);
+        }
+    }
+
+    fn collect_frontmatter_tags(
+        frontmatter: &Frontmatter,
+        config: &Config,
+        tags: &mut Vec<Tag>,
+    ) {
+        let key = config.frontmatter().tags();
+        let Some(value) = frontmatter.get(key) else {
+            return;
+        };
+
+        let mut collect_tokens = |text: &str| {
+            for token in text.split(|ch: char| ch.is_whitespace() || ch == ',')
+            {
+                let token = token.trim();
+                if token.is_empty() {
+                    continue;
+                }
+                if let Ok(tag) = Tag::try_from_token(token) {
+                    Note::add_tag(tags, tag);
+                }
+            }
+        };
+
+        if let Some(text) = value.as_str() {
+            collect_tokens(text);
+            return;
+        }
+
+        if let Some(values) = value.as_array() {
+            for item in values {
+                if let Some(text) = item.as_str() {
+                    collect_tokens(text);
+                }
+            }
+        }
+    }
+
+    fn collect_frontmatter_links(
+        frontmatter: &Frontmatter,
+        links: &mut Vec<FrontmatterLink>,
+    ) {
+        for (key, value) in frontmatter.fields() {
+            Note::collect_frontmatter_links_for_value(key, value, links);
+        }
+    }
+
+    fn collect_frontmatter_links_for_value(
+        key: &str,
+        value: &FieldValue,
+        links: &mut Vec<FrontmatterLink>,
+    ) {
+        if let Some(text) = value.as_str() {
+            if let Ok(Some(link)) = Note::parse_frontmatter_link(key, text) {
+                links.push(link);
+            }
+            return;
+        }
+
+        if let Some(values) = value.as_array() {
+            for item in values {
+                if let Some(text) = Note::array_as_wikilink(item)
+                    && let Ok(Some(link)) =
+                        Note::parse_frontmatter_link(key, &text)
+                {
+                    links.push(link);
+                    continue;
+                }
+                Note::collect_frontmatter_links_for_value(key, item, links);
+            }
+            return;
+        }
+
+        if let Some(values) = value.object_fields() {
+            for (child_key, child_value) in values {
+                let child_key_str: &str = child_key;
+                let mut combined = String::with_capacity(
+                    key.len()
+                        .saturating_add(child_key_str.len())
+                        .saturating_add(1),
+                );
+                combined.push_str(key);
+                combined.push('.');
+                combined.push_str(child_key_str);
+                Note::collect_frontmatter_links_for_value(
+                    &combined,
+                    child_value,
+                    links,
+                );
+            }
+        }
+    }
+
+    fn array_as_wikilink(value: &FieldValue) -> Option<String> {
+        let outer = value.as_array()?;
+        if outer.len() != 1 {
+            return None;
+        }
+        if let Some(text) = outer.first().and_then(FieldValue::as_str) {
+            return Some(Note::wrap_wikilink_text(text));
+        }
+        let inner = outer.first()?.as_array()?;
+        if inner.len() != 1 {
+            return None;
+        }
+        let text = inner.first().and_then(FieldValue::as_str)?;
+        Some(Note::wrap_wikilink_text(text))
+    }
+
+    fn wrap_wikilink_text(text: &str) -> String {
+        let mut combined = String::with_capacity(text.len().saturating_add(4));
+        combined.push_str("[[");
+        combined.push_str(text);
+        combined.push_str("]]");
+        combined
+    }
+
+    fn parse_frontmatter_link(
+        key: &str,
+        value: &str,
+    ) -> Result<Option<FrontmatterLink>, NoteError> {
+        let trimmed = value.trim();
+        let (embed, inner) = if let Some(rest) =
+            trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
+        {
+            (true, rest)
+        } else if let Some(rest) =
+            trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
+        {
+            (false, rest)
+        } else {
+            return Ok(None);
+        };
+
+        let (target_text, alias) =
+            if let Some((left, right)) = inner.split_once('|') {
+                (left.trim(), Some(right.trim()))
+            } else {
+                (inner.trim(), None)
+            };
+
+        if target_text.is_empty() {
+            return Ok(None);
+        }
+
+        let (target_path, anchor) = Note::split_target_and_anchor(target_text)?;
+        let target = if Note::is_external_target(target_path) {
+            Target::External {
+                url: target_path.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_path.into(),
+            }
+        };
+        let embed_type = embed.then(|| EmbedType::from_extension(target_path));
+
+        Ok(Some(FrontmatterLink::new(
+            key.into(),
+            target,
+            anchor,
+            alias.filter(|text| !text.is_empty()).map(Into::into),
+            embed_type,
+        )))
+    }
+
+    fn split_target_and_anchor(
+        target: &str,
+    ) -> Result<(&str, Option<Anchor>), NoteError> {
+        let Some((path, anchor_text)) = target.split_once('#') else {
+            return Ok((target, None));
+        };
+
+        if let Some(block_ref) = anchor_text.strip_prefix('^') {
+            Ok((path, Some(Anchor::block_ref(block_ref)?)))
+        } else {
+            Ok((path, Some(Anchor::heading(anchor_text)?)))
+        }
+    }
+
+    fn is_external_target(target: &str) -> bool {
+        target.starts_with("http://")
+            || target.starts_with("https://")
+            || target.starts_with("ftp://")
+            || target.starts_with("mailto:")
+    }
 }
 
 impl TryFrom<RawHeading> for Heading {
@@ -697,11 +633,11 @@ impl TryFrom<RawLink> for Link {
     #[inline]
     fn try_from(raw: RawLink) -> Result<Self, Self::Error> {
         let target_text = raw.target();
-        let is_external = is_external_target(target_text);
+        let is_external = Note::is_external_target(target_text);
         let anchor = if is_external {
             None
         } else {
-            raw.anchor().map(anchor_from_raw).transpose()?
+            raw.anchor().map(Note::anchor_from_raw).transpose()?
         };
         let target = if is_external {
             Target::External {
@@ -751,14 +687,6 @@ impl TryFrom<RawBlockRef> for BlockRef {
     }
 }
 
-fn anchor_from_raw(text: &str) -> Result<Anchor, NoteError> {
-    if let Some(block_ref) = text.strip_prefix('^') {
-        Anchor::block_ref(block_ref)
-    } else {
-        Anchor::heading(text)
-    }
-}
-
 /// Conversion context for building `Note` from `RawNote` + Config.
 pub(crate) struct RawNoteContext<'raw> {
     raw: &'raw RawNote,
@@ -797,16 +725,19 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
         let mut tags = Vec::new();
         for raw_tag in ctx.raw.tags() {
             if let Ok(tag) = Tag::try_from_token(raw_tag.value()) {
-                add_tag(&mut tags, tag);
+                Note::add_tag(&mut tags, tag);
             }
         }
         if let Some(frontmatter) = frontmatter.as_ref() {
-            collect_frontmatter_tags(frontmatter, ctx.config, &mut tags);
+            Note::collect_frontmatter_tags(frontmatter, ctx.config, &mut tags);
         }
 
         let mut frontmatter_links = Vec::new();
         if let Some(frontmatter) = frontmatter.as_ref() {
-            collect_frontmatter_links(frontmatter, &mut frontmatter_links);
+            Note::collect_frontmatter_links(
+                frontmatter,
+                &mut frontmatter_links,
+            );
         }
 
         let reference_links = ctx
@@ -854,7 +785,7 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
             .collect::<Result<Vec<_>, _>>()?;
         list_items.sort_by_key(ListItemEntry::position);
 
-        let tasks = build_tasks(ctx.raw, ctx.config)?;
+        let tasks = Note::build_tasks(ctx.raw, ctx.config)?;
         let inline_fields = ctx
             .raw
             .inline_fields()
@@ -898,7 +829,7 @@ impl TryFrom<RawReferenceLink> for ReferenceLink {
     #[inline]
     fn try_from(raw: RawReferenceLink) -> Result<Self, Self::Error> {
         let target_text = raw.target();
-        let target = if is_external_target(target_text) {
+        let target = if Note::is_external_target(target_text) {
             Target::External {
                 url: target_text.into(),
             }
@@ -909,205 +840,6 @@ impl TryFrom<RawReferenceLink> for ReferenceLink {
         };
         Ok(ReferenceLink::new(raw.id().into(), target, raw.position()))
     }
-}
-
-fn build_tasks(raw: &RawNote, config: &Config) -> Result<Vec<Task>, NoteError> {
-    if raw.tasks().is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut tasks = Vec::new();
-    for raw_task in raw.tasks() {
-        let ctx = RawTaskContext::new(raw_task, config);
-        if let Some(task) = Option::<Task>::try_from(ctx)? {
-            tasks.push(task);
-        }
-    }
-    Ok(tasks)
-}
-
-fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
-    if !tags.iter().any(|existing| existing.full_path() == tag.full_path()) {
-        tags.push(tag);
-    }
-}
-
-fn collect_frontmatter_tags(
-    frontmatter: &Frontmatter,
-    config: &Config,
-    tags: &mut Vec<Tag>,
-) {
-    let key = config.frontmatter().tags();
-    let Some(value) = frontmatter.get(key) else {
-        return;
-    };
-
-    let mut collect_tokens = |text: &str| {
-        for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
-            let token = token.trim();
-            if token.is_empty() {
-                continue;
-            }
-            if let Ok(tag) = Tag::try_from_token(token) {
-                add_tag(tags, tag);
-            }
-        }
-    };
-
-    if let Some(text) = value.as_str() {
-        collect_tokens(text);
-        return;
-    }
-
-    if let Some(values) = value.as_array() {
-        for item in values {
-            if let Some(text) = item.as_str() {
-                collect_tokens(text);
-            }
-        }
-    }
-}
-
-fn collect_frontmatter_links(
-    frontmatter: &Frontmatter,
-    links: &mut Vec<FrontmatterLink>,
-) {
-    for (key, value) in frontmatter.fields() {
-        collect_frontmatter_links_for_value(key, value, links);
-    }
-}
-
-fn collect_frontmatter_links_for_value(
-    key: &str,
-    value: &FieldValue,
-    links: &mut Vec<FrontmatterLink>,
-) {
-    if let Some(text) = value.as_str() {
-        if let Ok(Some(link)) = parse_frontmatter_link(key, text) {
-            links.push(link);
-        }
-        return;
-    }
-
-    if let Some(values) = value.as_array() {
-        for item in values {
-            if let Some(text) = array_as_wikilink(item)
-                && let Ok(Some(link)) = parse_frontmatter_link(key, &text)
-            {
-                links.push(link);
-                continue;
-            }
-            collect_frontmatter_links_for_value(key, item, links);
-        }
-        return;
-    }
-
-    if let Some(values) = value.object_fields() {
-        for (child_key, child_value) in values {
-            let child_key_str: &str = child_key;
-            let mut combined = String::with_capacity(
-                key.len().saturating_add(child_key_str.len()).saturating_add(1),
-            );
-            combined.push_str(key);
-            combined.push('.');
-            combined.push_str(child_key_str);
-            collect_frontmatter_links_for_value(&combined, child_value, links);
-        }
-    }
-}
-
-fn array_as_wikilink(value: &FieldValue) -> Option<String> {
-    let outer = value.as_array()?;
-    if outer.len() != 1 {
-        return None;
-    }
-    if let Some(text) = outer.first().and_then(FieldValue::as_str) {
-        return Some(wrap_wikilink_text(text));
-    }
-    let inner = outer.first()?.as_array()?;
-    if inner.len() != 1 {
-        return None;
-    }
-    let text = inner.first().and_then(FieldValue::as_str)?;
-    Some(wrap_wikilink_text(text))
-}
-
-fn wrap_wikilink_text(text: &str) -> String {
-    let mut combined = String::with_capacity(text.len().saturating_add(4));
-    combined.push_str("[[");
-    combined.push_str(text);
-    combined.push_str("]]");
-    combined
-}
-
-fn parse_frontmatter_link(
-    key: &str,
-    value: &str,
-) -> Result<Option<FrontmatterLink>, NoteError> {
-    let trimmed = value.trim();
-    let (embed, inner) = if let Some(rest) =
-        trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
-    {
-        (true, rest)
-    } else if let Some(rest) =
-        trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
-    {
-        (false, rest)
-    } else {
-        return Ok(None);
-    };
-
-    let (target_text, alias) =
-        if let Some((left, right)) = inner.split_once('|') {
-            (left.trim(), Some(right.trim()))
-        } else {
-            (inner.trim(), None)
-        };
-
-    if target_text.is_empty() {
-        return Ok(None);
-    }
-
-    let (target_path, anchor) = split_target_and_anchor(target_text)?;
-    let target = if is_external_target(target_path) {
-        Target::External {
-            url: target_path.into(),
-        }
-    } else {
-        Target::Unresolved {
-            raw: target_path.into(),
-        }
-    };
-    let embed_type = embed.then(|| EmbedType::from_extension(target_path));
-
-    Ok(Some(FrontmatterLink::new(
-        key.into(),
-        target,
-        anchor,
-        alias.filter(|text| !text.is_empty()).map(Into::into),
-        embed_type,
-    )))
-}
-
-fn split_target_and_anchor(
-    target: &str,
-) -> Result<(&str, Option<Anchor>), NoteError> {
-    let Some((path, anchor_text)) = target.split_once('#') else {
-        return Ok((target, None));
-    };
-
-    if let Some(block_ref) = anchor_text.strip_prefix('^') {
-        Ok((path, Some(Anchor::block_ref(block_ref)?)))
-    } else {
-        Ok((path, Some(Anchor::heading(anchor_text)?)))
-    }
-}
-
-fn is_external_target(target: &str) -> bool {
-    target.starts_with("http://")
-        || target.starts_with("https://")
-        || target.starts_with("ftp://")
-        || target.starts_with("mailto:")
 }
 
 struct RawTaskContext<'raw> {
@@ -1679,5 +1411,288 @@ impl InlineFieldState {
         let key = TaskFieldKey::try_new(key)?;
         self.metadata.insert(key, FieldValue::Date(parsed.as_i64()));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::{
+        config::{
+            aggregate::Config,
+            raw::{RawConfig, RawFieldSpec, RawTaskConfig},
+            vault::{VaultId, VaultRoot},
+        },
+        note::{
+            position::SourceByteOffset,
+            raw::{RawTask, RawTaskKind},
+            task_tokens::RawTaskTokens,
+        },
+    };
+
+    #[test]
+    fn promotes_only_when_task_tag_present() {
+        let config = test_config_with_task_tag();
+
+        let promoted = promote_task("#task Do work", &config, &[])
+            .expect("task should be promoted");
+        assert_eq!(promoted.text(), "Do work");
+
+        let skipped = promote_task("Do work", &config, &[]);
+        assert!(skipped.is_none());
+
+        let skipped_partial = promote_task("#tasker Do work", &config, &[]);
+        assert!(skipped_partial.is_none());
+    }
+
+    #[test]
+    fn promoted_checkbox_extracts_text_and_metadata() {
+        let config = config_with_fields();
+        let task = promote_task(
+            "#task Review PR [priority:: 2] [project:: lithos]",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(task.text(), "Review PR");
+        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
+        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+    }
+
+    #[test]
+    fn promoted_checkbox_collects_hierarchical_tags() {
+        let config = test_config_with_task_tag();
+        let task =
+            promote_task("#task Fix #work/project/urgent issue", &config, &[])
+                .expect("task should be promoted");
+
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
+        assert!(
+            task.tags().any(|tag| tag.full_path() == "work/project/urgent")
+        );
+        assert_eq!(task.tags().count(), 2);
+    }
+
+    #[test]
+    fn promoted_checkbox_ignores_invalid_tags() {
+        let config = test_config_with_task_tag();
+        let task = promote_task("#task Review #bad/ tags", &config, &[])
+            .expect("task should be promoted");
+
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
+        assert_eq!(task.tags().count(), 1);
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_dates() {
+        let config = test_config_with_task_tag();
+        let task = promote_task(
+            "#task Test task with dates [created:: 2024-01-01] [due:: \
+             2024-12-31]",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        if let Some(created_at) = task.created_at() {
+            assert_eq!(created_at.as_i64(), 1_704_067_200);
+            if let Some(due_at) = task.due_at() {
+                assert!(created_at.is_past(Some(due_at)));
+            }
+        }
+
+        if let Some(due_at) = task.due_at() {
+            assert_eq!(due_at.as_i64(), 1_735_689_600);
+            if let Some(created_at) = task.created_at() {
+                assert!(due_at.is_future(Some(created_at)));
+            }
+        }
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_paren_inline_fields() {
+        let config = config_with_fields();
+        let task = promote_task(
+            "#task Review PR (priority:: 2) (project:: lithos)",
+            &config,
+            &[],
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(task.text(), "Review PR");
+        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
+        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_default_emoji_dates() {
+        let config = test_config_with_task_tag();
+        let emojis = default_emoji_markers();
+        let task = promote_task(
+            "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
+             \u{2705}2025-01-01",
+            &config,
+            &emojis,
+        )
+        .expect("task should be promoted");
+
+        assert_eq!(
+            task.created_at().map(|ts| ts.as_i64()),
+            Some(1_704_067_200)
+        );
+        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
+        assert_eq!(
+            task.completed_at().map(|ts| ts.as_i64()),
+            Some(1_735_689_600)
+        );
+    }
+
+    fn promote_task(
+        text: &str,
+        config: &Config,
+        emoji_markers: &[char],
+    ) -> Option<Task> {
+        let raw = raw_task_from_text(text, emoji_markers);
+        let ctx = RawTaskContext::new(&raw, config);
+        Option::<Task>::try_from(ctx).expect("task conversion")
+    }
+
+    fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
+        let base = SourceByteOffset::new(0);
+        let tags = scan_raw_tags(text, base)
+            .expect("raw tags")
+            .into_iter()
+            .map(|tag| tag.value().into())
+            .collect();
+        let tokens = RawTaskTokens::parse(text, emoji_markers);
+        RawTask::new(
+            RawTaskKind::Unchecked(' '),
+            text.into(),
+            tags,
+            tokens.inline_fields().to_vec(),
+            tokens.emoji_dates().to_vec(),
+            base,
+        )
+    }
+
+    fn scan_raw_tags(
+        text: &str,
+        base_offset: SourceByteOffset,
+    ) -> Result<Vec<crate::note::raw::RawTag>, NoteError> {
+        let mut tags = Vec::new();
+        let mut chars = text.char_indices().peekable();
+        let mut prev_is_alnum = false;
+        let base =
+            usize::try_from(u32::from(base_offset)).map_err(|_error| {
+                NoteError::Structure("tag offset out of range")
+            })?;
+
+        while let Some((start_idx, ch)) = chars.next() {
+            if ch != '#' || prev_is_alnum {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            }
+
+            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            };
+            while let Some(&(next_idx, next_ch)) = chars.peek() {
+                if !(next_ch.is_alphanumeric()
+                    || matches!(next_ch, '_' | '-' | '/'))
+                {
+                    break;
+                }
+                chars.next();
+                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
+                else {
+                    break;
+                };
+                end_idx = updated;
+            }
+
+            let Some(raw) = text.get(start_idx..end_idx) else {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            };
+
+            if raw.len() > 1 {
+                let offset = base.saturating_add(start_idx);
+                let position = SourceByteOffset::try_from_usize(offset)?;
+                tags.push(crate::note::raw::RawTag::new(raw.into(), position));
+            }
+
+            prev_is_alnum =
+                raw.chars().last().is_some_and(char::is_alphanumeric);
+        }
+
+        Ok(tags)
+    }
+
+    fn default_emoji_markers() -> Vec<char> {
+        vec![
+            '\u{2795}',
+            '\u{1f4c5}',
+            '\u{2705}',
+            '\u{23f3}',
+            '\u{1f6eb}',
+            '\u{274c}',
+        ]
+    }
+
+    fn test_config_with_task_tag() -> Config {
+        let raw = RawConfig {
+            task: Some(RawTaskConfig {
+                task_tags: Some(vec!["#task".into()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        Config::build(
+            &raw,
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                .expect("vault root"),
+            crate::config::aggregate::Version::initial(),
+        )
+        .expect("failed to build test config")
+    }
+
+    fn config_with_fields() -> Config {
+        let mut fields = HashMap::new();
+        fields.insert("priority".into(), RawFieldSpec::Integer {
+            min: None,
+            max: None,
+        });
+        fields.insert("project".into(), RawFieldSpec::String {
+            pattern: None,
+        });
+
+        let raw = RawConfig {
+            task: Some(RawTaskConfig {
+                enabled: Some(true),
+                task_tags: Some(vec!["#task".into()]),
+                status: None,
+                dates: None,
+                fields: Some(fields),
+                indexing: None,
+                dependencies: None,
+                use_emoji: None,
+            }),
+            ..Default::default()
+        };
+
+        Config::build(
+            &raw,
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                .expect("vault root"),
+            crate::config::aggregate::Version::initial(),
+        )
+        .expect("failed to build test config")
     }
 }

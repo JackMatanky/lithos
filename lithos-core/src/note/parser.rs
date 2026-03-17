@@ -2,7 +2,7 @@
 use std::time::SystemTime;
 
 use pulldown_cmark::{
-    Event, Options, Parser, Tag, TagEnd, utils::TextMergeWithOffset,
+    Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
 };
 
 use crate::note::{
@@ -20,433 +20,190 @@ use crate::note::{
 };
 
 /// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
-#[inline]
-#[must_use]
-pub const fn obsidian_options() -> Options {
-    Options::ENABLE_TASKLISTS
-        .union(Options::ENABLE_WIKILINKS)
-        .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
-        .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
-        .union(Options::ENABLE_HEADING_ATTRIBUTES)
-        .union(Options::ENABLE_TABLES)
-        .union(Options::ENABLE_FOOTNOTES)
-        .union(Options::ENABLE_STRIKETHROUGH)
-        .union(Options::ENABLE_MATH)
-}
+#[non_exhaustive]
+pub struct MarkdownParser;
 
-#[derive(Debug, Clone, PartialEq)]
-enum BlockKind {
-    Heading(u8),
-    Paragraph,
-    ListItem,
-    List,
-    BlockQuote,
-    CodeBlock,
-}
-
-struct ActiveBlock {
-    kind: BlockKind,
-    depth: u32,
-    start_offset: SourceByteOffset,
-    full_text: String,
-    scannable_text: String,
-    scannable_segments: Vec<(usize, SourceByteOffset)>,
-    task_marker: Option<bool>,
-}
-
-struct LinkFrame {
-    style: RawLinkStyle,
-    is_embed: bool,
-    target: String,
-    start: SourceByteOffset,
-    alias: String,
-}
-
-#[inline]
-fn heading_level_value(level: pulldown_cmark::HeadingLevel) -> u8 {
-    match level {
-        pulldown_cmark::HeadingLevel::H1 => 1,
-        pulldown_cmark::HeadingLevel::H2 => 2,
-        pulldown_cmark::HeadingLevel::H3 => 3,
-        pulldown_cmark::HeadingLevel::H4 => 4,
-        pulldown_cmark::HeadingLevel::H5 => 5,
-        pulldown_cmark::HeadingLevel::H6 => 6,
+impl MarkdownParser {
+    /// Returns the pulldown-cmark option set used for Obsidian-compatible
+    /// parsing.
+    #[inline]
+    #[must_use]
+    pub const fn obsidian_options() -> Options {
+        Options::ENABLE_TASKLISTS
+            .union(Options::ENABLE_WIKILINKS)
+            .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+            .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
+            .union(Options::ENABLE_HEADING_ATTRIBUTES)
+            .union(Options::ENABLE_TABLES)
+            .union(Options::ENABLE_FOOTNOTES)
+            .union(Options::ENABLE_STRIKETHROUGH)
+            .union(Options::ENABLE_MATH)
     }
-}
 
-#[inline]
-fn frontmatter_format_from_cmark(
-    kind: pulldown_cmark::MetadataBlockKind,
-) -> FrontmatterFormat {
-    match kind {
-        pulldown_cmark::MetadataBlockKind::YamlStyle => FrontmatterFormat::Yaml,
-        pulldown_cmark::MetadataBlockKind::PlusesStyle => {
-            FrontmatterFormat::Toml
+    #[inline]
+    fn heading_level_value(level: pulldown_cmark::HeadingLevel) -> u8 {
+        match level {
+            pulldown_cmark::HeadingLevel::H1 => 1,
+            pulldown_cmark::HeadingLevel::H2 => 2,
+            pulldown_cmark::HeadingLevel::H3 => 3,
+            pulldown_cmark::HeadingLevel::H4 => 4,
+            pulldown_cmark::HeadingLevel::H5 => 5,
+            pulldown_cmark::HeadingLevel::H6 => 6,
         }
     }
-}
 
-#[inline]
-fn link_style_from_cmark(kind: pulldown_cmark::LinkType) -> RawLinkStyle {
-    match kind {
-        pulldown_cmark::LinkType::WikiLink {
-            ..
-        } => RawLinkStyle::Wiki,
-        pulldown_cmark::LinkType::Inline
-        | pulldown_cmark::LinkType::Reference
-        | pulldown_cmark::LinkType::ReferenceUnknown
-        | pulldown_cmark::LinkType::Collapsed
-        | pulldown_cmark::LinkType::CollapsedUnknown
-        | pulldown_cmark::LinkType::Shortcut
-        | pulldown_cmark::LinkType::ShortcutUnknown
-        | pulldown_cmark::LinkType::Autolink
-        | pulldown_cmark::LinkType::Email => RawLinkStyle::Markdown,
-    }
-}
-
-#[inline]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Helper function needs access to extraction state"
-)]
-fn finalize_paragraph(
-    block: &ActiveBlock,
-    block_range: SourceByteRange,
-    sections: &mut Vec<RawSection>,
-    tags: &mut Vec<RawTag>,
-    inline_fields: &mut Vec<RawInlineField>,
-    block_stack: &mut [ActiveBlock],
-) -> Result<(), NoteIngestError> {
-    sections.push(RawSection::new(
-        RawSectionKind::Paragraph,
-        block_range,
-        block.depth,
-    ));
-
-    let new_tags =
-        TagScanner::scan(&block.scannable_text, &block.scannable_segments)
-            .map_err(NoteIngestError::Domain)?;
-    tags.extend(new_tags);
-    InlineFieldScanner::scan_text(
-        &block.scannable_text,
-        &block.scannable_segments,
-        inline_fields,
-    )
-    .map_err(NoteIngestError::Domain)?;
-
-    if let Some(parent) = block_stack.last_mut()
-        && matches!(parent.kind, BlockKind::ListItem)
-        && parent.full_text.is_empty()
-    {
-        parent.full_text.push_str(&block.full_text);
-    }
-
-    Ok(())
-}
-
-#[inline]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Helper function needs access to extraction state"
-)]
-fn finalize_list_item(
-    block: &ActiveBlock,
-    markdown: &str,
-    block_range: SourceByteRange,
-    sections: &mut Vec<RawSection>,
-    tags: &mut Vec<RawTag>,
-    inline_fields: &mut Vec<RawInlineField>,
-    list_stack: &[RawListType],
-    open_item_by_depth: &mut Vec<SourceByteOffset>,
-    list_items: &mut Vec<RawListItem>,
-    tasks: &mut Vec<RawTask>,
-) -> Result<(), NoteIngestError> {
-    sections.push(RawSection::new(
-        RawSectionKind::List,
-        block_range,
-        block.depth,
-    ));
-
-    let new_tags =
-        TagScanner::scan(&block.scannable_text, &block.scannable_segments)
-            .map_err(NoteIngestError::Domain)?;
-    tags.extend(new_tags);
-    InlineFieldScanner::scan_text(
-        &block.scannable_text,
-        &block.scannable_segments,
-        inline_fields,
-    )
-    .map_err(NoteIngestError::Domain)?;
-
-    let list_type =
-        list_stack.last().copied().unwrap_or(RawListType::Unordered);
-    let list_depth = if block.depth == 0 {
-        RawListDepth::Root
-    } else {
-        RawListDepth::Nested(u8::try_from(block.depth).unwrap_or(u8::MAX))
-    };
-
-    let depth_index = usize::try_from(block.depth).unwrap_or(0);
-    if open_item_by_depth.len() <= depth_index {
-        open_item_by_depth
-            .resize(depth_index.saturating_add(1), block.start_offset);
-    }
-    if let Some(slot) = open_item_by_depth.get_mut(depth_index) {
-        *slot = block.start_offset;
-    }
-    open_item_by_depth.truncate(depth_index.saturating_add(1));
-
-    let parent_pos = if block.depth == 0 {
-        None
-    } else {
-        open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
-    };
-
-    let task_kind = match block.task_marker {
-        Some(checked) => {
-            let fallback = if checked {
-                'x'
-            } else {
-                ' '
-            };
-            let marker = task_marker_from_source(markdown, block.start_offset)
-                .unwrap_or(fallback);
-            Some(TaskMarkerScanner::raw_task_kind_from_marker(marker))
-        }
-        None => None,
-    };
-
-    let raw_text: Box<str> = block.full_text.trim().into();
-
-    if let Some(tk) = task_kind {
-        list_items.push(RawListItem::new(
-            list_type,
-            list_depth,
-            raw_text.clone(),
-            Some(tk),
-            block.start_offset,
-            parent_pos,
-        ));
-
-        let raw_tags =
-            TagScanner::scan(&block.full_text, &[(0, block.start_offset)])
-                .unwrap_or_default();
-        let tags_for_task =
-            raw_tags.into_iter().map(|t| t.value().into()).collect();
-        let tokens = RawTaskTokens::parse(&block.full_text, &[]);
-
-        tasks.push(RawTask::new(
-            tk,
-            raw_text,
-            tags_for_task,
-            tokens.inline_fields().to_vec(),
-            tokens.emoji_dates().to_vec(),
-            block.start_offset,
-        ));
-    } else {
-        list_items.push(RawListItem::new(
-            list_type,
-            list_depth,
-            raw_text,
-            None,
-            block.start_offset,
-            parent_pos,
-        ));
-    }
-
-    Ok(())
-}
-
-/// Parses markdown into a minimal AST and extracts raw note artifacts.
-///
-/// # Errors
-///
-/// Returns [`NoteIngestError`] if byte ranges cannot be represented or
-/// extraction fails.
-#[inline]
-#[expect(
-    clippy::too_many_lines,
-    reason = "Event sink matches comprehensive logic"
-)]
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "Parsing handles many event types"
-)]
-pub fn parse_markdown(
-    markdown: &str,
-    path: NotePath,
-    created_at: Option<SystemTime>,
-    modified_at: Option<SystemTime>,
-) -> Result<RawNote, NoteIngestError> {
-    let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
-        NoteIngestError::Source("source length out of range".into())
-    })?;
-    let source_hash =
-        blake3::hash(markdown.as_bytes()).to_hex().to_string().into_boxed_str();
-
-    let reference_links = extract_reference_link_definitions(markdown)?;
-    let block_refs = BlockRefScanner::new(markdown)
-        .collect()
-        .map_err(NoteIngestError::Domain)?;
-
-    let mut headings = Vec::new();
-    let mut sections = Vec::new();
-    let mut links = Vec::new();
-    let mut tags = Vec::new();
-    let mut list_items = Vec::new();
-    let mut tasks = Vec::new();
-    let mut inline_fields = Vec::new();
-    let mut frontmatter = None;
-
-    let mut block_stack: Vec<ActiveBlock> = Vec::new();
-    let mut list_stack: Vec<RawListType> = Vec::new();
-    let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
-
-    let mut depth: u32 = 0;
-
-    let mut current_link: Option<LinkFrame> = None;
-    let mut in_metadata: Option<(
-        pulldown_cmark::MetadataBlockKind,
-        SourceByteOffset,
-    )> = None;
-    let mut metadata_text = String::new();
-
-    let events =
-        Parser::new_ext(markdown, obsidian_options()).into_offset_iter();
-    let iter = TextMergeWithOffset::new(events);
-
-    for (event, range) in iter {
-        let start_pos = SourceByteOffset::try_from_usize(range.start)
-            .map_err(NoteIngestError::Domain)?;
-
-        if in_metadata.is_some() {
-            match event {
-                Event::Text(t) | Event::Code(t) => metadata_text.push_str(&t),
-                Event::SoftBreak | Event::HardBreak => metadata_text.push('\n'),
-                Event::End(TagEnd::MetadataBlock(_)) => {
-                    if let Some((kind, start)) = in_metadata.take() {
-                        let end_pos =
-                            SourceByteOffset::try_from_usize(range.end)
-                                .map_err(NoteIngestError::Domain)?;
-                        let block_range = SourceByteRange::new(start, end_pos)
-                            .map_err(NoteIngestError::Domain)?;
-                        sections.push(RawSection::new(
-                            RawSectionKind::Frontmatter,
-                            block_range,
-                            0,
-                        ));
-                        frontmatter = Some(RawFrontmatter::new(
-                            frontmatter_format_from_cmark(kind),
-                            metadata_text.clone().into_boxed_str(),
-                            block_range,
-                        ));
-                    }
-                }
-                Event::Start(_)
-                | Event::End(_)
-                | Event::InlineMath(_)
-                | Event::DisplayMath(_)
-                | Event::Html(_)
-                | Event::InlineHtml(_)
-                | Event::FootnoteReference(_)
-                | Event::Rule
-                | Event::TaskListMarker(_) => {}
+    #[inline]
+    fn frontmatter_format_from_cmark(
+        kind: pulldown_cmark::MetadataBlockKind,
+    ) -> FrontmatterFormat {
+        match kind {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => {
+                FrontmatterFormat::Yaml
             }
-            continue;
-        }
-
-        match event {
-            Event::Start(Tag::MetadataBlock(kind)) => {
-                in_metadata = Some((kind, start_pos));
-                metadata_text.clear();
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => {
+                FrontmatterFormat::Toml
             }
-            Event::Start(tag) => {
-                let kind = match tag {
-                    Tag::Heading {
-                        level,
-                        ..
-                    } => Some(BlockKind::Heading(heading_level_value(level))),
-                    Tag::Paragraph => Some(BlockKind::Paragraph),
-                    Tag::Item => Some(BlockKind::ListItem),
-                    Tag::List(list_start) => {
-                        let list_type = match list_start {
-                            Some(start) => RawListType::Ordered {
-                                start,
-                            },
-                            None => RawListType::Unordered,
-                        };
-                        list_stack.push(list_type);
-                        Some(BlockKind::List)
-                    }
-                    Tag::BlockQuote(_) => Some(BlockKind::BlockQuote),
-                    Tag::CodeBlock(_) => Some(BlockKind::CodeBlock),
-                    Tag::Link {
-                        link_type,
-                        dest_url,
-                        ..
-                    } => {
-                        current_link = Some(LinkFrame {
-                            style: link_style_from_cmark(link_type),
-                            is_embed: false,
-                            target: dest_url.to_string(),
-                            start: start_pos,
-                            alias: String::new(),
-                        });
-                        None
-                    }
-                    Tag::Image {
-                        link_type,
-                        dest_url,
-                        ..
-                    } => {
-                        current_link = Some(LinkFrame {
-                            style: link_style_from_cmark(link_type),
-                            is_embed: true,
-                            target: dest_url.to_string(),
-                            start: start_pos,
-                            alias: String::new(),
-                        });
-                        None
-                    }
-                    Tag::HtmlBlock
-                    | Tag::FootnoteDefinition(_)
-                    | Tag::DefinitionList
-                    | Tag::DefinitionListTitle
-                    | Tag::DefinitionListDefinition
-                    | Tag::Table(_)
-                    | Tag::TableHead
-                    | Tag::TableRow
-                    | Tag::TableCell
-                    | Tag::Emphasis
-                    | Tag::Strong
-                    | Tag::Strikethrough
-                    | Tag::Superscript
-                    | Tag::Subscript
-                    | Tag::MetadataBlock(_) => None,
+        }
+    }
+
+    #[inline]
+    fn link_style_from_cmark(kind: pulldown_cmark::LinkType) -> RawLinkStyle {
+        match kind {
+            pulldown_cmark::LinkType::WikiLink {
+                ..
+            } => RawLinkStyle::Wiki,
+            pulldown_cmark::LinkType::Inline
+            | pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+            | pulldown_cmark::LinkType::Autolink
+            | pulldown_cmark::LinkType::Email => RawLinkStyle::Markdown,
+        }
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Handler needs access to full extraction state"
+    )]
+    fn handle_start_tag(
+        tag: pulldown_cmark::Tag<'_>,
+        start_pos: SourceByteOffset,
+        depth: &mut u32,
+        block_stack: &mut Vec<ActiveBlock>,
+        list_stack: &mut Vec<RawListType>,
+        current_link: &mut Option<LinkFrame>,
+    ) {
+        let kind = match tag {
+            pulldown_cmark::Tag::Heading {
+                level,
+                ..
+            } => Some(BlockKind::Heading(Self::heading_level_value(level))),
+            pulldown_cmark::Tag::Paragraph => Some(BlockKind::Paragraph),
+            pulldown_cmark::Tag::Item => Some(BlockKind::ListItem),
+            pulldown_cmark::Tag::List(list_start) => {
+                let list_type = match list_start {
+                    Some(start) => RawListType::Ordered {
+                        start,
+                    },
+                    None => RawListType::Unordered,
                 };
-
-                if let Some(bkind) = kind {
-                    let current_depth = depth;
-                    if matches!(
-                        bkind,
-                        BlockKind::List
-                            | BlockKind::ListItem
-                            | BlockKind::BlockQuote
-                    ) {
-                        depth = depth.saturating_add(1);
-                    }
-                    block_stack.push(ActiveBlock {
-                        kind: bkind,
-                        depth: current_depth,
-                        start_offset: start_pos,
-                        full_text: String::new(),
-                        scannable_text: String::new(),
-                        scannable_segments: Vec::new(),
-                        task_marker: None,
-                    });
-                }
+                list_stack.push(list_type);
+                Some(BlockKind::List)
             }
-            Event::End(TagEnd::Link | TagEnd::Image) => {
+            pulldown_cmark::Tag::BlockQuote(_) => Some(BlockKind::BlockQuote),
+            pulldown_cmark::Tag::CodeBlock(_) => Some(BlockKind::CodeBlock),
+            pulldown_cmark::Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            } => {
+                *current_link = Some(LinkFrame {
+                    style: Self::link_style_from_cmark(link_type),
+                    is_embed: false,
+                    target: dest_url.to_string(),
+                    start: start_pos,
+                    alias: String::new(),
+                });
+                None
+            }
+            pulldown_cmark::Tag::Image {
+                link_type,
+                dest_url,
+                ..
+            } => {
+                *current_link = Some(LinkFrame {
+                    style: Self::link_style_from_cmark(link_type),
+                    is_embed: true,
+                    target: dest_url.to_string(),
+                    start: start_pos,
+                    alias: String::new(),
+                });
+                None
+            }
+            pulldown_cmark::Tag::HtmlBlock
+            | pulldown_cmark::Tag::FootnoteDefinition(_)
+            | pulldown_cmark::Tag::DefinitionList
+            | pulldown_cmark::Tag::DefinitionListTitle
+            | pulldown_cmark::Tag::DefinitionListDefinition
+            | pulldown_cmark::Tag::Table(_)
+            | pulldown_cmark::Tag::TableHead
+            | pulldown_cmark::Tag::TableRow
+            | pulldown_cmark::Tag::TableCell
+            | pulldown_cmark::Tag::Emphasis
+            | pulldown_cmark::Tag::Strong
+            | pulldown_cmark::Tag::Strikethrough
+            | pulldown_cmark::Tag::Superscript
+            | pulldown_cmark::Tag::Subscript
+            | pulldown_cmark::Tag::MetadataBlock(_) => None,
+        };
+
+        if let Some(bkind) = kind {
+            let current_depth = *depth;
+            if matches!(
+                bkind,
+                BlockKind::List | BlockKind::ListItem | BlockKind::BlockQuote
+            ) {
+                *depth = depth.saturating_add(1);
+            }
+            block_stack.push(ActiveBlock {
+                kind: bkind,
+                depth: current_depth,
+                start_offset: start_pos,
+                full_text: String::new(),
+                scannable_text: String::new(),
+                scannable_segments: Vec::new(),
+                task_marker: None,
+            });
+        }
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        reason = "Handler needs access to full extraction state"
+    )]
+    fn handle_end_tag(
+        end_tag: pulldown_cmark::TagEnd,
+        range: std::ops::Range<usize>,
+        depth: &mut u32,
+        block_stack: &mut Vec<ActiveBlock>,
+        list_stack: &mut Vec<RawListType>,
+        current_link: &mut Option<LinkFrame>,
+        links: &mut Vec<RawLink>,
+        sections: &mut Vec<RawSection>,
+        headings: &mut Vec<RawHeading>,
+        tags: &mut Vec<RawTag>,
+        inline_fields: &mut Vec<RawInlineField>,
+        markdown: &str,
+        open_item_by_depth: &mut Vec<SourceByteOffset>,
+        list_items: &mut Vec<RawListItem>,
+        tasks: &mut Vec<RawTask>,
+    ) -> Result<(), NoteIngestError> {
+        match end_tag {
+            pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image => {
                 if let Some(link) = current_link.take() {
                     let alias = if link.alias.trim().is_empty() {
                         None
@@ -465,43 +222,20 @@ pub fn parse_markdown(
                     ));
                 }
             }
-            Event::End(end_tag) => {
-                let bkind = match end_tag {
-                    TagEnd::Heading(_) => Some(BlockKind::Heading(0)),
-                    TagEnd::Paragraph => Some(BlockKind::Paragraph),
-                    TagEnd::Item => Some(BlockKind::ListItem),
-                    TagEnd::List(_) => Some(BlockKind::List),
-                    TagEnd::BlockQuote(_) => Some(BlockKind::BlockQuote),
-                    TagEnd::CodeBlock => Some(BlockKind::CodeBlock),
-                    TagEnd::HtmlBlock
-                    | TagEnd::FootnoteDefinition
-                    | TagEnd::DefinitionList
-                    | TagEnd::DefinitionListTitle
-                    | TagEnd::DefinitionListDefinition
-                    | TagEnd::Table
-                    | TagEnd::TableHead
-                    | TagEnd::TableRow
-                    | TagEnd::TableCell
-                    | TagEnd::Emphasis
-                    | TagEnd::Strong
-                    | TagEnd::Strikethrough
-                    | TagEnd::Superscript
-                    | TagEnd::Subscript
-                    | TagEnd::Link
-                    | TagEnd::Image
-                    | TagEnd::MetadataBlock(_) => None,
-                };
-
-                if bkind.is_some()
-                    && let Some(block) = block_stack.pop()
-                {
+            pulldown_cmark::TagEnd::Heading(_)
+            | pulldown_cmark::TagEnd::Paragraph
+            | pulldown_cmark::TagEnd::Item
+            | pulldown_cmark::TagEnd::List(_)
+            | pulldown_cmark::TagEnd::BlockQuote(_)
+            | pulldown_cmark::TagEnd::CodeBlock => {
+                if let Some(block) = block_stack.pop() {
                     if matches!(
                         block.kind,
                         BlockKind::List
                             | BlockKind::ListItem
                             | BlockKind::BlockQuote
                     ) {
-                        depth = depth.saturating_sub(1);
+                        *depth = depth.saturating_sub(1);
                     }
 
                     let end_pos = SourceByteOffset::try_from_usize(range.end)
@@ -533,32 +267,32 @@ pub fn parse_markdown(
                             InlineFieldScanner::scan_text(
                                 &block.scannable_text,
                                 &block.scannable_segments,
-                                &mut inline_fields,
+                                inline_fields,
                             )
                             .map_err(NoteIngestError::Domain)?;
                         }
                         BlockKind::Paragraph => {
-                            finalize_paragraph(
+                            Self::finalize_paragraph(
                                 &block,
                                 block_range,
-                                &mut sections,
-                                &mut tags,
-                                &mut inline_fields,
-                                &mut block_stack,
+                                sections,
+                                tags,
+                                inline_fields,
+                                block_stack,
                             )?;
                         }
                         BlockKind::ListItem => {
-                            finalize_list_item(
+                            Self::finalize_list_item(
                                 &block,
                                 markdown,
                                 block_range,
-                                &mut sections,
-                                &mut tags,
-                                &mut inline_fields,
-                                &list_stack,
-                                &mut open_item_by_depth,
-                                &mut list_items,
-                                &mut tasks,
+                                sections,
+                                tags,
+                                inline_fields,
+                                list_stack,
+                                open_item_by_depth,
+                                list_items,
+                                tasks,
                             )?;
                         }
                         BlockKind::List => {
@@ -581,98 +315,576 @@ pub fn parse_markdown(
                     }
                 }
             }
-            Event::Text(text) | Event::Code(text) => {
-                let text_str = text.as_ref();
-                if let Some(block) = block_stack.last_mut() {
-                    block.full_text.push_str(text_str);
-                    if current_link.is_none() {
-                        block
-                            .scannable_segments
-                            .push((block.scannable_text.len(), start_pos));
-                        block.scannable_text.push_str(text_str);
-                    }
-                }
-                if let Some(ref mut link) = current_link {
-                    link.alias.push_str(text_str);
-                }
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                let brk = if let Some(block) = block_stack.last() {
-                    if matches!(block.kind, BlockKind::CodeBlock) {
-                        "\n"
-                    } else {
-                        " "
-                    }
-                } else {
-                    " "
-                };
+            pulldown_cmark::TagEnd::HtmlBlock
+            | pulldown_cmark::TagEnd::FootnoteDefinition
+            | pulldown_cmark::TagEnd::DefinitionList
+            | pulldown_cmark::TagEnd::DefinitionListTitle
+            | pulldown_cmark::TagEnd::DefinitionListDefinition
+            | pulldown_cmark::TagEnd::Table
+            | pulldown_cmark::TagEnd::TableHead
+            | pulldown_cmark::TagEnd::TableRow
+            | pulldown_cmark::TagEnd::TableCell
+            | pulldown_cmark::TagEnd::Emphasis
+            | pulldown_cmark::TagEnd::Strong
+            | pulldown_cmark::TagEnd::Strikethrough
+            | pulldown_cmark::TagEnd::Superscript
+            | pulldown_cmark::TagEnd::Subscript
+            | pulldown_cmark::TagEnd::MetadataBlock(_) => {}
+        }
+        Ok(())
+    }
 
-                if let Some(block) = block_stack.last_mut() {
-                    if !block.full_text.ends_with(' ')
-                        && !block.full_text.ends_with('\n')
-                    {
-                        block.full_text.push_str(brk);
-                    }
-                    if current_link.is_none()
-                        && !block.scannable_text.ends_with(' ')
-                        && !block.scannable_text.ends_with('\n')
-                    {
-                        block
-                            .scannable_segments
-                            .push((block.scannable_text.len(), start_pos));
-                        block.scannable_text.push_str(brk);
-                    }
-                }
-                if let Some(ref mut link) = current_link
-                    && !link.alias.ends_with(' ')
-                    && !link.alias.ends_with('\n')
-                {
-                    link.alias.push_str(brk);
-                }
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "CowStr is passed by value for consistency with cmark events"
+    )]
+    fn handle_text(
+        text: pulldown_cmark::CowStr<'_>,
+        start_pos: SourceByteOffset,
+        block_stack: &mut [ActiveBlock],
+        current_link: &mut Option<LinkFrame>,
+    ) {
+        let text_str = text.as_ref();
+        if let Some(block) = block_stack.last_mut() {
+            block.full_text.push_str(text_str);
+            if current_link.is_none() {
+                block
+                    .scannable_segments
+                    .push((block.scannable_text.len(), start_pos));
+                block.scannable_text.push_str(text_str);
             }
-            Event::TaskListMarker(checked) => {
-                if let Some(block) = block_stack.last_mut() {
-                    block.task_marker = Some(checked);
-                }
-            }
-            Event::InlineMath(_)
-            | Event::DisplayMath(_)
-            | Event::Html(_)
-            | Event::InlineHtml(_)
-            | Event::FootnoteReference(_)
-            | Event::Rule => {}
+        }
+        if let Some(link) = current_link.as_mut() {
+            link.alias.push_str(text_str);
         }
     }
 
-    sections.sort_by_key(|section| u32::from(section.range().start()));
+    fn handle_break(
+        start_pos: SourceByteOffset,
+        block_stack: &mut [ActiveBlock],
+        current_link: &mut Option<LinkFrame>,
+    ) {
+        let brk = if let Some(block) = block_stack.last() {
+            if matches!(block.kind, BlockKind::CodeBlock) {
+                "\n"
+            } else {
+                " "
+            }
+        } else {
+            " "
+        };
 
-    Ok(RawNote::new(
-        path,
-        source_hash,
-        source_bytes,
-        created_at,
-        modified_at,
-        frontmatter,
-        headings,
-        sections,
-        links,
-        tags,
-        list_items,
-        tasks,
-        inline_fields,
-        reference_links,
-        block_refs,
-    ))
+        if let Some(block) = block_stack.last_mut() {
+            if !block.full_text.ends_with(' ')
+                && !block.full_text.ends_with('\n')
+            {
+                block.full_text.push_str(brk);
+            }
+            if current_link.is_none()
+                && !block.scannable_text.ends_with(' ')
+                && !block.scannable_text.ends_with('\n')
+            {
+                block
+                    .scannable_segments
+                    .push((block.scannable_text.len(), start_pos));
+                block.scannable_text.push_str(brk);
+            }
+        }
+        if let Some(link) = current_link.as_mut()
+            && !link.alias.ends_with(' ')
+            && !link.alias.ends_with('\n')
+        {
+            link.alias.push_str(brk);
+        }
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        clippy::wildcard_enum_match_arm,
+        reason = "Handler needs access to full extraction state"
+    )]
+    fn handle_metadata(
+        event: Event<'_>,
+        range: std::ops::Range<usize>,
+        in_metadata: &mut Option<(
+            pulldown_cmark::MetadataBlockKind,
+            SourceByteOffset,
+        )>,
+        metadata_text: &mut String,
+        sections: &mut Vec<RawSection>,
+        frontmatter: &mut Option<RawFrontmatter>,
+    ) -> Result<bool, NoteIngestError> {
+        let Some((kind, start)) = *in_metadata else {
+            return Ok(false);
+        };
+
+        match event {
+            Event::Text(t) | Event::Code(t) => {
+                metadata_text.push_str(&t);
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                metadata_text.push('\n');
+            }
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                in_metadata.take();
+
+                let end_pos = SourceByteOffset::try_from_usize(range.end)
+                    .map_err(NoteIngestError::Domain)?;
+                let block_range = SourceByteRange::new(start, end_pos)
+                    .map_err(NoteIngestError::Domain)?;
+                sections.push(RawSection::new(
+                    RawSectionKind::Frontmatter,
+                    block_range,
+                    0,
+                ));
+                *frontmatter = Some(RawFrontmatter::new(
+                    Self::frontmatter_format_from_cmark(kind),
+                    metadata_text.clone().into_boxed_str(),
+                    block_range,
+                ));
+            }
+            _ => {}
+        }
+        Ok(true)
+    }
+
+    #[inline]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Helper function needs access to extraction state"
+    )]
+    fn finalize_paragraph(
+        block: &ActiveBlock,
+        block_range: SourceByteRange,
+        sections: &mut Vec<RawSection>,
+        tags: &mut Vec<RawTag>,
+        inline_fields: &mut Vec<RawInlineField>,
+        block_stack: &mut [ActiveBlock],
+    ) -> Result<(), NoteIngestError> {
+        sections.push(RawSection::new(
+            RawSectionKind::Paragraph,
+            block_range,
+            block.depth,
+        ));
+
+        let new_tags =
+            TagScanner::scan(&block.scannable_text, &block.scannable_segments)
+                .map_err(NoteIngestError::Domain)?;
+        tags.extend(new_tags);
+        InlineFieldScanner::scan_text(
+            &block.scannable_text,
+            &block.scannable_segments,
+            inline_fields,
+        )
+        .map_err(NoteIngestError::Domain)?;
+
+        if let Some(parent) = block_stack.last_mut()
+            && matches!(parent.kind, BlockKind::ListItem)
+            && parent.full_text.is_empty()
+        {
+            parent.full_text.push_str(&block.full_text);
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Helper function needs access to extraction state"
+    )]
+    fn finalize_list_item(
+        block: &ActiveBlock,
+        markdown: &str,
+        block_range: SourceByteRange,
+        sections: &mut Vec<RawSection>,
+        tags: &mut Vec<RawTag>,
+        inline_fields: &mut Vec<RawInlineField>,
+        list_stack: &[RawListType],
+        open_item_by_depth: &mut Vec<SourceByteOffset>,
+        list_items: &mut Vec<RawListItem>,
+        tasks: &mut Vec<RawTask>,
+    ) -> Result<(), NoteIngestError> {
+        sections.push(RawSection::new(
+            RawSectionKind::List,
+            block_range,
+            block.depth,
+        ));
+
+        let new_tags =
+            TagScanner::scan(&block.scannable_text, &block.scannable_segments)
+                .map_err(NoteIngestError::Domain)?;
+        tags.extend(new_tags);
+        InlineFieldScanner::scan_text(
+            &block.scannable_text,
+            &block.scannable_segments,
+            inline_fields,
+        )
+        .map_err(NoteIngestError::Domain)?;
+
+        let list_type =
+            list_stack.last().copied().unwrap_or(RawListType::Unordered);
+        let list_depth = if block.depth == 0 {
+            RawListDepth::Root
+        } else {
+            RawListDepth::Nested(u8::try_from(block.depth).unwrap_or(u8::MAX))
+        };
+
+        let depth_index = usize::try_from(block.depth).unwrap_or(0);
+        if open_item_by_depth.len() <= depth_index {
+            open_item_by_depth
+                .resize(depth_index.saturating_add(1), block.start_offset);
+        }
+        if let Some(slot) = open_item_by_depth.get_mut(depth_index) {
+            *slot = block.start_offset;
+        }
+        open_item_by_depth.truncate(depth_index.saturating_add(1));
+
+        let parent_pos = if block.depth == 0 {
+            None
+        } else {
+            open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
+        };
+
+        let task_kind = match block.task_marker {
+            Some(checked) => {
+                let fallback = if checked {
+                    'x'
+                } else {
+                    ' '
+                };
+                let marker =
+                    Self::task_marker_from_source(markdown, block.start_offset)
+                        .unwrap_or(fallback);
+                Some(TaskMarkerScanner::raw_task_kind_from_marker(marker))
+            }
+            None => None,
+        };
+
+        let raw_text: Box<str> = block.full_text.trim().into();
+
+        if let Some(tk) = task_kind {
+            list_items.push(RawListItem::new(
+                list_type,
+                list_depth,
+                raw_text.clone(),
+                Some(tk),
+                block.start_offset,
+                parent_pos,
+            ));
+
+            let raw_tags =
+                TagScanner::scan(&block.full_text, &[(0, block.start_offset)])
+                    .unwrap_or_default();
+            let tags_for_task =
+                raw_tags.into_iter().map(|t| t.value().into()).collect();
+            let tokens = RawTaskTokens::parse(&block.full_text, &[]);
+
+            tasks.push(RawTask::new(
+                tk,
+                raw_text,
+                tags_for_task,
+                tokens.inline_fields().to_vec(),
+                tokens.emoji_dates().to_vec(),
+                block.start_offset,
+            ));
+        } else {
+            list_items.push(RawListItem::new(
+                list_type,
+                list_depth,
+                raw_text,
+                None,
+                block.start_offset,
+                parent_pos,
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Parses markdown into a minimal AST and extracts raw note artifacts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] if byte ranges cannot be represented or
+    /// extraction fails.
+    #[inline]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Event sink matches comprehensive logic"
+    )]
+    pub fn parse(
+        markdown: &str,
+        path: NotePath,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<RawNote, NoteIngestError> {
+        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
+            NoteIngestError::Source("source length out of range".into())
+        })?;
+        let source_hash = blake3::hash(markdown.as_bytes())
+            .to_hex()
+            .to_string()
+            .into_boxed_str();
+
+        let reference_links =
+            Self::extract_reference_link_definitions(markdown)?;
+        let block_refs = BlockRefScanner::new(markdown)
+            .collect()
+            .map_err(NoteIngestError::Domain)?;
+
+        let mut headings = Vec::new();
+        let mut sections = Vec::new();
+        let mut links = Vec::new();
+        let mut tags = Vec::new();
+        let mut list_items = Vec::new();
+        let mut tasks = Vec::new();
+        let mut inline_fields = Vec::new();
+        let mut frontmatter = None;
+
+        let mut block_stack: Vec<ActiveBlock> = Vec::new();
+        let mut list_stack: Vec<RawListType> = Vec::new();
+        let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
+
+        let mut depth: u32 = 0;
+
+        let mut current_link: Option<LinkFrame> = None;
+        let mut in_metadata: Option<(
+            pulldown_cmark::MetadataBlockKind,
+            SourceByteOffset,
+        )> = None;
+        let mut metadata_text = String::new();
+
+        let events = Parser::new_ext(markdown, Self::obsidian_options())
+            .into_offset_iter();
+        let iter = TextMergeWithOffset::new(events);
+
+        for (event, range) in iter {
+            let start_pos = SourceByteOffset::try_from_usize(range.start)
+                .map_err(NoteIngestError::Domain)?;
+
+            if Self::handle_metadata(
+                event.clone(),
+                range.clone(),
+                &mut in_metadata,
+                &mut metadata_text,
+                &mut sections,
+                &mut frontmatter,
+            )? {
+                continue;
+            }
+
+            match event {
+                Event::Start(pulldown_cmark::Tag::MetadataBlock(kind)) => {
+                    in_metadata = Some((kind, start_pos));
+                    metadata_text.clear();
+                }
+                Event::Start(tag) => {
+                    Self::handle_start_tag(
+                        tag,
+                        start_pos,
+                        &mut depth,
+                        &mut block_stack,
+                        &mut list_stack,
+                        &mut current_link,
+                    );
+                }
+                Event::End(end_tag) => {
+                    Self::handle_end_tag(
+                        end_tag,
+                        range,
+                        &mut depth,
+                        &mut block_stack,
+                        &mut list_stack,
+                        &mut current_link,
+                        &mut links,
+                        &mut sections,
+                        &mut headings,
+                        &mut tags,
+                        &mut inline_fields,
+                        markdown,
+                        &mut open_item_by_depth,
+                        &mut list_items,
+                        &mut tasks,
+                    )?;
+                }
+                Event::Text(text) | Event::Code(text) => {
+                    Self::handle_text(
+                        text,
+                        start_pos,
+                        &mut block_stack,
+                        &mut current_link,
+                    );
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    Self::handle_break(
+                        start_pos,
+                        &mut block_stack,
+                        &mut current_link,
+                    );
+                }
+                Event::TaskListMarker(checked) => {
+                    if let Some(block) = block_stack.last_mut() {
+                        block.task_marker = Some(checked);
+                    }
+                }
+                Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::FootnoteReference(_)
+                | Event::Rule => {}
+            }
+        }
+
+        sections.sort_by_key(|section| u32::from(section.range().start()));
+
+        Ok(RawNote::new(
+            path,
+            source_hash,
+            source_bytes,
+            created_at,
+            modified_at,
+            frontmatter,
+            headings,
+            sections,
+            links,
+            tags,
+            list_items,
+            tasks,
+            inline_fields,
+            reference_links,
+            block_refs,
+        ))
+    }
+
+    fn task_marker_from_source(
+        source: &str,
+        position: SourceByteOffset,
+    ) -> Option<char> {
+        let start = usize::try_from(u32::from(position)).ok()?;
+        let tail = source.get(start..)?;
+        let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
+        TaskMarkerScanner::new(line).scan()
+    }
+
+    fn position_for_offset(
+        segments: &[(usize, SourceByteOffset)],
+        offset: usize,
+    ) -> Result<SourceByteOffset, NoteError> {
+        if segments.is_empty() {
+            return SourceByteOffset::try_from_usize(offset)
+                .map_err(|_error| NoteError::Structure("offset out of range"));
+        }
+        let mut current = None;
+        for &(start, position) in segments.iter().rev() {
+            if start <= offset {
+                current = Some((start, position));
+                break;
+            }
+        }
+        let (segment_start, segment_pos) = current
+            .ok_or(NoteError::Structure("inline field offset out of range"))?;
+        let delta = offset.saturating_sub(segment_start);
+        let base =
+            usize::try_from(u32::from(segment_pos)).map_err(|_error| {
+                NoteError::Structure("inline field offset out of range")
+            })?;
+        SourceByteOffset::try_from_usize(base.saturating_add(delta))
+    }
+
+    fn extract_reference_link_definitions(
+        markdown: &str,
+    ) -> Result<Vec<RawReferenceLink>, NoteIngestError> {
+        let mut defs = Vec::new();
+        let mut offset = 0usize;
+        for line in markdown.split_inclusive(['\n', '\r']) {
+            let trimmed_line = line.trim_end_matches(['\n', '\r']);
+            let leading = trimmed_line
+                .chars()
+                .take_while(|ch| ch.is_whitespace())
+                .count();
+            let content = trimmed_line.get(leading..).unwrap_or("");
+            if !content.starts_with('[') {
+                offset = offset.saturating_add(line.len());
+                continue;
+            }
+            let Some(close) = content.find("]:") else {
+                offset = offset.saturating_add(line.len());
+                continue;
+            };
+            let label = content.get(1..close).unwrap_or("");
+            let after_colon = close.saturating_add(2);
+            let mut rest = content.get(after_colon..).unwrap_or("");
+            if let Some(stripped) = rest.strip_prefix(' ') {
+                rest = stripped;
+            }
+            let dest = rest.trim_start();
+            if label.trim().is_empty() || dest.is_empty() {
+                offset = offset.saturating_add(line.len());
+                continue;
+            }
+            let target = if let Some(stripped) = dest.strip_prefix('<')
+                && let Some(end) = stripped.find('>')
+            {
+                stripped.get(..end).unwrap_or("")
+            } else {
+                dest.split_whitespace().next().unwrap_or("")
+            };
+            if target.is_empty() {
+                offset = offset.saturating_add(line.len());
+                continue;
+            }
+            let normalized = label
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase();
+            let position = SourceByteOffset::try_from_usize(
+                offset.saturating_add(leading),
+            )
+            .map_err(|_error| {
+                NoteIngestError::Source(
+                    "reference link offset out of range".into(),
+                )
+            })?;
+            defs.push(RawReferenceLink::new(
+                normalized.into_boxed_str(),
+                target.into(),
+                position,
+            ));
+            offset = offset.saturating_add(line.len());
+        }
+        Ok(defs)
+    }
 }
 
-fn task_marker_from_source(
-    source: &str,
-    position: SourceByteOffset,
-) -> Option<char> {
-    let start = usize::try_from(u32::from(position)).ok()?;
-    let tail = source.get(start..)?;
-    let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
-    TaskMarkerScanner::new(line).scan()
+#[derive(Debug, Clone, PartialEq)]
+enum BlockKind {
+    Heading(u8),
+    Paragraph,
+    ListItem,
+    List,
+    BlockQuote,
+    CodeBlock,
+}
+
+struct ActiveBlock {
+    kind: BlockKind,
+    depth: u32,
+    start_offset: SourceByteOffset,
+    full_text: String,
+    scannable_text: String,
+    scannable_segments: Vec<(usize, SourceByteOffset)>,
+    task_marker: Option<bool>,
+}
+
+struct LinkFrame {
+    style: RawLinkStyle,
+    is_embed: bool,
+    target: String,
+    start: SourceByteOffset,
+    alias: String,
 }
 
 struct TaskMarkerScanner<'source> {
@@ -812,7 +1024,9 @@ impl InlineFieldScanner {
                         .find(key_trimmed)
                         .unwrap_or(0)
                         .saturating_add(after_open);
-                    let position = position_for_offset(segments, key_start)?;
+                    let position = MarkdownParser::position_for_offset(
+                        segments, key_start,
+                    )?;
                     fields.push(RawInlineField::new(
                         Self::normalize_key(key_trimmed),
                         value_trimmed.into(),
@@ -853,7 +1067,8 @@ impl InlineFieldScanner {
                 offset = offset.saturating_add(line.len());
                 continue;
             }
-            let position = position_for_offset(segments, key_start)?;
+            let position =
+                MarkdownParser::position_for_offset(segments, key_start)?;
             fields.push(RawInlineField::new(
                 Self::normalize_key(key_trimmed),
                 value_trimmed.into(),
@@ -876,30 +1091,6 @@ impl InlineFieldScanner {
             .join("-")
             .into_boxed_str()
     }
-}
-
-fn position_for_offset(
-    segments: &[(usize, SourceByteOffset)],
-    offset: usize,
-) -> Result<SourceByteOffset, NoteError> {
-    if segments.is_empty() {
-        return SourceByteOffset::try_from_usize(offset)
-            .map_err(|_error| NoteError::Structure("offset out of range"));
-    }
-    let mut current = None;
-    for &(start, position) in segments.iter().rev() {
-        if start <= offset {
-            current = Some((start, position));
-            break;
-        }
-    }
-    let (segment_start, segment_pos) = current
-        .ok_or(NoteError::Structure("inline field offset out of range"))?;
-    let delta = offset.saturating_sub(segment_start);
-    let base = usize::try_from(u32::from(segment_pos)).map_err(|_error| {
-        NoteError::Structure("inline field offset out of range")
-    })?;
-    SourceByteOffset::try_from_usize(base.saturating_add(delta))
 }
 
 struct TagScanner;
@@ -943,7 +1134,8 @@ impl TagScanner {
             };
 
             if raw.len() > 1 {
-                let position = position_for_offset(segments, start_idx)?;
+                let position =
+                    MarkdownParser::position_for_offset(segments, start_idx)?;
                 tags.push(RawTag::new(raw.into(), position));
             }
 
@@ -1070,68 +1262,6 @@ impl<'source> LinkTarget<'source> {
     }
 }
 
-fn extract_reference_link_definitions(
-    markdown: &str,
-) -> Result<Vec<RawReferenceLink>, NoteIngestError> {
-    let mut defs = Vec::new();
-    let mut offset = 0usize;
-    for line in markdown.split_inclusive(['\n', '\r']) {
-        let trimmed_line = line.trim_end_matches(['\n', '\r']);
-        let leading =
-            trimmed_line.chars().take_while(|ch| ch.is_whitespace()).count();
-        let content = trimmed_line.get(leading..).unwrap_or("");
-        if !content.starts_with('[') {
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-        let Some(close) = content.find("]:") else {
-            offset = offset.saturating_add(line.len());
-            continue;
-        };
-        let label = content.get(1..close).unwrap_or("");
-        let after_colon = close.saturating_add(2);
-        let mut rest = content.get(after_colon..).unwrap_or("");
-        if let Some(stripped) = rest.strip_prefix(' ') {
-            rest = stripped;
-        }
-        let dest = rest.trim_start();
-        if label.trim().is_empty() || dest.is_empty() {
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-        let target = if let Some(stripped) = dest.strip_prefix('<')
-            && let Some(end) = stripped.find('>')
-        {
-            stripped.get(..end).unwrap_or("")
-        } else {
-            dest.split_whitespace().next().unwrap_or("")
-        };
-        if target.is_empty() {
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-        let normalized = label
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_ascii_lowercase();
-        let position =
-            SourceByteOffset::try_from_usize(offset.saturating_add(leading))
-                .map_err(|_error| {
-                    NoteIngestError::Source(
-                        "reference link offset out of range".into(),
-                    )
-                })?;
-        defs.push(RawReferenceLink::new(
-            normalized.into_boxed_str(),
-            target.into(),
-            position,
-        ));
-        offset = offset.saturating_add(line.len());
-    }
-    Ok(defs)
-}
-
 #[cfg(test)]
 #[expect(clippy::panic_in_result_fn, reason = "Tests use assertions")]
 mod tests {
@@ -1142,7 +1272,7 @@ mod tests {
     fn extract_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {
         let markdown = "- [ ] #task Review PR [priority:: 1]";
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = parse_markdown(markdown, path, None, None)?;
+        let raw = MarkdownParser::parse(markdown, path, None, None)?;
 
         assert_eq!(raw.tasks().len(), 1);
         let task = raw.tasks().first().expect("task should exist");
@@ -1159,7 +1289,7 @@ mod tests {
     -> Result<(), NoteIngestError> {
         let markdown = "- [X] #task Done";
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = parse_markdown(markdown, path, None, None)?;
+        let raw = MarkdownParser::parse(markdown, path, None, None)?;
 
         let task = raw.tasks().first().expect("task should exist");
         assert!(matches!(task.task_kind(), RawTaskKind::Checked('X')));

@@ -90,6 +90,24 @@ impl fmt::Display for NotePath {
     }
 }
 
+impl TryFrom<&str> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl TryFrom<String> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(&value)
+    }
+}
+
 /// Validated folder path within the vault.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
@@ -126,24 +144,6 @@ impl fmt::Display for FolderPath {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-impl TryFrom<&str> for NotePath {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl TryFrom<String> for NotePath {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(&value)
     }
 }
 

@@ -259,12 +259,12 @@ impl LinkBuilder {
 
     pub(crate) fn build(self) -> Result<Link, NoteError> {
         let raw_target = self.target.as_ref();
-        let is_external = is_external_target(raw_target);
+        let is_external = Target::is_external_target(raw_target);
 
         let (target_path, anchor) = if is_external {
             (raw_target, None)
         } else {
-            split_target_and_anchor(raw_target)?
+            Anchor::split_target_and_anchor(raw_target)?
         };
 
         let target = if is_external {
@@ -314,6 +314,56 @@ impl LinkBuilder {
 }
 
 impl FrontmatterLink {
+    pub(crate) fn parse_frontmatter_link(
+        key: &str,
+        value: &str,
+    ) -> Result<Option<FrontmatterLink>, NoteError> {
+        let trimmed = value.trim();
+        let (embed, inner) = if let Some(rest) =
+            trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
+        {
+            (true, rest)
+        } else if let Some(rest) =
+            trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
+        {
+            (false, rest)
+        } else {
+            return Ok(None);
+        };
+
+        let (target_text, alias) =
+            if let Some((left, right)) = inner.split_once('|') {
+                (left.trim(), Some(right.trim()))
+            } else {
+                (inner.trim(), None)
+            };
+
+        if target_text.is_empty() {
+            return Ok(None);
+        }
+
+        let (target_path, anchor) =
+            Anchor::split_target_and_anchor(target_text)?;
+        let target = if Target::is_external_target(target_path) {
+            Target::External {
+                url: target_path.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_path.into(),
+            }
+        };
+        let embed_type = embed.then(|| EmbedType::from_extension(target_path));
+
+        Ok(Some(FrontmatterLink::new(
+            key.into(),
+            target,
+            anchor,
+            alias.filter(|text| !text.is_empty()).map(Into::into),
+            embed_type,
+        )))
+    }
+
     /// Creates a frontmatter link entry.
     #[inline]
     #[must_use]
@@ -416,56 +466,12 @@ impl ReferenceLink {
 
 /// Parse a frontmatter value into a frontmatter link, if it matches wiki
 /// syntax.
-pub(crate) fn parse_frontmatter_link(
-    key: &str,
-    value: &str,
-) -> Result<Option<FrontmatterLink>, NoteError> {
-    let trimmed = value.trim();
-    let (embed, inner) = if let Some(rest) =
-        trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
-    {
-        (true, rest)
-    } else if let Some(rest) =
-        trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
-    {
-        (false, rest)
-    } else {
-        return Ok(None);
-    };
-
-    let (target_text, alias) =
-        if let Some((left, right)) = inner.split_once('|') {
-            (left.trim(), Some(right.trim()))
-        } else {
-            (inner.trim(), None)
-        };
-
-    if target_text.is_empty() {
-        return Ok(None);
+impl EmbedType {
+    #[inline]
+    fn matches_any_ignore_case(s: &str, candidates: &[&str]) -> bool {
+        candidates.iter().any(|c| s.eq_ignore_ascii_case(c))
     }
 
-    let (target_path, anchor) = split_target_and_anchor(target_text)?;
-    let target = if is_external_target(target_path) {
-        Target::External {
-            url: target_path.into(),
-        }
-    } else {
-        Target::Unresolved {
-            raw: target_path.into(),
-        }
-    };
-    let embed_type = embed.then(|| EmbedType::from_extension(target_path));
-
-    Ok(Some(FrontmatterLink::new(
-        key.into(),
-        target,
-        anchor,
-        alias.filter(|text| !text.is_empty()).map(Into::into),
-        embed_type,
-    )))
-}
-
-impl EmbedType {
     /// Determine embed type from file extension.
     ///
     /// Uses case-insensitive matching without allocation.
@@ -488,15 +494,19 @@ impl EmbedType {
             return Self::Note;
         };
 
-        if matches_any_ignore_case(ext, &[
+        if EmbedType::matches_any_ignore_case(ext, &[
             "png", "jpg", "jpeg", "gif", "svg", "webp",
         ]) {
             return Self::Image;
         }
-        if matches_any_ignore_case(ext, &["mp4", "webm", "ogv", "mov"]) {
+        if EmbedType::matches_any_ignore_case(ext, &[
+            "mp4", "webm", "ogv", "mov",
+        ]) {
             return Self::Video;
         }
-        if matches_any_ignore_case(ext, &["mp3", "wav", "ogg", "m4a"]) {
+        if EmbedType::matches_any_ignore_case(ext, &[
+            "mp3", "wav", "ogg", "m4a",
+        ]) {
             return Self::Audio;
         }
         if ext.eq_ignore_ascii_case("pdf") {
@@ -504,12 +514,6 @@ impl EmbedType {
         }
         Self::Note
     }
-}
-
-/// Helper to check if a string matches any candidate (case-insensitive).
-#[inline]
-fn matches_any_ignore_case(s: &str, candidates: &[&str]) -> bool {
-    candidates.iter().any(|c| s.eq_ignore_ascii_case(c))
 }
 
 /// Validated link alias text.
@@ -548,6 +552,20 @@ impl LinkAlias {
 }
 
 impl Anchor {
+    pub(crate) fn split_target_and_anchor(
+        target: &str,
+    ) -> Result<(&str, Option<Anchor>), NoteError> {
+        let Some((path, anchor_text)) = target.split_once('#') else {
+            return Ok((target, None));
+        };
+
+        if let Some(block_ref) = anchor_text.strip_prefix('^') {
+            Ok((path, Some(Anchor::block_ref(block_ref)?)))
+        } else {
+            Ok((path, Some(Anchor::heading(anchor_text)?)))
+        }
+    }
+
     /// Creates a validated block reference anchor.
     ///
     /// # Errors
@@ -602,27 +620,6 @@ impl Anchor {
 /// # Errors
 ///
 /// Returns [`NoteError::Link`] if the anchor is malformed.
-pub(crate) fn split_target_and_anchor(
-    target: &str,
-) -> Result<(&str, Option<Anchor>), NoteError> {
-    let Some((path, anchor_text)) = target.split_once('#') else {
-        return Ok((target, None));
-    };
-
-    if let Some(block_ref) = anchor_text.strip_prefix('^') {
-        Ok((path, Some(Anchor::block_ref(block_ref)?)))
-    } else {
-        Ok((path, Some(Anchor::heading(anchor_text)?)))
-    }
-}
-
-pub(crate) fn is_external_target(target: &str) -> bool {
-    target.starts_with("http://")
-        || target.starts_with("https://")
-        || target.starts_with("ftp://")
-        || target.starts_with("mailto:")
-}
-
 impl Link {
     /// Returns the optional display alias.
     #[inline]
@@ -835,6 +832,13 @@ impl Link {
 }
 
 impl Target {
+    pub(crate) fn is_external_target(target: &str) -> bool {
+        target.starts_with("http://")
+            || target.starts_with("https://")
+            || target.starts_with("ftp://")
+            || target.starts_with("mailto:")
+    }
+
     /// Returns `true` if the target is an external URL.
     #[inline]
     #[must_use]

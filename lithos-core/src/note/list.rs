@@ -232,6 +232,118 @@ pub enum ListItem {
     },
 }
 
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Match ergonomics on &self keep accessors concise."
+)]
+impl ListItem {
+    /// Returns the source byte position of this list item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn position(&self) -> SourceByteOffset {
+        match self {
+            Self::Plain {
+                position,
+                ..
+            }
+            | Self::Checkbox {
+                position,
+                ..
+            } => *position,
+        }
+    }
+
+    /// Returns the text content of this list item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Plain {
+                text,
+                ..
+            }
+            | Self::Checkbox {
+                text,
+                ..
+            } => text.as_ref(),
+        }
+    }
+
+    /// Returns the checkbox status symbol if this is a checkbox item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn status(&self) -> Option<StatusSymbol> {
+        match self {
+            Self::Checkbox {
+                status,
+                ..
+            } => Some(*status),
+            Self::Plain {
+                ..
+            } => None,
+        }
+    }
+
+    /// Returns the task id if this checkbox was promoted.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn task_id(&self) -> Option<TaskId> {
+        match self {
+            Self::Checkbox {
+                task_id,
+                ..
+            } => *task_id,
+            Self::Plain {
+                ..
+            } => None,
+        }
+    }
+
+    /// Sets the task id for a promoted checkbox item.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &mut self"
+    )]
+    pub fn set_task_id(&mut self, task_id: TaskId) {
+        if let Self::Checkbox {
+            task_id: slot,
+            ..
+        } = self
+        {
+            *slot = Some(task_id);
+        }
+    }
+
+    /// Clears the task id for a checkbox item.
+    #[inline]
+    pub fn clear_task_id(&mut self) {
+        if let Self::Checkbox {
+            task_id: slot,
+            ..
+        } = self
+        {
+            *slot = None;
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct InlineText {
     buffer: String,
@@ -408,118 +520,6 @@ impl TryFrom<RawListItem> for ListItemEntry {
             status,
             None,
         ))
-    }
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &self keep accessors concise."
-)]
-impl ListItem {
-    /// Returns the source byte position of this list item.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub const fn position(&self) -> SourceByteOffset {
-        match self {
-            Self::Plain {
-                position,
-                ..
-            }
-            | Self::Checkbox {
-                position,
-                ..
-            } => *position,
-        }
-    }
-
-    /// Returns the text content of this list item.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub fn text(&self) -> &str {
-        match self {
-            Self::Plain {
-                text,
-                ..
-            }
-            | Self::Checkbox {
-                text,
-                ..
-            } => text.as_ref(),
-        }
-    }
-
-    /// Returns the checkbox status symbol if this is a checkbox item.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub const fn status(&self) -> Option<StatusSymbol> {
-        match self {
-            Self::Checkbox {
-                status,
-                ..
-            } => Some(*status),
-            Self::Plain {
-                ..
-            } => None,
-        }
-    }
-
-    /// Returns the task id if this checkbox was promoted.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub const fn task_id(&self) -> Option<TaskId> {
-        match self {
-            Self::Checkbox {
-                task_id,
-                ..
-            } => *task_id,
-            Self::Plain {
-                ..
-            } => None,
-        }
-    }
-
-    /// Sets the task id for a promoted checkbox item.
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &mut self"
-    )]
-    pub fn set_task_id(&mut self, task_id: TaskId) {
-        if let Self::Checkbox {
-            task_id: slot,
-            ..
-        } = self
-        {
-            *slot = Some(task_id);
-        }
-    }
-
-    /// Clears the task id for a checkbox item.
-    #[inline]
-    pub fn clear_task_id(&mut self) {
-        if let Self::Checkbox {
-            task_id: slot,
-            ..
-        } = self
-        {
-            *slot = None;
-        }
     }
 }
 
