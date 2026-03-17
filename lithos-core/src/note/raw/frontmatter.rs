@@ -4,7 +4,6 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone as _, Utc};
 
-use super::super::parser::frontmatter::MetadataBlockKind;
 use crate::note::{
     error::FrontmatterParseError,
     frontmatter::{Frontmatter, FrontmatterFormat},
@@ -15,7 +14,7 @@ use crate::note::{
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawFrontmatter {
-    kind: MetadataBlockKind,
+    kind: FrontmatterFormat,
     text: Box<str>,
     range: crate::note::position::SourceByteRange,
 }
@@ -25,7 +24,7 @@ impl RawFrontmatter {
     #[inline]
     #[must_use]
     pub fn new(
-        kind: MetadataBlockKind,
+        kind: FrontmatterFormat,
         text: Box<str>,
         range: crate::note::position::SourceByteRange,
     ) -> Self {
@@ -39,7 +38,7 @@ impl RawFrontmatter {
     /// Return the metadata block kind.
     #[inline]
     #[must_use]
-    pub const fn kind(&self) -> MetadataBlockKind {
+    pub const fn kind(&self) -> FrontmatterFormat {
         self.kind
     }
 
@@ -63,11 +62,7 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
 
     #[inline]
     fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
-        let format = match raw.kind() {
-            MetadataBlockKind::YamlStyle => FrontmatterFormat::Yaml,
-            MetadataBlockKind::PlusesStyle => FrontmatterFormat::Toml,
-        };
-        parse_frontmatter(format, raw.text())
+        parse_frontmatter(raw.kind(), raw.text())
     }
 }
 

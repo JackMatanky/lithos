@@ -69,4 +69,19 @@ impl MetadataBlockKind {
             pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::PlusesStyle,
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub const fn to_frontmatter_format(
+        self,
+    ) -> crate::note::frontmatter::FrontmatterFormat {
+        match self {
+            Self::YamlStyle => {
+                crate::note::frontmatter::FrontmatterFormat::Yaml
+            }
+            Self::PlusesStyle => {
+                crate::note::frontmatter::FrontmatterFormat::Toml
+            }
+        }
+    }
 }
