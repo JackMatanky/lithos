@@ -237,7 +237,9 @@ where
 
         // Check content hash if we have a cached view
         if let Some(view) = cached_view.as_ref()
-            && view.current().is_some_and(|v| v.is_content_match(&content_str))
+            && view
+                .current()
+                .is_some_and(|v| v.content_hash() == content_hash.as_bytes())
             && let Some(raw) = view.to_raw()
         {
             return Ok(Some(IngestResult::Fresh(raw)));
@@ -365,7 +367,9 @@ where
 
         // Check content hash if we have a cached view
         if let Some(view) = cached_view.as_ref()
-            && view.current().is_some_and(|v| v.is_content_match(&content_str))
+            && view
+                .current()
+                .is_some_and(|v| v.content_hash() == content_hash.as_bytes())
             && let Some(raw) = view.to_raw()
         {
             return Ok(IngestResult::Fresh(raw));
