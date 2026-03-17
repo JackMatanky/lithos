@@ -234,13 +234,11 @@ impl PropertyBank {
     /// changed. Used by the ingestor during incremental property bank
     /// updates.
     ///
-    /// This method:
-    /// - Updates properties that exist in both `raw` and `changed`
-    /// - Adds new properties from `raw` that appear in `changed`
-    /// - Removes properties in `changed` that don't exist in `raw`
-    /// - Preserves IDs for properties that already exist
-    ///
-    /// The version counter increments only if changes were actually made.
+    /// This method updates properties that exist in both `raw` and `changed`,
+    /// adds new properties from `raw` that appear in `changed`, and removes
+    /// properties in `changed` that don't exist in `raw`. Property IDs are
+    /// preserved for existing properties. The version counter increments
+    /// only if changes were actually made.
     ///
     /// # Examples
     /// ```ignore
