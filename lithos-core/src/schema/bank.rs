@@ -9,7 +9,8 @@ use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     error::SchemaError,
-    property::{Property, PropertyId, PropertyName},
+    property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
+    raw::RawPropertyBank,
 };
 
 /// Registry of reusable Property definitions keyed by name.
@@ -242,7 +243,7 @@ impl PropertyBank {
     #[inline]
     pub fn update_properties(
         &mut self,
-        raw_bank: &super::raw::RawPropertyBank,
+        raw_bank: &RawPropertyBank,
         changed_names: &[PropertyName],
     ) -> Result<(), SchemaError> {
         if changed_names.is_empty() {
@@ -256,9 +257,9 @@ impl PropertyBank {
                 // Property exists in raw - update or insert
                 let spec = raw_entry.spec.clone().try_into()?;
                 let multiplicity = if raw_entry.multi {
-                    super::property::Multiplicity::Many
+                    Multiplicity::Many
                 } else {
-                    super::property::Multiplicity::Single
+                    Multiplicity::Single
                 };
 
                 // Preserve ID if property already exists, otherwise create new
@@ -268,7 +269,7 @@ impl PropertyBank {
                 let property = Property::new(
                     id,
                     name.clone(),
-                    super::property::Optionality::Optional,
+                    Optionality::Optional,
                     multiplicity,
                     spec,
                 );
@@ -299,7 +300,7 @@ impl Default for PropertyBank {
     }
 }
 
-impl TryFrom<super::raw::RawPropertyBank> for PropertyBank {
+impl TryFrom<RawPropertyBank> for PropertyBank {
     type Error = SchemaError;
 
     /// Build a `PropertyBank` from raw vault data with fresh IDs.
@@ -323,7 +324,7 @@ impl TryFrom<super::raw::RawPropertyBank> for PropertyBank {
     /// let bank = PropertyBank::try_from(raw)?;
     /// ```
     #[inline]
-    fn try_from(raw: super::raw::RawPropertyBank) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawPropertyBank) -> Result<Self, Self::Error> {
         let mut bank = Self::new();
 
         let mut entries: Vec<_> = raw.properties.into_iter().collect();
@@ -333,15 +334,15 @@ impl TryFrom<super::raw::RawPropertyBank> for PropertyBank {
             let prop_name = PropertyName::try_from(name)?;
             let spec = entry.spec.try_into()?;
             let multiplicity = if entry.multi {
-                super::property::Multiplicity::Many
+                Multiplicity::Many
             } else {
-                super::property::Multiplicity::Single
+                Multiplicity::Single
             };
 
             let property = Property::new(
                 PropertyId::new(),
                 prop_name,
-                super::property::Optionality::Optional,
+                Optionality::Optional,
                 multiplicity,
                 spec,
             );
