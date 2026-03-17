@@ -248,7 +248,8 @@ where
                 })?;
 
             // Parse from the content we just read (single file read)
-            let raw: RawPropertyBank = FsReader::parse_from_str(path, content)?;
+            let raw: RawPropertyBank =
+                FsReader::parse_structured_from_str(path, content)?;
             let mut raw = raw.validated(&path.to_string_lossy())?;
 
             raw.metadata = crate::schema::raw::RawSchemaMetadata {
@@ -319,13 +320,16 @@ where
         path: &Path,
     ) -> Result<IngestResult<RawSchema>, SchemaIngestionError> {
         // Derive schema name from filename (without extension)
-        let filename_stem =
-            path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-                SchemaIngestionError::FileSystem(
-                    format!("Invalid filename for schema: {}", path.display())
-                        .into(),
+        let filename_stem = self.source.basename(path).map_err(|e| {
+            SchemaIngestionError::FileSystem(
+                format!(
+                    "Invalid filename for schema: {} ({})",
+                    path.display(),
+                    e
                 )
-            })?;
+                .into(),
+            )
+        })?;
 
         let rel_path = path.to_string_lossy();
         let created_at = self.source.created_at(path);
@@ -373,7 +377,8 @@ where
                 })?;
 
             // Parse from the content we just read (single file read)
-            let mut raw: RawSchema = FsReader::parse_from_str(path, content)?;
+            let mut raw: RawSchema =
+                FsReader::parse_structured_from_str(path, content)?;
             raw.name = filename_stem.into();
             let mut raw = raw.validated(&path.to_string_lossy())?;
 

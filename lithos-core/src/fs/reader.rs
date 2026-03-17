@@ -176,53 +176,21 @@ impl Reader {
         Ok(paths)
     }
 
-    /// Reads and parses a structured file (JSON, TOML, or YAML).
-    ///
-    /// The format is detected based on the file extension.
+    /// Reads a file's content as raw bytes.
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] if:
-    /// - The file format is unsupported.
-    /// - The file cannot be read.
-    /// - The content is malformed for the detected format.
+    /// Returns [`ParseError::Io`] if the file cannot be read.
     #[inline]
-    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let content = self.read_to_string(path)?;
-        Self::parse_from_str(path, &content)
-    }
-
-    /// Parses structured data from an already-read string.
-    ///
-    /// This is useful when you've already read the file content and want to
-    /// parse it without re-reading. The format is auto-detected from the file
-    /// extension and content.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseError`] if the format is unsupported or parsing fails.
-    #[inline]
-    pub fn parse_from_str<T>(
+    pub(crate) fn read_bytes(
+        &self,
         path: &Path,
-        content: &str,
-    ) -> Result<T, ParseError>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        match Self::classify_path(path, Some(content)) {
-            FormatKind::Json => Json::parse(path, content),
-            FormatKind::Toml => Toml::parse(path, content),
-            FormatKind::Yaml => Yaml::parse(path, content),
-            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
-                Err(ParseError::UnsupportedFormat {
-                    path: path.to_path_buf(),
-                    supported: &["json", "toml", "yaml", "yml"],
-                })
-            }
-        }
+    ) -> Result<Vec<u8>, ParseError> {
+        let full_path = self.root.join(path);
+        std::fs::read(&full_path).map_err(|e| ParseError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })
     }
 
     /// Reads a file's content as a UTF-8 string.
@@ -343,21 +311,77 @@ impl Reader {
         }
     }
 
-    /// Reads a file's content as raw bytes.
+    /// Extracts the basename (filename without extension) from a path.
+    ///
+    /// Returns the filename without its extension as a string reference.
+    /// This is useful for deriving names from file paths (e.g., schema names).
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the file cannot be read.
+    /// Returns [`ParseError::Io`] if the path has no filename or the filename
+    /// is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::fs::FsReader;
+    /// use std::path::Path;
+    ///
+    /// let reader = FsReader::new("/vault");
+    /// let base = reader.basename(Path::new("schemas/user.json"))?;
+    /// assert_eq!(base, "user");
+    /// ```
     #[inline]
-    pub(crate) fn read_bytes(
+    pub fn basename<'path>(
         &self,
-        path: &Path,
-    ) -> Result<Vec<u8>, ParseError> {
-        let full_path = self.root.join(path);
-        std::fs::read(&full_path).map_err(|e| ParseError::Io {
-            path: path.to_path_buf(),
-            source: e,
-        })
+        path: &'path Path,
+    ) -> Result<&'path str, ParseError> {
+        match path.file_stem().and_then(|s| s.to_str()) {
+            Some(stem) => Ok(stem),
+            None => Err(ParseError::Io {
+                path: path.to_path_buf(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path has no valid UTF-8 filename",
+                ),
+            }),
+        }
+    }
+
+    /// Extracts the filename (with extension) from a path.
+    ///
+    /// Returns the complete filename including its extension.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the path has no filename or the filename
+    /// is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::fs::FsReader;
+    /// use std::path::Path;
+    ///
+    /// let reader = FsReader::new("/vault");
+    /// let name = reader.filename(Path::new("schemas/user.json"))?;
+    /// assert_eq!(name, "user.json");
+    /// ```
+    #[inline]
+    pub fn filename<'path>(
+        &self,
+        path: &'path Path,
+    ) -> Result<&'path str, ParseError> {
+        match path.file_name().and_then(|s| s.to_str()) {
+            Some(name) => Ok(name),
+            None => Err(ParseError::Io {
+                path: path.to_path_buf(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path has no valid UTF-8 filename",
+                ),
+            }),
+        }
     }
 
     /// Validates a path using the internal validator.
@@ -371,6 +395,55 @@ impl Reader {
         path: &Path,
     ) -> Result<(), PathValidationError> {
         self.validator.validate(path)
+    }
+
+    /// Reads and parses a structured file (JSON, TOML, or YAML).
+    ///
+    /// The format is detected based on the file extension.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if:
+    /// - The file format is unsupported.
+    /// - The file cannot be read.
+    /// - The content is malformed for the detected format.
+    #[inline]
+    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let content = self.read_to_string(path)?;
+        Self::parse_structured_from_str(path, &content)
+    }
+
+    /// Parses structured data (JSON/TOML/YAML) from an already-read string.
+    ///
+    /// This is useful when you've already read the file content and want to
+    /// parse it without re-reading. The format is auto-detected from the file
+    /// extension and content.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if the format is unsupported or parsing fails.
+    #[inline]
+    pub fn parse_structured_from_str<T>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match Self::classify_path(path, Some(content)) {
+            FormatKind::Json => Json::parse(path, content),
+            FormatKind::Toml => Toml::parse(path, content),
+            FormatKind::Yaml => Yaml::parse(path, content),
+            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
+                Err(ParseError::UnsupportedFormat {
+                    path: path.to_path_buf(),
+                    supported: &["json", "toml", "yaml", "yml"],
+                })
+            }
+        }
     }
 
     /// Detects the file format based on path extension and optional content
