@@ -312,17 +312,33 @@ impl RawSchemaView {
     /// # Design Note
     ///
     /// TODO(Phase 3): Currently returns `None` - full implementation requires
-    /// integrating with Ingestor's format detection and parsing logic.
-    /// The format (JSON/TOML/YAML) will be detected from the `file_path`
-    /// extension.
-    #[must_use]
+    /// Reconstructs the raw schema from cached compressed content.
+    ///
+    /// Returns `None` if no current version exists, no compressed content is
+    /// stored, or if decompression/parsing fails.
+    ///
+    /// The format (JSON/TOML/YAML) is detected from the `file_path` extension.
+    ///
+    /// This enables the Fresh optimization - returning cached data without
+    /// re-reading or re-parsing the file.
     #[inline]
+    #[must_use]
     pub fn to_raw(&self) -> Option<super::super::raw::RawSchema> {
-        // TODO(Phase 3): Implement full reconstruction
-        // let version = self.current()?;
-        // let content = version.decompress_content()?.ok()?;
-        // Parse based on file extension in self.file_path
-        None
+        let version = self.current()?;
+        let content = version.decompress_content()?.ok()?;
+
+        // Parse based on file extension
+        let path = std::path::Path::new(self.file_path.as_ref());
+        let mut raw: super::super::raw::RawSchema =
+            crate::fs::FsReader::parse_structured_from_str(path, &content)
+                .ok()?;
+
+        // Populate the name field from filename (serde skips this field)
+        // The name is the filename without extension
+        let filename_stem = path.file_stem()?.to_str()?;
+        raw.name = filename_stem.into();
+
+        Some(raw)
     }
 }
 
@@ -543,16 +559,27 @@ impl RawPropertyBankView {
     ///
     /// # Design Note
     ///
-    /// TODO(Phase 3): Currently returns `None` - full implementation requires
-    /// integrating with Ingestor's format detection and parsing logic.
-    #[must_use]
+    /// Reconstructs the raw property bank from cached compressed content.
+    ///
+    /// Returns `None` if no current version exists, no compressed content is
+    /// stored, or if decompression/parsing fails.
+    ///
+    /// The `path` parameter is needed to determine the file format (JSON, TOML,
+    /// or YAML) for parsing.
+    ///
+    /// This enables the Fresh optimization - returning cached data without
+    /// re-reading or re-parsing the file.
     #[inline]
-    pub fn to_raw(&self) -> Option<super::super::raw::RawPropertyBank> {
-        // TODO(Phase 3): Implement full reconstruction
-        // let version = self.current()?;
-        // let content = version.decompress_content()?.ok()?;
-        // Parse based on configured property bank path extension
-        None
+    #[must_use]
+    pub fn to_raw(
+        &self,
+        path: &std::path::Path,
+    ) -> Option<super::super::raw::RawPropertyBank> {
+        let version = self.current()?;
+        let content = version.decompress_content()?.ok()?;
+
+        // Parse based on file extension
+        crate::fs::FsReader::parse_structured_from_str(path, &content).ok()
     }
 }
 
@@ -967,8 +994,7 @@ mod tests {
     }
 
     #[test]
-    fn raw_schema_view_to_raw_returns_none_currently() {
-        // TODO(Phase 3): Update this test when to_raw() is fully implemented
+    fn raw_schema_view_to_raw_returns_none_without_content() {
         let view = RawSchemaView::new(
             "schemas/test.toml".into(),
             None,
@@ -977,24 +1003,24 @@ mod tests {
             BTreeMap::new(),
             None,
             None,
-            None,
+            None, // No compressed content
         );
 
         assert!(view.to_raw().is_none());
     }
 
     #[test]
-    fn raw_property_bank_view_to_raw_returns_none_currently() {
-        // TODO(Phase 3): Update this test when to_raw() is fully implemented
+    fn raw_property_bank_view_to_raw_returns_none_without_content() {
         let view = RawPropertyBankView::new(
             [0; 32],
             BTreeMap::new(),
             None,
             None,
-            None,
+            None, // No compressed content
         );
 
-        assert!(view.to_raw().is_none());
+        let path = std::path::Path::new("schemas/property_bank.json");
+        assert!(view.to_raw(path).is_none());
     }
 
     #[test]

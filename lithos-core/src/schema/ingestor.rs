@@ -220,7 +220,7 @@ where
             && view
                 .current()
                 .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-            && let Some(raw) = view.to_raw()
+            && let Some(raw) = view.to_raw(&path)
         {
             return Ok(Some(IngestResult::Fresh(raw)));
         }
@@ -234,7 +234,7 @@ where
                 && view.current().is_some_and(|v| {
                     v.is_content_match(content_hash.as_bytes())
                 })
-                && let Some(raw) = view.to_raw()
+                && let Some(raw) = view.to_raw(path)
             {
                 return Ok(Some(IngestResult::Fresh(raw)));
             }
@@ -972,12 +972,7 @@ mod tests {
         }
 
         /// Test: Fresh schema returns Fresh variant.
-        ///
-        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
-        /// implemented). Currently `to_raw()` returns None, so this
-        /// test is ignored.
         #[test]
-        #[ignore = "Requires to_raw() implementation (Phase 6)"]
         fn fresh_schema_returns_fresh() {
             let dir = TempDir::new().expect("tempdir");
             write_file(
@@ -1092,12 +1087,7 @@ mod tests {
         }
 
         /// Test: `all_schemas()` returns mix of Fresh and Stale.
-        ///
-        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
-        /// implemented). Currently `to_raw()` returns None, so this
-        /// test is ignored.
         #[test]
-        #[ignore = "Requires to_raw() implementation (Phase 6)"]
         fn all_schemas_mixed_staleness() {
             let dir = TempDir::new().expect("tempdir");
             write_file(
@@ -1157,12 +1147,7 @@ mod tests {
         }
 
         /// Test: Path-based lookup finds correct view.
-        ///
-        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
-        /// implemented). Currently `to_raw()` returns None, so this
-        /// test is ignored.
         #[test]
-        #[ignore = "Requires to_raw() implementation (Phase 6)"]
         fn path_based_lookup_finds_view() {
             let dir = TempDir::new().expect("tempdir");
             write_file(
