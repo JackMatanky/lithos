@@ -225,61 +225,57 @@ where
             return Ok(Some(IngestResult::Fresh(raw)));
         }
 
-        // Slow path: Read file for content hash check or parsing
-        let raw_bytes = self.source.read_bytes(&path)?;
-        let content_hash = blake3::hash(&raw_bytes);
-        let content_str = String::from_utf8(raw_bytes).map_err(|e| {
-            SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("UTF-8 decode failed: {e}").into(),
+        // Slow path: Read file once for hash check, compression, and parsing
+        self.source.read_with(&path, |path, content| {
+            let content_hash = blake3::hash(content.as_bytes());
+
+            // Check content hash if we have a cached view
+            if let Some(view) = cached_view.as_ref()
+                && view.current().is_some_and(|v| {
+                    v.is_content_match(content_hash.as_bytes())
+                })
+                && let Some(raw) = view.to_raw()
+            {
+                return Ok(Some(IngestResult::Fresh(raw)));
             }
-        })?;
 
-        // Check content hash if we have a cached view
-        if let Some(view) = cached_view.as_ref()
-            && view
-                .current()
-                .is_some_and(|v| v.is_content_match(content_hash.as_bytes()))
-            && let Some(raw) = view.to_raw()
-        {
-            return Ok(Some(IngestResult::Fresh(raw)));
-        }
+            // File is stale or no cache - compress and parse from the content
+            // we already read
+            let compressed_content = RawFileVersion::compress_content(content)
+                .map_err(|e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Compression failed: {e}").into(),
+                })?;
 
-        // File is stale or no cache - parse and persist
-        let compressed_content = RawFileVersion::compress_content(&content_str)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("Compression failed: {e}").into(),
-            })?;
+            // Parse from the content we just read (single file read)
+            let raw: RawPropertyBank = FsReader::parse_from_str(path, content)?;
+            let mut raw = raw.validated(&path.to_string_lossy())?;
 
-        // Parse, validate, and persist
-        let raw: RawPropertyBank = self.source.parse_structured(&path)?;
-        let mut raw = raw.validated(&path.to_string_lossy())?;
+            raw.metadata = crate::schema::raw::RawSchemaMetadata {
+                created_at,
+                modified_at,
+                content_hash: Some(*content_hash.as_bytes()),
+                property_hashes: BTreeMap::new(),
+            };
 
-        raw.metadata = crate::schema::raw::RawSchemaMetadata {
-            created_at,
-            modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
-            property_hashes: BTreeMap::new(),
-        };
+            let view = crate::schema::views::raw::RawPropertyBankView::new(
+                *content_hash.as_bytes(),
+                BTreeMap::new(),
+                created_at,
+                modified_at,
+                Some(compressed_content),
+            );
 
-        let view = crate::schema::views::raw::RawPropertyBankView::new(
-            *content_hash.as_bytes(),
-            BTreeMap::new(),
-            created_at,
-            modified_at,
-            Some(compressed_content),
-        );
+            self.repository.save_raw_property_bank_view(&view).map_err(
+                |e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to save property bank view: {e}")
+                        .into(),
+                },
+            )?;
 
-        self.repository.save_raw_property_bank_view(&view).map_err(|e| {
-            SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("Failed to save property bank view: {e}")
-                    .into(),
-            }
-        })?;
-
-        Ok(Some(IngestResult::Stale(raw)))
+            Ok(Some(IngestResult::Stale(raw)))
+        })
     }
 
     /// Get a single schema file with staleness detection.
@@ -354,102 +350,103 @@ where
             return Ok(IngestResult::Fresh(raw));
         }
 
-        // Slow path: Read file for content hash check or parsing
-        let raw_bytes = self.source.read_bytes(path)?;
-        let content_hash = blake3::hash(&raw_bytes);
-        let content_str = String::from_utf8(raw_bytes).map_err(|e| {
-            SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("UTF-8 decode failed: {e}").into(),
+        // Slow path: Read file once for hash check, compression, and parsing
+        self.source.read_with(path, |path, content| {
+            let content_hash = blake3::hash(content.as_bytes());
+
+            // Check content hash if we have a cached view
+            if let Some(view) = cached_view.as_ref()
+                && view.current().is_some_and(|v| {
+                    v.is_content_match(content_hash.as_bytes())
+                })
+                && let Some(raw) = view.to_raw()
+            {
+                return Ok(IngestResult::Fresh(raw));
             }
-        })?;
 
-        // Check content hash if we have a cached view
-        if let Some(view) = cached_view.as_ref()
-            && view
-                .current()
-                .is_some_and(|v| v.is_content_match(content_hash.as_bytes()))
-            && let Some(raw) = view.to_raw()
-        {
-            return Ok(IngestResult::Fresh(raw));
-        }
+            // File is stale or no cache - compress and parse from the content
+            // we already read
+            let compressed_content = RawFileVersion::compress_content(content)
+                .map_err(|e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Compression failed: {e}").into(),
+                })?;
 
-        // File is stale or no cache - parse and persist
-        let compressed_content = RawFileVersion::compress_content(&content_str)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("Compression failed: {e}").into(),
-            })?;
+            // Parse from the content we just read (single file read)
+            let mut raw: RawSchema = FsReader::parse_from_str(path, content)?;
+            raw.name = filename_stem.into();
+            let mut raw = raw.validated(&path.to_string_lossy())?;
 
-        // Parse, validate, and persist
-        let mut raw: RawSchema = self.source.parse_structured(path)?;
-        raw.name = filename_stem.into();
-        let mut raw = raw.validated(&path.to_string_lossy())?;
+            let property_hashes =
+                RawSchemaMetadata::compute_property_hashes(&raw.properties);
 
-        let property_hashes =
-            RawSchemaMetadata::compute_property_hashes(&raw.properties);
+            raw.metadata = RawSchemaMetadata {
+                created_at,
+                modified_at,
+                content_hash: Some(*content_hash.as_bytes()),
+                property_hashes: property_hashes.clone(),
+            };
 
-        raw.metadata = RawSchemaMetadata {
-            created_at,
-            modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
-            property_hashes: property_hashes.clone(),
-        };
-
-        let extends = raw.extends.as_ref().and_then(|name| {
-            crate::schema::aggregate::SchemaName::try_new(name.as_ref()).ok()
-        });
-
-        let excludes: Vec<crate::schema::property::PropertyName> = raw
-            .excludes
-            .iter()
-            .filter_map(|name| {
-                crate::schema::property::PropertyName::try_new(name.as_ref())
+            let extends = raw.extends.as_ref().and_then(|name| {
+                crate::schema::aggregate::SchemaName::try_new(name.as_ref())
                     .ok()
-            })
-            .collect();
+            });
 
-        let view = crate::schema::views::raw::RawSchemaView::new(
-            rel_path.to_string().into_boxed_str(),
-            extends,
-            excludes,
-            *content_hash.as_bytes(),
-            property_hashes
-                .into_iter()
-                .filter_map(|(k, v)| {
-                    crate::schema::property::PropertyName::try_new(k.as_ref())
+            let excludes: Vec<crate::schema::property::PropertyName> = raw
+                .excludes
+                .iter()
+                .filter_map(|name| {
+                    crate::schema::property::PropertyName::try_new(
+                        name.as_ref(),
+                    )
+                    .ok()
+                })
+                .collect();
+
+            let view = crate::schema::views::raw::RawSchemaView::new(
+                rel_path.to_string().into_boxed_str(),
+                extends,
+                excludes,
+                *content_hash.as_bytes(),
+                property_hashes
+                    .into_iter()
+                    .filter_map(|(k, v)| {
+                        crate::schema::property::PropertyName::try_new(
+                            k.as_ref(),
+                        )
                         .ok()
                         .map(|name| (name, v))
-                })
-                .collect(),
-            created_at,
-            modified_at,
-            Some(compressed_content),
-        );
+                    })
+                    .collect(),
+                created_at,
+                modified_at,
+                Some(compressed_content),
+            );
 
-        let schema_id = self
-            .repository
-            .find_schema_id_by_path(&rel_path)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!(
-                    "Failed to query schema ID for {rel_path}: {e}"
-                )
-                .into(),
-            })?
-            .unwrap_or_else(crate::schema::aggregate::SchemaId::new);
+            let schema_id = self
+                .repository
+                .find_schema_id_by_path(&rel_path)
+                .map_err(|e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!(
+                        "Failed to query schema ID for {rel_path}: {e}"
+                    )
+                    .into(),
+                })?
+                .unwrap_or_else(crate::schema::aggregate::SchemaId::new);
 
-        self.repository.save_raw_schema_view(schema_id, &view).map_err(
-            |e| SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!(
-                    "Failed to save schema view for {rel_path}: {e}"
-                )
-                .into(),
-            },
-        )?;
+            self.repository.save_raw_schema_view(schema_id, &view).map_err(
+                |e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!(
+                        "Failed to save schema view for {rel_path}: {e}"
+                    )
+                    .into(),
+                },
+            )?;
 
-        Ok(IngestResult::Stale(raw))
+            Ok(IngestResult::Stale(raw))
+        })
     }
 
     /// Scan the schemas directory for all schema files.

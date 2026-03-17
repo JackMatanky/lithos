@@ -192,10 +192,30 @@ impl Reader {
         T: serde::de::DeserializeOwned,
     {
         let content = self.read_to_string(path)?;
-        match Self::classify_path(path, Some(&content)) {
-            FormatKind::Json => Json::parse(path, &content),
-            FormatKind::Toml => Toml::parse(path, &content),
-            FormatKind::Yaml => Yaml::parse(path, &content),
+        Self::parse_from_str(path, &content)
+    }
+
+    /// Parses structured data from an already-read string.
+    ///
+    /// This is useful when you've already read the file content and want to
+    /// parse it without re-reading. The format is auto-detected from the file
+    /// extension and content.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if the format is unsupported or parsing fails.
+    #[inline]
+    pub fn parse_from_str<T>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match Self::classify_path(path, Some(content)) {
+            FormatKind::Json => Json::parse(path, content),
+            FormatKind::Toml => Toml::parse(path, content),
+            FormatKind::Yaml => Yaml::parse(path, content),
             FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
                 Err(ParseError::UnsupportedFormat {
                     path: path.to_path_buf(),
