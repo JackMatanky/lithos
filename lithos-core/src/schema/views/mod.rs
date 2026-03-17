@@ -6,10 +6,12 @@
 //!
 //! ## Module Structure
 //!
-//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`,
-//!   `RawFileVersion`)
+//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`)
 //! - `inheritance` - Inheritance relationship views (`ChildSchemaView`,
 //!   `ParentSchemaView`)
+//! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
+//! - `version` - Versioned content (`SchemaVersion`, `PropertyBankVersion`)
+//! - `file_path` - File path newtype (`FilePath`)
 //!
 //! ## View Pattern
 //!
@@ -19,12 +21,11 @@
 //!
 //! ## Staleness Detection
 //!
-//! Staleness detection is performed via `RawFileVersion` methods:
-//! - `is_timestamp_match()` - Fast timestamp-only check
-//! - `is_content_match()` - Accurate hash-based check
-//! - `changed_properties()` - Incremental change detection
+//! Staleness detection is performed via metadata methods:
+//! - `FileTimesMetadata::is_timestamp_match()` - Fast timestamp-only check
+//! - `HashMetadata::is_content_match()` - Accurate hash-based check
 //!
-//! Views provide `current()` to access the most recent `RawFileVersion`.
+//! Views provide `current()` to access the most recent version.
 
 #![expect(
     clippy::pub_use,
@@ -44,5 +45,5 @@ pub use inheritance::{
     ChildSchemaView, ParentSchemaView, SchemaInheritanceView,
 };
 pub use metadata::{FileTimesMetadata, HashMetadata};
-pub use raw::{RawFileVersion, RawPropertyBankView, RawSchemaView};
+pub use raw::{RawPropertyBankView, RawSchemaView};
 pub use version::{PropertyBankVersion, SchemaVersion};
