@@ -211,11 +211,17 @@ impl RawSchemaView {
     /// and compresses it for caching. Use this when you have the content
     /// available and want to enable the Fresh optimization.
     ///
+    /// # Parameters
+    /// - `raw`: The parsed raw schema
+    /// - `file_path`: The relative path to the schema file (for view indexing)
+    /// - `content`: The uncompressed file content (for caching)
+    ///
     /// # Errors
     /// Returns error if compression fails or metadata is missing.
     #[inline]
     pub fn try_from_with_content(
         raw: &super::super::raw::RawSchema,
+        file_path: &str,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         let content_hash = raw.metadata.content_hash.ok_or_else(|| {
@@ -252,7 +258,7 @@ impl RawSchemaView {
             })?;
 
         Ok(Self::new(
-            format!("schemas/{}.toml", raw.name).into_boxed_str(),
+            file_path.into(),
             extends,
             excludes,
             content_hash,

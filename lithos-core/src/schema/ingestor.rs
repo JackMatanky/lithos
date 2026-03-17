@@ -16,12 +16,11 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     schema::{
-        aggregate::{SchemaId, SchemaName},
+        aggregate::SchemaId,
         error::SchemaIngestionError,
-        property::PropertyName,
         raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
         storage::Repository,
-        views::raw::{RawFileVersion, RawPropertyBankView, RawSchemaView},
+        views::raw::{RawPropertyBankView, RawSchemaView},
     },
 };
 
@@ -241,14 +240,6 @@ where
                 return Ok(Some(IngestResult::Fresh(raw)));
             }
 
-            // File is stale or no cache - compress and parse from the content
-            // we already read
-            let compressed_content = RawFileVersion::compress_content(content)
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Compression failed: {e}").into(),
-                })?;
-
             // Parse from the content we just read (single file read)
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
@@ -261,13 +252,9 @@ where
                 property_hashes: BTreeMap::new(),
             };
 
-            let view = RawPropertyBankView::new(
-                *content_hash.as_bytes(),
-                BTreeMap::new(),
-                Some(compressed_content),
-                created_at,
-                modified_at,
-            );
+            // Create view with content for caching
+            let view =
+                RawPropertyBankView::try_from_with_content(&raw, content)?;
 
             self.repository.save_raw_property_bank_view(&view).map_err(
                 |e| SchemaIngestionError::Io {
@@ -312,11 +299,6 @@ where
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
     /// ```
     #[inline]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Optimized flow to eliminate duplicate I/O - complex but \
-                  linear"
-    )]
     pub fn schema(
         &self,
         path: &Path,
@@ -370,14 +352,6 @@ where
                 return Ok(IngestResult::Fresh(raw));
             }
 
-            // File is stale or no cache - compress and parse from the content
-            // we already read
-            let compressed_content = RawFileVersion::compress_content(content)
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Compression failed: {e}").into(),
-                })?;
-
             // Parse from the content we just read (single file read)
             let mut raw: RawSchema =
                 FsReader::parse_structured_from_str(path, content)?;
@@ -394,34 +368,9 @@ where
                 property_hashes: property_hashes.clone(),
             };
 
-            let extends = raw
-                .extends
-                .as_ref()
-                .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
-
-            let excludes: Vec<PropertyName> = raw
-                .excludes
-                .iter()
-                .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
-                .collect();
-
-            let view = RawSchemaView::new(
-                rel_path.to_string().into_boxed_str(),
-                extends,
-                excludes,
-                *content_hash.as_bytes(),
-                property_hashes
-                    .into_iter()
-                    .filter_map(|(k, v)| {
-                        PropertyName::try_new(k.as_ref())
-                            .ok()
-                            .map(|name| (name, v))
-                    })
-                    .collect(),
-                Some(compressed_content),
-                created_at,
-                modified_at,
-            );
+            // Create view with content for caching
+            let view =
+                RawSchemaView::try_from_with_content(&raw, &rel_path, content)?;
 
             let schema_id = self
                 .repository
