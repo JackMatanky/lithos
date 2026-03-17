@@ -768,7 +768,11 @@ impl Repository for RedbRepository {
         let key = id.to_string();
         self.db.batch_write(|batch| {
             batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
-            batch.put(RAW_SCHEMA_VIEW_BY_PATH, view.file_path(), &id)?;
+            batch.put(
+                RAW_SCHEMA_VIEW_BY_PATH,
+                view.file_path().as_str(),
+                &id,
+            )?;
             Ok(())
         })?;
 

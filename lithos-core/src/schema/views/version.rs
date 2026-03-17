@@ -2,6 +2,21 @@
 //!
 //! These types store validated, typed data extracted from Raw* types,
 //! avoiding the need to add rkyv serialization to the raw parsing layer.
+//!
+//! ## Hybrid Serialization Strategy
+//!
+//! These types use a hybrid approach to avoid adding rkyv derives to Raw*
+//! types:
+//! - Metadata fields (`extends`, `excludes`, `version`) are stored as validated
+//!   types
+//! - Complex property trees (`RawProperty`, `RawPropertyBankEntry`) are
+//!   serialized via serde
+//! - The serde-serialized bytes are stored in `Vec<u8>` fields which rkyv
+//!   handles natively
+//!
+//! This keeps the parsing layer (Raw* types with serde) separate from the
+//! storage layer (version types with rkyv), while maintaining queryability of
+//! key metadata fields.
 
 use std::collections::HashMap;
 
@@ -13,7 +28,7 @@ use crate::schema::{
     error::SchemaIngestionError,
     property::{Property, PropertyName},
     raw::{
-        RawPropertyBank, RawSchema, RawSchemaMetadata, RawSchemaVersion,
+        RawPropertyBank, RawSchema, RawSchemaMetadata,
         property::{RawProperty, RawPropertyBankEntry},
     },
 };
@@ -26,11 +41,16 @@ use crate::schema::{
 ///
 /// Stores:
 /// - File and hash metadata for staleness detection
-/// - Schema format version, inheritance, and properties (validated)
+/// - Schema format version, inheritance metadata (validated, queryable)
+/// - Properties as serde-serialized bytes (avoids rkyv on Raw* types)
 /// - Cached expanded properties for incremental resolution
 ///
-/// This type stores data in a form optimized for persistence and querying,
-/// using validated types (`PropertyName`) instead of raw strings.
+/// ## Design Rationale
+///
+/// This hybrid approach keeps metadata fields (`extends`, `excludes`) as
+/// validated types for direct querying, while serializing the complex property
+/// tree via serde. This avoids adding rkyv derives to the entire Raw* parsing
+/// layer while maintaining queryability of inheritance metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
     /// File timestamp metadata.
@@ -39,20 +59,30 @@ pub struct SchemaVersion {
     /// Hash metadata for staleness detection.
     hashes: HashMetadata,
 
-    /// Schema format version (e.g., "1.0").
-    version: RawSchemaVersion,
+    /// Schema format version as simple string (e.g., "1.0").
+    ///
+    /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
+    /// rkyv derives on Raw* types.
+    version: Box<str>,
 
     /// Parent schema name (from `extends` field).
+    ///
+    /// Validated and stored as typed field for efficient querying.
     extends: Option<SchemaName>,
 
     /// Property names to exclude from parent (from `excludes` field).
+    ///
+    /// Validated and stored as typed field for efficient querying.
     excludes: Vec<PropertyName>,
 
-    /// Map of validated property name to property definition.
+    /// Raw properties map (serde JSON format).
     ///
-    /// Keys are `PropertyName` (validated) instead of `Box<str>` for type
-    /// safety.
-    properties: HashMap<PropertyName, RawProperty>,
+    /// Contains: `HashMap<Box<str>, RawProperty>`.
+    ///
+    /// Properties are serialized via serde (not rkyv) to avoid adding rkyv
+    /// derives to the Raw* parsing layer. The serialization format (JSON)
+    /// is independent of the original schema file format (TOML/JSON/YAML).
+    raw_properties: Vec<u8>,
 
     /// Cached expanded properties (from `RefExpander`).
     ///
@@ -64,48 +94,35 @@ impl SchemaVersion {
     /// Create a new schema version from a `RawSchema`.
     ///
     /// # Errors
-    /// Returns error if property name validation fails.
+    /// Returns error if property name validation fails or serialization fails.
     #[inline]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Consuming iteration - order doesn't matter for validation"
-    )]
     pub fn new(
         file_times: FileTimesMetadata,
         hashes: HashMetadata,
-        raw: RawSchema,
+        raw: &RawSchema,
     ) -> Result<Self, SchemaIngestionError> {
-        // Validate and convert property keys from Box<str> to PropertyName
-        let mut properties = HashMap::with_capacity(raw.properties.len());
-        for (name, prop) in raw.properties {
-            let prop_name = PropertyName::try_new(&name).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: raw.name.clone(),
-                    reason: format!("invalid property name '{name}': {e}")
-                        .into(),
-                }
-            })?;
-            properties.insert(prop_name, prop);
-        }
-
         // Validate and convert excludes
         let mut excludes = Vec::with_capacity(raw.excludes.len());
-        for exclude in raw.excludes {
-            let prop_name = PropertyName::try_new(&exclude).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: raw.name.clone(),
-                    reason: format!("invalid exclude name '{exclude}': {e}")
+        for exclude in &raw.excludes {
+            let prop_name =
+                PropertyName::try_new(exclude.as_ref()).map_err(|e| {
+                    SchemaIngestionError::Io {
+                        path: raw.name.clone(),
+                        reason: format!(
+                            "invalid exclude name '{exclude}': {e}"
+                        )
                         .into(),
-                }
-            })?;
+                    }
+                })?;
             excludes.push(prop_name);
         }
 
         // Validate extends if present
         let extends = raw
             .extends
+            .as_ref()
             .map(|name| {
-                SchemaName::try_new(&name).map_err(|e| {
+                SchemaName::try_new(name.as_ref()).map_err(|e| {
                     SchemaIngestionError::Io {
                         path: raw.name.clone(),
                         reason: format!("invalid extends '{name}': {e}").into(),
@@ -114,13 +131,38 @@ impl SchemaVersion {
             })
             .transpose()?;
 
+        // Validate property names (without consuming the map)
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Validation does not depend on iteration order"
+        )]
+        for prop_name in raw.properties.keys() {
+            PropertyName::try_new(prop_name.as_ref()).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: raw.name.clone(),
+                    reason: format!("invalid property name '{prop_name}': {e}")
+                        .into(),
+                }
+            })?;
+        }
+
+        // Serialize properties via serde (not rkyv)
+        let raw_properties =
+            serde_json::to_vec(&raw.properties).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: raw.name.clone(),
+                    reason: format!("failed to serialize properties: {e}")
+                        .into(),
+                }
+            })?;
+
         Ok(Self {
             file_times,
             hashes,
-            version: raw.version,
+            version: raw.version.as_str().into(),
             extends,
             excludes,
-            properties,
+            raw_properties,
             expanded_properties: None,
         })
     }
@@ -153,13 +195,6 @@ impl SchemaVersion {
         &self.excludes
     }
 
-    /// Get properties.
-    #[inline]
-    #[must_use]
-    pub fn properties(&self) -> &HashMap<PropertyName, RawProperty> {
-        &self.properties
-    }
-
     /// Get cached expanded properties if available.
     #[inline]
     #[must_use]
@@ -186,15 +221,23 @@ impl SchemaVersion {
     ///
     /// # Parameters
     /// - `name`: Schema name (typically derived from file basename)
+    ///
+    /// # Errors
+    /// Returns error if deserialization of properties fails.
     #[inline]
-    #[must_use]
-    pub fn to_raw(&self, name: Box<str>) -> RawSchema {
-        // Convert PropertyName keys back to Box<str>
-        let properties = self
-            .properties
-            .iter()
-            .map(|(prop_name, prop)| (prop_name.as_str().into(), prop.clone()))
-            .collect();
+    pub fn to_raw(
+        &self,
+        name: Box<str>,
+    ) -> Result<RawSchema, SchemaIngestionError> {
+        // Deserialize properties from serde JSON
+        let properties: HashMap<Box<str>, RawProperty> =
+            serde_json::from_slice(&self.raw_properties).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: name.clone(),
+                    reason: format!("failed to deserialize properties: {e}")
+                        .into(),
+                }
+            })?;
 
         let excludes = self
             .excludes
@@ -207,33 +250,15 @@ impl SchemaVersion {
             .as_ref()
             .map(|schema_name| schema_name.as_str().into());
 
-        RawSchema {
-            version: self.version.clone(),
+        Ok(RawSchema {
+            version: self.version.as_ref().into(),
             name,
             extends,
             excludes,
             properties,
             metadata: RawSchemaMetadata::default(), /* Metadata not stored in
                                                      * version */
-        }
-    }
-
-    /// Check if this version is fresh (matches file times).
-    #[inline]
-    #[must_use]
-    pub fn is_fresh(
-        &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
-    ) -> bool {
-        self.file_times.matches(created_at, modified_at)
-    }
-
-    /// Check if content matches (for hash-based staleness detection).
-    #[inline]
-    #[must_use]
-    pub fn content_matches(&self, hash: &[u8; 32]) -> bool {
-        self.hashes.content_matches(hash)
+        })
     }
 }
 
@@ -245,9 +270,14 @@ impl SchemaVersion {
 ///
 /// Stores:
 /// - File and hash metadata for staleness detection
-/// - Property bank format version and properties (validated)
+/// - Property bank format version as simple string
+/// - Properties as serde-serialized bytes (avoids rkyv on Raw* types)
 ///
-/// Keys are validated `PropertyName` instead of `Box<str>`.
+/// ## Design Rationale
+///
+/// Similar to `SchemaVersion`, this uses a hybrid approach: metadata fields are
+/// stored as validated types, while the complex property tree is serialized via
+/// serde to avoid adding rkyv derives to the Raw* parsing layer.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
     /// File timestamp metadata.
@@ -256,46 +286,62 @@ pub struct PropertyBankVersion {
     /// Hash metadata for staleness detection.
     hashes: HashMetadata,
 
-    /// Property bank format version (e.g., "1.0").
-    version: RawSchemaVersion,
+    /// Property bank format version as simple string (e.g., "1.0").
+    ///
+    /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
+    /// rkyv derives on Raw* types.
+    version: Box<str>,
 
-    /// Map of validated property name to property bank entry.
-    properties: HashMap<PropertyName, RawPropertyBankEntry>,
+    /// Raw properties map (serde JSON format).
+    ///
+    /// Contains: `HashMap<Box<str>, RawPropertyBankEntry>`.
+    ///
+    /// Properties are serialized via serde (not rkyv) to avoid adding rkyv
+    /// derives to the Raw* parsing layer.
+    raw_properties: Vec<u8>,
 }
 
 impl PropertyBankVersion {
     /// Create a new property bank version from a `RawPropertyBank`.
     ///
     /// # Errors
-    /// Returns error if property name validation fails.
+    /// Returns error if property name validation fails or serialization fails.
     #[inline]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Consuming iteration - order doesn't matter for validation"
-    )]
     pub fn new(
         file_times: FileTimesMetadata,
         hashes: HashMetadata,
-        raw: RawPropertyBank,
+        raw: &RawPropertyBank,
     ) -> Result<Self, SchemaIngestionError> {
-        // Validate and convert property keys from Box<str> to PropertyName
-        let mut properties = HashMap::with_capacity(raw.properties.len());
-        for (name, entry) in raw.properties {
-            let prop_name = PropertyName::try_new(&name).map_err(|e| {
+        // Validate property names (without consuming the map)
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Validation does not depend on iteration order"
+        )]
+        for prop_name in raw.properties.keys() {
+            PropertyName::try_new(prop_name.as_ref()).map_err(|e| {
                 SchemaIngestionError::Io {
                     path: "property_bank".into(),
-                    reason: format!("invalid property name '{name}': {e}")
+                    reason: format!("invalid property name '{prop_name}': {e}")
                         .into(),
                 }
             })?;
-            properties.insert(prop_name, entry);
         }
+
+        // Serialize properties via serde (not rkyv)
+        let raw_properties =
+            serde_json::to_vec(&raw.properties).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: "property_bank".into(),
+                    reason: format!("failed to serialize properties: {e}")
+                        .into(),
+                }
+            })?;
 
         Ok(Self {
             file_times,
             hashes,
-            version: raw.version,
-            properties,
+            version: raw.version.as_str().into(),
+            raw_properties,
         })
     }
 
@@ -313,51 +359,31 @@ impl PropertyBankVersion {
         &self.hashes
     }
 
-    /// Get properties.
-    #[inline]
-    #[must_use]
-    pub fn properties(&self) -> &HashMap<PropertyName, RawPropertyBankEntry> {
-        &self.properties
-    }
-
     /// Reconstruct a `RawPropertyBank` from this version.
     ///
     /// Used when we need to pass data to components expecting
     /// `RawPropertyBank`.
+    ///
+    /// # Errors
+    /// Returns error if deserialization of properties fails.
     #[inline]
-    #[must_use]
-    pub fn to_raw(&self) -> RawPropertyBank {
-        // Convert PropertyName keys back to Box<str>
-        let properties = self
-            .properties
-            .iter()
-            .map(|(name, entry)| (name.as_str().into(), entry.clone()))
-            .collect();
+    pub fn to_raw(&self) -> Result<RawPropertyBank, SchemaIngestionError> {
+        // Deserialize properties from serde JSON
+        let properties: HashMap<Box<str>, RawPropertyBankEntry> =
+            serde_json::from_slice(&self.raw_properties).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: "property_bank".into(),
+                    reason: format!("failed to deserialize properties: {e}")
+                        .into(),
+                }
+            })?;
 
-        RawPropertyBank {
-            version: self.version.clone(),
+        Ok(RawPropertyBank {
+            version: self.version.as_ref().into(),
             properties,
             metadata: RawSchemaMetadata::default(), /* Metadata not stored in
                                                      * version */
-        }
-    }
-
-    /// Check if this version is fresh (matches file times).
-    #[inline]
-    #[must_use]
-    pub fn is_fresh(
-        &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
-    ) -> bool {
-        self.file_times.matches(created_at, modified_at)
-    }
-
-    /// Check if content matches (for hash-based staleness detection).
-    #[inline]
-    #[must_use]
-    pub fn content_matches(&self, hash: &[u8; 32]) -> bool {
-        self.hashes.content_matches(hash)
+        })
     }
 }
 
@@ -369,6 +395,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::schema::raw::RawSchemaVersion;
 
     fn create_test_raw_schema() -> RawSchema {
         RawSchema {
@@ -398,9 +425,8 @@ mod tests {
         );
         let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
-        let version =
-            SchemaVersion::new(file_times, hashes, raw.clone()).unwrap();
-        let reconstructed = version.to_raw(raw.name.clone());
+        let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
+        let reconstructed = version.to_raw(raw.name.clone()).unwrap();
 
         assert_eq!(reconstructed.name, raw.name);
         assert_eq!(reconstructed.extends, raw.extends);
@@ -418,8 +444,8 @@ mod tests {
         let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
         let version =
-            PropertyBankVersion::new(file_times, hashes, raw.clone()).unwrap();
-        let reconstructed = version.to_raw();
+            PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
+        let reconstructed = version.to_raw().unwrap();
 
         assert_eq!(reconstructed.properties.len(), 0);
     }
@@ -433,7 +459,7 @@ mod tests {
         );
         let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
-        let mut version = SchemaVersion::new(file_times, hashes, raw).unwrap();
+        let mut version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
         assert!(version.expanded_properties().is_none());
 
@@ -463,7 +489,7 @@ mod tests {
         );
         let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
-        let result = SchemaVersion::new(file_times, hashes, raw);
+        let result = SchemaVersion::new(file_times, hashes, &raw);
         result.unwrap_err();
     }
 }

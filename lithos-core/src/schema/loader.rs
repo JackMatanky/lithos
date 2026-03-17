@@ -56,7 +56,7 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::{
     config::aggregate::Config,
@@ -70,7 +70,6 @@ use crate::{
         expander::RefExpander,
         extender::Extender,
         ingestor::{IngestResult, Ingestor},
-        property::PropertyName,
         raw::RawSchema,
         resolver::Resolver,
         storage::Repository,
@@ -315,18 +314,8 @@ where
                 // Ingestor already persisted the RawPropertyBankView
 
                 // Track changed properties by comparing with previous version
-                // Convert metadata property_hashes to BTreeMap<PropertyName,
-                // [u8; 32]>
-                let new_hashes: BTreeMap<_, _> = raw_bank
-                    .metadata
-                    .property_hashes
-                    .iter()
-                    .filter_map(|(name, hash)| {
-                        PropertyName::try_new(name.as_ref())
-                            .ok()
-                            .map(|pn| (pn, *hash))
-                    })
-                    .collect();
+                // Compute property hashes from raw property bank
+                let new_hashes = crate::schema::views::HashMetadata::compute_property_hashes_for_bank(&raw_bank.properties);
 
                 let changed = self
                     .ingestor
@@ -335,7 +324,7 @@ where
                     .map_err(|e| SchemaLoaderError::Repository(e.into()))?
                     .and_then(|view| {
                         view.current().map(|current| {
-                            current.changed_properties(&new_hashes)
+                            current.hashes().changed_properties(&new_hashes)
                         })
                     })
                     .unwrap_or_default(); // No previous version = all properties are new

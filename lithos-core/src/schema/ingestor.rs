@@ -10,7 +10,7 @@
 //! - Metadata populated in Raw* types (no separate tuples)
 //! - Returns `IngestResult<T>` indicating Fresh or Stale for optimization
 
-use std::{collections::BTreeMap, path::Path};
+use std::path::Path;
 
 use crate::{
     config::aggregate::Config,
@@ -218,10 +218,10 @@ where
 
         // Fast path: Check timestamps (no file I/O)
         if let Some(view) = cached_view.as_ref()
-            && view
-                .current()
-                .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-            && let Some(raw) = view.to_raw(&path)
+            && view.current().is_some_and(|v| {
+                v.file_times().is_timestamp_match(created_at, modified_at)
+            })
+            && let Some(raw) = view.to_raw()?
         {
             return Ok(Some(IngestResult::Fresh(raw)));
         }
@@ -233,9 +233,9 @@ where
             // Check content hash if we have a cached view
             if let Some(view) = cached_view.as_ref()
                 && view.current().is_some_and(|v| {
-                    v.is_content_match(content_hash.as_bytes())
+                    v.hashes().is_content_match(content_hash.as_bytes())
                 })
-                && let Some(raw) = view.to_raw(path)
+                && let Some(raw) = view.to_raw()?
             {
                 return Ok(Some(IngestResult::Fresh(raw)));
             }
@@ -248,8 +248,6 @@ where
             raw.metadata = RawSchemaMetadata {
                 created_at,
                 modified_at,
-                content_hash: Some(*content_hash.as_bytes()),
-                property_hashes: BTreeMap::new(),
             };
 
             // Create view with content for caching
@@ -330,10 +328,10 @@ where
 
         // Fast path: Check timestamps (no file I/O)
         if let Some(view) = cached_view.as_ref()
-            && view
-                .current()
-                .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-            && let Some(raw) = view.to_raw()
+            && view.current().is_some_and(|v| {
+                v.file_times().is_timestamp_match(created_at, modified_at)
+            })
+            && let Some(raw) = view.to_raw()?
         {
             return Ok(IngestResult::Fresh(raw));
         }
@@ -345,9 +343,9 @@ where
             // Check content hash if we have a cached view
             if let Some(view) = cached_view.as_ref()
                 && view.current().is_some_and(|v| {
-                    v.is_content_match(content_hash.as_bytes())
+                    v.hashes().is_content_match(content_hash.as_bytes())
                 })
-                && let Some(raw) = view.to_raw()
+                && let Some(raw) = view.to_raw()?
             {
                 return Ok(IngestResult::Fresh(raw));
             }
@@ -358,14 +356,9 @@ where
             raw.name = filename_stem.into();
             let mut raw = raw.validated(&path.to_string_lossy())?;
 
-            let property_hashes =
-                RawSchemaMetadata::compute_property_hashes(&raw.properties);
-
             raw.metadata = RawSchemaMetadata {
                 created_at,
                 modified_at,
-                content_hash: Some(*content_hash.as_bytes()),
-                property_hashes: property_hashes.clone(),
             };
 
             // Create view with content for caching

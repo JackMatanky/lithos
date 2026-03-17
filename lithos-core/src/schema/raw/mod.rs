@@ -30,10 +30,7 @@
 pub mod property;
 pub mod property_spec;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    time::SystemTime,
-};
+use std::{collections::HashMap, time::SystemTime};
 
 use super::error::{SchemaError, SchemaIngestionError};
 
@@ -250,10 +247,16 @@ impl RawPropertyBank {
 
 /// Raw file metadata for staleness detection.
 ///
-/// Populated during ingestion from filesystem metadata and content hashing.
+/// Populated during ingestion from filesystem metadata.
 /// Not part of the serialized TOML format.
 ///
 /// Used for both schema files and property bank files.
+///
+/// ## Design Note
+///
+/// This type now only stores file timestamps. Content hashes and property
+/// hashes have been moved to `HashMetadata` in the views layer to avoid
+/// duplication and keep the Raw* types focused on parsing.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[non_exhaustive]
 pub struct RawSchemaMetadata {
@@ -264,62 +267,6 @@ pub struct RawSchemaMetadata {
 
     /// File modification timestamp (mtime).
     pub modified_at: Option<SystemTime>,
-
-    /// BLAKE3 hash of raw file content (before parsing).
-    ///
-    /// Computed from raw file bytes during ingestion.
-    pub content_hash: Option<[u8; 32]>,
-
-    /// Per-property BLAKE3 hashes for incremental resolution.
-    ///
-    /// Maps property name to its content hash. Enables detecting which
-    /// specific properties changed without re-parsing the entire file.
-    ///
-    /// Populated for both schema files and property bank files.
-    pub property_hashes: BTreeMap<Box<str>, [u8; 32]>,
-}
-
-impl RawSchemaMetadata {
-    /// Compute per-property hashes from a property map.
-    ///
-    /// Hashes each property definition to enable incremental change detection.
-    /// Uses JSON serialization for stable, canonical hashing (TOML/YAML have
-    /// unstable ordering).
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use std::collections::HashMap;
-    /// use lithos_core::schema::raw::{RawSchemaMetadata, RawProperty};
-    ///
-    /// let mut properties = HashMap::new();
-    /// properties.insert("title".into(), RawProperty::Ref("text".into()));
-    ///
-    /// let hashes = RawSchemaMetadata::compute_property_hashes(&properties);
-    /// assert_eq!(hashes.len(), 1);
-    /// ```
-    #[must_use]
-    #[inline]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Iteration order doesn't matter - we're collecting into \
-                  BTreeMap which provides deterministic ordering"
-    )]
-    pub fn compute_property_hashes(
-        properties: &HashMap<Box<str>, property::RawProperty>,
-    ) -> BTreeMap<Box<str>, [u8; 32]> {
-        let mut hashes = BTreeMap::new();
-
-        for (name, prop) in properties {
-            // Serialize property to JSON for stable hashing
-            if let Ok(json) = serde_json::to_string(prop) {
-                let hash = blake3::hash(json.as_bytes());
-                hashes.insert(name.clone(), *hash.as_bytes());
-            }
-        }
-
-        hashes
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

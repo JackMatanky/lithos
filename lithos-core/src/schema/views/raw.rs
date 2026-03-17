@@ -13,87 +13,51 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-use crate::schema::{aggregate::SchemaName, property::PropertyName};
+use super::{FilePath, PropertyBankVersion, SchemaVersion};
+use crate::schema::{
+    aggregate::SchemaName, property::PropertyName, raw::RawSchema,
+};
 
 /// Maximum number of versions to retain per file.
 const MAX_VERSIONS: usize = 5;
 
-/// Raw schema file with version history and inheritance metadata.
+/// Raw schema file with version history.
 ///
-/// Tracks up to 5 versions of a schema file, plus inheritance information
-/// to enable incremental resolution when only `extends` or `excludes` changes.
+/// Tracks up to 5 versions of a schema file. Each version includes inheritance
+/// metadata (`extends`, `excludes`) to enable incremental resolution.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::views::RawSchemaView;
+/// use lithos_core::schema::views::{RawSchemaView, FilePath, SchemaVersion};
 ///
-/// let view = RawSchemaView::new(
-///     "schemas/note.toml".into(),
-///     Some(SchemaName::try_new("base-note")?),
-///     vec![PropertyName::try_new("internal_id")?],
-/// );
+/// let file_path = FilePath::new("schemas/note.toml".into());
+/// let version = SchemaVersion::new(/* ... */)?;
+/// let view = RawSchemaView::new(file_path, version);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
     /// File path relative to vault root.
-    file_path: Box<str>,
-
-    /// Parent schema name (from `extends` field).
-    ///
-    /// Stored here to enable incremental resolution when only inheritance
-    /// changes. None for root schemas.
-    extends: Option<SchemaName>,
-
-    /// Property names to exclude from parent (from `excludes` field).
-    ///
-    /// Stored here to detect inheritance changes without full re-parse.
-    excludes: Vec<PropertyName>,
+    file_path: FilePath,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     ///
     /// Using `VecDeque` allows efficient `push_front`/`pop_back` for version
-    /// rotation.
-    versions: VecDeque<RawFileVersion>,
+    /// rotation. Each version contains extends/excludes metadata.
+    versions: VecDeque<SchemaVersion>,
 }
 
 impl RawSchemaView {
     /// Creates a new schema view with initial version.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Builder pattern refactor tracked - need to preserve all \
-                  file metadata for staleness detection"
-    )]
     #[inline]
     #[must_use]
-    pub fn new(
-        file_path: Box<str>,
-        extends: Option<SchemaName>,
-        excludes: Vec<PropertyName>,
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        compressed_content: Option<Vec<u8>>,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
+    pub fn new(file_path: FilePath, version: SchemaVersion) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
-        let version = RawFileVersion::new(
-            content_hash,
-            property_hashes,
-            compressed_content,
-            created_at,
-            modified_at,
-        );
         versions.push_front(version);
 
         Self {
             file_path,
-            extends,
-            excludes,
             versions,
         }
     }
@@ -101,35 +65,52 @@ impl RawSchemaView {
     /// Returns the file path.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &str {
+    pub fn file_path(&self) -> &FilePath {
         &self.file_path
     }
 
-    /// Returns the parent schema name (`extends`), if any.
+    /// Returns the schema name (derived from file basename).
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let view = RawSchemaView::new(
+    ///     FilePath::new("schemas/note.toml".into()),
+    ///     version,
+    /// );
+    /// assert_eq!(view.name(), "note");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.file_path.basename()
+    }
+
+    /// Returns the parent schema name (`extends`) from current version, if any.
     #[inline]
     #[must_use]
     pub fn extends(&self) -> Option<&SchemaName> {
-        self.extends.as_ref()
+        let v = self.current()?;
+        v.extends()
     }
 
-    /// Returns the excluded property names.
+    /// Returns the excluded property names from current version.
     #[inline]
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
-        &self.excludes
+        self.current().map_or(&[], super::version::SchemaVersion::excludes)
     }
 
     /// Returns the most recent version, if any.
     #[inline]
     #[must_use]
-    pub fn current(&self) -> Option<&RawFileVersion> {
+    pub fn current(&self) -> Option<&SchemaVersion> {
         self.versions.front()
     }
 
     /// Returns all tracked versions (newest first).
     #[inline]
     #[must_use]
-    pub fn versions(&self) -> &VecDeque<RawFileVersion> {
+    pub fn versions(&self) -> &VecDeque<SchemaVersion> {
         &self.versions
     }
 
@@ -141,28 +122,8 @@ impl RawSchemaView {
     }
 
     /// Adds a new version (evicts oldest if at capacity).
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Consistent with RawFileVersion::new signature - represents \
-                  file metadata"
-    )]
     #[inline]
-    pub fn add_version(
-        &mut self,
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        compressed_content: Option<Vec<u8>>,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) {
-        let version = RawFileVersion::new(
-            content_hash,
-            property_hashes,
-            compressed_content,
-            created_at,
-            modified_at,
-        );
-
+    pub fn add_version(&mut self, version: SchemaVersion) {
         if self.versions.len() >= MAX_VERSIONS {
             self.versions.pop_back(); // Remove oldest
         }
@@ -170,152 +131,65 @@ impl RawSchemaView {
         self.versions.push_front(version);
     }
 
-    /// Reconstructs `RawSchema` from cached compressed content.
+    /// Reconstructs `RawSchema` from the current version.
     ///
-    /// This enables reusing cached schema data without re-reading files.
-    /// Returns `None` if no compressed content is stored, or if
-    /// decompression/parsing fails.
+    /// Returns `None` if no current version exists.
     ///
-    /// Reconstructs the raw schema from cached compressed content.
+    /// The schema name is derived from the file path basename.
     ///
-    /// Returns `None` if no current version exists, no compressed content is
-    /// stored, or if decompression/parsing fails.
-    ///
-    /// The format (JSON/TOML/YAML) is detected from the `file_path` extension.
-    ///
-    /// This enables the Fresh optimization - returning cached data without
-    /// re-reading or re-parsing the file.
+    /// # Errors
+    /// Returns error if deserialization of properties fails.
     #[inline]
-    #[must_use]
-    pub fn to_raw(&self) -> Option<super::super::raw::RawSchema> {
-        let version = self.current()?;
-        let content = version.decompress_content()?.ok()?;
-
-        // Parse based on file extension
-        let path = std::path::Path::new(self.file_path.as_ref());
-        let mut raw: super::super::raw::RawSchema =
-            crate::fs::FsReader::parse_structured_from_str(path, &content)
-                .ok()?;
-
-        // Populate the name field from filename (serde skips this field)
-        // The name is the filename without extension
-        let filename_stem = path.file_stem()?.to_str()?;
-        raw.name = filename_stem.into();
-
-        Some(raw)
+    pub fn to_raw(
+        &self,
+    ) -> Result<Option<RawSchema>, crate::schema::error::SchemaIngestionError>
+    {
+        let Some(version) = self.current() else {
+            return Ok(None);
+        };
+        let name = self.name().into();
+        version.to_raw(name).map(Some)
     }
 
     /// Creates a view from a raw schema with content.
     ///
-    /// This is the complete version of `TryFrom` that accepts the file content
-    /// and compresses it for caching. Use this when you have the content
-    /// available and want to enable the Fresh optimization.
+    /// This method bridges the old ingestor API with the new
+    /// SchemaVersion-based storage. It will be simplified in Phase 3 when
+    /// the ingestor is updated.
     ///
     /// # Parameters
     /// - `raw`: The parsed raw schema
     /// - `file_path`: The relative path to the schema file (for view indexing)
-    /// - `content`: The uncompressed file content (for caching)
+    /// - `content`: The uncompressed file content (unused - for API
+    ///   compatibility)
     ///
     /// # Errors
-    /// Returns error if compression fails or metadata is missing.
+    /// Returns error if metadata is missing or validation fails.
     #[inline]
     pub fn try_from_with_content(
         raw: &super::super::raw::RawSchema,
         file_path: &str,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: format!("schema {}", raw.name).into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
+        use super::{FileTimesMetadata, HashMetadata};
 
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
+        // Compute content hash from raw file content
+        let content_hash = blake3::hash(content.as_bytes());
 
-        let extends = raw
-            .extends
-            .as_ref()
-            .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
+        // Compute per-property hashes
+        let property_hashes =
+            HashMetadata::compute_property_hashes(&raw.properties);
 
-        let excludes: Vec<PropertyName> = raw
-            .excludes
-            .iter()
-            .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
-            .collect();
-
-        let compressed_content = RawFileVersion::compress_content(content)
-            .map_err(|e| crate::schema::error::SchemaIngestionError::Io {
-                path: format!("schema {}", raw.name).into(),
-                reason: format!("compression failed: {e}").into(),
-            })?;
-
-        Ok(Self::new(
-            file_path.into(),
-            extends,
-            excludes,
-            content_hash,
-            property_hashes,
-            Some(compressed_content),
+        let file_times = FileTimesMetadata::new(
             raw.metadata.created_at,
             raw.metadata.modified_at,
-        ))
-    }
-}
+        );
+        let hashes =
+            HashMetadata::new(*content_hash.as_bytes(), property_hashes);
 
-impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
-    type Error = crate::schema::error::SchemaIngestionError;
+        let version = SchemaVersion::new(file_times, hashes, raw)?;
 
-    /// Convert from a raw schema, using its metadata for the view.
-    #[inline]
-    fn try_from(
-        raw: &super::super::raw::RawSchema,
-    ) -> Result<Self, Self::Error> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: format!("schema {}", raw.name).into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
-
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
-
-        let extends = raw
-            .extends
-            .as_ref()
-            .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
-
-        let excludes: Vec<PropertyName> = raw
-            .excludes
-            .iter()
-            .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
-            .collect();
-
-        Ok(Self::new(
-            format!("schemas/{}.toml", raw.name).into_boxed_str(),
-            extends,
-            excludes,
-            content_hash,
-            property_hashes,
-            None, /* TryFrom doesn't have access to compressed content (only
-                   * Ingestor does) */
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
-        ))
+        Ok(Self::new(FilePath::new(file_path.into()), version))
     }
 }
 
@@ -334,28 +208,15 @@ impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
     /// Version history (ring buffer, max 5 versions, newest first).
-    versions: VecDeque<RawFileVersion>,
+    versions: VecDeque<PropertyBankVersion>,
 }
 
 impl RawPropertyBankView {
     /// Creates a new property bank view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        compressed_content: Option<Vec<u8>>,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
+    pub fn new(version: PropertyBankVersion) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
-        let version = RawFileVersion::new(
-            content_hash,
-            property_hashes,
-            compressed_content,
-            created_at,
-            modified_at,
-        );
         versions.push_front(version);
 
         Self {
@@ -366,14 +227,14 @@ impl RawPropertyBankView {
     /// Returns the most recent version, if any.
     #[inline]
     #[must_use]
-    pub fn current(&self) -> Option<&RawFileVersion> {
+    pub fn current(&self) -> Option<&PropertyBankVersion> {
         self.versions.front()
     }
 
     /// Returns all tracked versions (newest first).
     #[inline]
     #[must_use]
-    pub fn versions(&self) -> &VecDeque<RawFileVersion> {
+    pub fn versions(&self) -> &VecDeque<PropertyBankVersion> {
         &self.versions
     }
 
@@ -385,28 +246,8 @@ impl RawPropertyBankView {
     }
 
     /// Adds a new version (evicts oldest if at capacity).
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Consistent with RawFileVersion::new signature - represents \
-                  file metadata"
-    )]
     #[inline]
-    pub fn add_version(
-        &mut self,
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        compressed_content: Option<Vec<u8>>,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) {
-        let version = RawFileVersion::new(
-            content_hash,
-            property_hashes,
-            compressed_content,
-            created_at,
-            modified_at,
-        );
-
+    pub fn add_version(&mut self, version: PropertyBankVersion) {
         if self.versions.len() >= MAX_VERSIONS {
             self.versions.pop_back(); // Remove oldest
         }
@@ -432,17 +273,23 @@ impl RawPropertyBankView {
     ///
     /// This enables the Fresh optimization - returning cached data without
     /// re-reading or re-parsing the file.
+    /// Reconstructs `RawPropertyBank` from the current version.
+    ///
+    /// Returns `None` if no current version exists.
+    ///
+    /// # Errors
+    /// Returns error if deserialization of properties fails.
     #[inline]
-    #[must_use]
     pub fn to_raw(
         &self,
-        path: &std::path::Path,
-    ) -> Option<super::super::raw::RawPropertyBank> {
-        let version = self.current()?;
-        let content = version.decompress_content()?.ok()?;
-
-        // Parse based on file extension
-        crate::fs::FsReader::parse_structured_from_str(path, &content).ok()
+    ) -> Result<
+        Option<crate::schema::raw::RawPropertyBank>,
+        crate::schema::error::SchemaIngestionError,
+    > {
+        let Some(version) = self.current() else {
+            return Ok(None);
+        };
+        version.to_raw().map(Some)
     }
 
     /// Creates a view from a raw property bank with content.
@@ -452,76 +299,31 @@ impl RawPropertyBankView {
     /// available and want to enable the Fresh optimization.
     ///
     /// # Errors
-    /// Returns error if compression fails or metadata is missing.
+    /// Returns error if metadata is missing or validation fails.
     #[inline]
     pub fn try_from_with_content(
         raw: &super::super::raw::RawPropertyBank,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: "property bank".into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
+        use super::{FileTimesMetadata, HashMetadata};
 
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
+        // Compute content hash from raw file content
+        let content_hash = blake3::hash(content.as_bytes());
 
-        let compressed_content = RawFileVersion::compress_content(content)
-            .map_err(|e| crate::schema::error::SchemaIngestionError::Io {
-                path: "property bank".into(),
-                reason: format!("compression failed: {e}").into(),
-            })?;
+        // Compute per-property hashes
+        let property_hashes =
+            HashMetadata::compute_property_hashes_for_bank(&raw.properties);
 
-        Ok(Self::new(
-            content_hash,
-            property_hashes,
-            Some(compressed_content),
+        let file_times = FileTimesMetadata::new(
             raw.metadata.created_at,
             raw.metadata.modified_at,
-        ))
-    }
-}
+        );
+        let hashes =
+            HashMetadata::new(*content_hash.as_bytes(), property_hashes);
 
-impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
-    type Error = crate::schema::error::SchemaIngestionError;
+        let version = PropertyBankVersion::new(file_times, hashes, raw)?;
 
-    /// Convert from a raw property bank, using its metadata for the view.
-    #[inline]
-    fn try_from(
-        raw: &super::super::raw::RawPropertyBank,
-    ) -> Result<Self, Self::Error> {
-        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
-            crate::schema::error::SchemaIngestionError::Io {
-                path: "property bank".into(),
-                reason: "missing content hash".into(),
-            }
-        })?;
-
-        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
-            .metadata
-            .property_hashes
-            .iter()
-            .filter_map(|(k, v)| {
-                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
-            })
-            .collect();
-
-        Ok(Self::new(
-            content_hash,
-            property_hashes,
-            None, /* TryFrom doesn't have access to compressed content (only
-                   * Ingestor does) */
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
-        ))
+        Ok(Self::new(version))
     }
 }
 
@@ -738,6 +540,13 @@ impl RawFileVersion {
     /// # Errors
     /// Returns error if zstd compression fails.
     #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Used in tests; prepared for future loader implementation"
+        )
+    )]
     pub(crate) fn compress_content(content: &str) -> std::io::Result<Vec<u8>> {
         const COMPRESSION_LEVEL: i32 = 3;
         zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
@@ -850,33 +659,62 @@ mod tests {
     }
 
     #[test]
-    fn raw_schema_view_to_raw_returns_none_without_content() {
-        let view = RawSchemaView::new(
-            "schemas/test.toml".into(),
-            None,
-            vec![],
-            [0; 32],
-            BTreeMap::new(),
-            None, // No compressed content
-            None,
-            None,
-        );
+    fn raw_schema_view_to_raw_reconstructs_schema() {
+        use std::collections::HashMap;
 
-        assert!(view.to_raw().is_none());
+        use super::super::{FileTimesMetadata, HashMetadata};
+        use crate::schema::raw::{
+            RawSchema, RawSchemaMetadata, RawSchemaVersion,
+        };
+
+        // Create a test RawSchema
+        let raw = RawSchema {
+            version: RawSchemaVersion::default(),
+            name: "test".into(),
+            extends: None,
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
+        };
+
+        let file_times = FileTimesMetadata::new(None, None);
+        let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+        let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
+
+        let file_path = FilePath::new("schemas/test.toml".into());
+        let view = RawSchemaView::new(file_path, version);
+
+        let reconstructed =
+            view.to_raw().expect("should succeed").expect("should have value");
+        assert_eq!(reconstructed.name.as_ref(), "test");
     }
 
     #[test]
-    fn raw_property_bank_view_to_raw_returns_none_without_content() {
-        let view = RawPropertyBankView::new(
-            [0; 32],
-            BTreeMap::new(),
-            None, // No compressed content
-            None,
-            None,
-        );
+    fn raw_property_bank_view_to_raw_reconstructs_property_bank() {
+        use std::collections::HashMap;
 
-        let path = std::path::Path::new("schemas/property_bank.json");
-        assert!(view.to_raw(path).is_none());
+        use super::super::{FileTimesMetadata, HashMetadata};
+        use crate::schema::raw::{
+            RawPropertyBank, RawSchemaMetadata, RawSchemaVersion,
+        };
+
+        // Create a test RawPropertyBank
+        let raw = RawPropertyBank {
+            version: RawSchemaVersion::default(),
+            properties: HashMap::new(),
+            metadata: RawSchemaMetadata::default(),
+        };
+
+        let file_times = FileTimesMetadata::new(None, None);
+        let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+        let version =
+            PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
+
+        let view = RawPropertyBankView::new(version);
+
+        let reconstructed =
+            view.to_raw().expect("should succeed").expect("should have value");
+        assert_eq!(reconstructed.properties.len(), 0);
     }
 
     #[test]
