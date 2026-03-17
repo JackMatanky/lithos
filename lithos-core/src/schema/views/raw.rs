@@ -3,16 +3,113 @@
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::{FilePath, PropertyBankVersion, SchemaVersion};
+use super::{PropertyBankVersion, SchemaVersion};
 use crate::schema::{
     aggregate::SchemaName,
     property::PropertyName,
     raw::{RawPropertyBank, RawSchema},
 };
+
+// ============================================================================
+// FilePath
+// ============================================================================
+
+/// File path for schema/property bank files, relative to vault root.
+///
+/// Provides methods to extract basename and extension without repeatedly
+/// parsing the path.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+pub struct FilePath(Box<str>);
+
+impl FilePath {
+    /// Create a new file path.
+    #[inline]
+    #[must_use]
+    pub fn new(path: Box<str>) -> Self {
+        Self(path)
+    }
+
+    /// Get the full path as a string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Get the file basename (filename without extension).
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::views::FilePath;
+    ///
+    /// let path = FilePath::new("schemas/note.toml".into());
+    /// assert_eq!(path.basename(), "note");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn basename(&self) -> &str {
+        Path::new(self.as_str())
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+    }
+
+    /// Get the file extension.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::views::FilePath;
+    ///
+    /// let path = FilePath::new("schemas/note.toml".into());
+    /// assert_eq!(path.extension(), Some("toml"));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
+    }
+
+    /// Get the underlying path as a `Path`.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.as_str())
+    }
+}
+
+impl From<Box<str>> for FilePath {
+    #[inline]
+    fn from(path: Box<str>) -> Self {
+        Self::new(path)
+    }
+}
+
+impl From<String> for FilePath {
+    #[inline]
+    fn from(path: String) -> Self {
+        Self::new(path.into_boxed_str())
+    }
+}
+
+impl AsRef<str> for FilePath {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl AsRef<Path> for FilePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
 
 /// Maximum number of versions to retain per file.
 const MAX_VERSIONS: usize = 5;

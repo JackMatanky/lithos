@@ -6,12 +6,12 @@
 //!
 //! ## Module Structure
 //!
-//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`)
+//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`,
+//!   `FilePath`)
 //! - `inheritance` - Inheritance relationship views (`ChildSchemaView`,
 //!   `ParentSchemaView`)
 //! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
 //! - `version` - Versioned content (`SchemaVersion`, `PropertyBankVersion`)
-//! - `file_path` - File path newtype (`FilePath`)
 //!
 //! ## View Pattern
 //!
@@ -33,17 +33,15 @@
               submodules"
 )]
 
-pub mod file_path;
 pub mod inheritance;
 pub mod metadata;
 pub mod raw;
 pub mod version;
 
 // Re-export commonly used types for ergonomic access
-pub use file_path::FilePath;
 pub use inheritance::{
     ChildSchemaView, ParentSchemaView, SchemaInheritanceView,
 };
 pub use metadata::{FileTimesMetadata, HashMetadata};
-pub use raw::{RawPropertyBankView, RawSchemaView};
+pub use raw::{FilePath, RawPropertyBankView, RawSchemaView};
 pub use version::{PropertyBankVersion, SchemaVersion};
