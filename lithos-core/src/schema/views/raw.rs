@@ -98,42 +98,6 @@ impl RawSchemaView {
         }
     }
 
-    /// Creates a new schema view with uncompressed content.
-    ///
-    /// This is a convenience constructor that compresses the content
-    /// internally.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Builder pattern refactor tracked - need to preserve all \
-                  file metadata for staleness detection"
-    )]
-    #[inline]
-    pub fn with_content(
-        file_path: Box<str>,
-        extends: Option<SchemaName>,
-        excludes: Vec<PropertyName>,
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let compressed = RawFileVersion::compress_content(content)?;
-        Ok(Self::new(
-            file_path,
-            extends,
-            excludes,
-            content_hash,
-            property_hashes,
-            Some(compressed),
-            created_at,
-            modified_at,
-        ))
-    }
-
     /// Returns the file path.
     #[inline]
     #[must_use]
@@ -240,6 +204,64 @@ impl RawSchemaView {
 
         Some(raw)
     }
+
+    /// Creates a view from a raw schema with content.
+    ///
+    /// This is the complete version of `TryFrom` that accepts the file content
+    /// and compresses it for caching. Use this when you have the content
+    /// available and want to enable the Fresh optimization.
+    ///
+    /// # Errors
+    /// Returns error if compression fails or metadata is missing.
+    #[inline]
+    pub fn try_from_with_content(
+        raw: &super::super::raw::RawSchema,
+        content: &str,
+    ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
+        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
+            crate::schema::error::SchemaIngestionError::Io {
+                path: format!("schema {}", raw.name).into(),
+                reason: "missing content hash".into(),
+            }
+        })?;
+
+        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
+            .metadata
+            .property_hashes
+            .iter()
+            .filter_map(|(k, v)| {
+                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
+            })
+            .collect();
+
+        let extends = raw
+            .extends
+            .as_ref()
+            .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
+
+        let excludes: Vec<PropertyName> = raw
+            .excludes
+            .iter()
+            .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
+            .collect();
+
+        let compressed_content = RawFileVersion::compress_content(content)
+            .map_err(|e| crate::schema::error::SchemaIngestionError::Io {
+                path: format!("schema {}", raw.name).into(),
+                reason: format!("compression failed: {e}").into(),
+            })?;
+
+        Ok(Self::new(
+            format!("schemas/{}.toml", raw.name).into_boxed_str(),
+            extends,
+            excludes,
+            content_hash,
+            property_hashes,
+            Some(compressed_content),
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
+        ))
+    }
 }
 
 impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
@@ -335,31 +357,6 @@ impl RawPropertyBankView {
         }
     }
 
-    /// Creates a new property bank view with uncompressed content.
-    ///
-    /// This is a convenience constructor that compresses the content
-    /// internally.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn with_content(
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let compressed = RawFileVersion::compress_content(content)?;
-        Ok(Self::new(
-            content_hash,
-            property_hashes,
-            Some(compressed),
-            created_at,
-            modified_at,
-        ))
-    }
-
     /// Returns the most recent version, if any.
     #[inline]
     #[must_use]
@@ -440,6 +437,50 @@ impl RawPropertyBankView {
 
         // Parse based on file extension
         crate::fs::FsReader::parse_structured_from_str(path, &content).ok()
+    }
+
+    /// Creates a view from a raw property bank with content.
+    ///
+    /// This is the complete version of `TryFrom` that accepts the file content
+    /// and compresses it for caching. Use this when you have the content
+    /// available and want to enable the Fresh optimization.
+    ///
+    /// # Errors
+    /// Returns error if compression fails or metadata is missing.
+    #[inline]
+    pub fn try_from_with_content(
+        raw: &super::super::raw::RawPropertyBank,
+        content: &str,
+    ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
+        let content_hash = raw.metadata.content_hash.ok_or_else(|| {
+            crate::schema::error::SchemaIngestionError::Io {
+                path: "property bank".into(),
+                reason: "missing content hash".into(),
+            }
+        })?;
+
+        let property_hashes: BTreeMap<PropertyName, [u8; 32]> = raw
+            .metadata
+            .property_hashes
+            .iter()
+            .filter_map(|(k, v)| {
+                PropertyName::try_new(k.as_ref()).ok().map(|name| (name, *v))
+            })
+            .collect();
+
+        let compressed_content = RawFileVersion::compress_content(content)
+            .map_err(|e| crate::schema::error::SchemaIngestionError::Io {
+                path: "property bank".into(),
+                reason: format!("compression failed: {e}").into(),
+            })?;
+
+        Ok(Self::new(
+            content_hash,
+            property_hashes,
+            Some(compressed_content),
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
+        ))
     }
 }
 
