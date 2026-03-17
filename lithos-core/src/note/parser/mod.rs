@@ -10,11 +10,11 @@
 //! - `ast`: node and text definitions for the minimal structural AST.
 //! - `frontmatter`: raw metadata block capture (fence kind + raw text).
 //! - `note`: `ParsedNote`, the parser output container.
-//! - `ingest`: markdown ingestion (markdown → RawNote).
+//! - `extract`: markdown ingestion (markdown → RawNote).
 //!
 //! Integration in the note pipeline:
 //! - `parser` produces `ParsedNote` from markdown input.
-//! - `ingest` extracts `Raw*` facts from AST and metadata block.
+//! - `extract` extracts `Raw*` facts from AST and metadata block.
 //! - `aggregate` converts `Raw*` into domain facts using `TryFrom`.
 //! - `storage` persists domain facts and builds indexes.
 //!
@@ -24,8 +24,8 @@
 //! - `pulldown-cmark` types do not escape this module.
 
 pub(crate) mod ast;
+pub mod extract;
 pub(crate) mod frontmatter;
-pub mod ingest;
 pub mod note;
 
 use std::ops::Range;
