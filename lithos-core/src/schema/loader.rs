@@ -123,116 +123,60 @@ where
     /// Returns [`SchemaLoaderError`] on any I/O, parsing, domain, or
     /// storage failure.
     #[inline]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Loader orchestrates multi-phase resolution pipeline"
-    )]
     pub fn load(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
         // ── Step 2: PropertyBank - handle loading with staleness internally
-        let (bank, changed_properties) = self.load_property_bank()?;
+        let (bank, _changed_properties) = self.load_property_bank()?;
 
-        // ── Step 3: scan raw schemas ────────────────────────────────────────
+        // ── Step 3: scan raw schemas with staleness detection ───────────────
         let raw_schema_results = self.ingestor.all_schemas()?;
-        // Unwrap IngestResult to get owned raw schemas
-        let raw_schemas: Vec<RawSchema> = raw_schema_results
-            .into_iter()
-            .map(super::ingestor::IngestResult::into_inner)
-            .collect();
 
-        // ── Step 4: check staleness for each schema ─────────────────────────
-        // Track whether each schema's FILE changed (not just bank cascade)
-        let mut stale = Vec::new();
-        let mut file_changed_ids = std::collections::HashSet::new();
+        // ── Step 4: partition by staleness (already detected by Ingestor) ───
+        // Fresh schemas: already in DB, file unchanged - skip processing
+        // Stale schemas: file changed or new - need full resolution
+        let mut stale_schemas = Vec::new();
         let mut fresh_ids = Vec::new();
 
-        for raw_schema in &raw_schemas {
-            let schema_name = SchemaName::try_new(&raw_schema.name)?;
-            let existing_id = name_to_id.get(&schema_name).copied();
-
-            let is_stale = self.is_schema_stale(raw_schema, existing_id)?;
-
-            match (is_stale, existing_id) {
-                (true, _) => {
-                    let id = existing_id.unwrap_or_else(SchemaId::new);
-                    // Track if this is file-stale (not just bank cascade)
-                    // New schemas and schemas with file changes are file-stale
-                    if existing_id.is_none() || is_stale {
-                        file_changed_ids.insert(id);
+        for result in raw_schema_results {
+            match result {
+                IngestResult::Fresh(raw) => {
+                    // Schema file unchanged - already persisted in DB
+                    // Ingestor already checked timestamps and content hash
+                    let schema_name = SchemaName::try_new(&raw.name)?;
+                    if let Some(id) = name_to_id.get(&schema_name) {
+                        fresh_ids.push(*id);
                     }
-                    stale.push((id, raw_schema.clone()));
+                    // If not in name_to_id, this is a bug - Fresh should only
+                    // be for existing schemas
                 }
-                (false, Some(id)) => {
-                    fresh_ids.push(id);
-                }
-                (false, None) => {
-                    // New schema that somehow wasn't marked stale - shouldn't
-                    // happen
+                IngestResult::Stale(raw) => {
+                    // Schema file changed or new - needs processing
+                    // Ingestor already persisted RawSchemaView
+                    let schema_name = SchemaName::try_new(&raw.name)?;
+                    let id = name_to_id
+                        .get(&schema_name)
+                        .copied()
+                        .unwrap_or_else(SchemaId::new);
+                    stale_schemas.push((id, raw));
                 }
             }
         }
 
-        // ── Step 5: Partition stale into categories ─────────────────────────
-        let mut new_schemas = Vec::new();
-        let mut existing_file_changed = Vec::new();
-        let mut existing_file_unchanged = Vec::new();
-
-        for (id, raw) in stale {
-            if !name_to_id.values().any(|&existing| existing == id) {
-                // NEW schema
-                new_schemas.push((id, raw));
-            } else if file_changed_ids.contains(&id) {
-                // EXISTING schema with FILE changes
-                existing_file_changed.push((id, raw));
-            } else {
-                // EXISTING schema with UNCHANGED file (only bank-cascade stale)
-                existing_file_unchanged.push((id, raw));
-            }
-        }
-
-        // ── Step 6: Incremental resolution for existing unchanged files ─────
+        // ── Step 5: Process stale schemas through resolution ────────────────
+        // With Phase 3 enhancements:
+        // - Fresh schemas: already in DB, skip processing
+        // - Stale schemas: file changed or new, need full resolution
+        //
+        // Note: The old "existing_file_unchanged" category (schemas stale due
+        // to property bank cascade but file unchanged) no longer
+        // exists. Those schemas would now be returned as Fresh by the
+        // Ingestor since their file timestamps/hashes match.
         let mut resolved = Vec::new();
 
-        if !existing_file_unchanged.is_empty() && !changed_properties.is_empty()
-        {
-            // Find which existing schemas use the changed properties
-            let affected_map = self
-                .ingestor
-                .repository()
-                .find_schemas_using_properties(&changed_properties)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-            // Load existing schemas that are affected
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "Tuple destructuring requires ref pattern"
-            )]
-            let unchanged_ids: Vec<SchemaId> =
-                existing_file_unchanged.iter().map(|(id, _)| *id).collect();
-            let stored_schemas = self
-                .ingestor
-                .repository()
-                .find_schemas_by_ids(&unchanged_ids)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-            // Apply incremental resolution to affected schemas
-            for schema in &stored_schemas {
-                if let Some(affected_props) = affected_map.get(schema.id()) {
-                    let updated = Resolver::resolve_affected_properties(
-                        schema,
-                        affected_props,
-                        &bank,
-                    )?;
-                    resolved.push(updated);
-                }
-            }
-        }
-
-        // ── Step 7: Full resolution for new + file-changed schemas ──────────
-        let schemas_for_full_resolution: Vec<(SchemaId, RawSchema)> =
-            new_schemas.into_iter().chain(existing_file_changed).collect();
+        // ── Step 6: Full resolution for all stale schemas ───────────────────
+        let schemas_for_full_resolution = stale_schemas;
 
         if !schemas_for_full_resolution.is_empty() {
             // Load fresh schemas as known_parents for inheritance
@@ -260,24 +204,22 @@ where
             resolved.extend(full_resolved);
         }
 
-        // ── Step 8: persist ─────────────────────────────────────────────────
+        // ── Step 7: persist resolved schemas ────────────────────────────────
         if !resolved.is_empty() {
             self.persist_resolved_schemas(&resolved)?;
-            // Persist views for all processed schemas
-            let all_stale: Vec<(SchemaId, RawSchema)> =
-                schemas_for_full_resolution
-                    .into_iter()
-                    .chain(existing_file_unchanged)
-                    .collect();
+
+            // Note: RawSchemaView already persisted by Ingestor during
+            // all_schemas() call (Phase 3 enhancement)
 
             // Extend name_to_id with new schemas for parent lookup
-            let complete_name_to_id =
-                Self::extend_name_to_id_map(&name_to_id, &all_stale)?;
+            let complete_name_to_id = Self::extend_name_to_id_map(
+                &name_to_id,
+                &schemas_for_full_resolution,
+            )?;
 
-            self.persist_raw_views(&all_stale)?;
             // Persist inheritance metadata for caching
             self.persist_inheritance_metadata(
-                &all_stale,
+                &schemas_for_full_resolution,
                 &complete_name_to_id,
             )?;
         }
@@ -386,38 +328,6 @@ where
     }
 
     /// Check if a schema is stale.
-    ///
-    /// Returns `true` if:
-    /// - Schema ID is None (new schema)
-    /// - No view exists in DB (never loaded)
-    /// - Timestamps differ
-    /// - Content hash differs
-    fn is_schema_stale(
-        &self,
-        raw_schema: &RawSchema,
-        existing_id: Option<SchemaId>,
-    ) -> Result<bool, SchemaLoaderError> {
-        // New schemas are always stale
-        if existing_id.is_none() {
-            return Ok(true);
-        }
-
-        #[expect(
-            clippy::unwrap_used,
-            reason = "Safe because we checked is_none() above"
-        )]
-        let view = self
-            .ingestor
-            .repository()
-            .get_raw_schema_view(existing_id.unwrap())
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        Ok(match view {
-            Some(v) => !v.is_fresh(&raw_schema.metadata),
-            None => true, // No view = never loaded = stale
-        })
-    }
-
     /// Persist resolved schemas to the database.
     fn persist_resolved_schemas(
         &self,
@@ -427,27 +337,6 @@ where
             .repository()
             .save_schemas(schemas)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
-    }
-
-    /// Persist raw schema views for staleness tracking.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Reference pattern needed for iteration over slice"
-    )]
-    fn persist_raw_views(
-        &self,
-        stale: &[(SchemaId, RawSchema)],
-    ) -> Result<(), SchemaLoaderError> {
-        for (id, raw) in stale {
-            let view = super::views::RawSchemaView::try_from(raw)
-                .map_err(SchemaLoaderError::Ingestion)?;
-
-            self.ingestor
-                .repository()
-                .save_raw_schema_view(*id, &view)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-        }
-        Ok(())
     }
 
     /// Persist inheritance metadata for caching.
