@@ -312,9 +312,17 @@ where
             IngestResult::Stale(raw_bank) => {
                 // Case: Stale - convert to PropertyBank and save
                 // Ingestor already persisted the RawPropertyBankView
-                // TODO(Phase 4): Track changed properties for incremental
-                // resolution
-                let changed = Vec::new();
+
+                // Track changed properties by comparing with previous version
+                let changed = self
+                    .ingestor
+                    .repository()
+                    .get_raw_property_bank_view()
+                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+                    .map(|view| {
+                        view.filter_changed_properties(&raw_bank.metadata)
+                    })
+                    .unwrap_or_default(); // No previous version = all properties are new
 
                 let bank: PropertyBank = raw_bank.try_into()?;
                 self.ingestor

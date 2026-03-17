@@ -16,10 +16,12 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     schema::{
+        aggregate::{SchemaId, SchemaName},
         error::SchemaIngestionError,
+        property::PropertyName,
         raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
         storage::Repository,
-        views::raw::RawFileVersion,
+        views::raw::{RawFileVersion, RawPropertyBankView, RawSchemaView},
     },
 };
 
@@ -252,14 +254,14 @@ where
                 FsReader::parse_structured_from_str(path, content)?;
             let mut raw = raw.validated(&path.to_string_lossy())?;
 
-            raw.metadata = crate::schema::raw::RawSchemaMetadata {
+            raw.metadata = RawSchemaMetadata {
                 created_at,
                 modified_at,
                 content_hash: Some(*content_hash.as_bytes()),
                 property_hashes: BTreeMap::new(),
             };
 
-            let view = crate::schema::views::raw::RawPropertyBankView::new(
+            let view = RawPropertyBankView::new(
                 *content_hash.as_bytes(),
                 BTreeMap::new(),
                 created_at,
@@ -392,23 +394,18 @@ where
                 property_hashes: property_hashes.clone(),
             };
 
-            let extends = raw.extends.as_ref().and_then(|name| {
-                crate::schema::aggregate::SchemaName::try_new(name.as_ref())
-                    .ok()
-            });
+            let extends = raw
+                .extends
+                .as_ref()
+                .and_then(|name| SchemaName::try_new(name.as_ref()).ok());
 
-            let excludes: Vec<crate::schema::property::PropertyName> = raw
+            let excludes: Vec<PropertyName> = raw
                 .excludes
                 .iter()
-                .filter_map(|name| {
-                    crate::schema::property::PropertyName::try_new(
-                        name.as_ref(),
-                    )
-                    .ok()
-                })
+                .filter_map(|name| PropertyName::try_new(name.as_ref()).ok())
                 .collect();
 
-            let view = crate::schema::views::raw::RawSchemaView::new(
+            let view = RawSchemaView::new(
                 rel_path.to_string().into_boxed_str(),
                 extends,
                 excludes,
@@ -416,11 +413,9 @@ where
                 property_hashes
                     .into_iter()
                     .filter_map(|(k, v)| {
-                        crate::schema::property::PropertyName::try_new(
-                            k.as_ref(),
-                        )
-                        .ok()
-                        .map(|name| (name, v))
+                        PropertyName::try_new(k.as_ref())
+                            .ok()
+                            .map(|name| (name, v))
                     })
                     .collect(),
                 created_at,
@@ -438,7 +433,7 @@ where
                     )
                     .into(),
                 })?
-                .unwrap_or_else(crate::schema::aggregate::SchemaId::new);
+                .unwrap_or_else(SchemaId::new);
 
             self.repository.save_raw_schema_view(schema_id, &view).map_err(
                 |e| SchemaIngestionError::Io {

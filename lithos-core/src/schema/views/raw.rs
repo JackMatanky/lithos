@@ -309,9 +309,6 @@ impl RawSchemaView {
     /// Returns `None` if no compressed content is stored, or if
     /// decompression/parsing fails.
     ///
-    /// # Design Note
-    ///
-    /// TODO(Phase 3): Currently returns `None` - full implementation requires
     /// Reconstructs the raw schema from cached compressed content.
     ///
     /// Returns `None` if no current version exists, no compressed content is
@@ -835,7 +832,8 @@ impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
             property_hashes,
             raw.metadata.created_at,
             raw.metadata.modified_at,
-            None, // TODO(Phase 3): Pass compressed content from Ingestor
+            None, /* TryFrom doesn't have access to compressed content (only
+                   * Ingestor does) */
         ))
     }
 }
@@ -883,7 +881,8 @@ impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
             property_hashes,
             raw.metadata.created_at,
             raw.metadata.modified_at,
-            None, // TODO(Phase 3): Pass compressed content from Ingestor
+            None, /* TryFrom doesn't have access to compressed content (only
+                   * Ingestor does) */
         ))
     }
 }
