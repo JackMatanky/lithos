@@ -227,13 +227,20 @@ impl PropertyBank {
     ///
     /// The version counter is incremented only if changes were actually made.
     ///
-    /// Update properties incrementally from raw property bank.
+    /// Update specific properties incrementally from raw property bank data.
     ///
-    /// Only processes the properties specified in `changed`.
-    /// More efficient than rebuilding entire bank from scratch when
-    /// only a few properties changed.
+    /// Only processes properties in the `changed` list, making this more
+    /// efficient than rebuilding the entire bank when only a few properties
+    /// changed. Used by the ingestor during incremental property bank
+    /// updates.
     ///
-    /// Used by the ingestor during incremental property bank updates.
+    /// This method:
+    /// - Updates properties that exist in both `raw` and `changed`
+    /// - Adds new properties from `raw` that appear in `changed`
+    /// - Removes properties in `changed` that don't exist in `raw`
+    /// - Preserves IDs for properties that already exist
+    ///
+    /// The version counter increments only if changes were actually made.
     ///
     /// # Examples
     /// ```ignore
@@ -251,8 +258,11 @@ impl PropertyBank {
     /// ```
     ///
     /// # Errors
-    /// Returns `SchemaError` if any property validation fails.
-    #[inline]
+    /// Returns error if property validation fails.
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "method has significant logic, shouldn't be inlined"
+    )]
     pub fn update_from_raw(
         &mut self,
         raw: &RawPropertyBank,
