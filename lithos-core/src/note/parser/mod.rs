@@ -14,6 +14,8 @@
 //!
 //! Integration in the note pipeline:
 //! - `parser` produces `ParsedNote` from markdown input.
+//! - `extract::extract_markdown` is the public ingestion path (markdown →
+//!   Raw*).
 //! - `extract` extracts `Raw*` facts from AST and metadata block.
 //! - `aggregate` converts `Raw*` into domain facts using `TryFrom`.
 //! - `storage` persists domain facts and builds indexes.

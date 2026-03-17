@@ -269,7 +269,7 @@ struct ListItemContext<'list_item> {
 /// # Errors
 /// Returns [`NoteIngestError`] when parsing or extraction fails.
 #[inline]
-pub fn ingest_markdown(
+pub fn extract_markdown(
     markdown: &str,
     path: NotePath,
     created_at: Option<SystemTime>,
@@ -452,10 +452,10 @@ mod tests {
     use crate::note::{paths::NotePath, raw::list_items::RawTaskKind};
 
     #[test]
-    fn ingest_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {
+    fn extract_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {
         let markdown = "- [ ] #task Review PR [priority:: 1]";
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = ingest_markdown(markdown, path, None, None)?;
+        let raw = extract_markdown(markdown, path, None, None)?;
 
         assert_eq!(raw.tasks().len(), 1);
         let task = raw.tasks().first().expect("task should exist");
@@ -468,11 +468,11 @@ mod tests {
     }
 
     #[test]
-    fn ingest_markdown_preserves_task_marker_case()
+    fn extract_markdown_preserves_task_marker_case()
     -> Result<(), NoteIngestError> {
         let markdown = "- [X] #task Done";
         let path = NotePath::try_new("notes/task.md")?;
-        let raw = ingest_markdown(markdown, path, None, None)?;
+        let raw = extract_markdown(markdown, path, None, None)?;
 
         let task = raw.tasks().first().expect("task should exist");
         assert!(matches!(task.task_kind(), RawTaskKind::Checked('X')));
