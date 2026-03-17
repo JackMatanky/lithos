@@ -10,7 +10,7 @@ use rkyv::{
 use crate::schema::{property::PropertyName, raw::property::RawProperty};
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FileVersionMetadata
+//  FileTimesMetadata
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// File timestamp metadata shared by schema and property bank versions.
@@ -27,7 +27,7 @@ use crate::schema::{property::PropertyName, raw::property::RawProperty};
     clippy::struct_field_names,
     reason = "Archived type mirrors source struct field names"
 )))]
-pub struct FileVersionMetadata {
+pub struct FileTimesMetadata {
     /// File creation timestamp from filesystem.
     #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
@@ -41,8 +41,8 @@ pub struct FileVersionMetadata {
     recorded_at: SystemTime,
 }
 
-impl FileVersionMetadata {
-    /// Create new file version metadata.
+impl FileTimesMetadata {
+    /// Create new file times metadata.
     #[inline]
     #[must_use]
     pub fn new(
@@ -101,10 +101,10 @@ impl FileVersionMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct HashMetadata {
     /// Blake3 hash of file content for staleness detection.
-    content_hash: [u8; 32],
+    content: [u8; 32],
 
     /// Per-property Blake3 hashes for incremental updates/resolution.
-    property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+    properties: BTreeMap<PropertyName, [u8; 32]>,
 }
 
 impl HashMetadata {
@@ -112,34 +112,34 @@ impl HashMetadata {
     #[inline]
     #[must_use]
     pub fn new(
-        content_hash: [u8; 32],
-        property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        content: [u8; 32],
+        properties: BTreeMap<PropertyName, [u8; 32]>,
     ) -> Self {
         Self {
-            content_hash,
-            property_hashes,
+            content,
+            properties,
         }
     }
 
     /// Get content hash.
     #[inline]
     #[must_use]
-    pub fn content_hash(&self) -> &[u8; 32] {
-        &self.content_hash
+    pub fn content(&self) -> &[u8; 32] {
+        &self.content
     }
 
     /// Get property hashes.
     #[inline]
     #[must_use]
-    pub fn property_hashes(&self) -> &BTreeMap<PropertyName, [u8; 32]> {
-        &self.property_hashes
+    pub fn properties(&self) -> &BTreeMap<PropertyName, [u8; 32]> {
+        &self.properties
     }
 
     /// Check if content hash matches (for staleness detection).
     #[inline]
     #[must_use]
     pub fn content_matches(&self, hash: &[u8; 32]) -> bool {
-        self.content_hash == *hash
+        self.content == *hash
     }
 
     /// Compute property hashes from raw properties.
@@ -176,13 +176,13 @@ impl HashMetadata {
 
         // Find modified or added properties
         for (name, new_hash) in new_hashes {
-            if self.property_hashes.get(name) != Some(new_hash) {
+            if self.properties.get(name) != Some(new_hash) {
                 changed.push(name.clone());
             }
         }
 
         // Find removed properties
-        for name in self.property_hashes.keys() {
+        for name in self.properties.keys() {
             if !new_hashes.contains_key(name) {
                 changed.push(name.clone());
             }
@@ -216,18 +216,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_metadata_matches_same_timestamps() {
+    fn file_times_matches_same_timestamps() {
         let now = SystemTime::now();
-        let metadata = FileVersionMetadata::new(Some(now), Some(now));
+        let metadata = FileTimesMetadata::new(Some(now), Some(now));
 
         assert!(metadata.matches(Some(now), Some(now)));
     }
 
     #[test]
-    fn file_metadata_no_match_different_timestamps() {
+    fn file_times_no_match_different_timestamps() {
         let now = SystemTime::now();
         let later = now + std::time::Duration::from_secs(1);
-        let metadata = FileVersionMetadata::new(Some(now), Some(now));
+        let metadata = FileTimesMetadata::new(Some(now), Some(now));
 
         assert!(!metadata.matches(Some(later), Some(now)));
     }

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::metadata::{FileVersionMetadata, HashMetadata};
+use super::metadata::{FileTimesMetadata, HashMetadata};
 use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
@@ -34,16 +34,13 @@ use crate::schema::{
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
     /// File timestamp metadata.
-    file_metadata: FileVersionMetadata,
+    file_times: FileTimesMetadata,
 
     /// Hash metadata for staleness detection.
-    hash_metadata: HashMetadata,
+    hashes: HashMetadata,
 
     /// Schema format version (e.g., "1.0").
     version: RawSchemaVersion,
-
-    /// Schema name (derived from filename).
-    name: Box<str>,
 
     /// Parent schema name (from `extends` field).
     extends: Option<SchemaName>,
@@ -74,8 +71,8 @@ impl SchemaVersion {
         reason = "Consuming iteration - order doesn't matter for validation"
     )]
     pub fn new(
-        file_metadata: FileVersionMetadata,
-        hash_metadata: HashMetadata,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
         raw: RawSchema,
     ) -> Result<Self, SchemaIngestionError> {
         // Validate and convert property keys from Box<str> to PropertyName
@@ -118,10 +115,9 @@ impl SchemaVersion {
             .transpose()?;
 
         Ok(Self {
-            file_metadata,
-            hash_metadata,
+            file_times,
+            hashes,
             version: raw.version,
-            name: raw.name,
             extends,
             excludes,
             properties,
@@ -129,25 +125,18 @@ impl SchemaVersion {
         })
     }
 
-    /// Get file metadata.
+    /// Get file times metadata.
     #[inline]
     #[must_use]
-    pub fn file_metadata(&self) -> &FileVersionMetadata {
-        &self.file_metadata
+    pub fn file_times(&self) -> &FileTimesMetadata {
+        &self.file_times
     }
 
     /// Get hash metadata.
     #[inline]
     #[must_use]
-    pub fn hash_metadata(&self) -> &HashMetadata {
-        &self.hash_metadata
-    }
-
-    /// Get schema name.
-    #[inline]
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn hashes(&self) -> &HashMetadata {
+        &self.hashes
     }
 
     /// Get parent schema name.
@@ -194,24 +183,33 @@ impl SchemaVersion {
     /// Reconstruct a `RawSchema` from this version.
     ///
     /// Used when we need to pass data to components expecting `RawSchema`.
+    ///
+    /// # Parameters
+    /// - `name`: Schema name (typically derived from file basename)
     #[inline]
     #[must_use]
-    pub fn to_raw(&self) -> RawSchema {
+    pub fn to_raw(&self, name: Box<str>) -> RawSchema {
         // Convert PropertyName keys back to Box<str>
         let properties = self
             .properties
             .iter()
-            .map(|(name, prop)| (name.as_str().into(), prop.clone()))
+            .map(|(prop_name, prop)| (prop_name.as_str().into(), prop.clone()))
             .collect();
 
-        let excludes =
-            self.excludes.iter().map(|name| name.as_str().into()).collect();
+        let excludes = self
+            .excludes
+            .iter()
+            .map(|prop_name| prop_name.as_str().into())
+            .collect();
 
-        let extends = self.extends.as_ref().map(|name| name.as_str().into());
+        let extends = self
+            .extends
+            .as_ref()
+            .map(|schema_name| schema_name.as_str().into());
 
         RawSchema {
             version: self.version.clone(),
-            name: self.name.clone(),
+            name,
             extends,
             excludes,
             properties,
@@ -220,7 +218,7 @@ impl SchemaVersion {
         }
     }
 
-    /// Check if this version is fresh (matches file metadata).
+    /// Check if this version is fresh (matches file times).
     #[inline]
     #[must_use]
     pub fn is_fresh(
@@ -228,14 +226,14 @@ impl SchemaVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_metadata.matches(created_at, modified_at)
+        self.file_times.matches(created_at, modified_at)
     }
 
     /// Check if content matches (for hash-based staleness detection).
     #[inline]
     #[must_use]
     pub fn content_matches(&self, hash: &[u8; 32]) -> bool {
-        self.hash_metadata.content_matches(hash)
+        self.hashes.content_matches(hash)
     }
 }
 
@@ -253,10 +251,10 @@ impl SchemaVersion {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
     /// File timestamp metadata.
-    file_metadata: FileVersionMetadata,
+    file_times: FileTimesMetadata,
 
     /// Hash metadata for staleness detection.
-    hash_metadata: HashMetadata,
+    hashes: HashMetadata,
 
     /// Property bank format version (e.g., "1.0").
     version: RawSchemaVersion,
@@ -276,8 +274,8 @@ impl PropertyBankVersion {
         reason = "Consuming iteration - order doesn't matter for validation"
     )]
     pub fn new(
-        file_metadata: FileVersionMetadata,
-        hash_metadata: HashMetadata,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
         raw: RawPropertyBank,
     ) -> Result<Self, SchemaIngestionError> {
         // Validate and convert property keys from Box<str> to PropertyName
@@ -294,25 +292,25 @@ impl PropertyBankVersion {
         }
 
         Ok(Self {
-            file_metadata,
-            hash_metadata,
+            file_times,
+            hashes,
             version: raw.version,
             properties,
         })
     }
 
-    /// Get file metadata.
+    /// Get file times metadata.
     #[inline]
     #[must_use]
-    pub fn file_metadata(&self) -> &FileVersionMetadata {
-        &self.file_metadata
+    pub fn file_times(&self) -> &FileTimesMetadata {
+        &self.file_times
     }
 
     /// Get hash metadata.
     #[inline]
     #[must_use]
-    pub fn hash_metadata(&self) -> &HashMetadata {
-        &self.hash_metadata
+    pub fn hashes(&self) -> &HashMetadata {
+        &self.hashes
     }
 
     /// Get properties.
@@ -344,7 +342,7 @@ impl PropertyBankVersion {
         }
     }
 
-    /// Check if this version is fresh (matches file metadata).
+    /// Check if this version is fresh (matches file times).
     #[inline]
     #[must_use]
     pub fn is_fresh(
@@ -352,14 +350,14 @@ impl PropertyBankVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_metadata.matches(created_at, modified_at)
+        self.file_times.matches(created_at, modified_at)
     }
 
     /// Check if content matches (for hash-based staleness detection).
     #[inline]
     #[must_use]
     pub fn content_matches(&self, hash: &[u8; 32]) -> bool {
-        self.hash_metadata.content_matches(hash)
+        self.hashes.content_matches(hash)
     }
 }
 
@@ -394,15 +392,15 @@ mod tests {
     #[test]
     fn schema_version_round_trip() {
         let raw = create_test_raw_schema();
-        let file_meta = FileVersionMetadata::new(
+        let file_times = FileTimesMetadata::new(
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hash_meta = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
         let version =
-            SchemaVersion::new(file_meta, hash_meta, raw.clone()).unwrap();
-        let reconstructed = version.to_raw();
+            SchemaVersion::new(file_times, hashes, raw.clone()).unwrap();
+        let reconstructed = version.to_raw(raw.name.clone());
 
         assert_eq!(reconstructed.name, raw.name);
         assert_eq!(reconstructed.extends, raw.extends);
@@ -413,15 +411,14 @@ mod tests {
     #[test]
     fn property_bank_version_round_trip() {
         let raw = create_test_raw_property_bank();
-        let file_meta = FileVersionMetadata::new(
+        let file_times = FileTimesMetadata::new(
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hash_meta = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
         let version =
-            PropertyBankVersion::new(file_meta, hash_meta, raw.clone())
-                .unwrap();
+            PropertyBankVersion::new(file_times, hashes, raw.clone()).unwrap();
         let reconstructed = version.to_raw();
 
         assert_eq!(reconstructed.properties.len(), 0);
@@ -430,14 +427,13 @@ mod tests {
     #[test]
     fn schema_version_expanded_properties() {
         let raw = create_test_raw_schema();
-        let file_meta = FileVersionMetadata::new(
+        let file_times = FileTimesMetadata::new(
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hash_meta = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
-        let mut version =
-            SchemaVersion::new(file_meta, hash_meta, raw).unwrap();
+        let mut version = SchemaVersion::new(file_times, hashes, raw).unwrap();
 
         assert!(version.expanded_properties().is_none());
 
@@ -461,13 +457,13 @@ mod tests {
             }),
         );
 
-        let file_meta = FileVersionMetadata::new(
+        let file_times = FileTimesMetadata::new(
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hash_meta = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
 
-        let result = SchemaVersion::new(file_meta, hash_meta, raw);
+        let result = SchemaVersion::new(file_times, hashes, raw);
         result.unwrap_err();
     }
 }
