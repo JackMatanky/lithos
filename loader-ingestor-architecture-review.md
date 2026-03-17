@@ -258,32 +258,48 @@ pub fn all_schemas(&self) -> Result<...> {
 
 **Current Issue:** `RawFileVersion` mixes multiple concerns (hashes, times, cached content)
 
-**Solution:** Split into three specialized version types:
+**Solution:** Split into four specialized types (2 shared, 2 specific):
 
-**Type 1: File Metadata (shared)**
+**Type 1: File Timestamp Metadata (shared)**
 ```rust
-/// File timestamp metadata - shared by both schema and property bank views
+/// File timestamp metadata - shared by both schema and property bank versions
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct FileVersionMetadata {
+    #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
+
+    #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
+
+    #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,  // When this version was recorded in DB
 }
 ```
 
-**Type 2: Schema Version (specific to RawSchemaView)**
+**Type 2: Content Hash Metadata (shared)**
+```rust
+/// Content and property hash metadata - shared by both version types
+/// Used for staleness detection and incremental resolution
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct HashMetadata {
+    /// Blake3 hash of file content for staleness detection
+    content_hash: [u8; 32],
+
+    /// Per-property Blake3 hashes for incremental updates/resolution
+    property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+}
+```
+
+**Type 3: Schema Version (specific to RawSchemaView)**
 ```rust
 /// A single version of a schema file with cached data
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
-    /// File timestamp metadata
-    metadata: FileVersionMetadata,
+    /// File timestamp metadata (shared)
+    file_metadata: FileVersionMetadata,
 
-    /// Content hash for staleness detection
-    content_hash: [u8; 32],
-
-    /// Per-property hashes for incremental resolution
-    property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+    /// Hash metadata for staleness detection (shared)
+    hash_metadata: HashMetadata,
 
     /// Serialized RawSchema (optionally compressed)
     /// Format: rkyv(RawSchema) or zstd(rkyv(RawSchema))
@@ -295,19 +311,16 @@ pub struct SchemaVersion {
 }
 ```
 
-**Type 3: PropertyBank Version (specific to RawPropertyBankView)**
+**Type 4: PropertyBank Version (specific to RawPropertyBankView)**
 ```rust
 /// A single version of the property bank file with cached data
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
-    /// File timestamp metadata
-    metadata: FileVersionMetadata,
+    /// File timestamp metadata (shared)
+    file_metadata: FileVersionMetadata,
 
-    /// Content hash for staleness detection
-    content_hash: [u8; 32],
-
-    /// Per-property hashes for incremental updates
-    property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+    /// Hash metadata for staleness detection (shared)
+    hash_metadata: HashMetadata,
 
     /// Serialized RawPropertyBank (optionally compressed)
     /// Format: rkyv(RawPropertyBank) or zstd(rkyv(RawPropertyBank))
@@ -333,11 +346,16 @@ pub struct RawPropertyBankView {
 ```
 
 **Benefits:**
-- Each version type has exactly what it needs (no unused fields)
+- **Two shared types** eliminate duplication:
+  - `FileVersionMetadata`: Timestamps used by both schemas and property bank
+  - `HashMetadata`: Content/property hashes used by both for staleness detection
+- **Two specific types** contain only what they need:
+  - `SchemaVersion`: Adds `archived_schema` + `expanded_properties`
+  - `PropertyBankVersion`: Adds only `archived_property_bank`
 - Serialized structs stored IN the version (versioned properly)
 - Expanded properties stored IN SchemaVersion (versioned with the schema)
-- Property hashes stored IN each version for staleness detection
-- Clear separation of concerns
+- Hash computation logic lives in shared `HashMetadata` type (DRY)
+- Clear separation of concerns with composition
 
 #### 1.2: Remove RawSchemaMetadata
 
@@ -877,7 +895,7 @@ Load 100 schemas (all fresh, PropertyBank fresh):
 
 ## Appendix: Code Samples
 
-### A1: Split Version Types
+### A1: Split Version Types (Corrected)
 
 ```rust
 /// File timestamp metadata - shared by both schema and property bank versions
@@ -893,39 +911,18 @@ pub struct FileVersionMetadata {
     recorded_at: SystemTime,
 }
 
-/// A single version of a schema file with cached data
+/// Content and property hash metadata - shared by both version types
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub struct SchemaVersion {
-    /// File timestamp metadata
-    metadata: FileVersionMetadata,
-
-    /// Content hash for staleness detection (kept in version, not in RawSchema)
+pub struct HashMetadata {
+    /// Blake3 hash of file content for staleness detection
     content_hash: [u8; 32],
 
-    /// Per-property hashes for incremental resolution (kept in version)
+    /// Per-property Blake3 hashes for incremental updates/resolution
     property_hashes: BTreeMap<PropertyName, [u8; 32]>,
-
-    /// Serialized RawSchema (optionally compressed)
-    /// Format: rkyv(RawSchema) or zstd(rkyv(RawSchema))
-    archived_schema: Vec<u8>,
-
-    /// Cached expanded properties (from RefExpander)
-    /// Enables skipping expansion when PropertyBank is fresh
-    expanded_properties: Option<HashMap<PropertyName, Property>>,
 }
 
-impl SchemaVersion {
-    /// Deserialize cached RawSchema
-    pub fn to_raw(&self) -> Result<RawSchema, Error> {
-        // Option 1: If uncompressed
-        rkyv::from_bytes(&self.archived_schema)
-
-        // Option 2: If compressed
-        // let decompressed = zstd::decode_all(self.archived_schema.as_slice())?;
-        // rkyv::from_bytes(&decompressed)
-    }
-
-    /// Compute property hashes from RawSchema properties
+impl HashMetadata {
+    /// Compute property hashes from RawSchema or RawPropertyBank properties
     pub fn compute_property_hashes(
         properties: &HashMap<Box<str>, RawProperty>
     ) -> BTreeMap<PropertyName, [u8; 32]> {
@@ -949,17 +946,44 @@ impl SchemaVersion {
     }
 }
 
+/// A single version of a schema file with cached data
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct SchemaVersion {
+    /// File timestamp metadata (shared)
+    file_metadata: FileVersionMetadata,
+
+    /// Hash metadata for staleness detection (shared)
+    hash_metadata: HashMetadata,
+
+    /// Serialized RawSchema (optionally compressed)
+    /// Format: rkyv(RawSchema) or zstd(rkyv(RawSchema))
+    archived_schema: Vec<u8>,
+
+    /// Cached expanded properties (from RefExpander)
+    /// Enables skipping expansion when PropertyBank is fresh
+    expanded_properties: Option<HashMap<PropertyName, Property>>,
+}
+
+impl SchemaVersion {
+    /// Deserialize cached RawSchema
+    pub fn to_raw(&self) -> Result<RawSchema, Error> {
+        // Option 1: If uncompressed
+        rkyv::from_bytes(&self.archived_schema)
+
+        // Option 2: If compressed
+        // let decompressed = zstd::decode_all(self.archived_schema.as_slice())?;
+        // rkyv::from_bytes(&decompressed)
+    }
+}
+
 /// A single version of the property bank file with cached data
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
-    /// File timestamp metadata
-    metadata: FileVersionMetadata,
+    /// File timestamp metadata (shared)
+    file_metadata: FileVersionMetadata,
 
-    /// Content hash for staleness detection
-    content_hash: [u8; 32],
-
-    /// Per-property hashes for incremental updates
-    property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+    /// Hash metadata for staleness detection (shared)
+    hash_metadata: HashMetadata,
 
     /// Serialized RawPropertyBank (optionally compressed)
     archived_property_bank: Vec<u8>,
@@ -1026,8 +1050,8 @@ impl RawSchemaView {
     ) -> bool {
         self.current()
             .is_some_and(|v| {
-                v.metadata.created_at == created_at
-                    && v.metadata.modified_at == modified_at
+                v.file_metadata.created_at == created_at
+                    && v.file_metadata.modified_at == modified_at
             })
     }
 
@@ -1040,11 +1064,13 @@ impl RawSchemaView {
             return Vec::new();
         };
 
-        current.property_hashes
+        let current_hashes = &current.hash_metadata.property_hashes;
+
+        current_hashes
             .keys()
             .chain(new_hashes.keys())
             .filter(|name| {
-                current.property_hashes.get(name) != new_hashes.get(name)
+                current_hashes.get(name) != new_hashes.get(name)
             })
             .cloned()
             .collect()
