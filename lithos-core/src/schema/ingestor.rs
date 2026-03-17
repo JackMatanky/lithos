@@ -10,7 +10,7 @@
 //! - Metadata populated in Raw* types (no separate tuples)
 //! - Returns `IngestResult<T>` indicating Fresh or Stale for optimization
 
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
 use crate::{
     config::aggregate::Config,
@@ -298,15 +298,21 @@ where
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
     /// ```
     #[inline]
+    /// Ingest property bank with staleness detection.
+    ///
+    /// Returns `PropertyBankResult` indicating if the bank is:
+    /// - `New`: First time seeing property bank
+    /// - `Fresh`: File unchanged, loaded from database
+    /// - `Stale`: File changed, updated incrementally with changed properties
+    ///   tracked
+    ///
+    /// # Errors
+    ///
+    /// Returns error if file reading, parsing, or repository access fails.
     pub fn property_bank(
         &self,
-    ) -> Result<Option<IngestResult<RawPropertyBank>>, SchemaIngestionError>
-    {
+    ) -> Result<PropertyBankResult, SchemaIngestionError> {
         let path = self.config.paths().property_bank_path();
-
-        if !self.source.exists(&path) {
-            return Ok(None);
-        }
 
         // Extract timestamps once (needed for staleness check and metadata)
         let created_at = self.source.created_at(&path);
@@ -322,39 +328,50 @@ where
                     .into(),
             })?;
 
-        // Fast path: Check timestamps (no file I/O)
-        if let Some(view) = cached_view.as_ref()
-            && view.current().is_some_and(|v| {
-                v.file_times().is_timestamp_match(created_at, modified_at)
-            })
-            && let Some(raw) = view.to_raw()?
-        {
-            return Ok(Some(IngestResult::Fresh(raw)));
-        }
-
-        // Slow path: Read file once for hash check, compression, and parsing
-        self.source.read_with(&path, |path, content| {
-            let content_hash = blake3::hash(content.as_bytes());
-
-            // Check content hash if we have a cached view
-            if let Some(view) = cached_view.as_ref()
-                && view.current().is_some_and(|v| {
-                    v.hashes().is_content_match(content_hash.as_bytes())
-                })
-                && let Some(raw) = view.to_raw()?
-            {
-                return Ok(Some(IngestResult::Fresh(raw)));
-            }
-
-            // Parse from the content we just read (single file read)
-            let raw: RawPropertyBank =
-                FsReader::parse_structured_from_str(path, content)?;
-            let mut raw = raw.validated(&path.to_string_lossy())?;
-
-            raw.metadata = RawSchemaMetadata {
+        // Case 1: No cached version - this is a NEW property bank
+        let Some(view) = cached_view else {
+            return self.ingest_new_property_bank(
+                &path,
                 created_at,
                 modified_at,
-            };
+            );
+        };
+
+        // Case 2: Check if FRESH (timestamps match)
+        if view.current().is_some_and(|v| {
+            v.file_times().is_timestamp_match(created_at, modified_at)
+        }) {
+            let bank = self
+                .repository
+                .get_property_bank()
+                .map_err(|e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to load PropertyBank: {e}").into(),
+                })?
+                .ok_or_else(|| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: "PropertyBank missing from DB but view exists"
+                        .into(),
+                })?;
+            return Ok(PropertyBankResult::Fresh(bank));
+        }
+
+        // Case 3: STALE - file changed, compute incremental update
+        self.ingest_stale_property_bank(&path, created_at, modified_at, &view)
+    }
+
+    fn ingest_new_property_bank(
+        &self,
+        path: &Path,
+        _created_at: Option<SystemTime>,
+        _modified_at: Option<SystemTime>,
+    ) -> Result<PropertyBankResult, SchemaIngestionError> {
+        self.source.read_with(path, |path, content| {
+            let _content_hash = blake3::hash(content.as_bytes());
+
+            let raw: RawPropertyBank =
+                FsReader::parse_structured_from_str(path, content)?;
+            let raw = raw.validated(&path.to_string_lossy())?;
 
             // Create view with content for caching
             let view =
@@ -368,7 +385,99 @@ where
                 },
             )?;
 
-            Ok(Some(IngestResult::Stale(raw)))
+            // Create PropertyBank
+            let bank = crate::schema::bank::PropertyBank::try_from(raw)?;
+
+            self.repository.save_property_bank(&bank).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to save PropertyBank: {e}").into(),
+                }
+            })?;
+
+            Ok(PropertyBankResult::New(bank))
+        })
+    }
+
+    fn ingest_stale_property_bank(
+        &self,
+        path: &Path,
+        _created_at: Option<SystemTime>,
+        _modified_at: Option<SystemTime>,
+        cached_view: &RawPropertyBankView,
+    ) -> Result<PropertyBankResult, SchemaIngestionError> {
+        self.source.read_with(path, |path, content| {
+            let content_hash = blake3::hash(content.as_bytes());
+
+            // Check content hash before re-parsing
+            if cached_view.current().is_some_and(|v| {
+                v.hashes().is_content_match(content_hash.as_bytes())
+            }) {
+                // Content unchanged despite timestamp difference - treat as
+                // fresh
+                let bank = self
+                    .repository
+                    .get_property_bank()
+                    .map_err(|e| SchemaIngestionError::Io {
+                        path: path.to_string_lossy().into(),
+                        reason: format!("Failed to load PropertyBank: {e}")
+                            .into(),
+                    })?
+                    .ok_or_else(|| SchemaIngestionError::Io {
+                        path: path.to_string_lossy().into(),
+                        reason: "PropertyBank missing from DB but view exists"
+                            .into(),
+                    })?;
+                return Ok(PropertyBankResult::Fresh(bank));
+            }
+
+            // Parse new version
+            let raw: RawPropertyBank =
+                FsReader::parse_structured_from_str(path, content)?;
+            let raw = raw.validated(&path.to_string_lossy())?;
+
+            // Compute new hashes and find changed properties
+            let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(&raw.properties);
+            let changed = cached_view.current().map_or_else(
+                || {
+                    // If no current version, all properties are "changed"
+                    new_hashes.keys().cloned().collect()
+                },
+                |v| v.hashes().changed_properties(&new_hashes),
+            );
+
+            // Create updated view
+            let view =
+                RawPropertyBankView::try_from_with_content(&raw, content)?;
+
+            self.repository.save_raw_property_bank_view(&view).map_err(
+                |e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to save property bank view: {e}")
+                        .into(),
+                },
+            )?;
+
+            // Update PropertyBank incrementally
+            let mut bank = self
+                .repository
+                .get_property_bank()
+                .map_err(|e| SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to load PropertyBank: {e}").into(),
+                })?
+                .unwrap_or_default();
+
+            bank.update_from_raw(&raw, &changed)?;
+
+            self.repository.save_property_bank(&bank).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: path.to_string_lossy().into(),
+                    reason: format!("Failed to save PropertyBank: {e}").into(),
+                }
+            })?;
+
+            Ok(PropertyBankResult::Stale { bank, changed })
         })
     }
 
@@ -632,11 +741,9 @@ mod tests {
         let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank_result = result
-            .expect("Should parse property bank")
-            .expect("Should have bank");
-        assert!(bank_result.is_stale()); // First load is always stale
-        assert!(bank_result.as_ref().properties.is_empty());
+        let bank_result = result.expect("Should parse property bank");
+        assert!(bank_result.is_new() || bank_result.is_stale());
+        assert!(bank_result.bank().all().count() == 0);
     }
 
     #[test]
@@ -655,11 +762,9 @@ mod tests {
         let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank_result = result
-            .expect("Should parse property bank")
-            .expect("Should have bank");
-        assert!(bank_result.is_stale());
-        assert!(bank_result.as_ref().properties.is_empty());
+        let bank_result = result.expect("Should parse property bank");
+        assert!(bank_result.is_new());
+        assert!(bank_result.bank().all().count() == 0);
     }
 
     #[test]
@@ -678,11 +783,9 @@ mod tests {
         let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank_result = result
-            .expect("Should parse property bank")
-            .expect("Should have bank");
-        assert!(bank_result.is_stale());
-        assert!(bank_result.as_ref().properties.is_empty());
+        let bank_result = result.expect("Should parse property bank");
+        assert!(bank_result.is_new() || bank_result.is_stale());
+        assert!(bank_result.bank().all().count() == 0);
     }
 
     #[test]
@@ -816,10 +919,8 @@ mod tests {
         let result = ingestor.property_bank();
 
         assert!(result.is_ok());
-        let bank_result = result
-            .expect("Should parse property bank")
-            .expect("Should have bank");
-        assert_eq!(bank_result.as_ref().version.as_ref(), "1.0");
+        let bank_result = result.expect("Should parse property bank");
+        assert_eq!(bank_result.bank().version().to_string(), "v0");
     }
 
     #[test]
@@ -892,14 +993,12 @@ mod tests {
             let ingestor =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository);
 
-            // First load - should be Stale (new file, no cached view)
-            let first_result = ingestor
-                .property_bank()
-                .expect("first load should succeed")
-                .expect("should have property bank");
+            // First load - should be New (new file, no cached view)
+            let first_result =
+                ingestor.property_bank().expect("first load should succeed");
             assert!(
-                first_result.is_stale(),
-                "First load should be Stale (new file)"
+                first_result.is_new(),
+                "First load should be New (new file)"
             );
 
             // Verify view was saved to database
@@ -937,11 +1036,8 @@ mod tests {
                 Ingestor::new(FsReader::new(dir.path()), &config, repository);
 
             // First load
-            let first_result = ingestor
-                .property_bank()
-                .expect("first load")
-                .expect("should have bank");
-            assert!(first_result.is_stale());
+            let first_result = ingestor.property_bank().expect("first load");
+            assert!(first_result.is_new());
 
             // Modify file (change content and timestamp)
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -955,18 +1051,15 @@ mod tests {
             let repository2 = RedbRepository::new(db);
             let ingestor2 =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository2);
-            let second_result = ingestor2
-                .property_bank()
-                .expect("second load")
-                .expect("should have bank");
+            let second_result = ingestor2.property_bank().expect("second load");
             assert!(
                 second_result.is_stale(),
                 "Modified file should be detected as Stale"
             );
 
             // Verify content changed
-            assert_eq!(first_result.as_ref().properties.len(), 0);
-            assert_eq!(second_result.as_ref().properties.len(), 1);
+            assert_eq!(first_result.bank().all().count(), 0);
+            assert_eq!(second_result.bank().all().count(), 1);
         }
 
         /// Test: Stale property bank detected by content hash mismatch.
@@ -986,11 +1079,8 @@ mod tests {
                 Ingestor::new(FsReader::new(dir.path()), &config, repository);
 
             // First load
-            let first_result = ingestor
-                .property_bank()
-                .expect("first load")
-                .expect("should have bank");
-            assert!(first_result.is_stale());
+            let first_result = ingestor.property_bank().expect("first load");
+            assert!(first_result.is_new());
 
             // Modify file content (hash will change)
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -1004,10 +1094,7 @@ mod tests {
             let repository2 = RedbRepository::new(db);
             let ingestor2 =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository2);
-            let second_result = ingestor2
-                .property_bank()
-                .expect("second load")
-                .expect("should have bank");
+            let second_result = ingestor2.property_bank().expect("second load");
             assert!(
                 second_result.is_stale(),
                 "Changed content should be detected by hash"

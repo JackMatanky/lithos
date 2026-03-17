@@ -278,63 +278,20 @@ where
         (PropertyBank, Vec<super::property::PropertyName>),
         SchemaLoaderError,
     > {
-        let raw_bank_result =
-            self.ingestor.property_bank()?.ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::FileSystem(
-                    "Property bank file not found".into(),
-                ))
-            })?;
+        let bank_result = self.ingestor.property_bank()?;
 
-        // Use IngestResult to determine if property bank is fresh or stale
-        // Ingestor already persisted the view
-        match raw_bank_result {
-            IngestResult::Fresh(_cached_raw) => {
-                // Case: Fresh - load PropertyBank from DB, no changes
-                let bank = self
-                    .ingestor
-                    .repository()
-                    .get_property_bank()
-                    .map_err(|e| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                            path: "database".into(),
-                            reason: e.to_string().into(),
-                        })
-                    })?
-                    .ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(
-                            SchemaIngestionError::FileSystem(
-                                "Property bank not found in database".into(),
-                            ),
-                        )
-                    })?;
+        // Ingestor now returns PropertyBank directly with staleness info
+        match bank_result {
+            crate::schema::ingestor::PropertyBankResult::New(bank)
+            | crate::schema::ingestor::PropertyBankResult::Fresh(bank) => {
+                // Case: New or Fresh - no changed properties
                 Ok((bank, Vec::new()))
             }
-            IngestResult::Stale(raw_bank) => {
-                // Case: Stale - convert to PropertyBank and save
-                // Ingestor already persisted the RawPropertyBankView
-
-                // Track changed properties by comparing with previous version
-                // Compute property hashes from raw property bank
-                let new_hashes = crate::schema::views::HashMetadata::compute_property_hashes_for_bank(&raw_bank.properties);
-
-                let changed = self
-                    .ingestor
-                    .repository()
-                    .get_raw_property_bank_view()
-                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-                    .and_then(|view| {
-                        view.current().map(|current| {
-                            current.hashes().changed_properties(&new_hashes)
-                        })
-                    })
-                    .unwrap_or_default(); // No previous version = all properties are new
-
-                let bank: PropertyBank = raw_bank.try_into()?;
-                self.ingestor
-                    .repository()
-                    .save_property_bank(&bank)
-                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
+            crate::schema::ingestor::PropertyBankResult::Stale {
+                bank,
+                changed,
+            } => {
+                // Case: Stale - return bank and changed properties
                 Ok((bank, changed))
             }
         }
