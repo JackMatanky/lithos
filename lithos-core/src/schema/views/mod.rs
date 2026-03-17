@@ -35,6 +35,7 @@
 pub mod inheritance;
 pub mod metadata;
 pub mod raw;
+pub mod version;
 
 // Re-export commonly used types for ergonomic access
 pub use inheritance::{
@@ -42,3 +43,4 @@ pub use inheritance::{
 };
 pub use metadata::{FileVersionMetadata, HashMetadata};
 pub use raw::{RawFileVersion, RawPropertyBankView, RawSchemaView};
+pub use version::{PropertyBankVersion, SchemaVersion};
