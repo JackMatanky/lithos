@@ -264,9 +264,9 @@ where
             let view = RawPropertyBankView::new(
                 *content_hash.as_bytes(),
                 BTreeMap::new(),
+                Some(compressed_content),
                 created_at,
                 modified_at,
-                Some(compressed_content),
             );
 
             self.repository.save_raw_property_bank_view(&view).map_err(
@@ -418,9 +418,9 @@ where
                             .map(|name| (name, v))
                     })
                     .collect(),
+                Some(compressed_content),
                 created_at,
                 modified_at,
-                Some(compressed_content),
             );
 
             let schema_id = self

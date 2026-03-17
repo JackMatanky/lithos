@@ -76,17 +76,17 @@ impl RawSchemaView {
         excludes: Vec<PropertyName>,
         content_hash: [u8; 32],
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        compressed_content: Option<Vec<u8>>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
+            compressed_content,
             created_at,
             modified_at,
-            compressed_content,
         );
         versions.push_front(version);
 
@@ -151,16 +151,16 @@ impl RawSchemaView {
         &mut self,
         content_hash: [u8; 32],
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        compressed_content: Option<Vec<u8>>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        compressed_content: Option<Vec<u8>>,
     ) {
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
+            compressed_content,
             created_at,
             modified_at,
-            compressed_content,
         );
 
         if self.versions.len() >= MAX_VERSIONS {
@@ -364,17 +364,17 @@ impl RawPropertyBankView {
     pub fn new(
         content_hash: [u8; 32],
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        compressed_content: Option<Vec<u8>>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
+            compressed_content,
             created_at,
             modified_at,
-            compressed_content,
         );
         versions.push_front(version);
 
@@ -415,16 +415,16 @@ impl RawPropertyBankView {
         &mut self,
         content_hash: [u8; 32],
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        compressed_content: Option<Vec<u8>>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        compressed_content: Option<Vec<u8>>,
     ) {
         let version = RawFileVersion::new(
             content_hash,
             property_hashes,
+            compressed_content,
             created_at,
             modified_at,
-            compressed_content,
         );
 
         if self.versions.len() >= MAX_VERSIONS {
@@ -607,6 +607,12 @@ pub struct RawFileVersion {
     /// incremental re-resolution of only affected properties instead of
     /// full schema re-resolution.
     property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+    /// Compressed original file content (zstd level 3) - enables exact
+    /// reconstruction.
+    ///
+    /// Stored as `Option<Vec<u8>>` to support legacy versions without content,
+    /// but all new versions should include this for cache reconstruction.
+    compressed_content: Option<Vec<u8>>,
     /// File creation timestamp (from filesystem).
     #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
@@ -616,12 +622,6 @@ pub struct RawFileVersion {
     /// When this version was recorded in the database.
     #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
-    /// Compressed original file content (zstd level 3) - enables exact
-    /// reconstruction.
-    ///
-    /// Stored as `Option<Vec<u8>>` to support legacy versions without content,
-    /// but all new versions should include this for cache reconstruction.
-    compressed_content: Option<Vec<u8>>,
 }
 
 impl RawFileVersion {
@@ -640,19 +640,19 @@ impl RawFileVersion {
     pub fn new(
         content_hash: [u8; 32],
         property_hashes: BTreeMap<PropertyName, [u8; 32]>,
+        compressed_content: Option<Vec<u8>>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        compressed_content: Option<Vec<u8>>,
     ) -> Self {
         let recorded_at = SystemTime::now();
 
         Self {
             content_hash,
             property_hashes,
+            compressed_content,
             created_at,
             modified_at,
             recorded_at,
-            compressed_content,
         }
     }
 
@@ -830,10 +830,10 @@ impl TryFrom<&super::super::raw::RawPropertyBank> for RawPropertyBankView {
         Ok(Self::new(
             content_hash,
             property_hashes,
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
             None, /* TryFrom doesn't have access to compressed content (only
                    * Ingestor does) */
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
         ))
     }
 }
@@ -879,10 +879,10 @@ impl TryFrom<&super::super::raw::RawSchema> for RawSchemaView {
             excludes,
             content_hash,
             property_hashes,
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
             None, /* TryFrom doesn't have access to compressed content (only
                    * Ingestor does) */
+            raw.metadata.created_at,
+            raw.metadata.modified_at,
         ))
     }
 }
@@ -941,9 +941,9 @@ mod tests {
         let version = RawFileVersion::new(
             [0; 32],
             BTreeMap::new(),
-            None,
-            None,
             Some(compressed),
+            None,
+            None,
         );
 
         let decompressed = version
@@ -964,9 +964,9 @@ mod tests {
         let version = RawFileVersion::new(
             [0; 32],
             BTreeMap::new(),
-            None,
-            None,
             Some(compressed),
+            None,
+            None,
         );
 
         let decompressed = version
@@ -983,9 +983,9 @@ mod tests {
         let version = RawFileVersion::new(
             [0; 32],
             BTreeMap::new(),
-            None,
-            None,
             Some(invalid_data),
+            None,
+            None,
         );
 
         let result = version.decompress_content().expect("should have content");
@@ -1000,9 +1000,9 @@ mod tests {
             vec![],
             [0; 32],
             BTreeMap::new(),
-            None,
-            None,
             None, // No compressed content
+            None,
+            None,
         );
 
         assert!(view.to_raw().is_none());
@@ -1013,9 +1013,9 @@ mod tests {
         let view = RawPropertyBankView::new(
             [0; 32],
             BTreeMap::new(),
-            None,
-            None,
             None, // No compressed content
+            None,
+            None,
         );
 
         let path = std::path::Path::new("schemas/property_bank.json");
@@ -1031,9 +1031,9 @@ mod tests {
         let version = RawFileVersion::new(
             [1; 32],
             BTreeMap::new(),
-            None,
-            None,
             Some(compressed.clone()),
+            None,
+            None,
         );
 
         // Verify the compressed content is stored
