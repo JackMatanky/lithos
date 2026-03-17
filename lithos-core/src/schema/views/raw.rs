@@ -3,7 +3,10 @@
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
 
-use std::{collections::VecDeque, path::Path};
+use std::{
+    collections::{HashMap, VecDeque},
+    path::Path,
+};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -11,105 +14,11 @@ use super::{PropertyBankVersion, SchemaVersion};
 use crate::schema::{
     aggregate::SchemaName,
     property::PropertyName,
-    raw::{RawPropertyBank, RawSchema},
+    raw::{
+        RawPropertyBank, RawSchema, RawSchemaMetadata,
+        property::{RawProperty, RawPropertyBankEntry},
+    },
 };
-
-// ============================================================================
-// FilePath
-// ============================================================================
-
-/// File path for schema/property bank files, relative to vault root.
-///
-/// Provides methods to extract basename and extension without repeatedly
-/// parsing the path.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-pub struct FilePath(Box<str>);
-
-impl FilePath {
-    /// Create a new file path.
-    #[inline]
-    #[must_use]
-    pub fn new(path: Box<str>) -> Self {
-        Self(path)
-    }
-
-    /// Get the full path as a string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Get the file basename (filename without extension).
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::views::FilePath;
-    ///
-    /// let path = FilePath::new("schemas/note.toml".into());
-    /// assert_eq!(path.basename(), "note");
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> &str {
-        Path::new(self.as_str())
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-    }
-
-    /// Get the file extension.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::views::FilePath;
-    ///
-    /// let path = FilePath::new("schemas/note.toml".into());
-    /// assert_eq!(path.extension(), Some("toml"));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn extension(&self) -> Option<&str> {
-        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
-    }
-
-    /// Get the underlying path as a `Path`.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.as_str())
-    }
-}
-
-impl From<Box<str>> for FilePath {
-    #[inline]
-    fn from(path: Box<str>) -> Self {
-        Self::new(path)
-    }
-}
-
-impl From<String> for FilePath {
-    #[inline]
-    fn from(path: String) -> Self {
-        Self::new(path.into_boxed_str())
-    }
-}
-
-impl AsRef<str> for FilePath {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl AsRef<Path> for FilePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
 
 /// Maximum number of versions to retain per file.
 const MAX_VERSIONS: usize = 5;
@@ -240,8 +149,35 @@ impl RawSchemaView {
         let Some(version) = self.current() else {
             return Ok(None);
         };
-        let name = self.name().into();
-        version.to_raw(name).map(Some)
+
+        // Deserialize properties from serde JSON
+        let name: Box<str> = self.name().into();
+        let properties: HashMap<Box<str>, RawProperty> =
+            serde_json::from_slice(version.raw_properties()).map_err(|e| {
+                crate::schema::error::SchemaIngestionError::Io {
+                    path: name.clone(),
+                    reason: format!("failed to deserialize properties: {e}")
+                        .into(),
+                }
+            })?;
+
+        let excludes: Vec<Box<str>> = version
+            .excludes()
+            .iter()
+            .map(|prop_name| prop_name.as_str().into())
+            .collect();
+
+        let extends: Option<Box<str>> =
+            version.extends().map(|schema_name| schema_name.as_str().into());
+
+        Ok(Some(RawSchema {
+            version: version.version().into(),
+            name,
+            extends,
+            excludes,
+            properties,
+            metadata: RawSchemaMetadata::default(),
+        }))
     }
 
     /// Creates a view from a raw schema with content.
@@ -382,7 +318,22 @@ impl RawPropertyBankView {
         let Some(version) = self.current() else {
             return Ok(None);
         };
-        version.to_raw().map(Some)
+
+        // Deserialize properties from serde JSON
+        let properties: HashMap<Box<str>, RawPropertyBankEntry> =
+            serde_json::from_slice(version.raw_properties()).map_err(|e| {
+                crate::schema::error::SchemaIngestionError::Io {
+                    path: "property_bank".into(),
+                    reason: format!("failed to deserialize properties: {e}")
+                        .into(),
+                }
+            })?;
+
+        Ok(Some(RawPropertyBank {
+            version: version.version().into(),
+            properties,
+            metadata: RawSchemaMetadata::default(),
+        }))
     }
 
     /// Creates a view from a raw property bank with content.
@@ -420,15 +371,102 @@ impl RawPropertyBankView {
     }
 }
 
-// ----------------------------------------------------------- //
-//                            Tests                            //
-// ============================================================================
-// Tests
-// ============================================================================
+/// File path for schema/property bank files, relative to vault root.
+///
+/// Provides methods to extract basename and extension without repeatedly
+/// parsing the path.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+pub struct FilePath(Box<str>);
+
+impl FilePath {
+    /// Create a new file path.
+    #[inline]
+    #[must_use]
+    pub fn new(path: Box<str>) -> Self {
+        Self(path)
+    }
+
+    /// Get the full path as a string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Get the file basename (filename without extension).
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::views::FilePath;
+    ///
+    /// let path = FilePath::new("schemas/note.toml".into());
+    /// assert_eq!(path.basename(), "note");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn basename(&self) -> &str {
+        Path::new(self.as_str())
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+    }
+
+    /// Get the file extension.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::views::FilePath;
+    ///
+    /// let path = FilePath::new("schemas/note.toml".into());
+    /// assert_eq!(path.extension(), Some("toml"));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
+    }
+
+    /// Get the underlying path as a `Path`.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.as_str())
+    }
+}
+
+impl From<Box<str>> for FilePath {
+    #[inline]
+    fn from(path: Box<str>) -> Self {
+        Self::new(path)
+    }
+}
+
+impl From<String> for FilePath {
+    #[inline]
+    fn from(path: String) -> Self {
+        Self::new(path.into_boxed_str())
+    }
+}
+
+impl AsRef<str> for FilePath {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl AsRef<Path> for FilePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    mod file_path_tests {
+    mod file_path {
         use super::super::FilePath;
 
         #[test]
@@ -462,7 +500,7 @@ mod tests {
         }
     }
 
-    mod raw_schema_view_tests {
+    mod schema {
         use std::collections::{BTreeMap, HashMap};
 
         use super::super::{FilePath, RawSchemaView, SchemaVersion};
@@ -498,7 +536,7 @@ mod tests {
         }
     }
 
-    mod raw_property_bank_view_tests {
+    mod property_bank {
         use std::collections::{BTreeMap, HashMap};
 
         use super::super::{PropertyBankVersion, RawPropertyBankView};

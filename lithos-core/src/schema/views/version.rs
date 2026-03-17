@@ -27,10 +27,7 @@ use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
     property::{Property, PropertyName},
-    raw::{
-        RawPropertyBank, RawSchema, RawSchemaMetadata,
-        property::{RawProperty, RawPropertyBankEntry},
-    },
+    raw::{RawPropertyBank, RawSchema},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,6 +178,20 @@ impl SchemaVersion {
         &self.hashes
     }
 
+    /// Get version string.
+    #[inline]
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// Get raw properties as serialized bytes.
+    #[inline]
+    #[must_use]
+    pub fn raw_properties(&self) -> &[u8] {
+        &self.raw_properties
+    }
+
     /// Get parent schema name.
     #[inline]
     #[must_use]
@@ -213,52 +224,6 @@ impl SchemaVersion {
         properties: HashMap<PropertyName, Property>,
     ) {
         self.expanded_properties = Some(properties);
-    }
-
-    /// Reconstruct a `RawSchema` from this version.
-    ///
-    /// Used when we need to pass data to components expecting `RawSchema`.
-    ///
-    /// # Parameters
-    /// - `name`: Schema name (typically derived from file basename)
-    ///
-    /// # Errors
-    /// Returns error if deserialization of properties fails.
-    #[inline]
-    pub fn to_raw(
-        &self,
-        name: Box<str>,
-    ) -> Result<RawSchema, SchemaIngestionError> {
-        // Deserialize properties from serde JSON
-        let properties: HashMap<Box<str>, RawProperty> =
-            serde_json::from_slice(&self.raw_properties).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: name.clone(),
-                    reason: format!("failed to deserialize properties: {e}")
-                        .into(),
-                }
-            })?;
-
-        let excludes = self
-            .excludes
-            .iter()
-            .map(|prop_name| prop_name.as_str().into())
-            .collect();
-
-        let extends = self
-            .extends
-            .as_ref()
-            .map(|schema_name| schema_name.as_str().into());
-
-        Ok(RawSchema {
-            version: self.version.as_ref().into(),
-            name,
-            extends,
-            excludes,
-            properties,
-            metadata: RawSchemaMetadata::default(), /* Metadata not stored in
-                                                     * version */
-        })
     }
 }
 
@@ -359,31 +324,18 @@ impl PropertyBankVersion {
         &self.hashes
     }
 
-    /// Reconstruct a `RawPropertyBank` from this version.
-    ///
-    /// Used when we need to pass data to components expecting
-    /// `RawPropertyBank`.
-    ///
-    /// # Errors
-    /// Returns error if deserialization of properties fails.
+    /// Get version string.
     #[inline]
-    pub fn to_raw(&self) -> Result<RawPropertyBank, SchemaIngestionError> {
-        // Deserialize properties from serde JSON
-        let properties: HashMap<Box<str>, RawPropertyBankEntry> =
-            serde_json::from_slice(&self.raw_properties).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: "property_bank".into(),
-                    reason: format!("failed to deserialize properties: {e}")
-                        .into(),
-                }
-            })?;
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
 
-        Ok(RawPropertyBank {
-            version: self.version.as_ref().into(),
-            properties,
-            metadata: RawSchemaMetadata::default(), /* Metadata not stored in
-                                                     * version */
-        })
+    /// Get raw properties as serialized bytes.
+    #[inline]
+    #[must_use]
+    pub fn raw_properties(&self) -> &[u8] {
+        &self.raw_properties
     }
 }
 
@@ -395,7 +347,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::schema::raw::RawSchemaVersion;
+    use crate::schema::raw::{
+        RawSchemaMetadata, RawSchemaVersion, property::RawProperty,
+    };
 
     fn create_test_raw_schema() -> RawSchema {
         RawSchema {
@@ -406,48 +360,6 @@ mod tests {
             properties: HashMap::new(),
             metadata: RawSchemaMetadata::default(),
         }
-    }
-
-    fn create_test_raw_property_bank() -> RawPropertyBank {
-        RawPropertyBank {
-            version: RawSchemaVersion::default(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        }
-    }
-
-    #[test]
-    fn schema_version_round_trip() {
-        let raw = create_test_raw_schema();
-        let file_times = FileTimesMetadata::new(
-            Some(SystemTime::now()),
-            Some(SystemTime::now()),
-        );
-        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
-
-        let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
-        let reconstructed = version.to_raw(raw.name.clone()).unwrap();
-
-        assert_eq!(reconstructed.name, raw.name);
-        assert_eq!(reconstructed.extends, raw.extends);
-        assert_eq!(reconstructed.excludes, raw.excludes);
-        assert_eq!(reconstructed.properties.len(), 0);
-    }
-
-    #[test]
-    fn property_bank_version_round_trip() {
-        let raw = create_test_raw_property_bank();
-        let file_times = FileTimesMetadata::new(
-            Some(SystemTime::now()),
-            Some(SystemTime::now()),
-        );
-        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
-
-        let version =
-            PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
-        let reconstructed = version.to_raw().unwrap();
-
-        assert_eq!(reconstructed.properties.len(), 0);
     }
 
     #[test]
