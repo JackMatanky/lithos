@@ -78,6 +78,112 @@ impl<T> IngestResult<T> {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  PropertyBankResult
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of property bank ingestion with staleness information.
+///
+/// Indicates whether the property bank file is:
+/// - **New**: First time seeing this file
+/// - **Fresh**: File unchanged, loaded from database cache
+/// - **Stale**: File changed, updated incrementally with changed properties
+///   tracked
+///
+/// The `Stale` variant tracks which properties changed to enable incremental
+/// schema resolution - only schemas using changed properties need re-expansion.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum PropertyBankResult {
+    /// Property bank file is new (first time seeing it).
+    New(crate::schema::bank::PropertyBank),
+
+    /// Property bank file unchanged - loaded from database.
+    Fresh(crate::schema::bank::PropertyBank),
+
+    /// Property bank file changed - updated incrementally.
+    Stale {
+        /// The updated property bank.
+        bank: crate::schema::bank::PropertyBank,
+        /// Properties that changed (for incremental resolution).
+        changed: Vec<crate::schema::property::PropertyName>,
+    },
+}
+
+impl PropertyBankResult {
+    /// Get the property bank regardless of variant.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "implicit borrow in match on &self"
+    )]
+    pub fn bank(&self) -> &crate::schema::bank::PropertyBank {
+        match self {
+            Self::New(bank)
+            | Self::Fresh(bank)
+            | Self::Stale {
+                bank,
+                ..
+            } => bank,
+        }
+    }
+
+    /// Get the property bank, consuming self.
+    #[inline]
+    #[must_use]
+    pub fn into_bank(self) -> crate::schema::bank::PropertyBank {
+        match self {
+            Self::New(bank)
+            | Self::Fresh(bank)
+            | Self::Stale {
+                bank,
+                ..
+            } => bank,
+        }
+    }
+
+    /// Get changed properties if stale, otherwise empty slice.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "implicit borrow in match on &self"
+    )]
+    pub fn changed_properties(
+        &self,
+    ) -> &[crate::schema::property::PropertyName] {
+        match self {
+            Self::Stale {
+                changed,
+                ..
+            } => changed,
+            Self::New(_) | Self::Fresh(_) => &[],
+        }
+    }
+
+    /// Check if the bank is fresh.
+    #[inline]
+    #[must_use]
+    pub const fn is_fresh(&self) -> bool {
+        matches!(self, Self::Fresh(_))
+    }
+
+    /// Check if the bank is new.
+    #[inline]
+    #[must_use]
+    pub const fn is_new(&self) -> bool {
+        matches!(self, Self::New(_))
+    }
+
+    /// Check if the bank is stale.
+    #[inline]
+    #[must_use]
+    pub const fn is_stale(&self) -> bool {
+        matches!(self, Self::Stale { .. })
+    }
+}
+
 /// Ingestor for loading raw schema files with embedded Repository for caching.
 ///
 /// This adapter is responsible for:
@@ -1117,6 +1223,81 @@ mod tests {
                 second_result.is_fresh(),
                 "Path lookup should return Fresh"
             );
+        }
+    }
+
+    /// Unit tests for `PropertyBankResult`.
+    mod property_bank_result_tests {
+        use super::*;
+        use crate::schema::{bank::PropertyBank, property::PropertyName};
+
+        #[test]
+        fn new_variant_returns_bank() {
+            let bank = PropertyBank::default();
+            let result = PropertyBankResult::New(bank.clone());
+
+            assert_eq!(result.bank(), &bank);
+            assert!(result.is_new());
+            assert!(!result.is_fresh());
+            assert!(!result.is_stale());
+            assert_eq!(result.changed_properties(), &[]);
+        }
+
+        #[test]
+        fn fresh_variant_returns_bank() {
+            let bank = PropertyBank::default();
+            let result = PropertyBankResult::Fresh(bank.clone());
+
+            assert_eq!(result.bank(), &bank);
+            assert!(result.is_fresh());
+            assert!(!result.is_new());
+            assert!(!result.is_stale());
+            assert_eq!(result.changed_properties(), &[]);
+        }
+
+        #[test]
+        fn stale_variant_returns_bank_and_changed() {
+            let bank = PropertyBank::default();
+            let prop1 = PropertyName::try_new("title").unwrap();
+            let prop2 = PropertyName::try_new("status").unwrap();
+            let changed = vec![prop1.clone(), prop2.clone()];
+
+            let result = PropertyBankResult::Stale {
+                bank: bank.clone(),
+                changed: changed.clone(),
+            };
+
+            assert_eq!(result.bank(), &bank);
+            assert!(result.is_stale());
+            assert!(!result.is_new());
+            assert!(!result.is_fresh());
+            assert_eq!(result.changed_properties(), changed.as_slice());
+        }
+
+        #[test]
+        fn into_bank_consumes_and_returns_bank() {
+            let bank = PropertyBank::default();
+            let result = PropertyBankResult::New(bank.clone());
+
+            let extracted = result.into_bank();
+            assert_eq!(extracted, bank);
+        }
+
+        #[test]
+        fn into_bank_works_for_all_variants() {
+            let bank = PropertyBank::default();
+
+            let new_result = PropertyBankResult::New(bank.clone());
+            assert_eq!(new_result.into_bank(), bank);
+
+            let fresh_result = PropertyBankResult::Fresh(bank.clone());
+            assert_eq!(fresh_result.into_bank(), bank);
+
+            let stale_result = PropertyBankResult::Stale {
+                bank: bank.clone(),
+                changed: vec![],
+            };
+            assert_eq!(stale_result.into_bank(), bank);
         }
     }
 }
