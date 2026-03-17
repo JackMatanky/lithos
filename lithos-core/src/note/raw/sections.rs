@@ -1,10 +1,6 @@
-//! Raw section extraction helpers.
+//! Raw section types.
 
-use crate::note::{
-    error::NoteError,
-    parser::ast::{Node, NodeKind},
-    position::SourceByteRange,
-};
+use crate::note::position::SourceByteRange;
 
 /// Raw section kinds derived from AST nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,84 +65,4 @@ impl RawSection {
     pub const fn depth(&self) -> u32 {
         self.depth
     }
-}
-
-/// Build raw sections from AST nodes.
-pub(crate) fn extract_sections(
-    nodes: &[Node],
-) -> Result<Vec<RawSection>, NoteError> {
-    let mut sections = Vec::new();
-    walk_sections(nodes, 0, &mut sections)?;
-    Ok(sections)
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &NodeKind"
-)]
-fn walk_sections(
-    nodes: &[Node],
-    depth: u32,
-    sections: &mut Vec<RawSection>,
-) -> Result<(), NoteError> {
-    for node in nodes {
-        match node.kind() {
-            NodeKind::Heading {
-                ..
-            } => {
-                sections.push(RawSection::new(
-                    RawSectionKind::Heading,
-                    node.range(),
-                    depth,
-                ));
-            }
-            NodeKind::Paragraph {
-                ..
-            } => {
-                sections.push(RawSection::new(
-                    RawSectionKind::Paragraph,
-                    node.range(),
-                    depth,
-                ));
-            }
-            NodeKind::List {
-                items,
-                ..
-            } => {
-                walk_sections(items, depth.saturating_add(1), sections)?;
-            }
-            NodeKind::ListItem {
-                children,
-                ..
-            } => {
-                sections.push(RawSection::new(
-                    RawSectionKind::List,
-                    node.range(),
-                    depth,
-                ));
-                walk_sections(children, depth.saturating_add(1), sections)?;
-            }
-            NodeKind::CodeBlock {
-                ..
-            } => {
-                sections.push(RawSection::new(
-                    RawSectionKind::CodeBlock,
-                    node.range(),
-                    depth,
-                ));
-            }
-            NodeKind::BlockQuote {
-                nodes: quote_nodes,
-                ..
-            } => {
-                sections.push(RawSection::new(
-                    RawSectionKind::BlockQuote,
-                    node.range(),
-                    depth,
-                ));
-                walk_sections(quote_nodes, depth.saturating_add(1), sections)?;
-            }
-        }
-    }
-    Ok(())
 }

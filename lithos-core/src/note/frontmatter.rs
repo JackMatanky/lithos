@@ -10,10 +10,6 @@
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
-#![expect(
-    dead_code,
-    reason = "Frontmatter parsing helpers retained for future use"
-)]
 
 use std::{collections::HashMap, fmt::Write as _};
 
@@ -23,7 +19,9 @@ use super::{
     error::{FrontmatterError, FrontmatterParseError},
     value::FieldValue,
 };
-use crate::config::frontmatter::FrontmatterKey;
+use crate::{
+    config::frontmatter::FrontmatterKey, note::raw::frontmatter::RawFrontmatter,
+};
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -68,6 +66,15 @@ pub enum FrontmatterFormat {
     Yaml,
     /// TOML frontmatter block.
     Toml,
+}
+
+impl TryFrom<RawFrontmatter> for Frontmatter {
+    type Error = FrontmatterParseError;
+
+    #[inline]
+    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
+        Frontmatter::parse(raw.kind(), raw.text())
+    }
 }
 
 impl Frontmatter {

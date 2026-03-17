@@ -15,19 +15,19 @@ use crate::note::{
     paths::NotePath,
     position::SourceByteOffset,
     raw::{
-        block_refs::collect_block_refs,
+        block_refs::RawBlockRef,
         frontmatter::RawFrontmatter,
         headings::RawHeading,
         inline_fields::RawInlineField,
-        links::{RawLink, RawLinkStyle, split_raw_target_and_anchor},
+        links::{RawLink, RawLinkStyle},
         list_items::{RawListDepth, RawListItem, RawListType, RawTaskKind},
         note::RawNote,
         reference_links::RawReferenceLink,
-        sections::{RawSection, RawSectionKind, extract_sections},
-        tags::{RawTag, scan_raw_tags},
-        task_tokens::RawTaskTokens,
+        sections::{RawSection, RawSectionKind},
+        tags::RawTag,
         tasks::RawTask,
     },
+    task_tokens::RawTaskTokens,
 };
 
 struct RawCollector<'source> {
@@ -549,6 +549,222 @@ fn normalize_key(key: &str) -> Box<str> {
         .collect::<Vec<_>>()
         .join("-")
         .into_boxed_str()
+}
+
+fn extract_sections(nodes: &[Node]) -> Result<Vec<RawSection>, NoteError> {
+    let mut sections = Vec::new();
+    walk_sections(nodes, 0, &mut sections)?;
+    Ok(sections)
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Match ergonomics on &NodeKind"
+)]
+fn walk_sections(
+    nodes: &[Node],
+    depth: u32,
+    sections: &mut Vec<RawSection>,
+) -> Result<(), NoteError> {
+    for node in nodes {
+        match node.kind() {
+            NodeKind::Heading {
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::Heading,
+                    node.range(),
+                    depth,
+                ));
+            }
+            NodeKind::Paragraph {
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::Paragraph,
+                    node.range(),
+                    depth,
+                ));
+            }
+            NodeKind::List {
+                items,
+                ..
+            } => {
+                walk_sections(items, depth.saturating_add(1), sections)?;
+            }
+            NodeKind::ListItem {
+                children,
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::List,
+                    node.range(),
+                    depth,
+                ));
+                walk_sections(children, depth.saturating_add(1), sections)?;
+            }
+            NodeKind::CodeBlock {
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::CodeBlock,
+                    node.range(),
+                    depth,
+                ));
+            }
+            NodeKind::BlockQuote {
+                nodes: quote_nodes,
+                ..
+            } => {
+                sections.push(RawSection::new(
+                    RawSectionKind::BlockQuote,
+                    node.range(),
+                    depth,
+                ));
+                walk_sections(quote_nodes, depth.saturating_add(1), sections)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn scan_raw_tags(
+    text: &str,
+    base_offset: SourceByteOffset,
+) -> Result<Vec<RawTag>, NoteError> {
+    let mut tags = Vec::new();
+    let mut chars = text.char_indices().peekable();
+    let mut prev_is_alnum = false;
+    let base = usize::try_from(u32::from(base_offset))
+        .map_err(|_error| NoteError::Structure("tag offset out of range"))?;
+
+    while let Some((start_idx, ch)) = chars.next() {
+        if ch != '#' || prev_is_alnum {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        }
+
+        let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        };
+        while let Some(&(next_idx, next_ch)) = chars.peek() {
+            if !(next_ch.is_alphanumeric()
+                || matches!(next_ch, '_' | '-' | '/'))
+            {
+                break;
+            }
+            chars.next();
+            let Some(updated) = next_idx.checked_add(next_ch.len_utf8()) else {
+                break;
+            };
+            end_idx = updated;
+        }
+
+        let Some(raw) = text.get(start_idx..end_idx) else {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        };
+
+        if raw.len() > 1 {
+            let offset = base.saturating_add(start_idx);
+            let position = SourceByteOffset::try_from_usize(offset)?;
+            tags.push(RawTag::new(raw.into(), position));
+        }
+
+        prev_is_alnum = raw.chars().last().is_some_and(char::is_alphanumeric);
+    }
+
+    Ok(tags)
+}
+
+fn collect_block_refs(source: &str) -> Result<Vec<RawBlockRef>, NoteError> {
+    let mut refs = Vec::new();
+    let mut offset = 0usize;
+    let mut in_code_block = false;
+    let mut in_frontmatter = false;
+    let mut frontmatter_fence: Option<&'static str> = None;
+
+    for line in source.split_inclusive('\n') {
+        let mut trimmed_line = line.trim_end_matches(['\n', '\r']);
+
+        if offset == 0 {
+            if trimmed_line == "---" {
+                in_frontmatter = true;
+                frontmatter_fence = Some("---");
+                offset = offset.saturating_add(line.len());
+                continue;
+            }
+            if trimmed_line == "+++" {
+                in_frontmatter = true;
+                frontmatter_fence = Some("+++");
+                offset = offset.saturating_add(line.len());
+                continue;
+            }
+        }
+
+        if in_frontmatter {
+            if frontmatter_fence.is_some_and(|fence| fence == trimmed_line) {
+                in_frontmatter = false;
+            }
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+
+        let trimmed_start = trimmed_line.trim_start();
+        if trimmed_start.starts_with("```") || trimmed_start.starts_with("~~~")
+        {
+            in_code_block = !in_code_block;
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+
+        if in_code_block {
+            offset = offset.saturating_add(line.len());
+            continue;
+        }
+
+        trimmed_line = trimmed_line.trim_end();
+        if let Some(caret_idx) = trimmed_line.rfind('^') {
+            let before = trimmed_line.get(..caret_idx).unwrap_or("");
+            let after =
+                trimmed_line.get(caret_idx.saturating_add(1)..).unwrap_or("");
+            let id = after.trim();
+            let valid = !id.is_empty()
+                && id.chars().all(|ch| {
+                    ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
+                });
+            if valid
+                && (before.is_empty()
+                    || before.chars().last().is_some_and(char::is_whitespace))
+            {
+                let position = SourceByteOffset::try_from_usize(
+                    offset.saturating_add(caret_idx),
+                )?;
+                refs.push(RawBlockRef::new(id.into(), position));
+            }
+        }
+        offset = offset.saturating_add(line.len());
+    }
+
+    Ok(refs)
+}
+
+fn split_raw_target_and_anchor(target: &str) -> (&str, Option<&str>) {
+    if is_external_target(target) {
+        return (target, None);
+    }
+    let Some((path, anchor_text)) = target.split_once('#') else {
+        return (target, None);
+    };
+    (path, Some(anchor_text))
+}
+
+fn is_external_target(target: &str) -> bool {
+    target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("ftp://")
+        || target.starts_with("mailto:")
 }
 
 fn checkbox_marker_from_line(line: &str) -> Option<char> {

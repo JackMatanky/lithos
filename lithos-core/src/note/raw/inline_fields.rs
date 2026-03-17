@@ -1,4 +1,4 @@
-//! Raw inline field extraction helpers.
+//! Raw inline field types.
 
 use crate::note::position::SourceByteOffset;
 

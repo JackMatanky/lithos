@@ -1,4 +1,4 @@
-//! Raw link extraction helpers.
+//! Raw link types.
 
 use crate::note::position::SourceByteOffset;
 
@@ -89,23 +89,4 @@ impl RawLink {
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
-}
-
-pub(crate) fn split_raw_target_and_anchor(
-    target: &str,
-) -> (&str, Option<&str>) {
-    if is_external_target(target) {
-        return (target, None);
-    }
-    let Some((path, anchor_text)) = target.split_once('#') else {
-        return (target, None);
-    };
-    (path, Some(anchor_text))
-}
-
-pub(crate) fn is_external_target(target: &str) -> bool {
-    target.starts_with("http://")
-        || target.starts_with("https://")
-        || target.starts_with("ftp://")
-        || target.starts_with("mailto:")
 }

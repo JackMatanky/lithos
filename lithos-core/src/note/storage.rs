@@ -1430,9 +1430,9 @@ mod tests {
             position::{SourceByteOffset, SourceByteRange},
             raw::{
                 frontmatter::RawFrontmatter, list_items::RawTaskKind,
-                note::RawNote, tags::RawTag, task_tokens::RawTaskTokens,
-                tasks::RawTask,
+                note::RawNote, tags::RawTag, tasks::RawTask,
             },
+            task_tokens::RawTaskTokens,
         },
     };
 

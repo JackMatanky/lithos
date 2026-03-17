@@ -1,4 +1,4 @@
-//! Raw task extraction helpers.
+//! Raw task types.
 
 use crate::note::{position::SourceByteOffset, raw::list_items::RawTaskKind};
 

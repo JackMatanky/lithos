@@ -11,7 +11,10 @@
 use std::fmt;
 
 use super::{error::NoteError, position::SourceByteOffset, task::TaskId};
-use crate::config::task::StatusSymbol;
+use crate::{
+    config::task::StatusSymbol,
+    note::raw::list_items::{RawListDepth, RawListItem},
+};
 
 /// Markdown list structure.
 ///
@@ -379,6 +382,32 @@ impl ListItemEntry {
     #[must_use]
     pub const fn task_id(&self) -> Option<TaskId> {
         self.task_id
+    }
+}
+
+impl TryFrom<RawListItem> for ListItemEntry {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawListItem) -> Result<Self, Self::Error> {
+        let depth = match raw.depth() {
+            RawListDepth::Root => ListDepth::root(),
+            RawListDepth::Nested(value) => {
+                ListDepth::try_new(usize::from(value))?
+            }
+        };
+        let status = raw
+            .task_kind()
+            .map(|kind| StatusSymbol::try_new(kind.marker()))
+            .transpose()?;
+
+        Ok(ListItemEntry::new(
+            raw.position(),
+            depth,
+            raw.parent(),
+            status,
+            None,
+        ))
     }
 }
 

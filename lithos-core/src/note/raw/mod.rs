@@ -10,5 +10,4 @@ pub(crate) mod note;
 pub(crate) mod reference_links;
 pub(crate) mod sections;
 pub(crate) mod tags;
-pub(crate) mod task_tokens;
 pub(crate) mod tasks;

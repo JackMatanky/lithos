@@ -92,10 +92,8 @@ mod tests {
         },
         note::{
             position::SourceByteOffset,
-            raw::{
-                list_items::RawTaskKind, tags::scan_raw_tags,
-                task_tokens::RawTaskTokens, tasks::RawTask,
-            },
+            raw::{list_items::RawTaskKind, tasks::RawTask},
+            task_tokens::RawTaskTokens,
         },
     };
 
@@ -243,6 +241,63 @@ mod tests {
             tokens.emoji_dates().to_vec(),
             base,
         )
+    }
+
+    fn scan_raw_tags(
+        text: &str,
+        base_offset: SourceByteOffset,
+    ) -> Result<Vec<crate::note::raw::tags::RawTag>, NoteError> {
+        let mut tags = Vec::new();
+        let mut chars = text.char_indices().peekable();
+        let mut prev_is_alnum = false;
+        let base =
+            usize::try_from(u32::from(base_offset)).map_err(|_error| {
+                NoteError::Structure("tag offset out of range")
+            })?;
+
+        while let Some((start_idx, ch)) = chars.next() {
+            if ch != '#' || prev_is_alnum {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            }
+
+            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            };
+            while let Some(&(next_idx, next_ch)) = chars.peek() {
+                if !(next_ch.is_alphanumeric()
+                    || matches!(next_ch, '_' | '-' | '/'))
+                {
+                    break;
+                }
+                chars.next();
+                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
+                else {
+                    break;
+                };
+                end_idx = updated;
+            }
+
+            let Some(raw) = text.get(start_idx..end_idx) else {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            };
+
+            if raw.len() > 1 {
+                let offset = base.saturating_add(start_idx);
+                let position = SourceByteOffset::try_from_usize(offset)?;
+                tags.push(crate::note::raw::tags::RawTag::new(
+                    raw.into(),
+                    position,
+                ));
+            }
+
+            prev_is_alnum =
+                raw.chars().last().is_some_and(char::is_alphanumeric);
+        }
+
+        Ok(tags)
     }
 
     fn default_emoji_markers() -> Vec<char> {
@@ -650,8 +705,7 @@ impl TryFrom<RawLink> for Link {
     #[inline]
     fn try_from(raw: RawLink) -> Result<Self, Self::Error> {
         let target_text = raw.target();
-        let is_external =
-            crate::note::raw::links::is_external_target(target_text);
+        let is_external = is_external_target(target_text);
         let anchor = if is_external {
             None
         } else {
