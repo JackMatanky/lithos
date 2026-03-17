@@ -5,7 +5,10 @@
 
 #![expect(dead_code, reason = "Heading builders retained for legacy parsing")]
 
-use super::error::{LinkError, NoteError, NoteMetadataError};
+use super::{
+    error::{LinkError, NoteError, NoteMetadataError},
+    raw::RawHeading,
+};
 use crate::note::position::SourceByteOffset;
 
 /// Represents a heading within a note.
@@ -112,6 +115,16 @@ impl Heading {
     #[must_use]
     pub fn text(&self) -> &str {
         self.text.as_str()
+    }
+}
+
+impl TryFrom<RawHeading> for Heading {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawHeading) -> Result<Self, Self::Error> {
+        let level = HeadingLevel::try_new(raw.level())?;
+        Heading::try_new(level, raw.text(), raw.position())
     }
 }
 

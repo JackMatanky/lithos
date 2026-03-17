@@ -12,6 +12,7 @@ use super::error::{LinkError, NoteError};
 use crate::note::{
     heading::Heading,
     position::{SourceByteOffset, SourceByteRange},
+    raw::{RawBlockRef, RawSection, RawSectionKind},
 };
 
 /// Section kinds aligned with Obsidian cached metadata.
@@ -118,6 +119,23 @@ impl Section {
     }
 }
 
+impl TryFrom<RawSection> for Section {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawSection) -> Result<Self, Self::Error> {
+        let kind = match raw.kind() {
+            RawSectionKind::Heading => SectionKind::Heading,
+            RawSectionKind::Paragraph => SectionKind::Paragraph,
+            RawSectionKind::CodeBlock => SectionKind::Code,
+            RawSectionKind::BlockQuote => SectionKind::BlockQuote,
+            RawSectionKind::List => SectionKind::List,
+            RawSectionKind::Frontmatter => SectionKind::Frontmatter,
+        };
+        Ok(Section::new(kind, None, raw.range()))
+    }
+}
+
 /// Validated block reference identifier.
 #[derive(
     Debug,
@@ -194,6 +212,16 @@ impl BlockRef {
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
         self.position
+    }
+}
+
+impl TryFrom<RawBlockRef> for BlockRef {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawBlockRef) -> Result<Self, Self::Error> {
+        let id = BlockRefId::try_new(raw.id())?;
+        Ok(BlockRef::new(id, raw.position()))
     }
 }
 

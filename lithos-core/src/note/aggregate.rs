@@ -11,33 +11,22 @@ use rkyv::{
 use uuid::Uuid;
 
 use crate::{
-    config::{aggregate::Config, task::StatusSymbol},
+    config::aggregate::Config,
     note::{
-        error::{NoteError, NoteMetadataError, TaskError},
+        error::{NoteError, NoteMetadataError},
         frontmatter::Frontmatter,
-        heading::{Heading, HeadingLevel},
+        heading::Heading,
         inline_fields::InlineField,
-        link::{
-            Anchor, EmbedType, FrontmatterLink, Link, ReferenceLink, Target,
-        },
+        link::{FrontmatterLink, Link, ReferenceLink},
         list::ListItemEntry,
         paths::NotePath,
-        raw::{
-            RawBlockRef, RawHeading, RawInlineField as RawNoteInlineField,
-            RawLink, RawLinkStyle, RawNote, RawReferenceLink, RawSection,
-            RawSectionKind, RawTask,
-        },
-        structure::{BlockRef, BlockRefId, Section, SectionKind},
+        raw::{RawInlineField, RawNote},
+        structure::{BlockRef, Section},
         tag::Tag,
-        task::{
-            Task, TaskAttributes, TaskAttributesBuilder, TaskFieldKey,
-            TaskMetadata, TaskTimestamp,
-        },
+        task::Task,
         value::FieldValue,
     },
 };
-
-type RawTaskInlineField = (Box<str>, Box<str>);
 
 /// Stable identifier for a note.
 #[derive(
@@ -380,32 +369,6 @@ impl Note {
         &self.inline_fields
     }
 
-    fn anchor_from_raw(text: &str) -> Result<Anchor, NoteError> {
-        if let Some(block_ref) = text.strip_prefix('^') {
-            Anchor::block_ref(block_ref)
-        } else {
-            Anchor::heading(text)
-        }
-    }
-
-    fn build_tasks(
-        raw: &RawNote,
-        config: &Config,
-    ) -> Result<Vec<Task>, NoteError> {
-        if raw.tasks().is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut tasks = Vec::new();
-        for raw_task in raw.tasks() {
-            let ctx = RawTaskContext::new(raw_task, config);
-            if let Some(task) = Option::<Task>::try_from(ctx)? {
-                tasks.push(task);
-            }
-        }
-        Ok(tasks)
-    }
-
     fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
         if !tags.iter().any(|existing| existing.full_path() == tag.full_path())
         {
@@ -465,7 +428,9 @@ impl Note {
         links: &mut Vec<FrontmatterLink>,
     ) {
         if let Some(text) = value.as_str() {
-            if let Ok(Some(link)) = Note::parse_frontmatter_link(key, text) {
+            if let Ok(Some(link)) =
+                FrontmatterLink::parse_frontmatter_link(key, text)
+            {
                 links.push(link);
             }
             return;
@@ -475,7 +440,7 @@ impl Note {
             for item in values {
                 if let Some(text) = Note::array_as_wikilink(item)
                     && let Ok(Some(link)) =
-                        Note::parse_frontmatter_link(key, &text)
+                        FrontmatterLink::parse_frontmatter_link(key, &text)
                 {
                     links.push(link);
                     continue;
@@ -527,163 +492,6 @@ impl Note {
         combined.push_str(text);
         combined.push_str("]]");
         combined
-    }
-
-    fn parse_frontmatter_link(
-        key: &str,
-        value: &str,
-    ) -> Result<Option<FrontmatterLink>, NoteError> {
-        let trimmed = value.trim();
-        let (embed, inner) = if let Some(rest) =
-            trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
-        {
-            (true, rest)
-        } else if let Some(rest) =
-            trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
-        {
-            (false, rest)
-        } else {
-            return Ok(None);
-        };
-
-        let (target_text, alias) =
-            if let Some((left, right)) = inner.split_once('|') {
-                (left.trim(), Some(right.trim()))
-            } else {
-                (inner.trim(), None)
-            };
-
-        if target_text.is_empty() {
-            return Ok(None);
-        }
-
-        let (target_path, anchor) = Note::split_target_and_anchor(target_text)?;
-        let target = if Note::is_external_target(target_path) {
-            Target::External {
-                url: target_path.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_path.into(),
-            }
-        };
-        let embed_type = embed.then(|| EmbedType::from_extension(target_path));
-
-        Ok(Some(FrontmatterLink::new(
-            key.into(),
-            target,
-            anchor,
-            alias.filter(|text| !text.is_empty()).map(Into::into),
-            embed_type,
-        )))
-    }
-
-    fn split_target_and_anchor(
-        target: &str,
-    ) -> Result<(&str, Option<Anchor>), NoteError> {
-        let Some((path, anchor_text)) = target.split_once('#') else {
-            return Ok((target, None));
-        };
-
-        if let Some(block_ref) = anchor_text.strip_prefix('^') {
-            Ok((path, Some(Anchor::block_ref(block_ref)?)))
-        } else {
-            Ok((path, Some(Anchor::heading(anchor_text)?)))
-        }
-    }
-
-    fn is_external_target(target: &str) -> bool {
-        target.starts_with("http://")
-            || target.starts_with("https://")
-            || target.starts_with("ftp://")
-            || target.starts_with("mailto:")
-    }
-}
-
-impl TryFrom<RawHeading> for Heading {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawHeading) -> Result<Self, Self::Error> {
-        let level = HeadingLevel::try_new(raw.level())?;
-        Heading::try_new(level, raw.text(), raw.position())
-    }
-}
-
-impl TryFrom<RawSection> for Section {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawSection) -> Result<Self, Self::Error> {
-        let kind = match raw.kind() {
-            RawSectionKind::Heading => SectionKind::Heading,
-            RawSectionKind::Paragraph => SectionKind::Paragraph,
-            RawSectionKind::CodeBlock => SectionKind::Code,
-            RawSectionKind::BlockQuote => SectionKind::BlockQuote,
-            RawSectionKind::List => SectionKind::List,
-            RawSectionKind::Frontmatter => SectionKind::Frontmatter,
-        };
-        Ok(Section::new(kind, None, raw.range()))
-    }
-}
-
-impl TryFrom<RawLink> for Link {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawLink) -> Result<Self, Self::Error> {
-        let target_text = raw.target();
-        let is_external = Note::is_external_target(target_text);
-        let anchor = if is_external {
-            None
-        } else {
-            raw.anchor().map(Note::anchor_from_raw).transpose()?
-        };
-        let target = if is_external {
-            Target::External {
-                url: target_text.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_text.into(),
-            }
-        };
-        let alias = raw.alias();
-
-        match (raw.is_embed(), raw.style()) {
-            (true, RawLinkStyle::Wiki) => Link::try_new_embed(
-                target,
-                EmbedType::from_extension(target_text),
-                alias,
-                anchor,
-                raw.position(),
-            ),
-            (true, RawLinkStyle::Markdown) => Link::try_new_markdown_embed(
-                target,
-                EmbedType::from_extension(target_text),
-                alias,
-                raw.position(),
-            ),
-            (false, RawLinkStyle::Wiki) => {
-                Link::try_new_wikilink(target, alias, anchor, raw.position())
-            }
-            (false, RawLinkStyle::Markdown) => Link::try_new_markdown_link(
-                target,
-                alias,
-                anchor,
-                raw.position(),
-            ),
-        }
-    }
-}
-
-impl TryFrom<RawBlockRef> for BlockRef {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawBlockRef) -> Result<Self, Self::Error> {
-        let id = BlockRefId::try_new(raw.id())?;
-        Ok(BlockRef::new(id, raw.position()))
     }
 }
 
@@ -785,7 +593,7 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
             .collect::<Result<Vec<_>, _>>()?;
         list_items.sort_by_key(ListItemEntry::position);
 
-        let tasks = Note::build_tasks(ctx.raw, ctx.config)?;
+        let tasks = Task::build_many(ctx.raw, ctx.config)?;
         let inline_fields = ctx
             .raw
             .inline_fields()
@@ -816,601 +624,10 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
     }
 }
 
-impl From<RawNoteInlineField> for InlineField {
+impl From<RawInlineField> for InlineField {
     #[inline]
-    fn from(raw: RawNoteInlineField) -> Self {
+    fn from(raw: RawInlineField) -> Self {
         InlineField::new(raw.key().into(), raw.value().into(), raw.position())
-    }
-}
-
-impl TryFrom<RawReferenceLink> for ReferenceLink {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawReferenceLink) -> Result<Self, Self::Error> {
-        let target_text = raw.target();
-        let target = if Note::is_external_target(target_text) {
-            Target::External {
-                url: target_text.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_text.into(),
-            }
-        };
-        Ok(ReferenceLink::new(raw.id().into(), target, raw.position()))
-    }
-}
-
-struct RawTaskContext<'raw> {
-    raw: &'raw RawTask,
-    config: &'raw Config,
-}
-
-impl<'raw> RawTaskContext<'raw> {
-    #[inline]
-    const fn new(raw: &'raw RawTask, config: &'raw Config) -> Self {
-        Self {
-            raw,
-            config,
-        }
-    }
-}
-
-impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
-        let status_symbol =
-            StatusSymbol::try_new(ctx.raw.task_kind().marker())?;
-        let tags = ctx
-            .raw
-            .tags()
-            .iter()
-            .filter_map(|tag| Tag::try_from_token(tag).ok())
-            .collect::<Vec<_>>();
-        let builder = TaskBuilder::new(ctx.config.task());
-        builder.promote_from_raw(ctx.raw, tags, status_symbol)
-    }
-}
-
-struct TaskBuilder<'config> {
-    config: &'config crate::config::task::Task,
-}
-
-impl<'config> TaskBuilder<'config> {
-    #[inline]
-    const fn new(config: &'config crate::config::task::Task) -> Self {
-        Self {
-            config,
-        }
-    }
-
-    fn promote_from_raw(
-        &self,
-        raw: &RawTask,
-        tags: Vec<Tag>,
-        status_symbol: StatusSymbol,
-    ) -> Result<Option<Task>, NoteError> {
-        if !self.should_promote_from_tags(&tags) {
-            return Ok(None);
-        }
-
-        let status = self
-            .config
-            .status()
-            .name_for_symbol(status_symbol)
-            .ok_or_else(|| {
-                NoteError::Task(TaskError::UnrecognizedStatusSymbol {
-                    symbol: status_symbol.value(),
-                })
-            })?
-            .clone();
-        let text = self.extract_clean_text(raw.text())?;
-        let parsed =
-            self.parse_inline_fields(raw.inline_fields(), raw.emoji_dates())?;
-        let attributes = parsed.into_attributes(tags);
-
-        Task::try_new(status, text, raw.position(), attributes).map(Some)
-    }
-
-    fn should_promote_from_tags(&self, tags: &[Tag]) -> bool {
-        self.config.tags().iter().any(|config_tag| {
-            tags.iter().any(|tag| {
-                config_tag
-                    .as_str()
-                    .strip_prefix('#')
-                    .is_some_and(|raw| raw == tag.full_path())
-            })
-        })
-    }
-
-    fn extract_clean_text(
-        &self,
-        raw_text: &str,
-    ) -> Result<Box<str>, NoteError> {
-        let mut text = raw_text.trim();
-
-        let mut stripped = true;
-        while stripped {
-            stripped = false;
-            for tag in self.config.tags() {
-                if let Some(rest) = text.strip_prefix(tag.as_str()) {
-                    text = rest.trim_start();
-                    stripped = true;
-                }
-            }
-        }
-
-        if let Some(prefix) = Self::strip_inline_fields(text) {
-            text = prefix.trim_end();
-        }
-
-        if text.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
-        }
-
-        Ok(text.into())
-    }
-
-    fn parse_inline_fields(
-        &self,
-        inline_fields: &[RawTaskInlineField],
-        emoji_dates: &[RawTaskInlineField],
-    ) -> Result<ParsedInlineFields, NoteError> {
-        let mut state = InlineFieldState::new();
-
-        for (keyword, raw_value) in
-            inline_fields.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
-        {
-            state.handle_inline_field(self.config, keyword, raw_value)?;
-        }
-
-        state.fill_emoji_dates_from_tokens(self.config, emoji_dates)?;
-        state.fill_default_emoji_dates_from_tokens(emoji_dates)?;
-
-        Ok(state.finish())
-    }
-
-    fn strip_inline_fields(text: &str) -> Option<&str> {
-        let bracket = Self::inline_field_start(text, b'[', b']');
-        let paren = Self::inline_field_start(text, b'(', b')');
-        let start = match (bracket, paren) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (None, None) => None,
-        }?;
-        text.get(..start)
-    }
-
-    fn inline_field_start(
-        text: &str,
-        open_delim: u8,
-        close_delim: u8,
-    ) -> Option<usize> {
-        let bytes = text.as_bytes();
-        let mut cursor = 0;
-        while let Some(open_rel) = bytes
-            .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
-        {
-            let open = cursor.saturating_add(open_rel);
-            let after_open = open.saturating_add(1);
-            let Some(close_rel) = bytes
-                .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == close_delim))
-            else {
-                break;
-            };
-            let close = after_open.saturating_add(close_rel);
-            let Some(inner) = text.get(after_open..close) else {
-                break;
-            };
-            if let Some((key, value)) = inner.split_once("::")
-                && !key.trim().is_empty()
-                && !value.trim().is_empty()
-            {
-                return Some(open);
-            }
-            cursor = close.saturating_add(1);
-        }
-        None
-    }
-}
-
-#[derive(Debug)]
-struct ParsedInlineFields {
-    slots: TemporalSlots,
-    metadata: TaskMetadata,
-}
-
-impl ParsedInlineFields {
-    fn into_attributes(self, tags: Vec<Tag>) -> TaskAttributes {
-        self.slots
-            .apply_to_builder(TaskAttributes::builder().tags(tags))
-            .metadata(self.metadata)
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum DateSlot {
-    Created,
-    Due,
-    Reminder,
-    Completed,
-}
-
-#[derive(Debug, Default)]
-struct TemporalSlots {
-    created: Option<TaskTimestamp>,
-    due: Option<TaskTimestamp>,
-    reminder: Option<TaskTimestamp>,
-    completed: Option<TaskTimestamp>,
-}
-
-impl TemporalSlots {
-    fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
-        ParsedInlineFields {
-            slots: self,
-            metadata,
-        }
-    }
-
-    fn get(&self, slot: DateSlot) -> Option<TaskTimestamp> {
-        match slot {
-            DateSlot::Created => self.created,
-            DateSlot::Due => self.due,
-            DateSlot::Reminder => self.reminder,
-            DateSlot::Completed => self.completed,
-        }
-    }
-
-    fn set(&mut self, slot: DateSlot, value: TaskTimestamp) {
-        match slot {
-            DateSlot::Created => self.created = Some(value),
-            DateSlot::Due => self.due = Some(value),
-            DateSlot::Reminder => self.reminder = Some(value),
-            DateSlot::Completed => self.completed = Some(value),
-        }
-    }
-
-    fn apply_to_builder(
-        self,
-        builder: TaskAttributesBuilder,
-    ) -> TaskAttributesBuilder {
-        builder
-            .created_at(self.created)
-            .due_at(self.due)
-            .reminder_at(self.reminder)
-            .completed_at(self.completed)
-    }
-}
-
-#[derive(Debug, Default)]
-struct InlineFieldState {
-    slots: TemporalSlots,
-    metadata: TaskMetadata,
-}
-
-impl InlineFieldState {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn handle_inline_field(
-        &mut self,
-        config: &crate::config::task::Task,
-        keyword: &str,
-        raw_value: &str,
-    ) -> Result<(), NoteError> {
-        if let Some((slot, spec)) = Self::match_date_spec(config, keyword) {
-            let parsed = Self::parse_date_str(raw_value, spec)?;
-            self.slots.set(slot, parsed);
-            return Ok(());
-        }
-
-        Self::insert_metadata(config, &mut self.metadata, keyword, raw_value)
-    }
-
-    fn fill_emoji_dates_from_tokens(
-        &mut self,
-        config: &crate::config::task::Task,
-        tokens: &[RawTaskInlineField],
-    ) -> Result<(), NoteError> {
-        for (emoji, value) in
-            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
-        {
-            if let Some((slot, spec)) =
-                Self::match_date_spec_by_emoji(config, emoji)
-            {
-                if self.slots.get(slot).is_some() {
-                    continue;
-                }
-                let parsed = Self::parse_date_str(value, spec)?;
-                self.slots.set(slot, parsed);
-            }
-        }
-
-        Ok(())
-    }
-
-    fn fill_default_emoji_dates_from_tokens(
-        &mut self,
-        tokens: &[RawTaskInlineField],
-    ) -> Result<(), NoteError> {
-        for (emoji, value) in
-            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
-        {
-            match () {
-                () if Self::emoji_matches(emoji, '\u{2795}') => {
-                    self.fill_default_slot_value(
-                        DateSlot::Created,
-                        "created",
-                        value,
-                    )?;
-                }
-                () if Self::emoji_matches(emoji, '\u{1f4c5}') => {
-                    self.fill_default_slot_value(DateSlot::Due, "due", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{2705}') => {
-                    self.fill_default_slot_value(
-                        DateSlot::Completed,
-                        "completed",
-                        value,
-                    )?;
-                }
-                () if Self::emoji_matches(emoji, '\u{23f3}') => {
-                    self.fill_default_metadata_value("scheduled", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{1f6eb}') => {
-                    self.fill_default_metadata_value("start", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{274c}') => {
-                    self.fill_default_metadata_value("cancelled", value)?;
-                }
-                () => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn finish(self) -> ParsedInlineFields {
-        self.slots.finish(self.metadata)
-    }
-
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics keep spec parsing concise."
-    )]
-    fn parse_metadata_value(
-        raw_value: &str,
-        spec: &crate::config::value::FieldSpec,
-    ) -> Result<serde_json::Value, NoteError> {
-        match spec {
-            crate::config::value::FieldSpec::Integer {
-                ..
-            } => {
-                let value = raw_value.parse::<i64>().map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidInteger {
-                        raw: raw_value.into(),
-                        reason: "failed to parse integer",
-                    })
-                })?;
-                Ok(serde_json::Value::Number(value.into()))
-            }
-            crate::config::value::FieldSpec::Float {
-                ..
-            } => {
-                let value = raw_value.parse::<f64>().map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidFloat {
-                        raw: raw_value.into(),
-                        reason: "failed to parse float",
-                    })
-                })?;
-                let number =
-                    serde_json::Number::from_f64(value).ok_or_else(|| {
-                        NoteError::Task(TaskError::InvalidFloat {
-                            raw: raw_value.into(),
-                            reason: "float value is not finite",
-                        })
-                    })?;
-                Ok(serde_json::Value::Number(number))
-            }
-            crate::config::value::FieldSpec::Enum {
-                ..
-            }
-            | crate::config::value::FieldSpec::String {
-                ..
-            }
-            | crate::config::value::FieldSpec::DateTime {
-                ..
-            } => Ok(serde_json::Value::String(raw_value.into())),
-        }
-    }
-
-    fn match_date_spec<'config>(
-        config: &'config crate::config::task::Task,
-        keyword: &str,
-    ) -> Option<(DateSlot, &'config crate::config::value::DateSpec)> {
-        if let Some(spec) = config.created()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Created, spec));
-        }
-        if let Some(spec) = config.due()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Due, spec));
-        }
-        if let Some(spec) = config.reminder()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Reminder, spec));
-        }
-        if let Some(spec) = config.completed()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Completed, spec));
-        }
-        None
-    }
-
-    fn insert_metadata(
-        config: &crate::config::task::Task,
-        metadata: &mut TaskMetadata,
-        keyword: &str,
-        raw_value: &str,
-    ) -> Result<(), NoteError> {
-        if let Some(spec) = config.field_spec(keyword) {
-            let json_value = Self::parse_metadata_value(raw_value, spec)?;
-            spec.validate_raw_value(&json_value).map_err(|_error| {
-                NoteError::Task(TaskError::InvalidMetadataField {
-                    keyword: keyword.into(),
-                    reason: "failed validation",
-                })
-            })?;
-            let field_value =
-                FieldValue::try_from_json(&json_value).map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidMetadataField {
-                        keyword: keyword.into(),
-                        reason: "failed conversion",
-                    })
-                })?;
-            let key = TaskFieldKey::try_new(keyword)?;
-            metadata.insert(key, field_value);
-        } else {
-            let key = TaskFieldKey::try_new(keyword)?;
-            metadata.insert(key, FieldValue::String(raw_value.into()));
-        }
-
-        Ok(())
-    }
-
-    fn parse_date_str(
-        raw_value: &str,
-        spec: &crate::config::value::DateSpec,
-    ) -> Result<TaskTimestamp, NoteError> {
-        if let Ok(naive) =
-            chrono::NaiveDateTime::parse_from_str(raw_value, spec.format())
-        {
-            return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-        }
-
-        let date = chrono::NaiveDate::parse_from_str(raw_value, spec.format())
-            .map_err(|_error| {
-                NoteError::Task(TaskError::InvalidDate {
-                    keyword: spec.keyword().as_str().into(),
-                    reason: "failed to parse date string",
-                })
-            })?;
-        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            NoteError::Task(TaskError::InvalidDateTime {
-                keyword: spec.keyword().as_str().into(),
-            })
-        })?;
-
-        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-    }
-
-    fn parse_default_date(
-        raw_value: &str,
-        field: &str,
-    ) -> Result<TaskTimestamp, NoteError> {
-        let formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"];
-        for format in formats {
-            if let Ok(naive) =
-                chrono::NaiveDateTime::parse_from_str(raw_value, format)
-            {
-                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-            }
-        }
-
-        let date = chrono::NaiveDate::parse_from_str(raw_value, "%Y-%m-%d")
-            .map_err(|_error| {
-                NoteError::Task(TaskError::InvalidDate {
-                    keyword: field.into(),
-                    reason: "failed to parse date string",
-                })
-            })?;
-        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            NoteError::Task(TaskError::InvalidDateTime {
-                keyword: field.into(),
-            })
-        })?;
-        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-    }
-
-    fn match_date_spec_by_emoji<'config>(
-        config: &'config crate::config::task::Task,
-        emoji: &str,
-    ) -> Option<(DateSlot, &'config crate::config::value::DateSpec)> {
-        if let Some(spec) = config.created()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Created, spec));
-        }
-        if let Some(spec) = config.due()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Due, spec));
-        }
-        if let Some(spec) = config.reminder()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Reminder, spec));
-        }
-        if let Some(spec) = config.completed()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Completed, spec));
-        }
-        None
-    }
-
-    fn emoji_matches(token: &str, emoji: char) -> bool {
-        let mut chars = token.chars();
-        matches!(chars.next(), Some(first) if first == emoji)
-            && chars.next().is_none()
-    }
-
-    fn fill_default_slot_value(
-        &mut self,
-        slot: DateSlot,
-        label: &str,
-        value: &str,
-    ) -> Result<(), NoteError> {
-        if self.slots.get(slot).is_some() {
-            return Ok(());
-        }
-        let parsed = Self::parse_default_date(value, label)?;
-        self.slots.set(slot, parsed);
-        Ok(())
-    }
-
-    fn fill_default_metadata_value(
-        &mut self,
-        key: &str,
-        value: &str,
-    ) -> Result<(), NoteError> {
-        if self.metadata.get(key).is_some() {
-            return Ok(());
-        }
-        let parsed = Self::parse_default_date(value, key)?;
-        let key = TaskFieldKey::try_new(key)?;
-        self.metadata.insert(key, FieldValue::Date(parsed.as_i64()));
-        Ok(())
     }
 }
 
@@ -1427,7 +644,8 @@ mod tests {
         },
         note::{
             position::SourceByteOffset,
-            raw::{RawTask, RawTaskKind},
+            raw::{RawTag, RawTask, RawTaskKind},
+            task::RawTaskContext,
             task_tokens::RawTaskTokens,
         },
     };
@@ -1581,7 +799,7 @@ mod tests {
     fn scan_raw_tags(
         text: &str,
         base_offset: SourceByteOffset,
-    ) -> Result<Vec<crate::note::raw::RawTag>, NoteError> {
+    ) -> Result<Vec<RawTag>, NoteError> {
         let mut tags = Vec::new();
         let mut chars = text.char_indices().peekable();
         let mut prev_is_alnum = false;
@@ -1622,7 +840,7 @@ mod tests {
             if raw.len() > 1 {
                 let offset = base.saturating_add(start_idx);
                 let position = SourceByteOffset::try_from_usize(offset)?;
-                tags.push(crate::note::raw::RawTag::new(raw.into(), position));
+                tags.push(RawTag::new(raw.into(), position));
             }
 
             prev_is_alnum =
