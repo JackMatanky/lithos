@@ -291,6 +291,65 @@ impl PropertyBank {
 
         Ok(())
     }
+
+    /// Update properties incrementally from raw property bank.
+    ///
+    /// Only processes the properties specified in `changed_names`.
+    /// More efficient than rebuilding entire bank from scratch when
+    /// only a few properties changed.
+    ///
+    /// This is a convenience wrapper around `update_properties()` that
+    /// is used by the ingestor during incremental property bank updates.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     bank::PropertyBank,
+    ///     property::PropertyName,
+    ///     raw::RawPropertyBank,
+    /// };
+    ///
+    /// let mut bank = PropertyBank::new();
+    /// let raw = load_raw_property_bank()?;
+    /// let changed = vec![PropertyName::try_new("title")?];
+    ///
+    /// bank.update_from_raw(&raw, &changed)?;
+    /// ```
+    ///
+    /// # Errors
+    /// Returns error if property validation fails.
+    #[inline]
+    pub fn update_from_raw(
+        &mut self,
+        raw: &RawPropertyBank,
+        changed_names: &[PropertyName],
+    ) -> Result<(), SchemaError> {
+        self.update_properties(raw, changed_names)
+    }
+
+    /// Create `PropertyBank` from `RawPropertyBank` (full conversion).
+    ///
+    /// This is a convenience wrapper around `TryFrom<RawPropertyBank>`.
+    /// Use this for new property banks. For incremental updates, use
+    /// `update_from_raw()`.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     bank::PropertyBank,
+    ///     raw::RawPropertyBank,
+    /// };
+    ///
+    /// let raw = load_raw_property_bank()?;
+    /// let bank = PropertyBank::from_raw(raw)?;
+    /// ```
+    ///
+    /// # Errors
+    /// Returns error if property validation fails.
+    #[inline]
+    pub fn from_raw(raw: RawPropertyBank) -> Result<Self, SchemaError> {
+        Self::try_from(raw)
+    }
 }
 
 impl Default for PropertyBank {
@@ -525,7 +584,7 @@ mod tests {
 
         use super::*;
         use crate::schema::raw::{
-            RawPropertyBank,
+            RawPropertyBank, RawSchemaMetadata, RawSchemaVersion,
             property::RawPropertyBankEntry,
             property_spec::{RawPropertySpec, RawStringSpec},
         };
@@ -796,6 +855,178 @@ mod tests {
             for handle in handles {
                 handle.join().expect("Thread join succeeded");
             }
+        }
+
+        /// Test: `update_from_raw()` incrementally updates changed properties.
+        #[test]
+        fn update_from_raw_incremental_update() {
+            let mut bank = PropertyBank::new();
+
+            // Initial property bank
+            let mut raw_properties = HashMap::new();
+            raw_properties.insert("title".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+            raw_properties.insert("status".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+
+            let raw = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties.clone(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            // Initial load
+            let changed = vec![
+                PropertyName::try_new("title").unwrap(),
+                PropertyName::try_new("status").unwrap(),
+            ];
+            bank.update_from_raw(&raw, &changed).expect("should update");
+
+            assert_eq!(bank.all().count(), 2);
+
+            // Modify one property
+            raw_properties.insert("title".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: true, // Changed to multi
+            });
+
+            let raw_updated = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            // Incremental update (only title changed)
+            let changed_props = vec![PropertyName::try_new("title").unwrap()];
+            bank.update_from_raw(&raw_updated, &changed_props)
+                .expect("should update incrementally");
+
+            assert_eq!(bank.all().count(), 2);
+
+            // Verify title was updated
+            let title = bank.get(&PropertyName::try_new("title").unwrap());
+            assert!(title.is_some());
+            assert_eq!(title.unwrap().multiplicity(), Multiplicity::Many);
+        }
+
+        /// Test: `from_raw()` creates new `PropertyBank` from scratch.
+        #[test]
+        fn from_raw_full_conversion() {
+            let mut raw_properties = HashMap::new();
+            raw_properties.insert("title".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+            raw_properties.insert("status".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+
+            let raw = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            let bank = PropertyBank::from_raw(raw).expect("should convert");
+
+            assert_eq!(bank.all().count(), 2);
+            assert!(
+                bank.get(&PropertyName::try_new("title").unwrap()).is_some()
+            );
+            assert!(
+                bank.get(&PropertyName::try_new("status").unwrap()).is_some()
+            );
+        }
+
+        /// Test: `update_from_raw()` with empty changed list is no-op.
+        #[test]
+        fn update_from_raw_empty_changed_is_noop() {
+            let mut bank = PropertyBank::new();
+
+            let mut raw_properties = HashMap::new();
+            raw_properties.insert("title".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+
+            let raw = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            let version_before = bank.version();
+
+            // Update with empty changed list
+            bank.update_from_raw(&raw, &[]).expect("should succeed");
+
+            assert_eq!(bank.version(), version_before);
+            assert_eq!(bank.all().count(), 0);
+        }
+
+        /// Test: `update_from_raw()` handles property removal.
+        #[test]
+        fn update_from_raw_removes_deleted_properties() {
+            let mut bank = PropertyBank::new();
+
+            // Initial property bank with two properties
+            let mut raw_properties = HashMap::new();
+            raw_properties.insert("title".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+            raw_properties.insert("status".into(), RawPropertyBankEntry {
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+                multi: false,
+            });
+
+            let raw = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            let changed = vec![
+                PropertyName::try_new("title").unwrap(),
+                PropertyName::try_new("status").unwrap(),
+            ];
+            bank.update_from_raw(&raw, &changed).expect("should update");
+
+            assert_eq!(bank.all().count(), 2);
+
+            // Remove status property
+            let mut raw_properties_updated = HashMap::new();
+            raw_properties_updated.insert(
+                "title".into(),
+                RawPropertyBankEntry {
+                    spec: RawPropertySpec::String(RawStringSpec::default()),
+                    multi: false,
+                },
+            );
+
+            let raw_updated = RawPropertyBank {
+                version: RawSchemaVersion::default(),
+                properties: raw_properties_updated,
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            // Update with status in changed list (it was removed from raw)
+            let changed_props = vec![PropertyName::try_new("status").unwrap()];
+            bank.update_from_raw(&raw_updated, &changed_props)
+                .expect("should update");
+
+            assert_eq!(bank.all().count(), 1);
+            assert!(
+                bank.get(&PropertyName::try_new("title").unwrap()).is_some()
+            );
+            assert!(
+                bank.get(&PropertyName::try_new("status").unwrap()).is_none()
+            );
         }
     }
 }
