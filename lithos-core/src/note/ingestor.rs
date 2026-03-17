@@ -7,7 +7,7 @@ use std::{path::Path, time::SystemTime};
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
-    note::{error::NoteIngestError, paths::NotePath, raw::note::RawNote},
+    note::{error::NoteIngestError, paths::NotePath, raw::RawNote},
 };
 
 /// Ingestor for loading raw markdown notes from a file source.

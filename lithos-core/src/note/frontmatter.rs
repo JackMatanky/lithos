@@ -19,9 +19,7 @@ use super::{
     error::{FrontmatterError, FrontmatterParseError},
     value::FieldValue,
 };
-use crate::{
-    config::frontmatter::FrontmatterKey, note::raw::frontmatter::RawFrontmatter,
-};
+use crate::{config::frontmatter::FrontmatterKey, note::raw::RawFrontmatter};
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///

@@ -8,7 +8,7 @@ use crate::{
         error::{NoteError, NoteIngestError},
         parser,
         paths::NotePath,
-        raw::note::RawNote,
+        raw::RawNote,
         storage::Repository,
     },
 };

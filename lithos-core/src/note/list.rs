@@ -13,7 +13,7 @@ use std::fmt;
 use super::{error::NoteError, position::SourceByteOffset, task::TaskId};
 use crate::{
     config::task::StatusSymbol,
-    note::raw::list_items::{RawListDepth, RawListItem},
+    note::raw::{RawListDepth, RawListItem},
 };
 
 /// Markdown list structure.

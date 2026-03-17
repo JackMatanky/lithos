@@ -15,17 +15,10 @@ use crate::note::{
     paths::NotePath,
     position::SourceByteOffset,
     raw::{
-        block_refs::RawBlockRef,
-        frontmatter::RawFrontmatter,
-        headings::RawHeading,
-        inline_fields::RawInlineField,
-        links::{RawLink, RawLinkStyle},
-        list_items::{RawListDepth, RawListItem, RawListType, RawTaskKind},
-        note::RawNote,
-        reference_links::RawReferenceLink,
-        sections::{RawSection, RawSectionKind},
-        tags::RawTag,
-        tasks::RawTask,
+        RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink,
+        RawLinkStyle, RawListDepth, RawListItem, RawListType, RawNote,
+        RawReferenceLink, RawSection, RawSectionKind, RawTag, RawTask,
+        RawTaskKind,
     },
     task_tokens::RawTaskTokens,
 };
@@ -854,7 +847,7 @@ impl<'source> LinkTarget<'source> {
 )]
 mod tests {
     use super::*;
-    use crate::note::{paths::NotePath, raw::list_items::RawTaskKind};
+    use crate::note::{paths::NotePath, raw::RawTaskKind};
 
     #[test]
     fn extract_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {

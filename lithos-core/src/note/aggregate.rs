@@ -23,14 +23,9 @@ use crate::{
         list::ListItemEntry,
         paths::NotePath,
         raw::{
-            block_refs::RawBlockRef,
-            headings::RawHeading,
-            inline_fields::RawInlineField as RawNoteInlineField,
-            links::{RawLink, RawLinkStyle},
-            note::RawNote,
-            reference_links::RawReferenceLink,
-            sections::{RawSection, RawSectionKind},
-            tasks::RawTask,
+            RawBlockRef, RawHeading, RawInlineField as RawNoteInlineField,
+            RawLink, RawLinkStyle, RawNote, RawReferenceLink, RawSection,
+            RawSectionKind, RawTask,
         },
         structure::{BlockRef, BlockRefId, Section, SectionKind},
         tag::Tag,
@@ -92,7 +87,7 @@ mod tests {
         },
         note::{
             position::SourceByteOffset,
-            raw::{list_items::RawTaskKind, tasks::RawTask},
+            raw::{RawTask, RawTaskKind},
             task_tokens::RawTaskTokens,
         },
     };
@@ -246,7 +241,7 @@ mod tests {
     fn scan_raw_tags(
         text: &str,
         base_offset: SourceByteOffset,
-    ) -> Result<Vec<crate::note::raw::tags::RawTag>, NoteError> {
+    ) -> Result<Vec<crate::note::raw::RawTag>, NoteError> {
         let mut tags = Vec::new();
         let mut chars = text.char_indices().peekable();
         let mut prev_is_alnum = false;
@@ -287,10 +282,7 @@ mod tests {
             if raw.len() > 1 {
                 let offset = base.saturating_add(start_idx);
                 let position = SourceByteOffset::try_from_usize(offset)?;
-                tags.push(crate::note::raw::tags::RawTag::new(
-                    raw.into(),
-                    position,
-                ));
+                tags.push(crate::note::raw::RawTag::new(raw.into(), position));
             }
 
             prev_is_alnum =

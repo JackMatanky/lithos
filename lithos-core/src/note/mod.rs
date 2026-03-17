@@ -50,7 +50,7 @@ pub mod loader;
 /// Markdown parser boundary.
 pub mod parser;
 /// Raw note types and helpers.
-pub mod raw;
+pub(crate) mod raw;
 /// Unified repository storage.
 pub mod storage;
 pub(crate) mod task_tokens;

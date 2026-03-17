@@ -1428,10 +1428,7 @@ mod tests {
             aggregate::{NoteFacts, NoteId, RawNoteContext},
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
-            raw::{
-                frontmatter::RawFrontmatter, list_items::RawTaskKind,
-                note::RawNote, tags::RawTag, tasks::RawTask,
-            },
+            raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskKind},
             task_tokens::RawTaskTokens,
         },
     };
