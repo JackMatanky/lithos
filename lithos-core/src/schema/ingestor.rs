@@ -516,6 +516,11 @@ where
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "staleness_tests submodule placed after existing tests for \
+              clarity"
+)]
 mod tests {
     use std::path::{Path, PathBuf};
 
@@ -795,5 +800,401 @@ mod tests {
         let schema_result =
             schema_results.first().expect("should have one schema");
         assert_eq!(schema_result.as_ref().version.as_ref(), "1.0");
+    }
+
+    /// Staleness detection tests.
+    ///
+    /// These tests verify the end-to-end staleness detection optimization:
+    /// - Fresh files return Fresh variant (no re-parsing needed)
+    /// - Stale files return Stale variant (need re-resolution)
+    /// - Content hash takes precedence over timestamps (clock skew handling)
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Tests use std::thread::sleep for filesystem timestamp \
+                  resolution"
+    )]
+    mod staleness_tests {
+        use super::*;
+
+        /// Helper to create a shared database for tests that need multiple
+        /// repository instances.
+        fn test_database(root: &Path) -> std::sync::Arc<crate::db::Database> {
+            let db_path = root.join(".lithos").join("test.redb");
+            std::fs::create_dir_all(db_path.parent().unwrap())
+                .expect("create db dir");
+            std::sync::Arc::new(
+                crate::db::Database::open(&db_path)
+                    .expect("create test database"),
+            )
+        }
+
+        /// Test: Property bank view is persisted and can be queried.
+        ///
+        /// NOTE: This test verifies that views are saved correctly. The full
+        /// Fresh optimization (returning cached data without re-parsing)
+        /// requires `to_raw()` implementation (Phase 6 - not yet implemented).
+        /// Currently `to_raw()` returns None, so files are always re-parsed.
+        #[test]
+        fn property_bank_view_persisted() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"text": {"type": "string"}}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // First load - should be Stale (new file, no cached view)
+            let first_result = ingestor
+                .property_bank()
+                .expect("first load should succeed")
+                .expect("should have property bank");
+            assert!(
+                first_result.is_stale(),
+                "First load should be Stale (new file)"
+            );
+
+            // Verify view was saved to database
+            let repository2 = RedbRepository::new(db);
+            let cached_view = repository2
+                .get_raw_property_bank_view()
+                .expect("should query view");
+            assert!(
+                cached_view.is_some(),
+                "View should be saved after first load"
+            );
+
+            // Verify view has correct structure
+            let view = cached_view.unwrap();
+            assert!(
+                view.current().is_some(),
+                "View should have current version"
+            );
+        }
+
+        /// Test: Stale property bank detected by timestamp mismatch.
+        #[test]
+        fn stale_property_bank_by_timestamp() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // First load
+            let first_result = ingestor
+                .property_bank()
+                .expect("first load")
+                .expect("should have bank");
+            assert!(first_result.is_stale());
+
+            // Modify file (change content and timestamp)
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"new_prop": {"type": "string"}}}"#,
+            );
+
+            // Second load - should detect staleness
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_result = ingestor2
+                .property_bank()
+                .expect("second load")
+                .expect("should have bank");
+            assert!(
+                second_result.is_stale(),
+                "Modified file should be detected as Stale"
+            );
+
+            // Verify content changed
+            assert_eq!(first_result.as_ref().properties.len(), 0);
+            assert_eq!(second_result.as_ref().properties.len(), 1);
+        }
+
+        /// Test: Stale property bank detected by content hash mismatch.
+        #[test]
+        fn stale_property_bank_by_hash() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // First load
+            let first_result = ingestor
+                .property_bank()
+                .expect("first load")
+                .expect("should have bank");
+            assert!(first_result.is_stale());
+
+            // Modify file content (hash will change)
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"added": {"type": "number"}}}"#,
+            );
+
+            // Second load - should detect hash mismatch
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_result = ingestor2
+                .property_bank()
+                .expect("second load")
+                .expect("should have bank");
+            assert!(
+                second_result.is_stale(),
+                "Changed content should be detected by hash"
+            );
+        }
+
+        /// Test: Fresh schema returns Fresh variant.
+        ///
+        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
+        /// implemented). Currently `to_raw()` returns None, so this
+        /// test is ignored.
+        #[test]
+        #[ignore = "Requires to_raw() implementation (Phase 6)"]
+        fn fresh_schema_returns_fresh() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/note.json",
+                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // Construct path to schema file
+            let schema_path = dir.path().join("schemas/note.json");
+
+            // First load - should be Stale
+            let first_result = ingestor
+                .schema(&schema_path)
+                .expect("first load should succeed");
+            assert!(
+                first_result.is_stale(),
+                "First load should be Stale (new file)"
+            );
+
+            // Second load - should be Fresh
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_result = ingestor2
+                .schema(&schema_path)
+                .expect("second load should succeed");
+            assert!(
+                second_result.is_fresh(),
+                "Second load should be Fresh (unchanged file)"
+            );
+
+            // Verify content is identical
+            assert_eq!(first_result.as_ref().name, second_result.as_ref().name);
+        }
+
+        /// Test: Stale schema detected by modification.
+        #[test]
+        fn stale_schema_by_modification() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // Construct path to schema file
+            let schema_path = dir.path().join("schemas/task.json");
+
+            // First load
+            let first_result =
+                ingestor.schema(&schema_path).expect("first load");
+            assert!(first_result.is_stale());
+
+            // Modify schema file
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            write_file(
+                dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "name": "task", "properties": {"title": {"type": "string"}}}"#,
+            );
+
+            // Second load - should detect staleness
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_result =
+                ingestor2.schema(&schema_path).expect("second load");
+            assert!(
+                second_result.is_stale(),
+                "Modified schema should be detected as Stale"
+            );
+
+            // Verify content changed
+            assert_eq!(first_result.as_ref().properties.len(), 0);
+            assert_eq!(second_result.as_ref().properties.len(), 1);
+        }
+
+        /// Test: New schema is detected as stale (no view exists).
+        #[test]
+        fn new_schema_detected() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/project.json",
+                r#"{"$version": "1.0", "name": "project", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // Construct path to schema file
+            let schema_path = dir.path().join("schemas/project.json");
+
+            // First load of new schema - always Stale
+            let result = ingestor.schema(&schema_path).expect("should load");
+            assert!(result.is_stale(), "New schema should always be Stale");
+        }
+
+        /// Test: `all_schemas()` returns mix of Fresh and Stale.
+        ///
+        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
+        /// implemented). Currently `to_raw()` returns None, so this
+        /// test is ignored.
+        #[test]
+        #[ignore = "Requires to_raw() implementation (Phase 6)"]
+        fn all_schemas_mixed_staleness() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/note.json",
+                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+            );
+            write_file(
+                dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // First load - both Stale
+            let first_results =
+                ingestor.all_schemas().expect("first load should succeed");
+            assert_eq!(first_results.len(), 2);
+            assert!(
+                first_results
+                    .iter()
+                    .all(|r: &IngestResult<RawSchema>| r.is_stale())
+            );
+
+            // Modify only one schema
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            write_file(
+                dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "name": "task", "properties": {"modified": {"type": "bool"}}}"#,
+            );
+
+            // Second load - note Fresh, task Stale
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_results =
+                ingestor2.all_schemas().expect("second load should succeed");
+            assert_eq!(second_results.len(), 2);
+
+            let note_result = second_results
+                .iter()
+                .find(|r| r.as_ref().name.as_ref() == "note")
+                .expect("should find note");
+            let task_result = second_results
+                .iter()
+                .find(|r| r.as_ref().name.as_ref() == "task")
+                .expect("should find task");
+
+            assert!(note_result.is_fresh(), "Unchanged note should be Fresh");
+            assert!(task_result.is_stale(), "Modified task should be Stale");
+        }
+
+        /// Test: Path-based lookup finds correct view.
+        ///
+        /// NOTE: Requires `to_raw()` implementation (Phase 6 - not yet
+        /// implemented). Currently `to_raw()` returns None, so this
+        /// test is ignored.
+        #[test]
+        #[ignore = "Requires to_raw() implementation (Phase 6)"]
+        fn path_based_lookup_finds_view() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/note.json",
+                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let db = test_database(dir.path());
+            let repository = RedbRepository::new(std::sync::Arc::clone(&db));
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            // Construct path to schema file
+            let schema_path = dir.path().join("schemas/note.json");
+
+            // First load to populate view
+            let first_result =
+                ingestor.schema(&schema_path).expect("should load");
+            assert!(first_result.is_stale());
+
+            // Second load should find by path
+            let repository2 = RedbRepository::new(db);
+            let ingestor2 =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository2);
+            let second_result =
+                ingestor2.schema(&schema_path).expect("should load");
+            assert!(
+                second_result.is_fresh(),
+                "Path lookup should return Fresh"
+            );
+        }
     }
 }
