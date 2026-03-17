@@ -69,7 +69,7 @@ impl<'config> Ingestor<'config> {
         let created_at = self.source.created_at(relative);
         let modified_at = self.source.modified_at(relative);
         self.source.read_with(relative, |_path, markdown| {
-            super::parser::extract::extract_markdown(
+            super::parser::parse_markdown(
                 markdown,
                 path.clone(),
                 created_at,
@@ -90,7 +90,7 @@ impl<'config> Ingestor<'config> {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<RawNote, NoteIngestError> {
-        super::parser::extract::extract_markdown(
+        super::parser::parse_markdown(
             markdown,
             path.clone(),
             created_at,

@@ -68,7 +68,7 @@ where
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, LoadError> {
-        let raw_note = parser::extract::extract_markdown(
+        let raw_note = parser::parse_markdown(
             markdown,
             path.clone(),
             created_at,
