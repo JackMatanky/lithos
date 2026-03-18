@@ -382,7 +382,7 @@ impl Note {
         tags: &mut Vec<Tag>,
     ) {
         let key = config.frontmatter().tags();
-        let Some(value) = frontmatter.get(key) else {
+        let Some(value) = frontmatter.get(key.as_str()) else {
             return;
         };
 

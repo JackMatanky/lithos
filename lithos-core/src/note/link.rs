@@ -56,6 +56,23 @@ pub struct Link {
     embed_type: Option<EmbedType>,
 }
 
+/// Detects if a string follows Obsidian wikilink syntax.
+///
+/// This matches both standard wikilinks `[[target]]` and
+/// embeds `![[target]]`.
+#[inline]
+#[must_use]
+pub fn is_wikilink_syntax(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.starts_with("![[") {
+        return trimmed.ends_with("]]");
+    }
+    if trimmed.starts_with("[[") {
+        return trimmed.ends_with("]]");
+    }
+    false
+}
+
 impl Link {
     /// Returns the optional display alias.
     #[inline]
@@ -336,6 +353,10 @@ impl FrontmatterLink {
         key: &str,
         value: &str,
     ) -> Result<Option<FrontmatterLink>, NoteError> {
+        if !is_wikilink_syntax(value) {
+            return Ok(None);
+        }
+
         let trimmed = value.trim();
         let (embed, inner) = if let Some(rest) =
             trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
@@ -346,6 +367,7 @@ impl FrontmatterLink {
         {
             (false, rest)
         } else {
+            // Should be unreachable given is_wikilink_syntax
             return Ok(None);
         };
 

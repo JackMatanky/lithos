@@ -13,6 +13,8 @@
 
 use std::collections::HashMap;
 
+use regex::Regex;
+
 use super::{
     error::{FrontmatterError, FrontmatterParseError},
     value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
@@ -30,24 +32,6 @@ use crate::{
 ///
 /// This struct provides a type-safe API for accessing metadata values while
 /// maintaining the dynamic nature of markdown headers.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::frontmatter::Frontmatter;
-/// # use lithos_core::note::value::FieldValue;
-/// # use std::collections::HashMap;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let mut fields = HashMap::new();
-/// fields.insert("status".into(), FieldValue::String("draft".into()));
-///
-/// let fm = Frontmatter::new(fields);
-/// let key =
-///     lithos_core::config::frontmatter::FrontmatterKey::try_new("status")?;
-/// assert!(fm.has(&key));
-/// # Ok(())
-/// # }
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -66,7 +50,56 @@ pub struct Frontmatter {
     fields: HashMap<Box<str>, FieldValue>,
 }
 
+/// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
+///
+/// Pattern breakdown:
+/// 1. `^(\s*[\w_-]+\s*:\s*)`: Matches the key and colon, including indentation.
+/// 2. `([^"'\s|>].*\[\[.*\]\].*)`: Matches values starting with a
+///    non-quote/special char that contain a wikilink.
+#[expect(clippy::expect_used, reason = "Static regex compilation")]
+static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| {
+        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*\[\[.*\]\].*)$"#)
+            .expect("valid regex")
+    });
+
+/// Regex for identifying unquoted Obsidian wikilinks in YAML list items.
+///
+/// Pattern breakdown:
+/// 1. `^(\s*-\s*)`: Matches the list dash and indentation.
+/// 2. `([^"'\s].*\[\[.*\]\].*)`: Matches values starting with a non-quote/space
+///    that contain a wikilink.
+#[expect(clippy::expect_used, reason = "Static regex compilation")]
+static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| {
+        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*\[\[.*\]\].*)$"#)
+            .expect("valid regex")
+    });
+
+macro_rules! frontmatter_get_ops {
+    ($name:ident, $type:ty) => {
+        /// Extracts a value of the specified type.
+        ///
+        /// # Errors
+        ///
+        /// Returns a [`FrontmatterError`] if the type is incompatible.
+        #[inline]
+        pub fn $name(
+            &self,
+            key: &FrontmatterKey,
+        ) -> Result<Option<$type>, FrontmatterError> {
+            self.try_get::<$type>(key)
+        }
+    };
+}
+
 impl Frontmatter {
+    frontmatter_get_ops!(try_get_bool, bool);
+
+    frontmatter_get_ops!(try_get_str, Box<str>);
+
+    frontmatter_get_ops!(try_get_number, f64);
+
     /// Parses a frontmatter block into structured fields.
     ///
     /// # Errors
@@ -82,7 +115,7 @@ impl Frontmatter {
                 if let Ok(fm) = serde_yaml::from_str::<Self>(text) {
                     return Ok(fm);
                 }
-                let sanitized = Frontmatter::sanitize_yaml_obsidian_links(text);
+                let sanitized = Self::sanitize_yaml_obsidian_links(text);
                 serde_yaml::from_str(&sanitized).map_err(|_e| {
                     FrontmatterParseError::InvalidYaml {
                         reason: "failed to parse yaml",
@@ -109,30 +142,15 @@ impl Frontmatter {
     /// Returns a reference to the value for the given key, if it exists.
     #[inline]
     #[must_use]
-    pub fn get(&self, key: &FrontmatterKey) -> Option<&FieldValue> {
-        self.fields.get(key.as_str())
+    pub fn get<K: AsRef<str>>(&self, key: K) -> Option<&FieldValue> {
+        self.fields.get(key.as_ref())
     }
 
     /// Returns `true` if the frontmatter contains a field with the given key.
     #[inline]
     #[must_use]
-    pub fn has(&self, key: &FrontmatterKey) -> bool {
-        self.fields.contains_key(key.as_str())
-    }
-
-    /// Returns a reference to the value for the given raw key, if it exists.
-    #[inline]
-    #[must_use]
-    pub fn get_raw(&self, key: &str) -> Option<&FieldValue> {
-        self.fields.get(key)
-    }
-
-    /// Returns `true` if the frontmatter contains a field with the given raw
-    /// key.
-    #[inline]
-    #[must_use]
-    pub fn has_raw(&self, key: &str) -> bool {
-        self.fields.contains_key(key)
+    pub fn has<K: AsRef<str>>(&self, key: K) -> bool {
+        self.fields.contains_key(key.as_ref())
     }
 
     #[inline]
@@ -145,21 +163,15 @@ impl Frontmatter {
 
     /// Strictly extracts a typed value from frontmatter.
     ///
-    /// Returns:
-    /// - `Ok(None)` if the key is missing.
-    /// - `Ok(Some(T))` if present and valid.
-    /// - `Err(FrontmatterError)` if present but invalid.
-    ///
     /// # Errors
     ///
-    /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
-    /// to `T`.
+    /// Returns a [`FrontmatterError`] if the type is incompatible.
     #[inline]
     pub fn try_get<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError> {
-        let Some(value) = self.get(key) else {
+        let Some(value) = self.get(key.as_str()) else {
             return Ok(None);
         };
         T::try_from_value(value)
@@ -182,31 +194,11 @@ impl Frontmatter {
         })
     }
 
-    /// Performs strict string-array extraction.
-    ///
-    /// This fails if an array contains any non-string elements.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the key is missing, if the value is not a string or
-    /// array of strings, or if any array element is not a string.
-    #[inline]
-    pub fn try_get_string_vec_strict(
-        &self,
-        key: &FrontmatterKey,
-    ) -> Result<Vec<Box<str>>, FrontmatterError> {
-        self.try_get_required::<Vec<Box<str>>>(key)
-    }
-
     /// Strictly extracts a *borrowed* typed value from frontmatter.
     ///
-    /// This mirrors [`Self::try_get`], but allows return types that borrow from
-    /// the underlying [`FieldValue`] (e.g., `&str`, slices, or object maps).
-    ///
     /// # Errors
     ///
-    /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
-    /// to `T`.
+    /// Returns a [`FrontmatterError`] if the type is incompatible.
     #[inline]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
@@ -215,30 +207,12 @@ impl Frontmatter {
     where
         T: TryFromFieldValueRef<'frontmatter>,
     {
-        let Some(value) = self.get(key) else {
+        let Some(value) = self.get(key.as_str()) else {
             return Ok(None);
         };
         T::try_from_value_ref(value)
             .map(Some)
             .map_err(|err| FrontmatterError::from(err).with_key(key.as_str()))
-    }
-
-    /// Strictly extracts a required *borrowed* typed value from frontmatter.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrontmatterError::Missing`] if the key is absent.
-    #[inline]
-    pub fn try_get_required_ref<'frontmatter, T>(
-        &'frontmatter self,
-        key: &FrontmatterKey,
-    ) -> Result<T, FrontmatterError>
-    where
-        T: TryFromFieldValueRef<'frontmatter>,
-    {
-        self.try_get_ref(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.as_str().into(),
-        })
     }
 
     /// Returns the title of the note, using the configured title key.
@@ -248,7 +222,8 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().title()).and_then(FieldValue::as_str)
+        self.get(config.frontmatter().title().as_str())
+            .and_then(FieldValue::as_str)
     }
 
     /// Returns the file class of the note, using the configured key.
@@ -258,20 +233,20 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().file_class()).and_then(FieldValue::as_str)
+        self.get(config.frontmatter().file_class().as_str())
+            .and_then(FieldValue::as_str)
     }
 
     /// Returns a borrowed iterator over aliases.
     ///
-    /// This is zero-copy; use [`Frontmatter::aliases_owned`] when you need
-    /// owned values.
+    /// Handles both single string values and arrays of strings.
     #[inline]
     #[must_use]
     pub fn aliases<'frontmatter>(
         &'frontmatter self,
         config: &crate::config::aggregate::Config,
     ) -> AliasValues<'frontmatter> {
-        AliasValues::new(self.get(config.frontmatter().alias()))
+        AliasValues::new(self.get(config.frontmatter().alias().as_str()))
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
@@ -287,88 +262,8 @@ impl Frontmatter {
     }
 
     fn sanitize_yaml_obsidian_links(text: &str) -> String {
-        let mut output = String::with_capacity(text.len());
-        for line in text.split_inclusive('\n') {
-            let line_end = line.trim_end_matches(['\n', '\r']);
-            let line_ending = line.get(line_end.len()..).unwrap_or("");
-            let trimmed = line_end.trim_start();
-            let indent_len = line_end.len().saturating_sub(trimmed.len());
-            let indent = line_end.get(..indent_len).unwrap_or("");
-
-            if let Some(updated) =
-                Frontmatter::sanitize_yaml_list_item(trimmed, indent)
-            {
-                output.push_str(&updated);
-                output.push_str(line_ending);
-                continue;
-            }
-
-            if let Some(updated) =
-                Frontmatter::sanitize_yaml_mapping_entry(trimmed, indent)
-            {
-                output.push_str(&updated);
-                output.push_str(line_ending);
-                continue;
-            }
-
-            output.push_str(line_end);
-            output.push_str(line_ending);
-        }
-        output
-    }
-
-    fn sanitize_yaml_list_item(line: &str, indent: &str) -> Option<String> {
-        let rest = line.strip_prefix('-')?.trim_start();
-        if !Frontmatter::is_unquoted_obsidian_link(rest) {
-            return None;
-        }
-        let mut updated = String::with_capacity(
-            indent.len().saturating_add(rest.len()).saturating_add(4),
-        );
-        updated.push_str(indent);
-        updated.push_str("- ");
-        updated.push('"');
-        updated.push_str(rest);
-        updated.push('"');
-        Some(updated)
-    }
-
-    fn sanitize_yaml_mapping_entry(line: &str, indent: &str) -> Option<String> {
-        let colon_index = line.find(':')?;
-        let split_index = colon_index.saturating_add(1);
-        let (key, rest) = line.split_at(split_index);
-        let value = rest.trim_start();
-        if value.is_empty() || value.starts_with('|') || value.starts_with('>')
-        {
-            return None;
-        }
-        if !Frontmatter::is_unquoted_obsidian_link(value) {
-            return None;
-        }
-        let whitespace_len = rest.len().saturating_sub(value.len());
-        let whitespace = rest.get(..whitespace_len).unwrap_or("");
-        let mut updated = String::with_capacity(
-            indent
-                .len()
-                .saturating_add(key.len())
-                .saturating_add(whitespace.len())
-                .saturating_add(value.len())
-                .saturating_add(2),
-        );
-        updated.push_str(indent);
-        updated.push_str(key);
-        updated.push_str(whitespace);
-        updated.push('"');
-        updated.push_str(value);
-        updated.push('"');
-        Some(updated)
-    }
-
-    fn is_unquoted_obsidian_link(value: &str) -> bool {
-        if value.starts_with('"') || value.starts_with('\'') {
-            return false;
-        }
-        value.starts_with("[[") || value.starts_with("![[")
+        let step1 = YAML_MAP_LINK_RE.replace_all(text, r#"$1"$2""#);
+        YAML_LIST_LINK_RE.replace_all(&step1, r#"$1"$2""#).into_owned()
     }
 }
 
@@ -406,7 +301,7 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
 
 /// Borrowed alias iterator returned by [`Frontmatter::aliases`].
 pub struct AliasValues<'frontmatter> {
-    source: AliasSource<'frontmatter>,
+    inner: AliasSource<'frontmatter>,
 }
 
 enum AliasSource<'frontmatter> {
@@ -417,7 +312,7 @@ enum AliasSource<'frontmatter> {
 
 impl<'frontmatter> AliasValues<'frontmatter> {
     fn new(value: Option<&'frontmatter FieldValue>) -> Self {
-        let source = if let Some(value) = value {
+        let inner = if let Some(value) = value {
             if let Some(text) = value.as_str() {
                 AliasSource::Single(Some(text))
             } else if let Some(values) = value.as_array() {
@@ -429,7 +324,7 @@ impl<'frontmatter> AliasValues<'frontmatter> {
             AliasSource::Empty
         };
         Self {
-            source,
+            inner,
         }
     }
 }
@@ -443,16 +338,11 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match self.source {
+        match self.inner {
             AliasSource::Empty => None,
             AliasSource::Single(ref mut value) => value.take(),
             AliasSource::Array(ref mut iter) => {
-                for item in iter.by_ref() {
-                    if let Some(text) = item.as_str() {
-                        return Some(text);
-                    }
-                }
-                None
+                iter.find_map(|item| item.as_str())
             }
         }
     }
@@ -463,7 +353,7 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
         reason = "Match ergonomics on &self"
     )]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        match &self.source {
+        match &self.inner {
             AliasSource::Empty | AliasSource::Single(None) => (0, Some(0)),
             AliasSource::Single(Some(_)) => (1, Some(1)),
             AliasSource::Array(iter) => {
@@ -881,7 +771,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             let lookup_key =
                 FrontmatterKey::try_new("aliases").expect("valid key");
-            let result = fm.try_get_string_vec_strict(&lookup_key);
+            let result = fm.try_get_required::<Vec<Box<str>>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
@@ -900,7 +790,7 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get_raw("aliases").and_then(string_array_lossy),
+                fm.get("aliases").and_then(string_array_lossy),
                 Some(vec!["ok".into()])
             );
         }

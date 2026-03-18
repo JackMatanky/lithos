@@ -183,7 +183,7 @@ mod tests {
 
         let outcome_frontmatter =
             fixture.note.frontmatter().expect("frontmatter should exist");
-        assert!(outcome_frontmatter.has_raw("title"));
+        assert!(outcome_frontmatter.has("title"));
     }
 
     /// Ensures task promotion retains a heading association.

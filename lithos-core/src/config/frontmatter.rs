@@ -181,6 +181,13 @@ impl FrontmatterKey {
     }
 }
 
+impl AsRef<str> for FrontmatterKey {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 // ----------------------------------------------------------- //
 //                         Input Dtos                          //
 // ----------------------------------------------------------- //
