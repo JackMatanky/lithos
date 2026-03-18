@@ -1132,249 +1132,140 @@ mod tests {
         RedbRepository::new(db)
     }
 
-    #[test]
-    fn property_bank_parses_valid_json() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {}}"#,
-        );
+    // ========================================================================
+    // Property Bank Loading Tests
+    // ========================================================================
 
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
+    /// Tests for `property_bank()` method - file format support and error
+    /// handling.
+    mod property_bank_loading_tests {
+        use super::*;
 
-        assert!(result.is_ok());
-        let bank_result = result.expect("Should parse property bank");
-        assert!(bank_result.is_new() || bank_result.is_stale());
-        assert!(bank_result.bank().all().count() == 0);
-    }
+        #[test]
+        fn parses_valid_json() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
 
-    #[test]
-    fn property_bank_parses_valid_yaml() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.yaml",
-            "$version: \"1.0\"\nproperties: {}",
-        );
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-        let config = test_config(dir.path(), Some("property_bank.yaml"));
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
+            assert!(result.is_ok());
+            let bank_result = result.expect("Should parse property bank");
+            assert!(bank_result.is_new() || bank_result.is_stale());
+            assert!(bank_result.bank().all().count() == 0);
+        }
 
-        assert!(result.is_ok());
-        let bank_result = result.expect("Should parse property bank");
-        assert!(bank_result.is_new());
-        assert!(bank_result.bank().all().count() == 0);
-    }
+        #[test]
+        fn parses_valid_yaml() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.yaml",
+                "$version: \"1.0\"\nproperties: {}",
+            );
 
-    #[test]
-    fn property_bank_parses_valid_toml() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.toml",
-            "\"$version\" = \"1.0\"\n[properties]",
-        );
+            let config = test_config(dir.path(), Some("property_bank.yaml"));
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-        let config = test_config(dir.path(), Some("property_bank.toml"));
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
+            assert!(result.is_ok());
+            let bank_result = result.expect("Should parse property bank");
+            assert!(bank_result.is_new());
+            assert!(bank_result.bank().all().count() == 0);
+        }
 
-        assert!(result.is_ok());
-        let bank_result = result.expect("Should parse property bank");
-        assert!(bank_result.is_new() || bank_result.is_stale());
-        assert!(bank_result.bank().all().count() == 0);
-    }
+        #[test]
+        fn parses_valid_toml() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.toml",
+                "\"$version\" = \"1.0\"\n[properties]",
+            );
 
-    #[test]
-    fn property_bank_returns_error_for_invalid_json() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/property_bank.json", "not valid json");
+            let config = test_config(dir.path(), Some("property_bank.toml"));
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
+            assert!(result.is_ok());
+            let bank_result = result.expect("Should parse property bank");
+            assert!(bank_result.is_new() || bank_result.is_stale());
+            assert!(bank_result.bank().all().count() == 0);
+        }
 
-        assert!(result.is_err());
-        let err = result.expect_err("Should fail to parse");
-        assert!(matches!(err, SchemaIngestionError::Json { .. }));
-    }
+        #[test]
+        fn returns_error_when_json_is_invalid() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                "not valid json",
+            );
 
-    #[test]
-    fn property_bank_returns_error_for_unsupported_format() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.xml",
-            "<properties></properties>",
-        );
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-        let config = test_config(dir.path(), Some("property_bank.xml"));
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
+            assert!(result.is_err());
+            let err = result.expect_err("Should fail to parse");
+            assert!(matches!(err, SchemaIngestionError::Json { .. }));
+        }
 
-        assert!(result.is_err());
-        let err = result.expect_err("Should fail for unsupported format");
-        assert!(matches!(err, SchemaIngestionError::UnsupportedFormat { .. }));
-    }
+        #[test]
+        fn returns_error_when_format_is_unsupported() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.xml",
+                "<properties></properties>",
+            );
 
-    #[test]
-    fn ingest_all_returns_both_property_bank_and_schemas() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/note.json",
-            r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
-        );
-        write_file(
-            dir.path(),
-            "schemas/task.yaml",
-            "$version: \"1.0\"\nname: task\nproperties: {}",
-        );
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {}}"#,
-        );
+            let config = test_config(dir.path(), Some("property_bank.xml"));
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.ingest_all();
+            assert!(result.is_err());
+            let err = result.expect_err("Should fail for unsupported format");
+            assert!(matches!(
+                err,
+                SchemaIngestionError::UnsupportedFormat { .. }
+            ));
+        }
 
-        assert!(result.is_ok());
-        let ingestion_result = result.expect("Should ingest all schemas");
+        #[test]
+        fn defaults_version_when_omitted() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"properties": {}}"#,
+            );
 
-        // Verify both schemas were loaded (HashMap<PathBuf, SchemaResult>)
-        assert_eq!(ingestion_result.schemas.len(), 2);
-        let names: Vec<&str> = ingestion_result
-            .schemas
-            .values()
-            .filter_map(|r| r.raw().map(|raw| raw.name.as_ref()))
-            .collect();
-        assert!(names.contains(&"note"));
-        assert!(names.contains(&"task"));
-    }
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.property_bank();
 
-    #[test]
-    fn ingest_all_supports_toml_format() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {}}"#,
-        );
-        write_file(
-            dir.path(),
-            "schemas/project.toml",
-            r#""$version" = "1.0"
-[properties]"#,
-        );
-
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.ingest_all();
-
-        assert!(result.is_ok());
-        let ingestion_result = result.expect("Should ingest all schemas");
-        assert_eq!(ingestion_result.schemas.len(), 1);
-        let (_path, schema_result) = ingestion_result
-            .schemas
-            .iter()
-            .next()
-            .expect("should have one schema");
-        let raw = schema_result.raw().expect("should have raw schema");
-        assert_eq!(raw.name.as_ref(), "project");
-    }
-
-    #[test]
-    fn ingest_all_separates_property_bank_from_schemas() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {}}"#,
-        );
-
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.ingest_all();
-
-        assert!(result.is_ok());
-        let ingestion_result = result.expect("Should ingest all schemas");
-
-        // Schemas HashMap should be empty (only property bank exists)
-        assert!(ingestion_result.schemas.is_empty());
-    }
-
-    #[test]
-    fn property_bank_defaults_version_when_omitted() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"properties": {}}"#,
-        );
-
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.property_bank();
-
-        assert!(result.is_ok());
-        let bank_result = result.expect("Should parse property bank");
-        assert_eq!(bank_result.bank().version().to_string(), "v0");
-    }
-
-    #[test]
-    fn ingest_all_defaults_schema_version_when_omitted() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(
-            dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {}}"#,
-        );
-        write_file(
-            dir.path(),
-            "schemas/note.json",
-            r#"{"name": "note", "properties": {}}"#,
-        );
-
-        let config = test_config(dir.path(), None);
-        let repository = test_repository(dir.path());
-        let ingestor =
-            Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.ingest_all();
-
-        assert!(result.is_ok());
-        let ingestion_result = result.expect("Should ingest all schemas");
-        assert_eq!(ingestion_result.schemas.len(), 1);
-        let (_path, schema_result) = ingestion_result
-            .schemas
-            .iter()
-            .next()
-            .expect("should have one schema");
-        let raw = schema_result.raw().expect("should have raw schema");
-        assert_eq!(raw.version.as_ref(), "1.0");
+            assert!(result.is_ok());
+            let bank_result = result.expect("Should parse property bank");
+            assert_eq!(bank_result.bank().version().to_string(), "v0");
+        }
     }
 
     /// Staleness detection tests.
@@ -2063,6 +1954,132 @@ mod tests {
             for schema_result in results.schemas.values() {
                 assert!(schema_result.is_new(), "All schemas should be New");
             }
+        }
+
+        #[test]
+        fn returns_both_property_bank_and_schemas() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/note.json",
+                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+            );
+            write_file(
+                dir.path(),
+                "schemas/task.yaml",
+                "$version: \"1.0\"\nname: task\nproperties: {}",
+            );
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.ingest_all();
+
+            assert!(result.is_ok());
+            let ingestion_result = result.expect("Should ingest all schemas");
+
+            // Verify both schemas were loaded (HashMap<PathBuf, SchemaResult>)
+            assert_eq!(ingestion_result.schemas.len(), 2);
+            let names: Vec<&str> = ingestion_result
+                .schemas
+                .values()
+                .filter_map(|r| r.raw().map(|raw| raw.name.as_ref()))
+                .collect();
+            assert!(names.contains(&"note"));
+            assert!(names.contains(&"task"));
+        }
+
+        #[test]
+        fn supports_toml_format() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+            write_file(
+                dir.path(),
+                "schemas/project.toml",
+                r#""$version" = "1.0"
+[properties]"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.ingest_all();
+
+            assert!(result.is_ok());
+            let ingestion_result = result.expect("Should ingest all schemas");
+            assert_eq!(ingestion_result.schemas.len(), 1);
+            let (_path, schema_result) = ingestion_result
+                .schemas
+                .iter()
+                .next()
+                .expect("should have one schema");
+            let raw = schema_result.raw().expect("should have raw schema");
+            assert_eq!(raw.name.as_ref(), "project");
+        }
+
+        #[test]
+        fn separates_property_bank_from_schemas() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.ingest_all();
+
+            assert!(result.is_ok());
+            let ingestion_result = result.expect("Should ingest all schemas");
+
+            // Schemas HashMap should be empty (only property bank exists)
+            assert!(ingestion_result.schemas.is_empty());
+        }
+
+        #[test]
+        fn defaults_schema_version_when_omitted() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+            write_file(
+                dir.path(),
+                "schemas/note.json",
+                r#"{"name": "note", "properties": {}}"#,
+            );
+
+            let config = test_config(dir.path(), None);
+            let repository = test_repository(dir.path());
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+            let result = ingestor.ingest_all();
+
+            assert!(result.is_ok());
+            let ingestion_result = result.expect("Should ingest all schemas");
+            assert_eq!(ingestion_result.schemas.len(), 1);
+            let (_path, schema_result) = ingestion_result
+                .schemas
+                .iter()
+                .next()
+                .expect("should have one schema");
+            let raw = schema_result.raw().expect("should have raw schema");
+            assert_eq!(raw.version.as_ref(), "1.0");
         }
     }
 }

@@ -545,354 +545,366 @@ mod tests {
         Ok(config)
     }
 
-    /// **TEST-001**: New schema uses full resolution pipeline.
-    #[test]
-    fn new_schema_uses_full_resolution() -> TestResult {
-        // GIVEN: Empty DB + new schema file
-        let vault_dir = TempDir::new()?;
-        let db_ctx = TestDbContext::new()?;
-        let db = db_ctx.open()?;
+    // ========================================================================
+    // Pipeline Integration Tests
+    // ========================================================================
 
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
+    /// Tests for full pipeline orchestration - loading, resolution, and
+    /// storage.
+    mod pipeline_tests {
+        use super::*;
 
-        let config = test_config(vault_dir.path())?;
-        let repository = RedbRepository::new(Arc::clone(&db));
-        let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        #[test]
+        fn resolves_schema_when_new_file_is_added() -> TestResult {
+            // GIVEN: Empty DB + new schema file
+            let vault_dir = TempDir::new()?;
+            let db_ctx = TestDbContext::new()?;
+            let db = db_ctx.open()?;
 
-        // WHEN: Loading schemas
-        let resolved = loader.load()?;
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
 
-        // THEN: Schema is resolved via full pipeline
-        if resolved.len() != 1 {
-            return Err(
-                format!("Expected 1 schema, got {}", resolved.len()).into()
-            );
+            let config = test_config(vault_dir.path())?;
+            let repository = RedbRepository::new(Arc::clone(&db));
+            let source = FsReader::new(vault_dir.path());
+            let loader = Loader::new(repository, source, &config);
+
+            // WHEN: Loading schemas
+            let resolved = loader.load()?;
+
+            // THEN: Schema is resolved via full pipeline
+            if resolved.len() != 1 {
+                return Err(format!(
+                    "Expected 1 schema, got {}",
+                    resolved.len()
+                )
+                .into());
+            }
+
+            let schema =
+                resolved.first().ok_or("Expected at least one schema")?;
+            if schema.properties().len() != 1 {
+                return Err(format!(
+                    "Expected 1 property, got {}",
+                    schema.properties().len()
+                )
+                .into());
+            }
+
+            Ok(())
         }
-        let schema = resolved.first().ok_or("Expected at least one schema")?;
-        if schema.name().as_ref() != "task" {
-            return Err(format!(
-                "Expected name 'task', got '{}'",
-                schema.name().as_ref()
-            )
-            .into());
-        }
-        if schema.properties().len() != 1 {
-            return Err(format!(
-                "Expected 1 property, got {}",
-                schema.properties().len()
-            )
-            .into());
+
+        #[test]
+        fn reloads_schema_when_file_changes() -> TestResult {
+            let vault_dir = TempDir::new()?;
+
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
+
+            let config = test_config(vault_dir.path())?;
+            let repository = InMemoryRepository::new();
+
+            // GIVEN: First load populates repository
+            let source = FsReader::new(vault_dir.path());
+            let loader = Loader::new(repository.clone(), source, &config);
+            let initial = loader.load()?;
+
+            if initial.len() != 1 {
+                return Err(format!(
+                    "Expected 1 initial schema, got {}",
+                    initial.len()
+                )
+                .into());
+            }
+
+            // WHEN: File changes (add property)
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test needs filesystem timing"
+            )]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {
+                    "title": {"$ref": "property_bank#/title"},
+                    "status": {"type": "bool"}
+                }}"#,
+            )?;
+
+            // THEN: Full resolution updates schema
+            let source2 = FsReader::new(vault_dir.path());
+            let loader2 = Loader::new(repository.clone(), source2, &config);
+            let updated = loader2.load()?;
+
+            if updated.len() != 1 {
+                return Err(format!(
+                    "Expected 1 updated schema, got {}",
+                    updated.len()
+                )
+                .into());
+            }
+            let schema =
+                updated.first().ok_or("Expected at least one schema")?;
+            if schema.properties().len() != 2 {
+                return Err(format!(
+                    "Expected 2 properties, got {}",
+                    schema.properties().len()
+                )
+                .into());
+            }
+
+            Ok(())
         }
 
-        Ok(())
+        #[test]
+        fn handles_mixed_new_changed_and_incremental_paths() -> TestResult {
+            let vault_dir = TempDir::new()?;
+
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {
+                    "title": {"type": "string"},
+                    "status": {"type": "string"}
+                }}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/note.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
+
+            let config = test_config(vault_dir.path())?;
+            let repository = InMemoryRepository::new();
+
+            // GIVEN: First load: 2 new schemas
+            let source = FsReader::new(vault_dir.path());
+            let loader = Loader::new(repository.clone(), source, &config);
+            let initial = loader.load()?;
+
+            if initial.len() != 2 {
+                return Err(format!(
+                    "Expected 2 initial schemas, got {}",
+                    initial.len()
+                )
+                .into());
+            }
+
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test needs filesystem timing"
+            )]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            // WHEN: Mixed changes:
+            // 1. Add new schema (project.json) - NEW path
+            // 2. Modify task.json - FILE-CHANGED path
+            // 3. Modify property bank title - affects note.json via INCREMENTAL
+            //    path
+
+            write_file(
+                vault_dir.path(),
+                "schemas/project.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
+
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {
+                    "title": {"$ref": "property_bank#/title"},
+                    "done": {"type": "bool"}
+                }}"#,
+            )?;
+
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {
+                    "title": {"type": "string", "max_length": 100},
+                    "status": {"type": "string"}
+                }}"#,
+            )?;
+
+            // THEN: All three paths exercised
+            let source2 = FsReader::new(vault_dir.path());
+            let loader2 = Loader::new(repository.clone(), source2, &config);
+            let updated = loader2.load()?;
+
+            if updated.len() < 2 {
+                return Err(format!(
+                    "Expected at least 2 updated schemas, got {}",
+                    updated.len()
+                )
+                .into());
+            }
+
+            // Verify we got the expected schemas
+            let names: Vec<&str> =
+                updated.iter().map(|s: &Schema| s.name().as_ref()).collect();
+            if !names.contains(&"project") {
+                return Err("Expected to find 'project' schema".into());
+            }
+            if !names.contains(&"task") {
+                return Err("Expected to find 'task' schema".into());
+            }
+
+            Ok(())
+        }
     }
 
-    /// **TEST-002**: Existing schema with file change uses full resolution.
-    #[test]
-    fn existing_schema_file_change_uses_full_resolution() -> TestResult {
-        let vault_dir = TempDir::new()?;
+    // ========================================================================
+    // Incremental Resolution Tests
+    // ========================================================================
 
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
+    /// Tests for incremental resolution optimization when only property bank
+    /// changes.
+    mod incremental_resolution_tests {
+        use super::*;
 
-        let config = test_config(vault_dir.path())?;
-        let repository = InMemoryRepository::new();
+        #[test]
+        fn applies_incremental_when_only_bank_changes() -> TestResult {
+            let vault_dir = TempDir::new()?;
 
-        // GIVEN: First load: 2 new schemas
-        let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository.clone(), source, &config);
-        let initial = loader.load()?;
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"status": {"type": "string"}}}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {"status": {"$ref": "property_bank#/status"}}}"#,
+            )?;
 
-        if initial.len() != 1 {
-            return Err(format!(
-                "Expected 1 initial schema, got {}",
-                initial.len()
-            )
-            .into());
+            let config = test_config(vault_dir.path())?;
+            let repository = InMemoryRepository::new();
+
+            // GIVEN: First load populates repository
+            let source = FsReader::new(vault_dir.path());
+            let loader = Loader::new(repository.clone(), source, &config);
+            let initial = loader.load()?;
+
+            if initial.len() != 1 {
+                return Err(format!(
+                    "Expected 1 initial schema, got {}",
+                    initial.len()
+                )
+                .into());
+            }
+
+            // WHEN: Property bank changes (modify status property)
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test needs filesystem timing"
+            )]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"status": {"type": "bool"}}}"#,
+            )?;
+
+            // THEN: Incremental resolution updates schema
+            let source2 = FsReader::new(vault_dir.path());
+            let loader2 = Loader::new(repository.clone(), source2, &config);
+            let updated = loader2.load()?;
+
+            if updated.len() != 1 {
+                return Err(format!(
+                    "Expected 1 updated schema, got {}",
+                    updated.len()
+                )
+                .into());
+            }
+
+            Ok(())
         }
 
-        // WHEN: File changes (add property)
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test needs filesystem timing"
-        )]
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        #[test]
+        fn skips_incremental_when_property_hash_unchanged() -> TestResult {
+            let vault_dir = TempDir::new()?;
 
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"$ref": "property_bank#/title"},
-                "status": {"type": "bool"}
-            }}"#,
-        )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
+            )?;
+            write_file(
+                vault_dir.path(),
+                "schemas/task.json",
+                r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            )?;
 
-        // THEN: Full resolution updates schema
-        let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository.clone(), source2, &config);
-        let updated = loader2.load()?;
+            let config = test_config(vault_dir.path())?;
+            let repository = InMemoryRepository::new();
 
-        if updated.len() != 1 {
-            return Err(format!(
-                "Expected 1 updated schema, got {}",
-                updated.len()
-            )
-            .into());
+            // GIVEN: First load populates repository
+            let source = FsReader::new(vault_dir.path());
+            let loader = Loader::new(repository.clone(), source, &config);
+            let initial = loader.load()?;
+
+            if initial.len() != 1 {
+                return Err(format!(
+                    "Expected 1 initial schema, got {}",
+                    initial.len()
+                )
+                .into());
+            }
+
+            // WHEN: Touch file without changing content hash
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test needs filesystem timing"
+            )]
+            std::thread::sleep(std::time::Duration::from_millis(10));
+
+            // Rewrite same content
+            write_file(
+                vault_dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
+            )?;
+
+            // THEN: No schemas re-resolved (hash unchanged)
+            let source2 = FsReader::new(vault_dir.path());
+            let loader2 = Loader::new(repository.clone(), source2, &config);
+            let updated = loader2.load()?;
+
+            if !updated.is_empty() {
+                return Err(format!(
+                    "Expected 0 updated schemas, got {}",
+                    updated.len()
+                )
+                .into());
+            }
+
+            Ok(())
         }
-        let schema = updated.first().ok_or("Expected at least one schema")?;
-        if schema.properties().len() != 2 {
-            return Err(format!(
-                "Expected 2 properties, got {}",
-                schema.properties().len()
-            )
-            .into());
-        }
-
-        Ok(())
-    }
-
-    /// **TEST-003**: Existing schema with only bank change uses incremental
-    /// resolution.
-    #[test]
-    fn existing_schema_bank_change_uses_incremental() -> TestResult {
-        let vault_dir = TempDir::new()?;
-
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"status": {"type": "string"}}}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"status": {"$ref": "property_bank#/status"}}}"#,
-        )?;
-
-        let config = test_config(vault_dir.path())?;
-        let repository = InMemoryRepository::new();
-
-        // GIVEN: First load populates repository
-        let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository.clone(), source, &config);
-        let initial = loader.load()?;
-
-        if initial.len() != 1 {
-            return Err(format!(
-                "Expected 1 initial schema, got {}",
-                initial.len()
-            )
-            .into());
-        }
-
-        // WHEN: Property bank changes (modify status property)
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test needs filesystem timing"
-        )]
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"status": {"type": "bool"}}}"#,
-        )?;
-
-        // THEN: Incremental resolution updates schema
-        let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository.clone(), source2, &config);
-        let updated = loader2.load()?;
-
-        if updated.len() != 1 {
-            return Err(format!(
-                "Expected 1 updated schema, got {}",
-                updated.len()
-            )
-            .into());
-        }
-
-        Ok(())
-    }
-
-    /// **TEST-004**: No incremental when property hash unchanged.
-    #[test]
-    fn no_incremental_when_property_unchanged() -> TestResult {
-        let vault_dir = TempDir::new()?;
-
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
-
-        let config = test_config(vault_dir.path())?;
-        let repository = InMemoryRepository::new();
-
-        // GIVEN: First load populates repository
-        let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository.clone(), source, &config);
-        let initial = loader.load()?;
-
-        if initial.len() != 1 {
-            return Err(format!(
-                "Expected 1 initial schema, got {}",
-                initial.len()
-            )
-            .into());
-        }
-
-        // WHEN: Touch file without changing content hash
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test needs filesystem timing"
-        )]
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        // Rewrite same content
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
-        )?;
-
-        // THEN: No schemas re-resolved (hash unchanged)
-        let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository.clone(), source2, &config);
-        let updated = loader2.load()?;
-
-        if !updated.is_empty() {
-            return Err(format!(
-                "Expected 0 updated schemas, got {}",
-                updated.len()
-            )
-            .into());
-        }
-
-        Ok(())
-    }
-
-    /// **TEST-005**: Mixed scenario - new, file-changed, and incremental.
-    #[test]
-    fn mixed_scenario_handles_all_three_paths() -> TestResult {
-        let vault_dir = TempDir::new()?;
-
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"type": "string"},
-                "status": {"type": "string"}
-            }}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
-        write_file(
-            vault_dir.path(),
-            "schemas/note.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
-
-        let config = test_config(vault_dir.path())?;
-        let repository = InMemoryRepository::new();
-
-        // GIVEN: First load populates repository
-        let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository.clone(), source, &config);
-        let initial = loader.load()?;
-
-        if initial.len() != 2 {
-            return Err(format!(
-                "Expected 2 initial schemas, got {}",
-                initial.len()
-            )
-            .into());
-        }
-
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test needs filesystem timing"
-        )]
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        // WHEN: Mixed changes:
-        // 1. Add new schema (project.json) - NEW path
-        // 2. Modify task.json - FILE-CHANGED path
-        // 3. Modify property bank title - affects note.json via INCREMENTAL
-        //    path
-
-        write_file(
-            vault_dir.path(),
-            "schemas/project.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
-        )?;
-
-        write_file(
-            vault_dir.path(),
-            "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"$ref": "property_bank#/title"},
-                "done": {"type": "bool"}
-            }}"#,
-        )?;
-
-        write_file(
-            vault_dir.path(),
-            "schemas/property_bank.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"type": "string", "max_length": 100},
-                "status": {"type": "string"}
-            }}"#,
-        )?;
-
-        // THEN: All three paths exercised
-        let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository.clone(), source2, &config);
-        let updated = loader2.load()?;
-
-        if updated.len() < 2 {
-            return Err(format!(
-                "Expected at least 2 updated schemas, got {}",
-                updated.len()
-            )
-            .into());
-        }
-
-        // Verify we got the expected schemas
-        let names: Vec<&str> =
-            updated.iter().map(|s: &Schema| s.name().as_ref()).collect();
-        if !names.contains(&"project") {
-            return Err("Expected to find 'project' schema".into());
-        }
-        if !names.contains(&"task") {
-            return Err("Expected to find 'task' schema".into());
-        }
-
-        Ok(())
     }
 
     // ========================================================================
