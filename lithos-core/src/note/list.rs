@@ -9,7 +9,11 @@
 
 use std::fmt;
 
-use super::{error::NoteError, position::SourceByteOffset, task::TaskId};
+use super::{
+    error::NoteError,
+    position::{SourceByteOffset, SourceByteRange},
+    task::TaskId,
+};
 use crate::{
     config::task::StatusSymbol,
     note::raw::{RawListDepth, RawListItem},
@@ -198,10 +202,13 @@ impl<'list> Iterator for ListItems<'list> {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{list::ListItem, position::SourceByteOffset};
+/// # use lithos_core::note::{list::ListItem, position::{SourceByteOffset, SourceByteRange}};
+/// let start = SourceByteOffset::new(0);
+/// let end = SourceByteOffset::new(13);
+/// let range = SourceByteRange::new(start, end).expect("valid range");
 /// let item = ListItem::Plain {
 ///     text: "Buy groceries".into(),
-///     position: SourceByteOffset::new(0),
+///     range,
 /// };
 /// assert_eq!(item.text(), "Buy groceries");
 /// ```
@@ -215,8 +222,8 @@ pub enum ListItem {
     Plain {
         /// Raw text content.
         text: Box<str>,
-        /// Source byte offset in the note.
-        position: SourceByteOffset,
+        /// Source byte range in the note.
+        range: SourceByteRange,
     },
     /// Checkbox list item.
     Checkbox {
@@ -224,8 +231,8 @@ pub enum ListItem {
         text: Box<str>,
         /// Checkbox status symbol.
         status: StatusSymbol,
-        /// Source byte offset in the note.
-        position: SourceByteOffset,
+        /// Source byte range in the note.
+        range: SourceByteRange,
         /// Task id if promoted to a Task.
         task_id: Option<TaskId>,
     },
@@ -236,7 +243,27 @@ pub enum ListItem {
     reason = "Match ergonomics on &self keep accessors concise."
 )]
 impl ListItem {
-    /// Returns the source byte position of this list item.
+    /// Returns the source byte range of this list item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn range(&self) -> SourceByteRange {
+        match self {
+            Self::Plain {
+                range,
+                ..
+            }
+            | Self::Checkbox {
+                range,
+                ..
+            } => *range,
+        }
+    }
+
+    /// Returns the start source byte position of this list item.
     #[inline]
     #[must_use]
     #[expect(
@@ -246,13 +273,13 @@ impl ListItem {
     pub const fn position(&self) -> SourceByteOffset {
         match self {
             Self::Plain {
-                position,
+                range,
                 ..
             }
             | Self::Checkbox {
-                position,
+                range,
                 ..
-            } => *position,
+            } => range.start(),
         }
     }
 
@@ -350,7 +377,7 @@ impl ListItem {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct ListItemEntry {
-    position: SourceByteOffset,
+    range: SourceByteRange,
     depth: ListDepth,
     parent: Option<SourceByteOffset>,
     status: Option<StatusSymbol>,
@@ -362,14 +389,14 @@ impl ListItemEntry {
     #[inline]
     #[must_use]
     pub fn new(
-        position: SourceByteOffset,
+        range: SourceByteRange,
         depth: ListDepth,
         parent: Option<SourceByteOffset>,
         status: Option<StatusSymbol>,
         task_id: Option<TaskId>,
     ) -> Self {
         Self {
-            position,
+            range,
             depth,
             parent,
             status,
@@ -377,11 +404,18 @@ impl ListItemEntry {
         }
     }
 
-    /// Returns the list item byte position.
+    /// Returns the list item byte range.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
+    }
+
+    /// Returns the list item start byte position.
     #[inline]
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
-        self.position
+        self.range.start()
     }
 
     /// Returns the list item depth.
@@ -429,13 +463,7 @@ impl TryFrom<RawListItem> for ListItemEntry {
             .map(|kind| StatusSymbol::try_new(kind.marker()))
             .transpose()?;
 
-        Ok(ListItemEntry::new(
-            raw.position(),
-            depth,
-            raw.parent(),
-            status,
-            None,
-        ))
+        Ok(ListItemEntry::new(raw.range(), depth, raw.parent(), status, None))
     }
 }
 

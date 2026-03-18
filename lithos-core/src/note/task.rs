@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use super::{
     error::{NoteError, TaskError},
-    position::SourceByteOffset,
+    position::{SourceByteOffset, SourceByteRange},
     raw::{RawInlineField, RawNote, RawTask},
     tag::Tag,
     value::FieldValue,
@@ -40,15 +40,16 @@ use crate::config::{
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{task::Task, position::SourceByteOffset};
+/// # use lithos_core::note::{task::Task, position::{SourceByteOffset, SourceByteRange}};
 /// # use lithos_core::config::task::StatusName;
 /// # use lithos_core::note::task::TaskAttributes;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let status = StatusName::try_new("todo")?;
+/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10))?;
 /// let task = Task::try_new(
 ///     status,
 ///     "Urgent work",
-///     SourceByteOffset::new(0),
+///     range,
 ///     TaskAttributes::default(),
 /// )?;
 ///
@@ -62,7 +63,7 @@ pub struct Task {
     id: TaskId,
     status: StatusName,
     text: TaskText,
-    position: SourceByteOffset,
+    range: SourceByteRange,
     tags: Vec<Tag>,
     metadata: TaskMetadata,
     schedule: TaskSchedule,
@@ -100,7 +101,7 @@ impl Task {
     pub fn try_new<T: Into<Box<str>>>(
         status: StatusName,
         text: T,
-        position: SourceByteOffset,
+        range: SourceByteRange,
         attributes: TaskAttributes,
     ) -> Result<Self, NoteError> {
         let text = TaskText::try_from_boxed(text.into())?;
@@ -109,7 +110,7 @@ impl Task {
             id: TaskId::new(),
             status,
             text,
-            position,
+            range,
             tags: attributes.tags,
             metadata: attributes.metadata,
             schedule: attributes.schedule,
@@ -137,11 +138,18 @@ impl Task {
         self.text.as_str()
     }
 
-    /// Returns the byte position of the task in the note source.
+    /// Returns the byte range of the task in the note source.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
+    }
+
+    /// Returns the start byte position of the task in the note source.
     #[inline]
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
-        self.position
+        self.range.start()
     }
 
     /// Returns the collection of tags associated with this task.
@@ -872,7 +880,7 @@ impl<'config> TaskBuilder<'config> {
         let parsed = self.parse_inline_fields(raw.inline_fields())?;
         let attributes = parsed.into_attributes(tags);
 
-        Task::try_new(status, text, raw.position(), attributes).map(Some)
+        Task::try_new(status, text, raw.range(), attributes).map(Some)
     }
 
     fn should_promote_from_tags(&self, tags: &[Tag]) -> bool {
@@ -1517,8 +1525,10 @@ mod tests {
     }
 
     fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
-        let base = SourceByteOffset::new(0);
-        let tags = scan_raw_tags(text, base)
+        let start = SourceByteOffset::new(0);
+        let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
+        let range = SourceByteRange::new(start, end).expect("valid range");
+        let tags = scan_raw_tags(text, start)
             .expect("raw tags")
             .into_iter()
             .map(|tag| tag.value().into())
@@ -1527,34 +1537,48 @@ mod tests {
         InlineFieldScanner::scan_delimited(
             text,
             InlineFieldDelimiter::Brackets,
-            |k, v, _, _| {
+            |k, v, field_start, _| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
                 inline_fields.push(RawInlineField::new(
                     k.into(),
                     v.into(),
-                    base,
+                    position,
                 ));
             },
         );
         InlineFieldScanner::scan_delimited(
             text,
             InlineFieldDelimiter::Parentheses,
-            |k, v, _, _| {
+            |k, v, field_start, _| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
                 inline_fields.push(RawInlineField::new(
                     k.into(),
                     v.into(),
-                    base,
+                    position,
                 ));
             },
         );
-        InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
-            inline_fields.push(RawInlineField::new(k.into(), v.into(), base));
-        });
+        InlineFieldScanner::scan_emoji(
+            text,
+            emoji_markers,
+            |k, v, field_start| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    position,
+                ));
+            },
+        );
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),
             tags,
             inline_fields,
-            base,
+            range,
         )
     }
 

@@ -1527,6 +1527,7 @@ mod tests {
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
         let base = SourceByteOffset::new(0);
+        let range = SourceByteRange::new(base, base).expect("valid range");
         let mut inline_fields = Vec::new();
         InlineFieldScanner::scan_delimited(
             raw_task_text,
@@ -1544,7 +1545,7 @@ mod tests {
             raw_task_text.into(),
             vec!["#task".into()],
             inline_fields,
-            base,
+            range,
         )];
         RawNote::new(
             path,

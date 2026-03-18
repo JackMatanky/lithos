@@ -568,32 +568,51 @@ impl MarkdownParser {
         InlineFieldScanner::scan_delimited(
             &block.full_text,
             InlineFieldDelimiter::Brackets,
-            |k, v, _, _| {
-                task_fields.push(RawInlineField::new(
-                    k.into(),
-                    v.into(),
-                    block.start_offset,
-                ));
+            |k, v, field_start, _| {
+                if let Ok(position) = MarkdownParser::position_for_offset(
+                    &block.scannable_segments,
+                    field_start,
+                ) {
+                    task_fields.push(RawInlineField::new(
+                        k.into(),
+                        v.into(),
+                        position,
+                    ));
+                }
             },
         );
         InlineFieldScanner::scan_delimited(
             &block.full_text,
             InlineFieldDelimiter::Parentheses,
-            |k, v, _, _| {
-                task_fields.push(RawInlineField::new(
-                    k.into(),
-                    v.into(),
-                    block.start_offset,
-                ));
+            |k, v, field_start, _| {
+                if let Ok(position) = MarkdownParser::position_for_offset(
+                    &block.scannable_segments,
+                    field_start,
+                ) {
+                    task_fields.push(RawInlineField::new(
+                        k.into(),
+                        v.into(),
+                        position,
+                    ));
+                }
             },
         );
-        InlineFieldScanner::scan_emoji(&block.full_text, &[], |k, v, _| {
-            task_fields.push(RawInlineField::new(
-                k.into(),
-                v.into(),
-                block.start_offset,
-            ));
-        });
+        InlineFieldScanner::scan_emoji(
+            &block.full_text,
+            &[],
+            |k, v, field_start| {
+                if let Ok(position) = MarkdownParser::position_for_offset(
+                    &block.scannable_segments,
+                    field_start,
+                ) {
+                    task_fields.push(RawInlineField::new(
+                        k.into(),
+                        v.into(),
+                        position,
+                    ));
+                }
+            },
+        );
 
         if let Some(tk) = task_kind {
             list_items.push(RawListItem::new(
@@ -601,12 +620,12 @@ impl MarkdownParser {
                 list_depth,
                 raw_text.clone(),
                 Some(tk),
-                block.start_offset,
+                block_range,
                 parent_pos,
             ));
 
             let raw_tags =
-                TagScanner::scan(&block.full_text, &[(0, block.start_offset)])
+                TagScanner::scan(&block.full_text, &block.scannable_segments)
                     .unwrap_or_default();
             let tags_for_task =
                 raw_tags.into_iter().map(|t| t.value().into()).collect();
@@ -616,7 +635,7 @@ impl MarkdownParser {
                 raw_text,
                 tags_for_task,
                 task_fields,
-                block.start_offset,
+                block_range,
             ));
         } else {
             list_items.push(RawListItem::new(
@@ -624,7 +643,7 @@ impl MarkdownParser {
                 list_depth,
                 raw_text,
                 None,
-                block.start_offset,
+                block_range,
                 parent_pos,
             ));
         }

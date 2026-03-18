@@ -334,7 +334,7 @@ pub struct RawListItem {
     depth: RawListDepth,
     text: Box<str>,
     task_kind: Option<RawTaskKind>,
-    position: SourceByteOffset,
+    range: SourceByteRange,
     parent: Option<SourceByteOffset>,
 }
 
@@ -351,7 +351,7 @@ impl RawListItem {
         depth: RawListDepth,
         text: Box<str>,
         task_kind: Option<RawTaskKind>,
-        position: SourceByteOffset,
+        range: SourceByteRange,
         parent: Option<SourceByteOffset>,
     ) -> Self {
         Self {
@@ -359,7 +359,7 @@ impl RawListItem {
             depth,
             text,
             task_kind,
-            position,
+            range,
             parent,
         }
     }
@@ -392,11 +392,11 @@ impl RawListItem {
         self.task_kind
     }
 
-    /// Return the source byte position.
+    /// Return the source byte range.
     #[inline]
     #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.position
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
     }
 
     /// Return the parent list item position, if any.
@@ -561,7 +561,7 @@ pub struct RawTask {
     text: Box<str>,
     tags: Vec<Box<str>>,
     inline_fields: Vec<RawInlineField>,
-    position: SourceByteOffset,
+    range: SourceByteRange,
 }
 
 impl RawTask {
@@ -573,14 +573,14 @@ impl RawTask {
         text: Box<str>,
         tags: Vec<Box<str>>,
         inline_fields: Vec<RawInlineField>,
-        position: SourceByteOffset,
+        range: SourceByteRange,
     ) -> Self {
         Self {
             task_kind,
             text,
             tags,
             inline_fields,
-            position,
+            range,
         }
     }
 
@@ -612,11 +612,11 @@ impl RawTask {
         &self.inline_fields
     }
 
-    /// Return the source byte position for the task marker.
+    /// Return the source byte range.
     #[inline]
     #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.position
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
     }
 }
 

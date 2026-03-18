@@ -637,7 +637,7 @@ mod tests {
         },
         note::{
             inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
-            position::SourceByteOffset,
+            position::{SourceByteOffset, SourceByteRange},
             raw::{RawInlineField, RawTag, RawTask, RawTaskKind},
             task::RawTaskContext,
         },
@@ -772,8 +772,10 @@ mod tests {
     }
 
     fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
-        let base = SourceByteOffset::new(0);
-        let tags = scan_raw_tags(text, base)
+        let start = SourceByteOffset::new(0);
+        let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
+        let range = SourceByteRange::new(start, end).expect("valid test range");
+        let tags = scan_raw_tags(text, start)
             .expect("raw tags")
             .into_iter()
             .map(|tag| tag.value().into())
@@ -782,34 +784,48 @@ mod tests {
         InlineFieldScanner::scan_delimited(
             text,
             InlineFieldDelimiter::Brackets,
-            |k, v, _, _| {
+            |k, v, field_start, _| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
                 inline_fields.push(RawInlineField::new(
                     k.into(),
                     v.into(),
-                    base,
+                    position,
                 ));
             },
         );
         InlineFieldScanner::scan_delimited(
             text,
             InlineFieldDelimiter::Parentheses,
-            |k, v, _, _| {
+            |k, v, field_start, _| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
                 inline_fields.push(RawInlineField::new(
                     k.into(),
                     v.into(),
-                    base,
+                    position,
                 ));
             },
         );
-        InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
-            inline_fields.push(RawInlineField::new(k.into(), v.into(), base));
-        });
+        InlineFieldScanner::scan_emoji(
+            text,
+            emoji_markers,
+            |k, v, field_start| {
+                let position = SourceByteOffset::try_from_usize(field_start)
+                    .unwrap_or(start);
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    position,
+                ));
+            },
+        );
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),
             tags,
             inline_fields,
-            base,
+            range,
         )
     }
 
