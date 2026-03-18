@@ -636,9 +636,9 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            inline_fields::InlineFieldCollection,
+            inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
             position::SourceByteOffset,
-            raw::{RawTag, RawTask, RawTaskKind},
+            raw::{RawInlineField, RawTag, RawTask, RawTaskKind},
             task::RawTaskContext,
         },
     };
@@ -778,12 +778,37 @@ mod tests {
             .into_iter()
             .map(|tag| tag.value().into())
             .collect();
-        let tokens = InlineFieldCollection::parse(text, emoji_markers);
+        let mut inline_fields = Vec::new();
+        InlineFieldScanner::scan_delimited(
+            text,
+            InlineFieldDelimiter::Brackets,
+            |k, v, _, _| {
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    base,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_delimited(
+            text,
+            InlineFieldDelimiter::Parentheses,
+            |k, v, _, _| {
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    base,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
+            inline_fields.push(RawInlineField::new(k.into(), v.into(), base));
+        });
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),
             tags,
-            tokens.inline_fields().to_vec(),
+            inline_fields,
             base,
         )
     }

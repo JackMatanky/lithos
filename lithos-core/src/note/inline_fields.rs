@@ -1,14 +1,38 @@
 //! Inline field value objects and parsing.
 
-use super::{
-    raw::{RawInlineField, RawTask},
-    value::FieldValue,
-};
+use super::{raw::RawInlineField, value::FieldValue};
 use crate::note::position::SourceByteOffset;
 
-/// A pair of raw strings representing an extracted inline field before
-/// validation.
-pub type InlineKeyValuePair = (Box<str>, Box<str>);
+/// The syntax style used for an inline field.
+///
+/// This enum acts as the single source of truth for detecting and classifying
+/// different inline field syntaxes in markdown. It is not persisted in the
+/// domain model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum InlineFieldDelimiter {
+    /// `[key:: value]`.
+    Brackets,
+    /// `(key:: value)`.
+    Parentheses,
+    /// `key:: value`.
+    Bare,
+    /// `📅 2024-03-18` (Emoji-prefixed).
+    Emoji,
+}
+
+impl InlineFieldDelimiter {
+    /// Returns the character pair for delimited fields.
+    #[inline]
+    #[must_use]
+    pub const fn pair(&self) -> Option<(u8, u8)> {
+        match *self {
+            Self::Brackets => Some((b'[', b']')),
+            Self::Parentheses => Some((b'(', b')')),
+            Self::Bare | Self::Emoji => None,
+        }
+    }
+}
 
 /// A normalized identifier for an inline field key.
 ///
@@ -153,51 +177,6 @@ impl InlineField {
     }
 }
 
-/// Collection of raw inline field tokens extracted from a text block (e.g., a
-/// task).
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct InlineFieldCollection {
-    fields: Vec<InlineKeyValuePair>,
-}
-
-impl InlineFieldCollection {
-    /// Create a new field collection.
-    #[inline]
-    #[must_use]
-    pub fn new(fields: Vec<InlineKeyValuePair>) -> Self {
-        Self {
-            fields,
-        }
-    }
-
-    /// Parse inline fields and emoji dates from text.
-    #[inline]
-    #[must_use]
-    pub fn parse(text: &str, emoji_markers: &[char]) -> Self {
-        let mut fields = Vec::new();
-        InlineFieldScanner::scan_delimited(text, b'[', b']', |k, v, _, _| {
-            fields.push((k.into(), v.into()));
-        });
-        InlineFieldScanner::scan_delimited(text, b'(', b')', |k, v, _, _| {
-            fields.push((k.into(), v.into()));
-        });
-
-        InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
-            fields.push((k.into(), v.into()));
-        });
-
-        Self::new(fields)
-    }
-
-    /// Return parsed inline field tokens.
-    #[inline]
-    #[must_use]
-    pub fn inline_fields(&self) -> &[InlineKeyValuePair] {
-        &self.fields
-    }
-}
-
 /// Specialized scanner for extracting inline fields from markdown text.
 #[non_exhaustive]
 pub struct InlineFieldScanner;
@@ -211,12 +190,14 @@ impl InlineFieldScanner {
     #[inline]
     pub fn scan_delimited<F>(
         text: &str,
-        open_delim: u8,
-        close_delim: u8,
+        delimiter: InlineFieldDelimiter,
         mut f: F,
     ) where
         F: FnMut(&str, &str, usize, usize),
     {
+        let Some((open_delim, close_delim)) = delimiter.pair() else {
+            return;
+        };
         let bytes = text.as_bytes();
         let mut cursor = 0;
         while let Some(open_rel) = bytes
@@ -333,12 +314,5 @@ impl From<RawInlineField> for InlineField {
             FieldValue::String(raw.value().into()),
             raw.position(),
         )
-    }
-}
-
-impl From<&RawTask> for InlineFieldCollection {
-    #[inline]
-    fn from(raw: &RawTask) -> Self {
-        Self::new(raw.inline_fields().to_vec())
     }
 }

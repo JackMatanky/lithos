@@ -8,7 +8,7 @@ use pulldown_cmark::{
 use crate::note::{
     error::{NoteError, NoteIngestError},
     frontmatter::FrontmatterFormat,
-    inline_fields::{InlineFieldCollection, InlineFieldScanner},
+    inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
@@ -491,6 +491,7 @@ impl MarkdownParser {
     #[inline]
     #[expect(
         clippy::too_many_arguments,
+        clippy::too_many_lines,
         reason = "Helper function needs access to extraction state"
     )]
     fn finalize_list_item(
@@ -563,6 +564,37 @@ impl MarkdownParser {
 
         let raw_text: Box<str> = block.full_text.trim().into();
 
+        let mut task_fields = Vec::new();
+        InlineFieldScanner::scan_delimited(
+            &block.full_text,
+            InlineFieldDelimiter::Brackets,
+            |k, v, _, _| {
+                task_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    block.start_offset,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_delimited(
+            &block.full_text,
+            InlineFieldDelimiter::Parentheses,
+            |k, v, _, _| {
+                task_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    block.start_offset,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_emoji(&block.full_text, &[], |k, v, _| {
+            task_fields.push(RawInlineField::new(
+                k.into(),
+                v.into(),
+                block.start_offset,
+            ));
+        });
+
         if let Some(tk) = task_kind {
             list_items.push(RawListItem::new(
                 list_type,
@@ -578,13 +610,12 @@ impl MarkdownParser {
                     .unwrap_or_default();
             let tags_for_task =
                 raw_tags.into_iter().map(|t| t.value().into()).collect();
-            let tokens = InlineFieldCollection::parse(&block.full_text, &[]);
 
             tasks.push(RawTask::new(
                 tk,
                 raw_text,
                 tags_for_task,
-                tokens.inline_fields().to_vec(),
+                task_fields,
                 block.start_offset,
             ));
         } else {
@@ -967,8 +998,7 @@ impl MarkdownInlineFieldScanner {
 
         InlineFieldScanner::scan_delimited(
             text,
-            b'[',
-            b']',
+            InlineFieldDelimiter::Brackets,
             |key, value, start, end| {
                 bracket_spans.push((start, end));
                 match MarkdownParser::position_for_offset(segments, start) {
@@ -989,8 +1019,7 @@ impl MarkdownInlineFieldScanner {
 
         InlineFieldScanner::scan_delimited(
             text,
-            b'(',
-            b')',
+            InlineFieldDelimiter::Parentheses,
             |key, value, start, end| {
                 bracket_spans.push((start, end));
                 match MarkdownParser::position_for_offset(segments, start) {
@@ -1218,9 +1247,11 @@ mod tests {
         let task = raw.tasks().first().expect("task should exist");
         assert_eq!(task.task_kind().marker(), ' ');
         assert!(task.tags().iter().any(|tag| tag.as_ref() == "#task"));
-        assert!(task.inline_fields().iter().any(|pair| pair.0.as_ref()
-            == "priority"
-            && pair.1.as_ref() == "1"));
+        assert!(
+            task.inline_fields()
+                .iter()
+                .any(|pair| pair.key() == "priority" && pair.value() == "1")
+        );
         Ok(())
     }
 

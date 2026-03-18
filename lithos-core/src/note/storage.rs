@@ -1415,10 +1415,13 @@ mod tests {
         },
         note::{
             aggregate::{Note, NoteId, RawNoteContext},
-            inline_fields::InlineFieldCollection,
+            inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskKind},
+            raw::{
+                RawFrontmatter, RawInlineField, RawNote, RawTag, RawTask,
+                RawTaskKind,
+            },
         },
     };
 
@@ -1524,12 +1527,23 @@ mod tests {
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
         let base = SourceByteOffset::new(0);
-        let tokens = InlineFieldCollection::parse(raw_task_text, &[]);
+        let mut inline_fields = Vec::new();
+        InlineFieldScanner::scan_delimited(
+            raw_task_text,
+            InlineFieldDelimiter::Brackets,
+            |k, v, _, _| {
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    base,
+                ));
+            },
+        );
         let tasks = vec![RawTask::new(
             RawTaskKind::Unchecked(' '),
             raw_task_text.into(),
             vec!["#task".into()],
-            tokens.inline_fields().to_vec(),
+            inline_fields,
             base,
         )];
         RawNote::new(

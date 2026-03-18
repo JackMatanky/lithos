@@ -172,7 +172,7 @@ impl RawInlineField {
         }
     }
 
-    /// Return the normalized key.
+    /// Return the raw key string.
     #[inline]
     #[must_use]
     pub fn key(&self) -> &str {
@@ -553,8 +553,6 @@ impl RawTag {
     }
 }
 
-pub type RawTaskInlineField = (Box<str>, Box<str>);
-
 /// Raw task extracted from a checkbox list item.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -562,7 +560,7 @@ pub struct RawTask {
     task_kind: RawTaskKind,
     text: Box<str>,
     tags: Vec<Box<str>>,
-    inline_fields: Vec<RawTaskInlineField>,
+    inline_fields: Vec<RawInlineField>,
     position: SourceByteOffset,
 }
 
@@ -574,7 +572,7 @@ impl RawTask {
         task_kind: RawTaskKind,
         text: Box<str>,
         tags: Vec<Box<str>>,
-        inline_fields: Vec<RawTaskInlineField>,
+        inline_fields: Vec<RawInlineField>,
         position: SourceByteOffset,
     ) -> Self {
         Self {
@@ -610,7 +608,7 @@ impl RawTask {
     /// Return raw inline fields parsed from the task text.
     #[inline]
     #[must_use]
-    pub fn inline_fields(&self) -> &[RawTaskInlineField] {
+    pub fn inline_fields(&self) -> &[RawInlineField] {
         &self.inline_fields
     }
 

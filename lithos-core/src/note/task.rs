@@ -20,7 +20,7 @@ use uuid::Uuid;
 use super::{
     error::{NoteError, TaskError},
     position::SourceByteOffset,
-    raw::{RawNote, RawTask},
+    raw::{RawInlineField, RawNote, RawTask},
     tag::Tag,
     value::FieldValue,
 };
@@ -29,7 +29,7 @@ use crate::config::{
     task::{StatusName, StatusSymbol},
 };
 
-type RawTaskInlineField = (Box<str>, Box<str>);
+// --- Deleted RawTaskInlineField alias ---
 
 /// Task entity within a Note.
 ///
@@ -916,14 +916,16 @@ impl<'config> TaskBuilder<'config> {
 
     fn parse_inline_fields(
         &self,
-        inline_fields: &[RawTaskInlineField],
+        inline_fields: &[RawInlineField],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
-        for (keyword, raw_value) in
-            inline_fields.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
-        {
-            state.handle_any_inline_field(self.config, keyword, raw_value)?;
+        for pair in inline_fields {
+            state.handle_any_inline_field(
+                self.config,
+                pair.key(),
+                pair.value(),
+            )?;
         }
 
         Ok(state.finish())
@@ -1380,9 +1382,9 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            inline_fields::InlineFieldCollection,
+            inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
             position::SourceByteOffset,
-            raw::{RawTag, RawTask, RawTaskKind},
+            raw::{RawInlineField, RawTag, RawTask, RawTaskKind},
         },
     };
 
@@ -1521,12 +1523,37 @@ mod tests {
             .into_iter()
             .map(|tag| tag.value().into())
             .collect();
-        let tokens = InlineFieldCollection::parse(text, emoji_markers);
+        let mut inline_fields = Vec::new();
+        InlineFieldScanner::scan_delimited(
+            text,
+            InlineFieldDelimiter::Brackets,
+            |k, v, _, _| {
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    base,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_delimited(
+            text,
+            InlineFieldDelimiter::Parentheses,
+            |k, v, _, _| {
+                inline_fields.push(RawInlineField::new(
+                    k.into(),
+                    v.into(),
+                    base,
+                ));
+            },
+        );
+        InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
+            inline_fields.push(RawInlineField::new(k.into(), v.into(), base));
+        });
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),
             tags,
-            tokens.inline_fields().to_vec(),
+            inline_fields,
             base,
         )
     }
