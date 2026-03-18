@@ -185,7 +185,7 @@ impl PropertyBankResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SchemaIngestResult
+//  SchemaResult
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Result of ingesting a single schema file.
@@ -196,7 +196,7 @@ impl PropertyBankResult {
 /// - **Stale**: File changed or new, needs processing
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum SchemaIngestResult {
+pub enum SchemaResult {
     /// Schema file is new (first time seeing it).
     New {
         /// Schema ID (newly generated).
@@ -225,7 +225,7 @@ pub enum SchemaIngestResult {
     },
 }
 
-impl SchemaIngestResult {
+impl SchemaResult {
     /// Get the schema ID.
     #[inline]
     #[must_use]
@@ -335,8 +335,7 @@ pub struct IngestorResults {
     pub property_bank: PropertyBankResult,
 
     /// Schema ingestion results by file path.
-    pub schemas:
-        std::collections::HashMap<std::path::PathBuf, SchemaIngestResult>,
+    pub schemas: std::collections::HashMap<std::path::PathBuf, SchemaResult>,
 }
 
 /// Ingestor for loading raw schema files with embedded Repository for caching.
@@ -1543,7 +1542,7 @@ mod tests {
         }
     }
 
-    /// Unit tests for `SchemaIngestResult`.
+    /// Unit tests for `SchemaResult`.
     mod schema_ingest_result_tests {
         use super::*;
 
@@ -1559,7 +1558,7 @@ mod tests {
                 metadata: RawSchemaMetadata::default(),
             };
 
-            let result = SchemaIngestResult::New {
+            let result = SchemaResult::New {
                 id,
                 raw: raw.clone(),
             };
@@ -1577,7 +1576,7 @@ mod tests {
             let id = SchemaId::new();
             let expanded = Some(std::collections::HashMap::new());
 
-            let result = SchemaIngestResult::Fresh {
+            let result = SchemaResult::Fresh {
                 id,
                 expanded: expanded.clone(),
             };
@@ -1603,7 +1602,7 @@ mod tests {
             };
             let expanded = Some(std::collections::HashMap::new());
 
-            let result = SchemaIngestResult::Stale {
+            let result = SchemaResult::Stale {
                 id,
                 raw: raw.clone(),
                 expanded: expanded.clone(),
