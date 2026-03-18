@@ -36,7 +36,7 @@ impl InlineFieldKey {
     #[inline]
     #[must_use]
     pub fn new(raw: &str) -> Self {
-        Self(InlineFieldScanner::normalize_key(raw))
+        Self(Self::normalize(raw))
     }
 
     /// Returns the primary kebab-case representation.
@@ -58,6 +58,23 @@ impl InlineFieldKey {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Normalizes a key by removing markdown decorators and converting to
+    /// kebab-case.
+    #[inline]
+    #[must_use]
+    pub fn normalize(key: &str) -> Box<str> {
+        let stripped = key
+            .chars()
+            .filter(|ch| !matches!(ch, '*' | '_' | '~' | '`'))
+            .collect::<String>();
+        stripped
+            .split_whitespace()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join("-")
+            .into_boxed_str()
     }
 }
 
@@ -182,23 +199,6 @@ impl InlineFieldCollection {
 pub struct InlineFieldScanner;
 
 impl InlineFieldScanner {
-    /// Normalizes an inline field key by removing markdown decorators and
-    /// converting to kebab-case.
-    #[inline]
-    #[must_use]
-    pub fn normalize_key(key: &str) -> Box<str> {
-        let stripped = key
-            .chars()
-            .filter(|ch| !matches!(ch, '*' | '_' | '~' | '`'))
-            .collect::<String>();
-        stripped
-            .split_whitespace()
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join("-")
-            .into_boxed_str()
-    }
-
     /// Scans text for delimited inline fields like `[key:: value]` or `(key::
     /// value)`.
     ///
