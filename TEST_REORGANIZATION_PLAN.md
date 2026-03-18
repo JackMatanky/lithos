@@ -21,7 +21,7 @@ Reorganize ALL tests in `ingestor.rs` and `loader.rs` into proper submodules to 
 
 **Existing modules (18 tests - ALREADY ORGANIZED)**:
 - `staleness_tests` (8 tests) ✅
-- `property_bank_result_tests` (5 tests) ✅  
+- `property_bank_result_tests` (5 tests) ✅
 - `schema_ingest_result_tests` (3 tests) ✅
 - `ingest_all_tests` (3 tests) ✅ BUT has duplicate tests as standalone!
 
@@ -48,11 +48,11 @@ mod tests {
     fn write_file()
     fn test_config()
     fn test_repository()
-    
+
     // NEW MODULE: Property bank loading tests
     mod property_bank_loading_tests {
         use super::*;
-        
+
         #[test] fn parses_valid_json()
         #[test] fn parses_valid_yaml()
         #[test] fn parses_valid_toml()
@@ -60,29 +60,29 @@ mod tests {
         #[test] fn returns_error_for_unsupported_format()
         #[test] fn defaults_version_when_omitted()
     }
-    
+
     // EXISTING MODULE: Keep as-is
     mod property_bank_result_tests { ... }
-    
+
     // CONSOLIDATE: Move standalone tests here
     mod ingest_all_tests {
         use super::*;
-        
+
         // Existing tests
         #[test] fn ingest_all_with_new_files()
         #[test] fn ingest_all_with_empty_schemas_dir()
         #[test] fn ingest_all_with_multiple_schemas()
-        
+
         // MOVE from standalone
         #[test] fn returns_both_property_bank_and_schemas()
         #[test] fn supports_toml_format()
         #[test] fn separates_property_bank_from_schemas()
         #[test] fn defaults_schema_version_when_omitted()
     }
-    
+
     // EXISTING MODULE: Keep as-is
     mod schema_ingest_result_tests { ... }
-    
+
     // EXISTING MODULE: Keep as-is
     mod staleness_tests { ... }
 }
@@ -97,24 +97,24 @@ mod tests {
     struct TestDbContext { ... }
     fn write_file()
     fn test_config()
-    
+
     // NEW MODULE: Pipeline integration tests
     mod pipeline_tests {
         use super::*;
-        
+
         #[test] fn new_schema_uses_full_resolution()
         #[test] fn existing_schema_file_change_uses_full_resolution()
         #[test] fn mixed_scenario_handles_all_three_paths()
     }
-    
+
     // NEW MODULE: Incremental resolution tests
     mod incremental_resolution_tests {
         use super::*;
-        
+
         #[test] fn existing_schema_bank_change_uses_incremental()
         #[test] fn no_incremental_when_property_unchanged()
     }
-    
+
     // EXISTING MODULE: Keep as-is
     mod cached_expansion_tests { ... }
 }

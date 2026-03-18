@@ -918,7 +918,7 @@ where
             });
         }
 
-        // Fallback: Read file for content hash check
+        // Fallback: Read file for content hash check and create/update view
         let (raw, is_content_fresh) = self.source.read_with(
             path,
             |path,
@@ -954,7 +954,7 @@ where
                     return Ok((raw, true));
                 }
 
-                // Content changed - parse fully
+                // Content changed - parse fully and save view
                 let mut raw: RawSchema =
                     FsReader::parse_structured_from_str(path, content)?;
                 let filename_stem =
@@ -975,6 +975,23 @@ where
                     created_at,
                     modified_at,
                 };
+
+                // Create and save RawSchemaView for staleness detection
+                let rel_path = path.to_string_lossy();
+
+                let new_view = RawSchemaView::try_from_with_content(
+                    &raw, &rel_path, content,
+                )?;
+
+                self.repository.save_raw_schema_view(id, &new_view).map_err(
+                    |e| SchemaIngestionError::Io {
+                        path: path.to_string_lossy().into(),
+                        reason: format!(
+                            "Failed to save schema view for {rel_path}: {e}"
+                        )
+                        .into(),
+                    },
+                )?;
 
                 Ok((raw, false))
             },
@@ -1581,10 +1598,11 @@ mod tests {
                     .schemas
                     .values()
                     .all(|r: &SchemaResult| r.is_new()),
-                "Without saved views, all schemas should be New"
+                "First load: all schemas should be New (never seen before)"
             );
 
-            // Second load without saving views - still New
+            // Second load - now Fresh because ingest_all() saves views
+            // automatically
             let repository2 = RedbRepository::new(db);
             let ingestor2 =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository2);
@@ -1595,8 +1613,9 @@ mod tests {
                 second_results
                     .schemas
                     .values()
-                    .all(|r: &SchemaResult| r.is_new()),
-                "Without saved views, schemas remain New on subsequent loads"
+                    .all(|r: &SchemaResult| r.is_fresh()),
+                "Second load: schemas should be Fresh (views were saved \
+                 during first ingest_all())"
             );
         }
 
