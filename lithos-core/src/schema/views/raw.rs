@@ -109,6 +109,15 @@ impl RawSchemaView {
         self.versions.front()
     }
 
+    /// Returns mutable access to the most recent version, if any.
+    ///
+    /// Used for updating cached expanded properties after `RefExpander` runs.
+    #[inline]
+    #[must_use]
+    pub fn current_mut(&mut self) -> Option<&mut SchemaVersion> {
+        self.versions.front_mut()
+    }
+
     /// Returns all tracked versions (newest first).
     #[inline]
     #[must_use]

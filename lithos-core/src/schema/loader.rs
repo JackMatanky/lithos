@@ -66,9 +66,10 @@ use crate::{
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
-        expander::RefExpander,
+        expander::{RefExpandedSchema, RefExpander},
         extender::Extender,
         ingestor::{Ingestor, IngestorResults, SchemaResult},
+        property::PropertyName,
         raw::RawSchema,
         resolver::Resolver,
         storage::Repository,
@@ -155,6 +156,10 @@ where
             // Run full resolution pipeline
             let expanded = RefExpander::new(bank)
                 .expand_all(schemas_to_resolve.clone())?;
+
+            // Store expanded properties for future incremental resolution
+            self.store_expanded_properties(&expanded)?;
+
             let tree = Extender::build(expanded, &known_parents)?;
             tracing::debug!(
                 root_count = tree.roots().len(),
@@ -269,6 +274,49 @@ where
             Some(v) => v.to_raw().map_err(SchemaLoaderError::Ingestion),
             None => Ok(None),
         }
+    }
+
+    /// Store expanded properties in schema views.
+    ///
+    /// Called after `RefExpander` runs to cache the expanded properties,
+    /// enabling incremental resolution when `PropertyBank` is fresh.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Reference pattern needed for iteration over slices"
+    )]
+    fn store_expanded_properties(
+        &self,
+        expanded: &[(SchemaId, RefExpandedSchema)],
+    ) -> Result<(), SchemaLoaderError> {
+        // Update each schema's view with expanded properties
+        for (id, exp_schema) in expanded {
+            // Convert Vec<Property> to HashMap<PropertyName, Property>
+            let props_map: HashMap<PropertyName, _> = exp_schema
+                .properties
+                .iter()
+                .map(|prop| (prop.name().clone(), prop.clone()))
+                .collect();
+
+            // Load view, update current version's expanded properties, save
+            if let Some(mut view) = self
+                .ingestor
+                .repository()
+                .get_raw_schema_view(*id)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+            {
+                if let Some(current) = view.current_mut() {
+                    current.set_expanded_properties(props_map);
+                }
+
+                // Save updated view
+                self.ingestor
+                    .repository()
+                    .save_raw_schema_view(*id, &view)
+                    .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Build name-to-ID map from schema list.
