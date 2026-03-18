@@ -34,56 +34,128 @@ use super::{
 pub struct Resolver;
 
 impl Resolver {
-    /// Apply optionality override to a base value.
+    /// Create property from bank reference with optional overrides.
     ///
-    /// # Rules
-    /// - If `override_val` is `Some`, it replaces the base value
-    /// - If `override_val` is `None`, the base value is preserved
+    /// Used by Expander when resolving `$ref` entries. Applies all overrides
+    /// (optionality, multiplicity, and type-specific constraints) to the base
+    /// property from the bank.
+    ///
+    /// # Errors
+    /// Returns error if type mismatch occurs during spec override.
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::property_spec::{PropertySpec, NumberSpec};
-    /// use lithos_core::schema::resolver::Resolver;
+    /// use lithos_core::schema::{
+    ///     property::{
+    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
+    ///     },
+    ///     property_spec::{BoolSpec, PropertySpec},
+    ///     raw::{
+    ///         property::RawPropertyRef,
+    ///         property_spec::{
+    ///             RawDateSpec, RawFileSpec, RawNumberSpec, RawStringSpec,
+    ///         },
+    ///     },
+    ///     resolver::Resolver,
+    /// };
     ///
-    /// // This method validates type-specific constraint overrides
-    /// // See integration tests for full examples with RawPropertyRef construction
-    /// let base = PropertySpec::Number(NumberSpec::default());
-    /// // In production: Resolver::spec(&base, &raw_ref)?
+    /// // Base property from bank (required, single)
+    /// let bank_prop = Property::new(
+    ///     PropertyId::new(),
+    ///     PropertyName::try_new("archived").unwrap(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec),
+    /// );
+    ///
+    /// // Override to make it optional
+    /// let ref_entry = RawPropertyRef {
+    ///     ref_path: "property_bank#/archived".into(),
+    ///     required: Some(false), // Override to optional
+    ///     multi: None,
+    ///     number: RawNumberSpec::default(),
+    ///     string: RawStringSpec::default(),
+    ///     date: RawDateSpec::default(),
+    ///     file: RawFileSpec::default(),
+    /// };
+    ///
+    /// let result = Resolver::from_bank_ref(&bank_prop, &ref_entry)?;
+    /// assert_eq!(result.optionality(), Optionality::Optional);
+    /// # Ok::<(), lithos_core::schema::error::SchemaError>(())
     /// ```ignore
     #[inline]
-    #[must_use]
-    pub fn optionality(
-        base: Optionality,
-        override_val: Option<bool>,
-    ) -> Optionality {
-        override_val.map_or(base, Optionality::from)
+    pub fn from_bank_ref(
+        bank_property: &Property,
+        ref_entry: &RawPropertyRef,
+    ) -> Result<Property, SchemaError> {
+        let optionality =
+            Self::optionality(bank_property.optionality(), ref_entry.required);
+        let multiplicity =
+            Self::multiplicity(bank_property.multiplicity(), ref_entry.multi);
+        let spec = Self::spec(bank_property.spec(), ref_entry)?;
+
+        Ok(Property::new(
+            bank_property.id(),
+            bank_property.name().clone(),
+            optionality,
+            multiplicity,
+            spec,
+        ))
     }
 
-    /// Apply multiplicity override to a base value.
+    /// Create property from child override in schema inheritance.
+    ///
+    /// Used by Merger during schema inheritance. In schema inheritance,
+    /// child property completely replaces parent property (no field merging).
     ///
     /// # Rules
-    /// - If `override_val` is `Some`, it replaces the base value
-    /// - If `override_val` is `None`, the base value is preserved
+    /// - Child property wins entirely
+    /// - Child can change optionality, multiplicity, spec, and type
+    /// - Child's `PropertyId` is used (new property instance)
     ///
     /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::{property::Multiplicity, resolver::Resolver};
+    /// ```
+    /// use lithos_core::schema::{
+    ///     property::{
+    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
+    ///     },
+    ///     property_spec::{BoolSpec, NumberSpec, PropertySpec},
+    ///     resolver::Resolver,
+    /// };
     ///
-    /// // Override single → many
-    /// let result = Resolver::multiplicity(Multiplicity::Single, Some(true));
-    /// assert_eq!(result, Multiplicity::Many);
+    /// // Parent property: required, single, Bool
+    /// let parent = Property::new(
+    ///     PropertyId::new(),
+    ///     PropertyName::try_new("title").unwrap(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec::default()),
+    /// );
     ///
-    /// // No override → keep base
-    /// let result = Resolver::multiplicity(Multiplicity::Single, None);
-    /// assert_eq!(result, Multiplicity::Single);
-    /// ```ignore
+    /// // Child property: optional, many, Number (completely different!)
+    /// let child = Property::new(
+    ///     PropertyId::new(),
+    ///     PropertyName::try_new("title").unwrap(),
+    ///     Optionality::Optional,
+    ///     Multiplicity::Many,
+    ///     PropertySpec::Number(NumberSpec::default()),
+    /// );
+    ///
+    /// // Child wins completely in inheritance
+    /// let result = Resolver::from_child_override(&parent, &child);
+    /// assert_eq!(result.optionality(), Optionality::Optional);
+    /// assert_eq!(result.multiplicity(), Multiplicity::Many);
+    /// assert!(matches!(result.spec(), PropertySpec::Number(_)));
+    /// ```
     #[inline]
     #[must_use]
-    pub fn multiplicity(
-        base: Multiplicity,
-        override_val: Option<bool>,
-    ) -> Multiplicity {
-        override_val.map_or(base, Multiplicity::from)
+    pub fn from_child_override(
+        _parent: &Property,
+        child: &Property,
+    ) -> Property {
+        // In schema inheritance, child completely replaces parent
+        // No merging of fields - child wins entirely
+        child.clone()
     }
 
     /// Apply type-specific constraint overrides to a property spec.
@@ -226,115 +298,58 @@ impl Resolver {
         }
     }
 
-    /// Create property from bank reference with optional overrides.
-    ///
-    /// Used by Expander when resolving `$ref` entries. Applies all overrides
-    /// (optionality, multiplicity, and type-specific constraints) to the base
-    /// property from the bank.
-    ///
-    /// # Errors
-    /// Returns error if type mismatch occurs during spec override.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::{
-    ///     property::{
-    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
-    ///     },
-    ///     property_spec::{BoolSpec, PropertySpec},
-    ///     raw::{
-    ///         property::RawPropertyRef,
-    ///         property_spec::{
-    ///             RawDateSpec, RawFileSpec, RawNumberSpec, RawStringSpec,
-    ///         },
-    ///     },
-    ///     resolver::Resolver,
-    /// };
-    ///
-    /// // Base property from bank (required, single)
-    /// let bank_prop = Property::new(
-    ///     PropertyId::new(),
-    ///     PropertyName::try_new("archived").unwrap(),
-    ///     Optionality::Required,
-    ///     Multiplicity::Single,
-    ///     PropertySpec::Bool(BoolSpec),
-    /// );
-    ///
-    /// // Override to make it optional
-    /// let ref_entry = RawPropertyRef {
-    ///     ref_path: "property_bank#/archived".into(),
-    ///     required: Some(false), // Override to optional
-    ///     multi: None,
-    ///     number: RawNumberSpec::default(),
-    ///     string: RawStringSpec::default(),
-    ///     date: RawDateSpec::default(),
-    ///     file: RawFileSpec::default(),
-    /// };
-    ///
-    /// let result = Resolver::from_bank_ref(&bank_prop, &ref_entry)?;
-    /// assert_eq!(result.optionality(), Optionality::Optional);
-    /// # Ok::<(), lithos_core::schema::error::SchemaError>(())
-    /// ```ignore
-    #[inline]
-    pub fn from_bank_ref(
-        bank_property: &Property,
-        ref_entry: &RawPropertyRef,
-    ) -> Result<Property, SchemaError> {
-        let optionality =
-            Self::optionality(bank_property.optionality(), ref_entry.required);
-        let multiplicity =
-            Self::multiplicity(bank_property.multiplicity(), ref_entry.multi);
-        let spec = Self::spec(bank_property.spec(), ref_entry)?;
-
-        Ok(Property::new(
-            bank_property.id(),
-            bank_property.name().clone(),
-            optionality,
-            multiplicity,
-            spec,
-        ))
-    }
-
-    /// Create property from child override in schema inheritance.
-    ///
-    /// Used by Merger during schema inheritance. In schema inheritance,
-    /// child property completely replaces parent property (no field merging).
+    /// Apply optionality override to a base value.
     ///
     /// # Rules
-    /// - Child property wins entirely
-    /// - Child can change optionality, multiplicity, spec, and type
-    /// - Child's `PropertyId` is used (new property instance)
+    /// - If `override_val` is `Some`, it replaces the base value
+    /// - If `override_val` is `None`, the base value is preserved
     ///
     /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property::{
-    ///     Property, PropertyId, PropertyName, Optionality, Multiplicity,
-    /// };
-    /// use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
-    /// use lithos_core::schema::resolver::Resolver;
+    /// ```
+    /// use lithos_core::schema::{property::Optionality, resolver::Resolver};
     ///
-    /// // Create a base property
-    /// let bank_prop = Property::new(
-    ///     PropertyId::new(),
-    ///     PropertyName::try_new("archived").unwrap(),
-    ///     Optionality::Required,
-    ///     Multiplicity::Single,
-    ///     PropertySpec::Bool(BoolSpec::default()),
-    /// );
+    /// // Override required → optional
+    /// let result = Resolver::optionality(Optionality::Required, Some(false));
+    /// assert_eq!(result, Optionality::Optional);
     ///
-    /// // In production, this is called with RawPropertyRef from parsed TOML
-    /// // See integration tests for full examples
-    /// # Ok::<(), lithos_core::schema::error::SchemaError>(())
-    /// ```ignore
+    /// // No override → keep base
+    /// let result = Resolver::optionality(Optionality::Required, None);
+    /// assert_eq!(result, Optionality::Required);
+    /// ```
     #[inline]
     #[must_use]
-    pub fn from_child_override(
-        _parent: &Property,
-        child: &Property,
-    ) -> Property {
-        // In schema inheritance, child completely replaces parent
-        // No merging of fields - child wins entirely
-        child.clone()
+    pub fn optionality(
+        base: Optionality,
+        override_val: Option<bool>,
+    ) -> Optionality {
+        override_val.map_or(base, Optionality::from)
+    }
+
+    /// Apply multiplicity override to a base value.
+    ///
+    /// # Rules
+    /// - If `override_val` is `Some`, it replaces the base value
+    /// - If `override_val` is `None`, the base value is preserved
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{property::Multiplicity, resolver::Resolver};
+    ///
+    /// // Override single → many
+    /// let result = Resolver::multiplicity(Multiplicity::Single, Some(true));
+    /// assert_eq!(result, Multiplicity::Many);
+    ///
+    /// // No override → keep base
+    /// let result = Resolver::multiplicity(Multiplicity::Single, None);
+    /// assert_eq!(result, Multiplicity::Single);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn multiplicity(
+        base: Multiplicity,
+        override_val: Option<bool>,
+    ) -> Multiplicity {
+        override_val.map_or(base, Multiplicity::from)
     }
 }
 
