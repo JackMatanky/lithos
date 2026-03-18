@@ -87,7 +87,7 @@ use super::{
 ///     // ... test logic
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InMemoryRepository {
     /// Schema storage: `SchemaId` → `Schema`
     schemas: Arc<RwLock<HashMap<SchemaId, Schema>>>,

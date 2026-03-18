@@ -485,7 +485,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::schema::{aggregate::Schema, storage::RedbRepository};
+    use crate::schema::{
+        aggregate::Schema, storage::RedbRepository, testing::InMemoryRepository,
+    };
 
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -597,11 +599,8 @@ mod tests {
 
     /// **TEST-002**: Existing schema with file change uses full resolution.
     #[test]
-    #[ignore = "rkyv deserialization limitation - requires integration test or \
-                FakeRepository"]
     fn existing_schema_file_change_uses_full_resolution() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let db_ctx = TestDbContext::new()?;
 
         write_file(
             vault_dir.path(),
@@ -615,15 +614,12 @@ mod tests {
         )?;
 
         let config = test_config(vault_dir.path())?;
+        let repository = InMemoryRepository::new();
 
-        // First load - use a scope to ensure db drops
-        let initial = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        // GIVEN: First load: 2 new schemas
+        let source = FsReader::new(vault_dir.path());
+        let loader = Loader::new(repository.clone(), source, &config);
+        let initial = loader.load()?;
 
         if initial.len() != 1 {
             return Err(format!(
@@ -650,14 +646,9 @@ mod tests {
         )?;
 
         // THEN: Full resolution updates schema
-        // Database from first scope is now dropped, safe to reopen
-        let updated = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        let source2 = FsReader::new(vault_dir.path());
+        let loader2 = Loader::new(repository.clone(), source2, &config);
+        let updated = loader2.load()?;
 
         if updated.len() != 1 {
             return Err(format!(
@@ -681,11 +672,8 @@ mod tests {
     /// **TEST-003**: Existing schema with only bank change uses incremental
     /// resolution.
     #[test]
-    #[ignore = "rkyv deserialization limitation - requires integration test or \
-                FakeRepository"]
     fn existing_schema_bank_change_uses_incremental() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let db_ctx = TestDbContext::new()?;
 
         write_file(
             vault_dir.path(),
@@ -699,15 +687,12 @@ mod tests {
         )?;
 
         let config = test_config(vault_dir.path())?;
+        let repository = InMemoryRepository::new();
 
-        // First load - use a scope to ensure db drops
-        let initial = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        // GIVEN: First load populates repository
+        let source = FsReader::new(vault_dir.path());
+        let loader = Loader::new(repository.clone(), source, &config);
+        let initial = loader.load()?;
 
         if initial.len() != 1 {
             return Err(format!(
@@ -731,14 +716,9 @@ mod tests {
         )?;
 
         // THEN: Incremental resolution updates schema
-        // Database from first scope is now dropped, safe to reopen
-        let updated = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        let source2 = FsReader::new(vault_dir.path());
+        let loader2 = Loader::new(repository.clone(), source2, &config);
+        let updated = loader2.load()?;
 
         if updated.len() != 1 {
             return Err(format!(
@@ -753,11 +733,8 @@ mod tests {
 
     /// **TEST-004**: No incremental when property hash unchanged.
     #[test]
-    #[ignore = "rkyv deserialization limitation - requires integration test or \
-                FakeRepository"]
     fn no_incremental_when_property_unchanged() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let db_ctx = TestDbContext::new()?;
 
         write_file(
             vault_dir.path(),
@@ -771,15 +748,12 @@ mod tests {
         )?;
 
         let config = test_config(vault_dir.path())?;
+        let repository = InMemoryRepository::new();
 
-        // First load - use a scope to ensure db drops
-        let initial = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        // GIVEN: First load populates repository
+        let source = FsReader::new(vault_dir.path());
+        let loader = Loader::new(repository.clone(), source, &config);
+        let initial = loader.load()?;
 
         if initial.len() != 1 {
             return Err(format!(
@@ -804,14 +778,9 @@ mod tests {
         )?;
 
         // THEN: No schemas re-resolved (hash unchanged)
-        // Database from first scope is now dropped, safe to reopen
-        let updated = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        let source2 = FsReader::new(vault_dir.path());
+        let loader2 = Loader::new(repository.clone(), source2, &config);
+        let updated = loader2.load()?;
 
         if !updated.is_empty() {
             return Err(format!(
@@ -826,11 +795,8 @@ mod tests {
 
     /// **TEST-005**: Mixed scenario - new, file-changed, and incremental.
     #[test]
-    #[ignore = "rkyv deserialization limitation - requires integration test or \
-                FakeRepository"]
     fn mixed_scenario_handles_all_three_paths() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let db_ctx = TestDbContext::new()?;
 
         write_file(
             vault_dir.path(),
@@ -852,15 +818,12 @@ mod tests {
         )?;
 
         let config = test_config(vault_dir.path())?;
+        let repository = InMemoryRepository::new();
 
-        // First load: 2 new schemas - use a scope to ensure db drops
-        let initial = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        // GIVEN: First load populates repository
+        let source = FsReader::new(vault_dir.path());
+        let loader = Loader::new(repository.clone(), source, &config);
+        let initial = loader.load()?;
 
         if initial.len() != 2 {
             return Err(format!(
@@ -907,14 +870,9 @@ mod tests {
         )?;
 
         // THEN: All three paths exercised
-        // Database from first scope is now dropped, safe to reopen
-        let updated = {
-            let db = db_ctx.open()?;
-            let repository = RedbRepository::new(db);
-            let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            loader.load()?
-        };
+        let source2 = FsReader::new(vault_dir.path());
+        let loader2 = Loader::new(repository.clone(), source2, &config);
+        let updated = loader2.load()?;
 
         if updated.len() < 2 {
             return Err(format!(
