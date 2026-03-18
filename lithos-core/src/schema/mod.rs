@@ -17,6 +17,13 @@ pub mod aggregate;
 /// replacing the old CQRS Command/Query pattern.
 pub mod storage;
 
+/// Testing and benchmarking utilities for pure unit tests.
+///
+/// Provides `InMemoryRepository` and test helpers to eliminate filesystem
+/// IO from unit tests while maintaining test extent.
+#[cfg(test)]
+pub mod testing;
+
 /// View types for storage and queries.
 ///
 /// **Migration Status**: Placeholder structure created.
