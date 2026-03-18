@@ -17,7 +17,9 @@ use crate::{
     fs::FsReader,
     schema::{
         aggregate::SchemaId,
+        bank::PropertyBank,
         error::SchemaIngestionError,
+        property::{Property, PropertyName},
         raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
         storage::Repository,
         views::raw::{RawPropertyBankView, RawSchemaView},
@@ -96,17 +98,17 @@ impl<T> IngestResult<T> {
 #[non_exhaustive]
 pub enum PropertyBankResult {
     /// Property bank file is new (first time seeing it).
-    New(crate::schema::bank::PropertyBank),
+    New(PropertyBank),
 
     /// Property bank file unchanged - loaded from database.
-    Fresh(crate::schema::bank::PropertyBank),
+    Fresh(PropertyBank),
 
     /// Property bank file changed - updated incrementally.
     Stale {
         /// The updated property bank.
-        bank: crate::schema::bank::PropertyBank,
+        bank: PropertyBank,
         /// Properties that changed (for incremental resolution).
-        changed: Vec<crate::schema::property::PropertyName>,
+        changed: Vec<PropertyName>,
     },
 }
 
@@ -118,7 +120,7 @@ impl PropertyBankResult {
         clippy::pattern_type_mismatch,
         reason = "implicit borrow in match on &self"
     )]
-    pub fn bank(&self) -> &crate::schema::bank::PropertyBank {
+    pub fn bank(&self) -> &PropertyBank {
         match self {
             Self::New(bank)
             | Self::Fresh(bank)
@@ -132,7 +134,7 @@ impl PropertyBankResult {
     /// Get the property bank, consuming self.
     #[inline]
     #[must_use]
-    pub fn into_bank(self) -> crate::schema::bank::PropertyBank {
+    pub fn into_bank(self) -> PropertyBank {
         match self {
             Self::New(bank)
             | Self::Fresh(bank)
@@ -150,9 +152,7 @@ impl PropertyBankResult {
         clippy::pattern_type_mismatch,
         reason = "implicit borrow in match on &self"
     )]
-    pub fn changed_properties(
-        &self,
-    ) -> &[crate::schema::property::PropertyName] {
+    pub fn changed_properties(&self) -> &[PropertyName] {
         match self {
             Self::Stale {
                 changed,
@@ -182,6 +182,161 @@ impl PropertyBankResult {
     pub const fn is_stale(&self) -> bool {
         matches!(self, Self::Stale { .. })
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SchemaIngestResult
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of ingesting a single schema file.
+///
+/// Indicates whether the schema is:
+/// - **New**: First time seeing this schema file
+/// - **Fresh**: File unchanged, can use cached data
+/// - **Stale**: File changed or new, needs processing
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum SchemaIngestResult {
+    /// Schema file is new (first time seeing it).
+    New {
+        /// Schema ID (newly generated).
+        id: SchemaId,
+        /// Parsed raw schema.
+        raw: RawSchema,
+    },
+
+    /// Schema file unchanged - can use cached data.
+    Fresh {
+        /// Schema ID (from database).
+        id: SchemaId,
+        /// Cached expanded properties (if available).
+        /// Enables skipping `RefExpander` when `PropertyBank` is fresh.
+        expanded: Option<std::collections::HashMap<PropertyName, Property>>,
+    },
+
+    /// Schema file changed - needs processing.
+    Stale {
+        /// Schema ID (from database).
+        id: SchemaId,
+        /// Parsed raw schema.
+        raw: RawSchema,
+        /// Cached expanded properties (if available and still valid).
+        expanded: Option<std::collections::HashMap<PropertyName, Property>>,
+    },
+}
+
+impl SchemaIngestResult {
+    /// Get the schema ID.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "implicit borrow in match on &self"
+    )]
+    pub const fn id(&self) -> SchemaId {
+        match self {
+            Self::New {
+                id,
+                ..
+            }
+            | Self::Fresh {
+                id,
+                ..
+            }
+            | Self::Stale {
+                id,
+                ..
+            } => *id,
+        }
+    }
+
+    /// Check if this result is new.
+    #[inline]
+    #[must_use]
+    pub const fn is_new(&self) -> bool {
+        matches!(self, Self::New { .. })
+    }
+
+    /// Check if this result is fresh.
+    #[inline]
+    #[must_use]
+    pub const fn is_fresh(&self) -> bool {
+        matches!(self, Self::Fresh { .. })
+    }
+
+    /// Check if this result is stale.
+    #[inline]
+    #[must_use]
+    pub const fn is_stale(&self) -> bool {
+        matches!(self, Self::Stale { .. })
+    }
+
+    /// Get raw schema if available (New or Stale variants).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "implicit borrow in match on &self"
+    )]
+    pub const fn raw(&self) -> Option<&RawSchema> {
+        match self {
+            Self::New {
+                raw,
+                ..
+            }
+            | Self::Stale {
+                raw,
+                ..
+            } => Some(raw),
+            Self::Fresh {
+                ..
+            } => None,
+        }
+    }
+
+    /// Get expanded properties if available (Fresh or Stale variants).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "implicit borrow in match on &self"
+    )]
+    pub fn expanded(
+        &self,
+    ) -> Option<&std::collections::HashMap<PropertyName, Property>> {
+        match self {
+            Self::Fresh {
+                expanded,
+                ..
+            }
+            | Self::Stale {
+                expanded,
+                ..
+            } => expanded.as_ref(),
+            Self::New {
+                ..
+            } => None,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  IngestorResults
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Results of ingesting all schemas and property bank in a single operation.
+///
+/// Returned by `Ingestor::ingest_all()` to provide all ingestion results
+/// pre-partitioned by staleness, eliminating the need for double-loop patterns.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct IngestorResults {
+    /// Property bank result with staleness information.
+    pub property_bank: PropertyBankResult,
+
+    /// Schema ingestion results by file path.
+    pub schemas:
+        std::collections::HashMap<std::path::PathBuf, SchemaIngestResult>,
 }
 
 /// Ingestor for loading raw schema files with embedded Repository for caching.
@@ -386,7 +541,7 @@ where
             )?;
 
             // Create PropertyBank
-            let bank = crate::schema::bank::PropertyBank::try_from(raw)?;
+            let bank = PropertyBank::try_from(raw)?;
 
             self.repository.save_property_bank(&bank).map_err(|e| {
                 SchemaIngestionError::Io {
@@ -686,7 +841,7 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         fs::FsReader,
-        schema::storage::RedbRepository,
+        schema::{raw::RawSchemaVersion, storage::RedbRepository},
     };
 
     fn write_file(root: &Path, relative: &str, content: &str) -> PathBuf {
@@ -1385,6 +1540,81 @@ mod tests {
                 changed: vec![],
             };
             assert_eq!(stale_result.into_bank(), bank);
+        }
+    }
+
+    /// Unit tests for `SchemaIngestResult`.
+    mod schema_ingest_result_tests {
+        use super::*;
+
+        #[test]
+        fn new_variant_returns_id_and_raw() {
+            let id = SchemaId::new();
+            let raw = RawSchema {
+                version: RawSchemaVersion::default(),
+                name: "test".into(),
+                extends: None,
+                excludes: vec![],
+                properties: std::collections::HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+
+            let result = SchemaIngestResult::New {
+                id,
+                raw: raw.clone(),
+            };
+
+            assert_eq!(result.id(), id);
+            assert!(result.is_new());
+            assert!(!result.is_fresh());
+            assert!(!result.is_stale());
+            assert!(result.raw().is_some());
+            assert!(result.expanded().is_none());
+        }
+
+        #[test]
+        fn fresh_variant_returns_id_and_expanded() {
+            let id = SchemaId::new();
+            let expanded = Some(std::collections::HashMap::new());
+
+            let result = SchemaIngestResult::Fresh {
+                id,
+                expanded: expanded.clone(),
+            };
+
+            assert_eq!(result.id(), id);
+            assert!(result.is_fresh());
+            assert!(!result.is_new());
+            assert!(!result.is_stale());
+            assert!(result.raw().is_none());
+            assert_eq!(result.expanded(), expanded.as_ref());
+        }
+
+        #[test]
+        fn stale_variant_returns_id_raw_and_expanded() {
+            let id = SchemaId::new();
+            let raw = RawSchema {
+                version: RawSchemaVersion::default(),
+                name: "test".into(),
+                extends: None,
+                excludes: vec![],
+                properties: std::collections::HashMap::new(),
+                metadata: RawSchemaMetadata::default(),
+            };
+            let expanded = Some(std::collections::HashMap::new());
+
+            let result = SchemaIngestResult::Stale {
+                id,
+                raw: raw.clone(),
+                expanded: expanded.clone(),
+            };
+
+            assert_eq!(result.id(), id);
+            assert!(result.is_stale());
+            assert!(!result.is_new());
+            assert!(!result.is_fresh());
+            assert!(result.raw().is_some());
+            assert_eq!(result.expanded(), expanded.as_ref());
         }
     }
 }
