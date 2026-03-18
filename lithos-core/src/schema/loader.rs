@@ -131,6 +131,10 @@ where
         let (bank, _changed_properties) = self.load_property_bank()?;
 
         // ── Step 3: scan raw schemas with staleness detection ───────────────
+        #[expect(
+            deprecated,
+            reason = "Phase 4 will update loader to use ingest_all()"
+        )]
         let raw_schema_results = self.ingestor.all_schemas()?;
 
         // ── Step 4: partition by staleness (already detected by Ingestor) ───

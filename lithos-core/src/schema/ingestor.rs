@@ -767,6 +767,250 @@ where
     /// excluded.
     ///
     /// # Errors
+    /// Ingest all schemas and property bank with optimized bulk queries.
+    ///
+    /// Returns structured results with property bank and schemas
+    /// pre-partitioned by staleness. Eliminates N+1 query pattern by using
+    /// bulk queries.
+    ///
+    /// # Performance
+    ///
+    /// This method is optimized for performance:
+    /// - Single bulk query for all schema views (no N+1)
+    /// - Single bulk query for all schema IDs (no N+1)
+    /// - Single-loop processing with inline partitioning
+    /// - Pre-partitioned results (no double-loop needed)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaIngestionError`] if:
+    /// - Property bank loading fails
+    /// - Directory scanning fails
+    /// - Any schema file cannot be read or parsed
+    /// - Repository queries fail
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::ingestor::Ingestor;
+    /// # let ingestor = todo!("Provide an Ingestor instance");
+    /// let results = ingestor.ingest_all()?;
+    ///
+    /// // Access property bank
+    /// let bank = results.property_bank().bank();
+    ///
+    /// // Access schemas by path
+    /// for (path, result) in results.schemas() {
+    ///     match result {
+    ///         SchemaResult::Fresh { id, .. } => {
+    ///             println!("Schema {} is fresh", id);
+    ///         }
+    ///         SchemaResult::Stale { id, raw, .. } => {
+    ///             println!("Schema {} is stale, needs resolution", id);
+    ///         }
+    ///         SchemaResult::New { id, raw } => {
+    ///             println!("Schema {} is new", id);
+    ///         }
+    ///     }
+    /// }
+    /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
+    /// ```
+    #[inline]
+    pub fn ingest_all(&self) -> Result<IngestorResults, SchemaIngestionError> {
+        use std::collections::HashMap;
+
+        // Step 1: Ingest property bank
+        let property_bank = self.property_bank()?;
+
+        // Step 2: List all schema files
+        let paths = self.list_all_schema_files()?;
+
+        // Step 3: Bulk queries (NO N+1!)
+        let views = self
+            .repository
+            .find_raw_schema_views_by_paths(&paths)
+            .map_err(|e| SchemaIngestionError::Io {
+                path: "bulk query".into(),
+                reason: format!("Failed to query schema views: {e}").into(),
+            })?;
+
+        let ids =
+            self.repository.find_schema_ids_by_paths(&paths).map_err(|e| {
+                SchemaIngestionError::Io {
+                    path: "bulk query".into(),
+                    reason: format!("Failed to query schema IDs: {e}").into(),
+                }
+            })?;
+
+        // Step 4: Process each schema (single loop!)
+        let mut schemas = HashMap::new();
+
+        for path in paths {
+            let view = views.get(&path);
+            let id = ids.get(&path).copied().unwrap_or_else(SchemaId::new);
+
+            let result = self.process_schema(&path, id, view)?;
+            schemas.insert(path, result);
+        }
+
+        Ok(IngestorResults {
+            property_bank,
+            schemas,
+        })
+    }
+
+    /// Lists all schema files in the configured schemas directory.
+    ///
+    /// Excludes the property bank file.
+    fn list_all_schema_files(
+        &self,
+    ) -> Result<Vec<std::path::PathBuf>, SchemaIngestionError> {
+        let paths = self.config.paths();
+        let schemas_dir = paths.schema.schemas_dir().as_path();
+        let property_bank_filename = paths.property_bank.as_str();
+
+        let mut all_paths = Vec::new();
+
+        for ext in SCHEMA_EXTENSIONS {
+            let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
+            let files = self.source.list_files(&pattern).map_err(|error| {
+                SchemaIngestionError::FileSystem(error.to_string().into())
+            })?;
+
+            for path in files {
+                // Exclude property bank file
+                if path.file_name().is_some_and(|n| n == property_bank_filename)
+                {
+                    continue;
+                }
+                all_paths.push(path);
+            }
+        }
+
+        Ok(all_paths)
+    }
+
+    /// Processes a single schema file with staleness detection.
+    ///
+    /// Returns `Fresh` if view is current, `Stale` if file changed, `New` if
+    /// first time.
+    ///
+    /// Uses two-stage freshness check:
+    /// 1. Fast path: timestamp comparison (no file I/O)
+    /// 2. Fallback: content hash comparison (single file read)
+    fn process_schema(
+        &self,
+        path: &std::path::Path,
+        id: SchemaId,
+        view: Option<&RawSchemaView>,
+    ) -> Result<SchemaResult, SchemaIngestionError> {
+        let created_at = self.source.created_at(path);
+        let modified_at = self.source.modified_at(path);
+
+        // Fast path: Check timestamps (no file I/O)
+        if let Some(view) = view
+            && let Some(version) = view.current()
+            && version.file_times().is_timestamp_match(created_at, modified_at)
+        {
+            let expanded = version.expanded_properties().cloned();
+            return Ok(SchemaResult::Fresh {
+                id,
+                expanded,
+            });
+        }
+
+        // Fallback: Read file for content hash check
+        let (raw, is_content_fresh) = self.source.read_with(
+            path,
+            |path,
+             content|
+             -> Result<(RawSchema, bool), SchemaIngestionError> {
+                let content_hash = blake3::hash(content.as_bytes());
+
+                // Check content hash if we have a view
+                let is_content_fresh =
+                    view.and_then(|v| v.current()).is_some_and(|v| {
+                        v.hashes().is_content_match(content_hash.as_bytes())
+                    });
+
+                if is_content_fresh {
+                    // Content unchanged despite timestamp difference
+                    // Parse just to return the raw schema, but it's still
+                    // "fresh"
+                    let mut raw: RawSchema =
+                        FsReader::parse_structured_from_str(path, content)?;
+                    let filename_stem =
+                        self.source.basename(path).map_err(|e| {
+                            SchemaIngestionError::FileSystem(
+                                format!(
+                                    "Invalid filename: {} ({})",
+                                    path.display(),
+                                    e
+                                )
+                                .into(),
+                            )
+                        })?;
+                    raw.name = filename_stem.into();
+                    let raw = raw.validated(&path.to_string_lossy())?;
+                    return Ok((raw, true));
+                }
+
+                // Content changed - parse fully
+                let mut raw: RawSchema =
+                    FsReader::parse_structured_from_str(path, content)?;
+                let filename_stem =
+                    self.source.basename(path).map_err(|e| {
+                        SchemaIngestionError::FileSystem(
+                            format!(
+                                "Invalid filename: {} ({})",
+                                path.display(),
+                                e
+                            )
+                            .into(),
+                        )
+                    })?;
+                raw.name = filename_stem.into();
+                let mut raw = raw.validated(&path.to_string_lossy())?;
+
+                raw.metadata = RawSchemaMetadata {
+                    created_at,
+                    modified_at,
+                };
+
+                Ok((raw, false))
+            },
+        )?;
+
+        // If content was fresh, return Fresh result
+        if is_content_fresh {
+            let expanded = view
+                .and_then(|v| v.current())
+                .and_then(|v| v.expanded_properties().cloned());
+            return Ok(SchemaResult::Fresh {
+                id,
+                expanded,
+            });
+        }
+
+        // Determine if new or stale
+        if view.is_none() {
+            return Ok(SchemaResult::New {
+                id,
+                raw,
+            });
+        }
+
+        // Get expanded properties from view if still valid
+        let expanded = view
+            .and_then(|v| v.current())
+            .and_then(|v| v.expanded_properties().cloned());
+
+        Ok(SchemaResult::Stale {
+            id,
+            raw,
+            expanded,
+        })
+    }
+
     ///
     /// Returns [`SchemaIngestionError`] if the directory cannot be scanned or
     /// any schema file cannot be read or parsed.
@@ -781,7 +1025,16 @@ where
     /// }
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
     /// ```
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`ingest_all`](Self::ingest_all) instead for better performance
+    /// (bulk queries, no N+1) and structured results.
     #[inline]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use ingest_all() for bulk queries and structured results"
+    )]
     pub fn all_schemas(
         &self,
     ) -> Result<Vec<IngestResult<RawSchema>>, SchemaIngestionError> {
@@ -979,6 +1232,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
     fn all_schemas_returns_schemas() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
@@ -1014,6 +1268,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
     fn all_schemas_supports_toml_format() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
@@ -1038,6 +1293,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
     fn all_schemas_excludes_property_bank() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
@@ -1078,6 +1334,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
     fn all_schemas_defaults_version_when_omitted() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
@@ -1372,6 +1629,7 @@ mod tests {
 
         /// Test: `all_schemas()` returns mix of Fresh and Stale.
         #[test]
+        #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
         fn all_schemas_mixed_staleness() {
             let dir = TempDir::new().expect("tempdir");
             write_file(
