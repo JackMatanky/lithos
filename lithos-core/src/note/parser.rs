@@ -6,16 +6,15 @@ use pulldown_cmark::{
 };
 
 use crate::note::{
-    error::{NoteError, NoteIngestError},
-    inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
+    error::NoteIngestError,
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
-        RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
-        RawInlineField, RawLink, RawLinkStyle, RawListDepth, RawListItem,
-        RawListType, RawNote, RawReferenceLink, RawSection, RawSectionKind,
-        RawTag, RawTask, RawTaskKind,
+        RawFrontmatter, RawFrontmatterFormat, RawHeading, RawInlineField,
+        RawLink, RawLinkStyle, RawListDepth, RawListItem, RawListType, RawNote,
+        RawSection, RawSectionKind, RawTag, RawTask,
     },
+    scanner::{NoteScanner, ScanArtifact, TaskMarkerScanner},
 };
 
 /// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
@@ -198,6 +197,7 @@ impl MarkdownParser {
         open_item_by_depth: &mut Vec<SourceByteOffset>,
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
+        scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         match end_tag {
             pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image => {
@@ -255,18 +255,12 @@ impl MarkdownParser {
                                 block.start_offset,
                             ));
 
-                            let new_tags = TagScanner::scan(
-                                &block.scannable_text,
-                                &block.scannable_segments,
-                            )
-                            .map_err(NoteIngestError::Domain)?;
-                            tags.extend(new_tags);
-                            MarkdownInlineFieldScanner::scan_text(
-                                &block.scannable_text,
-                                &block.scannable_segments,
+                            Self::collect_block_artifacts(
+                                &block,
+                                scanner,
+                                tags,
                                 inline_fields,
-                            )
-                            .map_err(NoteIngestError::Domain)?;
+                            )?;
                         }
                         BlockKind::Paragraph => {
                             Self::finalize_paragraph(
@@ -276,6 +270,7 @@ impl MarkdownParser {
                                 tags,
                                 inline_fields,
                                 block_stack,
+                                scanner,
                             )?;
                         }
                         BlockKind::ListItem => {
@@ -290,6 +285,7 @@ impl MarkdownParser {
                                 open_item_by_depth,
                                 list_items,
                                 tasks,
+                                scanner,
                             )?;
                         }
                         BlockKind::List => {
@@ -445,6 +441,26 @@ impl MarkdownParser {
         Ok(true)
     }
 
+    fn collect_block_artifacts(
+        block: &ActiveBlock,
+        scanner: &NoteScanner,
+        tags: &mut Vec<RawTag>,
+        inline_fields: &mut Vec<RawInlineField>,
+    ) -> Result<(), NoteIngestError> {
+        let artifacts = scanner
+            .scan_block(&block.scannable_text, &block.scannable_segments)
+            .map_err(NoteIngestError::Domain)?;
+
+        for artifact in artifacts {
+            match artifact {
+                ScanArtifact::Tag(tag) => tags.push(tag),
+                ScanArtifact::InlineField(field) => inline_fields.push(field),
+                ScanArtifact::BlockRef(_) | ScanArtifact::ReferenceLink(_) => {}
+            }
+        }
+        Ok(())
+    }
+
     #[inline]
     #[expect(
         clippy::too_many_arguments,
@@ -457,6 +473,7 @@ impl MarkdownParser {
         tags: &mut Vec<RawTag>,
         inline_fields: &mut Vec<RawInlineField>,
         block_stack: &mut [ActiveBlock],
+        scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::Paragraph,
@@ -464,16 +481,7 @@ impl MarkdownParser {
             block.depth,
         ));
 
-        let new_tags =
-            TagScanner::scan(&block.scannable_text, &block.scannable_segments)
-                .map_err(NoteIngestError::Domain)?;
-        tags.extend(new_tags);
-        MarkdownInlineFieldScanner::scan_text(
-            &block.scannable_text,
-            &block.scannable_segments,
-            inline_fields,
-        )
-        .map_err(NoteIngestError::Domain)?;
+        Self::collect_block_artifacts(block, scanner, tags, inline_fields)?;
 
         if let Some(parent) = block_stack.last_mut()
             && matches!(parent.kind, BlockKind::ListItem)
@@ -488,7 +496,6 @@ impl MarkdownParser {
     #[inline]
     #[expect(
         clippy::too_many_arguments,
-        clippy::too_many_lines,
         reason = "Helper function needs access to extraction state"
     )]
     fn finalize_list_item(
@@ -502,6 +509,7 @@ impl MarkdownParser {
         open_item_by_depth: &mut Vec<SourceByteOffset>,
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
+        scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::List,
@@ -509,16 +517,7 @@ impl MarkdownParser {
             block.depth,
         ));
 
-        let new_tags =
-            TagScanner::scan(&block.scannable_text, &block.scannable_segments)
-                .map_err(NoteIngestError::Domain)?;
-        tags.extend(new_tags);
-        MarkdownInlineFieldScanner::scan_text(
-            &block.scannable_text,
-            &block.scannable_segments,
-            inline_fields,
-        )
-        .map_err(NoteIngestError::Domain)?;
+        Self::collect_block_artifacts(block, scanner, tags, inline_fields)?;
 
         let list_type =
             list_stack.last().copied().unwrap_or(RawListType::Unordered);
@@ -551,65 +550,17 @@ impl MarkdownParser {
                 } else {
                     ' '
                 };
-                let marker =
-                    Self::task_marker_from_source(markdown, block.start_offset)
-                        .unwrap_or(fallback);
+                let marker = TaskMarkerScanner::find_in_source(
+                    markdown,
+                    block.start_offset,
+                )
+                .unwrap_or(fallback);
                 Some(TaskMarkerScanner::raw_task_kind_from_marker(marker))
             }
             None => None,
         };
 
         let raw_text: Box<str> = block.full_text.trim().into();
-
-        let mut task_fields = Vec::new();
-        InlineFieldScanner::scan_delimited(
-            &block.full_text,
-            InlineFieldDelimiter::Brackets,
-            |k, v, field_start, _| {
-                if let Ok(position) = MarkdownParser::position_for_offset(
-                    &block.scannable_segments,
-                    field_start,
-                ) {
-                    task_fields.push(RawInlineField::new(
-                        k.into(),
-                        v.into(),
-                        position,
-                    ));
-                }
-            },
-        );
-        InlineFieldScanner::scan_delimited(
-            &block.full_text,
-            InlineFieldDelimiter::Parentheses,
-            |k, v, field_start, _| {
-                if let Ok(position) = MarkdownParser::position_for_offset(
-                    &block.scannable_segments,
-                    field_start,
-                ) {
-                    task_fields.push(RawInlineField::new(
-                        k.into(),
-                        v.into(),
-                        position,
-                    ));
-                }
-            },
-        );
-        InlineFieldScanner::scan_emoji(
-            &block.full_text,
-            &[],
-            |k, v, field_start| {
-                if let Ok(position) = MarkdownParser::position_for_offset(
-                    &block.scannable_segments,
-                    field_start,
-                ) {
-                    task_fields.push(RawInlineField::new(
-                        k.into(),
-                        v.into(),
-                        position,
-                    ));
-                }
-            },
-        );
 
         if let Some(tk) = task_kind {
             list_items.push(RawListItem::new(
@@ -621,16 +572,28 @@ impl MarkdownParser {
                 parent_pos,
             ));
 
-            let raw_tags =
-                TagScanner::scan(&block.full_text, &block.scannable_segments)
-                    .unwrap_or_default();
-            let tags_for_task =
-                raw_tags.into_iter().map(|t| t.value().into()).collect();
+            let mut task_tags = Vec::new();
+            let mut task_fields = Vec::new();
+
+            let task_artifacts = scanner
+                .scan_block(&block.full_text, &block.scannable_segments)
+                .map_err(NoteIngestError::Domain)?;
+
+            for artifact in task_artifacts {
+                match artifact {
+                    ScanArtifact::Tag(tag) => {
+                        task_tags.push(tag.value().into());
+                    }
+                    ScanArtifact::InlineField(field) => task_fields.push(field),
+                    ScanArtifact::BlockRef(_)
+                    | ScanArtifact::ReferenceLink(_) => {}
+                }
+            }
 
             tasks.push(RawTask::new(
                 tk,
                 raw_text,
-                tags_for_task,
+                task_tags,
                 task_fields,
                 block_range,
             ));
@@ -665,6 +628,8 @@ impl MarkdownParser {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<RawNote, NoteIngestError> {
+        let scanner = NoteScanner::default();
+
         let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
             NoteIngestError::Source("source length out of range".into())
         })?;
@@ -673,11 +638,20 @@ impl MarkdownParser {
             .to_string()
             .into_boxed_str();
 
-        let reference_links =
-            Self::extract_reference_link_definitions(markdown)?;
-        let block_refs = BlockRefScanner::new(markdown)
-            .collect()
-            .map_err(NoteIngestError::Domain)?;
+        let mut reference_links = Vec::new();
+        let mut block_refs = Vec::new();
+
+        for artifact in scanner.scan_document(markdown)? {
+            match artifact {
+                ScanArtifact::ReferenceLink(link) => {
+                    reference_links.push(link);
+                }
+                ScanArtifact::BlockRef(block_ref) => {
+                    block_refs.push(block_ref);
+                }
+                ScanArtifact::Tag(_) | ScanArtifact::InlineField(_) => {}
+            }
+        }
 
         let mut headings = Vec::new();
         let mut sections = Vec::new();
@@ -752,6 +726,7 @@ impl MarkdownParser {
                         &mut open_item_by_depth,
                         &mut list_items,
                         &mut tasks,
+                        &scanner,
                     )?;
                 }
                 Event::Text(text) | Event::Code(text) => {
@@ -803,106 +778,6 @@ impl MarkdownParser {
             block_refs,
         ))
     }
-
-    fn task_marker_from_source(
-        source: &str,
-        position: SourceByteOffset,
-    ) -> Option<char> {
-        let start = usize::try_from(u32::from(position)).ok()?;
-        let tail = source.get(start..)?;
-        let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
-        TaskMarkerScanner::new(line).scan()
-    }
-
-    fn position_for_offset(
-        segments: &[(usize, SourceByteOffset)],
-        offset: usize,
-    ) -> Result<SourceByteOffset, NoteError> {
-        if segments.is_empty() {
-            return SourceByteOffset::try_from_usize(offset)
-                .map_err(|_error| NoteError::Structure("offset out of range"));
-        }
-        let mut current = None;
-        for &(start, position) in segments.iter().rev() {
-            if start <= offset {
-                current = Some((start, position));
-                break;
-            }
-        }
-        let (segment_start, segment_pos) = current
-            .ok_or(NoteError::Structure("inline field offset out of range"))?;
-        let delta = offset.saturating_sub(segment_start);
-        let base =
-            usize::try_from(u32::from(segment_pos)).map_err(|_error| {
-                NoteError::Structure("inline field offset out of range")
-            })?;
-        SourceByteOffset::try_from_usize(base.saturating_add(delta))
-    }
-
-    fn extract_reference_link_definitions(
-        markdown: &str,
-    ) -> Result<Vec<RawReferenceLink>, NoteIngestError> {
-        let mut defs = Vec::new();
-        let mut offset = 0usize;
-        for line in markdown.split_inclusive(['\n', '\r']) {
-            let trimmed_line = line.trim_end_matches(['\n', '\r']);
-            let leading = trimmed_line
-                .chars()
-                .take_while(|ch| ch.is_whitespace())
-                .count();
-            let content = trimmed_line.get(leading..).unwrap_or("");
-            if !content.starts_with('[') {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            let Some(close) = content.find("]:") else {
-                offset = offset.saturating_add(line.len());
-                continue;
-            };
-            let label = content.get(1..close).unwrap_or("");
-            let after_colon = close.saturating_add(2);
-            let mut rest = content.get(after_colon..).unwrap_or("");
-            if let Some(stripped) = rest.strip_prefix(' ') {
-                rest = stripped;
-            }
-            let dest = rest.trim_start();
-            if label.trim().is_empty() || dest.is_empty() {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            let target = if let Some(stripped) = dest.strip_prefix('<')
-                && let Some(end) = stripped.find('>')
-            {
-                stripped.get(..end).unwrap_or("")
-            } else {
-                dest.split_whitespace().next().unwrap_or("")
-            };
-            if target.is_empty() {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            let normalized = label
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .to_ascii_lowercase();
-            let position = SourceByteOffset::try_from_usize(
-                offset.saturating_add(leading),
-            )
-            .map_err(|_error| {
-                NoteIngestError::Source(
-                    "reference link offset out of range".into(),
-                )
-            })?;
-            defs.push(RawReferenceLink::new(
-                normalized.into_boxed_str(),
-                target.into(),
-                position,
-            ));
-            offset = offset.saturating_add(line.len());
-        }
-        Ok(defs)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -931,295 +806,6 @@ struct LinkFrame {
     target: String,
     start: SourceByteOffset,
     alias: String,
-}
-
-struct TaskMarkerScanner<'source> {
-    chars: std::iter::Peekable<std::str::Chars<'source>>,
-}
-
-impl<'source> TaskMarkerScanner<'source> {
-    fn new(line: &'source str) -> Self {
-        Self {
-            chars: line.chars().peekable(),
-        }
-    }
-
-    fn scan(&mut self) -> Option<char> {
-        self.skip_whitespace();
-        self.consume_list_marker()?;
-        self.skip_whitespace();
-        self.parse_checkbox_marker()
-    }
-
-    fn skip_whitespace(&mut self) {
-        while matches!(self.chars.peek(), Some(ch) if ch.is_whitespace()) {
-            self.chars.next();
-        }
-    }
-
-    fn consume_list_marker(&mut self) -> Option<()> {
-        let first = self.chars.peek().copied()?;
-        if matches!(first, '-' | '*' | '+') {
-            self.chars.next();
-            return Some(());
-        }
-        if !first.is_ascii_digit() {
-            return None;
-        }
-        while matches!(self.chars.peek(), Some(ch) if ch.is_ascii_digit()) {
-            self.chars.next();
-        }
-        match self.chars.peek().copied()? {
-            '.' | ')' => {
-                self.chars.next();
-                Some(())
-            }
-            _ => None,
-        }
-    }
-
-    fn parse_checkbox_marker(&mut self) -> Option<char> {
-        if self.chars.next()? != '[' {
-            return None;
-        }
-        let marker = self.chars.next()?;
-        if self.chars.next()? != ']' {
-            return None;
-        }
-        Some(marker)
-    }
-
-    fn raw_task_kind_from_marker(marker: char) -> RawTaskKind {
-        match marker {
-            ' ' => RawTaskKind::Unchecked(marker),
-            'x' | 'X' => RawTaskKind::Checked(marker),
-            _ => RawTaskKind::Other(marker),
-        }
-    }
-}
-
-struct MarkdownInlineFieldScanner;
-
-impl MarkdownInlineFieldScanner {
-    fn scan_text(
-        text: &str,
-        segments: &[(usize, SourceByteOffset)],
-        fields: &mut Vec<RawInlineField>,
-    ) -> Result<(), NoteError> {
-        if !text.contains("::") {
-            return Ok(());
-        }
-        let mut bracket_spans = Vec::new();
-        let mut error = None;
-
-        InlineFieldScanner::scan_delimited(
-            text,
-            InlineFieldDelimiter::Brackets,
-            |key, value, start, end| {
-                bracket_spans.push((start, end));
-                match MarkdownParser::position_for_offset(segments, start) {
-                    Ok(position) => {
-                        fields.push(RawInlineField::new(
-                            key.into(),
-                            value.into(),
-                            position,
-                        ));
-                    }
-                    Err(e) => error = Some(e),
-                }
-            },
-        );
-        if let Some(e) = error {
-            return Err(e);
-        }
-
-        InlineFieldScanner::scan_delimited(
-            text,
-            InlineFieldDelimiter::Parentheses,
-            |key, value, start, end| {
-                bracket_spans.push((start, end));
-                match MarkdownParser::position_for_offset(segments, start) {
-                    Ok(position) => {
-                        fields.push(RawInlineField::new(
-                            key.into(),
-                            value.into(),
-                            position,
-                        ));
-                    }
-                    Err(e) => error = Some(e),
-                }
-            },
-        );
-        if let Some(e) = error {
-            return Err(e);
-        }
-
-        InlineFieldScanner::scan_bare(
-            text,
-            &bracket_spans,
-            |key, value, start| match MarkdownParser::position_for_offset(
-                segments, start,
-            ) {
-                Ok(position) => {
-                    fields.push(RawInlineField::new(
-                        key.into(),
-                        value.into(),
-                        position,
-                    ));
-                }
-                Err(e) => error = Some(e),
-            },
-        );
-        if let Some(e) = error {
-            return Err(e);
-        }
-
-        Ok(())
-    }
-}
-
-struct TagScanner;
-
-impl TagScanner {
-    fn scan(
-        text: &str,
-        segments: &[(usize, SourceByteOffset)],
-    ) -> Result<Vec<RawTag>, NoteError> {
-        let mut tags = Vec::new();
-        let mut chars = text.char_indices().peekable();
-        let mut prev_is_alnum = false;
-
-        while let Some((start_idx, ch)) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-            while let Some(&(next_idx, next_ch)) = chars.peek() {
-                if !(next_ch.is_alphanumeric()
-                    || matches!(next_ch, '_' | '-' | '/'))
-                {
-                    break;
-                }
-                chars.next();
-                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
-                else {
-                    break;
-                };
-                end_idx = updated;
-            }
-
-            let Some(raw) = text.get(start_idx..end_idx) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-
-            if raw.len() > 1 {
-                let position =
-                    MarkdownParser::position_for_offset(segments, start_idx)?;
-                tags.push(RawTag::new(raw.into(), position));
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
-        }
-
-        Ok(tags)
-    }
-}
-
-struct BlockRefScanner<'source> {
-    source: &'source str,
-}
-
-impl<'source> BlockRefScanner<'source> {
-    fn new(source: &'source str) -> Self {
-        Self {
-            source,
-        }
-    }
-
-    fn collect(&self) -> Result<Vec<RawBlockRef>, NoteError> {
-        let mut refs = Vec::new();
-        let mut offset = 0usize;
-        let mut in_code_block = false;
-        let mut in_frontmatter = false;
-        let mut frontmatter_fence: Option<&'static str> = None;
-
-        for line in self.source.split_inclusive('\n') {
-            let mut trimmed_line = line.trim_end_matches(['\n', '\r']);
-
-            if offset == 0 {
-                if trimmed_line == "---" {
-                    in_frontmatter = true;
-                    frontmatter_fence = Some("---");
-                    offset = offset.saturating_add(line.len());
-                    continue;
-                }
-                if trimmed_line == "+++" {
-                    in_frontmatter = true;
-                    frontmatter_fence = Some("+++");
-                    offset = offset.saturating_add(line.len());
-                    continue;
-                }
-            }
-
-            if in_frontmatter {
-                if frontmatter_fence.is_some_and(|fence| fence == trimmed_line)
-                {
-                    in_frontmatter = false;
-                }
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            let trimmed_start = trimmed_line.trim_start();
-            if trimmed_start.starts_with("```")
-                || trimmed_start.starts_with("~~~")
-            {
-                in_code_block = !in_code_block;
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            if in_code_block {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            trimmed_line = trimmed_line.trim_end();
-            if let Some(caret_idx) = trimmed_line.rfind('^') {
-                let before = trimmed_line.get(..caret_idx).unwrap_or("");
-                let after = trimmed_line
-                    .get(caret_idx.saturating_add(1)..)
-                    .unwrap_or("");
-                let id = after.trim();
-                let valid = !id.is_empty()
-                    && id.chars().all(|ch| {
-                        ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
-                    });
-                if valid
-                    && (before.is_empty()
-                        || before
-                            .chars()
-                            .last()
-                            .is_some_and(char::is_whitespace))
-                {
-                    let position = SourceByteOffset::try_from_usize(
-                        offset.saturating_add(caret_idx),
-                    )?;
-                    refs.push(RawBlockRef::new(id.into(), position));
-                }
-            }
-            offset = offset.saturating_add(line.len());
-        }
-
-        Ok(refs)
-    }
 }
 
 struct LinkTarget<'source>(&'source str);
@@ -1274,6 +860,7 @@ mod tests {
     #[test]
     fn extract_markdown_preserves_task_marker_case()
     -> Result<(), NoteIngestError> {
+        use crate::note::raw::RawTaskKind;
         let markdown = "- [X] #task Done";
         let path = NotePath::try_new("notes/task.md")?;
         let raw = MarkdownParser::parse(markdown, path, None, None)?;

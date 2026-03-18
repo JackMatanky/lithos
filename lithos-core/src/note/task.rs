@@ -722,7 +722,7 @@ impl Borrow<str> for TaskFieldKey {
 
 impl fmt::Display for TaskFieldKey {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -1390,9 +1390,9 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
-            position::SourceByteOffset,
-            raw::{RawInlineField, RawTag, RawTask, RawTaskKind},
+            position::{SourceByteOffset, SourceByteRange},
+            raw::{RawTask, RawTaskKind},
+            scanner::{NoteScanner, ScanArtifact},
         },
     };
 
@@ -1525,54 +1525,24 @@ mod tests {
     }
 
     fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
+        let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
-        let range = SourceByteRange::new(start, end).expect("valid range");
-        let tags = scan_raw_tags(text, start)
-            .expect("raw tags")
-            .into_iter()
-            .map(|tag| tag.value().into())
-            .collect();
+        let range = SourceByteRange::new(start, end).expect("valid test range");
+
+        let artifacts = scanner.scan_block(text, &[]).expect("scan artifacts");
+
+        let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
-        InlineFieldScanner::scan_delimited(
-            text,
-            InlineFieldDelimiter::Brackets,
-            |k, v, field_start, _| {
-                let position = SourceByteOffset::try_from_usize(field_start)
-                    .unwrap_or(start);
-                inline_fields.push(RawInlineField::new(
-                    k.into(),
-                    v.into(),
-                    position,
-                ));
-            },
-        );
-        InlineFieldScanner::scan_delimited(
-            text,
-            InlineFieldDelimiter::Parentheses,
-            |k, v, field_start, _| {
-                let position = SourceByteOffset::try_from_usize(field_start)
-                    .unwrap_or(start);
-                inline_fields.push(RawInlineField::new(
-                    k.into(),
-                    v.into(),
-                    position,
-                ));
-            },
-        );
-        InlineFieldScanner::scan_emoji(
-            text,
-            emoji_markers,
-            |k, v, field_start| {
-                let position = SourceByteOffset::try_from_usize(field_start)
-                    .unwrap_or(start);
-                inline_fields.push(RawInlineField::new(
-                    k.into(),
-                    v.into(),
-                    position,
-                ));
-            },
-        );
+
+        for artifact in artifacts {
+            match artifact {
+                ScanArtifact::Tag(tag) => tags.push(tag.value().into()),
+                ScanArtifact::InlineField(field) => inline_fields.push(field),
+                ScanArtifact::BlockRef(_) | ScanArtifact::ReferenceLink(_) => {}
+            }
+        }
+
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),
@@ -1580,60 +1550,6 @@ mod tests {
             inline_fields,
             range,
         )
-    }
-
-    fn scan_raw_tags(
-        text: &str,
-        base_offset: SourceByteOffset,
-    ) -> Result<Vec<RawTag>, NoteError> {
-        let mut tags = Vec::new();
-        let mut chars = text.char_indices().peekable();
-        let mut prev_is_alnum = false;
-        let base =
-            usize::try_from(u32::from(base_offset)).map_err(|_error| {
-                NoteError::Structure("tag offset out of range")
-            })?;
-
-        while let Some((start_idx, ch)) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-            while let Some(&(next_idx, next_ch)) = chars.peek() {
-                if !(next_ch.is_alphanumeric()
-                    || matches!(next_ch, '_' | '-' | '/'))
-                {
-                    break;
-                }
-                chars.next();
-                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
-                else {
-                    break;
-                };
-                end_idx = updated;
-            }
-
-            let Some(raw) = text.get(start_idx..end_idx) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-
-            if raw.len() > 1 {
-                let offset = base.saturating_add(start_idx);
-                let position = SourceByteOffset::try_from_usize(offset)?;
-                tags.push(RawTag::new(raw.into(), position));
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
-        }
-
-        Ok(tags)
     }
 
     fn default_emoji_markers() -> Vec<char> {
