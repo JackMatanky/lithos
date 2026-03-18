@@ -1,17 +1,96 @@
 //! Inline field value objects and parsing.
 
-use super::raw::{RawInlineField, RawTaskInlineField};
+use super::{
+    raw::{RawInlineField, RawTask},
+    value::FieldValue,
+};
 use crate::note::position::SourceByteOffset;
 
-/// Inline field extracted from markdown.
+/// A pair of raw strings representing an extracted inline field before
+/// validation.
+pub type InlineKeyValuePair = (Box<str>, Box<str>);
+
+/// A normalized identifier for an inline field key.
+///
+/// This type ensures that keys are stored in a canonical kebab-case format
+/// while providing utilities for `snake_case` conversion to support flexible
+/// querying.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct InlineFieldKey(Box<str>);
+
+impl InlineFieldKey {
+    /// Creates a new normalized key from a raw string.
+    ///
+    /// Strips markdown decorators (`*`, `_`, etc.) and converts
+    /// whitespace-separated tokens into kebab-case.
+    #[inline]
+    #[must_use]
+    pub fn new(raw: &str) -> Self {
+        Self(InlineFieldScanner::normalize_key(raw))
+    }
+
+    /// Returns the primary kebab-case representation.
+    #[inline]
+    #[must_use]
+    pub fn as_kebab(&self) -> &str {
+        &self.0
+    }
+
+    /// Returns the `snake_case` representation of the key.
+    #[inline]
+    #[must_use]
+    pub fn to_snake(&self) -> String {
+        self.0.replace('-', "_")
+    }
+
+    /// Returns the raw internal storage.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for InlineFieldKey {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self::new(s)
+    }
+}
+
+impl From<Box<str>> for InlineFieldKey {
+    #[inline]
+    fn from(s: Box<str>) -> Self {
+        Self::new(&s)
+    }
+}
+
+impl core::fmt::Display for InlineFieldKey {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Inline field extracted from markdown and converted to domain types.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct InlineField {
-    key: Box<str>,
-    value: Box<str>,
+    key: InlineFieldKey,
+    value: FieldValue,
     position: SourceByteOffset,
 }
 
@@ -20,8 +99,8 @@ impl InlineField {
     #[inline]
     #[must_use]
     pub fn new(
-        key: Box<str>,
-        value: Box<str>,
+        key: InlineFieldKey,
+        value: FieldValue,
         position: SourceByteOffset,
     ) -> Self {
         Self {
@@ -34,14 +113,14 @@ impl InlineField {
     /// Return the normalized field key.
     #[inline]
     #[must_use]
-    pub fn key(&self) -> &str {
+    pub fn key(&self) -> &InlineFieldKey {
         &self.key
     }
 
-    /// Return the raw field value string.
+    /// Return the field value.
     #[inline]
     #[must_use]
-    pub fn value(&self) -> &str {
+    pub fn value(&self) -> &FieldValue {
         &self.value
     }
 
@@ -58,21 +137,16 @@ impl InlineField {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct InlineFieldCollection {
-    fields: Vec<RawTaskInlineField>,
-    emoji_fields: Vec<RawTaskInlineField>,
+    fields: Vec<InlineKeyValuePair>,
 }
 
 impl InlineFieldCollection {
     /// Create a new field collection.
     #[inline]
     #[must_use]
-    pub fn new(
-        fields: Vec<RawTaskInlineField>,
-        emoji_fields: Vec<RawTaskInlineField>,
-    ) -> Self {
+    pub fn new(fields: Vec<InlineKeyValuePair>) -> Self {
         Self {
             fields,
-            emoji_fields,
         }
     }
 
@@ -88,26 +162,18 @@ impl InlineFieldCollection {
             fields.push((k.into(), v.into()));
         });
 
-        let mut emoji_fields = Vec::new();
         InlineFieldScanner::scan_emoji(text, emoji_markers, |k, v, _| {
-            emoji_fields.push((k.into(), v.into()));
+            fields.push((k.into(), v.into()));
         });
 
-        Self::new(fields, emoji_fields)
+        Self::new(fields)
     }
 
     /// Return parsed inline field tokens.
     #[inline]
     #[must_use]
-    pub fn inline_fields(&self) -> &[RawTaskInlineField] {
+    pub fn inline_fields(&self) -> &[InlineKeyValuePair] {
         &self.fields
-    }
-
-    /// Return parsed emoji date tokens.
-    #[inline]
-    #[must_use]
-    pub fn emoji_dates(&self) -> &[RawTaskInlineField] {
-        &self.emoji_fields
     }
 }
 
@@ -258,6 +324,17 @@ impl InlineFieldScanner {
 impl From<RawInlineField> for InlineField {
     #[inline]
     fn from(raw: RawInlineField) -> Self {
-        InlineField::new(raw.key().into(), raw.value().into(), raw.position())
+        InlineField::new(
+            raw.key().into(),
+            FieldValue::String(raw.value().into()),
+            raw.position(),
+        )
+    }
+}
+
+impl From<&RawTask> for InlineFieldCollection {
+    #[inline]
+    fn from(raw: &RawTask) -> Self {
+        Self::new(raw.inline_fields().to_vec())
     }
 }

@@ -1523,20 +1523,19 @@ mod tests {
         let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
+        let base = SourceByteOffset::new(0);
         let tokens = InlineFieldCollection::parse(raw_task_text, &[]);
         let tasks = vec![RawTask::new(
             RawTaskKind::Unchecked(' '),
             raw_task_text.into(),
             vec!["#task".into()],
             tokens.inline_fields().to_vec(),
-            tokens.emoji_dates().to_vec(),
-            SourceByteOffset::new(0),
+            base,
         )];
-
         RawNote::new(
             path,
             "hash".into(),
-            4,
+            100,
             None,
             None,
             Some(frontmatter),

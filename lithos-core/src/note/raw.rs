@@ -563,7 +563,6 @@ pub struct RawTask {
     text: Box<str>,
     tags: Vec<Box<str>>,
     inline_fields: Vec<RawTaskInlineField>,
-    emoji_dates: Vec<RawTaskInlineField>,
     position: SourceByteOffset,
 }
 
@@ -571,16 +570,11 @@ impl RawTask {
     /// Create a raw task entry.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Raw tasks capture full source metadata"
-    )]
     pub fn new(
         task_kind: RawTaskKind,
         text: Box<str>,
         tags: Vec<Box<str>>,
         inline_fields: Vec<RawTaskInlineField>,
-        emoji_dates: Vec<RawTaskInlineField>,
         position: SourceByteOffset,
     ) -> Self {
         Self {
@@ -588,7 +582,6 @@ impl RawTask {
             text,
             tags,
             inline_fields,
-            emoji_dates,
             position,
         }
     }
@@ -619,13 +612,6 @@ impl RawTask {
     #[must_use]
     pub fn inline_fields(&self) -> &[RawTaskInlineField] {
         &self.inline_fields
-    }
-
-    /// Return raw emoji date entries parsed from the task text.
-    #[inline]
-    #[must_use]
-    pub fn emoji_dates(&self) -> &[RawTaskInlineField] {
-        &self.emoji_dates
     }
 
     /// Return the source byte position for the task marker.

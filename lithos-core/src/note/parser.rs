@@ -585,7 +585,6 @@ impl MarkdownParser {
                 raw_text,
                 tags_for_task,
                 tokens.inline_fields().to_vec(),
-                tokens.emoji_dates().to_vec(),
                 block.start_offset,
             ));
         } else {

@@ -784,7 +784,6 @@ mod tests {
             text.into(),
             tags,
             tokens.inline_fields().to_vec(),
-            tokens.emoji_dates().to_vec(),
             base,
         )
     }

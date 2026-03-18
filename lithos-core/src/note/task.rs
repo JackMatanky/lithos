@@ -869,8 +869,7 @@ impl<'config> TaskBuilder<'config> {
             })?
             .clone();
         let text = self.extract_clean_text(raw.text())?;
-        let parsed =
-            self.parse_inline_fields(raw.inline_fields(), raw.emoji_dates())?;
+        let parsed = self.parse_inline_fields(raw.inline_fields())?;
         let attributes = parsed.into_attributes(tags);
 
         Task::try_new(status, text, raw.position(), attributes).map(Some)
@@ -918,18 +917,14 @@ impl<'config> TaskBuilder<'config> {
     fn parse_inline_fields(
         &self,
         inline_fields: &[RawTaskInlineField],
-        emoji_dates: &[RawTaskInlineField],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
         for (keyword, raw_value) in
             inline_fields.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
         {
-            state.handle_inline_field(self.config, keyword, raw_value)?;
+            state.handle_any_inline_field(self.config, keyword, raw_value)?;
         }
-
-        state.fill_emoji_dates_from_tokens(self.config, emoji_dates)?;
-        state.fill_default_emoji_dates_from_tokens(emoji_dates)?;
 
         Ok(state.finish())
     }
@@ -1061,82 +1056,80 @@ impl InlineFieldState {
         Self::default()
     }
 
-    fn handle_inline_field(
+    fn handle_any_inline_field(
         &mut self,
         config: &crate::config::task::Task,
-        keyword: &str,
-        raw_value: &str,
+        key: &str,
+        value: &str,
     ) -> Result<(), NoteError> {
-        if let Some((slot, spec)) = Self::match_date_spec(config, keyword) {
-            let parsed = Self::parse_date_str(raw_value, spec)?;
-            self.slots.set(slot, parsed);
-            return Ok(());
-        }
-
-        Self::insert_metadata(config, &mut self.metadata, keyword, raw_value)
-    }
-
-    fn fill_emoji_dates_from_tokens(
-        &mut self,
-        config: &crate::config::task::Task,
-        tokens: &[RawTaskInlineField],
-    ) -> Result<(), NoteError> {
-        for (emoji, value) in
-            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
+        // 1. Try user-configured emoji mapping
+        if let Some((slot, spec)) = Self::match_date_spec_by_emoji(config, key)
         {
-            if let Some((slot, spec)) =
-                Self::match_date_spec_by_emoji(config, emoji)
-            {
-                if self.slots.get(slot).is_some() {
-                    continue;
-                }
+            if self.slots.get(slot).is_none() {
                 let parsed = Self::parse_date_str(value, spec)?;
                 self.slots.set(slot, parsed);
             }
+            return Ok(());
         }
 
-        Ok(())
+        // 2. Try user-configured text mapping
+        if let Some((slot, spec)) = Self::match_date_spec(config, key) {
+            if self.slots.get(slot).is_none() {
+                let parsed = Self::parse_date_str(value, spec)?;
+                self.slots.set(slot, parsed);
+            }
+            return Ok(());
+        }
+
+        // 3. Try default emoji mappings
+        if self.handle_default_emoji(key, value)? {
+            return Ok(());
+        }
+
+        // 4. Handle as standard metadata
+        Self::insert_metadata(config, &mut self.metadata, key, value)
     }
 
-    fn fill_default_emoji_dates_from_tokens(
+    fn handle_default_emoji(
         &mut self,
-        tokens: &[RawTaskInlineField],
-    ) -> Result<(), NoteError> {
-        for (emoji, value) in
-            tokens.iter().map(|pair| (pair.0.as_ref(), pair.1.as_ref()))
-        {
-            match () {
-                () if Self::emoji_matches(emoji, '\u{2795}') => {
-                    self.fill_default_slot_value(
-                        DateSlot::Created,
-                        "created",
-                        value,
-                    )?;
-                }
-                () if Self::emoji_matches(emoji, '\u{1f4c5}') => {
-                    self.fill_default_slot_value(DateSlot::Due, "due", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{2705}') => {
-                    self.fill_default_slot_value(
-                        DateSlot::Completed,
-                        "completed",
-                        value,
-                    )?;
-                }
-                () if Self::emoji_matches(emoji, '\u{23f3}') => {
-                    self.fill_default_metadata_value("scheduled", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{1f6eb}') => {
-                    self.fill_default_metadata_value("start", value)?;
-                }
-                () if Self::emoji_matches(emoji, '\u{274c}') => {
-                    self.fill_default_metadata_value("cancelled", value)?;
-                }
-                () => {}
+        emoji: &str,
+        value: &str,
+    ) -> Result<bool, NoteError> {
+        match () {
+            () if Self::emoji_matches(emoji, '\u{2795}') => {
+                self.fill_default_slot_value(
+                    DateSlot::Created,
+                    "created",
+                    value,
+                )?;
+                Ok(true)
             }
+            () if Self::emoji_matches(emoji, '\u{1f4c5}') => {
+                self.fill_default_slot_value(DateSlot::Due, "due", value)?;
+                Ok(true)
+            }
+            () if Self::emoji_matches(emoji, '\u{2705}') => {
+                self.fill_default_slot_value(
+                    DateSlot::Completed,
+                    "completed",
+                    value,
+                )?;
+                Ok(true)
+            }
+            () if Self::emoji_matches(emoji, '\u{23f3}') => {
+                self.fill_default_metadata_value("scheduled", value)?;
+                Ok(true)
+            }
+            () if Self::emoji_matches(emoji, '\u{1f6eb}') => {
+                self.fill_default_metadata_value("start", value)?;
+                Ok(true)
+            }
+            () if Self::emoji_matches(emoji, '\u{274c}') => {
+                self.fill_default_metadata_value("cancelled", value)?;
+                Ok(true)
+            }
+            () => Ok(false),
         }
-
-        Ok(())
     }
 
     fn finish(self) -> ParsedInlineFields {
@@ -1534,7 +1527,6 @@ mod tests {
             text.into(),
             tags,
             tokens.inline_fields().to_vec(),
-            tokens.emoji_dates().to_vec(),
             base,
         )
     }
