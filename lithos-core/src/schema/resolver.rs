@@ -34,48 +34,59 @@ use super::{
 pub struct Resolver;
 
 impl Resolver {
-    /// Resolve optionality override.
+    /// Apply optionality override to a base value.
     ///
     /// # Rules
-    /// - If override is `Some`, use it
-    /// - Otherwise, use base optionality
+    /// - If `override_val` is `Some`, it replaces the base value
+    /// - If `override_val` is `None`, the base value is preserved
     ///
     /// # Examples
     /// ```ignore
-    /// // Override required → optional
-    /// let base = Optionality::Required;
-    /// let override_val = Some(false);
-    /// let result = Resolver::resolve_optionality(base, override_val);
-    /// assert_eq!(result, Optionality::Optional);
+    /// use lithos_core::schema::property_spec::{PropertySpec, NumberSpec};
+    /// use lithos_core::schema::resolver::Resolver;
     ///
-    /// // No override → keep base
-    /// let result = Resolver::resolve_optionality(base, None);
-    /// assert_eq!(result, Optionality::Required);
-    /// ```
+    /// // This method validates type-specific constraint overrides
+    /// // See integration tests for full examples with RawPropertyRef construction
+    /// let base = PropertySpec::Number(NumberSpec::default());
+    /// // In production: Resolver::spec(&base, &raw_ref)?
+    /// ```ignore
     #[inline]
     #[must_use]
-    pub fn resolve_optionality(
+    pub fn optionality(
         base: Optionality,
-        override_required: Option<bool>,
+        override_val: Option<bool>,
     ) -> Optionality {
-        override_required.map_or(base, Optionality::from)
+        override_val.map_or(base, Optionality::from)
     }
 
-    /// Resolve multiplicity override.
+    /// Apply multiplicity override to a base value.
     ///
     /// # Rules
-    /// - If override is `Some`, use it
-    /// - Otherwise, use base multiplicity
+    /// - If `override_val` is `Some`, it replaces the base value
+    /// - If `override_val` is `None`, the base value is preserved
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{property::Multiplicity, resolver::Resolver};
+    ///
+    /// // Override single → many
+    /// let result = Resolver::multiplicity(Multiplicity::Single, Some(true));
+    /// assert_eq!(result, Multiplicity::Many);
+    ///
+    /// // No override → keep base
+    /// let result = Resolver::multiplicity(Multiplicity::Single, None);
+    /// assert_eq!(result, Multiplicity::Single);
+    /// ```ignore
     #[inline]
     #[must_use]
-    pub fn resolve_multiplicity(
+    pub fn multiplicity(
         base: Multiplicity,
-        override_multi: Option<bool>,
+        override_val: Option<bool>,
     ) -> Multiplicity {
-        override_multi.map_or(base, Multiplicity::from)
+        override_val.map_or(base, Multiplicity::from)
     }
 
-    /// Resolve property spec overrides (type-specific constraints).
+    /// Apply type-specific constraint overrides to a property spec.
     ///
     /// # Rules
     /// - Cannot change property type (bool → number rejected)
@@ -87,24 +98,42 @@ impl Resolver {
     ///
     /// # Examples
     /// ```ignore
-    /// // Valid: Override number constraints
-    /// let base = PropertySpec::Number(NumberSpec { min: None, max: None });
-    /// let overrides = RawPropertyRef { number: RawNumberSpec { min: Some(0.0f64), .. }, .. };
-    /// let result = Resolver::resolve_spec(&base, &overrides)?;
-    /// // Result: NumberSpec { min: Some(0.0f64), max: None }
+    /// use lithos_core::schema::{
+    ///     property_spec::{NumberSpec, PropertySpec},
+    ///     raw::{
+    ///         property::RawPropertyRef,
+    ///         property_spec::{
+    ///             RawDateSpec, RawFileSpec, RawNumberSpec, RawStringSpec,
+    ///         },
+    ///     },
+    ///     resolver::Resolver,
+    /// };
     ///
-    /// // Invalid: Attempt to change type
-    /// let base = PropertySpec::Bool(BoolSpec);
-    /// let overrides = RawPropertyRef { number: RawNumberSpec { min: Some(0.0f64), .. }, .. };
-    /// let result = Resolver::resolve_spec(&base, &overrides);
-    /// // Result: Err(PropertyTypeMismatch { expected: "bool", actual: "number" })
-    /// ```
+    /// // Valid: Override number constraints
+    /// let base = PropertySpec::Number(NumberSpec::default());
+    /// let overrides = RawPropertyRef {
+    ///     ref_path: "property_bank#/test".into(),
+    ///     required: None,
+    ///     multi: None,
+    ///     number: RawNumberSpec {
+    ///         min: Some(0.0f64),
+    ///         max: Some(100.0f64),
+    ///         step: None,
+    ///     },
+    ///     string: RawStringSpec::default(),
+    ///     date: RawDateSpec::default(),
+    ///     file: RawFileSpec::default(),
+    /// };
+    /// let result = Resolver::spec(&base, &overrides);
+    /// assert!(result.is_ok());
+    /// assert!(matches!(result.unwrap(), PropertySpec::Number(_)));
+    /// ```ignore
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on &PropertySpec with value patterns is idiomatic"
     )]
     #[inline]
-    pub fn resolve_spec(
+    pub fn spec(
         base: &PropertySpec,
         ref_entry: &RawPropertyRef,
     ) -> Result<PropertySpec, SchemaError> {
@@ -197,26 +226,65 @@ impl Resolver {
         }
     }
 
-    /// Apply all overrides from a property bank reference.
+    /// Create property from bank reference with optional overrides.
     ///
-    /// Used by Expander when resolving `$ref` entries.
+    /// Used by Expander when resolving `$ref` entries. Applies all overrides
+    /// (optionality, multiplicity, and type-specific constraints) to the base
+    /// property from the bank.
     ///
     /// # Errors
     /// Returns error if type mismatch occurs during spec override.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     property::{
+    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
+    ///     },
+    ///     property_spec::{BoolSpec, PropertySpec},
+    ///     raw::{
+    ///         property::RawPropertyRef,
+    ///         property_spec::{
+    ///             RawDateSpec, RawFileSpec, RawNumberSpec, RawStringSpec,
+    ///         },
+    ///     },
+    ///     resolver::Resolver,
+    /// };
+    ///
+    /// // Base property from bank (required, single)
+    /// let bank_prop = Property::new(
+    ///     PropertyId::new(),
+    ///     PropertyName::try_new("archived").unwrap(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec),
+    /// );
+    ///
+    /// // Override to make it optional
+    /// let ref_entry = RawPropertyRef {
+    ///     ref_path: "property_bank#/archived".into(),
+    ///     required: Some(false), // Override to optional
+    ///     multi: None,
+    ///     number: RawNumberSpec::default(),
+    ///     string: RawStringSpec::default(),
+    ///     date: RawDateSpec::default(),
+    ///     file: RawFileSpec::default(),
+    /// };
+    ///
+    /// let result = Resolver::from_bank_ref(&bank_prop, &ref_entry)?;
+    /// assert_eq!(result.optionality(), Optionality::Optional);
+    /// # Ok::<(), lithos_core::schema::error::SchemaError>(())
+    /// ```ignore
     #[inline]
-    pub fn resolve_from_bank_ref(
+    pub fn from_bank_ref(
         bank_property: &Property,
         ref_entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
-        let optionality = Self::resolve_optionality(
-            bank_property.optionality(),
-            ref_entry.required,
-        );
-        let multiplicity = Self::resolve_multiplicity(
-            bank_property.multiplicity(),
-            ref_entry.multi,
-        );
-        let spec = Self::resolve_spec(bank_property.spec(), ref_entry)?;
+        let optionality =
+            Self::optionality(bank_property.optionality(), ref_entry.required);
+        let multiplicity =
+            Self::multiplicity(bank_property.multiplicity(), ref_entry.multi);
+        let spec = Self::spec(bank_property.spec(), ref_entry)?;
 
         Ok(Property::new(
             bank_property.id(),
@@ -227,7 +295,7 @@ impl Resolver {
         ))
     }
 
-    /// Apply child property override to parent property.
+    /// Create property from child override in schema inheritance.
     ///
     /// Used by Merger during schema inheritance. In schema inheritance,
     /// child property completely replaces parent property (no field merging).
@@ -239,13 +307,28 @@ impl Resolver {
     ///
     /// # Examples
     /// ```ignore
-    /// // Parent: title (required, single, String[max=100])
-    /// // Child:  title (optional, multi, String[max=200])
-    /// // Result: title (optional, multi, String[max=200]) - child wins completely
-    /// ```
+    /// use lithos_core::schema::property::{
+    ///     Property, PropertyId, PropertyName, Optionality, Multiplicity,
+    /// };
+    /// use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
+    /// use lithos_core::schema::resolver::Resolver;
+    ///
+    /// // Create a base property
+    /// let bank_prop = Property::new(
+    ///     PropertyId::new(),
+    ///     PropertyName::try_new("archived").unwrap(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec::default()),
+    /// );
+    ///
+    /// // In production, this is called with RawPropertyRef from parsed TOML
+    /// // See integration tests for full examples
+    /// # Ok::<(), lithos_core::schema::error::SchemaError>(())
+    /// ```ignore
     #[inline]
     #[must_use]
-    pub fn resolve_child_override(
+    pub fn from_child_override(
         _parent: &Property,
         child: &Property,
     ) -> Property {
@@ -354,35 +437,28 @@ mod tests {
 
         #[test]
         fn uses_override_when_present() {
-            let result = Resolver::resolve_optionality(
-                Optionality::Required,
-                Some(false),
-            );
+            let result =
+                Resolver::optionality(Optionality::Required, Some(false));
             assert_eq!(result, Optionality::Optional);
         }
 
         #[test]
         fn uses_base_when_no_override() {
-            let result =
-                Resolver::resolve_optionality(Optionality::Optional, None);
+            let result = Resolver::optionality(Optionality::Optional, None);
             assert_eq!(result, Optionality::Optional);
         }
 
         #[test]
         fn can_make_required_optional() {
-            let result = Resolver::resolve_optionality(
-                Optionality::Required,
-                Some(false),
-            );
+            let result =
+                Resolver::optionality(Optionality::Required, Some(false));
             assert_eq!(result, Optionality::Optional);
         }
 
         #[test]
         fn can_make_optional_required() {
-            let result = Resolver::resolve_optionality(
-                Optionality::Optional,
-                Some(true),
-            );
+            let result =
+                Resolver::optionality(Optionality::Optional, Some(true));
             assert_eq!(result, Optionality::Required);
         }
     }
@@ -394,33 +470,28 @@ mod tests {
 
         #[test]
         fn uses_override_when_present() {
-            let result = Resolver::resolve_multiplicity(
-                Multiplicity::Single,
-                Some(true),
-            );
+            let result =
+                Resolver::multiplicity(Multiplicity::Single, Some(true));
             assert_eq!(result, Multiplicity::Many);
         }
 
         #[test]
         fn uses_base_when_no_override() {
-            let result =
-                Resolver::resolve_multiplicity(Multiplicity::Many, None);
+            let result = Resolver::multiplicity(Multiplicity::Many, None);
             assert_eq!(result, Multiplicity::Many);
         }
 
         #[test]
         fn can_make_single_many() {
-            let result = Resolver::resolve_multiplicity(
-                Multiplicity::Single,
-                Some(true),
-            );
+            let result =
+                Resolver::multiplicity(Multiplicity::Single, Some(true));
             assert_eq!(result, Multiplicity::Many);
         }
 
         #[test]
         fn can_make_many_single() {
             let result =
-                Resolver::resolve_multiplicity(Multiplicity::Many, Some(false));
+                Resolver::multiplicity(Multiplicity::Many, Some(false));
             assert_eq!(result, Multiplicity::Single);
         }
     }
@@ -447,7 +518,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let result = Resolver::spec(&base, &ref_entry);
             let err = result.unwrap_err();
             assert!(matches!(err, SchemaError::PropertyTypeMismatch { .. }));
         }
@@ -468,7 +539,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let result = Resolver::spec(&base, &ref_entry);
             let _err = result.unwrap_err();
         }
 
@@ -489,7 +560,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let result = Resolver::spec(&base, &ref_entry);
             assert!(result.is_ok());
             // Just verify it returns a Number spec (internal structure is
             // private)
@@ -512,7 +583,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let result = Resolver::spec(&base, &ref_entry);
             let _err = result.unwrap_err();
         }
 
@@ -532,7 +603,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let result = Resolver::spec(&base, &ref_entry);
             assert!(result.is_ok());
             let spec = result.unwrap();
             assert!(
@@ -555,7 +626,7 @@ mod tests {
             let base = fixtures::bool_property("test");
             let ref_entry = fixtures::ref_entry("property_bank#/test");
 
-            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let result = Resolver::from_bank_ref(&base, &ref_entry);
             assert!(result.is_ok());
             let prop = result.unwrap();
             assert_eq!(prop.name(), base.name());
@@ -572,7 +643,7 @@ mod tests {
                 None,
             );
 
-            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let result = Resolver::from_bank_ref(&base, &ref_entry);
             assert!(result.is_ok());
             let prop = result.unwrap();
             assert_eq!(prop.optionality(), Optionality::Optional);
@@ -587,7 +658,7 @@ mod tests {
                 Some(true), // Override to multi
             );
 
-            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let result = Resolver::from_bank_ref(&base, &ref_entry);
             assert!(result.is_ok());
             let prop = result.unwrap();
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
@@ -602,7 +673,7 @@ mod tests {
                 Some(true),
             );
 
-            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let result = Resolver::from_bank_ref(&base, &ref_entry);
             assert!(result.is_ok());
             let prop = result.unwrap();
             assert_eq!(prop.optionality(), Optionality::Optional);
@@ -626,7 +697,7 @@ mod tests {
                 file: RawFileSpec::default(),
             };
 
-            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let result = Resolver::from_bank_ref(&base, &ref_entry);
             let _err = result.unwrap_err();
         }
     }
@@ -645,7 +716,7 @@ mod tests {
                 Some(100.0f64),
             );
 
-            let result = Resolver::resolve_child_override(&parent, &child);
+            let result = Resolver::from_child_override(&parent, &child);
 
             // Child wins completely
             assert_eq!(result.name(), child.name());
@@ -658,7 +729,7 @@ mod tests {
             let parent = fixtures::bool_property("test");
             let child = fixtures::bool_property("test");
 
-            let result = Resolver::resolve_child_override(&parent, &child);
+            let result = Resolver::from_child_override(&parent, &child);
 
             // Child's ID is used
             assert_eq!(result.id(), child.id());
