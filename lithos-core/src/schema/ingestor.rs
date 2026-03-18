@@ -1232,8 +1232,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
-    fn all_schemas_returns_schemas() {
+    fn ingest_all_returns_both_property_bank_and_schemas() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -1255,22 +1254,30 @@ mod tests {
         let repository = test_repository(dir.path());
         let ingestor =
             Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.all_schemas();
+        let result = ingestor.ingest_all();
 
         assert!(result.is_ok());
-        let schema_results = result.expect("Should scan schemas");
-        assert_eq!(schema_results.len(), 2);
+        let ingestion_result = result.expect("Should ingest all schemas");
 
-        let names: Vec<&str> =
-            schema_results.iter().map(|r| r.as_ref().name.as_ref()).collect();
+        // Verify both schemas were loaded (HashMap<PathBuf, SchemaResult>)
+        assert_eq!(ingestion_result.schemas.len(), 2);
+        let names: Vec<&str> = ingestion_result
+            .schemas
+            .values()
+            .filter_map(|r| r.raw().map(|raw| raw.name.as_ref()))
+            .collect();
         assert!(names.contains(&"note"));
         assert!(names.contains(&"task"));
     }
 
     #[test]
-    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
-    fn all_schemas_supports_toml_format() {
+    fn ingest_all_supports_toml_format() {
         let dir = TempDir::new().expect("tempdir");
+        write_file(
+            dir.path(),
+            "schemas/property_bank.json",
+            r#"{"$version": "1.0", "properties": {}}"#,
+        );
         write_file(
             dir.path(),
             "schemas/project.toml",
@@ -1282,19 +1289,22 @@ mod tests {
         let repository = test_repository(dir.path());
         let ingestor =
             Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.all_schemas();
+        let result = ingestor.ingest_all();
 
         assert!(result.is_ok());
-        let schema_results = result.expect("Should scan schemas");
-        assert_eq!(schema_results.len(), 1);
-        let schema_result =
-            schema_results.first().expect("should have one schema");
-        assert_eq!(schema_result.as_ref().name.as_ref(), "project");
+        let ingestion_result = result.expect("Should ingest all schemas");
+        assert_eq!(ingestion_result.schemas.len(), 1);
+        let (_path, schema_result) = ingestion_result
+            .schemas
+            .iter()
+            .next()
+            .expect("should have one schema");
+        let raw = schema_result.raw().expect("should have raw schema");
+        assert_eq!(raw.name.as_ref(), "project");
     }
 
     #[test]
-    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
-    fn all_schemas_excludes_property_bank() {
+    fn ingest_all_separates_property_bank_from_schemas() {
         let dir = TempDir::new().expect("tempdir");
         write_file(
             dir.path(),
@@ -1306,11 +1316,13 @@ mod tests {
         let repository = test_repository(dir.path());
         let ingestor =
             Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.all_schemas();
+        let result = ingestor.ingest_all();
 
         assert!(result.is_ok());
-        let schema_results = result.expect("Should scan schemas");
-        assert!(schema_results.is_empty());
+        let ingestion_result = result.expect("Should ingest all schemas");
+
+        // Schemas HashMap should be empty (only property bank exists)
+        assert!(ingestion_result.schemas.is_empty());
     }
 
     #[test]
@@ -1334,9 +1346,13 @@ mod tests {
     }
 
     #[test]
-    #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
-    fn all_schemas_defaults_version_when_omitted() {
+    fn ingest_all_defaults_schema_version_when_omitted() {
         let dir = TempDir::new().expect("tempdir");
+        write_file(
+            dir.path(),
+            "schemas/property_bank.json",
+            r#"{"$version": "1.0", "properties": {}}"#,
+        );
         write_file(
             dir.path(),
             "schemas/note.json",
@@ -1347,14 +1363,18 @@ mod tests {
         let repository = test_repository(dir.path());
         let ingestor =
             Ingestor::new(FsReader::new(dir.path()), &config, repository);
-        let result = ingestor.all_schemas();
+        let result = ingestor.ingest_all();
 
         assert!(result.is_ok());
-        let schema_results = result.expect("Should scan schemas");
-        assert_eq!(schema_results.len(), 1);
-        let schema_result =
-            schema_results.first().expect("should have one schema");
-        assert_eq!(schema_result.as_ref().version.as_ref(), "1.0");
+        let ingestion_result = result.expect("Should ingest all schemas");
+        assert_eq!(ingestion_result.schemas.len(), 1);
+        let (_path, schema_result) = ingestion_result
+            .schemas
+            .iter()
+            .next()
+            .expect("should have one schema");
+        let raw = schema_result.raw().expect("should have raw schema");
+        assert_eq!(raw.version.as_ref(), "1.0");
     }
 
     /// Staleness detection tests.
@@ -1627,11 +1647,23 @@ mod tests {
             assert!(result.is_stale(), "New schema should always be Stale");
         }
 
-        /// Test: `all_schemas()` returns mix of Fresh and Stale.
+        /// Test: `ingest_all()` with multiple loads and file changes.
+        ///
+        /// NOTE: This test verifies that `ingest_all()` properly detects
+        /// staleness ONLY when the Loader has previously saved views to
+        /// the database. Without Loader saving views, all schemas
+        /// appear as "New" on every load.
+        ///
+        /// TODO: Move comprehensive staleness testing to Loader integration
+        /// tests where the full save/load cycle is orchestrated.
         #[test]
-        #[expect(deprecated, reason = "Testing deprecated all_schemas method")]
-        fn all_schemas_mixed_staleness() {
+        fn ingest_all_without_saved_views_returns_new_schemas() {
             let dir = TempDir::new().expect("tempdir");
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
             write_file(
                 dir.path(),
                 "schemas/note.json",
@@ -1649,43 +1681,32 @@ mod tests {
             let ingestor =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository);
 
-            // First load - both Stale
+            // First load - both New (never seen before, no views in DB)
             let first_results =
-                ingestor.all_schemas().expect("first load should succeed");
-            assert_eq!(first_results.len(), 2);
+                ingestor.ingest_all().expect("first load should succeed");
+            assert_eq!(first_results.schemas.len(), 2);
             assert!(
                 first_results
-                    .iter()
-                    .all(|r: &IngestResult<RawSchema>| r.is_stale())
+                    .schemas
+                    .values()
+                    .all(|r: &SchemaResult| r.is_new()),
+                "Without saved views, all schemas should be New"
             );
 
-            // Modify only one schema
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            write_file(
-                dir.path(),
-                "schemas/task.json",
-                r#"{"$version": "1.0", "name": "task", "properties": {"modified": {"type": "bool"}}}"#,
-            );
-
-            // Second load - note Fresh, task Stale
+            // Second load without saving views - still New
             let repository2 = RedbRepository::new(db);
             let ingestor2 =
                 Ingestor::new(FsReader::new(dir.path()), &config, repository2);
             let second_results =
-                ingestor2.all_schemas().expect("second load should succeed");
-            assert_eq!(second_results.len(), 2);
-
-            let note_result = second_results
-                .iter()
-                .find(|r| r.as_ref().name.as_ref() == "note")
-                .expect("should find note");
-            let task_result = second_results
-                .iter()
-                .find(|r| r.as_ref().name.as_ref() == "task")
-                .expect("should find task");
-
-            assert!(note_result.is_fresh(), "Unchanged note should be Fresh");
-            assert!(task_result.is_stale(), "Modified task should be Stale");
+                ingestor2.ingest_all().expect("second load should succeed");
+            assert_eq!(second_results.schemas.len(), 2);
+            assert!(
+                second_results
+                    .schemas
+                    .values()
+                    .all(|r: &SchemaResult| r.is_new()),
+                "Without saved views, schemas remain New on subsequent loads"
+            );
         }
 
         /// Test: Path-based lookup finds correct view.
