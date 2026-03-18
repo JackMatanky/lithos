@@ -68,42 +68,13 @@ use crate::{
         },
         expander::{RefExpandedSchema, RefExpander},
         extender::Extender,
-        ingestor::{Ingestor, IngestorResults, SchemaResult},
+        ingestor::{Ingestor, SchemaResult},
         merger::Merger,
         property::{Property, PropertyName},
         raw::RawSchema,
         storage::Repository,
     },
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  PartitionedSchemas
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Type alias for schemas needing full expansion.
-type SchemasForExpansion = Vec<(SchemaId, RawSchema)>;
-
-/// Type alias for schemas with cached expansion.
-type CachedExpansion = Vec<(SchemaId, HashMap<PropertyName, Property>)>;
-
-/// Result of partitioning schemas for resolution.
-///
-/// Phase 5.2: Separates schemas into three categories for optimal processing:
-/// - **`needs_expansion`**: Full resolution via `RefExpander`
-/// - **`cached_expansion`**: Skip `RefExpander`, use cached properties directly
-/// - **`fresh_ids`**: Fully cached, no processing needed
-#[derive(Default, Debug)]
-struct PartitionedSchemas {
-    /// Schemas that need full resolution via `RefExpander` (file changed or
-    /// new).
-    needs_expansion: SchemasForExpansion,
-    /// Schemas with cached expansion (skip `RefExpander`).
-    ///
-    /// Contains (id, `cached_expanded_properties`).
-    cached_expansion: CachedExpansion,
-    /// Schemas that are fully fresh (no processing needed).
-    fresh_ids: Vec<SchemaId>,
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Loader
@@ -170,20 +141,77 @@ where
 
         // ── Extract property bank ───────────────────────────────────────────
         let bank = results.property_bank.bank();
+        let bank_is_fresh = results.property_bank.is_fresh();
 
-        // ── Partition schemas for resolution ────────────────────────────────
-        let partitioned = self.partition_for_resolution(&results)?;
+        // ── Partition schemas based on SchemaResult variants ───────────────
+        // Three categories:
+        // - needs_expansion: Run RefExpander (file changed/new, or fresh but no
+        //   cache)
+        // - cached_expansion: Skip RefExpander (fresh + bank stale + has cache)
+        // - fresh_ids: No processing needed (fresh + bank fresh)
+        let mut needs_expansion = Vec::new();
+        let mut cached_expansion = Vec::new();
+        let mut fresh_ids = Vec::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Order doesn't affect correctness - partitioning by \
+                      staleness"
+        )]
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Matching borrowed SchemaResult from HashMap values"
+        )]
+        for result in results.schemas.values() {
+            match result {
+                // Bank fresh + Schema fresh = fully reusable
+                SchemaResult::Fresh {
+                    id,
+                    ..
+                } if bank_is_fresh => {
+                    fresh_ids.push(*id);
+                }
+                // Bank stale + Schema fresh + cached expansion = skip
+                // RefExpander
+                SchemaResult::Fresh {
+                    id,
+                    expanded: Some(cached),
+                } => {
+                    cached_expansion.push((*id, cached.clone()));
+                }
+                // Bank stale + Schema fresh + no cache = run RefExpander
+                SchemaResult::Fresh {
+                    id,
+                    expanded: None,
+                } => {
+                    if let Some(raw) = self.load_raw_from_view(*id)? {
+                        needs_expansion.push((*id, raw));
+                    }
+                }
+                // File changed or new = run RefExpander
+                SchemaResult::Stale {
+                    id,
+                    raw,
+                    ..
+                }
+                | SchemaResult::New {
+                    id,
+                    raw,
+                } => {
+                    needs_expansion.push((*id, raw.clone()));
+                }
+            }
+        }
 
         // ── Collect all IDs for known_parents ───────────────────────────────
         // Both fresh and cached_expansion schemas need known_parents for
         // inheritance
-        let mut parent_ids = partitioned.fresh_ids.clone();
+        let mut parent_ids = fresh_ids;
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "Iterator returns &T, we need to dereference to get T"
         )]
-        parent_ids
-            .extend(partitioned.cached_expansion.iter().map(|(id, _)| *id));
+        parent_ids.extend(cached_expansion.iter().map(|(id, _)| *id));
 
         // Load fresh + cached schemas as known_parents for inheritance
         let parent_schemas = self
@@ -200,10 +228,10 @@ where
         // ── Process schemas needing full expansion ─────────────────────────
         let mut resolved = Vec::new();
 
-        if !partitioned.needs_expansion.is_empty() {
+        if !needs_expansion.is_empty() {
             // Run full resolution pipeline (RefExpander → Extender → Merger)
-            let expanded = RefExpander::new(bank)
-                .expand_all(partitioned.needs_expansion.clone())?;
+            let expanded =
+                RefExpander::new(bank).expand_all(needs_expansion.clone())?;
 
             // Store expanded properties for future incremental resolution
             self.store_expanded_properties(&expanded)?;
@@ -219,9 +247,9 @@ where
         }
 
         // ── Process schemas with cached expansion (skip RefExpander!) ───────
-        if !partitioned.cached_expansion.is_empty() {
+        if !cached_expansion.is_empty() {
             let cached_resolved = self.resolve_with_cached_expansion(
-                partitioned.cached_expansion,
+                cached_expansion,
                 &known_parents,
             )?;
             resolved.extend(cached_resolved);
@@ -235,14 +263,10 @@ where
             // ingest_all() call
 
             // Build name_to_id map for inheritance metadata
-            let name_to_id =
-                Self::build_name_to_id_map(&partitioned.needs_expansion)?;
+            let name_to_id = Self::build_name_to_id_map(&needs_expansion)?;
 
             // Persist inheritance metadata for caching
-            self.persist_inheritance_metadata(
-                &partitioned.needs_expansion,
-                &name_to_id,
-            )?;
+            self.persist_inheritance_metadata(&needs_expansion, &name_to_id)?;
         }
 
         Ok(resolved)
@@ -255,7 +279,7 @@ where
     /// Only needs to re-apply inheritance via `Extender` and `Merger`.
     #[expect(
         clippy::type_complexity,
-        reason = "Type alias would reduce clarity"
+        reason = "Vec tuple is clear in this context"
     )]
     fn resolve_with_cached_expansion(
         &self,
@@ -292,82 +316,6 @@ where
 
         let resolved = Merger::resolve(&tree, known_parents)?;
         Ok(resolved)
-    }
-
-    /// Partition schemas for resolution based on staleness.
-    ///
-    /// Phase 5.2: Separates schemas into three categories:
-    /// - **`needs_expansion`**: Full resolution via `RefExpander` (file changed
-    ///   or new)
-    /// - **`cached_expansion`**: Skip `RefExpander`, use cached properties
-    ///   directly
-    /// - **`fresh_ids`**: Fully cached, no processing needed
-    ///
-    /// This enables optimal processing:
-    /// - When schema file is Fresh AND has cached expansion AND bank is stale,
-    ///   we can skip `RefExpander` entirely (just need to re-apply inheritance)
-    /// - When schema file is Fresh but has no cached expansion, we must run
-    ///   `RefExpander`
-    #[expect(clippy::pattern_type_mismatch, reason = "Matching borrowed enum")]
-    fn partition_for_resolution(
-        &self,
-        results: &IngestorResults,
-    ) -> Result<PartitionedSchemas, SchemaLoaderError> {
-        let mut partitioned = PartitionedSchemas::default();
-
-        // PropertyBank staleness affects whether we can reuse cached schemas
-        let bank_is_fresh = results.property_bank.is_fresh();
-
-        // Iterate over hash map values in arbitrary order - order doesn't
-        // matter for partition logic
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Order doesn't affect correctness - we're just \
-                      partitioning by staleness"
-        )]
-        for result in results.schemas.values() {
-            match result {
-                SchemaResult::Fresh {
-                    id,
-                    expanded,
-                } if bank_is_fresh => {
-                    // PropertyBank fresh + Schema fresh = fully reusable
-                    partitioned.fresh_ids.push(*id);
-                }
-                SchemaResult::Fresh {
-                    id,
-                    expanded: Some(cached),
-                } => {
-                    // Schema fresh + Bank stale + Has cached expansion
-                    // → Skip RefExpander, use cached properties directly
-                    partitioned.cached_expansion.push((*id, cached.clone()));
-                }
-                SchemaResult::Fresh {
-                    id,
-                    expanded: None,
-                } => {
-                    // Schema fresh + Bank stale + No cached expansion
-                    // → Need to run RefExpander
-                    if let Some(raw) = self.load_raw_from_view(*id)? {
-                        partitioned.needs_expansion.push((*id, raw));
-                    }
-                }
-                SchemaResult::Stale {
-                    id,
-                    raw,
-                    ..
-                }
-                | SchemaResult::New {
-                    id,
-                    raw,
-                } => {
-                    // File changed or new - needs full resolution
-                    partitioned.needs_expansion.push((*id, raw.clone()));
-                }
-            }
-        }
-
-        Ok(partitioned)
     }
 
     /// Load raw schema from database view.
