@@ -179,19 +179,29 @@ However, we should ADD unit test coverage in `ingestor.rs` and `loader.rs` for:
 
 ## Test Organization Recommendations
 
-### Keep Current Structure:
+### Proposed Structure (Better Cohesion):
 ```
 lithos-core/tests/
 ├── common/mod.rs          # Shared test utilities (TestDb, builders)
 ├── schema_storage.rs      # Repository + Database integration (4 tests)
-├── schema_resolution.rs   # Loader pipeline integration (7 tests)
-└── (new) schema_incremental.rs  # Incremental loading integration (3 tests)
+└── schema_loader.rs       # Loader pipeline integration (10 tests)
+    ├── initial_loading    # 4 tests (first load scenarios)
+    ├── inheritance        # 1 test (extends/excludes)
+    ├── incremental_loading # 3 tests (staleness + caching)
+    └── error_handling     # 2 tests (error detection)
 ```
 
 ### Rationale:
 - **schema_storage.rs**: Low-level persistence (Repository trait + redb)
-- **schema_resolution.rs**: High-level resolution (Loader + full pipeline)
-- **schema_incremental.rs**: Incremental scenarios (staleness + caching)
+- **schema_loader.rs**: ALL Loader behavior (initial + incremental + errors)
+  - Better cohesion: resolution and incremental loading are the same concern
+  - Organized by behavior within the file (submodules)
+  - Easier to find all Loader tests in one place
+
+**Why consolidate?** Resolution and incremental loading both test the Loader's
+ability to load schemas from files. Splitting them creates artificial boundaries.
+
+See `INTEGRATION_TEST_ORGANIZATION_PROPOSAL.md` for detailed migration plan.
 
 ---
 
