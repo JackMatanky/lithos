@@ -1237,8 +1237,8 @@ impl InlineFieldState {
                     reason: "failed validation",
                 })
             })?;
-            let field_value =
-                FieldValue::try_from_json(&json_value).map_err(|_error| {
+            let field_value = serde_json::from_value::<FieldValue>(json_value)
+                .map_err(|_error| {
                     NoteError::Task(TaskError::InvalidMetadataField {
                         keyword: keyword.into(),
                         reason: "failed conversion",

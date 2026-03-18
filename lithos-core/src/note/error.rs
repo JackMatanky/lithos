@@ -1,10 +1,5 @@
 //! Error types for note domain and persistence operations.
 
-//! Note error types.
-//!
-//! This module defines note-specific errors using thiserror for
-//! structured error handling.
-
 use super::{aggregate::NoteId, paths::NotePath, value::FieldValueType};
 
 /// Note-related errors.
@@ -268,11 +263,11 @@ pub enum NoteQueryError {
     Storage(#[from] crate::db::DbError),
 }
 
-/// Errors surfaced by strict frontmatter accessors.
+/// Errors surfaced by strict metadata accessors (frontmatter and tasks).
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FrontmatterError {
-    /// A required key was missing from the frontmatter map.
+    /// A required key was missing from the map.
     #[error("missing frontmatter key: {key}")]
     Missing {
         /// The missing key.
@@ -321,6 +316,101 @@ pub enum FrontmatterError {
     },
 }
 
+impl FrontmatterError {
+    /// Attaches key context to an error if it doesn't already have one.
+    #[inline]
+    #[must_use]
+    pub fn with_key(mut self, field_key: &str) -> Self {
+        match self {
+            Self::Missing {
+                ref mut key,
+            }
+            | Self::TypeMismatch {
+                ref mut key,
+                ..
+            }
+            | Self::ArrayElementTypeMismatch {
+                ref mut key,
+                ..
+            }
+            | Self::InvalidDateTimestamp {
+                ref mut key,
+                ..
+            } => {
+                if key.is_empty() {
+                    *key = field_key.into();
+                }
+            }
+        }
+        self
+    }
+}
+
+/// Unified error type for [`super::value::FieldValue`] operations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FieldValueError {
+    /// Type mismatch between expected and actual value.
+    #[error("type mismatch: expected {expected}, found {actual}")]
+    TypeMismatch {
+        /// Expected value type.
+        expected: FieldValueType,
+        /// Actual value type.
+        actual: FieldValueType,
+    },
+    /// Invalid date timestamp.
+    #[error("invalid date timestamp: {timestamp}")]
+    InvalidDateTimestamp {
+        /// The problematic timestamp.
+        timestamp: i64,
+    },
+    /// Array element type mismatch.
+    #[error(
+        "array element type mismatch at index {index}: expected {expected}, \
+         found {actual}"
+    )]
+    ArrayElementTypeMismatch {
+        /// Index of the problematic element.
+        index: usize,
+        /// Expected element type.
+        expected: FieldValueType,
+        /// Actual element type.
+        actual: FieldValueType,
+    },
+}
+
+impl From<FieldValueError> for FrontmatterError {
+    #[inline]
+    fn from(error: FieldValueError) -> Self {
+        match error {
+            FieldValueError::TypeMismatch {
+                expected,
+                actual,
+            } => Self::TypeMismatch {
+                key: "".into(),
+                expected,
+                actual,
+            },
+            FieldValueError::InvalidDateTimestamp {
+                timestamp,
+            } => Self::InvalidDateTimestamp {
+                key: "".into(),
+                timestamp,
+            },
+            FieldValueError::ArrayElementTypeMismatch {
+                index,
+                expected,
+                actual,
+            } => Self::ArrayElementTypeMismatch {
+                key: "".into(),
+                index,
+                expected,
+                actual,
+            },
+        }
+    }
+}
+
 /// Errors surfaced when parsing frontmatter blocks.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -346,18 +436,6 @@ pub enum FrontmatterParseError {
     /// YAML map contained a non-string key.
     #[error("non-string key")]
     NonStringKey,
-    /// YAML value could not be converted.
-    #[error("{reason}")]
-    InvalidYamlValue {
-        /// Conversion error details.
-        reason: &'static str,
-    },
-    /// TOML value could not be converted.
-    #[error("{reason}")]
-    InvalidTomlValue {
-        /// Conversion error details.
-        reason: &'static str,
-    },
 }
 
 #[cfg(test)]

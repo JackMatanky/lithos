@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use super::{
     error::{FrontmatterError, FrontmatterParseError},
-    value::FieldValue,
+    value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
 };
 use crate::{
     config::frontmatter::FrontmatterKey,
@@ -67,6 +67,8 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
+    /// Parses a frontmatter block into structured fields.
+    ///
     /// # Errors
     ///
     /// Returns [`FrontmatterParseError`] if the content cannot be parsed or
@@ -153,11 +155,6 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
     /// to `T`.
     #[inline]
-    #[expect(
-        private_bounds,
-        reason = "TryFromFieldValue is an internal adapter trait that should \
-                  not be public"
-    )]
     pub fn try_get<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
@@ -167,7 +164,7 @@ impl Frontmatter {
         };
         T::try_from_value(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key.as_str(), err))
+            .map_err(|err| FrontmatterError::from(err).with_key(key.as_str()))
     }
 
     /// Strictly extracts a required typed value from frontmatter.
@@ -176,11 +173,6 @@ impl Frontmatter {
     ///
     /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
-    #[expect(
-        private_bounds,
-        reason = "TryFromFieldValue is an internal adapter trait that should \
-                  not be public"
-    )]
     pub fn try_get_required<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
@@ -216,11 +208,6 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
     /// to `T`.
     #[inline]
-    #[expect(
-        private_bounds,
-        reason = "TryFromFieldValueRef is an internal adapter trait that \
-                  should not be public"
-    )]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &FrontmatterKey,
@@ -233,7 +220,7 @@ impl Frontmatter {
         };
         T::try_from_value_ref(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key.as_str(), err))
+            .map_err(|err| FrontmatterError::from(err).with_key(key.as_str()))
     }
 
     /// Strictly extracts a required *borrowed* typed value from frontmatter.
@@ -242,11 +229,6 @@ impl Frontmatter {
     ///
     /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
-    #[expect(
-        private_bounds,
-        reason = "TryFromFieldValueRef is an internal adapter trait that \
-                  should not be public"
-    )]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &FrontmatterKey,
@@ -302,36 +284,6 @@ impl Frontmatter {
         config: &crate::config::aggregate::Config,
     ) -> Vec<Box<str>> {
         self.aliases(config).map(Into::into).collect()
-    }
-
-    #[inline]
-    fn with_key_context(
-        key: &str,
-        mut err: FrontmatterError,
-    ) -> FrontmatterError {
-        let key_str: Box<str> = key.into();
-        match &mut err {
-            &mut (FrontmatterError::Missing {
-                key: ref mut existing,
-            }
-            | FrontmatterError::TypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::ArrayElementTypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::InvalidDateTimestamp {
-                key: ref mut existing,
-                ..
-            }) => {
-                if existing.is_empty() {
-                    *existing = key_str;
-                }
-            }
-        }
-        err
     }
 
     fn sanitize_yaml_obsidian_links(text: &str) -> String {
@@ -426,122 +378,6 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
     #[inline]
     fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
         Frontmatter::parse(raw.kind(), raw.text())
-    }
-}
-
-/// Adapter trait for frontmatter-specific conversions from [`FieldValue`].
-///
-/// This trait provides frontmatter-specific error handling by converting
-/// generic [`super::value::FieldValueError`] into context-aware
-/// [`FrontmatterError`] with key information.
-///
-/// # Implementation Note
-///
-/// This trait mirrors [`super::value::TryFromFieldValue`] but returns
-/// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
-/// The blanket implementation adapts all types implementing
-/// [`super::value::TryFromFieldValue`].
-pub(super) trait TryFromFieldValue: Sized {
-    /// Attempts to extract a value of type `Self` from a [`FieldValue`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
-}
-
-/// Adapter trait for frontmatter-specific borrowed conversions from
-/// [`FieldValue`].
-///
-/// This trait mirrors [`super::value::TryFromFieldValueRef`] but returns
-/// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
-/// The blanket implementation adapts all types implementing
-/// [`super::value::TryFromFieldValueRef`].
-pub(super) trait TryFromFieldValueRef<'frontmatter>: Sized {
-    /// Attempts to extract a value of type `Self` from a borrowed
-    /// [`FieldValue`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn try_from_value_ref(
-        value: &'frontmatter FieldValue,
-    ) -> Result<Self, FrontmatterError>;
-}
-
-// Blanket implementation that adapts value::TryFromFieldValue to
-// frontmatter::TryFromFieldValue
-impl<T> TryFromFieldValue for T
-where
-    T: super::value::TryFromFieldValue,
-{
-    #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        T::try_from_value(value).map_err(|err| match err {
-            super::value::FieldValueError::TypeMismatch {
-                expected,
-                actual,
-            } => FrontmatterError::TypeMismatch {
-                key: "".into(),
-                expected,
-                actual,
-            },
-            super::value::FieldValueError::InvalidDateTimestamp {
-                timestamp,
-            } => FrontmatterError::InvalidDateTimestamp {
-                key: "".into(),
-                timestamp,
-            },
-            super::value::FieldValueError::ArrayElementTypeMismatch {
-                index,
-                expected,
-                actual,
-            } => FrontmatterError::ArrayElementTypeMismatch {
-                key: "".into(),
-                index,
-                expected,
-                actual,
-            },
-        })
-    }
-}
-
-// Blanket implementation that adapts value::TryFromFieldValueRef to
-// frontmatter::TryFromFieldValueRef
-impl<'frontmatter, T> TryFromFieldValueRef<'frontmatter> for T
-where
-    T: super::value::TryFromFieldValueRef<'frontmatter>,
-{
-    #[inline]
-    fn try_from_value_ref(
-        value: &'frontmatter FieldValue,
-    ) -> Result<Self, FrontmatterError> {
-        T::try_from_value_ref(value).map_err(|err| match err {
-            super::value::FieldValueError::TypeMismatch {
-                expected,
-                actual,
-            } => FrontmatterError::TypeMismatch {
-                key: "".into(),
-                expected,
-                actual,
-            },
-            super::value::FieldValueError::InvalidDateTimestamp {
-                timestamp,
-            } => FrontmatterError::InvalidDateTimestamp {
-                key: "".into(),
-                timestamp,
-            },
-            super::value::FieldValueError::ArrayElementTypeMismatch {
-                index,
-                expected,
-                actual,
-            } => FrontmatterError::ArrayElementTypeMismatch {
-                key: "".into(),
-                index,
-                expected,
-                actual,
-            },
-        })
     }
 }
 
@@ -812,8 +648,6 @@ mod tests {
             reason = "Test code style"
         )]
 
-        use chrono::Utc;
-
         use super::{super::*, TEST_TIMESTAMP, fixtures};
 
         #[test]
@@ -861,7 +695,7 @@ mod tests {
         #[test]
         fn date_coerces_to_datetime() {
             let _value = FieldValue::Date(TEST_TIMESTAMP);
-            use chrono::TimeZone as _;
+            use chrono::{TimeZone as _, Utc};
             let dt = Utc.timestamp_opt(TEST_TIMESTAMP, 0).single();
             assert!(dt.is_some(), "Date should coerce to DateTime");
         }
@@ -941,7 +775,7 @@ mod tests {
         #[test]
         fn date_field_returns_datetime_with_expected_year() {
             let timestamp = fixtures::sample_datetime().timestamp();
-            use chrono::TimeZone as _;
+            use chrono::{TimeZone as _, Utc};
             let _val = FieldValue::Date(timestamp);
             let dt = Utc.timestamp_opt(timestamp, 0).single();
             assert!(dt.is_some(), "Date field should convert to DateTime");
