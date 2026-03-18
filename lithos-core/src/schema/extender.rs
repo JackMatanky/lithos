@@ -23,7 +23,7 @@
 //! once without back-tracking.
 //!
 //! [`RefExpander`]: super::expander::RefExpander
-//! [`Resolver`]: super::resolver::Resolver
+//! [`Resolver`]: super::merger::Merger
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -157,7 +157,7 @@ impl SchemaTree {
     ///
     /// Suitable for a single linear walk by [`Resolver`].
     ///
-    /// [`Resolver`]: super::resolver::Resolver
+    /// [`Resolver`]: super::merger::Merger
     #[inline]
     #[must_use]
     /// **Internal API**: Public for benchmarking only.

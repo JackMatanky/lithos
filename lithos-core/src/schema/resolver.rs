@@ -1,310 +1,265 @@
-//! `Resolver` — assembles fully-resolved [`Schema`] entities from a
-//! [`SchemaTree`].
+//! Property-level conflict resolution and override logic.
 //!
-//! # Pipeline position
+//! Handles resolving conflicts between property definitions and applying
+//! overrides while maintaining type safety.
 //!
-//! ```text
-//! Extender → SchemaTree
-//! Resolver        ← here
-//! → Vec<Schema>
+//! ## Use Cases
+//!
+//! ### Expander: PropertyBank Reference Overrides
+//! ```ignore
+//! // Schema file has: { "$ref": "property_bank#/title", "required": false }
+//! // Bank has:        Property { name: "title", required: true, ... }
+//! // Result:          Property { name: "title", required: false, ... }
 //! ```
 //!
-//! # Design
-//!
-//! `Resolver` is a stateless unit struct. Its single public method,
-//! [`Resolver::resolve`], walks the [`SchemaTree`] in topological order
-//! (parents before children) and merges properties using a two-pointer sorted
-//! merge.
-//!
-//! `merge_properties` is a **private** method to prevent callers from
-//! bypassing the correct pipeline.
-
-use std::collections::HashMap;
+//! ### Merger: Schema Inheritance Overrides
+//! ```ignore
+//! // Parent schema:  Property { name: "title", required: true, ... }
+//! // Child schema:   Property { name: "title", required: false, ... }
+//! // Result:         Property { name: "title", required: false, ... }
+//! ```
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
     error::SchemaError,
-    extender::SchemaTree,
-    property::{Property, PropertyName},
+    property::{Multiplicity, Optionality, Property},
+    property_spec::PropertySpec,
+    raw::property::RawPropertyRef,
 };
 
-/// Maximum allowed inheritance depth to prevent infinite loops.
-/// If a schema chain exceeds this depth, resolution fails with
-/// [`SchemaError::InheritanceDepthExceeded`].
-const INHERITANCE_MAX_DEPTH: usize = 10;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Resolver
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
+/// Resolves property-level conflicts and applies overrides.
 ///
-/// Stateless: all resolution state is threaded through the arguments.
-///
-/// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `Loader` instead.
-#[doc(hidden)]
+/// Stateless utility for property override logic, ensuring type safety
+/// and validation when combining property definitions from different sources.
 #[non_exhaustive]
 pub struct Resolver;
 
 impl Resolver {
-    /// Resolve all schemas in `tree`, returning them as [`Schema`]
-    /// values.
+    /// Resolve optionality override.
     ///
-    /// Walks `tree` in topological order (parents before children).  For each
-    /// node:
+    /// # Rules
+    /// - If override is `Some`, use it
+    /// - Otherwise, use base optionality
     ///
-    /// 1. Looks up the parent's resolved properties from `resolved_cache` (an
-    ///    in-batch parent resolved earlier in the walk), from `known_parents`
-    ///    (a DB-fresh parent), or uses an empty slice for root schemas.
-    /// 2. Calls private `merge_properties` to produce the final sorted property
-    ///    list.
-    /// 3. Constructs a [`Schema`] directly.
-    /// 4. Caches the result for use by downstream children.
+    /// # Examples
+    /// ```ignore
+    /// // Override required → optional
+    /// let base = Optionality::Required;
+    /// let override_val = Some(false);
+    /// let result = Resolver::resolve_optionality(base, override_val);
+    /// assert_eq!(result, Optionality::Optional);
+    ///
+    /// // No override → keep base
+    /// let result = Resolver::resolve_optionality(base, None);
+    /// assert_eq!(result, Optionality::Required);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn resolve_optionality(
+        base: Optionality,
+        override_required: Option<bool>,
+    ) -> Optionality {
+        override_required.map_or(base, Optionality::from)
+    }
+
+    /// Resolve multiplicity override.
+    ///
+    /// # Rules
+    /// - If override is `Some`, use it
+    /// - Otherwise, use base multiplicity
+    #[inline]
+    #[must_use]
+    pub fn resolve_multiplicity(
+        base: Multiplicity,
+        override_multi: Option<bool>,
+    ) -> Multiplicity {
+        override_multi.map_or(base, Multiplicity::from)
+    }
+
+    /// Resolve property spec overrides (type-specific constraints).
+    ///
+    /// # Rules
+    /// - Cannot change property type (bool → number rejected)
+    /// - Can override type-specific constraints (min/max, pattern, etc.)
     ///
     /// # Errors
+    /// Returns `SchemaError::PropertyTypeMismatch` if override attempts
+    /// to change the property type.
     ///
-    /// Returns [`SchemaError`] if schema construction fails (e.g. name
-    /// validation error in a node name that somehow passed earlier
-    /// validation — should be unreachable in practice).
+    /// # Examples
+    /// ```ignore
+    /// // Valid: Override number constraints
+    /// let base = PropertySpec::Number(NumberSpec { min: None, max: None });
+    /// let overrides = RawPropertyRef { number: RawNumberSpec { min: Some(0.0f64), .. }, .. };
+    /// let result = Resolver::resolve_spec(&base, &overrides)?;
+    /// // Result: NumberSpec { min: Some(0.0f64), max: None }
+    ///
+    /// // Invalid: Attempt to change type
+    /// let base = PropertySpec::Bool(BoolSpec);
+    /// let overrides = RawPropertyRef { number: RawNumberSpec { min: Some(0.0f64), .. }, .. };
+    /// let result = Resolver::resolve_spec(&base, &overrides);
+    /// // Result: Err(PropertyTypeMismatch { expected: "bool", actual: "number" })
+    /// ```
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &PropertySpec with value patterns is idiomatic"
+    )]
     #[inline]
-    /// **Internal API**: Public for benchmarking only.
-    #[doc(hidden)]
-    pub fn resolve(
-        tree: &SchemaTree,
-        known_parents: &HashMap<SchemaId, Schema>,
-    ) -> Result<Vec<Schema>, SchemaError> {
-        let order = tree.nodes();
-        let mut resolved_cache: HashMap<SchemaId, Schema> =
-            HashMap::with_capacity(order.len());
-        let mut results: Vec<Schema> = Vec::with_capacity(order.len());
+    pub fn resolve_spec(
+        base: &PropertySpec,
+        ref_entry: &RawPropertyRef,
+    ) -> Result<PropertySpec, SchemaError> {
+        // Detect which type-specific overrides are present
+        let has_number = ref_entry.number.min.is_some()
+            || ref_entry.number.max.is_some()
+            || ref_entry.number.step.is_some();
+        let has_string = ref_entry.string.options.is_some()
+            || ref_entry.string.pattern.is_some();
+        let has_date = ref_entry.date.format.is_some();
+        let has_file = ref_entry.file.directory.is_some()
+            || ref_entry.file.file_class.is_some();
 
-        for &id in order {
-            let node = tree.get(id).ok_or_else(|| {
-                SchemaError::NotFound(format!(
-                    "SchemaTree node missing for id {id}"
+        match base {
+            PropertySpec::Bool(_) => {
+                if has_number {
+                    return Err(type_mismatch("bool", "number"));
+                }
+                if has_string {
+                    return Err(type_mismatch("bool", "string"));
+                }
+                if has_date {
+                    return Err(type_mismatch("bool", "date"));
+                }
+                if has_file {
+                    return Err(type_mismatch("bool", "file"));
+                }
+                Ok(base.clone())
+            }
+
+            PropertySpec::Number(spec) => {
+                if has_string {
+                    return Err(type_mismatch("number", "string"));
+                }
+                if has_date {
+                    return Err(type_mismatch("number", "date"));
+                }
+                if has_file {
+                    return Err(type_mismatch("number", "file"));
+                }
+                Ok(PropertySpec::Number(
+                    spec.clone().apply_overrides(&ref_entry.number)?,
                 ))
-            })?;
-
-            // E-03: Use depth computed by Extender
-            // The Extender already computed depth correctly via BFS, accounting
-            // for DB-fresh parents. We convert NodeDepth -> usize
-            // for the limit check.
-            let depth: usize = node.depth.into();
-
-            // Check against maximum allowed depth
-            if depth > INHERITANCE_MAX_DEPTH {
-                return Err(SchemaError::InheritanceDepthExceeded(depth));
             }
 
-            // Obtain parent's resolved properties.
-            let parent_props: &[Property] =
-                if let Some(parent_id) = node.parent_id {
-                    resolved_cache
-                        .get(&parent_id)
-                        .or_else(|| known_parents.get(&parent_id))
-                        .map_or_else(
-                            || {
-                                // This should not happen if Extender worked
-                                // correctly - all parents should be in
-                                // resolved_cache or known_parents
-                                tracing::warn!(
-                                    schema_id = %id,
-                                    parent_id = %parent_id,
-                                    "Parent schema not found in \
-                                     resolved_cache or known_parents, using \
-                                     empty properties. This may indicate a bug \
-                                     in Extender or missing parent in database."
-                                );
-                                &[]
-                            },
-                            super::aggregate::Schema::properties,
-                        )
-                } else {
-                    &[]
-                };
-
-            let merged = Self::merge_properties(
-                parent_props,
-                &node.properties,
-                &node.excludes,
-            );
-
-            // Validate name (should always succeed since it passed earlier
-            // validation)
-            let schema_name = SchemaName::try_new(&node.name)?;
-
-            // Build Schema directly
-            let schema = Schema::new(
-                id,
-                schema_name,
-                node.parent_id,
-                node.children.clone(),
-                merged,
-            );
-
-            resolved_cache.insert(id, schema.clone());
-            results.push(schema);
-        }
-
-        Ok(results)
-    }
-
-    /// Convert a `StoredProperty` to a `Property`.
-    ///
-    /// Used when retrieving parent properties from the cache.
-    /// Merge parent and own properties into a single sorted vector, applying
-    /// child overrides and excludes.
-    ///
-    /// Both `parent` and `own` must be sorted by property name (guaranteed by
-    /// [`RefExpander`]).  The merge is performed with a two-pointer walk:
-    ///
-    /// - Same-named entries: child's version wins (override).
-    /// - Parent entries whose name is in `excludes`: dropped.
-    /// - Remaining parent + own entries: interleaved in name order.
-    ///
-    /// [`RefExpander`]: super::expander::RefExpander
-    fn merge_properties(
-        parent: &[Property],
-        own: &[Property],
-        excludes: &[Box<str>],
-    ) -> Vec<Property> {
-        let capacity = parent.len().saturating_add(own.len());
-        let mut result = Vec::with_capacity(capacity);
-        let mut p_iter = parent.iter().peekable();
-        let mut c_iter = own.iter().peekable();
-
-        loop {
-            use std::cmp::Ordering;
-            match (p_iter.peek(), c_iter.peek()) {
-                (Some(&p), Some(&c)) => {
-                    match p.name().as_str().cmp(c.name().as_str()) {
-                        Ordering::Less => {
-                            Self::push_unless_excluded(
-                                &mut result,
-                                p,
-                                excludes,
-                            );
-                            p_iter.next();
-                        }
-                        Ordering::Greater => {
-                            result.push(c.clone());
-                            c_iter.next();
-                        }
-                        Ordering::Equal => {
-                            // Child overrides parent
-                            result.push(c.clone());
-                            p_iter.next();
-                            c_iter.next();
-                        }
-                    }
+            PropertySpec::String(spec) => {
+                if has_number {
+                    return Err(type_mismatch("string", "number"));
                 }
-                (Some(&p), None) => {
-                    Self::push_unless_excluded(&mut result, p, excludes);
-                    p_iter.next();
+                if has_date {
+                    return Err(type_mismatch("string", "date"));
                 }
-                (None, Some(&c)) => {
-                    result.push(c.clone());
-                    c_iter.next();
+                if has_file {
+                    return Err(type_mismatch("string", "file"));
                 }
-                (None, None) => break,
+                Ok(PropertySpec::String(
+                    spec.clone().apply_overrides(&ref_entry.string)?,
+                ))
+            }
+
+            PropertySpec::Date(spec) => {
+                if has_number {
+                    return Err(type_mismatch("date", "number"));
+                }
+                if has_string {
+                    return Err(type_mismatch("date", "string"));
+                }
+                if has_file {
+                    return Err(type_mismatch("date", "file"));
+                }
+                Ok(PropertySpec::Date(
+                    spec.clone().apply_overrides(&ref_entry.date)?,
+                ))
+            }
+
+            PropertySpec::File(spec) => {
+                if has_number {
+                    return Err(type_mismatch("file", "number"));
+                }
+                if has_string {
+                    return Err(type_mismatch("file", "string"));
+                }
+                if has_date {
+                    return Err(type_mismatch("file", "date"));
+                }
+                Ok(PropertySpec::File(
+                    spec.clone().apply_overrides(&ref_entry.file)?,
+                ))
             }
         }
-
-        result
     }
 
-    #[inline]
-    fn push_unless_excluded(
-        result: &mut Vec<Property>,
-        prop: &Property,
-        excludes: &[Box<str>],
-    ) {
-        if !Self::is_excluded(prop.name(), excludes) {
-            result.push(prop.clone());
-        }
-    }
-
-    #[inline]
-    fn is_excluded(name: &PropertyName, excludes: &[Box<str>]) -> bool {
-        excludes.iter().any(|e| e.as_ref() == name.as_str())
-    }
-
-    /// Incrementally resolve affected properties in a schema when PropertyBank
-    /// changes.
+    /// Apply all overrides from a property bank reference.
     ///
-    /// This is a performance optimization for the case where only PropertyBank
-    /// properties have changed, not the schema file itself. Instead of
-    /// re-resolving the entire schema from scratch, this method updates only
-    /// the properties that reference changed bank properties.
-    ///
-    /// # Arguments
-    ///
-    /// * `schema` - The existing resolved schema to update
-    /// * `affected_properties` - Names of properties in this schema that
-    ///   reference changed bank properties
-    /// * `bank` - The updated PropertyBank with new property definitions
+    /// Used by Expander when resolving `$ref` entries.
     ///
     /// # Errors
-    ///
-    /// Returns [`SchemaError`] if any property lookup fails or if the property
-    /// is not found in the bank (indicates database inconsistency).
-    ///
-    /// **Internal API**: Public for benchmarking only.
-    #[doc(hidden)]
+    /// Returns error if type mismatch occurs during spec override.
     #[inline]
-    pub fn resolve_affected_properties(
-        schema: &Schema,
-        affected_properties: &[PropertyName],
-        bank: &super::bank::PropertyBank,
-    ) -> Result<Schema, SchemaError> {
-        if affected_properties.is_empty() {
-            return Ok(schema.clone());
-        }
+    pub fn resolve_from_bank_ref(
+        bank_property: &Property,
+        ref_entry: &RawPropertyRef,
+    ) -> Result<Property, SchemaError> {
+        let optionality = Self::resolve_optionality(
+            bank_property.optionality(),
+            ref_entry.required,
+        );
+        let multiplicity = Self::resolve_multiplicity(
+            bank_property.multiplicity(),
+            ref_entry.multi,
+        );
+        let spec = Self::resolve_spec(bank_property.spec(), ref_entry)?;
 
-        // Build a set for O(1) lookup
-        let affected_set: std::collections::HashSet<&PropertyName> =
-            affected_properties.iter().collect();
-
-        // Update affected properties with new definitions from bank
-        let updated_properties: Result<Vec<Property>, SchemaError> = schema
-            .properties()
-            .iter()
-            .map(|prop| {
-                // If this property is affected, look up new definition from
-                // bank
-                if affected_set.contains(prop.name()) {
-                    let bank_prop = bank.get(prop.name()).ok_or_else(|| {
-                        SchemaError::PropertyRefNotFound(format!(
-                            "property_bank#/{}",
-                            prop.name()
-                        ))
-                    })?;
-
-                    // Update the spec from the bank, keep other fields
-                    // (required, multi) Properties in schemas can override
-                    // optionality/multiplicity
-                    Ok(Property::new(
-                        bank_prop.id(),
-                        prop.name().clone(),
-                        prop.optionality(),
-                        prop.multiplicity(),
-                        bank_prop.spec().clone(),
-                    ))
-                } else {
-                    // Property not affected, keep as-is
-                    Ok(prop.clone())
-                }
-            })
-            .collect();
-
-        Ok(Schema::new(
-            *schema.id(),
-            schema.name().clone(),
-            schema.parent_id().copied(),
-            schema.children().to_vec(),
-            updated_properties?,
+        Ok(Property::new(
+            bank_property.id(),
+            bank_property.name().clone(),
+            optionality,
+            multiplicity,
+            spec,
         ))
+    }
+
+    /// Apply child property override to parent property.
+    ///
+    /// Used by Merger during schema inheritance. In schema inheritance,
+    /// child property completely replaces parent property (no field merging).
+    ///
+    /// # Rules
+    /// - Child property wins entirely
+    /// - Child can change optionality, multiplicity, spec, and type
+    /// - Child's `PropertyId` is used (new property instance)
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Parent: title (required, single, String[max=100])
+    /// // Child:  title (optional, multi, String[max=200])
+    /// // Result: title (optional, multi, String[max=200]) - child wins completely
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn resolve_child_override(
+        _parent: &Property,
+        child: &Property,
+    ) -> Property {
+        // In schema inheritance, child completely replaces parent
+        // No merging of fields - child wins entirely
+        child.clone()
+    }
+}
+
+#[inline]
+fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
+    SchemaError::PropertyTypeMismatch {
+        expected: expected.into(),
+        actual: actual.into(),
     }
 }
 
@@ -315,583 +270,399 @@ impl Resolver {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Test module groups fixtures before sub-modules for readability"
+    reason = "Test module groups fixtures before test sub-modules for \
+              readability"
 )]
 mod tests {
-    use std::collections::HashMap;
-
-    use uuid::Uuid;
-
     use super::*;
     use crate::schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
-        error::SchemaError,
-        expander::RefExpandedSchema,
-        extender::Extender,
-        property::{
-            Multiplicity, Optionality, Property, PropertyId, PropertyName,
+        property::{Multiplicity, Optionality, PropertyId, PropertyName},
+        property_spec::{BoolSpec, NumberSpec, PropertySpec, StringSpec},
+        raw::{
+            property::RawPropertyRef,
+            property_spec::{
+                RawDateSpec, RawFileSpec, RawNumberSpec, RawOptions,
+                RawStringSpec,
+            },
         },
-        property_spec::{BoolSpec, PropertySpec},
     };
+
+    // ── Fixtures ────────────────────────────────────────────────────────────
 
     mod fixtures {
         use super::*;
 
-        pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Ok(Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new(name)?,
+        pub fn bool_property(name: &str) -> Property {
+            Property::new(
+                PropertyId::new(),
+                PropertyName::try_new(name).unwrap(),
                 Optionality::Required,
                 Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            ))
+                PropertySpec::Bool(BoolSpec),
+            )
         }
 
-        pub fn simple_expanded(
-            id: SchemaId,
+        pub fn number_property(
             name: &str,
-            extends: Option<&str>,
-            props: Vec<Property>,
-        ) -> (SchemaId, RefExpandedSchema) {
-            (id, RefExpandedSchema {
-                name: name.into(),
-                extends: extends.map(Into::into),
-                excludes: Vec::new(),
-                properties: props,
-            })
+            min: Option<f64>,
+            max: Option<f64>,
+        ) -> Property {
+            Property::new(
+                PropertyId::new(),
+                PropertyName::try_new(name).unwrap(),
+                Optionality::Required,
+                Multiplicity::Single,
+                PropertySpec::Number(
+                    NumberSpec::try_new(min, max, None).unwrap(),
+                ),
+            )
         }
 
-        pub fn expanded_with_excludes(
-            id: SchemaId,
-            name: &str,
-            extends: Option<&str>,
-            excludes: Vec<Box<str>>,
-        ) -> (SchemaId, RefExpandedSchema) {
-            (id, RefExpandedSchema {
-                name: name.into(),
-                extends: extends.map(Into::into),
-                excludes,
-                properties: Vec::new(),
-            })
+        pub fn ref_entry(ref_path: &str) -> RawPropertyRef {
+            RawPropertyRef {
+                ref_path: ref_path.into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            }
+        }
+
+        pub fn ref_with_overrides(
+            ref_path: &str,
+            required: Option<bool>,
+            multi: Option<bool>,
+        ) -> RawPropertyRef {
+            RawPropertyRef {
+                ref_path: ref_path.into(),
+                required,
+                multi,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            }
         }
     }
 
-    const PARENT_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0D01);
-    const CHILD_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0D02);
+    // ── Optionality Resolution ──────────────────────────────────────────────
 
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test functions use assert! macros; standard test practice"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Test indexing into results whose length is asserted; bounds \
-                  guaranteed by test setup"
-    )]
-    mod resolve {
+    mod resolve_optionality {
         use super::*;
 
         #[test]
-        fn empty_tree_returns_empty() -> Result<(), SchemaError> {
-            let tree = Extender::build(vec![], &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-            assert!(result.is_empty());
-            Ok(())
-        }
-
-        #[test]
-        fn single_root_schema_no_parent() -> Result<(), SchemaError> {
-            let id = SchemaId::from_uuid(PARENT_ID);
-            let prop = fixtures::bool_property("flag")?;
-            let expanded =
-                vec![fixtures::simple_expanded(id, "root", None, vec![
-                    prop.clone(),
-                ])];
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            assert_eq!(result.len(), 1);
-            let stored = &result[0];
-            assert_eq!(stored.name().as_ref(), "root");
-            assert_eq!(stored.properties().len(), 1);
-            Ok(())
-        }
-
-        #[test]
-        fn child_inherits_parent_properties() -> Result<(), SchemaError> {
-            let parent_id = SchemaId::from_uuid(PARENT_ID);
-            let child_id = SchemaId::from_uuid(CHILD_ID);
-
-            let parent_prop = fixtures::bool_property("from-parent")?;
-            let child_prop = fixtures::bool_property("from-child")?;
-
-            let expanded = vec![
-                fixtures::simple_expanded(parent_id, "parent", None, vec![
-                    parent_prop,
-                ]),
-                fixtures::simple_expanded(
-                    child_id,
-                    "child",
-                    Some("parent"),
-                    vec![child_prop],
-                ),
-            ];
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let child = result
-                .iter()
-                .find(|s| s.name().as_ref() == "child")
-                .expect("child schema in result");
-
-            let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_ref()).collect();
-            assert!(
-                prop_names.contains(&"from-parent"),
-                "Child should inherit parent's property; got: {prop_names:?}"
-            );
-            assert!(
-                prop_names.contains(&"from-child"),
-                "Child should have own property; got: {prop_names:?}"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn child_override_beats_parent() -> Result<(), SchemaError> {
-            let parent_id = SchemaId::from_uuid(PARENT_ID);
-            let child_id = SchemaId::from_uuid(CHILD_ID);
-
-            // Parent has "shared" as Required, child overrides as Optional.
-            let parent_prop = Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new("shared")?,
+        fn uses_override_when_present() {
+            let result = Resolver::resolve_optionality(
                 Optionality::Required,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
+                Some(false),
             );
-            let child_prop = Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new("shared")?,
+            assert_eq!(result, Optionality::Optional);
+        }
+
+        #[test]
+        fn uses_base_when_no_override() {
+            let result =
+                Resolver::resolve_optionality(Optionality::Optional, None);
+            assert_eq!(result, Optionality::Optional);
+        }
+
+        #[test]
+        fn can_make_required_optional() {
+            let result = Resolver::resolve_optionality(
+                Optionality::Required,
+                Some(false),
+            );
+            assert_eq!(result, Optionality::Optional);
+        }
+
+        #[test]
+        fn can_make_optional_required() {
+            let result = Resolver::resolve_optionality(
                 Optionality::Optional,
+                Some(true),
+            );
+            assert_eq!(result, Optionality::Required);
+        }
+    }
+
+    // ── Multiplicity Resolution ─────────────────────────────────────────────
+
+    mod resolve_multiplicity {
+        use super::*;
+
+        #[test]
+        fn uses_override_when_present() {
+            let result = Resolver::resolve_multiplicity(
                 Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
+                Some(true),
             );
-
-            let expanded = vec![
-                fixtures::simple_expanded(parent_id, "parent", None, vec![
-                    parent_prop,
-                ]),
-                fixtures::simple_expanded(
-                    child_id,
-                    "child",
-                    Some("parent"),
-                    vec![child_prop],
-                ),
-            ];
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let child = result
-                .iter()
-                .find(|s| s.name().as_ref() == "child")
-                .expect("child in result");
-            let shared = child
-                .properties()
-                .iter()
-                .find(|p| p.name().as_ref() == "shared")
-                .expect("shared property");
-            assert_eq!(
-                shared.optionality(),
-                Optionality::Optional,
-                "Child should override parent's optionality (should be \
-                 optional)"
-            );
-            Ok(())
+            assert_eq!(result, Multiplicity::Many);
         }
 
         #[test]
-        fn child_excludes_parent_property() -> Result<(), SchemaError> {
-            let parent_id = SchemaId::from_uuid(PARENT_ID);
-            let child_id = SchemaId::from_uuid(CHILD_ID);
-
-            let parent_prop = fixtures::bool_property("excluded")?;
-
-            let expanded = vec![
-                fixtures::simple_expanded(parent_id, "parent", None, vec![
-                    parent_prop,
-                ]),
-                fixtures::expanded_with_excludes(
-                    child_id,
-                    "child",
-                    Some("parent"),
-                    vec!["excluded".into()],
-                ),
-            ];
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let child = result
-                .iter()
-                .find(|s| s.name().as_ref() == "child")
-                .expect("child in result");
-            let has_exclude = child
-                .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "excluded");
-            assert!(
-                !has_exclude,
-                "Excluded property should be absent from child"
-            );
-            Ok(())
+        fn uses_base_when_no_override() {
+            let result =
+                Resolver::resolve_multiplicity(Multiplicity::Many, None);
+            assert_eq!(result, Multiplicity::Many);
         }
 
         #[test]
-        fn db_fresh_parent_properties_inherited() -> Result<(), SchemaError> {
-            let parent_id = SchemaId::from_uuid(PARENT_ID);
-            let child_id = SchemaId::from_uuid(CHILD_ID);
-
-            let parent_prop = fixtures::bool_property("db-prop")?;
-            let parent_schema = Schema::new(
-                parent_id,
-                SchemaName::try_new("parent")?,
-                None,
-                Vec::new(),
-                vec![parent_prop.clone()],
+        fn can_make_single_many() {
+            let result = Resolver::resolve_multiplicity(
+                Multiplicity::Single,
+                Some(true),
             );
-            let mut known_parents = HashMap::new();
-            known_parents.insert(parent_id, parent_schema);
-
-            let expanded = vec![fixtures::simple_expanded(
-                child_id,
-                "child",
-                Some("parent"),
-                vec![],
-            )];
-            let tree = Extender::build(expanded, &known_parents)?;
-            let result = Resolver::resolve(&tree, &known_parents)?;
-
-            let child = result
-                .iter()
-                .find(|s| s.name().as_ref() == "child")
-                .expect("child in result");
-            let has_db_prop = child
-                .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "db-prop");
-            assert!(
-                has_db_prop,
-                "Child should inherit DB-fresh parent property"
-            );
-            Ok(())
+            assert_eq!(result, Multiplicity::Many);
         }
 
-        // E-03: Inheritance depth limit tests
-
-        /// Test that `INHERITANCE_MAX_DEPTH` constant has expected value.
         #[test]
-        fn inheritance_max_depth_constant_value() {
-            const DEPTH: usize = super::INHERITANCE_MAX_DEPTH;
-            assert_eq!(DEPTH, 10, "INHERITANCE_MAX_DEPTH should be 10");
+        fn can_make_many_single() {
+            let result =
+                Resolver::resolve_multiplicity(Multiplicity::Many, Some(false));
+            assert_eq!(result, Multiplicity::Single);
         }
+    }
 
-        /// Test that `InheritanceDepthExceeded` error can be constructed.
+    // ── Spec Resolution (Type Safety) ───────────────────────────────────────
+
+    mod resolve_spec {
+        use super::*;
+
         #[test]
-        fn inheritance_depth_error_constructs() {
-            let error = SchemaError::InheritanceDepthExceeded(101);
-            let error_str = format!("{error}");
-            assert!(
-                error_str.contains("Inheritance depth exceeded"),
-                "Error message should mention depth exceeded"
-            );
-            assert!(
-                error_str.contains("101"),
-                "Error message should include the depth value"
-            );
-        }
-
-        /// GAP-002: Test that inheritance depth > 10 fails.
-        #[test]
-        fn inheritance_depth_limit_exceeded() {
-            use uuid::Uuid;
-
-            use crate::schema::{
-                aggregate::SchemaId, error::SchemaError, extender::Extender,
+        fn bool_rejects_number_override() {
+            let base = PropertySpec::Bool(BoolSpec);
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec {
+                    min: Some(0.0f64),
+                    max: None,
+                    step: None,
+                },
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
             };
 
-            // Create a chain of 11 schemas: root → s1 → s2 → ... → s10
-            // Depth 11 should exceed MAX_DEPTH=10
-            const BASE: u128 = 0x018C_0000_0000_7000_8000_0000_0000_2000;
+            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let err = result.unwrap_err();
+            assert!(matches!(err, SchemaError::PropertyTypeMismatch { .. }));
+        }
 
-            let mut expanded = Vec::new();
-            let ids: Vec<_> = (0..11)
-                .map(|i| SchemaId::from_uuid(Uuid::from_u128(BASE + i)))
-                .collect();
+        #[test]
+        fn bool_rejects_string_override() {
+            let base = PropertySpec::Bool(BoolSpec);
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec {
+                    options: Some(RawOptions::List(vec!["a".into()])),
+                    pattern: None,
+                },
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            };
 
-            // Root (depth 1)
-            expanded.push((ids[0], RefExpandedSchema {
-                name: "root".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: Vec::new(),
-            }));
+            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let _err = result.unwrap_err();
+        }
 
-            // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
-            for (i, &id) in ids.iter().enumerate().skip(1) {
-                expanded.push((id, RefExpandedSchema {
-                    name: format!("s{i}").into(),
-                    extends: Some(if i == 1 {
-                        "root".into()
-                    } else {
-                        format!("s{}", i - 1).into()
-                    }),
-                    excludes: Vec::new(),
-                    properties: Vec::new(),
-                }));
+        #[test]
+        fn number_accepts_number_override() {
+            let base = PropertySpec::Number(NumberSpec::default());
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec {
+                    min: Some(0.0f64),
+                    max: Some(100.0f64),
+                    step: None,
+                },
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            };
+
+            let result = Resolver::resolve_spec(&base, &ref_entry);
+            assert!(result.is_ok());
+            // Just verify it returns a Number spec (internal structure is
+            // private)
+            assert!(matches!(result.unwrap(), PropertySpec::Number(_)));
+        }
+
+        #[test]
+        fn number_rejects_string_override() {
+            let base = PropertySpec::Number(NumberSpec::default());
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec {
+                    options: Some(RawOptions::List(vec!["a".into()])),
+                    pattern: None,
+                },
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            };
+
+            let result = Resolver::resolve_spec(&base, &ref_entry);
+            let _err = result.unwrap_err();
+        }
+
+        #[test]
+        fn string_accepts_string_override() {
+            let base = PropertySpec::String(StringSpec::default());
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec {
+                    options: Some(RawOptions::List(vec!["valid".into()])),
+                    pattern: None,
+                },
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            };
+
+            let result = Resolver::resolve_spec(&base, &ref_entry);
+            assert!(result.is_ok());
+            let spec = result.unwrap();
+            assert!(
+                matches!(spec, PropertySpec::String(_)),
+                "Expected String spec, got {spec:?}"
+            );
+            if let PropertySpec::String(spec) = spec {
+                assert!(spec.options().is_some());
             }
+        }
+    }
 
-            // Build tree and resolve
-            let tree = Extender::build(expanded, &HashMap::new())
-                .expect("Tree building should succeed");
-            let result = Resolver::resolve(&tree, &HashMap::new());
+    // ── Full Property Resolution (Bank Ref) ─────────────────────────────────
 
-            assert!(
-                matches!(result, Err(SchemaError::InheritanceDepthExceeded(_))),
-                "Should reject depth > 10, got: {result:?}"
-            );
+    mod resolve_from_bank_ref {
+        use super::*;
 
-            if let Err(SchemaError::InheritanceDepthExceeded(depth)) = result {
-                assert_eq!(depth, 11, "Error should report depth 11");
-            }
+        #[test]
+        fn preserves_base_when_no_overrides() {
+            let base = fixtures::bool_property("test");
+            let ref_entry = fixtures::ref_entry("property_bank#/test");
+
+            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            assert!(result.is_ok());
+            let prop = result.unwrap();
+            assert_eq!(prop.name(), base.name());
+            assert_eq!(prop.optionality(), base.optionality());
+            assert_eq!(prop.multiplicity(), base.multiplicity());
         }
 
-        /// GAP-001: Test that excludes filter properties from ANY ancestor,
-        /// not just immediate parent.
-        ///
-        /// Hierarchy: base → course → physics.
-        ///
-        /// - base has: [id, `created_at`, `internal_ref`]
-        /// - course has: [title]
-        /// - physics excludes: [`internal_ref`]
-        ///
-        /// Expected: physics should NOT have `internal_ref` (from grandparent).
         #[test]
-        fn exclude_grandparent_property() -> Result<(), SchemaError> {
-            use uuid::Uuid;
-
-            const BASE_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3001);
-            const COURSE_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3002);
-            const PHYSICS_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_3003);
-
-            let base_id = SchemaId::from_uuid(BASE_ID);
-            let course_id = SchemaId::from_uuid(COURSE_ID);
-            let physics_id = SchemaId::from_uuid(PHYSICS_ID);
-
-            // Base schema properties
-            let id_prop = fixtures::bool_property("id")?;
-            let created_at_prop = fixtures::bool_property("created_at")?;
-            let internal_ref_prop = fixtures::bool_property("internal_ref")?;
-
-            // Course schema property
-            let title_prop = fixtures::bool_property("title")?;
-
-            let expanded = vec![
-                fixtures::simple_expanded(base_id, "base", None, vec![
-                    id_prop.clone(),
-                    created_at_prop.clone(),
-                    internal_ref_prop.clone(),
-                ]),
-                fixtures::simple_expanded(
-                    course_id,
-                    "course",
-                    Some("base"),
-                    vec![title_prop.clone()],
-                ),
-                fixtures::expanded_with_excludes(
-                    physics_id,
-                    "physics",
-                    Some("course"),
-                    vec!["internal_ref".into()],
-                ),
-            ];
-
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let physics = result
-                .iter()
-                .find(|s| s.name().as_ref() == "physics")
-                .expect("physics schema in result");
-
-            let prop_names: Vec<&str> = physics
-                .properties()
-                .iter()
-                .map(|p| p.name().as_ref())
-                .collect();
-
-            // Should have properties from base (except internal_ref) and course
-            assert!(
-                prop_names.contains(&"id"),
-                "Should inherit 'id' from grandparent; got: {prop_names:?}"
-            );
-            assert!(
-                prop_names.contains(&"created_at"),
-                "Should inherit 'created_at' from grandparent; got: \
-                 {prop_names:?}"
-            );
-            assert!(
-                prop_names.contains(&"title"),
-                "Should inherit 'title' from parent; got: {prop_names:?}"
+        fn applies_optionality_override() {
+            let base = fixtures::bool_property("test"); // Required by default
+            let ref_entry = fixtures::ref_with_overrides(
+                "property_bank#/test",
+                Some(false), // Override to optional
+                None,
             );
 
-            // CRITICAL: Should NOT have internal_ref (excluded from
-            // grandparent)
-            assert!(
-                !prop_names.contains(&"internal_ref"),
-                "Should exclude 'internal_ref' from grandparent; got: \
-                 {prop_names:?}"
-            );
-
-            Ok(())
+            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            assert!(result.is_ok());
+            let prop = result.unwrap();
+            assert_eq!(prop.optionality(), Optionality::Optional);
         }
 
-        /// Test that excludes work across 4 levels (great-grandparent).
         #[test]
-        fn exclude_great_grandparent_property() -> Result<(), SchemaError> {
-            use uuid::Uuid;
-
-            const BASE_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4001);
-            const LEVEL1_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4002);
-            const LEVEL2_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4003);
-            const LEVEL3_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_4004);
-
-            let base_id = SchemaId::from_uuid(BASE_ID);
-            let level1_id = SchemaId::from_uuid(LEVEL1_ID);
-            let level2_id = SchemaId::from_uuid(LEVEL2_ID);
-            let level3_id = SchemaId::from_uuid(LEVEL3_ID);
-
-            let deep_prop = fixtures::bool_property("deep_field")?;
-
-            let expanded = vec![
-                fixtures::simple_expanded(base_id, "base", None, vec![
-                    deep_prop.clone(),
-                ]),
-                fixtures::simple_expanded(
-                    level1_id,
-                    "level1",
-                    Some("base"),
-                    vec![],
-                ),
-                fixtures::simple_expanded(
-                    level2_id,
-                    "level2",
-                    Some("level1"),
-                    vec![],
-                ),
-                fixtures::expanded_with_excludes(
-                    level3_id,
-                    "level3",
-                    Some("level2"),
-                    vec!["deep_field".into()],
-                ),
-            ];
-
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let level3 = result
-                .iter()
-                .find(|s| s.name().as_ref() == "level3")
-                .expect("level3 schema in result");
-
-            let has_deep_field = level3
-                .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "deep_field");
-
-            assert!(
-                !has_deep_field,
-                "Should exclude 'deep_field' from great-grandparent"
+        fn applies_multiplicity_override() {
+            let base = fixtures::bool_property("test"); // Single by default
+            let ref_entry = fixtures::ref_with_overrides(
+                "property_bank#/test",
+                None,
+                Some(true), // Override to multi
             );
 
-            Ok(())
+            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            assert!(result.is_ok());
+            let prop = result.unwrap();
+            assert_eq!(prop.multiplicity(), Multiplicity::Many);
         }
 
-        /// Test mixed excludes at different levels.
         #[test]
-        fn mixed_excludes_at_multiple_levels() -> Result<(), SchemaError> {
-            use uuid::Uuid;
-
-            const BASE_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5001);
-            const MIDDLE_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5002);
-            const CHILD_ID: Uuid =
-                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_5003);
-
-            let base_id = SchemaId::from_uuid(BASE_ID);
-            let middle_id = SchemaId::from_uuid(MIDDLE_ID);
-            let child_id = SchemaId::from_uuid(CHILD_ID);
-
-            let prop_a = fixtures::bool_property("prop_a")?;
-            let prop_b = fixtures::bool_property("prop_b")?;
-            let prop_c = fixtures::bool_property("prop_c")?;
-
-            let expanded = vec![
-                fixtures::simple_expanded(base_id, "base", None, vec![
-                    prop_a.clone(),
-                    prop_b.clone(),
-                ]),
-                fixtures::expanded_with_excludes(
-                    middle_id,
-                    "middle",
-                    Some("base"),
-                    vec!["prop_a".into()],
-                ),
-                fixtures::simple_expanded(
-                    child_id,
-                    "child",
-                    Some("middle"),
-                    vec![prop_c.clone()],
-                ),
-            ];
-
-            let tree = Extender::build(expanded, &HashMap::new())?;
-            let result = Resolver::resolve(&tree, &HashMap::new())?;
-
-            let child = result
-                .iter()
-                .find(|s| s.name().as_ref() == "child")
-                .expect("child schema in result");
-
-            let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_ref()).collect();
-
-            assert!(
-                !prop_names.contains(&"prop_a"),
-                "Should NOT have prop_a (excluded by parent); got: \
-                 {prop_names:?}"
-            );
-            assert!(
-                prop_names.contains(&"prop_b"),
-                "Should have prop_b (inherited from grandparent); got: \
-                 {prop_names:?}"
-            );
-            assert!(
-                prop_names.contains(&"prop_c"),
-                "Should have prop_c (own property); got: {prop_names:?}"
+        fn applies_all_overrides() {
+            let base = fixtures::bool_property("test");
+            let ref_entry = fixtures::ref_with_overrides(
+                "property_bank#/test",
+                Some(false),
+                Some(true),
             );
 
-            Ok(())
+            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            assert!(result.is_ok());
+            let prop = result.unwrap();
+            assert_eq!(prop.optionality(), Optionality::Optional);
+            assert_eq!(prop.multiplicity(), Multiplicity::Many);
+        }
+
+        #[test]
+        fn rejects_type_mismatch() {
+            let base = fixtures::bool_property("test");
+            let ref_entry = RawPropertyRef {
+                ref_path: "property_bank#/test".into(),
+                required: None,
+                multi: None,
+                number: RawNumberSpec {
+                    min: Some(0.0f64),
+                    max: None,
+                    step: None,
+                },
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
+            };
+
+            let result = Resolver::resolve_from_bank_ref(&base, &ref_entry);
+            let _err = result.unwrap_err();
+        }
+    }
+
+    // ── Child Override (Schema Inheritance) ─────────────────────────────────
+
+    mod resolve_child_override {
+        use super::*;
+
+        #[test]
+        fn child_completely_replaces_parent() {
+            let parent = fixtures::bool_property("title");
+            let child = fixtures::number_property(
+                "title",
+                Some(0.0f64),
+                Some(100.0f64),
+            );
+
+            let result = Resolver::resolve_child_override(&parent, &child);
+
+            // Child wins completely
+            assert_eq!(result.name(), child.name());
+            assert_eq!(result.id(), child.id());
+            assert!(matches!(result.spec(), PropertySpec::Number(_)));
+        }
+
+        #[test]
+        fn child_id_is_preserved() {
+            let parent = fixtures::bool_property("test");
+            let child = fixtures::bool_property("test");
+
+            let result = Resolver::resolve_child_override(&parent, &child);
+
+            // Child's ID is used
+            assert_eq!(result.id(), child.id());
+            assert_ne!(result.id(), parent.id());
         }
     }
 }

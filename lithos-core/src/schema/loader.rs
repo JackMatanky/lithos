@@ -42,7 +42,7 @@
 //! 5. **Process only stale schemas**:
 //!    - `RefExpander::expand_all()` → resolve property refs
 //!    - `Extender::build()` → build inheritance tree
-//!    - `Resolver::resolve()` → merge parent properties
+//!    - `Merger::resolve()` → merge parent properties
 //!
 //! 6. **Persist changes**:
 //!    - `save_schemas()` → save resolved schemas
@@ -69,9 +69,9 @@ use crate::{
         expander::{RefExpandedSchema, RefExpander},
         extender::Extender,
         ingestor::{Ingestor, IngestorResults, SchemaResult},
+        merger::Merger,
         property::PropertyName,
         raw::RawSchema,
-        resolver::Resolver,
         storage::Repository,
     },
 };
@@ -166,7 +166,7 @@ where
                 total_count = tree.nodes().len(),
                 "schema tree built for resolution"
             );
-            let full_resolved = Resolver::resolve(&tree, &known_parents)?;
+            let full_resolved = Merger::resolve(&tree, &known_parents)?;
             resolved.extend(full_resolved);
         }
 

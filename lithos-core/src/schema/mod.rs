@@ -62,11 +62,19 @@ pub mod property_spec;
 /// Raw schema input definitions.
 pub mod raw;
 
-/// Schema resolution service.
+/// Schema-level property merging for inheritance.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
 /// benchmarks to measure individual pipeline stages while hiding from public
 /// documentation.
+#[doc(hidden)]
+pub mod merger;
+
+/// Property-level conflict resolution and override logic.
+///
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks and pipeline stages (Expander, Merger) to use the
+/// Resolver while hiding from public documentation.
 #[doc(hidden)]
 pub mod resolver;
 
