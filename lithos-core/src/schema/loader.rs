@@ -70,10 +70,40 @@ use crate::{
         extender::Extender,
         ingestor::{Ingestor, IngestorResults, SchemaResult},
         merger::Merger,
+        property::{Property, PropertyName},
         raw::RawSchema,
         storage::Repository,
     },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PartitionedSchemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Type alias for schemas needing full expansion.
+type SchemasForExpansion = Vec<(SchemaId, RawSchema)>;
+
+/// Type alias for schemas with cached expansion.
+type CachedExpansion = Vec<(SchemaId, HashMap<PropertyName, Property>)>;
+
+/// Result of partitioning schemas for resolution.
+///
+/// Phase 5.2: Separates schemas into three categories for optimal processing:
+/// - **`needs_expansion`**: Full resolution via `RefExpander`
+/// - **`cached_expansion`**: Skip `RefExpander`, use cached properties directly
+/// - **`fresh_ids`**: Fully cached, no processing needed
+#[derive(Default, Debug)]
+struct PartitionedSchemas {
+    /// Schemas that need full resolution via `RefExpander` (file changed or
+    /// new).
+    needs_expansion: SchemasForExpansion,
+    /// Schemas with cached expansion (skip `RefExpander`).
+    ///
+    /// Contains (id, `cached_expanded_properties`).
+    cached_expansion: CachedExpansion,
+    /// Schemas that are fully fresh (no processing needed).
+    fresh_ids: Vec<SchemaId>,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Loader
@@ -117,6 +147,15 @@ where
     /// results.  Only stale schemas are re-resolved; fresh schemas are used
     /// as `known_parents` for the inheritance tree.
     ///
+    /// # Phase 5.2 Optimization
+    ///
+    /// When a schema file is Fresh (unchanged) but `PropertyBank` is stale:
+    /// - If cached expansion exists → skip `RefExpander`, use cached properties
+    /// - If no cached expansion → run `RefExpander` normally
+    ///
+    /// This optimization avoids expensive property resolution for schemas that
+    /// haven't changed but reference modified bank properties.
+    ///
     /// Returns the set of freshly resolved schemas.  Schemas that were
     /// already fresh in the DB are not included (they were not re-resolved).
     ///
@@ -133,28 +172,38 @@ where
         let bank = results.property_bank.bank();
 
         // ── Partition schemas for resolution ────────────────────────────────
-        let (schemas_to_resolve, fresh_ids) =
-            self.partition_for_resolution(&results)?;
+        let partitioned = self.partition_for_resolution(&results)?;
 
-        // ── Process only schemas that need resolution ───────────────────────
+        // ── Collect all IDs for known_parents ───────────────────────────────
+        // Both fresh and cached_expansion schemas need known_parents for
+        // inheritance
+        let mut parent_ids = partitioned.fresh_ids.clone();
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Iterator returns &T, we need to dereference to get T"
+        )]
+        parent_ids
+            .extend(partitioned.cached_expansion.iter().map(|(id, _)| *id));
+
+        // Load fresh + cached schemas as known_parents for inheritance
+        let parent_schemas = self
+            .ingestor
+            .repository()
+            .find_schemas_by_ids(&parent_ids)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        let known_parents: HashMap<SchemaId, Schema> = parent_schemas
+            .into_iter()
+            .map(|schema| (*schema.id(), schema))
+            .collect();
+
+        // ── Process schemas needing full expansion ─────────────────────────
         let mut resolved = Vec::new();
 
-        if !schemas_to_resolve.is_empty() {
-            // Load fresh schemas as known_parents for inheritance
-            let fresh_schemas = self
-                .ingestor
-                .repository()
-                .find_schemas_by_ids(&fresh_ids)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-            let known_parents: HashMap<SchemaId, Schema> = fresh_schemas
-                .into_iter()
-                .map(|schema| (*schema.id(), schema))
-                .collect();
-
-            // Run full resolution pipeline
+        if !partitioned.needs_expansion.is_empty() {
+            // Run full resolution pipeline (RefExpander → Extender → Merger)
             let expanded = RefExpander::new(bank)
-                .expand_all(schemas_to_resolve.clone())?;
+                .expand_all(partitioned.needs_expansion.clone())?;
 
             // Store expanded properties for future incremental resolution
             self.store_expanded_properties(&expanded)?;
@@ -163,10 +212,19 @@ where
             tracing::debug!(
                 root_count = tree.roots().len(),
                 total_count = tree.nodes().len(),
-                "schema tree built for resolution"
+                "schema tree built for needs_expansion"
             );
             let full_resolved = Merger::resolve(&tree, &known_parents)?;
             resolved.extend(full_resolved);
+        }
+
+        // ── Process schemas with cached expansion (skip RefExpander!) ───────
+        if !partitioned.cached_expansion.is_empty() {
+            let cached_resolved = self.resolve_with_cached_expansion(
+                partitioned.cached_expansion,
+                &known_parents,
+            )?;
+            resolved.extend(cached_resolved);
         }
 
         // ── Persist resolved schemas ────────────────────────────────────────
@@ -177,11 +235,12 @@ where
             // ingest_all() call
 
             // Build name_to_id map for inheritance metadata
-            let name_to_id = Self::build_name_to_id_map(&schemas_to_resolve)?;
+            let name_to_id =
+                Self::build_name_to_id_map(&partitioned.needs_expansion)?;
 
             // Persist inheritance metadata for caching
             self.persist_inheritance_metadata(
-                &schemas_to_resolve,
+                &partitioned.needs_expansion,
                 &name_to_id,
             )?;
         }
@@ -189,21 +248,72 @@ where
         Ok(resolved)
     }
 
-    /// Partition schemas for resolution based on staleness.
+    /// Resolve schemas with cached expanded properties (Phase 5.2
+    /// optimization).
     ///
-    /// Returns (`schemas_to_resolve`, `fresh_schema_ids`).
+    /// Skips `RefExpander` entirely - uses cached properties directly.
+    /// Only needs to re-apply inheritance via `Extender` and `Merger`.
     #[expect(
         clippy::type_complexity,
-        reason = "Complex return type is clear in this internal helper; \
-                  extracting a type alias would reduce locality"
+        reason = "Type alias would reduce clarity"
     )]
+    fn resolve_with_cached_expansion(
+        &self,
+        cached: Vec<(SchemaId, HashMap<PropertyName, Property>)>,
+        known_parents: &HashMap<SchemaId, Schema>,
+    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+        let mut expanded = Vec::with_capacity(cached.len());
+
+        for (id, cached_props) in cached {
+            // Load raw schema metadata from view (name, extends, excludes)
+            let raw = self.load_raw_from_view(id)?.ok_or_else(|| {
+                SchemaLoaderError::Repository(SchemaRepositoryError::NotFound {
+                    name: format!("schema id {id:?}").into(),
+                })
+            })?;
+
+            // Construct RefExpandedSchema directly from cached properties
+            let exp_schema = RefExpandedSchema {
+                name: raw.name,
+                extends: raw.extends,
+                excludes: raw.excludes,
+                properties: cached_props,
+            };
+
+            expanded.push((id, exp_schema));
+        }
+
+        let tree = Extender::build(expanded, known_parents)?;
+        tracing::debug!(
+            root_count = tree.roots().len(),
+            total_count = tree.nodes().len(),
+            "schema tree built for cached_expansion (skipped RefExpander)"
+        );
+
+        let resolved = Merger::resolve(&tree, known_parents)?;
+        Ok(resolved)
+    }
+
+    /// Partition schemas for resolution based on staleness.
+    ///
+    /// Phase 5.2: Separates schemas into three categories:
+    /// - **`needs_expansion`**: Full resolution via `RefExpander` (file changed
+    ///   or new)
+    /// - **`cached_expansion`**: Skip `RefExpander`, use cached properties
+    ///   directly
+    /// - **`fresh_ids`**: Fully cached, no processing needed
+    ///
+    /// This enables optimal processing:
+    /// - When schema file is Fresh AND has cached expansion AND bank is stale,
+    ///   we can skip `RefExpander` entirely (just need to re-apply inheritance)
+    /// - When schema file is Fresh but has no cached expansion, we must run
+    ///   `RefExpander`
+    #[expect(clippy::pattern_type_mismatch, reason = "Matching borrowed enum")]
     fn partition_for_resolution(
         &self,
         results: &IngestorResults,
-    ) -> Result<(Vec<(SchemaId, RawSchema)>, Vec<SchemaId>), SchemaLoaderError>
-    {
-        let mut to_resolve = Vec::new();
-        let mut fresh_ids = Vec::new();
+    ) -> Result<PartitionedSchemas, SchemaLoaderError> {
+        let mut partitioned = PartitionedSchemas::default();
 
         // PropertyBank staleness affects whether we can reuse cached schemas
         let bank_is_fresh = results.property_bank.is_fresh();
@@ -216,28 +326,30 @@ where
                       partitioning by staleness"
         )]
         for result in results.schemas.values() {
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "Matching borrowed enum requires dereferencing \
-                          pattern bindings"
-            )]
             match result {
                 SchemaResult::Fresh {
                     id,
-                    ..
+                    expanded,
                 } if bank_is_fresh => {
                     // PropertyBank fresh + Schema fresh = fully reusable
-                    fresh_ids.push(*id);
+                    partitioned.fresh_ids.push(*id);
                 }
                 SchemaResult::Fresh {
                     id,
-                    ..
+                    expanded: Some(cached),
                 } => {
-                    // Schema fresh but PropertyBank changed - need to
-                    // re-resolve Load raw schema from DB
-                    // view to re-resolve with new bank
+                    // Schema fresh + Bank stale + Has cached expansion
+                    // → Skip RefExpander, use cached properties directly
+                    partitioned.cached_expansion.push((*id, cached.clone()));
+                }
+                SchemaResult::Fresh {
+                    id,
+                    expanded: None,
+                } => {
+                    // Schema fresh + Bank stale + No cached expansion
+                    // → Need to run RefExpander
                     if let Some(raw) = self.load_raw_from_view(*id)? {
-                        to_resolve.push((*id, raw));
+                        partitioned.needs_expansion.push((*id, raw));
                     }
                 }
                 SchemaResult::Stale {
@@ -250,12 +362,12 @@ where
                     raw,
                 } => {
                     // File changed or new - needs full resolution
-                    to_resolve.push((*id, raw.clone()));
+                    partitioned.needs_expansion.push((*id, raw.clone()));
                 }
             }
         }
 
-        Ok((to_resolve, fresh_ids))
+        Ok(partitioned)
     }
 
     /// Load raw schema from database view.
