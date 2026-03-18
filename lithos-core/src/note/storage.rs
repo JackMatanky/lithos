@@ -1415,10 +1415,10 @@ mod tests {
         },
         note::{
             aggregate::{Note, NoteId, RawNoteContext},
+            inline_fields::InlineFieldCollection,
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
             raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskKind},
-            task_tokens::RawTaskTokens,
         },
     };
 
@@ -1523,7 +1523,7 @@ mod tests {
         let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
-        let tokens = RawTaskTokens::parse(raw_task_text, &[]);
+        let tokens = InlineFieldCollection::parse(raw_task_text, &[]);
         let tasks = vec![RawTask::new(
             RawTaskKind::Unchecked(' '),
             raw_task_text.into(),

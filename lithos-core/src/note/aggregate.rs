@@ -636,10 +636,10 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
+            inline_fields::InlineFieldCollection,
             position::SourceByteOffset,
             raw::{RawTag, RawTask, RawTaskKind},
             task::RawTaskContext,
-            task_tokens::RawTaskTokens,
         },
     };
 
@@ -778,7 +778,7 @@ mod tests {
             .into_iter()
             .map(|tag| tag.value().into())
             .collect();
-        let tokens = RawTaskTokens::parse(text, emoji_markers);
+        let tokens = InlineFieldCollection::parse(text, emoji_markers);
         RawTask::new(
             RawTaskKind::Unchecked(' '),
             text.into(),

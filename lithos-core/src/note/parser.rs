@@ -8,6 +8,7 @@ use pulldown_cmark::{
 use crate::note::{
     error::{NoteError, NoteIngestError},
     frontmatter::FrontmatterFormat,
+    inline_fields::{InlineFieldCollection, InlineFieldScanner},
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
@@ -16,7 +17,6 @@ use crate::note::{
         RawReferenceLink, RawSection, RawSectionKind, RawTag, RawTask,
         RawTaskKind,
     },
-    task_tokens::RawTaskTokens,
 };
 
 /// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
@@ -264,7 +264,7 @@ impl MarkdownParser {
                             )
                             .map_err(NoteIngestError::Domain)?;
                             tags.extend(new_tags);
-                            InlineFieldScanner::scan_text(
+                            MarkdownInlineFieldScanner::scan_text(
                                 &block.scannable_text,
                                 &block.scannable_segments,
                                 inline_fields,
@@ -471,7 +471,7 @@ impl MarkdownParser {
             TagScanner::scan(&block.scannable_text, &block.scannable_segments)
                 .map_err(NoteIngestError::Domain)?;
         tags.extend(new_tags);
-        InlineFieldScanner::scan_text(
+        MarkdownInlineFieldScanner::scan_text(
             &block.scannable_text,
             &block.scannable_segments,
             inline_fields,
@@ -515,7 +515,7 @@ impl MarkdownParser {
             TagScanner::scan(&block.scannable_text, &block.scannable_segments)
                 .map_err(NoteIngestError::Domain)?;
         tags.extend(new_tags);
-        InlineFieldScanner::scan_text(
+        MarkdownInlineFieldScanner::scan_text(
             &block.scannable_text,
             &block.scannable_segments,
             inline_fields,
@@ -578,7 +578,7 @@ impl MarkdownParser {
                     .unwrap_or_default();
             let tags_for_task =
                 raw_tags.into_iter().map(|t| t.value().into()).collect();
-            let tokens = RawTaskTokens::parse(&block.full_text, &[]);
+            let tokens = InlineFieldCollection::parse(&block.full_text, &[]);
 
             tasks.push(RawTask::new(
                 tk,
@@ -952,9 +952,9 @@ impl<'source> TaskMarkerScanner<'source> {
     }
 }
 
-struct InlineFieldScanner;
+struct MarkdownInlineFieldScanner;
 
-impl InlineFieldScanner {
+impl MarkdownInlineFieldScanner {
     fn scan_text(
         text: &str,
         segments: &[(usize, SourceByteOffset)],
@@ -964,132 +964,73 @@ impl InlineFieldScanner {
             return Ok(());
         }
         let mut bracket_spans = Vec::new();
-        Self::scan_delim(
+        let mut error = None;
+
+        InlineFieldScanner::scan_delimited(
             text,
             b'[',
             b']',
-            segments,
-            fields,
-            &mut bracket_spans,
-        )?;
-        Self::scan_delim(
+            |key, value, start, end| {
+                bracket_spans.push((start, end));
+                match MarkdownParser::position_for_offset(segments, start) {
+                    Ok(position) => {
+                        fields.push(RawInlineField::new(
+                            InlineFieldScanner::normalize_key(key),
+                            value.into(),
+                            position,
+                        ));
+                    }
+                    Err(e) => error = Some(e),
+                }
+            },
+        );
+        if let Some(e) = error {
+            return Err(e);
+        }
+
+        InlineFieldScanner::scan_delimited(
             text,
             b'(',
             b')',
-            segments,
-            fields,
-            &mut bracket_spans,
-        )?;
-        Self::scan_bare(text, segments, fields, &bracket_spans)?;
-        Ok(())
-    }
+            |key, value, start, end| {
+                bracket_spans.push((start, end));
+                match MarkdownParser::position_for_offset(segments, start) {
+                    Ok(position) => {
+                        fields.push(RawInlineField::new(
+                            InlineFieldScanner::normalize_key(key),
+                            value.into(),
+                            position,
+                        ));
+                    }
+                    Err(e) => error = Some(e),
+                }
+            },
+        );
+        if let Some(e) = error {
+            return Err(e);
+        }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "RawNote needs all these extracted fields"
-    )]
-    fn scan_delim(
-        text: &str,
-        open_delim: u8,
-        close_delim: u8,
-        segments: &[(usize, SourceByteOffset)],
-        fields: &mut Vec<RawInlineField>,
-        spans: &mut Vec<(usize, usize)>,
-    ) -> Result<(), NoteError> {
-        let bytes = text.as_bytes();
-        let mut cursor = 0;
-        while let Some(open_rel) = bytes
-            .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
-        {
-            let open = cursor.saturating_add(open_rel);
-            let after_open = open.saturating_add(1);
-            let Some(close_rel) = bytes
-                .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == close_delim))
-            else {
-                break;
-            };
-            let close = after_open.saturating_add(close_rel);
-            spans.push((open, close.saturating_add(1)));
-            let Some(inner) = text.get(after_open..close) else {
-                cursor = close.saturating_add(1);
-                continue;
-            };
-            if let Some((key, value)) = inner.split_once("::") {
-                let key_trimmed = key.trim();
-                let value_trimmed = value.trim();
-                if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
-                    let key_start = key
-                        .find(key_trimmed)
-                        .unwrap_or(0)
-                        .saturating_add(after_open);
-                    let position = MarkdownParser::position_for_offset(
-                        segments, key_start,
-                    )?;
+        InlineFieldScanner::scan_bare(
+            text,
+            &bracket_spans,
+            |key, value, start| match MarkdownParser::position_for_offset(
+                segments, start,
+            ) {
+                Ok(position) => {
                     fields.push(RawInlineField::new(
-                        Self::normalize_key(key_trimmed),
-                        value_trimmed.into(),
+                        InlineFieldScanner::normalize_key(key),
+                        value.into(),
                         position,
                     ));
                 }
-            }
-            cursor = close.saturating_add(1);
+                Err(e) => error = Some(e),
+            },
+        );
+        if let Some(e) = error {
+            return Err(e);
         }
-        Ok(())
-    }
 
-    fn scan_bare(
-        text: &str,
-        segments: &[(usize, SourceByteOffset)],
-        fields: &mut Vec<RawInlineField>,
-        bracket_spans: &[(usize, usize)],
-    ) -> Result<(), NoteError> {
-        let mut offset = 0usize;
-        for line in text.split_inclusive(['\n', '\r']) {
-            let trimmed = line.trim_end_matches(['\n', '\r']);
-            let Some((key, value)) = trimmed.split_once("::") else {
-                offset = offset.saturating_add(line.len());
-                continue;
-            };
-            let key_trimmed = key.trim();
-            let value_trimmed = value.trim();
-            if key_trimmed.is_empty() || value_trimmed.is_empty() {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            let key_start =
-                trimmed.find(key_trimmed).unwrap_or(0).saturating_add(offset);
-            if bracket_spans
-                .iter()
-                .any(|&(start, end)| key_start >= start && key_start < end)
-            {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            let position =
-                MarkdownParser::position_for_offset(segments, key_start)?;
-            fields.push(RawInlineField::new(
-                Self::normalize_key(key_trimmed),
-                value_trimmed.into(),
-                position,
-            ));
-            offset = offset.saturating_add(line.len());
-        }
         Ok(())
-    }
-
-    fn normalize_key(key: &str) -> Box<str> {
-        let stripped = key
-            .chars()
-            .filter(|ch| !matches!(ch, '*' | '_' | '~' | '`'))
-            .collect::<String>();
-        stripped
-            .split_whitespace()
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join("-")
-            .into_boxed_str()
     }
 }
 
