@@ -23,7 +23,6 @@ use super::{
     error::SchemaError,
     extender::SchemaTree,
     property::{Property, PropertyName},
-    resolver::Resolver,
 };
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
@@ -55,7 +54,7 @@ impl Merger {
     /// 1. Looks up the parent's resolved properties from `resolved_cache` (an
     ///    in-batch parent resolved earlier in the walk), from `known_parents`
     ///    (a DB-fresh parent), or uses an empty HashMap for root schemas.
-    /// 2. Calls private `merge_properties` to produce the final HashMap.
+    /// 2. Calls private `inherit_properties` to produce the final HashMap.
     /// 3. Constructs a [`Schema`] directly.
     /// 4. Caches the result for use by downstream children.
     ///
@@ -121,7 +120,7 @@ impl Merger {
                     HashMap::new()
                 };
 
-            let merged = Self::merge_properties(
+            let merged = Self::inherit_properties(
                 &parent_props,
                 &node.properties,
                 &node.excludes,
@@ -147,44 +146,38 @@ impl Merger {
         Ok(results)
     }
 
-    /// Merge parent and child properties into a single `HashMap`.
+    /// Build a child's resolved properties by inheriting from parent.
     ///
-    /// Uses `Resolver::from_child_override()` to handle property conflicts.
+    /// A child schema inherits properties from its parent unless:
+    /// - The property is in the `excludes` list
+    /// - The child schema already defines the property (child overrides parent)
     ///
-    /// # Rules
-    /// - Child properties override parent properties with same name
-    /// - Parent properties in excludes list are filtered out
-    /// - All other parent properties are inherited
-    fn merge_properties(
+    /// Child properties are always kept as-is (full override).
+    fn inherit_properties(
         parent: &HashMap<PropertyName, Property>,
-        own: &HashMap<PropertyName, Property>,
+        child: &HashMap<PropertyName, Property>,
         excludes: &[Box<str>],
     ) -> HashMap<PropertyName, Property> {
-        let mut result = parent.clone();
+        // Build set of excluded property names for O(1) lookup
+        let excluded_names: HashSet<PropertyName> = excludes
+            .iter()
+            .filter_map(|e| PropertyName::try_new(e).ok())
+            .collect();
 
-        // Remove excluded properties
-        for excluded in excludes {
-            // Convert Box<str> to PropertyName for HashMap removal
-            if let Ok(name) = PropertyName::try_new(excluded) {
-                result.remove(&name);
-            }
-        }
+        // Start with child's own properties (child overrides parent)
+        let mut result = child.clone();
 
-        // Merge child properties (child wins)
+        // Add parent properties that are not excluded and not overridden
         #[expect(
             clippy::iter_over_hash_type,
-            reason = "HashMap iteration is intentional for property merging"
+            reason = "HashMap iteration is intentional for property \
+                      inheritance"
         )]
-        for (name, child_prop) in own {
-            if let Some(parent_prop) = result.get(name) {
-                // Conflict: use Resolver to resolve
-                let merged =
-                    Resolver::from_child_override(parent_prop, child_prop);
-                result.insert(name.clone(), merged);
-            } else {
-                // No conflict: insert child property
-                result.insert(name.clone(), child_prop.clone());
+        for (name, prop) in parent {
+            if excluded_names.contains(name) || result.contains_key(name) {
+                continue;
             }
+            result.insert(name.clone(), prop.clone());
         }
 
         result
