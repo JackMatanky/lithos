@@ -341,10 +341,7 @@ impl PropertyBankVersion {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, HashMap},
-        time::SystemTime,
-    };
+    use std::{collections::HashMap, time::SystemTime};
 
     use super::*;
     use crate::schema::raw::{
@@ -369,7 +366,7 @@ mod tests {
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], HashMap::default());
 
         let mut version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
@@ -399,7 +396,7 @@ mod tests {
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hashes = HashMetadata::new([1u8; 32], BTreeMap::default());
+        let hashes = HashMetadata::new([1u8; 32], HashMap::default());
 
         let result = SchemaVersion::new(file_times, hashes, &raw);
         result.unwrap_err();

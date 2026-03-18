@@ -20,7 +20,10 @@
 //! - `recorded_at` field is private (ingestion metadata, not exposed in public
 //!   API)
 
-use std::{borrow::Borrow, fmt::Display, sync::LazyLock, time::SystemTime};
+use std::{
+    borrow::Borrow, collections::HashMap, fmt::Display, sync::LazyLock,
+    time::SystemTime,
+};
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
@@ -28,7 +31,7 @@ use uuid::Uuid;
 
 use super::{
     error::SchemaError,
-    property::{Property, PropertyId},
+    property::{Property, PropertyId, PropertyName},
 };
 
 // ============================================================================
@@ -57,11 +60,13 @@ use super::{
 /// # Examples
 ///
 /// ```
+/// use std::collections::HashMap;
+///
 /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("project-note")?;
-/// let schema = Schema::new(id, name, None, vec![], vec![]);
+/// let schema = Schema::new(id, name, None, vec![], HashMap::new());
 /// assert_eq!(schema.id(), &id);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -79,8 +84,8 @@ pub struct Schema {
     /// Stores IDs only. Full relationship metadata (extends/excludes) is
     /// managed via inheritance views in the repository layer.
     children: Vec<SchemaId>,
-    /// Resolved properties.
-    properties: Vec<Property>,
+    /// Resolved properties (`HashMap` for O(1) lookup by name).
+    properties: HashMap<PropertyName, Property>,
     /// Ingestion timestamp (private - not exposed in public API).
     #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
@@ -92,11 +97,14 @@ impl Schema {
     /// # Examples
     ///
     /// ```
+    /// use std::collections::HashMap;
+    ///
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     ///
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("note")?;
-    /// let schema = Schema::new(id, name, None, vec![], vec![]);
+    /// let schema = Schema::new(id, name, None, vec![], HashMap::new());
+    /// assert_eq!(schema.id(), &id);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
@@ -106,7 +114,7 @@ impl Schema {
         name: SchemaName,
         parent_id: Option<SchemaId>,
         children: Vec<SchemaId>,
-        properties: Vec<Property>,
+        properties: HashMap<PropertyName, Property>,
     ) -> Self {
         Self {
             id,
@@ -153,15 +161,25 @@ impl Schema {
     /// Returns the resolved properties.
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &[Property] {
+    pub const fn properties(&self) -> &HashMap<PropertyName, Property> {
         &self.properties
     }
 
-    /// Finds a property by ID.
+    /// Finds a property by name (O(1) lookup).
+    #[inline]
+    #[must_use]
+    pub fn find_property_by_name(
+        &self,
+        name: &PropertyName,
+    ) -> Option<&Property> {
+        self.properties.get(name)
+    }
+
+    /// Finds a property by ID (O(n) - iterates all properties).
     #[inline]
     #[must_use]
     pub fn find_property(&self, id: &PropertyId) -> Option<&Property> {
-        self.properties.iter().find(|p| p.id() == *id)
+        self.properties.values().find(|p| p.id() == *id)
     }
 }
 
@@ -499,7 +517,8 @@ mod tests {
     fn schema_new_creates_with_empty_properties() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("test").unwrap();
-        let schema = Schema::new(id, name.clone(), None, vec![], vec![]);
+        let schema =
+            Schema::new(id, name.clone(), None, vec![], HashMap::new());
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
@@ -512,8 +531,13 @@ mod tests {
         let id = SchemaId::new();
         let parent_id = SchemaId::new();
         let name = SchemaName::try_new("child-schema").unwrap();
-        let schema =
-            Schema::new(id, name.clone(), Some(parent_id), vec![], vec![]);
+        let schema = Schema::new(
+            id,
+            name.clone(),
+            Some(parent_id),
+            vec![],
+            HashMap::new(),
+        );
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);

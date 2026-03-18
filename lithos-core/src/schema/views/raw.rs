@@ -510,7 +510,7 @@ mod tests {
     }
 
     mod schema {
-        use std::collections::{BTreeMap, HashMap};
+        use std::collections::HashMap;
 
         use super::super::{FilePath, RawSchemaView, SchemaVersion};
         use crate::schema::{
@@ -531,7 +531,7 @@ mod tests {
             };
 
             let file_times = FileTimesMetadata::new(None, None);
-            let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+            let hashes = HashMetadata::new([0; 32], HashMap::new());
             let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
             let file_path = FilePath::new("schemas/test.toml".into());
@@ -546,7 +546,7 @@ mod tests {
     }
 
     mod property_bank {
-        use std::collections::{BTreeMap, HashMap};
+        use std::collections::HashMap;
 
         use super::super::{PropertyBankVersion, RawPropertyBankView};
         use crate::schema::{
@@ -564,7 +564,7 @@ mod tests {
             };
 
             let file_times = FileTimesMetadata::new(None, None);
-            let hashes = HashMetadata::new([0; 32], BTreeMap::new());
+            let hashes = HashMetadata::new([0; 32], HashMap::new());
             let version =
                 PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
 

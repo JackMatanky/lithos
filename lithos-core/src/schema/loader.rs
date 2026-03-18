@@ -70,7 +70,6 @@ use crate::{
         extender::Extender,
         ingestor::{Ingestor, IngestorResults, SchemaResult},
         merger::Merger,
-        property::PropertyName,
         raw::RawSchema,
         storage::Repository,
     },
@@ -290,12 +289,8 @@ where
     ) -> Result<(), SchemaLoaderError> {
         // Update each schema's view with expanded properties
         for (id, exp_schema) in expanded {
-            // Convert Vec<Property> to HashMap<PropertyName, Property>
-            let props_map: HashMap<PropertyName, _> = exp_schema
-                .properties
-                .iter()
-                .map(|prop| (prop.name().clone(), prop.clone()))
-                .collect();
+            // Store expanded properties (already HashMap)
+            let props_map = exp_schema.properties.clone();
 
             // Load view, update current version's expanded properties, save
             if let Some(mut view) = self

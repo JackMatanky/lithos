@@ -7,7 +7,7 @@
 //! RefExpander → Vec<(SchemaId, RefExpandedSchema)>
 //! Extender          ← here
 //! → SchemaTree
-//! Resolver
+//! Merger
 //! ```
 //!
 //! # Design
@@ -19,11 +19,10 @@
 //!   parents.
 //!
 //! It produces a [`SchemaTree`] whose nodes are in **topological order**
-//! (parents before children) so the downstream [`Resolver`] can walk the tree
+//! (parents before children) so the downstream [`Merger`] can walk the tree
 //! once without back-tracking.
 //!
 //! [`RefExpander`]: super::expander::RefExpander
-//! [`Resolver`]: super::merger::Merger
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -31,7 +30,7 @@ use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     error::SchemaError,
     expander::RefExpandedSchema,
-    property::Property,
+    property::{Property, PropertyName},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,8 +114,8 @@ impl From<NodeDepth> for usize {
 pub(crate) struct SchemaNode {
     /// Schema name string.
     pub name: Box<str>,
-    /// Properties defined by this schema (sorted by name).
-    pub properties: Vec<Property>,
+    /// Properties defined by this schema (`HashMap` for O(1) lookup).
+    pub properties: HashMap<PropertyName, Property>,
     /// Property names inherited from the parent that this schema excludes.
     pub excludes: Vec<Box<str>>,
     /// Parent schema identifier, if any.
@@ -599,7 +598,7 @@ mod tests {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes: Vec::new(),
-                properties: Vec::new(),
+                properties: HashMap::new(),
             })
         }
     }
@@ -672,7 +671,7 @@ mod tests {
                 SchemaName::try_new("parent")?,
                 None,
                 Vec::new(),
-                Vec::new(),
+                HashMap::new(),
             );
             let mut known_parents = HashMap::new();
             known_parents.insert(parent_id, parent_schema);
@@ -711,7 +710,7 @@ mod tests {
                 name: "self".into(),
                 extends: Some("self".into()),
                 excludes: Vec::new(),
-                properties: Vec::new(),
+                properties: HashMap::new(),
             })];
             let result = Extender::build(expanded, &HashMap::new());
             assert!(
@@ -746,19 +745,19 @@ mod tests {
                     name: "a".into(),
                     extends: Some("c".into()),
                     excludes: Vec::new(),
-                    properties: Vec::new(),
+                    properties: HashMap::new(),
                 }),
                 (id_b, RefExpandedSchema {
                     name: "b".into(),
                     extends: Some("a".into()),
                     excludes: Vec::new(),
-                    properties: Vec::new(),
+                    properties: HashMap::new(),
                 }),
                 (id_c, RefExpandedSchema {
                     name: "c".into(),
                     extends: Some("b".into()),
                     excludes: Vec::new(),
-                    properties: Vec::new(),
+                    properties: HashMap::new(),
                 }),
             ];
 

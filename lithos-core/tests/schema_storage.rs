@@ -13,6 +13,8 @@
 
 mod common;
 
+use std::collections::HashMap;
+
 use common::*;
 use lithos_core::schema::{
     aggregate::{Schema, SchemaId, SchemaName},
@@ -63,12 +65,14 @@ fn schema_roundtrip() -> TestResult {
 
     // Create schema
     let prop = PropertyBuilder::new("title").build_string_default()?;
+    let mut props = HashMap::new();
+    props.insert(prop.name().clone(), prop);
     let schema = Schema::new(
         SchemaId::new(),
         SchemaName::try_new("task")?,
         None,
         vec![],
-        vec![prop],
+        props,
     );
     let schema_id = *schema.id();
 
@@ -90,12 +94,14 @@ fn schema_find_by_name() -> TestResult {
 
     // Create and save
     let prop = PropertyBuilder::new("title").build_string_default()?;
+    let mut props = HashMap::new();
+    props.insert(prop.name().clone(), prop);
     let schema = Schema::new(
         SchemaId::new(),
         SchemaName::try_new("project")?,
         None,
         vec![],
-        vec![prop],
+        props,
     );
     let schema_id = *schema.id();
     repository.save_schemas(&[schema])?;
@@ -118,24 +124,35 @@ fn schema_find_by_name() -> TestResult {
 /// separate processes.
 #[test]
 #[ignore = "rkyv address space limitation - requires CLI-level e2e test"]
+#[expect(
+    clippy::similar_names,
+    reason = "Test code - prop1/props1 naming intentional for parallel \
+              construction"
+)]
 fn schema_list() -> TestResult {
     let test_db = TestDb::new()?;
     let repository = setup_repository(test_db.db());
 
     // Save multiple schemas
+    let prop1 = PropertyBuilder::new("title").build_string_default()?;
+    let mut props1 = HashMap::new();
+    props1.insert(prop1.name().clone(), prop1);
     let schema1 = Schema::new(
         SchemaId::new(),
         SchemaName::try_new("task")?,
         None,
         vec![],
-        vec![PropertyBuilder::new("title").build_string_default()?],
+        props1,
     );
+    let prop2 = PropertyBuilder::new("content").build_string_default()?;
+    let mut props2 = HashMap::new();
+    props2.insert(prop2.name().clone(), prop2);
     let schema2 = Schema::new(
         SchemaId::new(),
         SchemaName::try_new("note")?,
         None,
         vec![],
-        vec![PropertyBuilder::new("content").build_string_default()?],
+        props2,
     );
     repository.save_schemas(&[schema1, schema2])?;
 
@@ -162,7 +179,7 @@ fn schema_delete() -> TestResult {
         SchemaName::try_new("temp")?,
         None,
         vec![],
-        vec![],
+        HashMap::new(),
     );
     let schema_id = *schema.id();
     repository.save_schemas(&[schema])?;

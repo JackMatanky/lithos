@@ -3,7 +3,7 @@
 //! Provides name-indexed property lookup with singleton persistence and
 //! versioning for incremental resolution.
 
-use std::{collections::BTreeMap, fmt::Display, time::SystemTime};
+use std::{collections::HashMap, fmt::Display, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
@@ -55,10 +55,8 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PropertyBank {
-    /// Registered properties keyed by name.
-    ///
-    /// Stored as `BTreeMap` for deterministic iteration order.
-    properties: BTreeMap<PropertyName, Property>,
+    /// Registered properties keyed by name (`HashMap` for O(1) lookup).
+    properties: HashMap<PropertyName, Property>,
     /// Version counter for staleness detection.
     version: BankVersion,
     /// Ingestion timestamp (private - not exposed in public API).
@@ -82,7 +80,7 @@ impl PropertyBank {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            properties: BTreeMap::new(),
+            properties: HashMap::new(),
             version: BankVersion::initial(),
             recorded_at: SystemTime::now(),
         }

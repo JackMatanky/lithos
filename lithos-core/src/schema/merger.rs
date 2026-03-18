@@ -1,5 +1,12 @@
-//! `Merger` — assembles fully-resolved [`Schema`] entities from a
-//! [`SchemaTree`].
+//! Schema-level property merging for inheritance.
+//!
+//! Combines properties from parent and child schemas following inheritance
+//! rules:
+//! - Child properties override parent properties with same name
+//! - Parent properties in excludes list are filtered out
+//! - All other parent properties are inherited
+//!
+//! Uses `Resolver` for individual property conflict resolution.
 //!
 //! # Pipeline position
 //!
@@ -8,24 +15,15 @@
 //! Merger        ← here
 //! → Vec<Schema>
 //! ```
-//!
-//! # Design
-//!
-//! `Merger` is a stateless unit struct. Its single public method,
-//! [`Merger::resolve`], walks the [`SchemaTree`] in topological order
-//! (parents before children) and merges properties using a two-pointer sorted
-//! merge.
-//!
-//! `merge_properties` is a **private** method to prevent callers from
-//! bypassing the correct pipeline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     error::SchemaError,
     extender::SchemaTree,
     property::{Property, PropertyName},
+    resolver::Resolver,
 };
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
@@ -56,9 +54,8 @@ impl Merger {
     ///
     /// 1. Looks up the parent's resolved properties from `resolved_cache` (an
     ///    in-batch parent resolved earlier in the walk), from `known_parents`
-    ///    (a DB-fresh parent), or uses an empty slice for root schemas.
-    /// 2. Calls private `merge_properties` to produce the final sorted property
-    ///    list.
+    ///    (a DB-fresh parent), or uses an empty HashMap for root schemas.
+    /// 2. Calls private `merge_properties` to produce the final HashMap.
     /// 3. Constructs a [`Schema`] directly.
     /// 4. Caches the result for use by downstream children.
     ///
@@ -98,7 +95,7 @@ impl Merger {
             }
 
             // Obtain parent's resolved properties.
-            let parent_props: &[Property] =
+            let parent_props: HashMap<PropertyName, Property> =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
@@ -116,16 +113,16 @@ impl Merger {
                                      empty properties. This may indicate a bug \
                                      in Extender or missing parent in database."
                                 );
-                                &[]
+                                HashMap::new()
                             },
-                            super::aggregate::Schema::properties,
+                            |parent| parent.properties().clone(),
                         )
                 } else {
-                    &[]
+                    HashMap::new()
                 };
 
             let merged = Self::merge_properties(
-                parent_props,
+                &parent_props,
                 &node.properties,
                 &node.excludes,
             );
@@ -150,84 +147,47 @@ impl Merger {
         Ok(results)
     }
 
-    /// Convert a `StoredProperty` to a `Property`.
+    /// Merge parent and child properties into a single `HashMap`.
     ///
-    /// Used when retrieving parent properties from the cache.
-    /// Merge parent and own properties into a single sorted vector, applying
-    /// child overrides and excludes.
+    /// Uses `Resolver::from_child_override()` to handle property conflicts.
     ///
-    /// Both `parent` and `own` must be sorted by property name (guaranteed by
-    /// [`RefExpander`]).  The merge is performed with a two-pointer walk:
-    ///
-    /// - Same-named entries: child's version wins (override).
-    /// - Parent entries whose name is in `excludes`: dropped.
-    /// - Remaining parent + own entries: interleaved in name order.
-    ///
-    /// [`RefExpander`]: super::expander::RefExpander
+    /// # Rules
+    /// - Child properties override parent properties with same name
+    /// - Parent properties in excludes list are filtered out
+    /// - All other parent properties are inherited
     fn merge_properties(
-        parent: &[Property],
-        own: &[Property],
+        parent: &HashMap<PropertyName, Property>,
+        own: &HashMap<PropertyName, Property>,
         excludes: &[Box<str>],
-    ) -> Vec<Property> {
-        let capacity = parent.len().saturating_add(own.len());
-        let mut result = Vec::with_capacity(capacity);
-        let mut p_iter = parent.iter().peekable();
-        let mut c_iter = own.iter().peekable();
+    ) -> HashMap<PropertyName, Property> {
+        let mut result = parent.clone();
 
-        loop {
-            use std::cmp::Ordering;
-            match (p_iter.peek(), c_iter.peek()) {
-                (Some(&p), Some(&c)) => {
-                    match p.name().as_str().cmp(c.name().as_str()) {
-                        Ordering::Less => {
-                            Self::push_unless_excluded(
-                                &mut result,
-                                p,
-                                excludes,
-                            );
-                            p_iter.next();
-                        }
-                        Ordering::Greater => {
-                            result.push(c.clone());
-                            c_iter.next();
-                        }
-                        Ordering::Equal => {
-                            // Child overrides parent
-                            result.push(c.clone());
-                            p_iter.next();
-                            c_iter.next();
-                        }
-                    }
-                }
-                (Some(&p), None) => {
-                    Self::push_unless_excluded(&mut result, p, excludes);
-                    p_iter.next();
-                }
-                (None, Some(&c)) => {
-                    result.push(c.clone());
-                    c_iter.next();
-                }
-                (None, None) => break,
+        // Remove excluded properties
+        for excluded in excludes {
+            // Convert Box<str> to PropertyName for HashMap removal
+            if let Ok(name) = PropertyName::try_new(excluded) {
+                result.remove(&name);
+            }
+        }
+
+        // Merge child properties (child wins)
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iteration is intentional for property merging"
+        )]
+        for (name, child_prop) in own {
+            if let Some(parent_prop) = result.get(name) {
+                // Conflict: use Resolver to resolve
+                let merged =
+                    Resolver::from_child_override(parent_prop, child_prop);
+                result.insert(name.clone(), merged);
+            } else {
+                // No conflict: insert child property
+                result.insert(name.clone(), child_prop.clone());
             }
         }
 
         result
-    }
-
-    #[inline]
-    fn push_unless_excluded(
-        result: &mut Vec<Property>,
-        prop: &Property,
-        excludes: &[Box<str>],
-    ) {
-        if !Self::is_excluded(prop.name(), excludes) {
-            result.push(prop.clone());
-        }
-    }
-
-    #[inline]
-    fn is_excluded(name: &PropertyName, excludes: &[Box<str>]) -> bool {
-        excludes.iter().any(|e| e.as_ref() == name.as_str())
     }
 
     /// Incrementally resolve affected properties in a schema when PropertyBank
@@ -263,47 +223,45 @@ impl Merger {
         }
 
         // Build a set for O(1) lookup
-        let affected_set: std::collections::HashSet<&PropertyName> =
+        let affected_set: HashSet<&PropertyName> =
             affected_properties.iter().collect();
 
-        // Update affected properties with new definitions from bank
-        let updated_properties: Result<Vec<Property>, SchemaError> = schema
-            .properties()
-            .iter()
-            .map(|prop| {
-                // If this property is affected, look up new definition from
-                // bank
-                if affected_set.contains(prop.name()) {
-                    let bank_prop = bank.get(prop.name()).ok_or_else(|| {
-                        SchemaError::PropertyRefNotFound(format!(
-                            "property_bank#/{}",
-                            prop.name()
-                        ))
-                    })?;
+        // Clone properties and update affected ones
+        let mut updated_properties = schema.properties().clone();
 
-                    // Update the spec from the bank, keep other fields
-                    // (required, multi) Properties in schemas can override
-                    // optionality/multiplicity
-                    Ok(Property::new(
-                        bank_prop.id(),
-                        prop.name().clone(),
-                        prop.optionality(),
-                        prop.multiplicity(),
-                        bank_prop.spec().clone(),
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iteration is intentional"
+        )]
+        for (name, prop) in &mut updated_properties {
+            if affected_set.contains(name) {
+                // Look up new definition from bank
+                let bank_prop = bank.get(name).ok_or_else(|| {
+                    SchemaError::PropertyRefNotFound(format!(
+                        "property_bank#/{name}"
                     ))
-                } else {
-                    // Property not affected, keep as-is
-                    Ok(prop.clone())
-                }
-            })
-            .collect();
+                })?;
+
+                // Update the spec from the bank, keep other fields
+                // (required, multi) Properties in schemas can override
+                // optionality/multiplicity
+                let updated_prop = Property::new(
+                    bank_prop.id(),
+                    name.clone(),
+                    prop.optionality(),
+                    prop.multiplicity(),
+                    bank_prop.spec().clone(),
+                );
+                *prop = updated_prop;
+            }
+        }
 
         Ok(Schema::new(
             *schema.id(),
             schema.name().clone(),
             schema.parent_id().copied(),
             schema.children().to_vec(),
-            updated_properties?,
+            updated_properties,
         ))
     }
 }
@@ -353,11 +311,13 @@ mod tests {
             extends: Option<&str>,
             props: Vec<Property>,
         ) -> (SchemaId, RefExpandedSchema) {
+            let properties: HashMap<PropertyName, Property> =
+                props.into_iter().map(|p| (p.name().clone(), p)).collect();
             (id, RefExpandedSchema {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes: Vec::new(),
-                properties: props,
+                properties,
             })
         }
 
@@ -371,7 +331,7 @@ mod tests {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes,
-                properties: Vec::new(),
+                properties: HashMap::new(),
             })
         }
     }
@@ -446,8 +406,11 @@ mod tests {
                 .find(|s| s.name().as_ref() == "child")
                 .expect("child schema in result");
 
-            let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_ref()).collect();
+            let prop_names: Vec<&str> = child
+                .properties()
+                .values()
+                .map(|p| p.name().as_ref())
+                .collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -500,7 +463,7 @@ mod tests {
                 .expect("child in result");
             let shared = child
                 .properties()
-                .iter()
+                .values()
                 .find(|p| p.name().as_ref() == "shared")
                 .expect("shared property");
             assert_eq!(
@@ -539,8 +502,7 @@ mod tests {
                 .expect("child in result");
             let has_exclude = child
                 .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "excluded");
+                .contains_key(&PropertyName::try_new("excluded")?);
             assert!(
                 !has_exclude,
                 "Excluded property should be absent from child"
@@ -554,12 +516,15 @@ mod tests {
             let child_id = SchemaId::from_uuid(CHILD_ID);
 
             let parent_prop = fixtures::bool_property("db-prop")?;
+            let mut parent_props = HashMap::new();
+            parent_props
+                .insert(parent_prop.name().clone(), parent_prop.clone());
             let parent_schema = Schema::new(
                 parent_id,
                 SchemaName::try_new("parent")?,
                 None,
                 Vec::new(),
-                vec![parent_prop.clone()],
+                parent_props,
             );
             let mut known_parents = HashMap::new();
             known_parents.insert(parent_id, parent_schema);
@@ -579,8 +544,7 @@ mod tests {
                 .expect("child in result");
             let has_db_prop = child
                 .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "db-prop");
+                .contains_key(&PropertyName::try_new("db-prop")?);
             assert!(
                 has_db_prop,
                 "Child should inherit DB-fresh parent property"
@@ -635,7 +599,7 @@ mod tests {
                 name: "root".into(),
                 extends: None,
                 excludes: Vec::new(),
-                properties: Vec::new(),
+                properties: HashMap::new(),
             }));
 
             // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
@@ -648,7 +612,7 @@ mod tests {
                         format!("s{}", i - 1).into()
                     }),
                     excludes: Vec::new(),
-                    properties: Vec::new(),
+                    properties: HashMap::new(),
                 }));
             }
 
@@ -730,7 +694,7 @@ mod tests {
 
             let prop_names: Vec<&str> = physics
                 .properties()
-                .iter()
+                .values()
                 .map(|p| p.name().as_ref())
                 .collect();
 
@@ -815,8 +779,7 @@ mod tests {
 
             let has_deep_field = level3
                 .properties()
-                .iter()
-                .any(|p| p.name().as_ref() == "deep_field");
+                .contains_key(&PropertyName::try_new("deep_field")?);
 
             assert!(
                 !has_deep_field,
@@ -873,8 +836,11 @@ mod tests {
                 .find(|s| s.name().as_ref() == "child")
                 .expect("child schema in result");
 
-            let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_ref()).collect();
+            let prop_names: Vec<&str> = child
+                .properties()
+                .values()
+                .map(|p| p.name().as_ref())
+                .collect();
 
             assert!(
                 !prop_names.contains(&"prop_a"),

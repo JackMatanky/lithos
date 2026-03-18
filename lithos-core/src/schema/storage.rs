@@ -607,9 +607,14 @@ impl Repository for RedbRepository {
         for schema in schemas {
             let mut matching_properties = Vec::new();
 
-            for property in schema.properties() {
-                if target_names.contains(property.name().as_str()) {
-                    matching_properties.push(property.name().clone());
+            #[expect(
+                clippy::iter_over_hash_type,
+                reason = "HashMap keys iteration is intentional for property \
+                          usage tracking"
+            )]
+            for name in schema.properties().keys() {
+                if target_names.contains(name.as_str()) {
+                    matching_properties.push(name.clone());
                 }
             }
 

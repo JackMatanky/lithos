@@ -1,6 +1,6 @@
 //! Shared metadata types for schema and property bank versions.
 
-use std::{collections::BTreeMap, time::SystemTime};
+use std::{collections::HashMap, time::SystemTime};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
@@ -107,7 +107,7 @@ pub struct HashMetadata {
     content: [u8; 32],
 
     /// Per-property Blake3 hashes for incremental updates/resolution.
-    properties: BTreeMap<PropertyName, [u8; 32]>,
+    properties: HashMap<PropertyName, [u8; 32]>,
 }
 
 impl HashMetadata {
@@ -116,7 +116,7 @@ impl HashMetadata {
     #[must_use]
     pub fn new(
         content: [u8; 32],
-        properties: BTreeMap<PropertyName, [u8; 32]>,
+        properties: HashMap<PropertyName, [u8; 32]>,
     ) -> Self {
         Self {
             content,
@@ -134,7 +134,7 @@ impl HashMetadata {
     /// Get property hashes.
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &BTreeMap<PropertyName, [u8; 32]> {
+    pub fn properties(&self) -> &HashMap<PropertyName, [u8; 32]> {
         &self.properties
     }
 
@@ -152,7 +152,7 @@ impl HashMetadata {
     #[must_use]
     pub fn compute_property_hashes(
         properties: &std::collections::HashMap<Box<str>, RawProperty>,
-    ) -> BTreeMap<PropertyName, [u8; 32]> {
+    ) -> HashMap<PropertyName, [u8; 32]> {
         properties
             .iter()
             .filter_map(|(name, prop)| {
@@ -169,7 +169,7 @@ impl HashMetadata {
     #[must_use]
     pub fn compute_property_hashes_for_bank(
         properties: &std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
-    ) -> BTreeMap<PropertyName, [u8; 32]> {
+    ) -> HashMap<PropertyName, [u8; 32]> {
         properties
             .iter()
             .filter_map(|(name, entry)| {
@@ -189,11 +189,16 @@ impl HashMetadata {
     #[must_use]
     pub fn changed_properties(
         &self,
-        new_hashes: &BTreeMap<PropertyName, [u8; 32]>,
+        new_hashes: &HashMap<PropertyName, [u8; 32]>,
     ) -> Vec<PropertyName> {
         let mut changed = Vec::new();
 
         // Find modified or added properties
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iteration is intentional for detecting changed \
+                      properties"
+        )]
         for (name, new_hash) in new_hashes {
             if self.properties.get(name) != Some(new_hash) {
                 changed.push(name.clone());
@@ -201,6 +206,11 @@ impl HashMetadata {
         }
 
         // Find removed properties
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap keys iteration is intentional for detecting \
+                      removed properties"
+        )]
         for name in self.properties.keys() {
             if !new_hashes.contains_key(name) {
                 changed.push(name.clone());
@@ -271,7 +281,7 @@ mod tests {
     #[test]
     fn hash_metadata_content_matches() {
         let hash = [1u8; 32];
-        let metadata = HashMetadata::new(hash, BTreeMap::new());
+        let metadata = HashMetadata::new(hash, HashMap::new());
 
         assert!(metadata.is_content_match(&hash));
         assert!(!metadata.is_content_match(&[2u8; 32]));
@@ -279,8 +289,8 @@ mod tests {
 
     #[test]
     fn hash_metadata_changed_properties_detects_added() {
-        let current = HashMetadata::new([0u8; 32], BTreeMap::new());
-        let mut new_hashes = BTreeMap::new();
+        let current = HashMetadata::new([0u8; 32], HashMap::new());
+        let mut new_hashes = HashMap::new();
         let prop_name = PropertyName::try_new("title").unwrap();
         new_hashes.insert(prop_name.clone(), [1u8; 32]);
 
@@ -292,12 +302,12 @@ mod tests {
 
     #[test]
     fn hash_metadata_changed_properties_detects_removed() {
-        let mut current_hashes = BTreeMap::new();
+        let mut current_hashes = HashMap::new();
         let prop_name = PropertyName::try_new("title").unwrap();
         current_hashes.insert(prop_name.clone(), [1u8; 32]);
         let current = HashMetadata::new([0u8; 32], current_hashes);
 
-        let changed = current.changed_properties(&BTreeMap::new());
+        let changed = current.changed_properties(&HashMap::new());
 
         assert_eq!(changed.len(), 1);
         assert_eq!(changed.first(), Some(&prop_name));
@@ -306,11 +316,11 @@ mod tests {
     #[test]
     fn hash_metadata_changed_properties_detects_modified() {
         let prop_name = PropertyName::try_new("title").unwrap();
-        let mut current_hashes = BTreeMap::new();
+        let mut current_hashes = HashMap::new();
         current_hashes.insert(prop_name.clone(), [1u8; 32]);
         let current = HashMetadata::new([0u8; 32], current_hashes);
 
-        let mut new_hashes = BTreeMap::new();
+        let mut new_hashes = HashMap::new();
         new_hashes.insert(prop_name.clone(), [2u8; 32]);
 
         let changed = current.changed_properties(&new_hashes);

@@ -8,7 +8,7 @@
 //! RefExpander  ← here
 //! → Vec<(SchemaId, RefExpandedSchema)>
 //! Extender
-//! Resolver
+//! Merger
 //! ```
 //!
 //! After `RefExpander` completes, the [`PropertyBank`] is no longer
@@ -18,9 +18,10 @@
 //!
 //! - **Input**: stale `Vec<(SchemaId, RawSchema)>` + `&PropertyBank`
 //! - **Output**: `Vec<(SchemaId, RefExpandedSchema)>`
-//! - Properties in each `RefExpandedSchema` are **sorted by name** so
-//!   downstream components (`Extender`, `Resolver`) can use two-pointer merges
-//!   without re-sorting.
+//! - Properties in each `RefExpandedSchema` are stored in `HashMap` for O(1)
+//!   lookup by downstream Merger
+
+use std::collections::HashMap;
 
 use super::{
     bank::PropertyBank,
@@ -29,11 +30,8 @@ use super::{
         BankPropertyRef, Multiplicity, Optionality, Property, PropertyId,
         PropertyName,
     },
-    property_spec::PropertySpec,
-    raw::{
-        RawSchema,
-        property::{RawProperty, RawPropertyRef},
-    },
+    raw::{RawSchema, property::RawProperty},
+    resolver::Resolver,
 };
 use crate::schema::aggregate::SchemaId;
 
@@ -43,8 +41,7 @@ use crate::schema::aggregate::SchemaId;
 
 /// A raw schema with all `$ref` pointers resolved against the property bank.
 ///
-/// Properties are sorted by name for efficient merging by `Extender` and
-/// `Resolver`.
+/// Properties are stored in `HashMap` for O(1) lookup by name.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
 /// Do not depend on it in production code - use `Loader` instead.
@@ -58,8 +55,8 @@ pub struct RefExpandedSchema {
     pub extends: Option<Box<str>>,
     /// Property names to exclude from the parent schema.
     pub excludes: Vec<Box<str>>,
-    /// Fully resolved and sorted own properties.
-    pub properties: Vec<Property>,
+    /// Fully resolved own properties (`HashMap` for O(1) lookup).
+    pub properties: HashMap<PropertyName, Property>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,14 +120,15 @@ impl<'bank> RefExpander<'bank> {
         &self,
         raw: RawSchema,
     ) -> Result<RefExpandedSchema, SchemaError> {
-        // Collect and sort entries by name for deterministic output.
-        let mut entries: Vec<(Box<str>, RawProperty)> =
-            raw.properties.into_iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut properties = HashMap::with_capacity(raw.properties.len());
 
-        let mut properties = Vec::with_capacity(entries.len());
-        for (prop_name, entry) in entries {
-            properties.push(self.expand_property(&prop_name, entry)?);
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iteration is intentional for property expansion"
+        )]
+        for (prop_name, entry) in raw.properties {
+            let (name, prop) = self.expand_property(&prop_name, entry)?;
+            properties.insert(name, prop);
         }
 
         Ok(RefExpandedSchema {
@@ -142,179 +140,52 @@ impl<'bank> RefExpander<'bank> {
     }
 
     /// Resolve a single raw property entry into a validated [`Property`].
+    ///
+    /// Returns tuple of (`PropertyName`, Property) for `HashMap` insertion.
     fn expand_property(
         &self,
         name: &str,
         entry: RawProperty,
-    ) -> Result<Property, SchemaError> {
+    ) -> Result<(PropertyName, Property), SchemaError> {
         match entry {
             RawProperty::Inline(inline) => {
                 let prop_name = PropertyName::try_new(name)?;
                 let spec = inline.spec.try_into()?;
                 let optionality = Optionality::from(inline.required);
                 let multiplicity = Multiplicity::from(inline.multi);
-                Ok(Property::new(
-                    PropertyId::new(),
-                    prop_name,
-                    optionality,
-                    multiplicity,
-                    spec,
+                Ok((
+                    prop_name.clone(),
+                    Property::new(
+                        PropertyId::new(),
+                        prop_name,
+                        optionality,
+                        multiplicity,
+                        spec,
+                    ),
                 ))
             }
 
             RawProperty::Ref(ref_entry) => {
-                Self::apply_ref_overrides(self.bank, &ref_entry)
+                // Extract property name from ref_path (e.g.,
+                // "property_bank#/date" -> "date")
+                let prop_ref =
+                    BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
+                let bank_name = prop_ref.name();
+
+                // Look up base property in bank
+                let base = self.bank.get(bank_name).ok_or_else(|| {
+                    SchemaError::PropertyRefNotFound(
+                        ref_entry.ref_path.to_string(),
+                    )
+                })?;
+
+                // Apply overrides using Resolver
+                let prop = Resolver::from_bank_ref(base, &ref_entry)?;
+
+                // Return with the property name from the ref_path
+                Ok((bank_name.clone(), prop))
             }
         }
-    }
-
-    /// Resolve a `$ref` entry: look up the base property in the bank, then
-    /// apply any `required`/`multi` and type-specific overrides.
-    ///
-    /// The property name is extracted from the `ref_path` (e.g.,
-    /// `property_bank#/original_name`).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaError::PropertyRefNotFound`] if the referenced property
-    /// is absent from the bank, or [`SchemaError::PropertyTypeMismatch`] if
-    /// any override field is incompatible with the base property type (R-10).
-    fn apply_ref_overrides(
-        bank: &PropertyBank,
-        ref_entry: &RawPropertyRef,
-    ) -> Result<Property, SchemaError> {
-        // Extract property name from ref_path (e.g., "property_bank#/date" ->
-        // "date")
-        let prop_ref = BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
-        let bank_name = prop_ref.name();
-
-        let base = bank.get(bank_name).ok_or_else(|| {
-            SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
-        })?;
-
-        let optionality =
-            ref_entry.required.map_or(base.optionality(), Optionality::from);
-        let multiplicity =
-            ref_entry.multi.map_or(base.multiplicity(), Multiplicity::from);
-
-        let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
-
-        // Use the bank property name as the schema property name
-        Ok(Property::new(
-            base.id(),
-            bank_name.clone(),
-            optionality,
-            multiplicity,
-            spec,
-        ))
-    }
-
-    /// Apply type-specific spec overrides, rejecting type changes (R-10).
-    ///
-    /// Returns [`SchemaError::PropertyTypeMismatch`] if any override field
-    /// targets a type incompatible with the base spec type.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &PropertySpec with value patterns is idiomatic"
-    )]
-    fn apply_spec_overrides(
-        base: &PropertySpec,
-        ref_entry: &RawPropertyRef,
-    ) -> Result<PropertySpec, SchemaError> {
-        let has_number = ref_entry.number.min.is_some()
-            || ref_entry.number.max.is_some()
-            || ref_entry.number.step.is_some();
-        let has_string = ref_entry.string.options.is_some()
-            || ref_entry.string.pattern.is_some();
-        let has_date = ref_entry.date.format.is_some();
-        let has_file = ref_entry.file.directory.is_some()
-            || ref_entry.file.file_class.is_some();
-
-        match base {
-            PropertySpec::Bool(_) => {
-                if has_number {
-                    return Err(type_mismatch("bool", "number"));
-                }
-                if has_string {
-                    return Err(type_mismatch("bool", "string"));
-                }
-                if has_date {
-                    return Err(type_mismatch("bool", "date"));
-                }
-                if has_file {
-                    return Err(type_mismatch("bool", "file"));
-                }
-                Ok(base.clone())
-            }
-
-            PropertySpec::Number(spec) => {
-                if has_string {
-                    return Err(type_mismatch("number", "string"));
-                }
-                if has_date {
-                    return Err(type_mismatch("number", "date"));
-                }
-                if has_file {
-                    return Err(type_mismatch("number", "file"));
-                }
-                Ok(PropertySpec::Number(
-                    spec.clone().apply_overrides(&ref_entry.number)?,
-                ))
-            }
-
-            PropertySpec::String(spec) => {
-                if has_number {
-                    return Err(type_mismatch("string", "number"));
-                }
-                if has_date {
-                    return Err(type_mismatch("string", "date"));
-                }
-                if has_file {
-                    return Err(type_mismatch("string", "file"));
-                }
-                Ok(PropertySpec::String(
-                    spec.clone().apply_overrides(&ref_entry.string)?,
-                ))
-            }
-
-            PropertySpec::Date(spec) => {
-                if has_number {
-                    return Err(type_mismatch("date", "number"));
-                }
-                if has_string {
-                    return Err(type_mismatch("date", "string"));
-                }
-                if has_file {
-                    return Err(type_mismatch("date", "file"));
-                }
-                Ok(PropertySpec::Date(
-                    spec.clone().apply_overrides(&ref_entry.date)?,
-                ))
-            }
-
-            PropertySpec::File(spec) => {
-                if has_number {
-                    return Err(type_mismatch("file", "number"));
-                }
-                if has_string {
-                    return Err(type_mismatch("file", "string"));
-                }
-                if has_date {
-                    return Err(type_mismatch("file", "date"));
-                }
-                Ok(PropertySpec::File(
-                    spec.clone().apply_overrides(&ref_entry.file)?,
-                ))
-            }
-        }
-    }
-}
-
-#[inline]
-fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
-    SchemaError::PropertyTypeMismatch {
-        expected: expected.into(),
-        actual: actual.into(),
     }
 }
 
@@ -404,7 +275,7 @@ mod tests {
         fn inline_bool_resolves_correctly() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
             let expander = RefExpander::new(&bank);
-            let prop = expander
+            let (_, prop) = expander
                 .expand_property("flag", fixtures::inline_bool_entry())?;
             assert_eq!(prop.name().as_str(), "flag");
             assert_eq!(prop.optionality(), Optionality::Required);
@@ -417,7 +288,7 @@ mod tests {
             let base = fixtures::bool_property("status")?;
             let bank = fixtures::bank_with(base)?;
             let expander = RefExpander::new(&bank);
-            let prop = expander.expand_property(
+            let (_, prop) = expander.expand_property(
                 "status",
                 fixtures::ref_entry("property_bank#/status"),
             )?;
@@ -440,7 +311,7 @@ mod tests {
                 date: RawDateSpec::default(),
                 file: RawFileSpec::default(),
             });
-            let prop = expander.expand_property("status", entry)?;
+            let (_, prop) = expander.expand_property("status", entry)?;
             assert_eq!(prop.optionality(), Optionality::Optional);
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
             Ok(())
@@ -524,8 +395,14 @@ mod tests {
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;
             let expanded_schemas = &result[0].1;
-            assert_eq!(expanded_schemas.properties[0].name().as_str(), "a");
-            assert_eq!(expanded_schemas.properties[1].name().as_str(), "z");
+            assert_eq!(
+                expanded_schemas.properties.get("a").map(|p| p.name().as_str()),
+                Some("a")
+            );
+            assert_eq!(
+                expanded_schemas.properties.get("z").map(|p| p.name().as_str()),
+                Some("z")
+            );
             Ok(())
         }
 
