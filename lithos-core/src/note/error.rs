@@ -1,6 +1,6 @@
 //! Error types for note domain and persistence operations.
 
-use super::{aggregate::NoteId, paths::NotePath, value::FieldValueType};
+use super::{aggregate::NoteId, paths::NotePath};
 
 /// Note-related errors.
 ///
@@ -283,9 +283,9 @@ pub enum FrontmatterError {
         /// The key that was requested.
         key: Box<str>,
         /// The expected type description.
-        expected: FieldValueType,
+        expected: &'static str,
         /// The actual runtime type.
-        actual: FieldValueType,
+        actual: &'static str,
     },
 
     /// A key exists and is an array, but at least one element has the wrong
@@ -300,9 +300,9 @@ pub enum FrontmatterError {
         /// The index of the first mismatched array element.
         index: usize,
         /// The expected element type.
-        expected: FieldValueType,
+        expected: &'static str,
         /// The actual element type.
-        actual: FieldValueType,
+        actual: &'static str,
     },
 
     /// A key exists and is a date timestamp, but the timestamp is not
@@ -354,9 +354,9 @@ pub enum FieldValueError {
     #[error("type mismatch: expected {expected}, found {actual}")]
     TypeMismatch {
         /// Expected value type.
-        expected: FieldValueType,
+        expected: &'static str,
         /// Actual value type.
-        actual: FieldValueType,
+        actual: &'static str,
     },
     /// Invalid date timestamp.
     #[error("invalid date timestamp: {timestamp}")]
@@ -373,9 +373,9 @@ pub enum FieldValueError {
         /// Index of the problematic element.
         index: usize,
         /// Expected element type.
-        expected: FieldValueType,
+        expected: &'static str,
         /// Actual element type.
-        actual: FieldValueType,
+        actual: &'static str,
     },
 }
 
@@ -442,7 +442,7 @@ pub enum FrontmatterParseError {
 mod tests {
     use rstest::rstest;
 
-    use super::*;
+    use super::{super::aggregate::NoteId, *};
 
     #[test]
     fn note_error_is_send_and_sync() {

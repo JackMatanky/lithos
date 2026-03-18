@@ -39,8 +39,8 @@ use super::error::FieldValueError;
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum FieldValue {
-    /// Array of values.
-    Array(#[rkyv(omit_bounds)] Vec<FieldValue>),
+    /// Array of values (stored as Box for memory efficiency).
+    Array(#[rkyv(omit_bounds)] Box<[FieldValue]>),
     /// Boolean value.
     Boolean(bool),
     /// Date/time value (stored as Unix timestamp for serialization).
@@ -53,41 +53,6 @@ pub enum FieldValue {
     String(Box<str>),
 }
 
-/// A high-level type descriptor for [`FieldValue`].
-///
-/// This is primarily used for error reporting and debugging to describe
-/// the expected vs actual types of metadata fields.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldValueType {
-    /// Array of field values.
-    Array,
-    /// Boolean value.
-    Boolean,
-    /// Date timestamp.
-    Date,
-    /// Floating point number.
-    Number,
-    /// Map of string keys to field values.
-    Object,
-    /// String value.
-    String,
-}
-
-impl core::fmt::Display for FieldValueType {
-    #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let name = match *self {
-            Self::Array => "array",
-            Self::Boolean => "boolean",
-            Self::Date => "date",
-            Self::Number => "number",
-            Self::Object => "object",
-            Self::String => "string",
-        };
-        f.write_str(name)
-    }
-}
-
 #[expect(
     clippy::pattern_type_mismatch,
     reason = "Accessor methods intentionally use match ergonomics on `&self` \
@@ -95,38 +60,18 @@ impl core::fmt::Display for FieldValueType {
               patterns and keep the code concise"
 )]
 impl FieldValue {
-    /// Returns the value type descriptor.
+    /// Returns the human-readable type name.
     #[inline]
     #[must_use]
-    pub const fn value_type(&self) -> FieldValueType {
+    pub const fn type_name(&self) -> &'static str {
         match *self {
-            Self::Array(_) => FieldValueType::Array,
-            Self::Boolean(_) => FieldValueType::Boolean,
-            Self::Date(_) => FieldValueType::Date,
-            Self::Number(_) => FieldValueType::Number,
-            Self::Object(_) => FieldValueType::Object,
-            Self::String(_) => FieldValueType::String,
+            Self::Array(_) => "array",
+            Self::Boolean(_) => "boolean",
+            Self::Date(_) => "date",
+            Self::Number(_) => "number",
+            Self::Object(_) => "object",
+            Self::String(_) => "string",
         }
-    }
-
-    /// Returns the array slice if this is an `Array` variant.
-    #[inline]
-    #[must_use]
-    pub fn as_array(&self) -> Option<&[FieldValue]> {
-        if let Self::Array(arr) = self {
-            Some(arr)
-        } else {
-            None
-        }
-    }
-
-    /// Returns an iterator over array items if this is an `Array` variant.
-    #[inline]
-    #[must_use]
-    pub fn array_items(&self) -> Option<FieldArrayItems<'_>> {
-        self.as_array().map(|arr| FieldArrayItems {
-            inner: arr.iter(),
-        })
     }
 
     /// Returns the boolean value if this is a `Boolean` variant.
@@ -162,6 +107,28 @@ impl FieldValue {
         }
     }
 
+    /// Returns the string value if this is a `String` variant.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        if let Self::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the array slice if this is an `Array` variant.
+    #[inline]
+    #[must_use]
+    pub fn as_array(&self) -> Option<&[FieldValue]> {
+        if let Self::Array(arr) = self {
+            Some(arr)
+        } else {
+            None
+        }
+    }
+
     /// Returns the object map if this is an `Object` variant.
     #[inline]
     #[must_use]
@@ -173,6 +140,15 @@ impl FieldValue {
         }
     }
 
+    /// Returns an iterator over array items if this is an `Array` variant.
+    #[inline]
+    #[must_use]
+    pub fn array_items(&self) -> Option<FieldArrayItems<'_>> {
+        self.as_array().map(|arr| FieldArrayItems {
+            inner: arr.iter(),
+        })
+    }
+
     /// Returns an iterator over object fields if this is an `Object` variant.
     #[inline]
     #[must_use]
@@ -180,17 +156,6 @@ impl FieldValue {
         self.as_object().map(|obj| FieldObjectFields {
             inner: obj.iter(),
         })
-    }
-
-    /// Returns the string value if this is a `String` variant.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        if let Self::String(s) = self {
-            Some(s)
-        } else {
-            None
-        }
     }
 
     /// Convert this `FieldValue` to a JSON string for indexing.
@@ -211,28 +176,27 @@ impl Serialize for FieldValue {
         S: Serializer,
     {
         #[expect(
-            clippy::ref_patterns,
-            reason = "Explicit pattern for serializer avoids \
-                      pattern_type_mismatch"
+            clippy::pattern_type_mismatch,
+            reason = "Intentional use of match ergonomics on &self"
         )]
-        match *self {
-            Self::Array(ref arr) => serializer.collect_seq(arr),
-            Self::Boolean(b) => serializer.serialize_bool(b),
-            Self::Date(ts) => {
+        match self {
+            Self::Array(arr) => serializer.collect_seq(arr.iter()),
+            &Self::Boolean(b) => serializer.serialize_bool(b),
+            &Self::Date(ts) => {
                 let datetime = DateTime::from_timestamp(ts, 0)
                     .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
                 serializer.serialize_str(&datetime.to_rfc3339())
             }
-            Self::Number(n) => serializer.serialize_f64(n),
+            &Self::Number(n) => serializer.serialize_f64(n),
             #[expect(clippy::iter_over_hash_type, reason = "Internal matching")]
-            Self::Object(ref obj) => {
+            Self::Object(obj) => {
                 let mut map = serializer.serialize_map(Some(obj.len()))?;
                 for (key, val) in obj {
                     map.serialize_entry(key, val)?;
                 }
                 map.end()
             }
-            Self::String(ref s) => serializer.serialize_str(s),
+            Self::String(s) => serializer.serialize_str(s),
         }
     }
 }
@@ -310,7 +274,7 @@ impl<'de> Deserialize<'de> for FieldValue {
                 while let Some(value) = seq.next_element()? {
                     values.push(value);
                 }
-                Ok(FieldValue::Array(values))
+                Ok(FieldValue::Array(values.into_boxed_slice()))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -425,8 +389,8 @@ impl TryFromFieldValue for bool {
     #[inline]
     fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_bool().ok_or_else(|| FieldValueError::TypeMismatch {
-            expected: FieldValueType::Boolean,
-            actual: value.value_type(),
+            expected: "boolean",
+            actual: value.type_name(),
         })
     }
 }
@@ -435,8 +399,8 @@ impl TryFromFieldValue for f64 {
     #[inline]
     fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_number().ok_or_else(|| FieldValueError::TypeMismatch {
-            expected: FieldValueType::Number,
-            actual: value.value_type(),
+            expected: "number",
+            actual: value.type_name(),
         })
     }
 }
@@ -446,8 +410,8 @@ impl TryFromFieldValue for Box<str> {
     fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_str().map(Into::into).ok_or_else(|| {
             FieldValueError::TypeMismatch {
-                expected: FieldValueType::String,
-                actual: value.value_type(),
+                expected: "string",
+                actual: value.type_name(),
             }
         })
     }
@@ -458,8 +422,8 @@ impl TryFromFieldValue for DateTime<Utc> {
     fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         let ts =
             value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
-                expected: FieldValueType::Date,
-                actual: value.value_type(),
+                expected: "date",
+                actual: value.type_name(),
             })?;
         Utc.timestamp_opt(ts, 0).single().ok_or({
             FieldValueError::InvalidDateTimestamp {
@@ -478,8 +442,8 @@ impl TryFromFieldValue for Vec<Box<str>> {
                 let Some(s) = item.as_str() else {
                     return Err(FieldValueError::ArrayElementTypeMismatch {
                         index,
-                        expected: FieldValueType::String,
-                        actual: item.value_type(),
+                        expected: "string",
+                        actual: item.type_name(),
                     });
                 };
                 out.push(s.into());
@@ -489,8 +453,8 @@ impl TryFromFieldValue for Vec<Box<str>> {
 
         value.as_str().map(|s| vec![s.into()]).ok_or_else(|| {
             FieldValueError::TypeMismatch {
-                expected: FieldValueType::Array,
-                actual: value.value_type(),
+                expected: "array",
+                actual: value.type_name(),
             }
         })
     }
@@ -502,8 +466,8 @@ impl<'value> TryFromFieldValueRef<'value> for &'value str {
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
-            expected: FieldValueType::String,
-            actual: value.value_type(),
+            expected: "string",
+            actual: value.type_name(),
         })
     }
 }
@@ -514,8 +478,8 @@ impl<'value> TryFromFieldValueRef<'value> for &'value [FieldValue] {
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_array().ok_or_else(|| FieldValueError::TypeMismatch {
-            expected: FieldValueType::Array,
-            actual: value.value_type(),
+            expected: "array",
+            actual: value.type_name(),
         })
     }
 }
@@ -530,11 +494,14 @@ mod tests {
     fn serialization_round_trip() {
         let mut obj = HashMap::new();
         obj.insert("key".into(), FieldValue::String("val".into()));
-        let val = FieldValue::Array(vec![
-            FieldValue::Number(1.0),
-            FieldValue::Boolean(true),
-            FieldValue::Object(obj),
-        ]);
+        let val = FieldValue::Array(
+            vec![
+                FieldValue::Number(1.0),
+                FieldValue::Boolean(true),
+                FieldValue::Object(obj),
+            ]
+            .into_boxed_slice(),
+        );
 
         let json = serde_json::to_string(&val).unwrap();
         let back: FieldValue = serde_json::from_str(&json).unwrap();
@@ -547,10 +514,13 @@ mod tests {
         reason = "Assertions are used to fail tests"
     )]
     fn rkyv_serialization() -> Result<(), Box<dyn std::error::Error>> {
-        let val = FieldValue::Array(vec![
-            FieldValue::String("test".into()),
-            FieldValue::Number(123.0f64),
-        ]);
+        let val = FieldValue::Array(
+            vec![
+                FieldValue::String("test".into()),
+                FieldValue::Number(123.0f64),
+            ]
+            .into_boxed_slice(),
+        );
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&val)?;
         let deserialized: FieldValue =
@@ -561,27 +531,15 @@ mod tests {
     }
 
     #[test]
-    fn value_type_detection() {
+    fn type_name_detection() {
+        assert_eq!(FieldValue::String("".into()).type_name(), "string");
+        assert_eq!(FieldValue::Number(0.0f64).type_name(), "number");
+        assert_eq!(FieldValue::Boolean(true).type_name(), "boolean");
+        assert_eq!(FieldValue::Date(0i64).type_name(), "date");
         assert_eq!(
-            FieldValue::String("".into()).value_type(),
-            FieldValueType::String
+            FieldValue::Array(vec![].into_boxed_slice()).type_name(),
+            "array"
         );
-        assert_eq!(
-            FieldValue::Number(0.0f64).value_type(),
-            FieldValueType::Number
-        );
-        assert_eq!(
-            FieldValue::Boolean(true).value_type(),
-            FieldValueType::Boolean
-        );
-        assert_eq!(FieldValue::Date(0i64).value_type(), FieldValueType::Date);
-        assert_eq!(
-            FieldValue::Array(vec![]).value_type(),
-            FieldValueType::Array
-        );
-        assert_eq!(
-            FieldValue::Object(HashMap::new()).value_type(),
-            FieldValueType::Object
-        );
+        assert_eq!(FieldValue::Object(HashMap::new()).type_name(), "object");
     }
 }

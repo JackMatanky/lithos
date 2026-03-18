@@ -525,7 +525,10 @@ mod tests {
                 key: &str,
                 values: Vec<FieldValue>,
             ) -> Self {
-                self.fields.insert(key.into(), FieldValue::Array(values));
+                self.fields.insert(
+                    key.into(),
+                    FieldValue::Array(values.into_boxed_slice()),
+                );
                 self
             }
 
@@ -614,10 +617,13 @@ mod tests {
             let mut fields = HashMap::new();
             fields.insert(
                 "aliases".into(),
-                FieldValue::Array(vec![
-                    FieldValue::String("ok".into()),
-                    FieldValue::Number(123.0),
-                ]),
+                FieldValue::Array(
+                    vec![
+                        FieldValue::String("ok".into()),
+                        FieldValue::Number(123.0),
+                    ]
+                    .into_boxed_slice(),
+                ),
             );
             Frontmatter::new(fields)
         }
@@ -652,7 +658,9 @@ mod tests {
 
         #[test]
         fn array_coerces_to_array() {
-            let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
+            let value = FieldValue::Array(
+                vec![FieldValue::Boolean(true)].into_boxed_slice(),
+            );
             assert!(
                 value.array_items().is_some(),
                 "Array should coerce to items"
@@ -661,7 +669,9 @@ mod tests {
 
         #[test]
         fn array_does_not_coerce_to_bool() {
-            let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
+            let value = FieldValue::Array(
+                vec![FieldValue::Boolean(true)].into_boxed_slice(),
+            );
             assert!(
                 value.as_bool().is_none(),
                 "Array should not coerce to bool"
@@ -808,7 +818,6 @@ mod tests {
         use chrono::{DateTime, Utc};
 
         use super::{super::*, fixtures};
-        use crate::note::value::FieldValueType;
 
         #[test]
         fn try_get_returns_string_value() {
@@ -860,8 +869,8 @@ mod tests {
                         actual,
                     })
                         if error_key.as_ref() == "s"
-                            && *expected == FieldValueType::Boolean
-                            && *actual == FieldValueType::String
+                            && *expected == "boolean"
+                            && *actual == "string"
                 ),
                 "type mismatch should error: {result:?}"
             );
@@ -879,8 +888,8 @@ mod tests {
                     Err(FrontmatterError::ArrayElementTypeMismatch {
                         key: error_key,
                         index: 1,
-                        expected: FieldValueType::String,
-                        actual: FieldValueType::Number,
+                        expected: "string",
+                        actual: "number",
                     }) if error_key.as_ref() == "aliases"
                 ),
                 "strict extraction should fail: {result:?}"
@@ -938,8 +947,8 @@ mod tests {
                         actual,
                     })
                         if error_key.as_ref() == "n"
-                            && *expected == FieldValueType::String
-                            && *actual == FieldValueType::Number
+                            && *expected == "string"
+                            && *actual == "number"
                 ),
                 "type mismatch should error: {result:?}"
             );
