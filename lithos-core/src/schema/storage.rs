@@ -304,6 +304,36 @@ pub trait Repository: Send + Sync {
         file_path: &str,
     ) -> Result<Option<SchemaId>, Self::Error>;
 
+    /// Finds multiple raw schema views by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs a single
+    /// transaction. Returns a map of path → view for paths that have views.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[std::path::PathBuf],
+    ) -> Result<
+        HashMap<std::path::PathBuf, super::views::RawSchemaView>,
+        Self::Error,
+    >;
+
+    /// Finds multiple schema IDs by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs a single
+    /// transaction. Returns a map of path → `SchemaId` for paths that have
+    /// schemas.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[std::path::PathBuf],
+    ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error>;
+
     // ========================================================================
     // Inheritance Metadata Cache Operations
     // ========================================================================
@@ -836,6 +866,77 @@ impl Repository for RedbRepository {
             .map_err(SchemaError::from)
     }
 
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[std::path::PathBuf],
+    ) -> Result<
+        HashMap<std::path::PathBuf, super::views::RawSchemaView>,
+        Self::Error,
+    > {
+        use crate::schema::db_table::{
+            RAW_SCHEMA_VIEW_BY_PATH, RAW_SCHEMA_VIEWS,
+        };
+
+        // Perform all queries in a single read transaction
+        self.db
+            .batch_read(|reader| {
+                let mut results = HashMap::new();
+
+                for path in file_paths {
+                    let path_key = path.to_string_lossy();
+
+                    // Step 1: Look up SchemaId by path
+                    let Some(id) = reader.get_owned::<SchemaId>(
+                        RAW_SCHEMA_VIEW_BY_PATH,
+                        path_key.as_ref(),
+                    )?
+                    else {
+                        continue;
+                    };
+
+                    // Step 2: Look up RawSchemaView by ID
+                    let id_key = id.to_string();
+                    if let Some(view) = reader.get_owned::<RawSchemaView>(
+                        RAW_SCHEMA_VIEWS,
+                        id_key.as_str(),
+                    )? {
+                        results.insert(path.clone(), view);
+                    }
+                }
+
+                Ok(results)
+            })
+            .map_err(SchemaError::from)
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[std::path::PathBuf],
+    ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+
+        // Perform all queries in a single read transaction
+        self.db
+            .batch_read(|reader| {
+                let mut results = HashMap::new();
+
+                for path in file_paths {
+                    let path_key = path.to_string_lossy();
+                    if let Some(id) = reader.get_owned::<SchemaId>(
+                        RAW_SCHEMA_VIEW_BY_PATH,
+                        path_key.as_ref(),
+                    )? {
+                        results.insert(path.clone(), id);
+                    }
+                }
+
+                Ok(results)
+            })
+            .map_err(SchemaError::from)
+    }
+
     // ========================================================================
     // Inheritance Metadata Cache Operations
     // ========================================================================
@@ -907,6 +1008,56 @@ impl Repository for RedbRepository {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    /// Helper to create test repository.
+    fn setup_test_repo() -> (TempDir, RedbRepository) {
+        use std::sync::Arc;
+
+        use crate::db::Database;
+
+        let tmp = TempDir::new().expect("create temp dir");
+        let db_path = tmp.path().join("test.db");
+        let db = Database::open(&db_path).expect("create database");
+        let repo = RedbRepository::new(Arc::new(db));
+        (tmp, repo)
+    }
+
+    #[test]
+    fn find_raw_schema_views_by_paths_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
+
+        let paths = vec![
+            PathBuf::from("schemas/foo.json"),
+            PathBuf::from("schemas/bar.json"),
+        ];
+
+        let results = repo
+            .find_raw_schema_views_by_paths(&paths)
+            .expect("bulk query should succeed");
+
+        assert!(results.is_empty(), "should return empty map for no matches");
+    }
+
+    #[test]
+    fn find_schema_ids_by_paths_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
+
+        let paths = vec![
+            PathBuf::from("schemas/foo.json"),
+            PathBuf::from("schemas/bar.json"),
+        ];
+
+        let results = repo
+            .find_schema_ids_by_paths(&paths)
+            .expect("bulk query should succeed");
+
+        assert!(results.is_empty(), "should return empty map for no matches");
+    }
 
     #[test]
     #[ignore = "RedbRepository implementation pending - migrate from \
