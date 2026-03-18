@@ -22,9 +22,9 @@ use crate::note::{
 #[non_exhaustive]
 pub struct MarkdownParser;
 
-impl RawFrontmatterFormat {
+impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
     #[inline]
-    pub(crate) fn from_cmark(kind: pulldown_cmark::MetadataBlockKind) -> Self {
+    fn from(kind: pulldown_cmark::MetadataBlockKind) -> Self {
         match kind {
             pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
             pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
@@ -32,9 +32,9 @@ impl RawFrontmatterFormat {
     }
 }
 
-impl RawLinkStyle {
+impl From<pulldown_cmark::LinkType> for RawLinkStyle {
     #[inline]
-    pub(crate) fn from_cmark(kind: pulldown_cmark::LinkType) -> Self {
+    fn from(kind: pulldown_cmark::LinkType) -> Self {
         match kind {
             pulldown_cmark::LinkType::WikiLink {
                 ..
@@ -118,7 +118,7 @@ impl MarkdownParser {
                 ..
             } => {
                 *current_link = Some(LinkFrame {
-                    style: RawLinkStyle::from_cmark(link_type),
+                    style: link_type.into(),
                     is_embed: false,
                     target: dest_url.to_string(),
                     start: start_pos,
@@ -132,7 +132,7 @@ impl MarkdownParser {
                 ..
             } => {
                 *current_link = Some(LinkFrame {
-                    style: RawLinkStyle::from_cmark(link_type),
+                    style: link_type.into(),
                     is_embed: true,
                     target: dest_url.to_string(),
                     start: start_pos,
@@ -435,7 +435,7 @@ impl MarkdownParser {
                     0,
                 ));
                 *frontmatter = Some(RawFrontmatter::new(
-                    RawFrontmatterFormat::from_cmark(kind),
+                    kind.into(),
                     metadata_text.clone().into_boxed_str(),
                     block_range,
                 ));
