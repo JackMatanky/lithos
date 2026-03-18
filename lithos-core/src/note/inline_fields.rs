@@ -1,5 +1,6 @@
 //! Inline field value objects.
 
+use super::raw::RawInlineField;
 use crate::note::position::SourceByteOffset;
 
 /// Inline field extracted from markdown.
@@ -49,5 +50,12 @@ impl InlineField {
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
         self.position
+    }
+}
+
+impl From<RawInlineField> for InlineField {
+    #[inline]
+    fn from(raw: RawInlineField) -> Self {
+        InlineField::new(raw.key().into(), raw.value().into(), raw.position())
     }
 }

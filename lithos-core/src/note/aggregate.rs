@@ -20,7 +20,7 @@ use crate::{
         link::{FrontmatterLink, Link, ReferenceLink},
         list::ListItemEntry,
         paths::NotePath,
-        raw::{RawInlineField, RawNote},
+        raw::RawNote,
         structure::{BlockRef, Section},
         tag::Tag,
         task::Task,
@@ -621,13 +621,6 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
             tasks,
             inline_fields,
         ))
-    }
-}
-
-impl From<RawInlineField> for InlineField {
-    #[inline]
-    fn from(raw: RawInlineField) -> Self {
-        InlineField::new(raw.key().into(), raw.value().into(), raw.position())
     }
 }
 
