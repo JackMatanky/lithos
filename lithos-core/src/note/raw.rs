@@ -3,7 +3,6 @@
 use std::time::SystemTime;
 
 use crate::note::{
-    frontmatter::FrontmatterFormat,
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
 };
@@ -43,11 +42,20 @@ impl RawBlockRef {
     }
 }
 
+/// Input format for frontmatter parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawFrontmatterFormat {
+    /// YAML frontmatter block.
+    Yaml,
+    /// TOML frontmatter block.
+    Toml,
+}
+
 /// Raw frontmatter block captured from metadata events.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawFrontmatter {
-    kind: FrontmatterFormat,
+    kind: RawFrontmatterFormat,
     text: Box<str>,
     range: SourceByteRange,
 }
@@ -57,7 +65,7 @@ impl RawFrontmatter {
     #[inline]
     #[must_use]
     pub fn new(
-        kind: FrontmatterFormat,
+        kind: RawFrontmatterFormat,
         text: Box<str>,
         range: SourceByteRange,
     ) -> Self {
@@ -71,7 +79,7 @@ impl RawFrontmatter {
     /// Return the metadata block kind.
     #[inline]
     #[must_use]
-    pub const fn kind(&self) -> FrontmatterFormat {
+    pub const fn kind(&self) -> RawFrontmatterFormat {
         self.kind
     }
 

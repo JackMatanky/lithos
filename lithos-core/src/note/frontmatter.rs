@@ -17,7 +17,10 @@ use super::{
     error::{FrontmatterError, FrontmatterParseError},
     value::FieldValue,
 };
-use crate::{config::frontmatter::FrontmatterKey, note::raw::RawFrontmatter};
+use crate::{
+    config::frontmatter::FrontmatterKey,
+    note::raw::{RawFrontmatter, RawFrontmatterFormat},
+};
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -63,28 +66,17 @@ pub struct Frontmatter {
     fields: HashMap<Box<str>, FieldValue>,
 }
 
-/// Input format for frontmatter parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrontmatterFormat {
-    /// YAML frontmatter block.
-    Yaml,
-    /// TOML frontmatter block.
-    Toml,
-}
-
 impl Frontmatter {
-    /// Parses a frontmatter block into structured fields.
-    ///
     /// # Errors
     ///
     /// Returns [`FrontmatterParseError`] if the content cannot be parsed or
     /// converted into supported field values.
     pub(crate) fn parse(
-        format: FrontmatterFormat,
+        format: RawFrontmatterFormat,
         text: &str,
     ) -> Result<Self, FrontmatterParseError> {
         match format {
-            FrontmatterFormat::Yaml => {
+            RawFrontmatterFormat::Yaml => {
                 if let Ok(fm) = serde_yaml::from_str::<Self>(text) {
                     return Ok(fm);
                 }
@@ -95,7 +87,7 @@ impl Frontmatter {
                     }
                 })
             }
-            FrontmatterFormat::Toml => toml::from_str(text).map_err(|_e| {
+            RawFrontmatterFormat::Toml => toml::from_str(text).map_err(|_e| {
                 FrontmatterParseError::InvalidToml {
                     reason: "failed to parse toml",
                 }

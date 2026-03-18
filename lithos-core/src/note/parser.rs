@@ -7,21 +7,50 @@ use pulldown_cmark::{
 
 use crate::note::{
     error::{NoteError, NoteIngestError},
-    frontmatter::FrontmatterFormat,
     inline_fields::{InlineFieldDelimiter, InlineFieldScanner},
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
-        RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink,
-        RawLinkStyle, RawListDepth, RawListItem, RawListType, RawNote,
-        RawReferenceLink, RawSection, RawSectionKind, RawTag, RawTask,
-        RawTaskKind,
+        RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
+        RawInlineField, RawLink, RawLinkStyle, RawListDepth, RawListItem,
+        RawListType, RawNote, RawReferenceLink, RawSection, RawSectionKind,
+        RawTag, RawTask, RawTaskKind,
     },
 };
 
 /// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
 #[non_exhaustive]
 pub struct MarkdownParser;
+
+impl RawFrontmatterFormat {
+    #[inline]
+    pub(crate) fn from_cmark(kind: pulldown_cmark::MetadataBlockKind) -> Self {
+        match kind {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
+        }
+    }
+}
+
+impl RawLinkStyle {
+    #[inline]
+    pub(crate) fn from_cmark(kind: pulldown_cmark::LinkType) -> Self {
+        match kind {
+            pulldown_cmark::LinkType::WikiLink {
+                ..
+            } => Self::Wiki,
+            pulldown_cmark::LinkType::Inline
+            | pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+            | pulldown_cmark::LinkType::Autolink
+            | pulldown_cmark::LinkType::Email => Self::Markdown,
+        }
+    }
+}
 
 impl MarkdownParser {
     /// Returns the pulldown-cmark option set used for Obsidian-compatible
@@ -49,38 +78,6 @@ impl MarkdownParser {
             pulldown_cmark::HeadingLevel::H4 => 4,
             pulldown_cmark::HeadingLevel::H5 => 5,
             pulldown_cmark::HeadingLevel::H6 => 6,
-        }
-    }
-
-    #[inline]
-    fn frontmatter_format_from_cmark(
-        kind: pulldown_cmark::MetadataBlockKind,
-    ) -> FrontmatterFormat {
-        match kind {
-            pulldown_cmark::MetadataBlockKind::YamlStyle => {
-                FrontmatterFormat::Yaml
-            }
-            pulldown_cmark::MetadataBlockKind::PlusesStyle => {
-                FrontmatterFormat::Toml
-            }
-        }
-    }
-
-    #[inline]
-    fn link_style_from_cmark(kind: pulldown_cmark::LinkType) -> RawLinkStyle {
-        match kind {
-            pulldown_cmark::LinkType::WikiLink {
-                ..
-            } => RawLinkStyle::Wiki,
-            pulldown_cmark::LinkType::Inline
-            | pulldown_cmark::LinkType::Reference
-            | pulldown_cmark::LinkType::ReferenceUnknown
-            | pulldown_cmark::LinkType::Collapsed
-            | pulldown_cmark::LinkType::CollapsedUnknown
-            | pulldown_cmark::LinkType::Shortcut
-            | pulldown_cmark::LinkType::ShortcutUnknown
-            | pulldown_cmark::LinkType::Autolink
-            | pulldown_cmark::LinkType::Email => RawLinkStyle::Markdown,
         }
     }
 
@@ -121,7 +118,7 @@ impl MarkdownParser {
                 ..
             } => {
                 *current_link = Some(LinkFrame {
-                    style: Self::link_style_from_cmark(link_type),
+                    style: RawLinkStyle::from_cmark(link_type),
                     is_embed: false,
                     target: dest_url.to_string(),
                     start: start_pos,
@@ -135,7 +132,7 @@ impl MarkdownParser {
                 ..
             } => {
                 *current_link = Some(LinkFrame {
-                    style: Self::link_style_from_cmark(link_type),
+                    style: RawLinkStyle::from_cmark(link_type),
                     is_embed: true,
                     target: dest_url.to_string(),
                     start: start_pos,
@@ -438,7 +435,7 @@ impl MarkdownParser {
                     0,
                 ));
                 *frontmatter = Some(RawFrontmatter::new(
-                    Self::frontmatter_format_from_cmark(kind),
+                    RawFrontmatterFormat::from_cmark(kind),
                     metadata_text.clone().into_boxed_str(),
                     block_range,
                 ));

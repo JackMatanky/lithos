@@ -1514,7 +1514,7 @@ mod tests {
 
     fn raw_note_with_indexes(path: NotePath) -> RawNote {
         let frontmatter = RawFrontmatter::new(
-            crate::note::frontmatter::FrontmatterFormat::Yaml,
+            crate::note::raw::RawFrontmatterFormat::Yaml,
             "aliases:\n  - Alias\nfile_class: Class\ncategory: docs\n".into(),
             SourceByteRange::new(
                 SourceByteOffset::new(0),
