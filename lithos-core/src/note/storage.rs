@@ -62,8 +62,8 @@ pub trait Repository: Send + Sync {
     /// Deletes a note projection by id.
     fn delete_note(&self, id: NoteId) -> Result<(), Self::Error>;
 
-    /// Persists normalized note facts.
-    fn save_note_facts(&self, facts: &Note) -> Result<NoteId, Self::Error>;
+    /// Persists a note.
+    fn save(&self, note: &Note) -> Result<NoteId, Self::Error>;
 
     /// Finds a stored note projection by its configured alias.
     fn find_by_alias(
@@ -865,8 +865,8 @@ impl Repository for RedbRepository<'_, '_> {
     }
 
     #[inline]
-    fn save_note_facts(&self, facts: &Note) -> Result<NoteId, Self::Error> {
-        let path = facts.path();
+    fn save(&self, note: &Note) -> Result<NoteId, Self::Error> {
+        let path = note.path();
         let existing_id = self.find_note_id_by_path(path)?;
         let note_id = existing_id.unwrap_or_else(NoteId::new);
         let id = Uuid::from(note_id);
@@ -874,10 +874,10 @@ impl Repository for RedbRepository<'_, '_> {
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
 
-        let stored_note = if note_id == facts.id() {
-            facts.clone()
+        let stored_note = if note_id == note.id() {
+            note.clone()
         } else {
-            facts.clone().with_id(note_id)
+            note.clone().with_id(note_id)
         };
         let index_data = self.collect_index_data_from_facts(&stored_note);
         let change_kind = if existing_id.is_some() {
@@ -888,7 +888,7 @@ impl Repository for RedbRepository<'_, '_> {
         let event = Self::build_note_event_from_facts(
             note_id,
             path,
-            facts,
+            note,
             change_kind,
         )?;
 
@@ -1236,8 +1236,8 @@ impl Repository for SharedRepository {
     }
 
     #[inline]
-    fn save_note_facts(&self, facts: &Note) -> Result<NoteId, Self::Error> {
-        RedbRepository::new(&self.db, &self.config).save_note_facts(facts)
+    fn save(&self, note: &Note) -> Result<NoteId, Self::Error> {
+        RedbRepository::new(&self.db, &self.config).save(note)
     }
 
     #[inline]
@@ -1553,7 +1553,7 @@ mod tests {
     }
 
     #[test]
-    fn save_note_facts_persists_path() -> Result<(), DbError> {
+    fn save_persists_path() -> Result<(), DbError> {
         let dir = tempdir().map_err(|e| DbError::Table(e.to_string()))?;
         let db_path = dir.path().join("notes.redb");
         let db = Database::open(&db_path)?;
@@ -1567,7 +1567,7 @@ mod tests {
             Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
                 .map_err(|e| DbError::Table(e.to_string()))?;
 
-        let note_id = repo.save_note_facts(&facts)?;
+        let note_id = repo.save(&facts)?;
         let stored =
             repo.find_by_path(&path)?.expect("stored note should exist");
         assert_eq!(stored.id(), note_id);
@@ -1589,7 +1589,7 @@ mod tests {
         let facts =
             Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
                 .map_err(|e| DbError::Table(e.to_string()))?;
-        let note_id = repo.save_note_facts(&facts)?;
+        let note_id = repo.save(&facts)?;
 
         repo.delete_note(note_id)?;
         let stored = repo.find_by_id(note_id)?;
@@ -1611,7 +1611,7 @@ mod tests {
         let facts =
             Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
                 .map_err(|e| DbError::Table(e.to_string()))?;
-        let note_id = repo.save_note_facts(&facts)?;
+        let note_id = repo.save(&facts)?;
 
         let alias = AliasName::try_new("Alias")
             .map_err(|e| DbError::Table(e.to_string()))?;

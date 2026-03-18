@@ -29,7 +29,8 @@
 //! The Note context is organized around ingest artifacts and projections:
 //!
 //! - [`aggregate`] - Stable note identifiers and normalized facts.
-//! - [`parser`] - Markdown parsing boundary (AST + frontmatter capture).
+//! - [`parser`] - Markdown parsing boundary (SAX event sink + metadata
+//!   capture).
 //! - [`ingestor`] - File ingestion orchestration (File → Raw*).
 //! - [`raw`] - Raw note types.
 //! - [`storage`] - Unified repository + redb adapter.

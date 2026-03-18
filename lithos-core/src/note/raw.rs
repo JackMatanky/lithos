@@ -43,7 +43,6 @@ impl RawBlockRef {
     }
 }
 
-// --- frontmatter.rs ---
 /// Raw frontmatter block captured from metadata events.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -91,7 +90,6 @@ impl RawFrontmatter {
     }
 }
 
-// --- headings.rs ---
 /// Raw heading extracted from the AST.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -149,7 +147,6 @@ impl RawHeading {
     }
 }
 
-// --- inline_fields.rs ---
 /// Raw inline field extracted from markdown.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -197,7 +194,6 @@ impl RawInlineField {
     }
 }
 
-// --- links.rs ---
 /// Raw link style before validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -287,7 +283,6 @@ impl RawLink {
     }
 }
 
-// --- list_items.rs ---
 /// Raw task marker kind extracted from a list item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -412,7 +407,6 @@ impl RawListItem {
     }
 }
 
-// --- reference_links.rs ---
 /// Raw reference-style link definition.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -460,7 +454,6 @@ impl RawReferenceLink {
     }
 }
 
-// --- sections.rs ---
 /// Raw section kinds derived from AST nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -526,7 +519,6 @@ impl RawSection {
     }
 }
 
-// --- tags.rs ---
 /// Raw tag token extracted from text.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -561,7 +553,6 @@ impl RawTag {
     }
 }
 
-// --- tasks.rs ---
 pub type RawTaskInlineField = (Box<str>, Box<str>);
 
 /// Raw task extracted from a checkbox list item.
@@ -645,7 +636,6 @@ impl RawTask {
     }
 }
 
-// --- note.rs ---
 /// Raw note container with extracted, unvalidated data.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

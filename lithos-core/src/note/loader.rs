@@ -93,7 +93,7 @@ where
             raw_note,
             self.config,
         ))?;
-        let saved_id = self.repository.save_note_facts(&facts)?;
+        let saved_id = self.repository.save(&facts)?;
         Ok(saved_id)
     }
 
