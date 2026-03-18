@@ -8,9 +8,7 @@ use pulldown_cmark::{
 use crate::note::{
     error::{NoteError, NoteIngestError},
     frontmatter::FrontmatterFormat,
-    inline_fields::{
-        InlineFieldCollection, InlineFieldKey, InlineFieldScanner,
-    },
+    inline_fields::{InlineFieldCollection, InlineFieldScanner},
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
@@ -976,7 +974,7 @@ impl MarkdownInlineFieldScanner {
                 match MarkdownParser::position_for_offset(segments, start) {
                     Ok(position) => {
                         fields.push(RawInlineField::new(
-                            InlineFieldKey::normalize(key),
+                            key.into(),
                             value.into(),
                             position,
                         ));
@@ -998,7 +996,7 @@ impl MarkdownInlineFieldScanner {
                 match MarkdownParser::position_for_offset(segments, start) {
                     Ok(position) => {
                         fields.push(RawInlineField::new(
-                            InlineFieldKey::normalize(key),
+                            key.into(),
                             value.into(),
                             position,
                         ));
@@ -1019,7 +1017,7 @@ impl MarkdownInlineFieldScanner {
             ) {
                 Ok(position) => {
                     fields.push(RawInlineField::new(
-                        InlineFieldKey::normalize(key),
+                        key.into(),
                         value.into(),
                         position,
                     ));

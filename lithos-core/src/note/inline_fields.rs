@@ -12,9 +12,9 @@ pub type InlineKeyValuePair = (Box<str>, Box<str>);
 
 /// A normalized identifier for an inline field key.
 ///
-/// This type ensures that keys are stored in a canonical kebab-case format
-/// while providing utilities for `snake_case` conversion to support flexible
-/// querying.
+/// This type preserves the original form of the key as it appeared in the
+/// source while providing a canonical `kebab-case` version for consistent
+/// matching and a `snake_case` version for flexible querying.
 #[derive(
     Debug,
     Clone,
@@ -26,42 +26,46 @@ pub type InlineKeyValuePair = (Box<str>, Box<str>);
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct InlineFieldKey(Box<str>);
+pub struct InlineFieldKey {
+    raw: Box<str>,
+    normalized: Box<str>,
+}
 
 impl InlineFieldKey {
-    /// Creates a new normalized key from a raw string.
-    ///
-    /// Strips markdown decorators (`*`, `_`, etc.) and converts
-    /// whitespace-separated tokens into kebab-case.
+    /// Creates a new key from a raw string, computing its normalized form.
     #[inline]
     #[must_use]
     pub fn new(raw: &str) -> Self {
-        Self(Self::normalize(raw))
+        Self {
+            normalized: Self::normalize(raw),
+            raw: raw.into(),
+        }
     }
 
-    /// Returns the primary kebab-case representation.
+    /// Returns the original raw form of the key.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.raw
+    }
+
+    /// Returns the primary `kebab-case` representation used for canonical
+    /// matching.
     #[inline]
     #[must_use]
     pub fn as_kebab(&self) -> &str {
-        &self.0
+        &self.normalized
     }
 
     /// Returns the `snake_case` representation of the key.
     #[inline]
     #[must_use]
     pub fn to_snake(&self) -> String {
-        self.0.replace('-', "_")
-    }
-
-    /// Returns the raw internal storage.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+        self.normalized.replace('-', "_")
     }
 
     /// Normalizes a key by removing markdown decorators and converting to
-    /// kebab-case.
+    /// `kebab-case`.
     #[inline]
     #[must_use]
     pub fn normalize(key: &str) -> Box<str> {
@@ -95,7 +99,7 @@ impl From<Box<str>> for InlineFieldKey {
 impl core::fmt::Display for InlineFieldKey {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.raw)
     }
 }
 
@@ -127,7 +131,7 @@ impl InlineField {
         }
     }
 
-    /// Return the normalized field key.
+    /// Return the normalized field key identifier.
     #[inline]
     #[must_use]
     pub fn key(&self) -> &InlineFieldKey {
