@@ -1874,4 +1874,174 @@ mod tests {
             assert_eq!(result.expanded(), expanded.as_ref());
         }
     }
+
+    // ========================================================================
+    // ingest_all() Tests - PRIMARY API (CRITICAL COVERAGE GAP)
+    // ========================================================================
+
+    /// Tests for `ingest_all()` - the primary API that orchestrates full
+    /// ingestion.
+    ///
+    /// Uses `InMemoryRepository` for pure unit testing without filesystem
+    /// persistence.
+    mod ingest_all_tests {
+        use super::*;
+        use crate::schema::testing::InMemoryRepository;
+
+        /// Helper to create a test config with given root path.
+        fn test_config_inmem(root: &Path) -> Config {
+            Config::build(
+                &RawConfig::default(),
+                VaultId::new(),
+                VaultRoot::try_new(root.to_path_buf()).expect("vault root"),
+                crate::config::aggregate::Version::initial(),
+            )
+            .expect("failed to build test config")
+        }
+
+        #[test]
+        fn ingest_all_with_new_files() {
+            let dir = TempDir::new().expect("tempdir");
+
+            // Write property bank
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            // Write a schema file
+            write_file(
+                dir.path(),
+                "schemas/note.toml",
+                r#"
+"$version" = "1.0"
+
+[properties]
+                "#,
+            );
+
+            let config = test_config_inmem(dir.path());
+            let repository = InMemoryRepository::new();
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            let result = ingestor.ingest_all();
+
+            let results = result.expect("ingest_all should succeed");
+
+            // Property bank should be New or Stale (first time)
+            assert!(
+                results.property_bank.is_new()
+                    || results.property_bank.is_stale()
+            );
+
+            // Should have 1 schema result
+            assert_eq!(results.schemas.len(), 1);
+
+            // Schema should be New (first time)
+            let schema_result = results.schemas.values().next().unwrap();
+            assert!(schema_result.is_new(), "First schema should be New");
+        }
+
+        #[test]
+        fn ingest_all_with_empty_schemas_dir() {
+            let dir = TempDir::new().expect("tempdir");
+
+            // Write only property bank
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            let config = test_config_inmem(dir.path());
+            let repository = InMemoryRepository::new();
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            let result = ingestor.ingest_all();
+
+            assert!(
+                result.is_ok(),
+                "ingest_all should succeed with empty schemas"
+            );
+            let results = result.unwrap();
+
+            // Should have 0 schema results
+            assert_eq!(
+                results.schemas.len(),
+                0,
+                "Should have no schemas with empty directory"
+            );
+        }
+
+        #[test]
+        fn ingest_all_with_multiple_schemas() {
+            let dir = TempDir::new().expect("tempdir");
+
+            // Write property bank
+            write_file(
+                dir.path(),
+                "schemas/property_bank.json",
+                r#"{"$version": "1.0", "properties": {}}"#,
+            );
+
+            // Write multiple schema files
+            write_file(
+                dir.path(),
+                "schemas/note.toml",
+                r#"
+"$version" = "1.0"
+
+[properties]
+                "#,
+            );
+
+            write_file(
+                dir.path(),
+                "schemas/task.toml",
+                r#"
+"$version" = "1.0"
+
+[properties]
+                "#,
+            );
+
+            write_file(
+                dir.path(),
+                "schemas/project.toml",
+                r#"
+"$version" = "1.0"
+
+[properties]
+                "#,
+            );
+
+            let config = test_config_inmem(dir.path());
+            let repository = InMemoryRepository::new();
+            let ingestor =
+                Ingestor::new(FsReader::new(dir.path()), &config, repository);
+
+            let result = ingestor.ingest_all();
+
+            let results = result.expect("ingest_all should succeed");
+
+            // Should have 3 schema results
+            assert_eq!(
+                results.schemas.len(),
+                3,
+                "Should have 3 schemas ingested"
+            );
+
+            // All should be New
+            #[expect(
+                clippy::iter_over_hash_type,
+                reason = "Test verification, order doesn't matter"
+            )]
+            for schema_result in results.schemas.values() {
+                assert!(schema_result.is_new(), "All schemas should be New");
+            }
+        }
+    }
 }
