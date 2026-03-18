@@ -11,9 +11,7 @@
               docs"
 )]
 
-use std::{collections::HashMap, fmt::Write as _};
-
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone as _, Utc};
+use std::collections::HashMap;
 
 use super::{
     error::{FrontmatterError, FrontmatterParseError},
@@ -48,9 +46,17 @@ use crate::{config::frontmatter::FrontmatterKey, note::raw::RawFrontmatter};
 /// # }
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
+#[serde(transparent)]
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key-value pairs of metadata fields.
@@ -77,33 +83,24 @@ impl Frontmatter {
         format: FrontmatterFormat,
         text: &str,
     ) -> Result<Self, FrontmatterParseError> {
-        let fields =
-            match format {
-                FrontmatterFormat::Yaml => {
-                    let yaml_value: serde_yaml::Value =
-                        if let Ok(value) = serde_yaml::from_str(text) {
-                            value
-                        } else {
-                            let sanitized =
-                                Frontmatter::sanitize_yaml_obsidian_links(text);
-                            serde_yaml::from_str(&sanitized).map_err(|_e| {
-                                FrontmatterParseError::InvalidYaml {
-                                    reason: "failed to parse yaml",
-                                }
-                            })?
-                        };
-                    Self::yaml_to_field_map(&yaml_value)?
+        match format {
+            FrontmatterFormat::Yaml => {
+                if let Ok(fm) = serde_yaml::from_str::<Self>(text) {
+                    return Ok(fm);
                 }
-                FrontmatterFormat::Toml => {
-                    let toml_value: toml::Value = toml::from_str(text)
-                        .map_err(|_e| FrontmatterParseError::InvalidToml {
-                            reason: "failed to parse toml",
-                        })?;
-                    Self::toml_to_field_map(&toml_value)?
+                let sanitized = Frontmatter::sanitize_yaml_obsidian_links(text);
+                serde_yaml::from_str(&sanitized).map_err(|_e| {
+                    FrontmatterParseError::InvalidYaml {
+                        reason: "failed to parse yaml",
+                    }
+                })
+            }
+            FrontmatterFormat::Toml => toml::from_str(text).map_err(|_e| {
+                FrontmatterParseError::InvalidToml {
+                    reason: "failed to parse toml",
                 }
-            };
-
-        Ok(Self::new(fields))
+            }),
+        }
     }
 
     /// Creates a new [`Frontmatter`] instance from a field map.
@@ -150,134 +147,6 @@ impl Frontmatter {
         FrontmatterFields {
             inner: self.fields.iter(),
         }
-    }
-
-    fn yaml_to_field_map(
-        value: &serde_yaml::Value,
-    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
-        let map =
-            value.as_mapping().ok_or(FrontmatterParseError::NotYamlMapping)?;
-
-        let mut fields = HashMap::with_capacity(map.len());
-        for (key, value_item) in map {
-            let key_str =
-                key.as_str().ok_or(FrontmatterParseError::NonStringKey)?;
-
-            let field_value =
-                FieldValue::try_from_yaml(value_item).map_err(|_error| {
-                    FrontmatterParseError::InvalidYamlValue {
-                        reason: "invalid yaml value",
-                    }
-                })?;
-
-            fields.insert(key_str.into(), field_value);
-        }
-
-        Ok(fields)
-    }
-
-    fn toml_to_field_map(
-        value: &toml::Value,
-    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
-        let table =
-            value.as_table().ok_or(FrontmatterParseError::NotTomlTable)?;
-
-        let mut fields = HashMap::with_capacity(table.len());
-        for (key, value_item) in table {
-            let field_value = Self::field_value_from_toml(value_item)?;
-            fields.insert(key.as_str().into(), field_value);
-        }
-
-        Ok(fields)
-    }
-
-    fn field_value_from_toml(
-        value: &toml::Value,
-    ) -> Result<FieldValue, FrontmatterParseError> {
-        if let Some(text) = value.as_str() {
-            return Ok(FieldValue::String(text.into()));
-        }
-        if let Some(number) = value.as_integer() {
-            const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
-            let magnitude = number.unsigned_abs();
-            if magnitude > MAX_SAFE_INTEGER {
-                return Err(FrontmatterParseError::InvalidTomlValue {
-                    reason: "integer value exceeds safe f64 range",
-                });
-            }
-
-            #[expect(
-                clippy::as_conversions,
-                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-            )]
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-            )]
-            let parsed = number as f64;
-            return Ok(FieldValue::Number(parsed));
-        }
-        if let Some(number) = value.as_float() {
-            return Ok(FieldValue::Number(number));
-        }
-        if let Some(value) = value.as_bool() {
-            return Ok(FieldValue::Boolean(value));
-        }
-        if let Some(datetime) = value.as_datetime() {
-            let timestamp = Self::toml_datetime_to_timestamp(datetime)?;
-            return Ok(FieldValue::Date(timestamp));
-        }
-        if let Some(values) = value.as_array() {
-            let mut items = Vec::with_capacity(values.len());
-            for item in values {
-                items.push(Self::field_value_from_toml(item)?);
-            }
-            return Ok(FieldValue::Array(items));
-        }
-        if let Some(table) = value.as_table() {
-            let mut obj = HashMap::with_capacity(table.len());
-            for (key, value_item) in table {
-                obj.insert(
-                    key.as_str().into(),
-                    Self::field_value_from_toml(value_item)?,
-                );
-            }
-            return Ok(FieldValue::Object(obj));
-        }
-
-        Err(FrontmatterParseError::InvalidTomlValue {
-            reason: "unsupported toml value",
-        })
-    }
-
-    fn toml_datetime_to_timestamp(
-        datetime: &toml::value::Datetime,
-    ) -> Result<i64, FrontmatterParseError> {
-        let mut rendered = String::new();
-        write!(&mut rendered, "{datetime}").map_err(|_error| {
-            FrontmatterParseError::InvalidTomlValue {
-                reason: "failed to format datetime",
-            }
-        })?;
-        if let Ok(parsed) = DateTime::parse_from_rfc3339(&rendered) {
-            return Ok(parsed.timestamp());
-        }
-        if let Ok(naive) =
-            NaiveDateTime::parse_from_str(&rendered, "%Y-%m-%dT%H:%M:%S%.f")
-        {
-            return Ok(Utc.from_utc_datetime(&naive).timestamp());
-        }
-        if let Ok(date) = NaiveDate::parse_from_str(&rendered, "%Y-%m-%d") {
-            let naive = date.and_hms_opt(0, 0, 0).ok_or(
-                FrontmatterParseError::InvalidTomlValue {
-                    reason: "invalid date components",
-                },
-            )?;
-            return Ok(Utc.from_utc_datetime(&naive).timestamp());
-        }
-        Err(FrontmatterParseError::InvalidTomlValue {
-            reason: "invalid toml datetime",
-        })
     }
 
     /// Strictly extracts a typed value from frontmatter.

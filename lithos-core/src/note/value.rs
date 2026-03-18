@@ -1,5 +1,3 @@
-//! Dynamic field value primitive for metadata and frontmatter.
-
 //! Shared value primitive for note metadata (frontmatter and task metadata).
 #![allow(
     missing_docs,
@@ -12,7 +10,10 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
+use chrono::{DateTime, Datelike as _, TimeZone as _, Timelike as _, Utc};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _,
+};
 
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
@@ -549,6 +550,138 @@ impl FieldValue {
     }
 }
 
+impl Serialize for FieldValue {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[expect(
+            clippy::ref_patterns,
+            reason = "Explicit pattern for serializer avoids \
+                      pattern_type_mismatch"
+        )]
+        match *self {
+            Self::Array(ref arr) => serializer.collect_seq(arr),
+            Self::Boolean(b) => serializer.serialize_bool(b),
+            Self::Date(ts) => {
+                let datetime = DateTime::from_timestamp(ts, 0)
+                    .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
+                serializer.serialize_str(&datetime.to_rfc3339())
+            }
+            Self::Number(n) => serializer.serialize_f64(n),
+            #[expect(clippy::iter_over_hash_type, reason = "Internal matching")]
+            Self::Object(ref obj) => {
+                let mut map = serializer.serialize_map(Some(obj.len()))?;
+                for (key, val) in obj {
+                    map.serialize_entry(key, val)?;
+                }
+                map.end()
+            }
+            Self::String(ref s) => serializer.serialize_str(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for FieldValue {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{MapAccess, SeqAccess, Visitor};
+
+        struct FieldValueVisitor;
+
+        impl<'de> Visitor<'de> for FieldValueVisitor {
+            type Value = FieldValue;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter<'_>,
+            ) -> std::fmt::Result {
+                formatter.write_str("any valid metadata value")
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(FieldValue::Boolean(v))
+            }
+
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "Domain values fit f64"
+            )]
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(FieldValue::Number(v as f64))
+            }
+
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "Domain values fit f64"
+            )]
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(FieldValue::Number(v as f64))
+            }
+
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(FieldValue::Number(v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                // Try parsing as ISO8601 date
+                if let Ok(dt) = DateTime::parse_from_rfc3339(v) {
+                    return Ok(FieldValue::Date(dt.timestamp()));
+                }
+                if let Ok(dt) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
+                    && let Some(naive) = dt.and_hms_opt(0, 0, 0)
+                {
+                    return Ok(FieldValue::Date(
+                        Utc.from_utc_datetime(&naive).timestamp(),
+                    ));
+                }
+                Ok(FieldValue::String(v.into()))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut values =
+                    Vec::with_capacity(seq.size_hint().unwrap_or(0));
+                while let Some(value) = seq.next_element()? {
+                    values.push(value);
+                }
+                Ok(FieldValue::Array(values))
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut fields =
+                    HashMap::with_capacity(map.size_hint().unwrap_or(0));
+                while let Some((key, value)) =
+                    map.next_entry::<Box<str>, FieldValue>()?
+                {
+                    fields.insert(key, value);
+                }
+                Ok(FieldValue::Object(fields))
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(FieldValue::String("".into()))
+            }
+        }
+
+        deserializer.deserialize_any(FieldValueVisitor)
+    }
+}
+
 /// Borrowed iterator over object fields in a [`FieldValue::Object`].
 pub struct FieldObjectFields<'value> {
     inner: std::collections::hash_map::Iter<'value, Box<str>, FieldValue>,
@@ -859,7 +992,6 @@ impl TryFromFieldValue for Box<str> {
 impl TryFromFieldValue for DateTime<Utc> {
     #[inline]
     fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
-        use chrono::TimeZone as _;
         let ts =
             value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
                 expected: FieldValueType::Date,
