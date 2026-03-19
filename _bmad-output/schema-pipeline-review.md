@@ -24,13 +24,15 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
 **Recommendation**: Implement **two separate state machines** with prerequisite refactoring:
 
 **Prerequisites**:
+
 1. Refactor `RawPropertyBank` and `RawSchema` to use "parse, don't validate" pattern
    - Move validation into parsing constructors
    - Make fields private, add public accessors
    - Guarantee validity at type level
 
 **State Machines**:
-1. `PropertyBankStateMachine` - 7 states, branching based on staleness (NEW/FRESH/STALE paths)
+
+1. `PropertyBankStateMachine` - 6 states, branching based on staleness (NEW/FRESH/FRESH+TS/STALE paths)
 2. `SchemaStateMachine` - 10 states, complex branching with staleness optimizations
 
 ---
@@ -39,14 +41,14 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
 
 ### 1.1 State Identification
 
-The PropertyBank follows a **branching pipeline** with 7 distinct states, determined by staleness detection:
+The PropertyBank follows a **branching pipeline** with 6 distinct states, determined by staleness detection:
 
 ```
 ┌───────────┐
 │ Discovery │──────┐
 └───────────┘      │
                    │  Query DB for RawPropertyBankView
-                   │  Determine staleness (NEW/FRESH/STALE)
+                   │  Determine staleness (NEW/FRESH/FRESH+TS/STALE)
                    │
        ┌───────────┴───────────┬─────────────────┬──────────────┐
        │                       │                 │              │
@@ -58,6 +60,7 @@ The PropertyBank follows a **branching pipeline** with 7 distinct states, determ
        ▼                      │                 │               ▼
   ┌────────────┐              │                 │         ┌────────────┐
   │FileParsed  │              │                 │         │FileParsed  │
+  │(+view)     │              │                 │         │(+view)     │
   └─────┬──────┘              │                 │         └─────┬──────┘
         │                     │                 │               │
         ▼                     │                 │               ▼
@@ -74,32 +77,31 @@ The PropertyBank follows a **branching pipeline** with 7 distinct states, determ
          │                    │                 │                ▼
          │                    │                 │         ┌────────────┐
          │                    │                 │         │DeltaApplied│
+         │                    │                 │         │(+view)     │
          │                    │                 │         └─────┬──────┘
          │                    │                 │               │
          ▼                    ▼                 ▼               ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                      ViewUpdated                             │
-  └───────────────────────────┬──────────────────────────────────┘
-                              │
-                              ▼
-                       ┌────────────┐
-                       │ Completed  │
-                       └────────────┘
+  │                        Completed                             │
+  └──────────────────────────────────────────────────────────────┘
 ```
 
 **State Details**:
 
-| State | Data Structure | Location | Transitions | Notes |
-|-------|---------------|----------|-------------|-------|
-| **1. Discovery** | `&Path` + `Option<RawPropertyBankView>` | Entry point | → PropertyBankPath enum | Query DB, determine staleness |
-| **2. FileParsed** | `RawPropertyBank` (validated) | NEW/STALE paths only | → BaseConstructed or PropertyDelta | File parsed + validated in one step |
-| **3. PropertyDelta** | Delta info (new/modified/removed) | STALE path only | → BaseConstructed | Property-level hash comparison |
-| **4. BaseConstructed** | `PropertyBank` | All paths converge here | → DeltaApplied or ViewUpdated | Fetched from DB or built from scratch |
-| **5. DeltaApplied** | `PropertyBank` (updated) | STALE path only | → ViewUpdated | Incremental updates applied |
-| **6. ViewUpdated** | `RawPropertyBankView` | All paths | → Completed | View created/updated with metadata |
-| **7. Completed** | `PropertyBank` (persisted) | Terminal state | - | Both bank and view persisted to DB |
+| State                  | Data Structure                                   | Location                | Transitions                        | Notes                                      |
+| ---------------------- | ------------------------------------------------ | ----------------------- | ---------------------------------- | ------------------------------------------ |
+| **1. Discovery**       | `&Path` + `Option<RawPropertyBankView>`          | Entry point             | → PropertyBankPath enum            | Query DB, determine staleness              |
+| **2. FileParsed**      | `RawPropertyBank` + `RawPropertyBankView`        | NEW/STALE paths only    | → BaseConstructed or PropertyDelta | File parsed + validated + view created     |
+| **3. PropertyDelta**   | Delta info (new/modified/removed)                | STALE path only         | → BaseConstructed                  | Property-level hash comparison             |
+| **4. BaseConstructed** | `PropertyBank`                                   | All paths converge here | → DeltaApplied or Completed        | Fetched from DB or built from scratch      |
+| **5. DeltaApplied**    | `PropertyBank` (updated) + `RawPropertyBankView` | STALE path only         | → Completed                        | Incremental updates applied + view updated |
+| **6. Completed**       | `PropertyBank` (persisted)                       | Terminal state          | -                                  | Both bank and view persisted to DB         |
 
-**Note**: The "Validated" state from the original analysis has been **eliminated** - validation now happens during parsing (see Section 1.8 for "parse, don't validate" refactoring).
+**Key Changes from Original Analysis**:
+
+- **"Validated" state eliminated** - validation now happens during parsing (see Section 1.4)
+- **"ViewUpdated" state eliminated** - view creation folded into FileParsed and DeltaApplied states
+- **6 states instead of 7** - more cohesive state groupings
 
 ### 1.2 Stage-by-Stage Breakdown
 
@@ -108,6 +110,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 #### **Discovery Phase** (State 1)
 
 **Operations**:
+
 1. Query `Repository::get_raw_property_bank_view()` → `Option<RawPropertyBankView>`
 2. If `None` → **NEW** path
 3. If `Some(view)`:
@@ -125,6 +128,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 **Location**: `Ingestor::property_bank()` lines 473-510
 
 **Output**: `PropertyBankPath` enum with one of:
+
 - `PropertyBankPath::New(PropertyBankPipeline<FileParsed>)`
 - `PropertyBankPath::Fresh(PropertyBankPipeline<BaseConstructed>)`
 - `PropertyBankPath::FreshWithTimestampUpdate(PropertyBankPipeline<BaseConstructed>)`
@@ -136,18 +140,22 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 **Steps**:
 
-**State 1→2: File Parsing**
+**State 1→2: File Parsing + View Creation**
+
 - **Input**: `&Path` to property bank file
-- **Output**: `RawPropertyBank` (validated)
+- **Output**: `RawPropertyBank` (validated) + `RawPropertyBankView`
 - **Operations**:
   - Read file with `FsReader::read_with()`
-  - Parse via `RawPropertyBank::try_from_str()` (parsing + validation in one step)
-  - Version check (`$version` field)
-  - Property name syntax validation
+  - Parse via `FsReader::parse_structured_from_str()` (uses custom `RawPropertyMap<T>` deserializer)
+  - Property names validated during deserialization (guaranteed valid `PropertyName` keys)
+  - Version validated separately via `raw.validate_version()`
+  - Create `RawPropertyBankView::try_from_with_content()` with all metadata
 - **Errors**: `SchemaParseError`, `SchemaVersionError`, `PropertyNameError`
-- **Location**: `Ingestor::ingest_new_property_bank()` line 522
+- **Location**: `Ingestor::ingest_new_property_bank()` line 522-527
+- **Note**: View creation happens in FileParsed state (all data available)
 
 **State 2→4: Base Construction (from scratch)**
+
 - **Input**: `RawPropertyBank` (validated)
 - **Output**: `PropertyBank`
 - **Operations**:
@@ -155,24 +163,19 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
   - For each property:
     - Convert `RawPropertySpec` → `PropertySpec`
     - Create `PropertyId::new()` (UUID v7)
-    - Create `PropertyName::try_new()`
+    - Keys are already `PropertyName` (no need for `try_new()`)
     - Set `Optionality`, `Multiplicity`
     - Call `PropertyBank::register()`
 - **Errors**: `SchemaError::PropertyBank(DuplicatePropertyName)`, `PropertySpec` conversion errors
 - **Location**: `PropertyBank::try_from()` in `bank.rs:313-367`
 
-**State 4→6: View Update**
-- **Input**: `PropertyBank`, file content, timestamps, hash
-- **Output**: `RawPropertyBankView`
-- **Operations**:
-  - Create `RawPropertyBankView::try_from_with_content()` with all metadata
-- **Location**: `Ingestor::ingest_new_property_bank()` line 527
+**State 4→6: Persist & Complete**
 
-**State 6→7: Persist & Complete**
 - **Operations**:
   - `Repository::save_property_bank(&bank)`
   - `Repository::save_raw_property_bank_view(&view)`
 - **Location**: Lines 530-545
+- **Note**: Both bank and view persisted together
 
 ---
 
@@ -181,6 +184,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 **Steps**:
 
 **State 1→4: Base Construction (from DB)**
+
 - **Input**: None (view timestamps match)
 - **Output**: `PropertyBank`
 - **Operations**:
@@ -188,9 +192,10 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 - **Errors**: `SchemaStorageError::PropertyBankNotFound` (if DB inconsistent)
 - **Location**: `Ingestor::property_bank()` lines 498-505
 
-**State 4→7: Complete (no persistence needed)**
+**State 4→6: Complete (no persistence needed)**
+
 - **Operations**: Return cached `PropertyBank`
-- **Note**: No view update, no bank persistence (everything is fresh)
+- **Note**: No view update, no bank persistence (everything is fresh - skip straight to Completed)
 
 ---
 
@@ -198,20 +203,19 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 **Steps**:
 
-**State 1→4: Base Construction (from DB)**
-- **Input**: None (content unchanged)
-- **Output**: `PropertyBank`
-- **Operations**: `Repository::get_property_bank()` - fetch cached bank
+**State 1→4: Base Construction (from DB) + View Update**
 
-**State 4→6: View Update (timestamps only)**
 - **Input**: Existing `RawPropertyBankView`, new timestamps
-- **Output**: Updated `RawPropertyBankView`
+- **Output**: `PropertyBank` + Updated `RawPropertyBankView`
 - **Operations**:
+  - `Repository::get_property_bank()` - fetch cached bank
   - Clone existing view
   - Update `file_times()` with new timestamps
   - Keep content hash, property hashes, and compressed content unchanged
+- **Note**: View update happens in BaseConstructed state (no separate ViewUpdated state)
 
-**State 6→7: Persist View Only**
+**State 4→6: Persist View Only & Complete**
+
 - **Operations**:
   - `Repository::save_raw_property_bank_view(&updated_view)`
   - **NO** `save_property_bank()` (bank unchanged)
@@ -222,15 +226,25 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 **Steps**:
 
-**State 1→2: File Parsing**
-- Same as NEW path (read + parse + validate)
+**State 1→2: File Parsing + View Creation**
+
+- **Input**: `&Path` to property bank file
+- **Output**: `RawPropertyBank` (validated) + `RawPropertyBankView`
+- **Operations**:
+  - Read file with `FsReader::read_with()`
+  - Parse via `FsReader::parse_structured_from_str()` (custom `RawPropertyMap<T>` deserializer)
+  - Property names validated during deserialization
+  - Version validated separately
+  - Create `RawPropertyBankView::try_from_with_content()` with all new metadata
+- **Note**: Same as NEW path - view created in FileParsed state
 
 **State 2→3: Property Delta Computation**
+
 - **Input**: `RawPropertyBank` (new), `RawPropertyBankView` (cached)
 - **Output**: Delta information (new/modified/removed properties)
 - **Operations**:
   - Compute per-property hashes for new `RawPropertyBank.properties`
-  - Compare with `view.hashes().property_hashes()`
+  - Compare with `cached_view.hashes().property_hashes()`
   - Identify:
     - **New properties**: In new but not in cached
     - **Modified properties**: In both but hash differs
@@ -238,28 +252,28 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 - **Location**: `Ingestor::ingest_stale_property_bank()` lines 580-588
 
 **State 3→4: Base Construction (from DB)**
+
 - **Input**: None
 - **Output**: `PropertyBank` (base state before updates)
 - **Operations**: `Repository::get_property_bank()` - fetch current bank
 
-**State 4→5: Delta Application**
-- **Input**: `PropertyBank` (base), Delta info, `RawPropertyBank` (new)
-- **Output**: `PropertyBank` (updated)
+**State 4→5: Delta Application + View Update**
+
+- **Input**: `PropertyBank` (base), Delta info, `RawPropertyBank` (new), `RawPropertyBankView` (new)
+- **Output**: `PropertyBank` (updated) + `RawPropertyBankView` (updated)
 - **Operations**:
   - `PropertyBank::update_from_raw(&raw, &changed_properties)`
   - For each changed property:
     - If in new raw: update or add property
     - If not in new raw: remove property
   - Increment `BankVersion` if any changes applied
+  - View already created in FileParsed state (carry forward)
 - **Errors**: `SchemaError::PropertyBank`
 - **Location**: `bank.rs:255-300`
+- **Note**: View update happens in DeltaApplied state (no separate ViewUpdated state)
 
-**State 5→6: View Update**
-- **Input**: Updated `PropertyBank`, new file content, timestamps, hashes
-- **Output**: New `RawPropertyBankView`
-- **Operations**: Create full view with all new metadata
+**State 5→6: Persist Both & Complete**
 
-**State 6→7: Persist Both**
 - **Operations**:
   - `Repository::save_property_bank(&updated_bank)`
   - `Repository::save_raw_property_bank_view(&new_view)`
@@ -268,12 +282,12 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 **Four Distinct Paths** based on view existence and content comparison:
 
-| Path | Trigger | File I/O | Parsing | DB Reads | DB Writes | Notes |
-|------|---------|----------|---------|----------|-----------|-------|
-| **NEW** | No view in DB | ✅ Full read | ✅ Parse + validate | - | Bank + View | First time seeing file |
-| **FRESH** | Timestamps match | ❌ None | ❌ None | Bank only | - | Fastest path (cached) |
-| **FRESH+TS** | Hash matches, timestamps differ | ✅ Read for hash | ❌ None | Bank only | View only | Clock skew handling |
-| **STALE** | Hash differs | ✅ Full read | ✅ Parse + validate | Bank only | Bank + View | Incremental update |
+| Path         | Trigger                         | File I/O         | Parsing             | DB Reads  | DB Writes   | Notes                  |
+| ------------ | ------------------------------- | ---------------- | ------------------- | --------- | ----------- | ---------------------- |
+| **NEW**      | No view in DB                   | ✅ Full read     | ✅ Parse + validate | -         | Bank + View | First time seeing file |
+| **FRESH**    | Timestamps match                | ❌ None          | ❌ None             | Bank only | -           | Fastest path (cached)  |
+| **FRESH+TS** | Hash matches, timestamps differ | ✅ Read for hash | ❌ None             | Bank only | View only   | Clock skew handling    |
+| **STALE**    | Hash differs                    | ✅ Full read     | ✅ Parse + validate | Bank only | Bank + View | Incremental update     |
 
 **Two-Tier Staleness Check** (fast path → slow path):
 
@@ -306,84 +320,124 @@ raw.validate()?;  // Caller might forget this step
 ```
 
 **Issues**:
+
 - ❌ Can construct invalid `Raw*` instances
 - ❌ Validation is optional (caller can forget to call it)
 - ❌ Type system doesn't enforce validity
+- ❌ Property keys are `Box<str>` (not validated `PropertyName`)
 - ❌ Separate "Validated" state needed in state machine
 
 **Solution**: Transform validation into parsing (make invalid states unrepresentable):
 
 ```rust
-// Better: Parsing constructor ensures validity
-let raw = RawPropertyBank::try_from_str(content, FileFormat::Json, path)?;
-// Guaranteed valid! Can't create invalid instance.
+// Better: Validation happens during deserialization
+let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
+// Properties map keys are guaranteed valid PropertyName instances!
+// Version validation happens separately (needs path context for errors)
+raw.validate_version(&path.to_string_lossy())?;
 ```
 
 #### **Refactoring Plan**
 
-**Step 1: Make Fields Private**
+**Step 1: Create `RawPropertyMap<T>` Wrapper Type**
+
+This provides a **single deserialization point** for property maps, ensuring consistent validation across both `RawPropertyBank` and `RawSchema`.
 
 ```rust
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RawPropertyBank {
-    /// Property bank format version (validated to be supported)
-    #[serde(rename = "$version")]
-    version: RawSchemaVersion,  // PRIVATE
+use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
 
-    /// Map of property name to property definition (validated)
-    properties: HashMap<Box<str>, property::RawPropertyBankEntry>,  // PRIVATE
-
-    #[serde(skip)]
-    metadata: RawPropertyBankMetadata,  // PRIVATE
+/// Validated property map that guarantees all keys are valid PropertyNames.
+///
+/// This type provides custom deserialization that validates property names
+/// during parsing, making invalid states unrepresentable.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawPropertyMap<T> {
+    inner: HashMap<PropertyName, T>,
 }
-```
 
-**Step 2: Add Parsing Constructor**
+impl<T> RawPropertyMap<T> {
+    /// Get a reference to the inner map.
+    #[inline]
+    #[must_use]
+    pub fn as_map(&self) -> &HashMap<PropertyName, T> {
+        &self.inner
+    }
 
-```rust
-impl RawPropertyBank {
-    /// Parse and validate property bank from string.
-    ///
-    /// This is the ONLY way to construct a RawPropertyBank externally,
-    /// ensuring all instances are valid.
-    ///
-    /// # Errors
-    /// Returns error if:
-    /// - Deserialization fails (syntax error)
-    /// - Version is unsupported
-    /// - Property names are invalid
-    pub fn try_from_str(
-        content: &str,
-        format: FileFormat,
-        path: &str
-    ) -> Result<Self, SchemaIngestionError> {
-        // Parse via serde
-        let raw: Self = match format {
-            FileFormat::Json => serde_json::from_str(content)
-                .map_err(|e| SchemaParseError::Json { source: e })?,
-            FileFormat::Toml => toml::from_str(content)
-                .map_err(|e| SchemaParseError::Toml { source: e })?,
-            FileFormat::Yaml => serde_yaml::from_str(content)
-                .map_err(|e| SchemaParseError::Yaml { source: e })?,
-        };
+    /// Consume and return the inner map.
+    #[inline]
+    #[must_use]
+    pub fn into_map(self) -> HashMap<PropertyName, T> {
+        self.inner
+    }
 
-        // Validate version (fail fast)
-        raw.version.validate(path)?;
+    /// Get a property by name.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, name: &PropertyName) -> Option<&T> {
+        self.inner.get(name)
+    }
 
-        // Validate property names (syntax only, not references)
-        for name in raw.properties.keys() {
-            PropertyName::try_new(name.as_ref())?;
-        }
+    /// Iterate over property entries.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (&PropertyName, &T)> {
+        self.inner.iter()
+    }
+}
 
-        Ok(raw)
+// Custom Deserialize implementation validates keys during parsing
+impl<'de, T> Deserialize<'de> for RawPropertyMap<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize as HashMap<Box<str>, T>
+        let raw_map: HashMap<Box<str>, T> = HashMap::deserialize(deserializer)?;
+
+        // Validate all keys and convert to PropertyName
+        let inner: HashMap<PropertyName, T> = raw_map
+            .into_iter()
+            .map(|(k, v)| {
+                PropertyName::try_new(&k)
+                    .map(|name| (name, v))
+                    .map_err(serde::de::Error::custom)
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(RawPropertyMap { inner })
     }
 }
 ```
 
-**Step 3: Add Public Accessors**
+**Step 2: Update `RawPropertyBank` to Use `RawPropertyMap<T>`**
 
 ```rust
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct RawPropertyBank {
+    /// Property bank format version (validated separately)
+    #[serde(rename = "$version")]
+    version: RawSchemaVersion,  // PRIVATE
+
+    /// Validated property map (keys are guaranteed valid PropertyNames)
+    properties: RawPropertyMap<property::RawPropertyBankEntry>,  // PRIVATE
+
+    /// File metadata
+    #[serde(skip)]
+    metadata: RawPropertyBankMetadata,
+}
+
 impl RawPropertyBank {
+    /// Validate the version field.
+    ///
+    /// This is separate from property key validation because version
+    /// errors need path context for better error messages.
+    pub fn validate_version(&self, path: &str) -> Result<(), SchemaIngestionError> {
+        self.version.validate(path)
+    }
+
     /// Returns the schema version.
     #[inline]
     #[must_use]
@@ -394,8 +448,8 @@ impl RawPropertyBank {
     /// Returns the properties map.
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &HashMap<Box<str>, property::RawPropertyBankEntry> {
-        &self.properties
+    pub fn properties(&self) -> &HashMap<PropertyName, property::RawPropertyBankEntry> {
+        self.properties.as_map()
     }
 
     /// Returns the metadata.
@@ -407,57 +461,118 @@ impl RawPropertyBank {
 }
 ```
 
-**Step 4: Remove Old Methods**
+**Step 3: Update `RawSchema` to Use `RawPropertyMap<T>`**
 
-Delete:
-- `RawPropertyBank::validate()`
-- `RawPropertyBank::validate_version()`
-- `RawPropertyBank::validated()`
+```rust
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct RawSchema {
+    /// Schema format version
+    #[serde(rename = "$version", default)]
+    version: RawSchemaVersion,
+
+    /// Schema name (set by Ingestor from filename)
+    #[serde(skip)]
+    name: Box<str>,
+
+    /// Optional parent schema name for inheritance
+    extends: Option<Box<str>>,
+
+    /// Property names to exclude from parent
+    #[serde(default)]
+    excludes: Vec<Box<str>>,
+
+    /// Validated property map (keys are guaranteed valid PropertyNames)
+    properties: RawPropertyMap<property::RawProperty>,  // PRIVATE
+
+    /// File metadata
+    #[serde(skip)]
+    metadata: RawSchemaMetadata,
+}
+
+impl RawSchema {
+    /// Validate the version field.
+    pub fn validate_version(&self, path: &str) -> Result<(), SchemaIngestionError> {
+        self.version.validate(path)
+    }
+
+    /// Returns the properties map.
+    #[inline]
+    #[must_use]
+    pub fn properties(&self) -> &HashMap<PropertyName, property::RawProperty> {
+        self.properties.as_map()
+    }
+}
+```
+
+**Step 4: Remove Old Validation Methods**
+
+Delete from `RawPropertyBank` and `RawSchema`:
+
+- `validate()` - property key validation now happens in `RawPropertyMap` deserializer
+- `validated()` - no longer needed (parsing = validation)
+
+Keep:
+
+- `validate_version()` - still needed (requires path context for errors)
 
 **Step 5: Update Ingestor**
 
 ```rust
-// Before
-let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
-let raw = raw.validated(&path.to_string_lossy())?;
+// In Ingestor - FsReader handles format detection and parsing
+self.source.read_with(path, |path, content| {
+    // Deserialize with automatic property name validation
+    let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
 
-// After
-let raw = RawPropertyBank::try_from_str(
-    content,
-    FileFormat::from_path(path)?,
-    &path.to_string_lossy()
-)?;
+    // Separate version validation (needs path for error context)
+    raw.validate_version(&path.to_string_lossy())?;
+
+    // Properties map keys are guaranteed to be valid PropertyNames!
+    // Can safely iterate without try_new() checks
+    for (prop_name, entry) in raw.properties() {
+        // prop_name is already PropertyName type
+    }
+
+    Ok(raw)
+})
 ```
-
-**Step 6: Repeat for `RawSchema`**
-
-Apply the same pattern:
-- Make fields private
-- Add `RawSchema::try_from_str()`
-- Add public accessors
-- Remove `validate()`, `validate_version()`, `validated()`
 
 #### **Benefits**
 
-| Before | After |
-|--------|-------|
-| Can create invalid `RawPropertyBank` | Type guarantees validity |
-| Validation is optional | Validation is mandatory (at construction) |
-| Two-step process (parse, then validate) | One-step process (parsing = validation) |
-| Separate "Validated" state in state machine | No separate state needed |
-| Public fields (can mutate to invalid state) | Private fields (immutable after construction) |
+| Before                                       | After                                            |
+| -------------------------------------------- | ------------------------------------------------ |
+| Can create invalid `RawPropertyBank`         | Type guarantees validity                         |
+| Validation is optional                       | Validation is mandatory (during deserialization) |
+| Property keys are `Box<str>` (unvalidated)   | Property keys are `PropertyName` (validated)     |
+| Two-step process (parse, then validate)      | One-step process (parsing = validation)          |
+| Separate "Validated" state in state machine  | No separate state needed                         |
+| Public fields (can mutate to invalid state)  | Private fields (immutable after construction)    |
+| Duplicate validation logic in both Raw types | Single `RawPropertyMap<T>` validates both        |
 
 **Impact on State Machine**:
+
 - **Eliminates "Validated" state** (parsing = validation)
-- **FileParsed state now guarantees validity**
+- **Eliminates "ViewUpdated" state** (view creation in FileParsed/DeltaApplied)
+- **6 states instead of 7** (more cohesive groupings)
+- **FileParsed state now guarantees validity** (properties map keys are `PropertyName`)
+- **Type-level guarantee**: `RawPropertyMap<T>` cannot have invalid keys
 - Cleaner state transitions
 
-**Estimated Effort**: 2-3 hours
+**Key Innovation - `RawPropertyMap<T>`**:
+
+- ✅ Single source of truth for property key validation
+- ✅ Reusable across both `RawPropertyBank` and `RawSchema`
+- ✅ Custom deserializer validates during parsing (fail fast)
+- ✅ Type safety: `HashMap<PropertyName, T>` not `HashMap<Box<str>, T>`
+- ✅ Idiomatic Rust: `impl<'de> Deserialize<'de>` pattern
+
+**Estimated Effort**: 3-4 hours
 
 **Files to Modify**:
-- `lithos-core/src/schema/raw/mod.rs` (RawPropertyBank and RawSchema)
-- `lithos-core/src/schema/ingestor.rs` (update to use `try_from_str()`)
-- Tests in both files
+
+- `lithos-core/src/schema/raw/mod.rs` - Add `RawPropertyMap<T>`, update both Raw types
+- `lithos-core/src/schema/ingestor.rs` - Update to use `validate_version()` only
+- `lithos-core/src/schema/bank.rs` - Update `try_from` to work with `PropertyName` keys
+- Tests in all files
 
 ---
 
@@ -852,7 +967,7 @@ view.hashes().is_content_match(content_hash)
 
 ### 4.1 PropertyBank State Machine
 
-**Consolidated States** (7 total):
+**Consolidated States** (6 total):
 
 ```rust
 // State types (zero-sized markers)
@@ -861,7 +976,6 @@ struct FileParsed;
 struct PropertyDelta;
 struct BaseConstructed;
 struct DeltaApplied;
-struct ViewUpdated;
 struct Completed;
 
 // Generic state machine
@@ -878,7 +992,6 @@ mod sealed {
     impl Sealed for super::PropertyDelta {}
     impl Sealed for super::BaseConstructed {}
     impl Sealed for super::DeltaApplied {}
-    impl Sealed for super::ViewUpdated {}
     impl Sealed for super::Completed {}
 }
 pub trait PropertyBankState: sealed::Sealed {}
@@ -926,18 +1039,24 @@ impl PropertyBankPipeline<Discovery> {
     }
 }
 
-// FileParsed: File read and validated in one step
+// FileParsed: File read, parsed, validated, and view created
 impl PropertyBankPipeline<FileParsed> {
-    pub fn parse_file(path: &Path) -> Result<Self, Error> {
-        let content = FsReader::read_to_string(path)?;
-        let raw = RawPropertyBank::try_from_str(
-            &content,
-            FileFormat::from_path(path)?,
-            &path.to_string_lossy()
-        )?;  // Parsing = validation!
+    pub fn parse_file(path: &Path, content: &str) -> Result<Self, Error> {
+        // Parse with automatic property name validation (RawPropertyMap deserializer)
+        let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
+
+        // Separate version validation (needs path for error context)
+        raw.validate_version(&path.to_string_lossy())?;
+
+        // Create view immediately (all data available)
+        let view = RawPropertyBankView::try_from_with_content(&raw, content)?;
 
         Ok(Self {
-            data: Box::new(PropertyBankData { raw: Some(raw), /* ... */ }),
+            data: Box::new(PropertyBankData {
+                raw: Some(raw),
+                view: Some(view),
+                /* ... */
+            }),
             _state: PhantomData,
         })
     }
@@ -948,7 +1067,11 @@ impl PropertyBankPipeline<FileParsed> {
         let bank = PropertyBank::try_from(raw)?;
 
         Ok(PropertyBankPipeline {
-            data: Box::new(PropertyBankData { bank: Some(bank), /* ... */ }),
+            data: Box::new(PropertyBankData {
+                bank: Some(bank),
+                view: self.data.view,  // Carry view forward
+                /* ... */
+            }),
             _state: PhantomData,
         })
     }
@@ -962,7 +1085,12 @@ impl PropertyBankPipeline<FileParsed> {
         let delta = cached_view.hashes().compare(&new_hashes);
 
         Ok(PropertyBankPipeline {
-            data: Box::new(PropertyBankData { delta: Some(delta), /* ... */ }),
+            data: Box::new(PropertyBankData {
+                raw: self.data.raw,
+                view: self.data.view,  // Carry view forward
+                delta: Some(delta),
+                /* ... */
+            }),
             _state: PhantomData,
         })
     }
@@ -982,7 +1110,7 @@ impl PropertyBankPipeline<PropertyDelta> {
 
 // BaseConstructed: PropertyBank available
 impl PropertyBankPipeline<BaseConstructed> {
-    // STALE path: Apply delta
+    // STALE path: Apply delta (view already created in FileParsed)
     pub fn apply_delta(
         mut self,
         delta: &PropertyDelta
@@ -991,60 +1119,46 @@ impl PropertyBankPipeline<BaseConstructed> {
         bank.update_from_raw(&self.data.raw, &delta.changed)?;
 
         Ok(PropertyBankPipeline {
+            data: self.data,  // View carried forward from FileParsed
+            _state: PhantomData,
+        })
+    }
+
+    // FRESH+TS path: Update view timestamps only
+    pub fn update_timestamps(mut self, new_timestamps: FileTimes) -> Result<PropertyBankPipeline<Completed>, Error> {
+        let view = self.data.repo.get_raw_property_bank_view()?.unwrap();
+        let mut updated_view = view.clone();
+        updated_view.update_file_times(new_timestamps.created_at, new_timestamps.modified_at);
+        self.data.view = Some(updated_view);
+
+        // Persist view only (bank unchanged)
+        Ok(self.persist(repo, /* bank_modified: */ false)?)
+    }
+
+    // NEW and FRESH paths: Persist (view already in data if NEW)
+    pub fn persist(self, repo: &Repository, bank_modified: bool) -> Result<PropertyBankPipeline<Completed>, Error> {
+        // Persist bank (if modified)
+        if bank_modified {
+            repo.save_property_bank(&self.data.bank.as_ref().unwrap())?;
+        }
+
+        // Persist view (if exists)
+        if let Some(view) = &self.data.view {
+            repo.save_raw_property_bank_view(view)?;
+        }
+
+        Ok(PropertyBankPipeline {
             data: self.data,
             _state: PhantomData,
         })
     }
-
-    // FRESH, FRESH+TS, NEW paths: Create/update view
-    pub fn create_view(self) -> Result<PropertyBankPipeline<ViewUpdated>, Error> {
-        let view = RawPropertyBankView::try_from_with_content(
-            &self.data.raw,
-            &self.data.content
-        )?;
-
-        Ok(PropertyBankPipeline {
-            data: Box::new(PropertyBankData { view: Some(view), /* ... */ }),
-            _state: PhantomData,
-        })
-    }
-
-    // FRESH+TS path: Update timestamps only
-    pub fn update_timestamps(self, view: RawPropertyBankView) -> Result<PropertyBankPipeline<ViewUpdated>, Error> {
-        let mut updated_view = view.clone();
-        updated_view.update_file_times(self.data.created_at, self.data.modified_at);
-
-        Ok(PropertyBankPipeline {
-            data: Box::new(PropertyBankData { view: Some(updated_view), /* ... */ }),
-            _state: PhantomData,
-        })
-    }
 }
 
-// DeltaApplied: Incremental updates applied (STALE path only)
+// DeltaApplied: Incremental updates applied (view already created in FileParsed)
 impl PropertyBankPipeline<DeltaApplied> {
-    pub fn update_view(self) -> Result<PropertyBankPipeline<ViewUpdated>, Error> {
-        let view = RawPropertyBankView::try_from_with_content(
-            &self.data.raw,
-            &self.data.content
-        )?;
-
-        Ok(PropertyBankPipeline {
-            data: Box::new(PropertyBankData { view: Some(view), /* ... */ }),
-            _state: PhantomData,
-        })
-    }
-}
-
-// ViewUpdated: View created/updated
-impl PropertyBankPipeline<ViewUpdated> {
     pub fn persist(self, repo: &Repository) -> Result<PropertyBankPipeline<Completed>, Error> {
-        // Persist bank (if modified)
-        if self.data.bank_modified {
-            repo.save_property_bank(&self.data.bank.as_ref().unwrap())?;
-        }
-
-        // Persist view (always)
+        // Persist both bank and view (both modified)
+        repo.save_property_bank(&self.data.bank.as_ref().unwrap())?;
         repo.save_raw_property_bank_view(&self.data.view.as_ref().unwrap())?;
 
         Ok(PropertyBankPipeline {
@@ -1119,6 +1233,7 @@ impl PropertyBankPath {
 - ✅ Error types can be state-specific
 
 **Key Improvements Over Original**:
+
 - **7 states instead of 10** (consolidated related operations)
 - **No separate "Validated" state** (prerequisite refactoring eliminates it)
 - **Branching explicit** via `PropertyBankPath` enum
