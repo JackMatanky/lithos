@@ -82,7 +82,8 @@ impl MarkdownParser {
 
     #[expect(
         clippy::too_many_arguments,
-        reason = "Handler needs access to full extraction state"
+        reason = "Handler needs access to full extraction state and resizable \
+                  depth tracking"
     )]
     fn handle_start_tag(
         tag: pulldown_cmark::Tag<'_>,
@@ -91,6 +92,7 @@ impl MarkdownParser {
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListType>,
         current_link: &mut Option<LinkFrame>,
+        open_item_by_depth: &mut Vec<SourceByteOffset>,
         pool: &mut StringPool,
     ) {
         let kind = match tag {
@@ -160,11 +162,21 @@ impl MarkdownParser {
 
         if let Some(bkind) = kind {
             let current_depth = *depth;
-            if matches!(
-                bkind,
-                BlockKind::List | BlockKind::ListItem | BlockKind::BlockQuote
-            ) {
+            if matches!(bkind, BlockKind::List | BlockKind::BlockQuote) {
                 *depth = depth.saturating_add(1);
+            }
+            if matches!(bkind, BlockKind::ListItem) {
+                let depth_index = usize::try_from(current_depth).unwrap_or(0);
+                if open_item_by_depth.len() <= depth_index {
+                    open_item_by_depth.resize(
+                        depth_index.saturating_add(1),
+                        SourceByteOffset::new(0),
+                    );
+                }
+                if let Some(slot) = open_item_by_depth.get_mut(depth_index) {
+                    *slot = start_pos;
+                }
+                open_item_by_depth.truncate(depth_index.saturating_add(1));
             }
             block_stack.push(ActiveBlock {
                 kind: bkind,
@@ -195,7 +207,7 @@ impl MarkdownParser {
         tags: &mut Vec<RawTag>,
         inline_fields: &mut Vec<RawInlineField>,
         markdown: &str,
-        open_item_by_depth: &mut Vec<SourceByteOffset>,
+        open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
         block_refs: &mut Vec<crate::note::raw::RawBlockRef>,
@@ -205,18 +217,27 @@ impl MarkdownParser {
         match end_tag {
             pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image => {
                 if let Some(mut link) = current_link.take() {
-                    let alias = if link.alias.trim().is_empty() {
+                    let mut alias = if link.alias.trim().is_empty() {
                         None
                     } else {
-                        Some(link.alias.trim().into())
+                        Some(link.alias.trim())
                     };
+
+                    // For WikiLinks, cmark yields the target as the inner text
+                    // if no alias is provided.
+                    if matches!(link.style, RawLinkStyle::Wiki)
+                        && alias.is_some_and(|a| a == link.target)
+                    {
+                        alias = None;
+                    }
+
                     let (target_raw, anchor) =
                         LinkTarget::new(&link.target).split();
                     links.push(RawLink::new(
                         link.style,
                         link.is_embed,
                         target_raw.into(),
-                        alias,
+                        alias.map(Into::into),
                         anchor.map(Into::into),
                         link.start,
                     ));
@@ -232,9 +253,7 @@ impl MarkdownParser {
                 if let Some(mut block) = block_stack.pop() {
                     if matches!(
                         block.kind,
-                        BlockKind::List
-                            | BlockKind::ListItem
-                            | BlockKind::BlockQuote
+                        BlockKind::List | BlockKind::BlockQuote
                     ) {
                         *depth = depth.saturating_sub(1);
                     }
@@ -343,11 +362,12 @@ impl MarkdownParser {
         text: pulldown_cmark::CowStr<'_>,
         block_stack: &mut [ActiveBlock],
         current_link: &mut Option<LinkFrame>,
+        is_scannable: bool,
     ) {
         let text_str = text.as_ref();
         if let Some(block) = block_stack.last_mut() {
             block.full_text.push_str(text_str);
-            if current_link.is_none() {
+            if current_link.is_none() && is_scannable {
                 block.scannable_text.push_str(text_str);
             }
         }
@@ -501,10 +521,10 @@ impl MarkdownParser {
         Ok(())
     }
 
-    #[inline]
     #[expect(
         clippy::too_many_arguments,
-        reason = "Helper function needs access to extraction state"
+        reason = "Helper function needs access to extraction state and depth \
+                  tracking"
     )]
     fn finalize_list_item(
         block: &ActiveBlock,
@@ -514,7 +534,7 @@ impl MarkdownParser {
         tags: &mut Vec<RawTag>,
         inline_fields: &mut Vec<RawInlineField>,
         list_stack: &[RawListType],
-        open_item_by_depth: &mut Vec<SourceByteOffset>,
+        open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
         block_refs: &mut Vec<crate::note::raw::RawBlockRef>,
@@ -537,23 +557,20 @@ impl MarkdownParser {
 
         let list_type =
             list_stack.last().copied().unwrap_or(RawListType::Unordered);
-        let list_depth = if block.depth == 0 {
+
+        // depth calculation for RawListDepth::Root vs Nested.
+        // Item depth is 1 for root list items due to handle_start_tag
+        // incrementing.
+        let list_depth = if block.depth <= 1 {
             RawListDepth::Root
         } else {
-            RawListDepth::Nested(u8::try_from(block.depth).unwrap_or(u8::MAX))
+            RawListDepth::Nested(
+                u8::try_from(block.depth.saturating_sub(1)).unwrap_or(u8::MAX),
+            )
         };
 
         let depth_index = usize::try_from(block.depth).unwrap_or(0);
-        if open_item_by_depth.len() <= depth_index {
-            open_item_by_depth
-                .resize(depth_index.saturating_add(1), block.start_offset);
-        }
-        if let Some(slot) = open_item_by_depth.get_mut(depth_index) {
-            *slot = block.start_offset;
-        }
-        open_item_by_depth.truncate(depth_index.saturating_add(1));
-
-        let parent_pos = if block.depth == 0 {
+        let parent_pos = if block.depth <= 1 {
             None
         } else {
             open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
@@ -669,7 +686,7 @@ impl MarkdownParser {
         let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
         let mut list_stack: Vec<RawListType> = Vec::with_capacity(8);
         let mut open_item_by_depth: Vec<SourceByteOffset> =
-            Vec::with_capacity(8);
+            Vec::with_capacity(16);
 
         let mut depth: u32 = 0;
 
@@ -712,6 +729,7 @@ impl MarkdownParser {
                         &mut block_stack,
                         &mut list_stack,
                         &mut current_link,
+                        &mut open_item_by_depth,
                         &mut pool,
                     );
                 }
@@ -737,11 +755,20 @@ impl MarkdownParser {
                         &mut pool,
                     )?;
                 }
-                Event::Text(text) | Event::Code(text) => {
+                Event::Text(text) => {
                     Self::handle_text(
                         text,
                         &mut block_stack,
                         &mut current_link,
+                        true,
+                    );
+                }
+                Event::Code(text) => {
+                    Self::handle_text(
+                        text,
+                        &mut block_stack,
+                        &mut current_link,
+                        false,
                     );
                 }
                 Event::SoftBreak | Event::HardBreak => {
@@ -872,39 +899,407 @@ impl StringPool {
 }
 
 #[cfg(test)]
-#[expect(clippy::panic_in_result_fn, reason = "Tests use assertions")]
 mod tests {
+    mod block_refs {
+        use super::*;
+
+        #[test]
+        fn should_extract_block_ref_from_paragraph_tail() {
+            let md = "Paragraph text ^my-id";
+            let raw = parse_raw(md);
+            assert_eq!(raw.block_refs().len(), 1);
+            assert_eq!(
+                raw.block_refs().first().expect("ref exists").id(),
+                "my-id"
+            );
+        }
+
+        #[test]
+        fn should_extract_block_ref_from_list_item_tail() {
+            let md = "- List item ^id-123";
+            let raw = parse_raw(md);
+            assert_eq!(raw.block_refs().len(), 1);
+            assert_eq!(
+                raw.block_refs().first().expect("ref exists").id(),
+                "id-123"
+            );
+        }
+
+        #[rstest]
+        #[case::mid_line("Text ^id and more")]
+        #[case::no_space("Text^id")]
+        #[case::invalid_chars("Text ^id space")]
+        fn should_ignore_invalid_block_refs(#[case] input: &str) {
+            let raw = parse_raw(input);
+            assert!(raw.block_refs().is_empty());
+        }
+
+        #[test]
+        fn should_ignore_block_refs_in_code_blocks() {
+            let md = "```\ntext ^id\n```";
+            let raw = parse_raw(md);
+            assert!(raw.block_refs().is_empty());
+        }
+    }
+
+    mod frontmatter {
+        use super::*;
+
+        #[test]
+        fn should_capture_yaml_at_start() {
+            let md = "---\ntags: [a]\n---\nContent";
+            let raw = parse_raw(md);
+            let fm = raw.frontmatter().expect("frontmatter missing");
+            assert_eq!(fm.kind(), RawFrontmatterFormat::Yaml);
+            assert_eq!(fm.text(), "tags: [a]\n");
+        }
+
+        #[test]
+        fn should_capture_toml_at_start() {
+            let md = "+++\ntitle = \"Test\"\n+++\nContent";
+            let raw = parse_raw(md);
+            let fm = raw.frontmatter().expect("frontmatter missing");
+            assert_eq!(fm.kind(), RawFrontmatterFormat::Toml);
+            assert_eq!(fm.text(), "title = \"Test\"\n");
+        }
+
+        #[test]
+        fn should_ignore_yaml_if_not_at_start() {
+            let md = "Text\n---\ntags: [a]\n---";
+            let raw = parse_raw(md);
+            assert!(raw.frontmatter().is_none());
+        }
+
+        #[test]
+        fn should_handle_minimal_frontmatter() {
+            let md = "---\na: b\n---\nContent";
+            let raw = parse_raw(md);
+            let fm = raw.frontmatter().expect("frontmatter missing");
+            assert_eq!(fm.text().trim(), "a: b");
+        }
+    }
+
+    mod headings {
+        use super::*;
+
+        #[rstest]
+        #[case::h1("# Heading 1", 1, "Heading 1")]
+        #[case::h2("## Heading 2", 2, "Heading 2")]
+        #[case::h6("###### Heading 6", 6, "Heading 6")]
+        fn should_extract_heading_level_and_text(
+            #[case] input: &str,
+            #[case] level: u8,
+            #[case] text: &str,
+        ) {
+            let raw = parse_raw(input);
+            assert_eq!(raw.headings().len(), 1);
+            let h = raw.headings().first().expect("heading exists");
+            assert_eq!(h.level(), level);
+            assert_eq!(h.text(), text);
+        }
+
+        #[test]
+        fn should_capture_tags_inside_heading() {
+            let md = "## Heading #tag";
+            let raw = parse_raw(md);
+            assert_eq!(
+                raw.headings().first().expect("heading exists").text(),
+                "Heading #tag"
+            );
+            assert!(raw.tags().iter().any(|t| t.value() == "#tag"));
+        }
+
+        #[test]
+        fn should_ignore_headings_inside_code_blocks() {
+            let md = "```\n# Not a heading\n```";
+            let raw = parse_raw(md);
+            assert!(raw.headings().is_empty());
+        }
+    }
+
+    mod inline_fields {
+        use super::*;
+
+        #[test]
+        fn should_extract_bracketed_and_parenthesized_fields() {
+            let md = "[key1:: val1] (key2:: val2)";
+            let raw = parse_raw(md);
+            assert_eq!(raw.inline_fields().len(), 2);
+            let field0 = raw.inline_fields().first().expect("field 0 exists");
+            assert_eq!(field0.key(), "key1");
+            assert_eq!(field0.value(), "val1");
+            let field1 = raw.inline_fields().get(1).expect("field 1 exists");
+            assert_eq!(field1.key(), "key2");
+            assert_eq!(field1.value(), "val2");
+        }
+
+        #[test]
+        fn should_extract_bare_fields() {
+            let md = "bare_key:: bare_val";
+            let raw = parse_raw(md);
+            let field = raw.inline_fields().first().expect("field exists");
+            assert_eq!(field.key(), "bare_key");
+            assert_eq!(field.value(), "bare_val");
+        }
+
+        #[test]
+        fn should_ignore_bare_fields_inside_brackets() {
+            let md = "[key:: nested:: field]";
+            let raw = parse_raw(md);
+            // Should capture only one (the bracketed one)
+            assert_eq!(raw.inline_fields().len(), 1);
+            let field = raw.inline_fields().first().expect("field exists");
+            assert_eq!(field.key(), "key");
+            assert_eq!(field.value(), "nested:: field");
+        }
+
+        #[test]
+        fn should_ignore_fields_in_code_blocks() {
+            let md = "```\nkey:: value\n```";
+            let raw = parse_raw(md);
+            assert!(raw.inline_fields().is_empty());
+        }
+    }
+
+    mod links {
+        use super::*;
+
+        #[test]
+        fn should_handle_wikilinks() {
+            let md = "Check [[target]] and [[target|alias]]";
+            let raw = parse_raw(md);
+            assert_eq!(raw.links().len(), 2);
+
+            let link0 = raw.links().first().expect("link 0 exists");
+            assert_eq!(link0.target(), "target");
+            assert_eq!(link0.alias(), None);
+            assert_eq!(link0.style(), RawLinkStyle::Wiki);
+
+            let link1 = raw.links().get(1).expect("link 1 exists");
+            assert_eq!(link1.target(), "target");
+            assert_eq!(link1.alias(), Some("alias"));
+        }
+
+        #[test]
+        fn should_handle_embeds() {
+            let md = "![[image.png]]";
+            let raw = parse_raw(md);
+            let link = raw.links().first().expect("link exists");
+            assert!(link.is_embed());
+            assert_eq!(link.target(), "image.png");
+        }
+
+        #[test]
+        fn should_handle_markdown_links() {
+            let md = "[label](https://example.com)";
+            let raw = parse_raw(md);
+            let link = raw.links().first().expect("link exists");
+            assert_eq!(link.target(), "https://example.com");
+            assert_eq!(link.alias(), Some("label"));
+            assert_eq!(link.style(), RawLinkStyle::Markdown);
+        }
+
+        #[test]
+        fn should_split_anchors() {
+            let md = "[[target#section]]";
+            let raw = parse_raw(md);
+            let link = raw.links().first().expect("link exists");
+            assert_eq!(link.target(), "target");
+            assert_eq!(link.anchor(), Some("section"));
+        }
+
+        #[test]
+        fn should_ignore_links_inside_code_blocks() {
+            let md = "```\n[[ignored]]\n```";
+            let raw = parse_raw(md);
+            assert!(raw.links().is_empty());
+        }
+
+        #[test]
+        fn should_ignore_links_inside_inline_code() {
+            let md = "`[[ignored]]`";
+            let raw = parse_raw(md);
+            assert!(raw.links().is_empty());
+        }
+    }
+
+    mod lists {
+        use super::*;
+
+        #[test]
+        fn should_track_list_nesting_and_parent_offsets() {
+            let md = "- Parent\n  - Child";
+            let raw = parse_raw(md);
+            assert_eq!(raw.list_items().len(), 2);
+
+            let mut sorted = raw.list_items().to_vec();
+            sorted.sort_by_key(|i| u32::from(i.range().start()));
+
+            let parent = sorted.first().expect("parent exists");
+            let child = sorted.get(1).expect("child exists");
+
+            assert!(
+                matches!(parent.depth(), RawListDepth::Root),
+                "Parent should be Root, got {:?}",
+                parent.depth()
+            );
+            assert!(
+                matches!(child.depth(), RawListDepth::Nested(1)),
+                "Child should be Nested(1), got {:?}",
+                child.depth()
+            );
+            assert_eq!(child.parent(), Some(parent.range().start()));
+        }
+
+        #[test]
+        fn should_handle_ordered_lists() {
+            let md = "1. Item 1\n2. Item 2";
+            let raw = parse_raw(md);
+            assert!(matches!(
+                raw.list_items().first().expect("item exists").list_type(),
+                RawListType::Ordered {
+                    start: 1
+                }
+            ));
+        }
+    }
+
+    mod parse {
+        use super::*;
+
+        #[test]
+        fn should_parse_complex_obsidian_note() {
+            let md = "---
+category: tests
+---
+# Obsidian Note #work
+
+Check [[link]] and [[target|alias]].
+
+- [ ] Task 1 #todo [due:: 2024-01-01]
+- [x] Task 2 ^task-ref
+
+Paragraph with ^para-ref
+";
+            let raw = parse_raw(md);
+
+            assert!(raw.frontmatter().is_some());
+            assert_eq!(raw.headings().len(), 1);
+            assert_eq!(raw.links().len(), 2);
+            assert_eq!(raw.tasks().len(), 2);
+            assert_eq!(raw.block_refs().len(), 2);
+            assert!(raw.tags().iter().any(|t| t.value() == "#work"));
+            assert!(raw.tags().iter().any(|t| t.value() == "#todo"));
+        }
+    }
+
+    mod reference_links {
+        use super::*;
+
+        #[test]
+        fn should_extract_reference_definitions() {
+            let md = "[label]: https://example.com";
+            let raw = parse_raw(md);
+            assert_eq!(raw.reference_links().len(), 1);
+            let link = raw.reference_links().first().expect("link exists");
+            assert_eq!(link.id(), "label");
+            assert_eq!(link.target(), "https://example.com");
+        }
+    }
+
+    mod sections {
+        use super::*;
+
+        #[test]
+        fn should_capture_distinct_document_sections() {
+            let md = "# Heading\n\nParagraph\n\n- List";
+            let raw = parse_raw(md);
+            let kinds: Vec<_> =
+                raw.sections().iter().map(RawSection::kind).collect();
+            assert!(kinds.contains(&RawSectionKind::Heading));
+            assert!(kinds.contains(&RawSectionKind::Paragraph));
+            assert!(kinds.contains(&RawSectionKind::List));
+        }
+    }
+
+    mod tags {
+        use super::*;
+
+        #[test]
+        fn should_extract_hierarchical_tags() {
+            let md = "Check #work/project and #nested/tag/more";
+            let raw = parse_raw(md);
+            let values: Vec<_> = raw.tags().iter().map(RawTag::value).collect();
+            assert!(values.contains(&"#work/project"));
+            assert!(values.contains(&"#nested/tag/more"));
+        }
+
+        #[rstest]
+        #[case::code_block("```\n#ignored\n```")]
+        #[case::inline_code("`#ignored`")]
+        #[case::math("Rank is $#ignored$")]
+        fn should_ignore_tags_in_protected_contexts(#[case] input: &str) {
+            let raw = parse_raw(input);
+            assert!(raw.tags().is_empty(), "Failed for input: {input}");
+        }
+
+        #[test]
+        fn should_handle_tags_with_punctuation() {
+            let md = "#tag, #other! #end.";
+            let raw = parse_raw(md);
+            let values: Vec<_> = raw.tags().iter().map(RawTag::value).collect();
+            assert!(values.contains(&"#tag"));
+            assert!(values.contains(&"#other"));
+            assert!(values.contains(&"#end"));
+        }
+    }
+
+    mod tasks {
+        use super::*;
+
+        #[test]
+        fn should_promote_to_raw_task_with_metadata() {
+            let md = "- [ ] #task Do it [priority:: 1]";
+            let raw = parse_raw(md);
+            assert_eq!(raw.tasks().len(), 1);
+            let task = raw.tasks().first().expect("task exists");
+
+            // RawTask holds the raw text from the block.
+            assert_eq!(task.text(), "#task Do it [priority:: 1]");
+            assert!(task.tags().contains(&"#task".into()));
+            assert_eq!(task.inline_fields().len(), 1);
+            assert_eq!(
+                task.inline_fields().first().expect("field exists").key(),
+                "priority"
+            );
+        }
+
+        #[test]
+        fn should_preserve_task_marker_case() {
+            let md = "- [X] Done";
+            let raw = parse_raw(md);
+            assert!(matches!(
+                raw.tasks().first().expect("task exists").task_kind(),
+                crate::note::raw::RawTaskKind::Checked('X')
+            ));
+        }
+
+        #[test]
+        fn should_ignore_tasks_in_code_blocks() {
+            let md = "```\n- [ ] not a task\n```";
+            let raw = parse_raw(md);
+            assert!(raw.tasks().is_empty());
+        }
+    }
+
+    use rstest::rstest;
+
     use super::*;
     use crate::note::paths::NotePath;
 
-    #[test]
-    fn extract_markdown_collects_task_tokens() -> Result<(), NoteIngestError> {
-        let markdown = "- [ ] #task Review PR [priority:: 1]";
-        let path = NotePath::try_new("notes/task.md")?;
-        let raw = MarkdownParser::parse(markdown, path, None, None)?;
-
-        assert_eq!(raw.tasks().len(), 1);
-        let task = raw.tasks().first().expect("task should exist");
-        assert_eq!(task.task_kind().marker(), ' ');
-        assert!(task.tags().iter().any(|tag| tag.as_ref() == "#task"));
-        assert!(
-            task.inline_fields()
-                .iter()
-                .any(|pair| pair.key() == "priority" && pair.value() == "1")
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn extract_markdown_preserves_task_marker_case()
-    -> Result<(), NoteIngestError> {
-        use crate::note::raw::RawTaskKind;
-        let markdown = "- [X] #task Done";
-        let path = NotePath::try_new("notes/task.md")?;
-        let raw = MarkdownParser::parse(markdown, path, None, None)?;
-
-        let task = raw.tasks().first().expect("task should exist");
-        assert!(matches!(task.task_kind(), RawTaskKind::Checked('X')));
-        Ok(())
+    fn parse_raw(markdown: &str) -> RawNote {
+        let path = NotePath::try_new("test.md").expect("valid test path");
+        MarkdownParser::parse(markdown, path, None, None)
+            .expect("parsing failed")
     }
 }

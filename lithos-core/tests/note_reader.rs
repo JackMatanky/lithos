@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(fixture.note.headings().len(), 3);
         assert_eq!(tasks.len(), 3);
         assert_eq!(fixture.note.links().len(), 4);
-        assert_eq!(fixture.note.tags().len(), 8);
+        assert_eq!(fixture.note.tags().len(), 7);
 
         let outcome_frontmatter =
             fixture.note.frontmatter().expect("frontmatter should exist");
