@@ -1,33 +1,108 @@
-//! Schema error taxonomy for the schema pipeline.
+//! Error types for the Schema domain and its ingestion pipeline.
 //!
-//! This module centralizes error types produced by schema ingestion, parsing,
-//! validation, resolution, and storage. Errors are ordered from high-level
-//! pipeline wrappers ([`SchemaLoaderError`], [`SchemaIngestionError`],
-//! [`SchemaRepositoryError`]) down to domain and leaf errors
-//! ([`SchemaError`] and its variants).
+//! This module provides a hierarchical, phase-oriented error taxonomy that
+//! maps to the Schema lifecycle:
 //!
-//! Use the wrapper errors at API boundaries (loader, ingestor, repository) and
-//! the domain errors when validating or resolving in-memory schema data.
+//! 1. **File Access**: Physical file access, filename validation, and format
+//!    filtering ([`SchemaFileError`]).
+//! 2. **Parsing**: Structured decoding of JSON/TOML/YAML and cached views
+//!    ([`SchemaParseError`]).
+//! 3. **Versioning**: Schema version compatibility checks
+//!    ([`SchemaVersionError`]).
+//! 4. **Syntax**: Name and shape validation for raw schema inputs
+//!    ([`SchemaSyntaxError`]).
+//! 5. **Validation/Resolution**: Domain-level validation, property resolution,
+//!    and inheritance checks ([`SchemaError`] umbrella).
+//! 6. **Persistence**: Storage integrity and lookup behavior
+//!    ([`SchemaRepositoryError`] and [`SchemaStorageError`]).
+//! 7. **Orchestration**: Top-level coordination of the full pipeline
+//!    ([`SchemaLoaderError`]).
+//!
+//! # Hierarchy
+//!
+//! ```text
+//! SchemaLoaderError (Orchestration)
+//!  ├── SchemaIngestionError (Ingestion Phase)
+//!  │    ├── SchemaFileError (I/O & Naming)
+//!  │    ├── SchemaParseError (Syntax & Extraction)
+//!  │    ├── SchemaVersionError (Version Gate)
+//!  │    ├── SchemaSyntaxError (Raw Validation)
+//!  │    └── SchemaError (Domain Validation)
+//!  ├── SchemaError (Domain Umbrella)
+//!  │    ├── PropertySpecError, PropertyValueError
+//!  │    ├── PropertyRefError, PropertyBankError
+//!  │    └── SchemaInheritanceError, SchemaResolutionError
+//!  └── SchemaRepositoryError (Persistence Phase)
+//!       └── SchemaStorageError (Storage Layer)
+//!            └── DbError
+//! ```
+//!
+//! # Design Principles
+//!
+//! - **Context Preservation**: Each layer wraps the previous one using
+//!   `#[error(transparent)]` to preserve the `source()` chain.
+//! - **Performance**: Dynamic error data uses `Box<str>` instead of `String` to
+//!   reduce heap allocations.
+//! - **Phase Orientation**: Errors are categorized by pipeline stage, avoiding
+//!   the “everything is ingestion” anti-pattern.
+//!
+//! # Usage Guidelines
+//!
+//! | Error Type                | When to Use                                                         |
+//! | :------------------------ | :------------------------------------------------------------------ |
+//! | [`SchemaError`]           | Domain validation, property resolution, and inheritance handling.   |
+//! | [`SchemaIngestionError`]  | Readers/parsers bridging raw bytes to structured schema data.       |
+//! | [`SchemaRepositoryError`] | Storage adapters and persistence integrity checks.                  |
+//! | [`SchemaLoaderError`]     | Cross-cutting orchestration across the entire lifecycle.            |
+//!
+//! # Examples
+//!
+//! ## Handling a Load Failure
+//!
+//! ```ignore
+//! match loader.load_all() {
+//!     Err(SchemaLoaderError::Ingestion(e)) => handle_ingestion_error(e),
+//!     Err(SchemaLoaderError::Repository(e)) => handle_storage_error(e),
+//!     Err(SchemaLoaderError::Resolution(e)) => handle_schema_error(e),
+//!     Ok(count) => println!("Loaded {count} schemas"),
+//! }
+//! ```
 
 use std::path::PathBuf;
 
 use crate::db::DbError;
 
-/// High-level errors returned by schema loading operations.
-#[derive(Debug, thiserror::Error)]
+/// Domain-level errors for in-memory schema validation and resolution.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum SchemaLoaderError {
-    /// Returned when ingestion (file I/O or parsing) fails.
+pub enum SchemaError {
+    /// Returned when raw syntax validation fails.
     #[error(transparent)]
-    Ingestion(#[from] SchemaIngestionError),
+    Syntax(#[from] SchemaSyntaxError),
 
-    /// Returned when repository access fails.
+    /// Returned when property specification configuration is invalid.
     #[error(transparent)]
-    Repository(#[from] SchemaRepositoryError),
+    PropertySpec(#[from] PropertySpecError),
 
-    /// Returned when schema resolution fails.
+    /// Returned when a value fails validation against a spec.
     #[error(transparent)]
-    Resolution(#[from] SchemaError),
+    PropertyValue(#[from] PropertyValueError),
+
+    /// Returned when a property reference is invalid or unresolved.
+    #[error(transparent)]
+    PropertyRef(#[from] PropertyRefError),
+
+    /// Returned when property bank constraints are violated.
+    #[error(transparent)]
+    PropertyBank(#[from] PropertyBankError),
+
+    /// Returned when inheritance resolution fails.
+    #[error(transparent)]
+    Inheritance(#[from] SchemaInheritanceError),
+
+    /// Returned when schema resolution fails outside inheritance concerns.
+    #[error(transparent)]
+    Resolution(#[from] SchemaResolutionError),
 }
 
 /// Errors produced while reading schema files and building raw/domain models.
@@ -82,37 +157,21 @@ pub enum SchemaRepositoryError {
     Domain(#[from] SchemaError),
 }
 
-/// Domain-level errors for in-memory schema validation and resolution.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+/// High-level errors returned by schema loading operations.
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SchemaError {
-    /// Returned when raw syntax validation fails.
+pub enum SchemaLoaderError {
+    /// Returned when ingestion (file I/O or parsing) fails.
     #[error(transparent)]
-    Syntax(#[from] SchemaSyntaxError),
+    Ingestion(#[from] SchemaIngestionError),
 
-    /// Returned when property specification configuration is invalid.
+    /// Returned when repository access fails.
     #[error(transparent)]
-    PropertySpec(#[from] PropertySpecError),
+    Repository(#[from] SchemaRepositoryError),
 
-    /// Returned when a value fails validation against a spec.
+    /// Returned when schema resolution fails.
     #[error(transparent)]
-    PropertyValue(#[from] PropertyValueError),
-
-    /// Returned when a property reference is invalid or unresolved.
-    #[error(transparent)]
-    PropertyRef(#[from] PropertyRefError),
-
-    /// Returned when property bank constraints are violated.
-    #[error(transparent)]
-    PropertyBank(#[from] PropertyBankError),
-
-    /// Returned when inheritance resolution fails.
-    #[error(transparent)]
-    Inheritance(#[from] SchemaInheritanceError),
-
-    /// Returned when schema resolution fails outside inheritance concerns.
-    #[error(transparent)]
-    Resolution(#[from] SchemaResolutionError),
+    Resolution(#[from] SchemaError),
 }
 
 /// File-system and filename errors during ingestion.
@@ -245,6 +304,56 @@ pub enum SchemaVersionError {
     },
 }
 
+/// Syntax validation failures in raw schema inputs.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaSyntaxError {
+    /// Returned when the schema name is invalid.
+    #[error(transparent)]
+    SchemaName(#[from] SchemaNameError),
+
+    /// Returned when a property name is invalid.
+    #[error(transparent)]
+    PropertyName(#[from] PropertyNameError),
+}
+
+/// Storage-related errors for schema persistence.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaStorageError {
+    /// Returned when the database layer fails.
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
+
+    /// Returned when an expected entity is missing.
+    #[error("not found: {name}")]
+    NotFound {
+        /// Name or identifier for the missing entity.
+        name: Box<str>,
+    },
+
+    /// Returned when storage corruption is detected.
+    #[error("data corruption: {reason}")]
+    Corruption {
+        /// Reason for corruption.
+        reason: Box<str>,
+    },
+
+    /// Returned when the property bank has not been initialized.
+    #[error(
+        "PropertyBank not found in database - initialize by loading schema \
+         files or creating properties"
+    )]
+    PropertyBankNotFound,
+
+    /// Returned when storage operations conflict.
+    #[error("conflict: {reason}")]
+    Conflict {
+        /// Reason for the conflict.
+        reason: Box<str>,
+    },
+}
+
 /// Schema name validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -338,19 +447,6 @@ pub enum PropertyNameError {
         /// Regex error details.
         reason: Box<str>,
     },
-}
-
-/// Syntax validation failures in raw schema inputs.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SchemaSyntaxError {
-    /// Returned when the schema name is invalid.
-    #[error(transparent)]
-    SchemaName(#[from] SchemaNameError),
-
-    /// Returned when a property name is invalid.
-    #[error(transparent)]
-    PropertyName(#[from] PropertyNameError),
 }
 
 /// Property spec configuration failures.
@@ -606,43 +702,6 @@ pub enum SchemaResolutionError {
     },
 }
 
-/// Storage-related errors for schema persistence.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaStorageError {
-    /// Returned when the database layer fails.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
-
-    /// Returned when an expected entity is missing.
-    #[error("not found: {name}")]
-    NotFound {
-        /// Name or identifier for the missing entity.
-        name: Box<str>,
-    },
-
-    /// Returned when storage corruption is detected.
-    #[error("data corruption: {reason}")]
-    Corruption {
-        /// Reason for corruption.
-        reason: Box<str>,
-    },
-
-    /// Returned when the property bank has not been initialized.
-    #[error(
-        "PropertyBank not found in database - initialize by loading schema \
-         files or creating properties"
-    )]
-    PropertyBankNotFound,
-
-    /// Returned when storage operations conflict.
-    #[error("conflict: {reason}")]
-    Conflict {
-        /// Reason for the conflict.
-        reason: Box<str>,
-    },
-}
-
 impl From<SchemaNameError> for SchemaError {
     #[inline]
     fn from(err: SchemaNameError) -> Self {
@@ -716,124 +775,40 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    mod conversions {
+
+    mod thread_safety {
         use super::*;
+
         #[test]
-        fn schema_name_error_converts_into_schema_error() {
-            let error: SchemaError = SchemaNameError::Empty.into();
-            assert!(
-                matches!(
-                    error,
-                    SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                        SchemaNameError::Empty
-                    ))
-                ),
-                "Expected SchemaNameError::Empty to convert into \
-                 SchemaError::Syntax"
-            );
-        }
-        #[test]
-        fn property_name_error_converts_into_schema_error() {
-            let error: SchemaError = PropertyNameError::Empty {
-                context: PropertyNameContext::SchemaProperty,
-            }
-            .into();
-            assert!(
-                matches!(
-                    error,
-                    SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                        PropertyNameError::Empty {
-                            context: PropertyNameContext::SchemaProperty,
-                        }
-                    ))
-                ),
-                "Expected PropertyNameError::Empty to convert into \
-                 SchemaError::Syntax"
-            );
-        }
-        #[test]
-        fn parse_error_maps_to_schema_ingestion_error() {
-            let error: SchemaIngestionError =
-                crate::fs::error::ParseError::UnsupportedFormat {
-                    path: PathBuf::from("schemas/schema.xml"),
-                    supported: &["json", "yaml"],
-                }
-                .into();
-            match error {
-                SchemaIngestionError::File(
-                    SchemaFileError::UnsupportedFormat {
-                        path,
-                        supported,
-                    },
-                ) => {
-                    assert_eq!(
-                        path,
-                        PathBuf::from("schemas/schema.xml"),
-                        "Expected unsupported format to preserve the path"
-                    );
-                    assert_eq!(
-                        supported,
-                        vec!["json".into(), "yaml".into()],
-                        "Expected supported formats to be copied"
-                    );
-                }
-                other @ (SchemaIngestionError::File(_)
-                | SchemaIngestionError::Parse(_)
-                | SchemaIngestionError::Version(_)
-                | SchemaIngestionError::Syntax(_)
-                | SchemaIngestionError::Storage(_)
-                | SchemaIngestionError::Repository(_)
-                | SchemaIngestionError::Schema {
-                    ..
-                }) => {
-                    let is_expected = matches!(
-                        other,
-                        SchemaIngestionError::File(
-                            SchemaFileError::UnsupportedFormat { .. }
-                        )
-                    );
-                    assert!(
-                        is_expected,
-                        "Expected SchemaIngestionError::File::UnsupportedFormat, got: {other:?}"
-                    );
-                }
-            }
+        fn errors_are_send_and_sync() {
+            fn assert_send_sync<T: Send + Sync>() {}
+
+            assert_send_sync::<SchemaError>();
+            assert_send_sync::<SchemaIngestionError>();
+            assert_send_sync::<SchemaRepositoryError>();
+            assert_send_sync::<SchemaLoaderError>();
+            assert_send_sync::<SchemaFileError>();
+            assert_send_sync::<SchemaParseError>();
+            assert_send_sync::<SchemaVersionError>();
+            assert_send_sync::<SchemaSyntaxError>();
+            assert_send_sync::<SchemaStorageError>();
+            assert_send_sync::<SchemaNameError>();
+            assert_send_sync::<PropertyNameContext>();
+            assert_send_sync::<PropertyNameError>();
+            assert_send_sync::<PropertySpecError>();
+            assert_send_sync::<PropertyValueError>();
+            assert_send_sync::<PropertyRefError>();
+            assert_send_sync::<PropertyBankError>();
+            assert_send_sync::<SchemaInheritanceError>();
+            assert_send_sync::<SchemaResolutionError>();
         }
     }
-    mod equality {
-        use super::*;
-        #[test]
-        fn schema_error_equality_compares_variants() {
-            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
-            });
-            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
-            });
-            assert_eq!(
-                left, right,
-                "Expected identical property reference errors to be equal"
-            );
-        }
-        #[test]
-        fn schema_error_equality_distinguishes_variants() {
-            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
-            });
-            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/status".into(),
-            });
-            assert!(
-                left != right,
-                "Expected different references to be unequal: {left:?} vs \
-                 {right:?}"
-            );
-        }
-    }
+
     mod formatting {
         use rstest::rstest;
 
         use super::*;
+
         #[rstest]
         #[case::schema_property(
             PropertyNameContext::SchemaProperty,
@@ -854,6 +829,7 @@ mod tests {
                 "Expected context label '{expected}', got '{context}'"
             );
         }
+
         #[rstest]
         #[case::schema_name_empty(
             SchemaError::Syntax(SchemaSyntaxError::SchemaName(
@@ -893,21 +869,25 @@ mod tests {
             );
         }
     }
+
     mod sources {
         use std::error::Error as StdError;
 
         use super::*;
+
         #[test]
         fn schema_file_io_exposes_source() {
             let error = SchemaFileError::Io {
                 path: PathBuf::from("schemas/bad.json"),
                 source: std::io::Error::other("disk failed"),
             };
+
             let source = StdError::source(&error);
             assert!(
                 source.is_some(),
                 "Expected source for SchemaFileError::Io"
             );
+
             if let Some(source) = source {
                 assert!(
                     source.to_string().contains("disk failed"),
@@ -916,6 +896,7 @@ mod tests {
                 );
             }
         }
+
         #[test]
         fn ingestion_schema_exposes_source() {
             let error = SchemaIngestionError::Schema {
@@ -924,11 +905,13 @@ mod tests {
                     reference: "property_bank#/title".into(),
                 }),
             };
+
             let source = StdError::source(&error);
             assert!(
                 source.is_some(),
                 "Expected source for SchemaIngestionError::Schema"
             );
+
             if let Some(source) = source {
                 assert!(
                     source.to_string().contains("property reference not found"),
@@ -937,40 +920,143 @@ mod tests {
                 );
             }
         }
+
         #[test]
         fn schema_file_filesystem_has_no_source() {
             let error = SchemaFileError::FileSystem {
                 reason: "vault unavailable".into(),
             };
+
             assert!(
                 StdError::source(&error).is_none(),
                 "Expected no source for SchemaFileError::FileSystem"
             );
         }
     }
-    mod thread_safety {
+
+    mod equality {
         use super::*;
+
         #[test]
-        fn errors_are_send_and_sync() {
-            fn assert_send_sync<T: Send + Sync>() {}
-            assert_send_sync::<SchemaLoaderError>();
-            assert_send_sync::<SchemaIngestionError>();
-            assert_send_sync::<SchemaRepositoryError>();
-            assert_send_sync::<SchemaError>();
-            assert_send_sync::<SchemaFileError>();
-            assert_send_sync::<SchemaParseError>();
-            assert_send_sync::<SchemaVersionError>();
-            assert_send_sync::<SchemaNameError>();
-            assert_send_sync::<PropertyNameContext>();
-            assert_send_sync::<PropertyNameError>();
-            assert_send_sync::<SchemaSyntaxError>();
-            assert_send_sync::<PropertySpecError>();
-            assert_send_sync::<PropertyValueError>();
-            assert_send_sync::<PropertyRefError>();
-            assert_send_sync::<PropertyBankError>();
-            assert_send_sync::<SchemaInheritanceError>();
-            assert_send_sync::<SchemaResolutionError>();
-            assert_send_sync::<SchemaStorageError>();
+        fn schema_error_equality_compares_variants() {
+            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+
+            assert_eq!(
+                left, right,
+                "Expected identical property reference errors to be equal"
+            );
+        }
+
+        #[test]
+        fn schema_error_equality_distinguishes_variants() {
+            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/status".into(),
+            });
+
+            assert!(
+                left != right,
+                "Expected different references to be unequal: {left:?} vs \
+                 {right:?}"
+            );
+        }
+    }
+
+    mod conversions {
+        use super::*;
+
+        #[test]
+        fn schema_name_error_converts_into_schema_error() {
+            let error: SchemaError = SchemaNameError::Empty.into();
+
+            assert!(
+                matches!(
+                    error,
+                    SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                        SchemaNameError::Empty
+                    ))
+                ),
+                "Expected SchemaNameError::Empty to convert into \
+                 SchemaError::Syntax"
+            );
+        }
+
+        #[test]
+        fn property_name_error_converts_into_schema_error() {
+            let error: SchemaError = PropertyNameError::Empty {
+                context: PropertyNameContext::SchemaProperty,
+            }
+            .into();
+
+            assert!(
+                matches!(
+                    error,
+                    SchemaError::Syntax(SchemaSyntaxError::PropertyName(
+                        PropertyNameError::Empty {
+                            context: PropertyNameContext::SchemaProperty,
+                        }
+                    ))
+                ),
+                "Expected PropertyNameError::Empty to convert into \
+                 SchemaError::Syntax"
+            );
+        }
+
+        #[test]
+        fn parse_error_maps_to_schema_ingestion_error() {
+            let error: SchemaIngestionError =
+                crate::fs::error::ParseError::UnsupportedFormat {
+                    path: PathBuf::from("schemas/schema.xml"),
+                    supported: &["json", "yaml"],
+                }
+                .into();
+
+            match error {
+                SchemaIngestionError::File(
+                    SchemaFileError::UnsupportedFormat {
+                        path,
+                        supported,
+                    },
+                ) => {
+                    assert_eq!(
+                        path,
+                        PathBuf::from("schemas/schema.xml"),
+                        "Expected unsupported format to preserve the path"
+                    );
+                    assert_eq!(
+                        supported,
+                        vec!["json".into(), "yaml".into()],
+                        "Expected supported formats to be copied"
+                    );
+                }
+                other @ (SchemaIngestionError::File(_)
+                | SchemaIngestionError::Parse(_)
+                | SchemaIngestionError::Version(_)
+                | SchemaIngestionError::Syntax(_)
+                | SchemaIngestionError::Storage(_)
+                | SchemaIngestionError::Repository(_)
+                | SchemaIngestionError::Schema {
+                    ..
+                }) => {
+                    let is_expected = matches!(
+                        other,
+                        SchemaIngestionError::File(
+                            SchemaFileError::UnsupportedFormat { .. }
+                        )
+                    );
+                    assert!(
+                        is_expected,
+                        "Expected SchemaIngestionError::File::UnsupportedFormat, got: {other:?}"
+                    );
+                }
+            }
         }
     }
 }
