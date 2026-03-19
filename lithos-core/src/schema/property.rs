@@ -343,7 +343,7 @@ impl PropertyName {
         }
 
         let re = RE.as_ref().map_err(|error| {
-            super::error::SchemaValidationError::PropertyNameRegex {
+            super::error::PropertyNameError::InvalidRegex {
                 reason: error.to_string().into(),
             }
         })?;

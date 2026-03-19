@@ -369,7 +369,7 @@ impl SchemaName {
         }
 
         let re = RE.as_ref().map_err(|error| {
-            super::error::SchemaValidationError::SchemaNameRegex {
+            super::error::SchemaNameError::InvalidRegex {
                 reason: error.to_string().into(),
             }
         })?;

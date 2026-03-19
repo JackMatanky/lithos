@@ -7,28 +7,236 @@ use std::path::PathBuf;
 
 use crate::db::DbError;
 
-/// Context for property name validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Schema loader errors.
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PropertyNameContext {
-    /// Property name defined in a schema file.
-    SchemaProperty,
-    /// Property name defined in a property bank file.
-    PropertyBank,
-    /// Property name used in `excludes` list.
-    Exclude,
+pub enum SchemaLoaderError {
+    /// Ingestion (file I/O or parsing) error.
+    #[error(transparent)]
+    Ingestion(#[from] SchemaIngestionError),
+
+    /// Repository (storage) error.
+    #[error(transparent)]
+    Repository(#[from] SchemaRepositoryError),
+
+    /// Resolution error.
+    #[error(transparent)]
+    Resolution(#[from] SchemaError),
 }
 
-impl std::fmt::Display for PropertyNameContext {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let label = match *self {
-            Self::SchemaProperty => "schema property",
-            Self::PropertyBank => "property bank",
-            Self::Exclude => "exclude list",
-        };
-        f.write_str(label)
-    }
+/// Schema ingestion errors.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaIngestionError {
+    /// File system error.
+    #[error(transparent)]
+    File(#[from] SchemaFileError),
+
+    /// Parse error.
+    #[error(transparent)]
+    Parse(#[from] SchemaParseError),
+
+    /// Version error.
+    #[error(transparent)]
+    Version(#[from] SchemaVersionError),
+
+    /// Syntax validation error.
+    #[error(transparent)]
+    Syntax(#[from] SchemaSyntaxError),
+
+    /// Storage error.
+    #[error(transparent)]
+    Storage(#[from] SchemaStorageError),
+
+    /// Repository error.
+    #[error(transparent)]
+    Repository(#[from] SchemaRepositoryError),
+
+    /// Schema validation error with path context.
+    #[error("schema validation failed in {path}: {source}")]
+    Schema {
+        /// Path to the file.
+        path: PathBuf,
+        /// Underlying schema error.
+        #[source]
+        source: SchemaError,
+    },
+}
+
+/// Unified schema repository errors.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaRepositoryError {
+    /// Storage/database error.
+    #[error(transparent)]
+    Storage(#[from] SchemaStorageError),
+
+    /// Domain validation error.
+    #[error(transparent)]
+    Domain(#[from] SchemaError),
+}
+
+/// Schema-related domain errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaError {
+    /// Raw syntax validation error.
+    #[error(transparent)]
+    Syntax(#[from] SchemaSyntaxError),
+
+    /// Property spec configuration error.
+    #[error(transparent)]
+    PropertySpec(#[from] PropertySpecError),
+
+    /// Property value validation error.
+    #[error(transparent)]
+    PropertyValue(#[from] PropertyValueError),
+
+    /// Property reference error.
+    #[error(transparent)]
+    PropertyRef(#[from] PropertyRefError),
+
+    /// Property bank error.
+    #[error(transparent)]
+    PropertyBank(#[from] PropertyBankError),
+
+    /// Inheritance error.
+    #[error(transparent)]
+    Inheritance(#[from] SchemaInheritanceError),
+
+    /// Resolution error.
+    #[error(transparent)]
+    Resolution(#[from] SchemaResolutionError),
+}
+
+/// Schema file errors during ingestion.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaFileError {
+    /// I/O error reading file.
+    #[error("failed to read {path}: {source}")]
+    Io {
+        /// Path to the file.
+        path: PathBuf,
+        /// I/O error source.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Invalid filename or basename.
+    #[error("invalid filename: {path} ({reason})")]
+    InvalidFilename {
+        /// Path to the file.
+        path: PathBuf,
+        /// Reason for invalid filename.
+        reason: Box<str>,
+    },
+
+    /// Unsupported file format.
+    #[error("unsupported format for {path}: expected one of {supported:?}")]
+    UnsupportedFormat {
+        /// Path to the file.
+        path: PathBuf,
+        /// Supported formats.
+        supported: Vec<Box<str>>,
+    },
+
+    /// File system error not tied to a specific file.
+    #[error("filesystem error: {reason}")]
+    FileSystem {
+        /// Error details.
+        reason: Box<str>,
+    },
+}
+
+/// Schema parsing errors during ingestion.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaParseError {
+    /// JSON parsing failed.
+    #[error(
+        "JSON parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Json {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// TOML parsing failed.
+    #[error(
+        "TOML parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Toml {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// YAML parsing failed.
+    #[error(
+        "YAML parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Yaml {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// Cached view deserialization failed.
+    #[error("cached view parse error in {path}: {reason}")]
+    CachedView {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error details.
+        reason: Box<str>,
+    },
+
+    /// Serialization failed.
+    #[error("serialization error in {path}: {reason}")]
+    Serialization {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error details.
+        reason: Box<str>,
+    },
+}
+
+/// Schema version errors during ingestion.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaVersionError {
+    /// Unsupported schema version.
+    #[error(
+        "unsupported schema version in {path}: got '{found}', expected \
+         '{expected}'"
+    )]
+    UnsupportedVersion {
+        /// Path to the file.
+        path: PathBuf,
+        /// Found version.
+        found: Box<str>,
+        /// Expected version.
+        expected: Box<str>,
+    },
 }
 
 /// Schema name validation errors.
@@ -54,6 +262,37 @@ pub enum SchemaNameError {
         /// The invalid name.
         name: Box<str>,
     },
+
+    /// Schema name regex failed to compile.
+    #[error("invalid schema name regex: {reason}")]
+    InvalidRegex {
+        /// Regex error details.
+        reason: Box<str>,
+    },
+}
+
+/// Context for property name validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyNameContext {
+    /// Property name defined in a schema file.
+    SchemaProperty,
+    /// Property name defined in a property bank file.
+    PropertyBank,
+    /// Property name used in `excludes` list.
+    Exclude,
+}
+
+impl std::fmt::Display for PropertyNameContext {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match *self {
+            Self::SchemaProperty => "schema property",
+            Self::PropertyBank => "property bank",
+            Self::Exclude => "exclude list",
+        };
+        f.write_str(label)
+    }
 }
 
 /// Property name validation errors.
@@ -86,22 +325,10 @@ pub enum PropertyNameError {
         /// Context of the property name.
         context: PropertyNameContext,
     },
-}
-
-/// Internal validation errors for schema construction.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SchemaValidationError {
-    /// Schema name regex failed to compile.
-    #[error("invalid schema name regex: {reason}")]
-    SchemaNameRegex {
-        /// Regex error details.
-        reason: Box<str>,
-    },
 
     /// Property name regex failed to compile.
     #[error("invalid property name regex: {reason}")]
-    PropertyNameRegex {
+    InvalidRegex {
         /// Regex error details.
         reason: Box<str>,
     },
@@ -373,173 +600,6 @@ pub enum SchemaResolutionError {
     },
 }
 
-/// Schema-related domain errors.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaError {
-    /// Raw syntax validation error.
-    #[error(transparent)]
-    Syntax(#[from] SchemaSyntaxError),
-
-    /// Internal validation error.
-    #[error(transparent)]
-    Validation(#[from] SchemaValidationError),
-
-    /// Property spec configuration error.
-    #[error(transparent)]
-    PropertySpec(#[from] PropertySpecError),
-
-    /// Property value validation error.
-    #[error(transparent)]
-    PropertyValue(#[from] PropertyValueError),
-
-    /// Property reference error.
-    #[error(transparent)]
-    PropertyRef(#[from] PropertyRefError),
-
-    /// Property bank error.
-    #[error(transparent)]
-    PropertyBank(#[from] PropertyBankError),
-
-    /// Inheritance error.
-    #[error(transparent)]
-    Inheritance(#[from] SchemaInheritanceError),
-
-    /// Resolution error.
-    #[error(transparent)]
-    Resolution(#[from] SchemaResolutionError),
-}
-
-/// Schema file errors during ingestion.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaFileError {
-    /// I/O error reading file.
-    #[error("failed to read {path}: {source}")]
-    Io {
-        /// Path to the file.
-        path: PathBuf,
-        /// I/O error source.
-        #[source]
-        source: std::io::Error,
-    },
-
-    /// Invalid filename or basename.
-    #[error("invalid filename: {path} ({reason})")]
-    InvalidFilename {
-        /// Path to the file.
-        path: PathBuf,
-        /// Reason for invalid filename.
-        reason: Box<str>,
-    },
-
-    /// Unsupported file format.
-    #[error("unsupported format for {path}: expected one of {supported:?}")]
-    UnsupportedFormat {
-        /// Path to the file.
-        path: PathBuf,
-        /// Supported formats.
-        supported: Vec<Box<str>>,
-    },
-
-    /// File system error not tied to a specific file.
-    #[error("filesystem error: {reason}")]
-    FileSystem {
-        /// Error details.
-        reason: Box<str>,
-    },
-}
-
-/// Schema parsing errors during ingestion.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaParseError {
-    /// JSON parsing failed.
-    #[error(
-        "JSON parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Json {
-        /// Path to the file.
-        path: PathBuf,
-        /// Error message from parser.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// TOML parsing failed.
-    #[error(
-        "TOML parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Toml {
-        /// Path to the file.
-        path: PathBuf,
-        /// Error message from parser.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// YAML parsing failed.
-    #[error(
-        "YAML parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Yaml {
-        /// Path to the file.
-        path: PathBuf,
-        /// Error message from parser.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// Cached view deserialization failed.
-    #[error("cached view parse error in {path}: {reason}")]
-    CachedView {
-        /// Path to the file.
-        path: PathBuf,
-        /// Error details.
-        reason: Box<str>,
-    },
-
-    /// Serialization failed.
-    #[error("serialization error in {path}: {reason}")]
-    Serialization {
-        /// Path to the file.
-        path: PathBuf,
-        /// Error details.
-        reason: Box<str>,
-    },
-}
-
-/// Schema version errors during ingestion.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SchemaVersionError {
-    /// Unsupported schema version.
-    #[error(
-        "unsupported schema version in {path}: got '{found}', expected \
-         '{expected}'"
-    )]
-    UnsupportedVersion {
-        /// Path to the file.
-        path: PathBuf,
-        /// Found version.
-        found: Box<str>,
-        /// Expected version.
-        expected: Box<str>,
-    },
-}
-
 /// Schema storage errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
@@ -574,75 +634,6 @@ pub enum SchemaStorageError {
     Conflict {
         /// Reason for the conflict.
         reason: Box<str>,
-    },
-}
-
-/// Unified schema repository errors.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaRepositoryError {
-    /// Storage/database error.
-    #[error(transparent)]
-    Storage(#[from] SchemaStorageError),
-
-    /// Domain validation error.
-    #[error(transparent)]
-    Domain(#[from] SchemaError),
-}
-
-/// Schema loader errors.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaLoaderError {
-    /// Ingestion (file I/O or parsing) error.
-    #[error(transparent)]
-    Ingestion(#[from] SchemaIngestionError),
-
-    /// Repository (storage) error.
-    #[error(transparent)]
-    Repository(#[from] SchemaRepositoryError),
-
-    /// Resolution error.
-    #[error(transparent)]
-    Resolution(#[from] SchemaError),
-}
-
-/// Schema ingestion errors.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaIngestionError {
-    /// File system error.
-    #[error(transparent)]
-    File(#[from] SchemaFileError),
-
-    /// Parse error.
-    #[error(transparent)]
-    Parse(#[from] SchemaParseError),
-
-    /// Version error.
-    #[error(transparent)]
-    Version(#[from] SchemaVersionError),
-
-    /// Syntax validation error.
-    #[error(transparent)]
-    Syntax(#[from] SchemaSyntaxError),
-
-    /// Storage error.
-    #[error(transparent)]
-    Storage(#[from] SchemaStorageError),
-
-    /// Repository error.
-    #[error(transparent)]
-    Repository(#[from] SchemaRepositoryError),
-
-    /// Schema validation error with path context.
-    #[error("schema validation failed in {path}: {source}")]
-    Schema {
-        /// Path to the file.
-        path: PathBuf,
-        /// Underlying schema error.
-        #[source]
-        source: SchemaError,
     },
 }
 
