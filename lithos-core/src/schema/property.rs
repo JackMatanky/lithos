@@ -143,11 +143,14 @@ impl Property {
         value: &serde_json::Value,
     ) -> Result<(), SchemaError> {
         if self.multiplicity == Multiplicity::Many {
-            let arr =
-                value.as_array().ok_or_else(|| SchemaError::InvalidType {
-                    value: value.to_string(),
-                    expected: "array".into(),
-                })?;
+            let arr = value.as_array().ok_or_else(|| {
+                SchemaError::PropertyValue(
+                    super::error::PropertyValueError::InvalidType {
+                        value: value.to_string().into(),
+                        expected: "array".into(),
+                    },
+                )
+            })?;
             for item in arr {
                 self.spec.validate(item)?;
             }
@@ -296,30 +299,61 @@ impl PropertyName {
     /// ```
     #[inline]
     pub fn try_new(name: &str) -> Result<Self, SchemaError> {
-        Self::validate(name)?;
+        Self::try_new_with_context(
+            name,
+            super::error::PropertyNameContext::SchemaProperty,
+        )
+    }
+
+    /// Create a new `PropertyName` with validation and context.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::Syntax` if the name is empty, too long, or fails
+    /// the property name format validation for the provided context.
+    #[inline]
+    pub fn try_new_with_context(
+        name: &str,
+        context: super::error::PropertyNameContext,
+    ) -> Result<Self, SchemaError> {
+        Self::validate(name, context)?;
         Ok(Self(name.into()))
     }
 
     #[inline]
-    fn validate(name: &str) -> Result<(), SchemaError> {
+    fn validate(
+        name: &str,
+        context: super::error::PropertyNameContext,
+    ) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
         if name.is_empty() {
-            return Err(SchemaError::EmptyPropertyName);
+            return Err(super::error::PropertyNameError::Empty {
+                context,
+            }
+            .into());
         }
         if name.len() > Self::MAX_LEN {
-            return Err(SchemaError::PropertyNameTooLong(name.len()));
+            return Err(super::error::PropertyNameError::TooLong {
+                len: name.len(),
+                max: Self::MAX_LEN,
+                context,
+            }
+            .into());
         }
 
         let re = RE.as_ref().map_err(|error| {
-            SchemaError::ValidationFailed(format!(
-                "Invalid property name regex: {error}"
-            ))
+            super::error::SchemaValidationError::PropertyNameRegex {
+                reason: error.to_string().into(),
+            }
         })?;
 
         if !re.is_match(name) {
-            return Err(SchemaError::InvalidPropertyName(name.into()));
+            return Err(super::error::PropertyNameError::InvalidFormat {
+                name: name.into(),
+                context,
+            }
+            .into());
         }
         Ok(())
     }
@@ -383,7 +417,10 @@ impl TryFrom<Box<str>> for PropertyName {
 
     #[inline]
     fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
-        Self::validate(&value)?;
+        Self::validate(
+            &value,
+            crate::schema::error::PropertyNameContext::SchemaProperty,
+        )?;
         Ok(Self(value))
     }
 }
@@ -413,12 +450,16 @@ impl BankPropertyRef {
     /// The only accepted format is `property_bank#/<name>`.
     ///
     /// # Errors
-    /// Returns `SchemaError::InvalidPropertyRef` if the format is invalid.
+    /// Returns `SchemaError::PropertyRef` if the format is invalid.
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
-        let name = reference
-            .strip_prefix(Self::PREFIX)
-            .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
+        let name = reference.strip_prefix(Self::PREFIX).ok_or_else(|| {
+            SchemaError::PropertyRef(
+                super::error::PropertyRefError::InvalidFormat {
+                    reference: reference.into(),
+                },
+            )
+        })?;
         Ok(Self(PropertyName::try_from(name)?))
     }
 
@@ -772,9 +813,16 @@ mod tests {
             // WHEN: creating a PropertyName
             let res = PropertyName::try_new(&long_name);
 
-            // THEN: it should return a PropertyNameTooLong error
+            // THEN: it should return a PropertyNameError::TooLong error
             assert!(
-                matches!(res, Err(SchemaError::PropertyNameTooLong(_))),
+                matches!(
+                    res,
+                    Err(SchemaError::Syntax(
+                        crate::schema::error::SchemaSyntaxError::PropertyName(
+                            crate::schema::error::PropertyNameError::TooLong { .. }
+                        )
+                    ))
+                ),
                 "Property name >64 chars should be rejected, got: {res:?}"
             );
         }
@@ -787,9 +835,16 @@ mod tests {
             // WHEN: creating a PropertyName
             let res = PropertyName::try_new("");
 
-            // THEN: it should return an EmptyPropertyName error
+            // THEN: it should return a PropertyNameError::Empty error
             assert!(
-                matches!(res, Err(SchemaError::EmptyPropertyName)),
+                matches!(
+                    res,
+                    Err(SchemaError::Syntax(
+                        crate::schema::error::SchemaSyntaxError::PropertyName(
+                            crate::schema::error::PropertyNameError::Empty { .. }
+                        )
+                    ))
+                ),
                 "Empty property name should be rejected, got: {res:?}"
             );
         }

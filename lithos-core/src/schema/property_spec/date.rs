@@ -19,8 +19,8 @@ impl DateSpec {
     /// it with a known datetime.
     ///
     /// # Errors
-    /// Returns `SchemaError::InvalidDateFormat` if the format is empty or not
-    /// a valid strftime pattern.
+    /// Returns `SchemaError::PropertySpec` if the format is empty or not a
+    /// valid strftime pattern.
     ///
     /// # Panics
     ///
@@ -33,8 +33,8 @@ impl DateSpec {
     )]
     pub fn try_new(format: &str) -> Result<Self, SchemaError> {
         if format.is_empty() {
-            return Err(SchemaError::InvalidDateFormat(
-                "Format cannot be empty".into(),
+            return Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::DateFormatRequired,
             ));
         }
 
@@ -50,9 +50,11 @@ impl DateSpec {
         if chrono::NaiveDate::parse_from_str(&result, format).is_err()
             && chrono::NaiveDateTime::parse_from_str(&result, format).is_err()
         {
-            return Err(SchemaError::InvalidDateFormat(format!(
-                "Format string '{format}' is not a valid strftime pattern"
-            )));
+            return Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::InvalidDateFormat {
+                    format: format.into(),
+                },
+            ));
         }
 
         Ok(Self {
@@ -68,10 +70,12 @@ impl DateSpec {
                     .is_ok();
 
         if !is_valid {
-            return Err(SchemaError::InvalidDateFormat(format!(
-                "Value {value} does not match format {}",
-                self.format
-            )));
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::DateFormatMismatch {
+                    value: value.into(),
+                    format: self.format.clone(),
+                },
+            ));
         }
         Ok(())
     }
@@ -81,8 +85,7 @@ impl DateSpec {
     /// If the override format is `None`, the base format is preserved.
     ///
     /// # Errors
-    /// Returns `SchemaError::InvalidDateFormat` if the override format is
-    /// invalid.
+    /// Returns `SchemaError::PropertySpec` if the override format is invalid.
     #[inline]
     pub fn apply_overrides(
         self,
@@ -117,10 +120,12 @@ impl ArchivedDateSpec {
                 .is_ok();
 
         if !is_valid {
-            return Err(SchemaError::InvalidDateFormat(format!(
-                "Value {value} does not match format {}",
-                self.format.as_ref()
-            )));
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::DateFormatMismatch {
+                    value: value.into(),
+                    format: self.format.as_ref().into(),
+                },
+            ));
         }
         Ok(())
     }
@@ -133,9 +138,9 @@ impl TryFrom<crate::schema::raw::property_spec::RawDateSpec> for DateSpec {
     fn try_from(
         raw: crate::schema::raw::property_spec::RawDateSpec,
     ) -> Result<Self, Self::Error> {
-        let format = raw.format.ok_or_else(|| {
-            SchemaError::ValidationFailed("date format is required".into())
-        })?;
+        let format = raw.format.ok_or(SchemaError::PropertySpec(
+            crate::schema::error::PropertySpecError::DateFormatRequired,
+        ))?;
         Self::try_new(&format)
     }
 }
@@ -161,8 +166,13 @@ mod tests {
             .expect("Expected valid DateSpec");
         let result = spec.validate_str("not-a-date");
         assert!(
-            matches!(result, Err(SchemaError::InvalidDateFormat(_))),
-            "Expected InvalidDateFormat error for invalid date string, got: \
+            matches!(
+                result,
+                Err(SchemaError::PropertyValue(
+                    crate::schema::error::PropertyValueError::DateFormatMismatch { .. }
+                ))
+            ),
+            "Expected DateFormatMismatch error for invalid date string, got: \
              {result:?}"
         );
     }

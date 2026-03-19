@@ -145,15 +145,19 @@ impl PropertyBank {
             if existing == &property {
                 return Ok(());
             }
-            return Err(SchemaError::DuplicatePropertyName(
-                name.as_str().into(),
+            return Err(SchemaError::PropertyBank(
+                super::error::PropertyBankError::DuplicatePropertyName {
+                    name: name.as_str().into(),
+                },
             ));
         }
 
         if self.properties.values().any(|prop| prop.id() == id) {
-            return Err(SchemaError::AlreadyExists(format!(
-                "Property ID {id} already registered under a different name"
-            )));
+            return Err(SchemaError::PropertyBank(
+                super::error::PropertyBankError::DuplicatePropertyId {
+                    id: id.to_string().into(),
+                },
+            ));
         }
 
         self.properties.insert(name.clone(), property);
@@ -609,10 +613,11 @@ mod tests {
             assert!(
                 matches!(
                     &result,
-                    Err(SchemaError::AlreadyExists(msg))
-                        if msg.contains("already registered under a different name")
+                    Err(SchemaError::PropertyBank(
+                        crate::schema::error::PropertyBankError::DuplicatePropertyId { .. }
+                    ))
                 ),
-                "Expected SchemaError::AlreadyExists, got: {result:?}"
+                "Expected DuplicatePropertyId, got: {result:?}"
             );
         }
 
@@ -661,7 +666,12 @@ mod tests {
 
             // THEN: it must return a DuplicatePropertyName error
             assert!(
-                matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
+                matches!(
+                    res,
+                    Err(SchemaError::PropertyBank(
+                        crate::schema::error::PropertyBankError::DuplicatePropertyName { .. }
+                    ))
+                ),
                 "Duplicate property name should be rejected with \
                  DuplicatePropertyName, got: {res:?}"
             );
@@ -670,9 +680,10 @@ mod tests {
         /// 3.3-UNIT-025: `update_from_raw_preserves_ids_by_name`.
         /// Priority: P1.
         #[test]
-        fn update_from_raw_preserves_ids_by_name() -> Result<(), SchemaError> {
+        fn update_from_raw_preserves_ids_by_name() {
             let mut bank = PropertyBank::new();
-            let name = PropertyName::try_new("status")?;
+            let name =
+                PropertyName::try_new("status").expect("valid property name");
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name.clone(),
@@ -680,7 +691,7 @@ mod tests {
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
-            bank.register(prop)?;
+            bank.register(prop).expect("initial registration succeeds");
 
             let mut properties = HashMap::new();
             properties.insert("status".into(), RawPropertyBankEntry {
@@ -696,20 +707,19 @@ mod tests {
 
             // Use update_from_raw to update only the "status" property
             let changed = vec![name.clone()];
-            bank.update_from_raw(&raw, &changed)?;
+            bank.update_from_raw(&raw, &changed)
+                .expect("update should succeed");
 
             let updated_prop =
                 bank.get(&name).expect("Expected updated property");
 
             let expected_id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
-            if updated_prop.id() != expected_id {
-                return Err(SchemaError::ValidationFailed(format!(
-                    "Expected ID {expected_id}, got {}",
-                    updated_prop.id()
-                )));
-            }
-
-            Ok(())
+            assert_eq!(
+                updated_prop.id(),
+                expected_id,
+                "Expected ID {expected_id}, got {}",
+                updated_prop.id()
+            );
         }
 
         /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.

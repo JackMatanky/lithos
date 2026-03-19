@@ -64,8 +64,8 @@ impl StringSpec {
         if let Some(opts) = options.as_ref()
             && opts.is_empty()
         {
-            return Err(SchemaError::ValidationFailed(
-                "options list cannot be empty".into(),
+            return Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::OptionsEmpty,
             ));
         }
 
@@ -77,13 +77,14 @@ impl StringSpec {
         // 2. Validate consistency: Options must match pattern
         if let (Some(p), Some(opts)) = (spec.pattern(), spec.options()) {
             for opt in opts {
-                p.validate(opt.value()).map_err(|e| {
-                    SchemaError::ValidationFailed(format!(
-                        "Option value '{}' is inconsistent with pattern: {}",
-                        opt.value(),
-                        e
-                    ))
-                })?;
+                if p.validate(opt.value()).is_err() {
+                    return Err(SchemaError::PropertySpec(
+                        crate::schema::error::PropertySpecError::OptionPatternMismatch {
+                            value: opt.value().into(),
+                            pattern: p.pattern().into(),
+                        },
+                    ));
+                }
             }
         }
 
@@ -154,10 +155,12 @@ impl StringSpec {
         if let Some(entries) = self.options.as_ref()
             && !entries.iter().any(|e| e.value() == value)
         {
-            return Err(SchemaError::InvalidEnumValue {
-                value: value.into(),
-                allowed: entries.iter().map(|e| e.value().into()).collect(),
-            });
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                    value: value.into(),
+                    allowed: entries.iter().map(|e| e.value().into()).collect(),
+                },
+            ));
         }
 
         // 2. Validate pattern (regex/format check)
@@ -184,10 +187,15 @@ impl ArchivedStringSpec {
         if let Some(entries) = self.options.as_ref()
             && !entries.iter().any(|e| e.value.as_ref() == value)
         {
-            return Err(SchemaError::InvalidEnumValue {
-                value: value.into(),
-                allowed: entries.iter().map(|e| (*e.value).into()).collect(),
-            });
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                    value: value.into(),
+                    allowed: entries
+                        .iter()
+                        .map(|e| (*e.value).into())
+                        .collect(),
+                },
+            ));
         }
 
         // 2. Validate pattern (regex/format check)
@@ -263,14 +271,19 @@ impl StringPattern {
     /// Create a custom pattern, validating that the regex is compilable.
     ///
     /// # Errors
-    /// Returns `SchemaError::InvalidRegex` if the pattern is invalid.
+    /// Returns `SchemaError::PropertySpec` if the pattern is invalid.
     #[inline]
     pub fn try_custom<S: Into<Box<str>>>(
         pattern: S,
     ) -> Result<Self, SchemaError> {
         let pattern = pattern.into();
         regex::Regex::new(&pattern).map_err(|e| {
-            SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
+            SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::InvalidRegex {
+                    pattern: pattern.clone(),
+                    reason: e.to_string().into(),
+                },
+            )
         })?;
         Ok(Self::Custom(pattern))
     }
@@ -324,7 +337,7 @@ impl StringPattern {
     /// Validate a string value against this pattern.
     ///
     /// # Errors
-    /// Returns `SchemaError::ValidationFailed` if the value doesn't match the
+    /// Returns `SchemaError::PropertyValue` if the value doesn't match the
     /// pattern.
     #[inline]
     #[expect(
@@ -347,10 +360,12 @@ impl StringPattern {
         };
 
         if !matches {
-            return Err(SchemaError::ValidationFailed(format!(
-                "Value {value} does not match pattern '{self}' ({})",
-                self.pattern()
-            )));
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::PatternMismatch {
+                    value: value.into(),
+                    pattern: self.pattern().into(),
+                },
+            ));
         }
         Ok(())
     }
@@ -505,7 +520,7 @@ impl ArchivedStringPattern {
     /// representation.
     ///
     /// # Errors
-    /// Returns `SchemaError::ValidationFailed` if the value doesn't match the
+    /// Returns `SchemaError::PropertyValue` if the value doesn't match the
     /// pattern.
     #[inline]
     #[expect(
@@ -537,9 +552,12 @@ impl ArchivedStringPattern {
         };
 
         if !matches {
-            return Err(SchemaError::ValidationFailed(format!(
-                "Value {value} does not match pattern (archived)"
-            )));
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::PatternMismatch {
+                    value: value.into(),
+                    pattern: "archived".into(),
+                },
+            ));
         }
         Ok(())
     }
@@ -619,8 +637,8 @@ impl OptionEntry {
     ) -> Result<Self, SchemaError> {
         let value = value.into();
         if value.trim().is_empty() {
-            return Err(SchemaError::ValidationFailed(
-                "Option value cannot be empty".into(),
+            return Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::OptionValueEmpty,
             ));
         }
         Ok(Self {
@@ -723,10 +741,12 @@ mod tests {
                 ..Default::default()
             },
             "C",
-            Err(SchemaError::InvalidEnumValue {
-                value: "C".into(),
-                allowed: vec!["A".into(), "B".into()]
-            })
+            Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                    value: "C".into(),
+                    allowed: vec!["A".into(), "B".into()]
+                }
+            ))
         )]
         #[case::regex_match(
             RawStringSpec { pattern: Some(crate::schema::raw::property_spec::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
@@ -757,8 +777,12 @@ mod tests {
                 vec![OptionEntry::try_new("not-a-number", None).unwrap()];
 
             let result = StringSpec::try_new(Some(pattern), Some(options));
-            assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("inconsistent"));
+            assert!(matches!(
+                result,
+                Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::OptionPatternMismatch { .. }
+                ))
+            ));
         }
     }
 }

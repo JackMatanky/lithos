@@ -165,7 +165,7 @@ impl Resolver {
     /// - Can override type-specific constraints (min/max, pattern, etc.)
     ///
     /// # Errors
-    /// Returns `SchemaError::PropertyTypeMismatch` if override attempts
+    /// Returns `SchemaError::PropertyRef` if override attempts
     /// to change the property type.
     ///
     /// # Examples
@@ -355,10 +355,10 @@ impl Resolver {
 
 #[inline]
 fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
-    SchemaError::PropertyTypeMismatch {
+    SchemaError::PropertyRef(super::error::PropertyRefError::TypeMismatch {
         expected: expected.into(),
         actual: actual.into(),
-    }
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -535,7 +535,12 @@ mod tests {
 
             let result = Resolver::spec(&base, &ref_entry);
             let err = result.unwrap_err();
-            assert!(matches!(err, SchemaError::PropertyTypeMismatch { .. }));
+            assert!(matches!(
+                err,
+                SchemaError::PropertyRef(
+                    crate::schema::error::PropertyRefError::TypeMismatch { .. }
+                )
+            ));
         }
 
         #[test]

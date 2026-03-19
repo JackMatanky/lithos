@@ -124,10 +124,12 @@ impl PropertySpec {
         value: &serde_json::Value,
         expected: &'static str,
     ) -> SchemaError {
-        SchemaError::InvalidType {
-            value: value.to_string(),
-            expected: expected.into(),
-        }
+        SchemaError::PropertyValue(
+            super::error::PropertyValueError::InvalidType {
+                value: value.to_string().into(),
+                expected: expected.into(),
+            },
+        )
     }
 
     #[inline]

@@ -18,7 +18,7 @@
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -101,16 +101,14 @@ impl SchemaVersion {
         // Validate and convert excludes
         let mut excludes = Vec::with_capacity(raw.excludes.len());
         for exclude in &raw.excludes {
-            let prop_name =
-                PropertyName::try_new(exclude.as_ref()).map_err(|e| {
-                    SchemaIngestionError::Io {
-                        path: raw.name.clone(),
-                        reason: format!(
-                            "invalid exclude name '{exclude}': {e}"
-                        )
-                        .into(),
-                    }
-                })?;
+            let prop_name = PropertyName::try_new_with_context(
+                exclude.as_ref(),
+                crate::schema::error::PropertyNameContext::Exclude,
+            )
+            .map_err(|e| SchemaIngestionError::Schema {
+                path: PathBuf::from(raw.name.as_ref()),
+                source: e,
+            })?;
             excludes.push(prop_name);
         }
 
@@ -120,9 +118,9 @@ impl SchemaVersion {
             .as_ref()
             .map(|name| {
                 SchemaName::try_new(name.as_ref()).map_err(|e| {
-                    SchemaIngestionError::Io {
-                        path: raw.name.clone(),
-                        reason: format!("invalid extends '{name}': {e}").into(),
+                    SchemaIngestionError::Schema {
+                        path: PathBuf::from(raw.name.as_ref()),
+                        source: e,
                     }
                 })
             })
@@ -135,10 +133,9 @@ impl SchemaVersion {
         )]
         for prop_name in raw.properties.keys() {
             PropertyName::try_new(prop_name.as_ref()).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: raw.name.clone(),
-                    reason: format!("invalid property name '{prop_name}': {e}")
-                        .into(),
+                SchemaIngestionError::Schema {
+                    path: PathBuf::from(raw.name.as_ref()),
+                    source: e,
                 }
             })?;
         }
@@ -146,11 +143,12 @@ impl SchemaVersion {
         // Serialize properties via serde (not rkyv)
         let raw_properties =
             serde_json::to_vec(&raw.properties).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: raw.name.clone(),
-                    reason: format!("failed to serialize properties: {e}")
-                        .into(),
-                }
+                SchemaIngestionError::Parse(
+                    crate::schema::error::SchemaParseError::Serialization {
+                        path: PathBuf::from(raw.name.as_ref()),
+                        reason: e.to_string().into(),
+                    },
+                )
             })?;
 
         Ok(Self {
@@ -283,23 +281,25 @@ impl PropertyBankVersion {
             reason = "Validation does not depend on iteration order"
         )]
         for prop_name in raw.properties.keys() {
-            PropertyName::try_new(prop_name.as_ref()).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: "property_bank".into(),
-                    reason: format!("invalid property name '{prop_name}': {e}")
-                        .into(),
-                }
+            PropertyName::try_new_with_context(
+                prop_name.as_ref(),
+                crate::schema::error::PropertyNameContext::PropertyBank,
+            )
+            .map_err(|e| SchemaIngestionError::Schema {
+                path: PathBuf::from("property_bank"),
+                source: e,
             })?;
         }
 
         // Serialize properties via serde (not rkyv)
         let raw_properties =
             serde_json::to_vec(&raw.properties).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: "property_bank".into(),
-                    reason: format!("failed to serialize properties: {e}")
-                        .into(),
-                }
+                SchemaIngestionError::Parse(
+                    crate::schema::error::SchemaParseError::Serialization {
+                        path: PathBuf::from("property_bank"),
+                        reason: e.to_string().into(),
+                    },
+                )
             })?;
 
         Ok(Self {

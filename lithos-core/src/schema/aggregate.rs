@@ -358,20 +358,27 @@ impl SchemaName {
             LazyLock::new(|| Regex::new(SchemaName::PATTERN));
 
         if name.is_empty() {
-            return Err(SchemaError::EmptySchemaName);
+            return Err(super::error::SchemaNameError::Empty.into());
         }
         if name.len() > 64 {
-            return Err(SchemaError::SchemaNameTooLong(name.len()));
+            return Err(super::error::SchemaNameError::TooLong {
+                len: name.len(),
+                max: 64,
+            }
+            .into());
         }
 
         let re = RE.as_ref().map_err(|error| {
-            SchemaError::ValidationFailed(format!(
-                "Invalid schema name regex: {error}"
-            ))
+            super::error::SchemaValidationError::SchemaNameRegex {
+                reason: error.to_string().into(),
+            }
         })?;
 
         if !re.is_match(name) {
-            return Err(SchemaError::InvalidSchemaName(name.into()));
+            return Err(super::error::SchemaNameError::InvalidFormat {
+                name: name.into(),
+            }
+            .into());
         }
         Ok(())
     }

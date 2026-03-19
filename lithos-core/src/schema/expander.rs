@@ -174,8 +174,10 @@ impl<'bank> RefExpander<'bank> {
 
                 // Look up base property in bank
                 let base = self.bank.get(bank_name).ok_or_else(|| {
-                    SchemaError::PropertyRefNotFound(
-                        ref_entry.ref_path.to_string(),
+                    SchemaError::PropertyRef(
+                        super::error::PropertyRefError::NotFound {
+                            reference: ref_entry.ref_path.to_string().into(),
+                        },
                     )
                 })?;
 
@@ -338,8 +340,13 @@ mod tests {
             });
             let result = expander.expand_property("status", entry);
             assert!(
-                matches!(result, Err(SchemaError::PropertyTypeMismatch { .. })),
-                "Expected PropertyTypeMismatch, got: {result:?}"
+                matches!(
+                    result,
+                    Err(SchemaError::PropertyRef(
+                        crate::schema::error::PropertyRefError::TypeMismatch { .. }
+                    ))
+                ),
+                "Expected PropertyRef::TypeMismatch, got: {result:?}"
             );
         }
 
@@ -350,8 +357,13 @@ mod tests {
             let entry = fixtures::ref_entry("property_bank#/missing");
             let result = expander.expand_property("missing", entry);
             assert!(
-                matches!(result, Err(SchemaError::PropertyRefNotFound(_))),
-                "Expected PropertyRefNotFound, got: {result:?}"
+                matches!(
+                    result,
+                    Err(SchemaError::PropertyRef(
+                        crate::schema::error::PropertyRefError::NotFound { .. }
+                    ))
+                ),
+                "Expected PropertyRef::NotFound, got: {result:?}"
             );
         }
     }

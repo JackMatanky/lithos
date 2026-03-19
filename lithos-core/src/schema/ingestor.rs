@@ -18,7 +18,10 @@ use crate::{
     schema::{
         aggregate::SchemaId,
         bank::PropertyBank,
-        error::SchemaIngestionError,
+        error::{
+            SchemaFileError, SchemaIngestionError, SchemaRepositoryError,
+            SchemaStorageError,
+        },
         property::{Property, PropertyName},
         raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
         storage::Repository,
@@ -419,6 +422,7 @@ where
 impl<R> Ingestor<'_, R>
 where
     R: Repository,
+    R::Error: Into<SchemaRepositoryError>,
 {
     /// Get the property bank file with staleness detection.
     ///
@@ -476,11 +480,7 @@ where
         let cached_view = self
             .repository
             .get_raw_property_bank_view()
-            .map_err(|e| SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: format!("Failed to query property bank view: {e}")
-                    .into(),
-            })?;
+            .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
         // Case 1: No cached version - this is a NEW property bank
         let Some(view) = cached_view else {
@@ -498,15 +498,10 @@ where
             let bank = self
                 .repository
                 .get_property_bank()
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to load PropertyBank: {e}").into(),
-                })?
-                .ok_or_else(|| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: "PropertyBank missing from DB but view exists"
-                        .into(),
-                })?;
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?
+                .ok_or(SchemaIngestionError::Storage(
+                    SchemaStorageError::PropertyBankNotFound,
+                ))?;
             return Ok(PropertyBankResult::Fresh(bank));
         }
 
@@ -531,23 +526,21 @@ where
             let view =
                 RawPropertyBankView::try_from_with_content(&raw, content)?;
 
-            self.repository.save_raw_property_bank_view(&view).map_err(
-                |e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to save property bank view: {e}")
-                        .into(),
-                },
-            )?;
+            self.repository
+                .save_raw_property_bank_view(&view)
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             // Create PropertyBank
-            let bank = PropertyBank::try_from(raw)?;
-
-            self.repository.save_property_bank(&bank).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to save PropertyBank: {e}").into(),
+            let bank = PropertyBank::try_from(raw).map_err(|source| {
+                SchemaIngestionError::Schema {
+                    path: path.to_path_buf(),
+                    source,
                 }
             })?;
+
+            self.repository
+                .save_property_bank(&bank)
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             Ok(PropertyBankResult::New(bank))
         })
@@ -572,16 +565,10 @@ where
                 let bank = self
                     .repository
                     .get_property_bank()
-                    .map_err(|e| SchemaIngestionError::Io {
-                        path: path.to_string_lossy().into(),
-                        reason: format!("Failed to load PropertyBank: {e}")
-                            .into(),
-                    })?
-                    .ok_or_else(|| SchemaIngestionError::Io {
-                        path: path.to_string_lossy().into(),
-                        reason: "PropertyBank missing from DB but view exists"
-                            .into(),
-                    })?;
+                    .map_err(|e| SchemaIngestionError::Repository(e.into()))?
+                    .ok_or(SchemaIngestionError::Storage(
+                        SchemaStorageError::PropertyBankNotFound,
+                    ))?;
                 return Ok(PropertyBankResult::Fresh(bank));
             }
 
@@ -604,32 +591,27 @@ where
             let view =
                 RawPropertyBankView::try_from_with_content(&raw, content)?;
 
-            self.repository.save_raw_property_bank_view(&view).map_err(
-                |e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to save property bank view: {e}")
-                        .into(),
-                },
-            )?;
+            self.repository
+                .save_raw_property_bank_view(&view)
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             // Update PropertyBank incrementally
             let mut bank = self
                 .repository
                 .get_property_bank()
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to load PropertyBank: {e}").into(),
-                })?
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?
                 .unwrap_or_default();
 
-            bank.update_from_raw(&raw, &changed)?;
-
-            self.repository.save_property_bank(&bank).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!("Failed to save PropertyBank: {e}").into(),
+            bank.update_from_raw(&raw, &changed).map_err(|source| {
+                SchemaIngestionError::Schema {
+                    path: path.to_path_buf(),
+                    source,
                 }
             })?;
+
+            self.repository
+                .save_property_bank(&bank)
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             Ok(PropertyBankResult::Stale { bank, changed })
         })
@@ -672,14 +654,10 @@ where
     ) -> Result<IngestResult<RawSchema>, SchemaIngestionError> {
         // Derive schema name from filename (without extension)
         let filename_stem = self.source.basename(path).map_err(|e| {
-            SchemaIngestionError::FileSystem(
-                format!(
-                    "Invalid filename for schema: {} ({})",
-                    path.display(),
-                    e
-                )
-                .into(),
-            )
+            SchemaIngestionError::File(SchemaFileError::InvalidFilename {
+                path: path.to_path_buf(),
+                reason: e.to_string().into(),
+            })
         })?;
 
         let rel_path = path.to_string_lossy();
@@ -690,10 +668,7 @@ where
         let cached_view = self
             .repository
             .find_raw_schema_view_by_path(&rel_path)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: rel_path.to_string().into(),
-                reason: format!("Failed to query schema view: {e}").into(),
-            })?;
+            .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
         // Fast path: Check timestamps (no file I/O)
         if let Some(view) = cached_view.as_ref()
@@ -737,24 +712,12 @@ where
             let schema_id = self
                 .repository
                 .find_schema_id_by_path(&rel_path)
-                .map_err(|e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!(
-                        "Failed to query schema ID for {rel_path}: {e}"
-                    )
-                    .into(),
-                })?
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?
                 .unwrap_or_else(SchemaId::new);
 
-            self.repository.save_raw_schema_view(schema_id, &view).map_err(
-                |e| SchemaIngestionError::Io {
-                    path: path.to_string_lossy().into(),
-                    reason: format!(
-                        "Failed to save schema view for {rel_path}: {e}"
-                    )
-                    .into(),
-                },
-            )?;
+            self.repository
+                .save_raw_schema_view(schema_id, &view)
+                .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             Ok(IngestResult::Stale(raw))
         })
@@ -828,18 +791,12 @@ where
         let views = self
             .repository
             .find_raw_schema_views_by_paths(&paths)
-            .map_err(|e| SchemaIngestionError::Io {
-                path: "bulk query".into(),
-                reason: format!("Failed to query schema views: {e}").into(),
-            })?;
+            .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
-        let ids =
-            self.repository.find_schema_ids_by_paths(&paths).map_err(|e| {
-                SchemaIngestionError::Io {
-                    path: "bulk query".into(),
-                    reason: format!("Failed to query schema IDs: {e}").into(),
-                }
-            })?;
+        let ids = self
+            .repository
+            .find_schema_ids_by_paths(&paths)
+            .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
         // Step 4: Process each schema (single loop!)
         let mut schemas = HashMap::new();
@@ -873,7 +830,9 @@ where
         for ext in SCHEMA_EXTENSIONS {
             let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
             let files = self.source.list_files(&pattern).map_err(|error| {
-                SchemaIngestionError::FileSystem(error.to_string().into())
+                SchemaIngestionError::File(SchemaFileError::FileSystem {
+                    reason: error.to_string().into(),
+                })
             })?;
 
             for path in files {
@@ -940,13 +899,11 @@ where
                         FsReader::parse_structured_from_str(path, content)?;
                     let filename_stem =
                         self.source.basename(path).map_err(|e| {
-                            SchemaIngestionError::FileSystem(
-                                format!(
-                                    "Invalid filename: {} ({})",
-                                    path.display(),
-                                    e
-                                )
-                                .into(),
+                            SchemaIngestionError::File(
+                                SchemaFileError::InvalidFilename {
+                                    path: path.to_path_buf(),
+                                    reason: e.to_string().into(),
+                                },
                             )
                         })?;
                     raw.name = filename_stem.into();
@@ -959,13 +916,11 @@ where
                     FsReader::parse_structured_from_str(path, content)?;
                 let filename_stem =
                     self.source.basename(path).map_err(|e| {
-                        SchemaIngestionError::FileSystem(
-                            format!(
-                                "Invalid filename: {} ({})",
-                                path.display(),
-                                e
-                            )
-                            .into(),
+                        SchemaIngestionError::File(
+                            SchemaFileError::InvalidFilename {
+                                path: path.to_path_buf(),
+                                reason: e.to_string().into(),
+                            },
                         )
                     })?;
                 raw.name = filename_stem.into();
@@ -983,15 +938,9 @@ where
                     &raw, &rel_path, content,
                 )?;
 
-                self.repository.save_raw_schema_view(id, &new_view).map_err(
-                    |e| SchemaIngestionError::Io {
-                        path: path.to_string_lossy().into(),
-                        reason: format!(
-                            "Failed to save schema view for {rel_path}: {e}"
-                        )
-                        .into(),
-                    },
-                )?;
+                self.repository
+                    .save_raw_schema_view(id, &new_view)
+                    .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
                 Ok((raw, false))
             },
@@ -1069,7 +1018,9 @@ where
         for ext in SCHEMA_EXTENSIONS {
             let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
             let files = self.source.list_files(&pattern).map_err(|error| {
-                SchemaIngestionError::FileSystem(error.to_string().into())
+                SchemaIngestionError::File(SchemaFileError::FileSystem {
+                    reason: error.to_string().into(),
+                })
             })?;
 
             for path in files {
@@ -1238,7 +1189,12 @@ mod tests {
 
             assert!(result.is_err());
             let err = result.expect_err("Should fail to parse");
-            assert!(matches!(err, SchemaIngestionError::Json { .. }));
+            assert!(matches!(
+                err,
+                SchemaIngestionError::Parse(
+                    crate::schema::error::SchemaParseError::Json { .. }
+                )
+            ));
         }
 
         #[test]
@@ -1260,7 +1216,9 @@ mod tests {
             let err = result.expect_err("Should fail for unsupported format");
             assert!(matches!(
                 err,
-                SchemaIngestionError::UnsupportedFormat { .. }
+                SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::UnsupportedFormat { .. }
+                )
             ));
         }
 

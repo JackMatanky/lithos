@@ -63,9 +63,7 @@ use crate::{
     fs::FsReader,
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
-        error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-        },
+        error::{SchemaError, SchemaLoaderError, SchemaRepositoryError},
         expander::{RefExpandedSchema, RefExpander},
         extender::Extender,
         ingestor::{Ingestor, SchemaResult},
@@ -291,9 +289,11 @@ where
         for (id, cached_props) in cached {
             // Load raw schema metadata from view (name, extends, excludes)
             let raw = self.load_raw_from_view(id)?.ok_or_else(|| {
-                SchemaLoaderError::Repository(SchemaRepositoryError::NotFound {
-                    name: format!("schema id {id:?}").into(),
-                })
+                SchemaLoaderError::Repository(SchemaRepositoryError::Storage(
+                    super::error::SchemaStorageError::NotFound {
+                        name: format!("schema id {id:?}").into(),
+                    },
+                ))
             })?;
 
             // Construct RefExpandedSchema directly from cached properties
@@ -388,7 +388,7 @@ where
                 SchemaName::try_new(&raw.name).map(|name| (name, *id))
             })
             .collect::<Result<HashMap<_, _>, _>>()
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
+            .map_err(SchemaLoaderError::Resolution)
     }
 
     /// Persist resolved schemas to the database.
@@ -428,11 +428,11 @@ where
             let parent = if let Some(parent_name) = &raw.extends {
                 let pid =
                     *name_to_id.get(parent_name.as_ref()).ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::Io {
-                            path: format!("schema: {}", raw.name).into(),
-                            reason: format!("Parent not found: {parent_name}")
-                                .into(),
-                        })
+                        SchemaLoaderError::Resolution(SchemaError::Inheritance(
+                            super::error::SchemaInheritanceError::ParentNotFound {
+                                name: parent_name.clone(),
+                            },
+                        ))
                     })?;
                 Some(pid)
             } else {

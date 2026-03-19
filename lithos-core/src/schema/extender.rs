@@ -207,10 +207,13 @@ impl Extender {
     ///
     /// # Errors
     ///
-    /// - [`SchemaError::CircularInheritance`] — a cycle was detected.
-    /// - [`SchemaError::ParentNotFound`] — a `extends` name refers to a schema
-    ///   that is neither in `expanded` nor in `known_parents`.
-    /// - [`SchemaError::AlreadyExists`] — two schemas share the same name.
+    /// - `SchemaError::Inheritance(SchemaInheritanceError::CircularInheritance)`
+    ///   — a cycle was detected.
+    /// - `SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound)` — a
+    ///   `extends` name refers to a schema that is neither in `expanded` nor in
+    ///   `known_parents`.
+    /// - `SchemaError::Resolution(SchemaResolutionError::DuplicateSchemaName)`
+    ///   — two schemas share the same name.
     ///
     /// [`RefExpander`]: super::expander::RefExpander
     #[inline]
@@ -281,8 +284,10 @@ impl Extender {
                     .values()
                     .any(|s| s.name().as_ref() == expanded_schema.name.as_ref())
             {
-                return Err(SchemaError::AlreadyExists(
-                    expanded_schema.name.to_string(),
+                return Err(SchemaError::Resolution(
+                    super::error::SchemaResolutionError::DuplicateSchemaName {
+                        name: expanded_schema.name.to_string().into(),
+                    },
                 ));
             }
             id_to_name.insert(*id, expanded_schema.name.clone());
@@ -322,11 +327,15 @@ impl Extender {
         };
         SchemaName::try_from(parent_name.as_ref())?;
         // `Box<str>: Borrow<str>` so `.get(&str)` works here.
-        name_to_id
-            .get(parent_name.as_ref())
-            .copied()
-            .map(Some)
-            .ok_or_else(|| SchemaError::ParentNotFound(parent_name.to_string()))
+        name_to_id.get(parent_name.as_ref()).copied().map(Some).ok_or_else(
+            || {
+                SchemaError::Inheritance(
+                    super::error::SchemaInheritanceError::ParentNotFound {
+                        name: parent_name.to_string().into(),
+                    },
+                )
+            },
+        )
     }
 
     /// Phase 3 — DFS cycle detection over in-batch nodes.
@@ -471,8 +480,10 @@ impl Extender {
         }
 
         if order.len() != nodes.len() {
-            return Err(SchemaError::CircularInheritance(
-                "cycle detected during topological ordering".into(),
+            return Err(SchemaError::Inheritance(
+                super::error::SchemaInheritanceError::CircularInheritance {
+                    name: "cycle detected during topological ordering".into(),
+                },
             ));
         }
 
@@ -549,7 +560,11 @@ impl CycleChecker<'_> {
                 .id_to_name
                 .get(&id)
                 .map_or_else(|| id.to_string(), ToString::to_string);
-            return Err(SchemaError::CircularInheritance(name));
+            return Err(SchemaError::Inheritance(
+                super::error::SchemaInheritanceError::CircularInheritance {
+                    name: name.into(),
+                },
+            ));
         }
 
         if let Some(node) = self.nodes.get(&id)
@@ -696,7 +711,12 @@ mod tests {
             )];
             let result = Extender::build(expanded, &HashMap::new());
             assert!(
-                matches!(result, Err(SchemaError::ParentNotFound(_))),
+                matches!(
+                    result,
+                    Err(SchemaError::Inheritance(
+                        crate::schema::error::SchemaInheritanceError::ParentNotFound { .. }
+                    ))
+                ),
                 "Expected ParentNotFound, got: {result:?}"
             );
         }
@@ -716,8 +736,10 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(SchemaError::CircularInheritance(_)
-                        | SchemaError::ParentNotFound(_))
+                    Err(SchemaError::Inheritance(
+                        crate::schema::error::SchemaInheritanceError::CircularInheritance { .. }
+                            | crate::schema::error::SchemaInheritanceError::ParentNotFound { .. }
+                    ))
                 ),
                 "Expected cycle or missing parent error, got: {result:?}"
             );
@@ -763,7 +785,12 @@ mod tests {
 
             let result = Extender::build(expanded, &HashMap::new());
             assert!(
-                matches!(result, Err(SchemaError::CircularInheritance(_))),
+                matches!(
+                    result,
+                    Err(SchemaError::Inheritance(
+                        crate::schema::error::SchemaInheritanceError::CircularInheritance { .. }
+                    ))
+                ),
                 "Should detect multi-node cycle, got: {result:?}"
             );
         }

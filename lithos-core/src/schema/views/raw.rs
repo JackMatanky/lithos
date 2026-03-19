@@ -163,11 +163,15 @@ impl RawSchemaView {
         let name: Box<str> = self.name().into();
         let properties: HashMap<Box<str>, RawProperty> =
             serde_json::from_slice(version.raw_properties()).map_err(|e| {
-                crate::schema::error::SchemaIngestionError::Io {
-                    path: name.clone(),
-                    reason: format!("failed to deserialize properties: {e}")
+                crate::schema::error::SchemaIngestionError::Parse(
+                    crate::schema::error::SchemaParseError::CachedView {
+                        path: std::path::PathBuf::from(name.as_ref()),
+                        reason: format!(
+                            "failed to deserialize properties: {e}"
+                        )
                         .into(),
-                }
+                    },
+                )
             })?;
 
         let excludes: Vec<Box<str>> = version
@@ -331,11 +335,15 @@ impl RawPropertyBankView {
         // Deserialize properties from serde JSON
         let properties: HashMap<Box<str>, RawPropertyBankEntry> =
             serde_json::from_slice(version.raw_properties()).map_err(|e| {
-                crate::schema::error::SchemaIngestionError::Io {
-                    path: "property_bank".into(),
-                    reason: format!("failed to deserialize properties: {e}")
+                crate::schema::error::SchemaIngestionError::Parse(
+                    crate::schema::error::SchemaParseError::CachedView {
+                        path: std::path::PathBuf::from("property_bank"),
+                        reason: format!(
+                            "failed to deserialize properties: {e}"
+                        )
                         .into(),
-                }
+                    },
+                )
             })?;
 
         Ok(Some(RawPropertyBank {

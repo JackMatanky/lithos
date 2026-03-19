@@ -1239,11 +1239,19 @@ mod handler_tests {
         });
         handler.handle_schema(&SchemaEvent::ValidationError {
             name: "bad".into(),
-            error: crate::schema::error::SchemaError::EmptySchemaName,
+            error: crate::schema::error::SchemaError::Syntax(
+                crate::schema::error::SchemaSyntaxError::SchemaName(
+                    crate::schema::error::SchemaNameError::Empty,
+                ),
+            ),
         });
         handler.handle_schema(&SchemaEvent::ResolutionError {
             name: "bad".into(),
-            error: crate::schema::error::SchemaError::EmptySchemaName,
+            error: crate::schema::error::SchemaError::Syntax(
+                crate::schema::error::SchemaSyntaxError::SchemaName(
+                    crate::schema::error::SchemaNameError::Empty,
+                ),
+            ),
         });
     }
 

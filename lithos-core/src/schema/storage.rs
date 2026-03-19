@@ -16,11 +16,15 @@ use std::{collections::HashMap, sync::Arc};
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    error::SchemaError,
+    error::{SchemaRepositoryError, SchemaStorageError},
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
 use crate::db::{BatchReader, Database};
+
+fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
+    SchemaRepositoryError::Storage(SchemaStorageError::Storage(error))
+}
 
 /// A schema name-to-ID pair.
 pub type NameIdPair = (SchemaName, SchemaId);
@@ -453,7 +457,7 @@ impl RedbRepository {
 }
 
 impl Repository for RedbRepository {
-    type Error = SchemaError;
+    type Error = SchemaRepositoryError;
 
     // ========================================================================
     // Schema Read Operations
@@ -465,7 +469,9 @@ impl Repository for RedbRepository {
     ) -> Result<Option<Schema>, Self::Error> {
         use crate::schema::db_table::SCHEMA_BY_ID;
 
-        Ok(self.db.get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())?)
+        self.db
+            .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -475,7 +481,9 @@ impl Repository for RedbRepository {
     ) -> Result<Option<SchemaId>, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_NAME;
 
-        Ok(self.db.get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())?)
+        self.db
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -493,7 +501,7 @@ impl Repository for RedbRepository {
                 {
                     Ok(Some(schema)) => Some(Ok(schema)),
                     Ok(None) => None,
-                    Err(e) => Some(Err(SchemaError::from(e))),
+                    Err(e) => Some(Err(map_db_error(e))),
                 }
             })
             .collect()
@@ -504,7 +512,7 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::SCHEMA_BY_ID;
 
         let pairs: Vec<(String, Schema)> =
-            self.db.list_key_value_pairs(SCHEMA_BY_ID)?;
+            self.db.list_key_value_pairs(SCHEMA_BY_ID).map_err(map_db_error)?;
 
         Ok(pairs.into_iter().map(|(_id, schema)| schema).collect())
     }
@@ -516,10 +524,13 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::SCHEMA_ID_BY_NAME;
 
         self.db
-            .list_key_value_pairs(SCHEMA_ID_BY_NAME)?
+            .list_key_value_pairs(SCHEMA_ID_BY_NAME)
+            .map_err(map_db_error)?
             .into_iter()
             .map(|(name_str, id): (String, SchemaId)| {
-                SchemaName::try_new(&name_str).map(|name| (name, id))
+                SchemaName::try_new(&name_str)
+                    .map(|name| (name, id))
+                    .map_err(SchemaRepositoryError::from)
             })
             .collect()
     }
@@ -584,9 +595,9 @@ impl Repository for RedbRepository {
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
         use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
 
-        Ok(self
-            .db
-            .get_owned::<PropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)?)
+        self.db
+            .get_owned::<PropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -634,22 +645,24 @@ impl Repository for RedbRepository {
     fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
         use crate::schema::db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME};
 
-        self.db.batch_write(|batch| {
-            for schema in schemas {
-                let id_key = schema.id().to_string();
+        self.db
+            .batch_write(|batch| {
+                for schema in schemas {
+                    let id_key = schema.id().to_string();
 
-                // Save schema by ID
-                batch.put(SCHEMA_BY_ID, &id_key, schema)?;
+                    // Save schema by ID
+                    batch.put(SCHEMA_BY_ID, &id_key, schema)?;
 
-                // Save name → ID mapping
-                batch.put(
-                    SCHEMA_ID_BY_NAME,
-                    schema.name().as_str(),
-                    schema.id(),
-                )?;
-            }
-            Ok(())
-        })?;
+                    // Save name → ID mapping
+                    batch.put(
+                        SCHEMA_ID_BY_NAME,
+                        schema.name().as_str(),
+                        schema.id(),
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(map_db_error)?;
 
         Ok(())
     }
@@ -671,38 +684,44 @@ impl Repository for RedbRepository {
             reason = "Destructuring with &(a, b, ref c) is clearest for mixed \
                       Copy/non-Copy fields"
         )]
-        self.db.batch_write(|batch| {
-            for &(child_id, parent_id, ref excludes) in relations {
-                let timestamp = SystemTime::now();
-                let child_key = child_id.to_string();
+        self.db
+            .batch_write(|batch| {
+                for &(child_id, parent_id, ref excludes) in relations {
+                    let timestamp = SystemTime::now();
+                    let child_key = child_id.to_string();
 
-                // Save parent → child mapping in multimap (if not root)
-                if let Some(parent) = parent_id {
-                    let child_view = ChildSchemaView {
-                        child_id,
+                    // Save parent → child mapping in multimap (if not root)
+                    if let Some(parent) = parent_id {
+                        let child_view = ChildSchemaView {
+                            child_id,
+                            excludes: excludes.clone(),
+                            resolved_at: timestamp,
+                        };
+
+                        let bytes = child_view.to_bytes()?;
+                        batch.multimap_insert_bytes(
+                            SCHEMA_CHILDREN,
+                            parent.to_string().as_str(),
+                            bytes.as_slice(),
+                        )?;
+                    }
+
+                    // Save child → parent reference table
+                    let parent_view = ParentSchemaView {
+                        parent_id,
                         excludes: excludes.clone(),
                         resolved_at: timestamp,
                     };
-
-                    let bytes = child_view.to_bytes()?;
-                    batch.multimap_insert_bytes(
-                        SCHEMA_CHILDREN,
-                        parent.to_string().as_str(),
-                        bytes.as_slice(),
+                    batch.put(
+                        SCHEMA_PARENT,
+                        child_key.as_str(),
+                        &parent_view,
                     )?;
                 }
 
-                // Save child → parent reference table
-                let parent_view = ParentSchemaView {
-                    parent_id,
-                    excludes: excludes.clone(),
-                    resolved_at: timestamp,
-                };
-                batch.put(SCHEMA_PARENT, child_key.as_str(), &parent_view)?;
-            }
-
-            Ok(())
-        })?;
+                Ok(())
+            })
+            .map_err(map_db_error)?;
 
         Ok(())
     }
@@ -714,10 +733,12 @@ impl Repository for RedbRepository {
     ) -> Result<(), Self::Error> {
         use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
 
-        self.db.batch_write(|batch| {
-            batch.put(PROPERTY_BANK, PROPERTY_BANK_KEY, bank)?;
-            Ok(())
-        })?;
+        self.db
+            .batch_write(|batch| {
+                batch.put(PROPERTY_BANK, PROPERTY_BANK_KEY, bank)?;
+                Ok(())
+            })
+            .map_err(map_db_error)?;
 
         Ok(())
     }
@@ -750,21 +771,22 @@ impl Repository for RedbRepository {
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
     {
-        // Adapt the closure to convert SchemaError -> DbError for batch_read
-        // Then convert DbError -> SchemaError for the final result
+        // Adapt the closure to convert SchemaRepositoryError -> DbError for
+        // batch_read, then convert DbError -> SchemaRepositoryError.
         #[expect(
             clippy::wildcard_enum_match_arm,
-            reason = "Explicitly matching all 27 SchemaError variants would \
-                      be fragile and unnecessary - we only care about Storage \
-                      variant"
+            reason = "Explicitly matching all SchemaRepositoryError variants \
+                      would be fragile and unnecessary - we only care about \
+                      storage variant"
         )]
         let result = self.db.batch_read(|reader| {
             f(reader).map_err(|schema_err| {
                 // Extract DbError if it's a Storage variant, otherwise create a
-                // generic error This is a workaround for the
-                // type mismatch
+                // generic error.
                 match schema_err {
-                    SchemaError::Storage(db_err) => db_err,
+                    SchemaRepositoryError::Storage(
+                        SchemaStorageError::Storage(db_err),
+                    ) => db_err,
                     _ => {
                         // This shouldn't happen in practice since f should only
                         // return Storage errors when using the reader
@@ -774,7 +796,7 @@ impl Repository for RedbRepository {
             })
         });
 
-        result.map_err(SchemaError::from)
+        result.map_err(map_db_error)
     }
 
     // ========================================================================
@@ -789,9 +811,7 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::RAW_SCHEMA_VIEWS;
 
         let key = id.to_string();
-        self.db
-            .get_owned(RAW_SCHEMA_VIEWS, key.as_str())
-            .map_err(SchemaError::from)
+        self.db.get_owned(RAW_SCHEMA_VIEWS, key.as_str()).map_err(map_db_error)
     }
 
     #[inline]
@@ -805,15 +825,17 @@ impl Repository for RedbRepository {
         };
 
         let key = id.to_string();
-        self.db.batch_write(|batch| {
-            batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
-            batch.put(
-                RAW_SCHEMA_VIEW_BY_PATH,
-                view.file_path().as_str(),
-                &id,
-            )?;
-            Ok(())
-        })?;
+        self.db
+            .batch_write(|batch| {
+                batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
+                batch.put(
+                    RAW_SCHEMA_VIEW_BY_PATH,
+                    view.file_path().as_str(),
+                    &id,
+                )?;
+                Ok(())
+            })
+            .map_err(map_db_error)?;
 
         Ok(())
     }
@@ -828,7 +850,7 @@ impl Repository for RedbRepository {
 
         self.db
             .get_owned(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY)
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -842,7 +864,7 @@ impl Repository for RedbRepository {
 
         self.db
             .put(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY, view)
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -855,7 +877,8 @@ impl Repository for RedbRepository {
         // First lookup SchemaId by path
         let id = self
             .db
-            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)?;
+            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)
+            .map_err(map_db_error)?;
 
         match id {
             Some(id) => self.get_raw_schema_view(id),
@@ -872,7 +895,7 @@ impl Repository for RedbRepository {
 
         self.db
             .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -916,7 +939,7 @@ impl Repository for RedbRepository {
 
                 Ok(results)
             })
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -943,7 +966,7 @@ impl Repository for RedbRepository {
 
                 Ok(results)
             })
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     // ========================================================================
@@ -960,7 +983,7 @@ impl Repository for RedbRepository {
         let key = id.to_string();
         self.db
             .get_owned(SCHEMA_INHERITANCE, key.as_str())
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -974,7 +997,7 @@ impl Repository for RedbRepository {
         let key = id.to_string();
         self.db
             .put(SCHEMA_INHERITANCE, key.as_str(), metadata)
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -988,7 +1011,7 @@ impl Repository for RedbRepository {
         self.db
             .delete(SCHEMA_INHERITANCE, key.as_str())
             .map(|_deleted| ()) // Discard bool return value
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -1011,7 +1034,7 @@ impl Repository for RedbRepository {
                 key.as_str(),
                 f,
             )
-            .map_err(SchemaError::from)
+            .map_err(map_db_error)
     }
 }
 

@@ -27,7 +27,7 @@ use super::{
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
 /// If a schema chain exceeds this depth, resolution fails with
-/// [`SchemaError::InheritanceDepthExceeded`].
+/// `SchemaError::Inheritance(SchemaInheritanceError::DepthExceeded)`.
 const INHERITANCE_MAX_DEPTH: usize = 10;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,11 +76,11 @@ impl Merger {
         let mut results: Vec<Schema> = Vec::with_capacity(order.len());
 
         for &id in order {
-            let node = tree.get(id).ok_or_else(|| {
-                SchemaError::NotFound(format!(
-                    "SchemaTree node missing for id {id}"
-                ))
-            })?;
+            let node = tree.get(id).ok_or(SchemaError::Resolution(
+                super::error::SchemaResolutionError::MissingNode {
+                    id,
+                },
+            ))?;
 
             // E-03: Use depth computed by Extender
             // The Extender already computed depth correctly via BFS, accounting
@@ -90,7 +90,12 @@ impl Merger {
 
             // Check against maximum allowed depth
             if depth > INHERITANCE_MAX_DEPTH {
-                return Err(SchemaError::InheritanceDepthExceeded(depth));
+                return Err(SchemaError::Inheritance(
+                    super::error::SchemaInheritanceError::DepthExceeded {
+                        depth,
+                        max: 10,
+                    },
+                ));
             }
 
             // Obtain parent's resolved properties.
@@ -230,9 +235,11 @@ impl Merger {
             if affected_set.contains(name) {
                 // Look up new definition from bank
                 let bank_prop = bank.get(name).ok_or_else(|| {
-                    SchemaError::PropertyRefNotFound(format!(
-                        "property_bank#/{name}"
-                    ))
+                    SchemaError::PropertyRef(
+                        super::error::PropertyRefError::NotFound {
+                            reference: format!("property_bank#/{name}").into(),
+                        },
+                    )
                 })?;
 
                 // Update the spec from the bank, keep other fields
@@ -554,13 +561,18 @@ mod tests {
             assert_eq!(DEPTH, 10, "INHERITANCE_MAX_DEPTH should be 10");
         }
 
-        /// Test that `InheritanceDepthExceeded` error can be constructed.
+        /// Test that `DepthExceeded` error can be constructed.
         #[test]
         fn inheritance_depth_error_constructs() {
-            let error = SchemaError::InheritanceDepthExceeded(101);
+            let error = SchemaError::Inheritance(
+                crate::schema::error::SchemaInheritanceError::DepthExceeded {
+                    depth: 101,
+                    max: 10,
+                },
+            );
             let error_str = format!("{error}");
             assert!(
-                error_str.contains("Inheritance depth exceeded"),
+                error_str.contains("inheritance depth exceeded"),
                 "Error message should mention depth exceeded"
             );
             assert!(
@@ -615,11 +627,22 @@ mod tests {
             let result = Merger::resolve(&tree, &HashMap::new());
 
             assert!(
-                matches!(result, Err(SchemaError::InheritanceDepthExceeded(_))),
+                matches!(
+                    result,
+                    Err(SchemaError::Inheritance(
+                        crate::schema::error::SchemaInheritanceError::DepthExceeded { .. }
+                    ))
+                ),
                 "Should reject depth > 10, got: {result:?}"
             );
 
-            if let Err(SchemaError::InheritanceDepthExceeded(depth)) = result {
+            if let Err(SchemaError::Inheritance(
+                crate::schema::error::SchemaInheritanceError::DepthExceeded {
+                    depth,
+                    ..
+                },
+            )) = result
+            {
                 assert_eq!(depth, 11, "Error should report depth 11");
             }
         }

@@ -134,7 +134,10 @@ impl RawSchema {
         // Validate excludes syntax
         for excluded in &self.excludes {
             use super::property::PropertyName;
-            PropertyName::try_new(excluded.as_ref())?;
+            PropertyName::try_new_with_context(
+                excluded.as_ref(),
+                super::error::PropertyNameContext::Exclude,
+            )?;
         }
 
         // Check for duplicate property names
@@ -164,7 +167,10 @@ impl RawSchema {
     #[inline]
     pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
         self.validate_version(path)?;
-        self.validate().map_err(SchemaIngestionError::from)?;
+        self.validate().map_err(|error| SchemaIngestionError::Schema {
+            path: path.into(),
+            source: error,
+        })?;
         Ok(self)
     }
 }
@@ -227,7 +233,10 @@ impl RawPropertyBank {
         )]
         for prop_name in self.properties.keys() {
             use super::property::PropertyName;
-            PropertyName::try_new(prop_name.as_ref())?;
+            PropertyName::try_new_with_context(
+                prop_name.as_ref(),
+                super::error::PropertyNameContext::PropertyBank,
+            )?;
         }
 
         Ok(())
@@ -240,7 +249,10 @@ impl RawPropertyBank {
     #[inline]
     pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
         self.validate_version(path)?;
-        self.validate().map_err(SchemaIngestionError::from)?;
+        self.validate().map_err(|error| SchemaIngestionError::Schema {
+            path: path.into(),
+            source: error,
+        })?;
         Ok(self)
     }
 }
@@ -304,11 +316,13 @@ impl RawSchemaVersion {
     #[inline]
     pub fn validate(&self, path: &str) -> Result<(), SchemaIngestionError> {
         if self.0.as_ref() != Self::SUPPORTED {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.0.clone(),
-                expected: Self::SUPPORTED.into(),
-            });
+            return Err(SchemaIngestionError::Version(
+                super::error::SchemaVersionError::UnsupportedVersion {
+                    path: path.into(),
+                    found: self.0.clone(),
+                    expected: Self::SUPPORTED.into(),
+                },
+            ));
         }
         Ok(())
     }

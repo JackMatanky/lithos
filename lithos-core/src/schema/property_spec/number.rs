@@ -56,11 +56,15 @@ impl NumberSpec {
         step: Option<f64>,
     ) -> Result<Self, SchemaError> {
         let min = match min {
-            Some(v) => Some(FiniteF64::try_new(v, "min")?),
+            Some(v) => {
+                Some(FiniteF64::try_new(v, "min", NonFiniteKind::Constraint)?)
+            }
             None => None,
         };
         let max = match max {
-            Some(v) => Some(FiniteF64::try_new(v, "max")?),
+            Some(v) => {
+                Some(FiniteF64::try_new(v, "max", NonFiniteKind::Constraint)?)
+            }
             None => None,
         };
 
@@ -68,8 +72,13 @@ impl NumberSpec {
             None => Bounds::Unbounded,
             Some(Ok(bounds)) => bounds,
             Some(Err(BoundsError::InvalidRange)) => {
-                return Err(SchemaError::ValidationFailed(
-                    "min cannot be greater than max".into(),
+                let min = min.map(FiniteF64::get).unwrap_or_default();
+                let max = max.map(FiniteF64::get).unwrap_or_default();
+                return Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::InvalidRange {
+                        min,
+                        max,
+                    },
                 ));
             }
         };
@@ -100,11 +109,7 @@ impl NumberSpec {
     /// ```
     #[inline]
     pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
-        let finite = FiniteF64::try_new(value, "value").map_err(|_err| {
-            SchemaError::ValidationFailed(format!(
-                "Value {value} is not finite"
-            ))
-        })?;
+        let finite = FiniteF64::try_new(value, "value", NonFiniteKind::Value)?;
 
         self.validate_range(finite)?;
         self.validate_step(finite)?;
@@ -117,11 +122,13 @@ impl NumberSpec {
         if !self.bounds.validate(finite) {
             let min = self.bounds.min().map(FiniteF64::get);
             let max = self.bounds.max().map(FiniteF64::get);
-            return Err(SchemaError::NumberOutOfRange {
-                value: finite.get(),
-                min,
-                max,
-            });
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::NumberOutOfRange {
+                    value: finite.get(),
+                    min,
+                    max,
+                },
+            ));
         }
         Ok(())
     }
@@ -150,10 +157,12 @@ impl NumberSpec {
             let epsilon = step.abs() * 1e-10f64;
 
             if remainder > epsilon && (step - remainder) > epsilon {
-                return Err(SchemaError::InvalidStepValue {
-                    value,
-                    step,
-                });
+                return Err(SchemaError::PropertyValue(
+                    crate::schema::error::PropertyValueError::InvalidStepValue {
+                        value,
+                        step,
+                    },
+                ));
             }
         }
         Ok(())
@@ -206,9 +215,12 @@ impl ArchivedNumberSpec {
         let spec: NumberSpec =
             rkyv::deserialize::<NumberSpec, rkyv::rancor::Error>(self)
                 .map_err(|e| {
-                    SchemaError::ValidationFailed(format!(
-                        "Failed to deserialize NumberSpec: {e}"
-                    ))
+                    SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::Deserialization {
+                    spec: "NumberSpec",
+                    reason: e.to_string().into(),
+                },
+            )
                 })?;
         spec.validate_value(value)
     }
@@ -243,11 +255,13 @@ struct FiniteF64(f64);
 
 impl FiniteF64 {
     #[inline]
-    fn try_new(value: f64, ctx: &'static str) -> Result<Self, SchemaError> {
+    fn try_new(
+        value: f64,
+        ctx: &'static str,
+        kind: NonFiniteKind,
+    ) -> Result<Self, SchemaError> {
         if !value.is_finite() {
-            return Err(SchemaError::ValidationFailed(format!(
-                "{ctx} must be finite"
-            )));
+            return Err(kind.into_error(value, ctx));
         }
         Ok(Self(value))
     }
@@ -272,6 +286,31 @@ impl std::hash::Hash for FiniteF64 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NonFiniteKind {
+    Constraint,
+    Value,
+}
+
+impl NonFiniteKind {
+    fn into_error(self, value: f64, ctx: &'static str) -> SchemaError {
+        match self {
+            Self::Constraint => SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::NonFinite {
+                    value,
+                    context: ctx.into(),
+                },
+            ),
+            Self::Value => SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::NonFinite {
+                    value,
+                    context: ctx.into(),
+                },
+            ),
+        }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -281,10 +320,14 @@ struct Step(FiniteF64);
 impl Step {
     #[inline]
     fn try_new(value: f64) -> Result<Self, SchemaError> {
-        let finite = FiniteF64::try_new(value, "step")?;
+        let finite =
+            FiniteF64::try_new(value, "step", NonFiniteKind::Constraint)?;
         if finite.get() <= 0.0f64 {
-            return Err(SchemaError::ValidationFailed(
-                "step must be positive".into(),
+            return Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::InvalidStepValue {
+                    value: finite.get(),
+                    step: finite.get(),
+                },
             ));
         }
         Ok(Self(finite))
@@ -329,20 +372,24 @@ mod tests {
     #[case::below_min(
         RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
         -1.0f64,
-        Err(SchemaError::NumberOutOfRange {
-            value: -1.0f64,
-            min: Some(0.0f64),
-            max: Some(10.0f64)
-        })
+        Err(SchemaError::PropertyValue(
+            crate::schema::error::PropertyValueError::NumberOutOfRange {
+                value: -1.0f64,
+                min: Some(0.0f64),
+                max: Some(10.0f64)
+            }
+        ))
     )]
     #[case::above_max(
         RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
         11.0f64,
-        Err(SchemaError::NumberOutOfRange {
-            value: 11.0f64,
-            min: Some(0.0f64),
-            max: Some(10.0f64)
-        })
+        Err(SchemaError::PropertyValue(
+            crate::schema::error::PropertyValueError::NumberOutOfRange {
+                value: 11.0f64,
+                min: Some(0.0f64),
+                max: Some(10.0f64)
+            }
+        ))
     )]
     #[case::valid_step(
         RawNumberSpec { min: Some(0.0f64), max: None, step: Some(0.5f64) },
@@ -352,7 +399,12 @@ mod tests {
     #[case::invalid_step(
         RawNumberSpec { min: Some(0.0f64), max: None, step: Some(0.5f64) },
         5.2f64,
-        Err(SchemaError::InvalidStepValue { value: 5.2f64, step: 0.5f64 })
+        Err(SchemaError::PropertyValue(
+            crate::schema::error::PropertyValueError::InvalidStepValue {
+                value: 5.2f64,
+                step: 0.5f64
+            }
+        ))
     )]
     fn number_spec_validation_matrix(
         #[case] def: RawNumberSpec,
@@ -376,8 +428,13 @@ mod tests {
     fn number_spec_rejects_min_greater_than_max() {
         let result = NumberSpec::try_new(Some(10.0f64), Some(5.0f64), None);
         assert!(
-            matches!(result, Err(SchemaError::ValidationFailed(_))),
-            "Expected ValidationFailed for min > max, got: {result:?}"
+            matches!(
+                result,
+                Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::InvalidRange { .. }
+                ))
+            ),
+            "Expected InvalidRange for min > max, got: {result:?}"
         );
     }
 
@@ -399,8 +456,13 @@ mod tests {
             .expect("Expected valid NumberSpec");
         let result = spec.validate_value(f64::NAN);
         assert!(
-            matches!(result, Err(SchemaError::ValidationFailed(_))),
-            "Expected ValidationFailed for NaN, got: {result:?}"
+            matches!(
+                result,
+                Err(SchemaError::PropertyValue(
+                    crate::schema::error::PropertyValueError::NonFinite { .. }
+                ))
+            ),
+            "Expected NonFinite for NaN, got: {result:?}"
         );
     }
 
@@ -411,8 +473,13 @@ mod tests {
             .expect("Expected valid NumberSpec");
         let result = spec.validate_value(f64::INFINITY);
         assert!(
-            matches!(result, Err(SchemaError::ValidationFailed(_))),
-            "Expected ValidationFailed for infinity, got: {result:?}"
+            matches!(
+                result,
+                Err(SchemaError::PropertyValue(
+                    crate::schema::error::PropertyValueError::NonFinite { .. }
+                ))
+            ),
+            "Expected NonFinite for infinity, got: {result:?}"
         );
     }
 
@@ -420,8 +487,13 @@ mod tests {
     fn number_spec_rejects_non_finite_min_bound() {
         let result = NumberSpec::try_new(Some(f64::NAN), Some(10.0f64), None);
         assert!(
-            matches!(result, Err(SchemaError::ValidationFailed(_))),
-            "Expected ValidationFailed for non-finite min, got: {result:?}"
+            matches!(
+                result,
+                Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::NonFinite { .. }
+                ))
+            ),
+            "Expected NonFinite for non-finite min, got: {result:?}"
         );
     }
 
@@ -433,8 +505,13 @@ mod tests {
             Some(f64::INFINITY),
         );
         assert!(
-            matches!(result, Err(SchemaError::ValidationFailed(_))),
-            "Expected ValidationFailed for non-finite step, got: {result:?}"
+            matches!(
+                result,
+                Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::NonFinite { .. }
+                ))
+            ),
+            "Expected NonFinite for non-finite step, got: {result:?}"
         );
     }
 }

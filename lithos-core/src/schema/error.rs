@@ -1,120 +1,250 @@
 //! Schema error types.
 //!
-//! This module defines schema-specific errors using thiserror for
-//! structured error handling.
+//! This module defines schema-specific errors using thiserror for structured
+//! error handling across ingestion, validation, resolution, and storage.
+
+use std::path::PathBuf;
 
 use crate::db::DbError;
 
-/// Schema-related errors.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaError;
-///
-/// let error = SchemaError::EmptySchemaName;
-/// match error {
-///     SchemaError::EmptySchemaName => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+/// Context for property name validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum SchemaError {
-    // --- Schema Identity Errors ---
+pub enum PropertyNameContext {
+    /// Property name defined in a schema file.
+    SchemaProperty,
+    /// Property name defined in a property bank file.
+    PropertyBank,
+    /// Property name used in `excludes` list.
+    Exclude,
+}
+
+impl std::fmt::Display for PropertyNameContext {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match *self {
+            Self::SchemaProperty => "schema property",
+            Self::PropertyBank => "property bank",
+            Self::Exclude => "exclude list",
+        };
+        f.write_str(label)
+    }
+}
+
+/// Schema name validation errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaNameError {
     /// Schema name cannot be empty.
-    #[error("Schema name cannot be empty")]
-    EmptySchemaName,
+    #[error("schema name cannot be empty")]
+    Empty,
 
     /// Schema name too long.
-    #[error("Schema name too long: {0} (max 64)")]
-    SchemaNameTooLong(usize),
-
-    /// Invalid schema name.
-    #[error("Invalid schema name: {0}")]
-    InvalidSchemaName(String),
-
-    /// Schema not found.
-    #[error("schema not found: {0}")]
-    NotFound(String),
-
-    /// Schema not found by ID.
-    #[error("Schema not found by ID: {0}")]
-    SchemaNotFound(crate::schema::aggregate::SchemaId),
-
-    /// Schema already exists.
-    #[error("schema already exists: {0}")]
-    AlreadyExists(String),
-
-    // --- Property Identity Errors ---
-    /// Property name cannot be empty.
-    #[error("Property name cannot be empty")]
-    EmptyPropertyName,
-
-    /// Property name too long.
-    #[error("Property name too long: {0} (max 64)")]
-    PropertyNameTooLong(usize),
-
-    /// Invalid property name.
-    #[error("Invalid property name: {0}")]
-    InvalidPropertyName(String),
-
-    /// Duplicate property name.
-    #[error("Duplicate property name: {0}")]
-    DuplicatePropertyName(String),
-
-    /// Property not found.
-    #[error("Property not found: {0}")]
-    PropertyNotFound(String),
-
-    /// Property reference not found.
-    #[error("Property reference not found: {0}")]
-    PropertyRefNotFound(String),
-
-    /// Duplicate property in schema.
-    #[error("Duplicate property: {0}")]
-    DuplicateProperty(String),
-
-    // --- Inheritance & Resolution Errors ---
-    /// Circular schema inheritance detected.
-    #[error("Circular schema inheritance detected: {0}")]
-    CircularInheritance(String),
-
-    /// Inheritance chain exceeds maximum depth.
-    #[error("Inheritance depth exceeded: {0} (max: 10)")]
-    InheritanceDepthExceeded(usize),
-
-    /// Parent schema not found.
-    #[error("Parent not found: {0}")]
-    ParentNotFound(String),
-
-    // --- Validation Errors ---
-    /// Schema validation failed.
-    #[error("schema validation failed: {0}")]
-    ValidationFailed(String),
-
-    /// Invalid type.
-    #[error("Invalid type: {value} (expected: {expected})")]
-    InvalidType {
-        /// The value that was provided.
-        value: String,
-        /// The expected type.
-        expected: String,
+    #[error("schema name too long: {len} (max {max})")]
+    TooLong {
+        /// Provided name length.
+        len: usize,
+        /// Maximum allowed length.
+        max: usize,
     },
 
-    /// Invalid date format.
-    #[error("Invalid date format: {0}")]
-    InvalidDateFormat(String),
+    /// Schema name is not valid for the expected pattern.
+    #[error("invalid schema name: {name}")]
+    InvalidFormat {
+        /// The invalid name.
+        name: Box<str>,
+    },
+}
 
-    /// Invalid directory path.
-    #[error("Invalid directory path: {0}")]
-    InvalidDirectoryPath(String),
+/// Property name validation errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyNameError {
+    /// Property name cannot be empty.
+    #[error("property name cannot be empty ({context})")]
+    Empty {
+        /// Context of the property name.
+        context: PropertyNameContext,
+    },
 
-    /// Invalid file class.
-    #[error("Invalid file class: {0}")]
-    InvalidFileClass(String),
+    /// Property name too long.
+    #[error("property name too long: {len} (max {max}) ({context})")]
+    TooLong {
+        /// Provided name length.
+        len: usize,
+        /// Maximum allowed length.
+        max: usize,
+        /// Context of the property name.
+        context: PropertyNameContext,
+    },
+
+    /// Property name is not valid for the expected pattern.
+    #[error("invalid property name: {name} ({context})")]
+    InvalidFormat {
+        /// The invalid name.
+        name: Box<str>,
+        /// Context of the property name.
+        context: PropertyNameContext,
+    },
+}
+
+/// Internal validation errors for schema construction.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaValidationError {
+    /// Schema name regex failed to compile.
+    #[error("invalid schema name regex: {reason}")]
+    SchemaNameRegex {
+        /// Regex error details.
+        reason: Box<str>,
+    },
+
+    /// Property name regex failed to compile.
+    #[error("invalid property name regex: {reason}")]
+    PropertyNameRegex {
+        /// Regex error details.
+        reason: Box<str>,
+    },
+}
+
+/// Raw syntax validation errors for schema inputs.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaSyntaxError {
+    /// Schema name validation error.
+    #[error(transparent)]
+    SchemaName(#[from] SchemaNameError),
+
+    /// Property name validation error.
+    #[error(transparent)]
+    PropertyName(#[from] PropertyNameError),
+}
+
+/// Property spec configuration errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PropertySpecError {
+    /// Date format is required but missing.
+    #[error("date format is required")]
+    DateFormatRequired,
+
+    /// Invalid date format string.
+    #[error("invalid date format: {format}")]
+    InvalidDateFormat {
+        /// The invalid format string.
+        format: Box<str>,
+    },
+
+    /// Invalid regex pattern.
+    #[error("invalid regex pattern: {pattern} ({reason})")]
+    InvalidRegex {
+        /// Regex pattern string.
+        pattern: Box<str>,
+        /// Regex error details.
+        reason: Box<str>,
+    },
+
+    /// Options list is empty.
+    #[error("options list cannot be empty")]
+    OptionsEmpty,
+
+    /// Option value does not match pattern.
+    #[error("option value '{value}' does not match pattern {pattern}")]
+    OptionPatternMismatch {
+        /// Option value.
+        value: Box<str>,
+        /// Pattern string.
+        pattern: Box<str>,
+    },
+
+    /// Option value is empty or whitespace.
+    #[error("option value cannot be empty")]
+    OptionValueEmpty,
+
+    /// Invalid directory path constraint.
+    #[error("invalid directory path: {path}")]
+    InvalidDirectoryPath {
+        /// The invalid directory path.
+        path: Box<str>,
+    },
+
+    /// Invalid numeric range configuration.
+    #[error("invalid range: min {min} cannot be greater than max {max}")]
+    InvalidRange {
+        /// Minimum value.
+        min: f64,
+        /// Maximum value.
+        max: f64,
+    },
+
+    /// Non-finite numeric constraint.
+    #[error("{context} must be finite: {value}")]
+    NonFinite {
+        /// Provided value.
+        value: f64,
+        /// Context label.
+        context: Box<str>,
+    },
+
+    /// Invalid file class constraint.
+    #[error("invalid file class: {class}")]
+    InvalidFileClass {
+        /// The invalid file class.
+        class: Box<str>,
+    },
+
+    /// Failure deserializing an archived spec.
+    #[error("failed to deserialize {spec}: {reason}")]
+    Deserialization {
+        /// Spec name.
+        spec: &'static str,
+        /// Deserialization error details.
+        reason: Box<str>,
+    },
+}
+
+/// Property value validation errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PropertyValueError {
+    /// Invalid type for property value.
+    #[error("invalid type: {value} (expected: {expected})")]
+    InvalidType {
+        /// Provided value representation.
+        value: Box<str>,
+        /// Expected type representation.
+        expected: Box<str>,
+    },
+
+    /// Invalid enum value.
+    #[error("invalid enum value: {value} (allowed: {allowed:?})")]
+    InvalidEnumValue {
+        /// Provided value.
+        value: Box<str>,
+        /// Allowed values.
+        allowed: Vec<Box<str>>,
+    },
+
+    /// Pattern mismatch.
+    #[error("value {value} does not match pattern {pattern}")]
+    PatternMismatch {
+        /// Provided value.
+        value: Box<str>,
+        /// Pattern string.
+        pattern: Box<str>,
+    },
+
+    /// Date format mismatch.
+    #[error("value {value} does not match format {format}")]
+    DateFormatMismatch {
+        /// Provided value.
+        value: Box<str>,
+        /// Expected format.
+        format: Box<str>,
+    },
 
     /// Number out of range.
-    #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
+    #[error("number out of range: {value} (min: {min:?}, max: {max:?})")]
     NumberOutOfRange {
         /// Provided value.
         value: f64,
@@ -125,7 +255,7 @@ pub enum SchemaError {
     },
 
     /// Invalid step value.
-    #[error("Invalid step value: {value} (step: {step})")]
+    #[error("invalid step value: {value} (step: {step})")]
     InvalidStepValue {
         /// Provided value.
         value: f64,
@@ -133,79 +263,290 @@ pub enum SchemaError {
         step: f64,
     },
 
-    /// Invalid enum value.
-    #[error("Invalid enum value: {value} (allowed: {allowed:?})")]
-    InvalidEnumValue {
-        /// The value that was provided.
-        value: String,
-        /// The list of allowed values.
-        allowed: Vec<String>,
+    /// Non-finite numeric value.
+    #[error("{context} must be finite: {value}")]
+    NonFinite {
+        /// Provided value.
+        value: f64,
+        /// Context label.
+        context: Box<str>,
     },
-
-    /// Invalid regex pattern.
-    #[error("Invalid regex pattern: {0}")]
-    InvalidRegex(String),
-
-    /// Invalid property reference format.
-    #[error(
-        "Invalid property reference: '{0}' (expected format: \
-         property_bank#/<name>)"
-    )]
-    InvalidPropertyRef(String),
-
-    /// Property type mismatch on $ref override.
-    #[error(
-        "Cannot change property type via $ref override: expected {expected}, \
-         got {actual}"
-    )]
-    PropertyTypeMismatch {
-        /// Expected type from bank property.
-        expected: String,
-        /// Actual type from override fields.
-        actual: String,
-    },
-
-    /// Property validation error.
-    #[error("property error: {0}")]
-    Property(String),
-
-    /// Storage/database error.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
 }
 
-/// Unified schema repository errors.
-///
-/// This error type combines query and command operations for the schema
-/// repository, providing a unified error type for storage operations.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaRepositoryError;
-///
-/// let error = SchemaRepositoryError::NotFound {
-///     name: "schema".into(),
-/// };
-/// match error {
-///     SchemaRepositoryError::NotFound {
-///         ..
-///     } => {}
-///     SchemaRepositoryError::Conflict {
-///         ..
-///     } => {}
-///     _ => {}
-/// }
-/// ```
+/// Property reference errors for `$ref` handling.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyRefError {
+    /// Invalid `$ref` format.
+    #[error(
+        "invalid property reference: '{reference}' (expected format: \
+         property_bank#/<name>)"
+    )]
+    InvalidFormat {
+        /// The invalid reference string.
+        reference: Box<str>,
+    },
+
+    /// Property reference not found in property bank.
+    #[error("property reference not found: {reference}")]
+    NotFound {
+        /// The reference string.
+        reference: Box<str>,
+    },
+
+    /// Property type mismatch on `$ref` override.
+    #[error(
+        "cannot change property type via $ref override: expected {expected}, \
+         got {actual}"
+    )]
+    TypeMismatch {
+        /// Expected type.
+        expected: Box<str>,
+        /// Actual override type.
+        actual: Box<str>,
+    },
+}
+
+/// Property bank errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyBankError {
+    /// Duplicate property name in the property bank.
+    #[error("duplicate property name: {name}")]
+    DuplicatePropertyName {
+        /// Property name.
+        name: Box<str>,
+    },
+
+    /// Duplicate property ID in the property bank.
+    #[error("duplicate property id: {id}")]
+    DuplicatePropertyId {
+        /// Property id.
+        id: Box<str>,
+    },
+}
+
+/// Schema inheritance errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaInheritanceError {
+    /// Parent schema not found.
+    #[error("parent not found: {name}")]
+    ParentNotFound {
+        /// Parent schema name.
+        name: Box<str>,
+    },
+
+    /// Circular inheritance detected.
+    #[error("circular schema inheritance detected: {name}")]
+    CircularInheritance {
+        /// Schema name in the detected cycle.
+        name: Box<str>,
+    },
+
+    /// Inheritance chain exceeds maximum depth.
+    #[error("inheritance depth exceeded: {depth} (max: {max})")]
+    DepthExceeded {
+        /// Actual depth.
+        depth: usize,
+        /// Maximum allowed depth.
+        max: usize,
+    },
+}
+
+/// Resolution errors not covered by other categories.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaResolutionError {
+    /// Duplicate schema name detected in the batch.
+    #[error("duplicate schema name: {name}")]
+    DuplicateSchemaName {
+        /// Schema name.
+        name: Box<str>,
+    },
+
+    /// Missing schema node during merge.
+    #[error("schema node missing for id {id}")]
+    MissingNode {
+        /// Schema ID.
+        id: crate::schema::aggregate::SchemaId,
+    },
+}
+
+/// Schema-related domain errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaError {
+    /// Raw syntax validation error.
+    #[error(transparent)]
+    Syntax(#[from] SchemaSyntaxError),
+
+    /// Internal validation error.
+    #[error(transparent)]
+    Validation(#[from] SchemaValidationError),
+
+    /// Property spec configuration error.
+    #[error(transparent)]
+    PropertySpec(#[from] PropertySpecError),
+
+    /// Property value validation error.
+    #[error(transparent)]
+    PropertyValue(#[from] PropertyValueError),
+
+    /// Property reference error.
+    #[error(transparent)]
+    PropertyRef(#[from] PropertyRefError),
+
+    /// Property bank error.
+    #[error(transparent)]
+    PropertyBank(#[from] PropertyBankError),
+
+    /// Inheritance error.
+    #[error(transparent)]
+    Inheritance(#[from] SchemaInheritanceError),
+
+    /// Resolution error.
+    #[error(transparent)]
+    Resolution(#[from] SchemaResolutionError),
+}
+
+/// Schema file errors during ingestion.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SchemaRepositoryError {
+pub enum SchemaFileError {
+    /// I/O error reading file.
+    #[error("failed to read {path}: {source}")]
+    Io {
+        /// Path to the file.
+        path: PathBuf,
+        /// I/O error source.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Invalid filename or basename.
+    #[error("invalid filename: {path} ({reason})")]
+    InvalidFilename {
+        /// Path to the file.
+        path: PathBuf,
+        /// Reason for invalid filename.
+        reason: Box<str>,
+    },
+
+    /// Unsupported file format.
+    #[error("unsupported format for {path}: expected one of {supported:?}")]
+    UnsupportedFormat {
+        /// Path to the file.
+        path: PathBuf,
+        /// Supported formats.
+        supported: Vec<Box<str>>,
+    },
+
+    /// File system error not tied to a specific file.
+    #[error("filesystem error: {reason}")]
+    FileSystem {
+        /// Error details.
+        reason: Box<str>,
+    },
+}
+
+/// Schema parsing errors during ingestion.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaParseError {
+    /// JSON parsing failed.
+    #[error(
+        "JSON parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Json {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// TOML parsing failed.
+    #[error(
+        "TOML parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Toml {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// YAML parsing failed.
+    #[error(
+        "YAML parse error in {path} at line {line:?}, column {column:?}: \
+         {message}"
+    )]
+    Yaml {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error message from parser.
+        message: Box<str>,
+        /// Line number (if available).
+        line: Option<usize>,
+        /// Column number (if available).
+        column: Option<usize>,
+    },
+
+    /// Cached view deserialization failed.
+    #[error("cached view parse error in {path}: {reason}")]
+    CachedView {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error details.
+        reason: Box<str>,
+    },
+
+    /// Serialization failed.
+    #[error("serialization error in {path}: {reason}")]
+    Serialization {
+        /// Path to the file.
+        path: PathBuf,
+        /// Error details.
+        reason: Box<str>,
+    },
+}
+
+/// Schema version errors during ingestion.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaVersionError {
+    /// Unsupported schema version.
+    #[error(
+        "unsupported schema version in {path}: got '{found}', expected \
+         '{expected}'"
+    )]
+    UnsupportedVersion {
+        /// Path to the file.
+        path: PathBuf,
+        /// Found version.
+        found: Box<str>,
+        /// Expected version.
+        expected: Box<str>,
+    },
+}
+
+/// Schema storage errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaStorageError {
     /// Storage/database error.
     #[error("storage error: {0}")]
     Storage(#[from] DbError),
-
-    /// Domain validation error.
-    #[error("domain error: {0}")]
-    Domain(#[from] SchemaError),
 
     /// Entity not found.
     #[error("not found: {name}")]
@@ -222,9 +563,6 @@ pub enum SchemaRepositoryError {
     },
 
     /// `PropertyBank` not found in database.
-    ///
-    /// This error indicates that the `PropertyBank` singleton has not been
-    /// initialized. `PropertyBank` must be created before querying schemas.
     #[error(
         "PropertyBank not found in database - initialize by loading schema \
          files or creating properties"
@@ -239,134 +577,87 @@ pub enum SchemaRepositoryError {
     },
 }
 
+/// Unified schema repository errors.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaRepositoryError {
+    /// Storage/database error.
+    #[error(transparent)]
+    Storage(#[from] SchemaStorageError),
+
+    /// Domain validation error.
+    #[error(transparent)]
+    Domain(#[from] SchemaError),
+}
+
 /// Schema loader errors.
-///
-/// Errors that occur during the full schema loading pipeline, combining
-/// both ingestion (file I/O) and repository (storage) operations.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaLoaderError;
-///
-/// let error = SchemaLoaderError::Ingestion(
-///     lithos_core::schema::error::SchemaIngestionError::FileSystem(
-///         "file not found".into(),
-///     ),
-/// );
-/// match error {
-///     SchemaLoaderError::Ingestion(_) => {}
-///     SchemaLoaderError::Repository(_) => {}
-///     _ => {}
-/// }
-/// ```
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaLoaderError {
     /// Ingestion (file I/O or parsing) error.
-    #[error("ingestion error: {0}")]
+    #[error(transparent)]
     Ingestion(#[from] SchemaIngestionError),
 
     /// Repository (storage) error.
-    #[error("repository error: {0}")]
+    #[error(transparent)]
     Repository(#[from] SchemaRepositoryError),
-}
 
-impl From<SchemaError> for SchemaLoaderError {
-    #[inline]
-    fn from(e: SchemaError) -> Self {
-        Self::Repository(e.into())
-    }
+    /// Resolution error.
+    #[error(transparent)]
+    Resolution(#[from] SchemaError),
 }
 
 /// Schema ingestion errors.
-///
-/// Errors that occur during file-to-raw translation (loading schema files
-/// from the filesystem).
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::error::SchemaIngestionError;
-///
-/// let error = SchemaIngestionError::UnsupportedFormat {
-///     path: "schema.xml".into(),
-///     supported: "json, toml, yaml".into(),
-/// };
-/// match error {
-///     SchemaIngestionError::UnsupportedFormat {
-///         ..
-///     } => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
-    /// I/O error reading file.
-    #[error("Failed to read file {path}: {reason}")]
-    Io {
-        /// Path to the file.
-        path: Box<str>,
-        /// Reason for failure.
-        reason: Box<str>,
-    },
-
-    /// JSON parsing failed.
-    #[error("JSON parse error in {path}: {message}")]
-    Json {
-        /// Path to the file.
-        path: Box<str>,
-        /// Error message from parser.
-        message: Box<str>,
-    },
-
-    /// TOML parsing failed.
-    #[error("TOML parse error in {path}: {message}")]
-    Toml {
-        /// Path to the file.
-        path: Box<str>,
-        /// Error message from parser.
-        message: Box<str>,
-    },
-
-    /// YAML parsing failed.
-    #[error("YAML parse error in {path}: {message}")]
-    Yaml {
-        /// Path to the file.
-        path: Box<str>,
-        /// Error message from parser.
-        message: Box<str>,
-    },
-
-    /// Unsupported file format.
-    #[error("Unsupported format for {path}: expected one of {supported}")]
-    UnsupportedFormat {
-        /// Path to the file.
-        path: Box<str>,
-        /// Supported formats.
-        supported: Box<str>,
-    },
-
     /// File system error.
-    #[error("File system error: {0}")]
-    FileSystem(Box<str>),
+    #[error(transparent)]
+    File(#[from] SchemaFileError),
 
-    /// Unsupported schema version.
-    #[error(
-        "Unsupported schema version in {path}: got '{found}', expected \
-         '{expected}'"
-    )]
-    UnsupportedVersion {
+    /// Parse error.
+    #[error(transparent)]
+    Parse(#[from] SchemaParseError),
+
+    /// Version error.
+    #[error(transparent)]
+    Version(#[from] SchemaVersionError),
+
+    /// Syntax validation error.
+    #[error(transparent)]
+    Syntax(#[from] SchemaSyntaxError),
+
+    /// Storage error.
+    #[error(transparent)]
+    Storage(#[from] SchemaStorageError),
+
+    /// Repository error.
+    #[error(transparent)]
+    Repository(#[from] SchemaRepositoryError),
+
+    /// Schema validation error with path context.
+    #[error("schema validation failed in {path}: {source}")]
+    Schema {
         /// Path to the file.
-        path: Box<str>,
-        /// Found version.
-        found: Box<str>,
-        /// Expected version.
-        expected: Box<str>,
+        path: PathBuf,
+        /// Underlying schema error.
+        #[source]
+        source: SchemaError,
     },
+}
 
-    /// Schema validation error.
-    #[error("Schema validation failed: {0}")]
-    Validation(#[from] SchemaError),
+impl From<SchemaNameError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaNameError) -> Self {
+        Self::Syntax(err.into())
+    }
+}
+
+impl From<PropertyNameError> for SchemaError {
+    #[inline]
+    fn from(err: PropertyNameError) -> Self {
+        Self::Syntax(err.into())
+    }
 }
 
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {
@@ -377,41 +668,50 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
             ParseError::Io {
                 path,
                 source,
-            } => Self::Io {
-                path: path.to_string_lossy().into(),
-                reason: source.to_string().into(),
-            },
+            } => Self::File(SchemaFileError::Io {
+                path,
+                source,
+            }),
             ParseError::Json {
                 path,
                 message,
-                ..
-            } => Self::Json {
-                path: path.to_string_lossy().into(),
+                line,
+                column,
+            } => Self::Parse(SchemaParseError::Json {
+                path,
                 message,
-            },
+                line,
+                column,
+            }),
             ParseError::Toml {
                 path,
                 message,
-                ..
-            } => Self::Toml {
-                path: path.to_string_lossy().into(),
+                line,
+                column,
+            } => Self::Parse(SchemaParseError::Toml {
+                path,
                 message,
-            },
+                line,
+                column,
+            }),
             ParseError::Yaml {
                 path,
                 message,
-                ..
-            } => Self::Yaml {
-                path: path.to_string_lossy().into(),
+                line,
+                column,
+            } => Self::Parse(SchemaParseError::Yaml {
+                path,
                 message,
-            },
+                line,
+                column,
+            }),
             ParseError::UnsupportedFormat {
                 path,
                 supported,
-            } => Self::UnsupportedFormat {
-                path: path.to_string_lossy().into(),
-                supported: supported.join(", ").into(),
-            },
+            } => Self::File(SchemaFileError::UnsupportedFormat {
+                path,
+                supported: supported.iter().map(|s| (*s).into()).collect(),
+            }),
         }
     }
 }
@@ -447,14 +747,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case(SchemaError::NotFound("schema".into()))]
-    #[case(SchemaError::AlreadyExists("schema".into()))]
-    #[case(SchemaError::ValidationFailed("invalid".into()))]
-    #[case(SchemaError::CircularInheritance("cycle".into()))]
-    #[case(SchemaError::DuplicateProperty("prop".into()))]
-    #[case(SchemaError::ParentNotFound("parent".into()))]
-    #[case(SchemaError::PropertyRefNotFound("ref".into()))]
-    #[case(SchemaError::Property("invalid property".into()))]
+    #[case(SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+        SchemaNameError::Empty
+    )))]
+    #[case(SchemaError::Syntax(SchemaSyntaxError::PropertyName(
+        PropertyNameError::Empty {
+            context: PropertyNameContext::SchemaProperty
+        }
+    )))]
+    #[case(SchemaError::PropertyRef(PropertyRefError::InvalidFormat {
+        reference: "property_bank#/title".into()
+    }))]
+    #[case(SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound {
+        name: "parent".into()
+    }))]
     fn schema_error_display_is_comprehensive(#[case] error: SchemaError) {
         assert!(
             !error.to_string().is_empty(),

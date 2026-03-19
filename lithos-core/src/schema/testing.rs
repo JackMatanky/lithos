@@ -672,18 +672,18 @@ impl Repository for InMemoryRepository {
 /// Convert `InMemoryError` to `SchemaRepositoryError` for loader compatibility.
 impl From<InMemoryError> for super::error::SchemaRepositoryError {
     fn from(err: InMemoryError) -> Self {
-        match err {
+        let db_error = match err {
             InMemoryError::Internal {
                 message,
-            } => Self::Storage(super::super::db::DbError::Database(
-                message.to_string(),
-            )),
+            } => super::super::db::DbError::Database(message.into()),
             InMemoryError::LockPoisoned {
                 context,
-            } => Self::Storage(super::super::db::DbError::Database(format!(
+            } => super::super::db::DbError::Database(format!(
                 "Lock poisoned: {context}"
-            ))),
-        }
+            )),
+        };
+
+        Self::Storage(super::error::SchemaStorageError::Storage(db_error))
     }
 }
 
