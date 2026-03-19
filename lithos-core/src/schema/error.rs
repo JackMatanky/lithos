@@ -715,53 +715,262 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-
     use super::*;
-
-    #[test]
-    fn schema_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaError>();
-    }
-
-    #[test]
-    fn schema_repository_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaRepositoryError>();
-    }
-
-    #[test]
-    fn schema_loader_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaLoaderError>();
-    }
-
-    #[test]
-    fn schema_ingestion_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<SchemaIngestionError>();
-    }
-
-    #[rstest]
-    #[case(SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-        SchemaNameError::Empty
-    )))]
-    #[case(SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-        PropertyNameError::Empty {
-            context: PropertyNameContext::SchemaProperty
+    mod conversions {
+        use super::*;
+        #[test]
+        fn schema_name_error_converts_into_schema_error() {
+            let error: SchemaError = SchemaNameError::Empty.into();
+            assert!(
+                matches!(
+                    error,
+                    SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                        SchemaNameError::Empty
+                    ))
+                ),
+                "Expected SchemaNameError::Empty to convert into \
+                 SchemaError::Syntax"
+            );
         }
-    )))]
-    #[case(SchemaError::PropertyRef(PropertyRefError::InvalidFormat {
-        reference: "property_bank#/title".into()
-    }))]
-    #[case(SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound {
-        name: "parent".into()
-    }))]
-    fn schema_error_display_is_comprehensive(#[case] error: SchemaError) {
-        assert!(
-            !error.to_string().is_empty(),
-            "Error {error:?} should have non-empty display message"
-        );
+        #[test]
+        fn property_name_error_converts_into_schema_error() {
+            let error: SchemaError = PropertyNameError::Empty {
+                context: PropertyNameContext::SchemaProperty,
+            }
+            .into();
+            assert!(
+                matches!(
+                    error,
+                    SchemaError::Syntax(SchemaSyntaxError::PropertyName(
+                        PropertyNameError::Empty {
+                            context: PropertyNameContext::SchemaProperty,
+                        }
+                    ))
+                ),
+                "Expected PropertyNameError::Empty to convert into \
+                 SchemaError::Syntax"
+            );
+        }
+        #[test]
+        fn parse_error_maps_to_schema_ingestion_error() {
+            let error: SchemaIngestionError =
+                crate::fs::error::ParseError::UnsupportedFormat {
+                    path: PathBuf::from("schemas/schema.xml"),
+                    supported: &["json", "yaml"],
+                }
+                .into();
+            match error {
+                SchemaIngestionError::File(
+                    SchemaFileError::UnsupportedFormat {
+                        path,
+                        supported,
+                    },
+                ) => {
+                    assert_eq!(
+                        path,
+                        PathBuf::from("schemas/schema.xml"),
+                        "Expected unsupported format to preserve the path"
+                    );
+                    assert_eq!(
+                        supported,
+                        vec!["json".into(), "yaml".into()],
+                        "Expected supported formats to be copied"
+                    );
+                }
+                other @ (SchemaIngestionError::File(_)
+                | SchemaIngestionError::Parse(_)
+                | SchemaIngestionError::Version(_)
+                | SchemaIngestionError::Syntax(_)
+                | SchemaIngestionError::Storage(_)
+                | SchemaIngestionError::Repository(_)
+                | SchemaIngestionError::Schema {
+                    ..
+                }) => {
+                    let is_expected = matches!(
+                        other,
+                        SchemaIngestionError::File(
+                            SchemaFileError::UnsupportedFormat { .. }
+                        )
+                    );
+                    assert!(
+                        is_expected,
+                        "Expected SchemaIngestionError::File::UnsupportedFormat, got: {other:?}"
+                    );
+                }
+            }
+        }
+    }
+    mod equality {
+        use super::*;
+        #[test]
+        fn schema_error_equality_compares_variants() {
+            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+            assert_eq!(
+                left, right,
+                "Expected identical property reference errors to be equal"
+            );
+        }
+        #[test]
+        fn schema_error_equality_distinguishes_variants() {
+            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/title".into(),
+            });
+            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
+                reference: "property_bank#/status".into(),
+            });
+            assert!(
+                left != right,
+                "Expected different references to be unequal: {left:?} vs \
+                 {right:?}"
+            );
+        }
+    }
+    mod formatting {
+        use rstest::rstest;
+
+        use super::*;
+        #[rstest]
+        #[case::schema_property(
+            PropertyNameContext::SchemaProperty,
+            "schema property"
+        )]
+        #[case::property_bank(
+            PropertyNameContext::PropertyBank,
+            "property bank"
+        )]
+        #[case::exclude(PropertyNameContext::Exclude, "exclude list")]
+        fn property_name_context_formats(
+            #[case] context: PropertyNameContext,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(
+                context.to_string(),
+                expected,
+                "Expected context label '{expected}', got '{context}'"
+            );
+        }
+        #[rstest]
+        #[case::schema_name_empty(
+            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                SchemaNameError::Empty
+            )),
+            "schema name cannot be empty"
+        )]
+        #[case::property_name_empty(
+            SchemaError::Syntax(SchemaSyntaxError::PropertyName(
+                PropertyNameError::Empty {
+                    context: PropertyNameContext::SchemaProperty,
+                }
+            )),
+            "property name cannot be empty"
+        )]
+        #[case::property_ref_invalid(
+            SchemaError::PropertyRef(PropertyRefError::InvalidFormat {
+                reference: "property_bank#/title".into(),
+            }),
+            "invalid property reference"
+        )]
+        #[case::inheritance_parent_missing(
+            SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound {
+                name: "parent".into(),
+            }),
+            "parent not found"
+        )]
+        fn schema_error_display_contains_message(
+            #[case] error: SchemaError,
+            #[case] expected_fragment: &str,
+        ) {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains(expected_fragment),
+                "Expected display to contain '{expected_fragment}', got: \
+                 {rendered}"
+            );
+        }
+    }
+    mod sources {
+        use std::error::Error as StdError;
+
+        use super::*;
+        #[test]
+        fn schema_file_io_exposes_source() {
+            let error = SchemaFileError::Io {
+                path: PathBuf::from("schemas/bad.json"),
+                source: std::io::Error::other("disk failed"),
+            };
+            let source = StdError::source(&error);
+            assert!(
+                source.is_some(),
+                "Expected source for SchemaFileError::Io"
+            );
+            if let Some(source) = source {
+                assert!(
+                    source.to_string().contains("disk failed"),
+                    "Expected source message to include 'disk failed', got: \
+                     {source}"
+                );
+            }
+        }
+        #[test]
+        fn ingestion_schema_exposes_source() {
+            let error = SchemaIngestionError::Schema {
+                path: PathBuf::from("schemas/bad.json"),
+                source: SchemaError::PropertyRef(PropertyRefError::NotFound {
+                    reference: "property_bank#/title".into(),
+                }),
+            };
+            let source = StdError::source(&error);
+            assert!(
+                source.is_some(),
+                "Expected source for SchemaIngestionError::Schema"
+            );
+            if let Some(source) = source {
+                assert!(
+                    source.to_string().contains("property reference not found"),
+                    "Expected source message to mention missing reference, \
+                     got: {source}"
+                );
+            }
+        }
+        #[test]
+        fn schema_file_filesystem_has_no_source() {
+            let error = SchemaFileError::FileSystem {
+                reason: "vault unavailable".into(),
+            };
+            assert!(
+                StdError::source(&error).is_none(),
+                "Expected no source for SchemaFileError::FileSystem"
+            );
+        }
+    }
+    mod thread_safety {
+        use super::*;
+        #[test]
+        fn errors_are_send_and_sync() {
+            fn assert_send_sync<T: Send + Sync>() {}
+            assert_send_sync::<SchemaLoaderError>();
+            assert_send_sync::<SchemaIngestionError>();
+            assert_send_sync::<SchemaRepositoryError>();
+            assert_send_sync::<SchemaError>();
+            assert_send_sync::<SchemaFileError>();
+            assert_send_sync::<SchemaParseError>();
+            assert_send_sync::<SchemaVersionError>();
+            assert_send_sync::<SchemaNameError>();
+            assert_send_sync::<PropertyNameContext>();
+            assert_send_sync::<PropertyNameError>();
+            assert_send_sync::<SchemaSyntaxError>();
+            assert_send_sync::<PropertySpecError>();
+            assert_send_sync::<PropertyValueError>();
+            assert_send_sync::<PropertyRefError>();
+            assert_send_sync::<PropertyBankError>();
+            assert_send_sync::<SchemaInheritanceError>();
+            assert_send_sync::<SchemaResolutionError>();
+            assert_send_sync::<SchemaStorageError>();
+        }
     }
 }
