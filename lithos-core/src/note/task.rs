@@ -96,14 +96,14 @@ impl Task {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the task text is empty.
+    /// Returns [`TaskError`] if the task text is empty.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(
         status: StatusName,
         text: T,
         range: SourceByteRange,
         attributes: TaskAttributes,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, TaskError> {
         let text = TaskText::try_from_boxed(text.into())?;
 
         Ok(Self {
@@ -424,11 +424,11 @@ impl TaskText {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the text is empty.
+    /// Returns [`TaskError::EmptyText`] if the text is empty.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new(value: &str) -> Result<Self, TaskError> {
         if value.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
+            return Err(TaskError::EmptyText);
         }
         Self::try_from_boxed(value.into())
     }
@@ -437,11 +437,11 @@ impl TaskText {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the text is empty.
+    /// Returns [`TaskError::EmptyText`] if the text is empty.
     #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, TaskError> {
         if value.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
+            return Err(TaskError::EmptyText);
         }
         Ok(Self(value))
     }
@@ -653,13 +653,13 @@ impl TaskPriority {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the value is not finite.
+    /// Returns [`TaskError::InvalidPriority`] if the value is not finite.
     #[inline]
-    pub fn try_new(value: f64) -> Result<Self, NoteError> {
+    pub fn try_new(value: f64) -> Result<Self, TaskError> {
         if !value.is_finite() {
-            return Err(NoteError::Task(TaskError::InvalidPriority {
-                reason: "task priority must be finite",
-            }));
+            return Err(TaskError::InvalidPriority {
+                value,
+            });
         }
         Ok(Self(value))
     }
@@ -683,19 +683,22 @@ impl TaskFieldKey {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the key is empty or contains
+    /// Returns [`TaskError`] if the key is empty or contains
     /// non-ASCII alphanumeric characters outside `_` and `-`.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new(value: &str) -> Result<Self, TaskError> {
         let text = value.trim();
         if text.is_empty() {
-            return Err(NoteError::Task(TaskError::FieldKeyEmpty));
+            return Err(TaskError::EmptyText);
         }
         if !text
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
-            return Err(NoteError::Task(TaskError::FieldKeyInvalidChars));
+            return Err(TaskError::InvalidMetadataField {
+                key: text.into(),
+                reason: "must be ASCII alphanumeric, '_' or '-'",
+            });
         }
         Ok(Self(text.into()))
     }
@@ -770,13 +773,13 @@ impl TaskMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if the key is invalid.
+    /// Returns [`TaskError`] if the key is invalid.
     #[inline]
     pub fn insert_raw(
         &mut self,
         field: &str,
         value: FieldValue,
-    ) -> Result<(), NoteError> {
+    ) -> Result<(), TaskError> {
         let key = TaskFieldKey::try_new(field)?;
         self.fields.insert(key, value);
         Ok(())
@@ -871,17 +874,17 @@ impl<'config> TaskBuilder<'config> {
             .config
             .status()
             .name_for_symbol(status_symbol)
-            .ok_or_else(|| {
-                NoteError::Task(TaskError::UnrecognizedStatusSymbol {
-                    symbol: status_symbol.value(),
-                })
+            .ok_or_else(|| TaskError::UnrecognizedStatus {
+                symbol: status_symbol.value(),
             })?
             .clone();
         let text = self.extract_clean_text(raw.text())?;
         let parsed = self.parse_inline_fields(raw.inline_fields())?;
         let attributes = parsed.into_attributes(tags);
 
-        Task::try_new(status, text, raw.range(), attributes).map(Some)
+        Task::try_new(status, text, raw.range(), attributes)
+            .map(Some)
+            .map_err(Into::into)
     }
 
     fn should_promote_from_tags(&self, tags: &[Tag]) -> bool {
@@ -917,7 +920,7 @@ impl<'config> TaskBuilder<'config> {
         }
 
         if text.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
+            return Err(TaskError::EmptyText.into());
         }
 
         Ok(text.into())
@@ -1160,10 +1163,11 @@ impl InlineFieldState {
                 ..
             } => {
                 let value = raw_value.parse::<i64>().map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidInteger {
+                    TaskError::InvalidDate {
+                        keyword: "integer".into(),
                         raw: raw_value.into(),
                         reason: "failed to parse integer",
-                    })
+                    }
                 })?;
                 Ok(serde_json::Value::Number(value.into()))
             }
@@ -1171,18 +1175,16 @@ impl InlineFieldState {
                 ..
             } => {
                 let value = raw_value.parse::<f64>().map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidFloat {
-                        raw: raw_value.into(),
-                        reason: "failed to parse float",
-                    })
+                    TaskError::InvalidPriority {
+                        value: f64::NAN,
+                    }
                 })?;
-                let number =
-                    serde_json::Number::from_f64(value).ok_or_else(|| {
-                        NoteError::Task(TaskError::InvalidFloat {
-                            raw: raw_value.into(),
-                            reason: "float value is not finite",
-                        })
-                    })?;
+                let number = serde_json::Number::from_f64(value).ok_or(
+                    TaskError::InvalidPriority {
+                        value,
+                    },
+                )?;
+
                 Ok(serde_json::Value::Number(number))
             }
             crate::config::value::FieldSpec::Enum {
@@ -1233,17 +1235,15 @@ impl InlineFieldState {
         if let Some(spec) = config.field_spec(keyword) {
             let json_value = Self::parse_metadata_value(raw_value, spec)?;
             spec.validate_raw_value(&json_value).map_err(|_error| {
-                NoteError::Task(TaskError::InvalidMetadataField {
-                    keyword: keyword.into(),
+                TaskError::InvalidMetadataField {
+                    key: keyword.into(),
                     reason: "failed validation",
-                })
+                }
             })?;
             let field_value = serde_json::from_value::<FieldValue>(json_value)
-                .map_err(|_error| {
-                    NoteError::Task(TaskError::InvalidMetadataField {
-                        keyword: keyword.into(),
-                        reason: "failed conversion",
-                    })
+                .map_err(|_error| TaskError::InvalidMetadataField {
+                    key: keyword.into(),
+                    reason: "failed conversion",
                 })?;
             let key = TaskFieldKey::try_new(keyword)?;
             metadata.insert(key, field_value);
@@ -1266,16 +1266,17 @@ impl InlineFieldState {
         }
 
         let date = chrono::NaiveDate::parse_from_str(raw_value, spec.format())
-            .map_err(|_error| {
-                NoteError::Task(TaskError::InvalidDate {
-                    keyword: spec.keyword().as_str().into(),
-                    reason: "failed to parse date string",
-                })
+            .map_err(|_error| TaskError::InvalidDate {
+                keyword: spec.keyword().as_str().into(),
+                raw: raw_value.into(),
+                reason: "failed to parse date string",
             })?;
         let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            NoteError::Task(TaskError::InvalidDateTime {
+            TaskError::InvalidDate {
                 keyword: spec.keyword().as_str().into(),
-            })
+                raw: raw_value.into(),
+                reason: "invalid time",
+            }
         })?;
 
         Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
@@ -1295,16 +1296,17 @@ impl InlineFieldState {
         }
 
         let date = chrono::NaiveDate::parse_from_str(raw_value, "%Y-%m-%d")
-            .map_err(|_error| {
-                NoteError::Task(TaskError::InvalidDate {
-                    keyword: field.into(),
-                    reason: "failed to parse date string",
-                })
+            .map_err(|_error| TaskError::InvalidDate {
+                keyword: field.into(),
+                raw: raw_value.into(),
+                reason: "failed to parse date string",
             })?;
         let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            NoteError::Task(TaskError::InvalidDateTime {
+            TaskError::InvalidDate {
                 keyword: field.into(),
-            })
+                raw: raw_value.into(),
+                reason: "invalid time",
+            }
         })?;
         Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
     }

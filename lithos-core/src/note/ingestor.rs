@@ -13,7 +13,11 @@ use std::{path::Path, time::SystemTime};
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
-    note::{error::NoteIngestError, paths::NotePath, raw::RawNote},
+    note::{
+        error::{NoteFileError, NoteIngestError},
+        paths::NotePath,
+        raw::RawNote,
+    },
 };
 
 /// Ingestor for loading raw markdown notes from a file source.
@@ -78,14 +82,22 @@ impl<'config> Ingestor<'config> {
         let relative = Path::new(path.as_str());
         let created_at = self.source.created_at(relative);
         let modified_at = self.source.modified_at(relative);
-        self.source.read_with(relative, |_path, markdown| {
-            super::parser::MarkdownParser::parse(
-                markdown,
-                path.clone(),
-                created_at,
-                modified_at,
-            )
-        })
+        self.source
+            .read_with(relative, |_path, markdown| {
+                super::parser::MarkdownParser::parse(
+                    markdown,
+                    path.clone(),
+                    created_at,
+                    modified_at,
+                )
+            })
+            .map_err(|e| {
+                NoteFileError::ReadFailed {
+                    path: path.clone(),
+                    message: e.to_string().into(),
+                }
+                .into()
+            })
     }
 
     /// Load and parse a note from provided markdown content.

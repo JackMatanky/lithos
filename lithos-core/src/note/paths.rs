@@ -20,7 +20,7 @@ use std::fmt;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::{NoteError, NoteMetadataError};
+use super::error::{NoteError, NoteFileError};
 
 /// Validated vault-relative path for a note.
 ///
@@ -29,10 +29,8 @@ use super::error::{NoteError, NoteMetadataError};
 ///
 /// # Errors
 ///
-/// Returns [`NoteError::InvalidPath`] if:
-/// - The path is absolute (starts with `/`).
-/// - The extension is not `.md`.
-/// - The path contains invalid characters.
+/// Returns [`NoteFileError::InvalidPath`] or
+/// [`NoteFileError::UnsupportedExtension`] if the path is invalid.
 ///
 /// # Examples
 ///
@@ -55,20 +53,20 @@ impl NotePath {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::InvalidPath`] if the path is invalid.
+    /// Returns [`NoteFileError`] if the path is invalid.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, NoteError> {
         let relative = RelativePath::try_new(path)?;
         let normalized_path = std::path::Path::new(relative.as_str());
 
-        if !normalized_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-        {
-            return Err(NoteError::InvalidPath(
-                "path must have .md extension".into(),
-            ));
+        let ext = normalized_path.extension().and_then(|ext| ext.to_str());
+
+        if !ext.is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
+            return Err(NoteFileError::UnsupportedExtension {
+                path: path.into(),
+                found: ext.unwrap_or("").into(),
+            }
+            .into());
         }
 
         Ok(Self(relative))
@@ -77,7 +75,6 @@ impl NotePath {
     /// Returns the path as a string slice.
     #[inline]
     #[must_use]
-    /// Returns the folder path as a string slice.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
@@ -120,13 +117,17 @@ impl FolderPath {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the folder is empty.
-    /// Returns [`NoteError::InvalidPath`] if the folder path is invalid.
+    /// Returns [`NoteFileError::InvalidPath`] if the folder path is
+    /// invalid.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
-            return Err(NoteError::Metadata(NoteMetadataError::FolderEmpty));
+            return Err(NoteFileError::InvalidPath {
+                path: value.into(),
+                reason: "folder path cannot be empty",
+            }
+            .into());
         }
         let relative = RelativePath::try_new(trimmed)?;
         Ok(Self(relative))
@@ -158,7 +159,11 @@ impl RelativePath {
         let normalized = Self::normalize(path);
         let normalized_str = normalized.as_ref();
         if normalized_str.is_empty() {
-            return Err(NoteError::InvalidPath("path cannot be empty".into()));
+            return Err(NoteFileError::InvalidPath {
+                path: path.into(),
+                reason: "path cannot be empty",
+            }
+            .into());
         }
 
         let bytes = normalized_str.as_bytes();
@@ -166,51 +171,68 @@ impl RelativePath {
             && ((first.is_ascii_alphabetic() && *second == b':')
                 || (*first == b'/' && *second == b'/'))
         {
-            return Err(NoteError::InvalidPath(
-                "windows-style prefixes are not allowed".into(),
-            ));
+            return Err(NoteFileError::InvalidPath {
+                path: path.into(),
+                reason: "windows-style prefixes are not allowed",
+            }
+            .into());
         }
 
         if normalized_str.split('/').any(|segment| segment == ".") {
-            return Err(NoteError::InvalidPath(
-                "path must not include '.' components".into(),
-            ));
+            return Err(NoteFileError::InvalidPath {
+                path: path.into(),
+                reason: "path must not include '.' components",
+            }
+            .into());
         }
 
         let normalized_path = std::path::Path::new(normalized_str);
         if normalized_path.is_absolute() {
-            return Err(NoteError::InvalidPath("path must be relative".into()));
+            return Err(NoteFileError::InvalidPath {
+                path: path.into(),
+                reason: "path must be relative",
+            }
+            .into());
         }
 
         for component in normalized_path.components() {
             match component {
                 std::path::Component::ParentDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path traversal not allowed".into(),
-                    ));
+                    return Err(NoteFileError::InvalidPath {
+                        path: path.into(),
+                        reason: "path traversal not allowed",
+                    }
+                    .into());
                 }
                 std::path::Component::CurDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path must not include '.' components".into(),
-                    ));
+                    return Err(NoteFileError::InvalidPath {
+                        path: path.into(),
+                        reason: "path must not include '.' components",
+                    }
+                    .into());
                 }
                 std::path::Component::Normal(segment) => {
                     let segment = segment.to_str().ok_or_else(|| {
-                        NoteError::InvalidPath(
-                            "path contains invalid utf-8".into(),
-                        )
+                        NoteFileError::InvalidPath {
+                            path: path.into(),
+                            reason: "path contains invalid utf-8",
+                        }
                     })?;
                     if segment.starts_with('.') {
-                        return Err(NoteError::InvalidPath(
-                            "hidden path components not allowed".into(),
-                        ));
+                        return Err(NoteFileError::InvalidPath {
+                            path: path.into(),
+                            reason: "hidden path components not allowed",
+                        }
+                        .into());
                     }
                 }
                 std::path::Component::Prefix(_)
                 | std::path::Component::RootDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path must be relative".into(),
-                    ));
+                    return Err(NoteFileError::InvalidPath {
+                        path: path.into(),
+                        reason: "path must be relative",
+                    }
+                    .into());
                 }
             }
         }

@@ -4,7 +4,7 @@
 //! markdown documents.
 
 use super::{
-    error::{LinkError, NoteError, NoteMetadataError},
+    error::{HeadingError, LinkError, NoteError},
     raw::RawHeading,
 };
 use crate::note::position::SourceByteOffset;
@@ -44,13 +44,13 @@ impl Heading {
     /// Creates a new heading with validation.
     ///
     /// # Errors
-    /// Returns `NoteError::Metadata` if heading text is empty.
+    /// Returns [`HeadingError::EmptyContent`] if heading text is empty.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(
         level: HeadingLevel,
         text: T,
         position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, HeadingError> {
         let text = HeadingText::try_from_boxed(text.into())?;
 
         Ok(Self {
@@ -88,7 +88,7 @@ impl TryFrom<RawHeading> for Heading {
     #[inline]
     fn try_from(raw: RawHeading) -> Result<Self, Self::Error> {
         let level = HeadingLevel::try_new(raw.level())?;
-        Heading::try_new(level, raw.text(), raw.position())
+        Heading::try_new(level, raw.text(), raw.position()).map_err(Into::into)
     }
 }
 
@@ -96,7 +96,7 @@ impl TryFrom<RawHeading> for Heading {
 ///
 /// # Errors
 ///
-/// Returns [`NoteError::Structure`] if the level is not between 1 and 6.
+/// Returns [`HeadingError::InvalidLevel`] if the level is not between 1 and 6.
 ///
 /// # Examples
 ///
@@ -128,13 +128,13 @@ impl HeadingLevel {
     /// # Errors
     /// Returns an error if the level is not in the range 1..=6.
     #[inline]
-    pub fn try_new(level: u8) -> Result<Self, NoteError> {
+    pub fn try_new(level: u8) -> Result<Self, HeadingError> {
         if (1..=6).contains(&level) {
             Ok(Self(level))
         } else {
-            Err(NoteError::Structure(
-                "invalid heading level: must be between 1 and 6",
-            ))
+            Err(HeadingError::InvalidLevel {
+                level: u32::from(level),
+            })
         }
     }
 
@@ -164,9 +164,9 @@ impl HeadingText {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the text is empty.
+    /// Returns [`HeadingError::EmptyContent`] if the text is empty.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new(value: &str) -> Result<Self, HeadingError> {
         Self::try_from_boxed(value.into())
     }
 
@@ -174,12 +174,12 @@ impl HeadingText {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Link`] if the text is empty.
+    /// Returns [`LinkError::EmptyHeadingAnchor`] if the text is empty.
     #[inline]
-    pub fn try_new_anchor(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new_anchor(value: &str) -> Result<Self, LinkError> {
         let text = value.trim();
         if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
+            return Err(LinkError::EmptyHeadingAnchor);
         }
         Ok(Self(text.into()))
     }
@@ -188,13 +188,11 @@ impl HeadingText {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the text is empty.
+    /// Returns [`HeadingError::EmptyContent`] if the text is empty.
     #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, HeadingError> {
         if value.trim().is_empty() {
-            return Err(NoteError::Metadata(
-                NoteMetadataError::HeadingTextEmpty,
-            ));
+            return Err(HeadingError::EmptyContent);
         }
         Ok(Self(value))
     }
@@ -298,10 +296,7 @@ mod tests {
         let pos = SourceByteOffset::from(0u32);
         let result = Heading::try_new(level, text, pos);
         assert!(
-            matches!(
-                result,
-                Err(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))
-            ),
+            matches!(result, Err(HeadingError::EmptyContent)),
             "Empty heading text should be rejected, got: {result:?}"
         );
     }

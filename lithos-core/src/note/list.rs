@@ -10,7 +10,7 @@
 use std::fmt;
 
 use super::{
-    error::NoteError,
+    error::{ListError, NoteError},
     position::{SourceByteOffset, SourceByteRange},
     task::TaskId,
 };
@@ -145,13 +145,13 @@ impl ListDepth {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::ListDepthOutOfRange`] if the depth is out of range.
+    /// Returns [`ListError::MaxNestingExceeded`] if the depth is out of range.
     #[inline]
-    pub fn try_new(depth: usize) -> Result<Self, NoteError> {
-        u8::try_from(depth).map(Self).map_err(|_error| {
-            NoteError::ListDepthOutOfRange {
-                depth,
-                reason: "depth exceeds maximum allowed value of 255",
+    pub fn try_new(depth: usize) -> Result<Self, ListError> {
+        u8::try_from(depth).map(Self).map_err(|_err| {
+            ListError::MaxNestingExceeded {
+                current: depth,
+                limit: usize::from(u8::MAX),
             }
         })
     }

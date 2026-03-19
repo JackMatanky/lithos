@@ -154,12 +154,12 @@ impl BlockRefId {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Link`] if the identifier is empty.
+    /// Returns [`LinkError::EmptyBlockRefAnchor`] if the identifier is empty.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new(value: &str) -> Result<Self, LinkError> {
         let text = value.trim();
         if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
+            return Err(LinkError::EmptyBlockRefAnchor);
         }
         Ok(Self(text.into()))
     }

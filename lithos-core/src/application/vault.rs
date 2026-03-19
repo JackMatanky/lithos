@@ -10,9 +10,11 @@ use crate::{
     db::{Database, DbError},
     fs::FsReader,
     note::{
-        error::NoteIngestError,
+        error::{
+            NoteFileError, NoteIngestError, NoteLoadError, NoteRepositoryError,
+        },
         ingestor::Ingestor,
-        loader::{LoadError, Loader as NoteLoader},
+        loader::Loader as NoteLoader,
         paths::NotePath,
         storage::{RedbRepository, Repository as _},
     },
@@ -23,12 +25,23 @@ use crate::{
 #[non_exhaustive]
 pub enum ServiceError {
     /// Ingestion (file I/O or parsing) failed.
-    #[error("ingestion error: {0}")]
+    #[error("ingestion failed: {0}")]
     Ingestion(#[from] NoteIngestError),
+
+    /// Repository operation failed.
+    #[error("repository failure: {0}")]
+    Repository(#[from] NoteRepositoryError),
 
     /// Storage command failed.
     #[error("command error: {0}")]
     Command(#[from] DbError),
+}
+
+impl From<NoteFileError> for ServiceError {
+    #[inline]
+    fn from(err: NoteFileError) -> Self {
+        ServiceError::Ingestion(NoteIngestError::File(err))
+    }
 }
 
 /// Vault-level service for loading file-based content.
@@ -90,8 +103,9 @@ impl<'db, 'config> Service<'db, 'config> {
             let metadata = ingestor
                 .source()
                 .metadata(Path::new(note_path.as_str()))
-                .map_err(|error| {
-                    NoteIngestError::Source(error.to_string().into())
+                .map_err(|error| NoteFileError::MetadataFailed {
+                    path: note_path.clone(),
+                    message: error.to_string().into(),
                 })?;
             let modified = metadata.modified().ok();
             let created = metadata.created().ok();
@@ -110,8 +124,9 @@ impl<'db, 'config> Service<'db, 'config> {
                 let markdown = ingestor
                     .source()
                     .read_to_string(Path::new(note_path.as_str()))
-                    .map_err(|error| {
-                        NoteIngestError::Source(error.to_string().into())
+                    .map_err(|error| NoteFileError::ReadFailed {
+                        path: note_path.clone(),
+                        message: error.to_string().into(),
                     })?;
                 let hash =
                     blake3::hash(markdown.as_bytes()).to_hex().to_string();
@@ -146,7 +161,15 @@ impl<'db, 'config> Service<'db, 'config> {
     fn scan_note_paths(fs: &FsReader) -> Result<Vec<NotePath>, ServiceError> {
         let pattern = "**/*";
         let files = fs.list_files(pattern).map_err(|error| {
-            NoteIngestError::Source(error.to_string().into())
+            #[expect(
+                clippy::unwrap_used,
+                reason = "Static dummy path is valid"
+            )]
+            let dummy_path = NotePath::try_new("vault.md").unwrap();
+            NoteFileError::ReadFailed {
+                path: dummy_path,
+                message: error.to_string().into(),
+            }
         })?;
 
         let mut notes = Vec::with_capacity(files.len());
@@ -154,13 +177,20 @@ impl<'db, 'config> Service<'db, 'config> {
             if !crate::fs::types::Markdown::is_supported(&path) {
                 continue;
             }
-            if let Err(error) = fs.validate_path(&path) {
-                return Err(ServiceError::Ingestion(NoteIngestError::Source(
-                    error.to_string().into(),
-                )));
+            if let Err(_error) = fs.validate_path(&path) {
+                return Err(ServiceError::Ingestion(
+                    NoteFileError::InvalidPath {
+                        path: path.to_string_lossy().into(),
+                        reason: "invalid path",
+                    }
+                    .into(),
+                ));
             }
             let path_str = path.to_str().ok_or_else(|| {
-                NoteIngestError::Source("invalid UTF-8 in note path".into())
+                NoteIngestError::from(NoteFileError::InvalidPath {
+                    path: path.to_string_lossy().into(),
+                    reason: "invalid UTF-8 in note path",
+                })
             })?;
             let note_path =
                 NotePath::try_new(path_str).map_err(NoteIngestError::Domain)?;
@@ -171,12 +201,12 @@ impl<'db, 'config> Service<'db, 'config> {
     }
 }
 
-fn map_load_error(error: LoadError) -> ServiceError {
+fn map_load_error(error: NoteLoadError) -> ServiceError {
     match error {
-        LoadError::Ingestion(error) => ServiceError::Ingestion(error),
-        LoadError::Domain(error) => {
+        NoteLoadError::Ingestion(error) => ServiceError::Ingestion(error),
+        NoteLoadError::Validation(error) => {
             ServiceError::Ingestion(NoteIngestError::Domain(error))
         }
-        LoadError::Storage(error) => ServiceError::Command(error),
+        NoteLoadError::Persistence(error) => ServiceError::Repository(error),
     }
 }

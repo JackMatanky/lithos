@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::NoteError;
+use super::error::{NoteError, StructureError};
 
 /// A byte offset into the original UTF-8 source of a note.
 ///
@@ -52,11 +52,17 @@ impl SourceByteOffset {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the offset cannot fit in `u32`.
+    /// Returns [`StructureError::OutOfBounds`] if the offset cannot fit in
+    /// `u32`.
     #[inline]
     pub fn try_from_usize(offset: usize) -> Result<Self, NoteError> {
-        Self::try_from(offset).map_err(|_error| {
-            NoteError::Structure("source offset out of range")
+        u32::try_from(offset).map(Self::new).map_err(|_err| {
+            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
+            StructureError::OutOfBounds {
+                offset,
+                source_len: u32::MAX as usize,
+            }
+            .into()
         })
     }
 
@@ -64,12 +70,17 @@ impl SourceByteOffset {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the resulting offset cannot fit in
-    /// `u32`.
+    /// Returns [`StructureError::OffsetOverflow`] if the resulting offset
+    /// cannot fit in `u32`.
     #[inline]
     pub fn add_offset(&self, delta: usize) -> Result<Self, NoteError> {
-        let base = usize::try_from(self.0)
-            .map_err(|_error| NoteError::Structure("offset overflow"))?;
+        let base = usize::try_from(self.0).map_err(|_err| {
+            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
+            StructureError::OffsetOverflow {
+                offset: self.0 as usize,
+                delta,
+            }
+        })?;
         Self::try_from_usize(base.saturating_add(delta))
     }
 }
@@ -130,16 +141,20 @@ impl SourceByteRange {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if `start` is greater than `end`.
+    /// Returns [`StructureError::InvalidRange`] if `start` is greater than
+    /// `end`.
     #[inline]
     pub fn new(
         start: SourceByteOffset,
         end: SourceByteOffset,
     ) -> Result<Self, NoteError> {
         if start > end {
-            return Err(NoteError::Structure(
-                "source range start must be <= end",
-            ));
+            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
+            return Err(StructureError::InvalidRange {
+                start: u32::from(start) as usize,
+                end: u32::from(end) as usize,
+            }
+            .into());
         }
         Ok(Self::new_unchecked(start, end))
     }
@@ -187,7 +202,7 @@ impl SourceByteRange {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the offsets are out of bounds or
+    /// Returns [`NoteError`] if the offsets are out of bounds or
     /// not on UTF-8 character boundaries.
     #[inline]
     pub fn to_location_range(
@@ -276,7 +291,7 @@ impl SourceLocation {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the offset exceeds the source
+    /// Returns [`StructureError::OutOfBounds`] if the offset exceeds the source
     /// length or is not on a UTF-8 character boundary.
     #[inline]
     #[expect(
@@ -317,7 +332,7 @@ impl SourceLocation {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the offset exceeds the source
+    /// Returns [`StructureError::OutOfBounds`] if the offset exceeds the source
     /// length or is not on a UTF-8 character boundary.
     #[inline]
     pub fn try_from_byte_offset_with_index(
@@ -331,16 +346,24 @@ impl SourceLocation {
             .partition_point(|&start| start <= raw_offset)
             .saturating_sub(1);
         let line_start = line_starts.get(line_index).copied().unwrap_or(0);
-        let slice = source.get(line_start..raw_offset).ok_or({
-            NoteError::Structure("source offset is not on a boundary")
-        })?;
+        let slice = source.get(line_start..raw_offset).ok_or(
+            StructureError::OutOfBounds {
+                offset: raw_offset,
+                source_len: source.len(),
+            },
+        )?;
         let column_count = slice.chars().count().saturating_add(1);
         let line =
-            u32::try_from(line_index.saturating_add(1)).map_err(|_error| {
-                NoteError::Structure("line index out of range")
+            u32::try_from(line_index.saturating_add(1)).map_err(|_err| {
+                StructureError::InvalidLine {
+                    line: u32::try_from(line_index.saturating_add(1))
+                        .unwrap_or(u32::MAX),
+                }
             })?;
-        let column = u32::try_from(column_count).map_err(|_error| {
-            NoteError::Structure("column index out of range")
+        let column = u32::try_from(column_count).map_err(|_err| {
+            StructureError::InvalidColumn {
+                column: u32::try_from(column_count).unwrap_or(u32::MAX),
+            }
         })?;
 
         Ok(SourceLocation::new(
@@ -355,19 +378,28 @@ impl SourceLocation {
         offset: SourceByteOffset,
         source: &str,
     ) -> Result<usize, NoteError> {
+        #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
         let raw_offset =
-            usize::try_from(u32::from(offset)).map_err(|_error| {
-                NoteError::Structure("source offset out of range")
+            usize::try_from(u32::from(offset)).map_err(|_err| {
+                StructureError::OutOfBounds {
+                    offset: u32::from(offset) as usize,
+                    source_len: source.len(),
+                }
             })?;
+
         if raw_offset > source.len() {
-            return Err(NoteError::Structure(
-                "source offset exceeds input length",
-            ));
+            return Err(StructureError::OutOfBounds {
+                offset: raw_offset,
+                source_len: source.len(),
+            }
+            .into());
         }
         if !source.is_char_boundary(raw_offset) {
-            return Err(NoteError::Structure(
-                "source offset is not on a character boundary",
-            ));
+            return Err(StructureError::OutOfBounds {
+                offset: raw_offset,
+                source_len: source.len(),
+            }
+            .into());
         }
         Ok(raw_offset)
     }
@@ -389,16 +421,19 @@ impl SourceLocationRange {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if `start` is after `end`.
+    /// Returns [`StructureError::InvalidRange`] if `start` is after `end`.
     #[inline]
     pub fn new(
         start: SourceLocation,
         end: SourceLocation,
     ) -> Result<Self, NoteError> {
         if start.offset() > end.offset() {
-            return Err(NoteError::Structure(
-                "source range start must be <= end",
-            ));
+            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
+            return Err(StructureError::InvalidRange {
+                start: u32::from(start.offset()) as usize,
+                end: u32::from(end.offset()) as usize,
+            }
+            .into());
         }
         Ok(Self::new_unchecked(start, end))
     }
@@ -445,11 +480,14 @@ impl SourceLine {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the value is zero.
+    /// Returns [`StructureError::InvalidLine`] if the value is zero.
     #[inline]
     pub fn try_new(value: u32) -> Result<Self, NoteError> {
         if value == 0 {
-            return Err(NoteError::Structure("line number must be >= 1"));
+            return Err(StructureError::InvalidLine {
+                line: 0,
+            }
+            .into());
         }
         Ok(Self(value))
     }
@@ -474,11 +512,14 @@ impl SourceColumn {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the value is zero.
+    /// Returns [`StructureError::InvalidColumn`] if the value is zero.
     #[inline]
     pub fn try_new(value: u32) -> Result<Self, NoteError> {
         if value == 0 {
-            return Err(NoteError::Structure("column number must be >= 1"));
+            return Err(StructureError::InvalidColumn {
+                column: 0,
+            }
+            .into());
         }
         Ok(Self(value))
     }
@@ -551,14 +592,13 @@ mod tests {
     )]
     fn line_column_tracks_unicode_and_newlines() -> Result<(), NoteError> {
         let source = "a\u{00E9}\nb";
-        let offset = SourceByteOffset::try_from("a".len())
-            .map_err(|_error| NoteError::Structure("test error"))?;
+        let offset = SourceByteOffset::try_from_usize("a".len())?;
         let location = SourceLocation::try_from_byte_offset(offset, source)?;
         assert_eq!(location.line().value(), 1);
         assert_eq!(location.column().value(), 2);
 
-        let newline_offset = SourceByteOffset::try_from("a\u{00E9}\n".len())
-            .map_err(|_error| NoteError::Structure("test error"))?;
+        let newline_offset =
+            SourceByteOffset::try_from_usize("a\u{00E9}\n".len())?;
         let location_after_newline =
             SourceLocation::try_from_byte_offset(newline_offset, source)?;
         assert_eq!(location_after_newline.line().value(), 2);
@@ -590,8 +630,7 @@ mod tests {
     fn line_index_matches_offset_lookup() -> Result<(), NoteError> {
         let source = "first\nsecond\nthird";
         let index = LineIndex::new(source);
-        let offset = SourceByteOffset::try_from("first\nsecond".len())
-            .map_err(|_error| NoteError::Structure("test error"))?;
+        let offset = SourceByteOffset::try_from_usize("first\nsecond".len())?;
         let location = SourceLocation::try_from_byte_offset_with_index(
             offset,
             source,
@@ -610,8 +649,7 @@ mod tests {
     fn line_index_handles_crlf() -> Result<(), NoteError> {
         let source = "first\r\nsecond";
         let index = LineIndex::new(source);
-        let offset = SourceByteOffset::try_from("first\r\n".len())
-            .map_err(|_error| NoteError::Structure("test error"))?;
+        let offset = SourceByteOffset::try_from_usize("first\r\n".len())?;
         let location = SourceLocation::try_from_byte_offset_with_index(
             offset,
             source,

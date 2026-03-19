@@ -15,7 +15,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _,
 };
 
-use super::error::FieldValueError;
+use super::error::FrontmatterError;
 
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
@@ -363,7 +363,7 @@ pub trait TryFromFieldValue: Sized {
     /// # Errors
     ///
     /// Returns a structured error describing why the conversion failed.
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
 }
 
 /// Fallible, strict conversions from a borrowed [`FieldValue`].
@@ -378,7 +378,7 @@ pub trait TryFromFieldValueRef<'value>: Sized {
     /// Returns a structured error describing why the conversion failed.
     fn try_from_value_ref(
         value: &'value FieldValue,
-    ) -> Result<Self, FieldValueError>;
+    ) -> Result<Self, FrontmatterError>;
 }
 
 // ----------------------------------------------------------- //
@@ -387,8 +387,9 @@ pub trait TryFromFieldValueRef<'value>: Sized {
 
 impl TryFromFieldValue for bool {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
-        value.as_bool().ok_or_else(|| FieldValueError::TypeMismatch {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_bool().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
             expected: "boolean",
             actual: value.type_name(),
         })
@@ -397,8 +398,9 @@ impl TryFromFieldValue for bool {
 
 impl TryFromFieldValue for f64 {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
-        value.as_number().ok_or_else(|| FieldValueError::TypeMismatch {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_number().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
             expected: "number",
             actual: value.type_name(),
         })
@@ -407,9 +409,10 @@ impl TryFromFieldValue for f64 {
 
 impl TryFromFieldValue for Box<str> {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         value.as_str().map(Into::into).ok_or_else(|| {
-            FieldValueError::TypeMismatch {
+            FrontmatterError::TypeMismatch {
+                key: "".into(),
                 expected: "string",
                 actual: value.type_name(),
             }
@@ -419,14 +422,16 @@ impl TryFromFieldValue for Box<str> {
 
 impl TryFromFieldValue for DateTime<Utc> {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         let ts =
-            value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
+            value.as_date().ok_or_else(|| FrontmatterError::TypeMismatch {
+                key: "".into(),
                 expected: "date",
                 actual: value.type_name(),
             })?;
         Utc.timestamp_opt(ts, 0).single().ok_or({
-            FieldValueError::InvalidDateTimestamp {
+            FrontmatterError::InvalidDateTimestamp {
+                key: "".into(),
                 timestamp: ts,
             }
         })
@@ -435,13 +440,13 @@ impl TryFromFieldValue for DateTime<Utc> {
 
 impl TryFromFieldValue for Vec<Box<str>> {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         if let Some(arr) = value.as_array() {
             let mut out = Vec::with_capacity(arr.len());
-            for (index, item) in arr.iter().enumerate() {
+            for item in arr {
                 let Some(s) = item.as_str() else {
-                    return Err(FieldValueError::ArrayElementTypeMismatch {
-                        index,
+                    return Err(FrontmatterError::TypeMismatch {
+                        key: "".into(),
                         expected: "string",
                         actual: item.type_name(),
                     });
@@ -452,7 +457,8 @@ impl TryFromFieldValue for Vec<Box<str>> {
         }
 
         value.as_str().map(|s| vec![s.into()]).ok_or_else(|| {
-            FieldValueError::TypeMismatch {
+            FrontmatterError::TypeMismatch {
+                key: "".into(),
                 expected: "array",
                 actual: value.type_name(),
             }
@@ -464,8 +470,9 @@ impl<'value> TryFromFieldValueRef<'value> for &'value str {
     #[inline]
     fn try_from_value_ref(
         value: &'value FieldValue,
-    ) -> Result<Self, FieldValueError> {
-        value.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
+    ) -> Result<Self, FrontmatterError> {
+        value.as_str().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
             expected: "string",
             actual: value.type_name(),
         })
@@ -476,8 +483,9 @@ impl<'value> TryFromFieldValueRef<'value> for &'value [FieldValue] {
     #[inline]
     fn try_from_value_ref(
         value: &'value FieldValue,
-    ) -> Result<Self, FieldValueError> {
-        value.as_array().ok_or_else(|| FieldValueError::TypeMismatch {
+    ) -> Result<Self, FrontmatterError> {
+        value.as_array().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
             expected: "array",
             actual: value.type_name(),
         })

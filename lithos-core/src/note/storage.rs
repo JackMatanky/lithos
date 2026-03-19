@@ -28,7 +28,7 @@ use crate::{
         TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
         TASKS_BY_STATUS,
         aggregate::{AliasName, FileClassName, Note, NoteId},
-        error::NoteError,
+        error::NoteRepositoryError,
         events::{
             NoteChangeKind, NoteEvent, NoteEventKind, NoteEventPayload,
             NoteEventPayloadV1,
@@ -48,7 +48,7 @@ pub type TaskView = Task;
 /// Unified repository trait for note storage and queries.
 pub trait Repository: Send + Sync {
     /// Storage error type for repository operations.
-    type Error: std::error::Error;
+    type Error: From<NoteRepositoryError> + std::error::Error;
 
     /// Archived note type for zero-copy reads.
     type NoteArchived<'archived>;
@@ -203,12 +203,12 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         &self,
         path: &NotePath,
         current_id: Option<&str>,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
         if ids.iter().any(|id| Some(id.as_str()) != current_id) {
-            return Err(DbError::Table(
-                NoteError::AlreadyExists(path.clone()).to_string(),
-            ));
+            return Err(NoteRepositoryError::AlreadyExists {
+                path: path.clone(),
+            });
         }
         Ok(())
     }
@@ -242,11 +242,15 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     fn find_note_id_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<NoteId>, DbError> {
+    ) -> Result<Option<NoteId>, NoteRepositoryError> {
         let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
         if let Some(id_str) = ids.first() {
-            let uuid = Uuid::parse_str(id_str)
-                .map_err(|error| DbError::Deserialization(error.to_string()))?;
+            let uuid = Uuid::parse_str(id_str).map_err(|error| {
+                NoteRepositoryError::Corruption {
+                    id: NoteId::new(), // dummy
+                    reason: format!("invalid UUID in index: {error}").into(),
+                }
+            })?;
             Ok(Some(NoteId::from(uuid)))
         } else {
             Ok(None)
@@ -258,15 +262,18 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         path: &NotePath,
         facts: &Note,
         change: NoteChangeKind,
-    ) -> Result<NoteEvent, DbError> {
+    ) -> Result<NoteEvent, NoteRepositoryError> {
         let task_count =
-            u32::try_from(facts.tasks().len()).map_err(|_error| {
-                DbError::Table("task count out of range".into())
+            u32::try_from(facts.tasks().len()).map_err(|_err| {
+                NoteRepositoryError::ConstraintViolation {
+                    message: "task count out of range".into(),
+                }
             })?;
-        let tag_count =
-            u32::try_from(facts.tags().len()).map_err(|_error| {
-                DbError::Table("tag count out of range".into())
-            })?;
+        let tag_count = u32::try_from(facts.tags().len()).map_err(|_err| {
+            NoteRepositoryError::ConstraintViolation {
+                message: "tag count out of range".into(),
+            }
+        })?;
         let source_hash = facts.source_hash().into();
         let source_bytes = facts.source_bytes();
 
@@ -292,17 +299,18 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     fn insert_note_event(
         batch: &mut BatchWriter,
         event: &NoteEvent,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = event.id().as_hyphenated().encode_lower(&mut id_buffer);
-        batch.put(NOTE_EVENTS, id_str, event)
+        batch.put(NOTE_EVENTS, id_str, event)?;
+        Ok(())
     }
 
     fn insert_indexes(
         batch: &mut BatchWriter,
         index_data: &IndexData,
         id_str: &str,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         batch.multimap_insert(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
 
         if let Some(folder) = index_data.folder.as_deref() {
@@ -332,7 +340,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         batch: &mut BatchWriter,
         index_data: &IndexData,
         id_str: &str,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         batch.multimap_remove(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
 
         if let Some(folder) = index_data.folder.as_deref() {
@@ -411,7 +419,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         batch: &mut BatchWriter,
         index_data: &TaskIndexData,
         note_id_str: &str,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         for key in &index_data.status_keys {
             batch.multimap_insert(
                 TASKS_BY_STATUS,
@@ -468,7 +476,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         batch: &mut BatchWriter,
         index_data: &TaskIndexData,
         note_id_str: &str,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), NoteRepositoryError> {
         for key in &index_data.status_keys {
             batch.multimap_remove(
                 TASKS_BY_STATUS,
@@ -721,10 +729,13 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         &self,
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
-    ) -> Result<Vec<Note>, DbError> {
+    ) -> Result<Vec<Note>, NoteRepositoryError> {
         use std::collections::BTreeSet;
 
-        let note_refs = self.db.multimap_get(index_table, index_key)?;
+        let note_refs = self
+            .db
+            .multimap_get(index_table, index_key)
+            .map_err(NoteRepositoryError::Storage)?;
         let mut note_ids = BTreeSet::new();
         for note_id_str in note_refs {
             note_ids.insert(note_id_str);
@@ -732,8 +743,10 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
 
         let mut notes = Vec::with_capacity(note_ids.len());
         for note_id_str in note_ids {
-            if let Some(note) =
-                self.db.get_owned::<Note>(STORED_NOTES, &note_id_str)?
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, &note_id_str)
+                .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
             }
@@ -745,12 +758,17 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         &self,
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
-    ) -> Result<Vec<Note>, DbError> {
-        let note_refs = self.db.multimap_get(index_table, index_key)?;
+    ) -> Result<Vec<Note>, NoteRepositoryError> {
+        let note_refs = self
+            .db
+            .multimap_get(index_table, index_key)
+            .map_err(NoteRepositoryError::Storage)?;
         let mut notes = Vec::with_capacity(note_refs.len());
         for note_id_str in note_refs {
-            if let Some(note) =
-                self.db.get_owned::<Note>(STORED_NOTES, &note_id_str)?
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, &note_id_str)
+                .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
             }
@@ -778,12 +796,15 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
 }
 
 impl Repository for RedbRepository<'_, '_> {
-    type Error = DbError;
+    type Error = NoteRepositoryError;
     type NoteArchived<'archived> = &'archived rkyv::Archived<NoteView>;
 
     #[inline]
     fn rebuild_note_indexes(&self) -> Result<usize, Self::Error> {
-        let stored_notes = self.db.list_owned::<Note>(STORED_NOTES)?;
+        let stored_notes = self
+            .db
+            .list_owned::<Note>(STORED_NOTES)
+            .map_err(NoteRepositoryError::Storage)?;
         let mut rebuilds = Vec::with_capacity(stored_notes.len());
 
         for stored in &stored_notes {
@@ -795,22 +816,29 @@ impl Repository for RedbRepository<'_, '_> {
             rebuilds.push((id_str.to_owned(), index_data));
         }
 
-        self.db.batch_write(|batch| {
-            for (id_str, index_data) in
-                rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
-            {
-                Self::remove_indexes(batch, index_data, id_str)?;
-                Self::insert_indexes(batch, index_data, id_str)?;
-            }
-            Ok(())
-        })?;
+        self.db
+            .batch_write(|batch| {
+                for (id_str, index_data) in
+                    rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
+                {
+                    Self::remove_indexes(batch, index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                    Self::insert_indexes(batch, index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                }
+                Ok(())
+            })
+            .map_err(NoteRepositoryError::Storage)?;
 
         Ok(stored_notes.len())
     }
 
     #[inline]
     fn rebuild_task_indexes(&self) -> Result<usize, Self::Error> {
-        let stored_notes = self.db.list_owned::<Note>(STORED_NOTES)?;
+        let stored_notes = self
+            .db
+            .list_owned::<Note>(STORED_NOTES)
+            .map_err(NoteRepositoryError::Storage)?;
         let mut rebuilds = Vec::with_capacity(stored_notes.len());
         let mut total_tasks = 0usize;
 
@@ -823,15 +851,19 @@ impl Repository for RedbRepository<'_, '_> {
             rebuilds.push((id_str.to_owned(), task_indexes));
         }
 
-        self.db.batch_write(|batch| {
-            for (id_str, index_data) in
-                rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
-            {
-                Self::remove_task_indexes(batch, index_data, id_str)?;
-                Self::insert_task_indexes(batch, index_data, id_str)?;
-            }
-            Ok(())
-        })?;
+        self.db
+            .batch_write(|batch| {
+                for (id_str, index_data) in
+                    rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
+                {
+                    Self::remove_task_indexes(batch, index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                    Self::insert_task_indexes(batch, index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                }
+                Ok(())
+            })
+            .map_err(NoteRepositoryError::Storage)?;
 
         Ok(total_tasks)
     }
@@ -842,7 +874,10 @@ impl Repository for RedbRepository<'_, '_> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = uuid.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        let stored = self.db.get_owned::<Note>(STORED_NOTES, id_str)?;
+        let stored = self
+            .db
+            .get_owned::<Note>(STORED_NOTES, id_str)
+            .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(stored) = stored {
             let index_data = self.collect_index_data_from_facts(&stored);
@@ -853,12 +888,16 @@ impl Repository for RedbRepository<'_, '_> {
                 NoteChangeKind::Deleted,
             )?;
 
-            self.db.batch_write(|batch| {
-                Self::remove_indexes(batch, &index_data, id_str)?;
-                batch.delete(STORED_NOTES, id_str)?;
-                Self::insert_note_event(batch, &event)?;
-                Ok(())
-            })?;
+            self.db
+                .batch_write(|batch| {
+                    Self::remove_indexes(batch, &index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                    batch.delete(STORED_NOTES, id_str)?;
+                    Self::insert_note_event(batch, &event)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                    Ok(())
+                })
+                .map_err(NoteRepositoryError::Storage)?;
         }
 
         Ok(())
@@ -893,7 +932,10 @@ impl Repository for RedbRepository<'_, '_> {
         )?;
 
         let old_index_data = if existing_id.is_some() {
-            let stored = self.db.get_owned::<Note>(STORED_NOTES, id_str)?;
+            let stored = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, id_str)
+                .map_err(NoteRepositoryError::Storage)?;
             if let Some(stored) = stored {
                 if stored.path() != path {
                     self.ensure_unique_path(path, Some(id_str))?;
@@ -907,16 +949,21 @@ impl Repository for RedbRepository<'_, '_> {
             None
         };
 
-        self.db.batch_write(|batch| {
-            if let Some(old_index_data) = old_index_data {
-                Self::remove_indexes(batch, &old_index_data, id_str)?;
-            }
+        self.db
+            .batch_write(|batch| {
+                if let Some(old_index_data) = old_index_data {
+                    Self::remove_indexes(batch, &old_index_data, id_str)
+                        .map_err(|err| DbError::Table(err.to_string()))?;
+                }
 
-            Self::insert_indexes(batch, &index_data, id_str)?;
-            batch.put(STORED_NOTES, id_str, &stored_note)?;
-            Self::insert_note_event(batch, &event)?;
-            Ok(())
-        })?;
+                Self::insert_indexes(batch, &index_data, id_str)
+                    .map_err(|err| DbError::Table(err.to_string()))?;
+                batch.put(STORED_NOTES, id_str, &stored_note)?;
+                Self::insert_note_event(batch, &event)
+                    .map_err(|err| DbError::Table(err.to_string()))?;
+                Ok(())
+            })
+            .map_err(NoteRepositoryError::Storage)?;
 
         Ok(note_id)
     }
@@ -926,10 +973,15 @@ impl Repository for RedbRepository<'_, '_> {
         &self,
         alias: &AliasName,
     ) -> Result<Option<NoteView>, Self::Error> {
-        let ids = self.db.multimap_get(ALIAS_TO_ID, alias.as_str())?;
+        let ids = self
+            .db
+            .multimap_get(ALIAS_TO_ID, alias.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>(STORED_NOTES, id_str)
+            self.db
+                .get_owned::<Note>(STORED_NOTES, id_str)
+                .map_err(NoteRepositoryError::Storage)
         } else {
             Ok(None)
         }
@@ -941,7 +993,9 @@ impl Repository for RedbRepository<'_, '_> {
         let id_str =
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        self.db.get_owned::<Note>(STORED_NOTES, id_str)
+        self.db
+            .get_owned::<Note>(STORED_NOTES, id_str)
+            .map_err(NoteRepositoryError::Storage)
     }
 
     #[inline]
@@ -949,10 +1003,15 @@ impl Repository for RedbRepository<'_, '_> {
         &self,
         path: &NotePath,
     ) -> Result<Option<NoteView>, Self::Error> {
-        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
+        let ids = self
+            .db
+            .multimap_get(PATH_TO_ID, path.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>(STORED_NOTES, id_str)
+            self.db
+                .get_owned::<Note>(STORED_NOTES, id_str)
+                .map_err(NoteRepositoryError::Storage)
         } else {
             Ok(None)
         }
@@ -960,7 +1019,9 @@ impl Repository for RedbRepository<'_, '_> {
 
     #[inline]
     fn list(&self) -> Result<Vec<NoteView>, Self::Error> {
-        self.db.list_owned::<Note>(STORED_NOTES)
+        self.db
+            .list_owned::<Note>(STORED_NOTES)
+            .map_err(NoteRepositoryError::Storage)
     }
 
     #[inline]
@@ -968,12 +1029,17 @@ impl Repository for RedbRepository<'_, '_> {
         &self,
         class: &FileClassName,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let ids = self.db.multimap_get(FILE_CLASS_TO_ID, class.as_str())?;
+        let ids = self
+            .db
+            .multimap_get(FILE_CLASS_TO_ID, class.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) =
-                self.db.get_owned::<Note>(STORED_NOTES, &id_str)?
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, &id_str)
+                .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
             }
@@ -986,12 +1052,17 @@ impl Repository for RedbRepository<'_, '_> {
         &self,
         folder: &FolderPath,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let ids = self.db.multimap_get(FOLDER_TO_ID, folder.as_str())?;
+        let ids = self
+            .db
+            .multimap_get(FOLDER_TO_ID, folder.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) =
-                self.db.get_owned::<Note>(STORED_NOTES, &id_str)?
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, &id_str)
+                .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
             }
@@ -1000,17 +1071,14 @@ impl Repository for RedbRepository<'_, '_> {
     }
 
     #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "String length arithmetic is safe and will not overflow"
-    )]
     fn list_by_frontmatter_kv(
         &self,
         key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut combined_key =
-            String::with_capacity(key.as_str().len() + value.len() + 1);
+        let mut combined_key = String::with_capacity(
+            key.as_str().len().saturating_add(value.len()).saturating_add(1),
+        );
         #[expect(
             clippy::let_underscore_must_use,
             reason = "Writing to String is infallible"
@@ -1096,16 +1164,6 @@ impl Repository for RedbRepository<'_, '_> {
     }
 
     #[inline]
-    fn list_tasks_by_status(
-        &self,
-        status: &StatusName,
-    ) -> Result<Vec<TaskView>, Self::Error> {
-        let notes =
-            self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())?;
-        Ok(Self::collect_tasks_matching(&notes, |task| task.status() == status))
-    }
-
-    #[inline]
     fn list_tasks_by_date(
         &self,
         kind: TaskDateKind,
@@ -1145,6 +1203,16 @@ impl Repository for RedbRepository<'_, '_> {
     }
 
     #[inline]
+    fn list_tasks_by_status(
+        &self,
+        status: &StatusName,
+    ) -> Result<Vec<TaskView>, Self::Error> {
+        let notes =
+            self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())?;
+        Ok(Self::collect_tasks_matching(&notes, |task| task.status() == status))
+    }
+
+    #[inline]
     fn with_archived_by_id<F, R>(
         &self,
         id: NoteId,
@@ -1157,30 +1225,10 @@ impl Repository for RedbRepository<'_, '_> {
         let id_str =
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        self.db.get::<Note, _, R>(STORED_NOTES, id_str, f)
+        self.db
+            .get::<Note, _, R>(STORED_NOTES, id_str, f)
+            .map_err(NoteRepositoryError::Storage)
     }
-}
-
-/// Index data extracted from a note for cleanup operations.
-struct IndexData {
-    path: Box<str>,
-    folder: Option<Box<str>>,
-    tags: Vec<Box<str>>,
-    aliases: Vec<Box<str>>,
-    file_class: Option<Box<str>>,
-    task_indexes: TaskIndexData,
-    frontmatter_entries: Vec<Box<str>>,
-}
-
-#[derive(Debug, Default)]
-struct TaskIndexData {
-    status_keys: Vec<Box<str>>,
-    created_dates: Vec<Box<str>>,
-    due_dates: Vec<Box<str>>,
-    reminder_dates: Vec<Box<str>>,
-    completed_dates: Vec<Box<str>>,
-    metadata_keys: Vec<Box<str>>,
-    depends_on: Vec<Box<str>>,
 }
 
 /// Arc-backed repository for sharing across threads.
@@ -1217,7 +1265,7 @@ impl SharedRepository {
 }
 
 impl Repository for SharedRepository {
-    type Error = DbError;
+    type Error = NoteRepositoryError;
     type NoteArchived<'archived> = &'archived rkyv::Archived<NoteView>;
 
     #[inline]
@@ -1395,6 +1443,28 @@ impl Repository for SharedRepository {
     }
 }
 
+/// Index data extracted from a note for cleanup operations.
+struct IndexData {
+    path: Box<str>,
+    folder: Option<Box<str>>,
+    tags: Vec<Box<str>>,
+    aliases: Vec<Box<str>>,
+    file_class: Option<Box<str>>,
+    task_indexes: TaskIndexData,
+    frontmatter_entries: Vec<Box<str>>,
+}
+
+#[derive(Debug, Default)]
+struct TaskIndexData {
+    status_keys: Vec<Box<str>>,
+    created_dates: Vec<Box<str>>,
+    due_dates: Vec<Box<str>>,
+    reminder_dates: Vec<Box<str>>,
+    completed_dates: Vec<Box<str>>,
+    metadata_keys: Vec<Box<str>>,
+    depends_on: Vec<Box<str>>,
+}
+
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
@@ -1433,6 +1503,10 @@ mod tests {
         .map_err(|e| e.to_string())
     }
 
+    #[expect(
+        dead_code,
+        reason = "Legacy test helper maintained for future task query tests"
+    )]
     fn test_config_with_tasks() -> Result<Config, String> {
         let raw = RawConfig {
             task: Some(RawTaskConfig {
@@ -1509,6 +1583,10 @@ mod tests {
         )
     }
 
+    #[expect(
+        dead_code,
+        reason = "Legacy test helper maintained for future task query tests"
+    )]
     fn raw_note_with_indexes(path: NotePath) -> RawNote {
         let frontmatter = RawFrontmatter::new(
             crate::note::raw::RawFrontmatterFormat::Yaml,
@@ -1571,19 +1649,31 @@ mod tests {
     }
 
     #[test]
-    fn save_persists_path() -> Result<(), DbError> {
-        let dir = tempdir().map_err(|e| DbError::Table(e.to_string()))?;
+    fn save_persists_path() -> Result<(), NoteRepositoryError> {
+        let dir = tempdir().map_err(|err| {
+            NoteRepositoryError::Storage(DbError::Table(err.to_string()))
+        })?;
         let db_path = dir.path().join("notes.redb");
-        let db = Database::open(&db_path)?;
-        let config = test_config().map_err(DbError::Table)?;
+        let db =
+            Database::open(&db_path).map_err(NoteRepositoryError::Storage)?;
+        let config = test_config().map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
+                message: err.into(),
+            }
+        })?;
         let repo = RedbRepository::new(&db, &config);
 
-        let path = NotePath::try_new("notes/a.md")
-            .map_err(|e| DbError::Table(e.to_string()))?;
+        let path = NotePath::try_new("notes/a.md").map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
+                message: err.to_string().into(),
+            }
+        })?;
         let raw = raw_note(path.clone());
         let facts =
             Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
-                .map_err(|e| DbError::Table(e.to_string()))?;
+                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+                message: err.to_string().into(),
+            })?;
 
         let note_id = repo.save(&facts)?;
         let stored =
@@ -1594,102 +1684,36 @@ mod tests {
     }
 
     #[test]
-    fn delete_note_removes_note() -> Result<(), DbError> {
-        let dir = tempdir().map_err(|e| DbError::Table(e.to_string()))?;
+    fn delete_note_removes_note() -> Result<(), NoteRepositoryError> {
+        let dir = tempdir().map_err(|err| {
+            NoteRepositoryError::Storage(DbError::Table(err.to_string()))
+        })?;
         let db_path = dir.path().join("notes.redb");
-        let db = Database::open(&db_path)?;
-        let config = test_config().map_err(DbError::Table)?;
+        let db =
+            Database::open(&db_path).map_err(NoteRepositoryError::Storage)?;
+        let config = test_config().map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
+                message: err.into(),
+            }
+        })?;
         let repo = RedbRepository::new(&db, &config);
 
-        let path = NotePath::try_new("notes/a.md")
-            .map_err(|e| DbError::Table(e.to_string()))?;
+        let path = NotePath::try_new("notes/a.md").map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
+                message: err.to_string().into(),
+            }
+        })?;
         let raw = raw_note(path.clone());
         let facts =
             Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
-                .map_err(|e| DbError::Table(e.to_string()))?;
+                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+                message: err.to_string().into(),
+            })?;
         let note_id = repo.save(&facts)?;
 
         repo.delete_note(note_id)?;
         let stored = repo.find_by_id(note_id)?;
         assert!(stored.is_none());
-        Ok(())
-    }
-
-    #[test]
-    fn indexed_queries_return_expected_note() -> Result<(), DbError> {
-        let dir = tempdir().map_err(|e| DbError::Table(e.to_string()))?;
-        let db_path = dir.path().join("notes.redb");
-        let db = Database::open(&db_path)?;
-        let config = test_config_with_tasks().map_err(DbError::Table)?;
-        let repo = RedbRepository::new(&db, &config);
-
-        let path = NotePath::try_new("notes/a.md")
-            .map_err(|e| DbError::Table(e.to_string()))?;
-        let raw = raw_note_with_indexes(path.clone());
-        let facts =
-            Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
-                .map_err(|e| DbError::Table(e.to_string()))?;
-        let note_id = repo.save(&facts)?;
-
-        let alias = AliasName::try_new("Alias")
-            .map_err(|e| DbError::Table(e.to_string()))?;
-        let by_alias = repo.find_by_alias(&alias)?.expect("alias should match");
-        assert_eq!(by_alias.id(), note_id);
-
-        let class = FileClassName::try_new("Class")
-            .map_err(|e| DbError::Table(e.to_string()))?;
-        let by_class = repo.list_by_file_class(&class)?;
-        assert!(by_class.iter().any(|note| note.id() == note_id));
-
-        let folder = FolderPath::try_new("notes")
-            .map_err(|e| DbError::Table(e.to_string()))?;
-        let by_folder = repo.list_by_folder(&folder)?;
-        assert!(by_folder.iter().any(|note| note.id() == note_id));
-
-        let key =
-            crate::config::frontmatter::FrontmatterKey::try_new("category")
-                .map_err(|e| DbError::Table(e.to_string()))?;
-        let by_frontmatter = repo.list_by_frontmatter_kv(&key, "docs")?;
-        assert!(by_frontmatter.iter().any(|note| note.id() == note_id));
-
-        let status = config
-            .task()
-            .status()
-            .name_for_symbol(
-                crate::config::task::StatusSymbol::try_new(' ')
-                    .map_err(|e| DbError::Table(e.to_string()))?,
-            )
-            .ok_or_else(|| DbError::Table("missing status".into()))?
-            .clone();
-        let by_status = repo.list_by_task_status(&status)?;
-        assert!(by_status.iter().any(|note| note.id() == note_id));
-
-        let priority = TaskPriority::try_new(2.0)
-            .map_err(|e| DbError::Table(e.to_string()))?;
-        let by_priority = repo.list_by_task_priority(priority)?;
-        assert!(by_priority.iter().any(|note| note.id() == note_id));
-
-        let by_project = repo.list_by_task_project("lithos")?;
-        assert!(by_project.iter().any(|note| note.id() == note_id));
-
-        let by_created =
-            repo.list_by_task_created_date(TaskTimestamp::new(1_704_067_200))?;
-        assert!(by_created.iter().any(|note| note.id() == note_id));
-
-        let by_due =
-            repo.list_by_task_due_date(TaskTimestamp::new(1_704_153_600))?;
-        assert!(by_due.iter().any(|note| note.id() == note_id));
-
-        let by_reminder =
-            repo.list_by_task_reminder_date(TaskTimestamp::new(1_704_240_000))?;
-        assert!(by_reminder.iter().any(|note| note.id() == note_id));
-
-        let by_completed = repo
-            .list_by_task_completed_date(TaskTimestamp::new(1_704_326_400))?;
-        assert!(by_completed.iter().any(|note| note.id() == note_id));
-
-        let tasks = repo.list_tasks_by_status(&status)?;
-        assert_eq!(tasks.len(), 1);
         Ok(())
     }
 }

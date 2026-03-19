@@ -119,7 +119,7 @@ impl Link {
     /// Creates a new embedded content reference (wiki embed).
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if the target is empty.
+    /// Returns [`LinkError`] if the target is empty.
     #[inline]
     pub fn try_new_embed(
         target: Target,
@@ -127,7 +127,7 @@ impl Link {
         alias: Option<&str>,
         anchor: Option<Anchor>,
         position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, LinkError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
         let alias = Self::parse_alias(alias)?;
@@ -144,14 +144,14 @@ impl Link {
     /// Creates a new embedded content reference from markdown image syntax.
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if validation fails.
+    /// Returns [`LinkError`] if validation fails.
     #[inline]
     pub fn try_new_markdown_embed(
         target: Target,
         embed_type: EmbedType,
         alias: Option<&str>,
         position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, LinkError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, None)?;
         let alias = Self::parse_alias(alias)?;
@@ -168,14 +168,14 @@ impl Link {
     /// Creates a new markdown-style link.
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if validation fails.
+    /// Returns [`LinkError`] if validation fails.
     #[inline]
     pub fn try_new_markdown_link(
         target: Target,
         alias: Option<&str>,
         anchor: Option<Anchor>,
         position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, LinkError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
         let alias = Self::parse_alias(alias)?;
@@ -192,14 +192,14 @@ impl Link {
     /// Creates a new wiki-link.
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if validation fails.
+    /// Returns [`LinkError`] if validation fails.
     #[inline]
     pub fn try_new_wikilink(
         target: Target,
         alias: Option<&str>,
         anchor: Option<Anchor>,
         position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
+    ) -> Result<Self, LinkError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
         let alias = Self::parse_alias(alias)?;
@@ -237,9 +237,9 @@ impl Link {
     /// Validates the link's internal consistency.
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if validation fails.
+    /// Returns [`LinkError`] if validation fails.
     #[inline]
-    pub fn validate(&self) -> Result<(), NoteError> {
+    pub fn validate(&self) -> Result<(), LinkError> {
         Self::validate_external_anchor(&self.target, self.anchor.as_ref())?;
         Ok(())
     }
@@ -247,16 +247,18 @@ impl Link {
     fn validate_external_anchor(
         target: &Target,
         anchor: Option<&Anchor>,
-    ) -> Result<(), NoteError> {
+    ) -> Result<(), LinkError> {
         if target.is_external() && anchor.is_some() {
-            return Err(NoteError::Link(LinkError::ExternalAnchor));
+            return Err(LinkError::ExternalAnchorNotAllowed {
+                target: target.vault_path().unwrap_or("").into(),
+            });
         }
         Ok(())
     }
 
     fn parse_alias(
         alias: Option<&str>,
-    ) -> Result<Option<LinkAlias>, NoteError> {
+    ) -> Result<Option<LinkAlias>, LinkError> {
         alias.map(LinkAlias::try_new).transpose()
     }
 
@@ -264,7 +266,7 @@ impl Link {
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics on &Target"
     )]
-    fn validate_target(target: &Target) -> Result<(), NoteError> {
+    fn validate_target(target: &Target) -> Result<(), LinkError> {
         let is_empty = match target {
             Target::External {
                 url,
@@ -278,7 +280,7 @@ impl Link {
             } => raw.is_empty(),
         };
         if is_empty {
-            return Err(NoteError::Link(LinkError::EmptyTarget));
+            return Err(LinkError::EmptyTarget);
         }
         Ok(())
     }
@@ -308,28 +310,31 @@ impl TryFrom<RawLink> for Link {
         let alias = raw.alias();
 
         match (raw.is_embed(), raw.style()) {
-            (true, RawLinkStyle::Wiki) => Link::try_new_embed(
+            (true, RawLinkStyle::Wiki) => Ok(Link::try_new_embed(
                 target,
                 EmbedType::from_extension(target_text),
                 alias,
                 anchor,
                 raw.position(),
-            ),
-            (true, RawLinkStyle::Markdown) => Link::try_new_markdown_embed(
+            )?),
+            (true, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_embed(
                 target,
                 EmbedType::from_extension(target_text),
                 alias,
                 raw.position(),
-            ),
-            (false, RawLinkStyle::Wiki) => {
-                Link::try_new_wikilink(target, alias, anchor, raw.position())
-            }
-            (false, RawLinkStyle::Markdown) => Link::try_new_markdown_link(
+            )?),
+            (false, RawLinkStyle::Wiki) => Ok(Link::try_new_wikilink(
                 target,
                 alias,
                 anchor,
                 raw.position(),
-            ),
+            )?),
+            (false, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_link(
+                target,
+                alias,
+                anchor,
+                raw.position(),
+            )?),
         }
     }
 }
@@ -662,9 +667,9 @@ impl Anchor {
     /// Creates a validated anchor from a raw string.
     ///
     /// # Errors
-    /// Returns `NoteError::Link` if the anchor is malformed.
+    /// Returns [`LinkError`] if the anchor is malformed.
     #[inline]
-    pub fn from_raw(text: &str) -> Result<Self, NoteError> {
+    pub fn from_raw(text: &str) -> Result<Self, LinkError> {
         if let Some(block_ref) = text.strip_prefix('^') {
             Self::block_ref(block_ref)
         } else {
@@ -674,7 +679,7 @@ impl Anchor {
 
     pub(crate) fn split_target_and_anchor(
         target: &str,
-    ) -> Result<(&str, Option<Anchor>), NoteError> {
+    ) -> Result<(&str, Option<Anchor>), LinkError> {
         let Some((path, anchor_text)) = target.split_once('#') else {
             return Ok((target, None));
         };
@@ -690,9 +695,9 @@ impl Anchor {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Link`] if the block reference is empty.
+    /// Returns [`LinkError`] if the block reference is empty.
     #[inline]
-    pub fn block_ref(value: &str) -> Result<Self, NoteError> {
+    pub fn block_ref(value: &str) -> Result<Self, LinkError> {
         Ok(Self::BlockRef(BlockRefId::try_new(value)?))
     }
 
@@ -700,9 +705,9 @@ impl Anchor {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Link`] if the heading text is empty.
+    /// Returns [`LinkError`] if the heading text is empty.
     #[inline]
-    pub fn heading(value: &str) -> Result<Self, NoteError> {
+    pub fn heading(value: &str) -> Result<Self, LinkError> {
         Ok(Self::Heading(HeadingText::try_new_anchor(value)?))
     }
 
@@ -852,12 +857,12 @@ impl LinkAlias {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Link`] if the alias is empty.
+    /// Returns [`LinkError::EmptyAlias`] if the alias is empty.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+    pub fn try_new(value: &str) -> Result<Self, LinkError> {
         let text = value.trim();
         if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyAlias));
+            return Err(LinkError::EmptyAlias);
         }
         Ok(Self(text.into()))
     }
@@ -892,6 +897,7 @@ mod tests {
                 Some(Anchor::heading("section")?),
                 SourceByteOffset::new(100u32),
             )
+            .map_err(Into::into)
         }
 
         pub fn embed_image() -> Result<Link, NoteError> {
@@ -902,6 +908,7 @@ mod tests {
                 None,
                 SourceByteOffset::new(200u32),
             )
+            .map_err(Into::into)
         }
     }
 

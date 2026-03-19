@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use regex::Regex;
 
 use super::{
-    error::{FrontmatterError, FrontmatterParseError},
+    error::{FrontmatterError, NoteParseError},
     value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
 };
 use crate::{
@@ -93,7 +93,7 @@ macro_rules! frontmatter_get_ops {
             &self,
             key: &FrontmatterKey,
         ) -> Result<Option<$type>, FrontmatterError> {
-            self.try_get::<$type>(key)
+            self.try_get::<$type>(key).map_err(|err| err.with_key(key.as_str()))
         }
     };
 }
@@ -109,29 +109,38 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns [`FrontmatterParseError`] if the content cannot be parsed or
+    /// Returns [`NoteParseError`] if the content cannot be parsed or
     /// converted into supported field values.
     pub(crate) fn parse(
         format: RawFrontmatterFormat,
         text: &str,
-    ) -> Result<Self, FrontmatterParseError> {
+    ) -> Result<Self, NoteParseError> {
         match format {
             RawFrontmatterFormat::Yaml => {
                 if let Ok(fm) = serde_yaml::from_str::<Self>(text) {
                     return Ok(fm);
                 }
                 let sanitized = Self::sanitize_yaml_obsidian_links(text);
-                serde_yaml::from_str(&sanitized).map_err(|_e| {
-                    FrontmatterParseError::InvalidYaml {
-                        reason: "failed to parse yaml",
+                serde_yaml::from_str(&sanitized).map_err(|e| {
+                    let location = e.location();
+                    NoteParseError::Frontmatter {
+                        format: "YAML",
+                        line: location.as_ref().map(serde_yaml::Location::line),
+                        column: location
+                            .as_ref()
+                            .map(serde_yaml::Location::column),
+                        reason: e.to_string().into(),
                     }
                 })
             }
-            RawFrontmatterFormat::Toml => toml::from_str(text).map_err(|_e| {
-                FrontmatterParseError::InvalidToml {
-                    reason: "failed to parse toml",
-                }
-            }),
+            RawFrontmatterFormat::Toml => {
+                toml::from_str(text).map_err(|e| NoteParseError::Frontmatter {
+                    format: "TOML",
+                    line: None,
+                    column: None,
+                    reason: e.to_string().into(),
+                })
+            }
         }
     }
 
@@ -226,7 +235,7 @@ impl Frontmatter {
         };
         T::try_from_value(value)
             .map(Some)
-            .map_err(|err| FrontmatterError::from(err).with_key(key.as_str()))
+            .map_err(|err| err.with_key(key.as_str()))
     }
 
     /// Strictly extracts a required typed value from frontmatter.
@@ -257,9 +266,11 @@ impl Frontmatter {
         &self,
         key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError> {
-        self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.as_str().into(),
-        })
+        self.try_get(key)?
+            .ok_or_else(|| FrontmatterError::KeyMissing {
+                key: key.as_str().into(),
+            })
+            .map_err(|err| err.with_key(key.as_str()))
     }
 
     /// Strictly extracts a *borrowed* typed value from frontmatter.
@@ -300,7 +311,7 @@ impl Frontmatter {
         };
         T::try_from_value_ref(value)
             .map(Some)
-            .map_err(|err| FrontmatterError::from(err).with_key(key.as_str()))
+            .map_err(|err| err.with_key(key.as_str()))
     }
 
     /// Returns the title of the note, using the configured title key.
@@ -384,7 +395,7 @@ impl Frontmatter {
 }
 
 impl TryFrom<RawFrontmatter> for Frontmatter {
-    type Error = FrontmatterParseError;
+    type Error = NoteParseError;
 
     #[inline]
     fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
@@ -895,11 +906,10 @@ mod tests {
             assert!(
                 matches!(
                     &result,
-                    Err(FrontmatterError::ArrayElementTypeMismatch {
+                    Err(FrontmatterError::TypeMismatch {
                         key: error_key,
-                        index: 1,
                         expected: "string",
-                        actual: "number",
+                        ..
                     }) if error_key.as_ref() == "aliases"
                 ),
                 "strict extraction should fail: {result:?}"
@@ -936,7 +946,7 @@ mod tests {
             assert!(
                 matches!(
                     &result,
-                    Err(FrontmatterError::Missing { key: error_key })
+                    Err(FrontmatterError::KeyMissing { key: error_key })
                         if error_key.as_ref() == "missing"
                 ),
                 "missing key should error: {result:?}"

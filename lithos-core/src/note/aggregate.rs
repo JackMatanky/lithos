@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::{
     config::aggregate::Config,
     note::{
-        error::{NoteError, NoteMetadataError},
+        error::{FrontmatterError, NoteError},
         frontmatter::Frontmatter,
         heading::Heading,
         inline_fields::InlineField,
@@ -132,12 +132,16 @@ impl AliasName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the alias is empty or only
+    /// Returns [`FrontmatterError::InvalidAlias`] if the alias is empty or only
     /// whitespace.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
-            return Err(NoteError::Metadata(NoteMetadataError::AliasEmpty));
+            return Err(FrontmatterError::InvalidAlias {
+                value: value.into(),
+                reason: "alias cannot be empty",
+            }
+            .into());
         }
         Ok(Self(value.trim().into()))
     }
@@ -172,12 +176,16 @@ impl FileClassName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the class is empty or only
-    /// whitespace.
+    /// Returns [`FrontmatterError::InvalidFileClass`] if the class is empty or
+    /// only whitespace.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
-            return Err(NoteError::Metadata(NoteMetadataError::FileClassEmpty));
+            return Err(FrontmatterError::InvalidFileClass {
+                value: value.into(),
+                reason: "file class cannot be empty",
+            }
+            .into());
         }
         Ok(Self(value.trim().into()))
     }

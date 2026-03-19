@@ -1,317 +1,516 @@
-//! Error types for note domain and persistence operations.
+//! Error types for the note domain and ingestion pipeline.
+//!
+//! This module defines a phase-oriented error taxonomy that matches the
+//! note lifecycle: Ingestion → Parsing → Domain Validation → Persistence →
+//! Orchestration.
+
+use std::path::PathBuf;
 
 use super::{aggregate::NoteId, paths::NotePath};
 
-/// Note-related errors.
-///
-/// This enum covers domain-level errors related to parsing, validation,
-/// and consistency of note ingest artifacts and projections.
+/// Top-level umbrella for all domain-related errors in the note module.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteError {
-    /// Note already exists.
-    #[error("note already exists: {0}")]
-    AlreadyExists(NotePath),
-
-    /// Frontmatter parsing error.
-    #[error("frontmatter error: {0}")]
-    Frontmatter(#[from] FrontmatterParseError),
-
-    /// Frontmatter access/extraction error.
+    /// Errors surfaced when validating or parsing tags.
     #[error(transparent)]
-    FrontmatterAccess(#[from] FrontmatterError),
-
-    /// Note path is invalid.
-    #[error("invalid note path: {0}")]
-    InvalidPath(Box<str>),
-
-    /// Link parsing error.
-    #[error("link error: {0}")]
-    Link(#[from] LinkError),
-
-    /// Note metadata validation error.
-    #[error("note metadata error: {0}")]
-    Metadata(#[from] NoteMetadataError),
-
-    /// Configuration validation error.
-    #[error("config error: {0}")]
-    Config(#[from] crate::config::error::ConfigError),
-
-    /// Note not found.
-    #[error("note not found: {0}")]
-    NotFound(NoteId),
-
-    /// Storage error.
-    #[error("storage error: {0}")]
-    Storage(Box<str>),
-
-    /// Tag error.
-    #[error("tag error: {0}")]
     Tag(#[from] TagError),
 
-    /// Task error.
-    #[error("task error: {0}")]
+    /// Errors surfaced when validating or parsing tasks.
+    #[error(transparent)]
     Task(#[from] TaskError),
 
-    /// List nesting depth is out of range.
-    #[error("list depth out of range: {depth}")]
-    ListDepthOutOfRange {
-        /// The observed list depth.
-        depth: usize,
-        /// Conversion error details.
-        reason: &'static str,
-    },
+    /// Errors surfaced when validating or parsing links.
+    #[error(transparent)]
+    Link(#[from] LinkError),
 
-    /// Structural error within a note.
-    #[error("note structure error: {0}")]
-    Structure(&'static str),
+    /// Errors surfaced when validating note headings.
+    #[error(transparent)]
+    Heading(#[from] HeadingError),
+
+    /// Errors surfaced when validating list nesting.
+    #[error(transparent)]
+    List(#[from] ListError),
+
+    /// Internal structural errors related to source positions.
+    #[error(transparent)]
+    Structure(#[from] StructureError),
+
+    /// Errors occurring during the parsing phase.
+    #[error(transparent)]
+    Parse(#[from] NoteParseError),
+
+    /// Errors related to frontmatter access or validation.
+    #[error(transparent)]
+    Frontmatter(#[from] FrontmatterError),
+
+    /// Configuration-related errors.
+    #[error(transparent)]
+    Config(#[from] crate::config::error::ConfigError),
+
+    /// Filesystem and path-related errors.
+    #[error(transparent)]
+    File(#[from] NoteFileError),
 }
 
-/// Errors surfaced during note ingestion (file + parse + validation).
+/// Errors occurring when bridging the physical vault to raw markdown facts.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteIngestError {
-    /// Source I/O or parsing error.
-    #[error("source error: {0}")]
-    Source(Box<str>),
+    /// Filesystem-level errors.
+    #[error(transparent)]
+    File(#[from] NoteFileError),
 
-    /// Domain validation error.
+    /// Markdown or frontmatter syntax errors.
+    #[error(transparent)]
+    Parse(#[from] NoteParseError),
+
+    /// Domain validation failure immediately following ingestion.
     #[error(transparent)]
     Domain(#[from] NoteError),
 }
 
-impl From<NoteIngestError> for NoteError {
-    #[inline]
-    fn from(error: NoteIngestError) -> Self {
-        match error {
-            NoteIngestError::Source(message) => NoteError::Storage(message),
-            NoteIngestError::Domain(error) => error,
-        }
-    }
-}
-
-impl From<crate::fs::error::ParseError> for NoteIngestError {
-    #[inline]
-    fn from(error: crate::fs::error::ParseError) -> Self {
-        NoteIngestError::Source(error.to_string().into())
-    }
-}
-
-/// Errors surfaced when validating or parsing tags.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+/// Filesystem and vault-boundary errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum TagError {
-    /// Tag does not start with '#'.
-    #[error("tag must start with #")]
-    MissingHash,
-    /// Tag is empty after the hash.
-    #[error("tag cannot be empty")]
-    EmptyTag,
-    /// Tag contains an empty path segment.
-    #[error("empty tag segment")]
-    EmptySegment,
-    /// Tag segment contains invalid characters.
+pub enum NoteFileError {
+    /// Attempted to access a file outside the vault root.
+    #[error("access denied: path '{path}' is outside the vault root")]
+    VaultRootEscape {
+        /// The problematic path.
+        path: PathBuf,
+    },
+
+    /// File does not have a supported extension (only .md allowed).
     #[error(
-        "invalid tag segment '{segment}': only alphanumeric, underscore, and \
-         hyphen allowed"
+        "unsupported extension for '{path}': expected .md, found '{found}'"
     )]
-    InvalidSegment {
-        /// The invalid segment text.
-        segment: Box<str>,
+    UnsupportedExtension {
+        /// The problematic path.
+        path: Box<str>,
+        /// The extension found.
+        found: Box<str>,
+    },
+
+    /// Logical path validation failure.
+    #[error("invalid note path '{path}': {reason}")]
+    InvalidPath {
+        /// The raw path string.
+        path: Box<str>,
+        /// The reason for failure.
+        reason: &'static str,
+    },
+
+    /// Failure to read file content.
+    #[error("failed to read note at '{path}': {message}")]
+    ReadFailed {
+        /// The note path.
+        path: NotePath,
+        /// The error message.
+        message: Box<str>,
+    },
+
+    /// Failure to read filesystem metadata (timestamps).
+    #[error("failed to read metadata for '{path}': {message}")]
+    MetadataFailed {
+        /// The note path.
+        path: NotePath,
+        /// The error message.
+        message: Box<str>,
     },
 }
 
-/// Errors surfaced when validating or parsing tasks.
+/// Markdown and frontmatter syntax errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteParseError {
+    /// Markdown extraction logic failure.
+    #[error("markdown error at line {line}, col {column}: {reason}")]
+    Markdown {
+        /// Line number (1-based).
+        line: usize,
+        /// Column number (1-based).
+        column: usize,
+        /// The reason for failure.
+        reason: Box<str>,
+    },
+
+    /// Frontmatter syntax failure (YAML/TOML).
+    #[error(
+        "invalid {format} frontmatter (line {line:?}, col {column:?}): \
+         {reason}"
+    )]
+    Frontmatter {
+        /// The format (YAML or TOML).
+        format: &'static str,
+        /// Optional line number.
+        line: Option<usize>,
+        /// Optional column number.
+        column: Option<usize>,
+        /// The error reason.
+        reason: Box<str>,
+    },
+
+    /// Note content exceeds maximum supported size.
+    #[error("source too large: {size} bytes (limit: {limit})")]
+    SourceTooLarge {
+        /// Actual size in bytes.
+        size: usize,
+        /// Maximum supported size.
+        limit: usize,
+    },
+
+    /// Content is not valid UTF-8.
+    #[error("invalid UTF-8 encoding in note: {path}")]
+    Encoding {
+        /// The note path.
+        path: NotePath,
+    },
+}
+
+/// Persistence and repository interface errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteRepositoryError {
+    /// Note not found by ID.
+    #[error("note not found: {id}")]
+    NotFound {
+        /// The requested note ID.
+        id: NoteId,
+    },
+
+    /// Note not found by path.
+    #[error("note not found at path: {path}")]
+    NotFoundByPath {
+        /// The requested note path.
+        path: NotePath,
+    },
+
+    /// Uniqueness conflict (e.g. path already exists).
+    #[error("persistence conflict: note already exists at {path}")]
+    AlreadyExists {
+        /// The conflicting path.
+        path: NotePath,
+    },
+
+    /// Database constraint or logic violation.
+    #[error("storage constraint violation: {message}")]
+    ConstraintViolation {
+        /// The error message.
+        message: Box<str>,
+    },
+
+    /// Stored data is corrupt or fails domain validation.
+    #[error("data corruption in note {id}: {reason}")]
+    Corruption {
+        /// The note ID.
+        id: NoteId,
+        /// The corruption reason.
+        reason: Box<str>,
+    },
+
+    /// Path exists but maps to a different stable ID.
+    #[error("identity conflict: path '{path}' is already bound to ID {id}")]
+    IdentityConflict {
+        /// The existing note ID.
+        id: NoteId,
+        /// The conflicting path.
+        path: NotePath,
+    },
+
+    /// Projection bloat prevention.
+    #[error(
+        "resource limit exceeded: {context} has {current} items (limit: \
+         {limit})"
+    )]
+    ResourceLimitExceeded {
+        /// Current item count.
+        current: usize,
+        /// Limit enforced.
+        limit: usize,
+        /// Boundary context.
+        context: &'static str,
+    },
+
+    /// Low-level database failure.
+    #[error("storage error: {0}")]
+    Storage(#[from] crate::db::DbError),
+}
+
+/// Orchestration errors coordination the full pipeline.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteLoadError {
+    /// Ingestion failed.
+    #[error("ingestion failed: {0}")]
+    Ingestion(#[from] NoteIngestError),
+
+    /// Domain validation failed.
+    #[error("validation failed: {0}")]
+    Validation(#[from] NoteError),
+
+    /// Persistence failed.
+    #[error("persistence failed: {0}")]
+    Persistence(#[from] NoteRepositoryError),
+}
+
+// --- Sub-Domain Logic Errors ---
+
+/// Errors related to hierarchical tag validation.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TagError {
+    /// Tag must start with '#'.
+    #[error("tag must start with '#'")]
+    MissingHash,
+
+    /// Tag is empty after the hash.
+    #[error("tag cannot be empty")]
+    EmptyTag,
+
+    /// Tag contains an empty segment (e.g. `##`).
+    #[error("tag contains an empty segment")]
+    EmptySegment,
+
+    /// Tag segment contains invalid characters.
+    #[error("invalid tag segment '{segment}': {reason}")]
+    InvalidSegment {
+        /// The invalid segment text.
+        segment: Box<str>,
+        /// The validation reason.
+        reason: &'static str,
+    },
+}
+
+/// Errors related to task extraction and validation.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum TaskError {
     /// Task text is empty after trimming.
     #[error("task text cannot be empty")]
     EmptyText,
-    /// Task field key is empty after trimming.
-    #[error("task field key cannot be empty")]
-    FieldKeyEmpty,
-    /// Task field key contains invalid characters.
-    #[error("task field key must be ASCII alphanumeric, '_' or '-'")]
-    FieldKeyInvalidChars,
-    /// Checkbox status symbol is not recognized in the config.
+
+    /// Checkbox status symbol is unrecognized.
     #[error("unrecognized status symbol: '{symbol}'")]
-    UnrecognizedStatusSymbol {
+    UnrecognizedStatus {
         /// The raw status symbol.
         symbol: char,
     },
-    /// Checkbox status symbol is invalid.
-    #[error("invalid status symbol '{symbol}': {reason}")]
-    InvalidStatusSymbol {
-        /// The raw status symbol.
-        symbol: char,
-        /// Validation failure details.
+
+    /// Task priority is non-finite.
+    #[error("invalid priority value {value}: must be finite")]
+    InvalidPriority {
+        /// The invalid numeric value.
+        value: f64,
+    },
+
+    /// Task metadata field failed validation.
+    #[error("invalid metadata field '{key}': {reason}")]
+    InvalidMetadataField {
+        /// The metadata key.
+        key: Box<str>,
+        /// The failure reason.
         reason: &'static str,
     },
-    /// Task date field is not parseable.
+
+    /// Task date field failed parsing.
     #[error("invalid date for field '{keyword}': {reason}")]
     InvalidDate {
         /// The field keyword.
         keyword: Box<str>,
-        /// Parse error details.
-        reason: &'static str,
-    },
-    /// Task date field contains an invalid time.
-    #[error("invalid time for date in field '{keyword}'")]
-    InvalidDateTime {
-        /// The field keyword.
-        keyword: Box<str>,
-    },
-    /// Task metadata field failed validation.
-    #[error("invalid metadata field '{keyword}': {reason}")]
-    InvalidMetadataField {
-        /// The field keyword.
-        keyword: Box<str>,
-        /// Validation failure details.
-        reason: &'static str,
-    },
-    /// Task metadata integer value is invalid.
-    #[error("invalid integer value '{raw}': {reason}")]
-    InvalidInteger {
-        /// The raw value string.
+        /// The raw date string.
         raw: Box<str>,
-        /// Parse error details.
-        reason: &'static str,
-    },
-    /// Task metadata float value is invalid.
-    #[error("invalid float value '{raw}': {reason}")]
-    InvalidFloat {
-        /// The raw value string.
-        raw: Box<str>,
-        /// Parse error details.
-        reason: &'static str,
-    },
-    /// Task priority value is invalid.
-    #[error("invalid task priority: {reason}")]
-    InvalidPriority {
-        /// Validation failure details.
+        /// The failure reason.
         reason: &'static str,
     },
 }
 
-/// Errors surfaced when validating or parsing links.
+/// Errors related to link and anchor validation.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LinkError {
     /// Link target is empty.
     #[error("link target cannot be empty")]
     EmptyTarget,
-    /// External links cannot contain anchors.
-    #[error("external links cannot have anchors")]
-    ExternalAnchor,
+
     /// Heading anchor text is empty.
     #[error("heading anchor cannot be empty")]
     EmptyHeadingAnchor,
+
     /// Block reference anchor text is empty.
     #[error("block reference anchor cannot be empty")]
     EmptyBlockRefAnchor,
+
+    /// Link target has invalid format.
+    #[error("invalid link target format: {target}")]
+    InvalidTarget {
+        /// The problematic target.
+        target: Box<str>,
+    },
+
+    /// External links cannot contain anchors.
+    #[error("external links cannot contain anchors (found in '{target}')")]
+    ExternalAnchorNotAllowed {
+        /// The problematic target.
+        target: Box<str>,
+    },
+
     /// Link alias text is empty.
     #[error("link alias cannot be empty")]
     EmptyAlias,
+
+    /// Circular link reference detected.
+    #[error("circular reference detected: {target}")]
+    CircularReference {
+        /// The target involved in the cycle.
+        target: Box<str>,
+    },
 }
 
-/// Errors surfaced when validating note metadata values.
+/// Errors related to heading validation.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum NoteMetadataError {
-    /// Alias name is empty.
-    #[error("alias name cannot be empty")]
-    AliasEmpty,
-    /// File class name is empty.
-    #[error("file class cannot be empty")]
-    FileClassEmpty,
-    /// Folder path is empty.
-    #[error("folder path cannot be empty")]
-    FolderEmpty,
-    /// Heading text is empty.
-    #[error("heading text cannot be empty")]
-    HeadingTextEmpty,
+pub enum HeadingError {
+    /// Heading level is outside the 1-6 range.
+    #[error("invalid heading level {level}: must be between 1 and 6")]
+    InvalidLevel {
+        /// The invalid level.
+        level: u32,
+    },
+
+    /// Heading text content is empty.
+    #[error("heading content cannot be empty")]
+    EmptyContent,
 }
 
-/// Errors surfaced by Note command operations.
-///
-/// Combines domain errors with low-level storage errors.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+/// Errors related to list structure limits.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum NoteCommandError {
-    /// Domain validation error.
-    #[error(transparent)]
-    Domain(#[from] NoteError),
-
-    /// Storage operation error.
-    #[error(transparent)]
-    Storage(#[from] crate::db::DbError),
+pub enum ListError {
+    /// List nesting exceeds internal limits.
+    #[error(
+        "maximum list nesting depth exceeded (depth: {current}, limit: \
+         {limit})"
+    )]
+    MaxNestingExceeded {
+        /// Observed depth.
+        current: usize,
+        /// Limit enforced.
+        limit: usize,
+    },
 }
 
-/// Errors surfaced by Note query operations.
-///
-/// Combines domain errors with low-level storage errors.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+/// Errors related to source offsets and block identifiers.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum NoteQueryError {
-    /// Domain validation error.
-    #[error(transparent)]
-    Domain(#[from] NoteError),
+pub enum StructureError {
+    /// Resulting offset exceeds u32 range.
+    #[error("source offset {offset} overflow by {delta}")]
+    OffsetOverflow {
+        /// Base offset.
+        offset: usize,
+        /// Increment delta.
+        delta: usize,
+    },
 
-    /// Storage operation error.
-    #[error(transparent)]
-    Storage(#[from] crate::db::DbError),
+    /// Offset exceeds source buffer bounds.
+    #[error(
+        "source offset {offset} out of bounds (source length: {source_len})"
+    )]
+    OutOfBounds {
+        /// Problematic offset.
+        offset: usize,
+        /// Total buffer length.
+        source_len: usize,
+    },
+
+    /// Range has start > end.
+    #[error("invalid source range: start {start} > end {end}")]
+    InvalidRange {
+        /// Range start.
+        start: usize,
+        /// Range end.
+        end: usize,
+    },
+
+    /// Line number is zero or invalid.
+    #[error("invalid line number: {line} (must be >= 1)")]
+    InvalidLine {
+        /// The problematic line number.
+        line: u32,
+    },
+
+    /// Column number is zero or invalid.
+    #[error("invalid column number: {column} (must be >= 1)")]
+    InvalidColumn {
+        /// The problematic column number.
+        column: u32,
+    },
+
+    /// Block identifier format is invalid.
+    #[error(
+        "invalid block identifier '{id}': must be alphanumeric and start with \
+         ^"
+    )]
+    InvalidBlockId {
+        /// The problematic identifier.
+        id: Box<str>,
+    },
+
+    /// Block identifier is not unique within the note.
+    #[error("duplicate block identifier '{id}' within the same note")]
+    DuplicateBlockId {
+        /// The duplicate identifier.
+        id: Box<str>,
+    },
 }
 
-/// Errors surfaced by strict metadata accessors (frontmatter and tasks).
+/// Errors related to frontmatter validation and access.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FrontmatterError {
-    /// A required key was missing from the map.
-    #[error("missing frontmatter key: {key}")]
-    Missing {
+    /// Alias validation failure.
+    #[error("invalid alias '{value}': {reason}")]
+    InvalidAlias {
+        /// The alias value.
+        value: Box<str>,
+        /// The failure reason.
+        reason: &'static str,
+    },
+
+    /// File class validation failure.
+    #[error("invalid file class '{value}': {reason}")]
+    InvalidFileClass {
+        /// The class value.
+        value: Box<str>,
+        /// The failure reason.
+        reason: &'static str,
+    },
+
+    /// A required key was missing.
+    #[error("missing required key: {key}")]
+    KeyMissing {
         /// The missing key.
         key: Box<str>,
     },
 
-    /// A key exists, but the value has an unexpected runtime type.
-    #[error(
-        "frontmatter key '{key}' has wrong type (expected {expected}, got \
-         {actual})"
-    )]
+    /// Value type does not match expectation.
+    #[error("type mismatch for key '{key}': expected {expected}, got {actual}")]
     TypeMismatch {
-        /// The key that was requested.
+        /// The field key.
         key: Box<str>,
-        /// The expected type description.
+        /// Expected type name.
         expected: &'static str,
-        /// The actual runtime type.
+        /// Actual type name.
         actual: &'static str,
     },
 
-    /// A key exists and is an array, but at least one element has the wrong
-    /// type.
-    #[error(
-        "frontmatter key '{key}' has wrong array element type at index \
-         {index} (expected {expected}, got {actual})"
-    )]
-    ArrayElementTypeMismatch {
-        /// The key that was requested.
-        key: Box<str>,
-        /// The index of the first mismatched array element.
-        index: usize,
-        /// The expected element type.
-        expected: &'static str,
-        /// The actual element type.
-        actual: &'static str,
-    },
-
-    /// A key exists and is a date timestamp, but the timestamp is not
-    /// representable as a UTC datetime.
-    #[error("frontmatter key '{key}' has invalid date timestamp: {timestamp}")]
+    /// Date field contains an unrepresentable timestamp.
+    #[error("invalid date timestamp for key '{key}': {timestamp}")]
     InvalidDateTimestamp {
-        /// The key that was requested.
+        /// The field key.
         key: Box<str>,
-        /// The invalid timestamp.
+        /// The raw timestamp.
         timestamp: i64,
     },
 }
@@ -322,14 +521,10 @@ impl FrontmatterError {
     #[must_use]
     pub fn with_key(mut self, field_key: &str) -> Self {
         match self {
-            Self::Missing {
+            Self::KeyMissing {
                 ref mut key,
             }
             | Self::TypeMismatch {
-                ref mut key,
-                ..
-            }
-            | Self::ArrayElementTypeMismatch {
                 ref mut key,
                 ..
             }
@@ -341,147 +536,35 @@ impl FrontmatterError {
                     *key = field_key.into();
                 }
             }
+            Self::InvalidAlias {
+                ..
+            }
+            | Self::InvalidFileClass {
+                ..
+            } => {}
         }
         self
     }
 }
 
-/// Unified error type for [`super::value::FieldValue`] operations.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FieldValueError {
-    /// Type mismatch between expected and actual value.
-    #[error("type mismatch: expected {expected}, found {actual}")]
-    TypeMismatch {
-        /// Expected value type.
-        expected: &'static str,
-        /// Actual value type.
-        actual: &'static str,
-    },
-    /// Invalid date timestamp.
-    #[error("invalid date timestamp: {timestamp}")]
-    InvalidDateTimestamp {
-        /// The problematic timestamp.
-        timestamp: i64,
-    },
-    /// Array element type mismatch.
-    #[error(
-        "array element type mismatch at index {index}: expected {expected}, \
-         found {actual}"
-    )]
-    ArrayElementTypeMismatch {
-        /// Index of the problematic element.
-        index: usize,
-        /// Expected element type.
-        expected: &'static str,
-        /// Actual element type.
-        actual: &'static str,
-    },
-}
+// --- Conversions ---
 
-impl From<FieldValueError> for FrontmatterError {
+impl From<crate::db::DbError> for NoteLoadError {
     #[inline]
-    fn from(error: FieldValueError) -> Self {
-        match error {
-            FieldValueError::TypeMismatch {
-                expected,
-                actual,
-            } => Self::TypeMismatch {
-                key: "".into(),
-                expected,
-                actual,
-            },
-            FieldValueError::InvalidDateTimestamp {
-                timestamp,
-            } => Self::InvalidDateTimestamp {
-                key: "".into(),
-                timestamp,
-            },
-            FieldValueError::ArrayElementTypeMismatch {
-                index,
-                expected,
-                actual,
-            } => Self::ArrayElementTypeMismatch {
-                key: "".into(),
-                index,
-                expected,
-                actual,
-            },
-        }
+    fn from(err: crate::db::DbError) -> Self {
+        NoteLoadError::Persistence(NoteRepositoryError::Storage(err))
     }
 }
 
-/// Errors surfaced when parsing frontmatter blocks.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FrontmatterParseError {
-    /// YAML frontmatter could not be parsed.
-    #[error("invalid YAML: {reason}")]
-    InvalidYaml {
-        /// Parse error details.
-        reason: &'static str,
-    },
-    /// TOML frontmatter could not be parsed.
-    #[error("invalid TOML: {reason}")]
-    InvalidToml {
-        /// Parse error details.
-        reason: &'static str,
-    },
-    /// Frontmatter must be a YAML mapping.
-    #[error("frontmatter must be a YAML mapping")]
-    NotYamlMapping,
-    /// Frontmatter must be a TOML table.
-    #[error("frontmatter must be a TOML table")]
-    NotTomlTable,
-    /// YAML map contained a non-string key.
-    #[error("non-string key")]
-    NonStringKey,
-}
-
-#[cfg(test)]
-mod tests {
-    use rstest::rstest;
-
-    use super::{super::aggregate::NoteId, *};
-
-    #[test]
-    fn note_error_is_send_and_sync() {
-        fn is_send_sync<T: Send + Sync>() {}
-        is_send_sync::<NoteError>();
-    }
-
-    #[rstest]
-    #[case(NoteError::InvalidPath("test.md".into()))]
-    #[case(NoteError::NotFound(NoteId::new()))]
-    #[case(NoteError::AlreadyExists(
-        NotePath::try_new("test.md").expect("valid path")
-    ))]
-    #[case(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))]
-    #[case(NoteError::Config(
-        crate::config::error::ConfigError::ValidationFailed {
-            field: "frontmatter_key".into(),
-            message: "empty".into(),
+impl From<crate::fs::error::ParseError> for NoteIngestError {
+    #[inline]
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        #[expect(clippy::unwrap_used, reason = "Static dummy path is valid")]
+        let dummy_path = NotePath::try_new("vault.md").unwrap();
+        NoteFileError::ReadFailed {
+            path: dummy_path,
+            message: err.to_string().into(),
         }
-    ))]
-    #[case(NoteError::Frontmatter(FrontmatterParseError::NotYamlMapping))]
-    #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
-        key: "title".into(),
-    }))]
-    #[case(NoteError::Link(LinkError::EmptyTarget))]
-    #[case(NoteError::Tag(TagError::MissingHash))]
-    #[case(NoteError::Task(TaskError::EmptyText))]
-    #[case(NoteError::Task(TaskError::InvalidPriority {
-        reason: "not finite",
-    }))]
-    #[case(NoteError::ListDepthOutOfRange {
-        depth: 300,
-        reason: "out of range",
-    })]
-    #[case(NoteError::Storage("io error".into()))]
-    fn note_error_display_is_comprehensive(#[case] error: NoteError) {
-        assert!(
-            !error.to_string().is_empty(),
-            "Error {error:?} should have non-empty display message"
-        );
+        .into()
     }
 }

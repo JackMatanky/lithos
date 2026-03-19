@@ -15,7 +15,7 @@ use pulldown_cmark::{
 };
 
 use crate::note::{
-    error::NoteIngestError,
+    error::{NoteIngestError, NoteParseError},
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
@@ -79,8 +79,12 @@ impl MarkdownParser {
         let scanner = NoteScanner::default();
         let mut pool = StringPool::new();
 
-        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
-            NoteIngestError::Source("source length out of range".into())
+        let source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
+            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
+            NoteParseError::SourceTooLarge {
+                size: markdown.len(),
+                limit: u32::MAX as usize,
+            }
         })?;
         let source_hash = blake3::hash(markdown.as_bytes())
             .to_hex()
@@ -119,7 +123,16 @@ impl MarkdownParser {
 
         for (event, range) in iter {
             let start_pos = SourceByteOffset::try_from_usize(range.start)
-                .map_err(NoteIngestError::Domain)?;
+                .map_err(|_err| {
+                    #[expect(
+                        clippy::as_conversions,
+                        reason = "u32::MAX fits in usize"
+                    )]
+                    NoteParseError::SourceTooLarge {
+                        size: range.start,
+                        limit: u32::MAX as usize,
+                    }
+                })?;
 
             if Self::handle_metadata(
                 event.clone(),

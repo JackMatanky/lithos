@@ -6,33 +6,15 @@
 
 use crate::{
     config::aggregate::Config,
-    db::DbError,
     note::{
         aggregate::{Note, NoteId, RawNoteContext},
-        error::{NoteError, NoteIngestError},
+        error::{NoteLoadError, NoteRepositoryError},
         parser,
         paths::NotePath,
         raw::RawNote,
         storage::Repository,
     },
 };
-
-/// Errors that can occur during note loading and orchestration.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum LoadError {
-    /// Ingestion (file reading or parsing) failed.
-    #[error("ingestion error: {0}")]
-    Ingestion(#[from] NoteIngestError),
-
-    /// Domain conversion (normalization) failed.
-    #[error("domain error: {0}")]
-    Domain(#[from] NoteError),
-
-    /// Persistence or database operation failed.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
-}
 
 /// Thin orchestration service for note parsing and persistence.
 ///
@@ -44,7 +26,7 @@ pub enum LoadError {
 /// 4. Saving the finalized facts back to storage.
 pub struct Loader<'repo, 'config, R>
 where
-    R: Repository<Error = DbError>,
+    R: Repository<Error = NoteRepositoryError>,
 {
     repository: &'repo R,
     config: &'config Config,
@@ -52,7 +34,7 @@ where
 
 impl<'repo, 'config, R> Loader<'repo, 'config, R>
 where
-    R: Repository<Error = DbError>,
+    R: Repository<Error = NoteRepositoryError>,
 {
     /// Create a new `Loader` using the provided repository and configuration.
     #[inline]
@@ -73,7 +55,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] if:
+    /// Returns [`NoteLoadError`] if:
     /// - Markdown parsing fails.
     /// - Domain normalization fails.
     /// - Database persistence fails.
@@ -84,7 +66,7 @@ where
         markdown: &str,
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
-    ) -> Result<NoteId, LoadError> {
+    ) -> Result<NoteId, NoteLoadError> {
         let raw_note = parser::MarkdownParser::parse(
             markdown,
             path.clone(),
@@ -101,9 +83,12 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] if storage or domain conversion fails.
+    /// Returns [`NoteLoadError`] if storage or domain conversion fails.
     #[inline]
-    pub fn load_raw(&self, raw_note: &RawNote) -> Result<NoteId, LoadError> {
+    pub fn load_raw(
+        &self,
+        raw_note: &RawNote,
+    ) -> Result<NoteId, NoteLoadError> {
         let note_id = self
             .repository
             .find_by_path(raw_note.path())?
@@ -130,9 +115,9 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] if the database operation fails.
+    /// Returns [`NoteLoadError`] if the database operation fails.
     #[inline]
-    pub fn record_deleted_note(&self, id: NoteId) -> Result<(), LoadError> {
+    pub fn record_deleted_note(&self, id: NoteId) -> Result<(), NoteLoadError> {
         self.repository.delete_note(id)?;
         Ok(())
     }

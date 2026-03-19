@@ -18,7 +18,7 @@ use std::ops::Deref;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::{NoteError, TagError};
+use super::error::TagError;
 
 /// Represents a hierarchical tag with segments.
 ///
@@ -54,12 +54,11 @@ impl Tag {
     /// - No empty segments allowed
     ///
     /// # Errors
-    /// Returns [`NoteError::Tag`] if validation fails.
+    /// Returns [`TagError`] if validation fails.
     #[inline]
-    pub fn try_new(input: &str) -> Result<Self, NoteError> {
-        let tag_path_str = input
-            .strip_prefix('#')
-            .ok_or(NoteError::Tag(TagError::MissingHash))?;
+    pub fn try_new(input: &str) -> Result<Self, TagError> {
+        let tag_path_str =
+            input.strip_prefix('#').ok_or(TagError::MissingHash)?;
 
         let path = TagPath::try_new(tag_path_str)?;
 
@@ -72,17 +71,17 @@ impl Tag {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Tag`] if validation fails.
+    /// Returns [`TagError`] if validation fails.
     #[inline]
-    pub fn try_from_token(token: &str) -> Result<Self, NoteError> {
+    pub fn try_from_token(token: &str) -> Result<Self, TagError> {
         let token = token.trim();
         if token.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
+            return Err(TagError::EmptyTag);
         }
 
         let tag_path_str = token.strip_prefix('#').unwrap_or(token);
         if tag_path_str.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
+            return Err(TagError::EmptyTag);
         }
 
         let path = TagPath::try_new(tag_path_str)?;
@@ -114,21 +113,22 @@ struct TagPath(Box<str>);
 
 impl TagPath {
     #[inline]
-    fn try_new(path: &str) -> Result<Self, NoteError> {
+    fn try_new(path: &str) -> Result<Self, TagError> {
         if path.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
+            return Err(TagError::EmptyTag);
         }
         for segment in path.split('/') {
             if segment.is_empty() {
-                return Err(NoteError::Tag(TagError::EmptySegment));
+                return Err(TagError::EmptySegment);
             }
             if !segment
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
             {
-                return Err(NoteError::Tag(TagError::InvalidSegment {
+                return Err(TagError::InvalidSegment {
                     segment: segment.into(),
-                }));
+                    reason: "only alphanumeric, underscore, and hyphen allowed",
+                });
             }
         }
         Ok(Self(path.into()))
@@ -184,9 +184,10 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
+        use crate::note::error::NoteError;
 
         fn tag_with_project_path() -> Result<Tag, NoteError> {
-            Tag::try_new("#work/project")
+            Tag::try_new("#work/project").map_err(Into::into)
         }
 
         #[test]
@@ -243,21 +244,19 @@ mod tests {
         }
 
         #[rstest]
-        #[case::missing_hash("invalid", NoteError::Tag(TagError::MissingHash))]
-        #[case::only_hash("#", NoteError::Tag(TagError::EmptyTag))]
-        #[case::empty_segments(
-            "#work//urgent",
-            NoteError::Tag(TagError::EmptySegment)
-        )]
+        #[case::missing_hash("invalid", TagError::MissingHash)]
+        #[case::only_hash("#", TagError::EmptyTag)]
+        #[case::empty_segments("#work//urgent", TagError::EmptySegment)]
         #[case::invalid_chars(
             "#work project",
-            NoteError::Tag(TagError::InvalidSegment {
+            TagError::InvalidSegment {
                 segment: "work project".into(),
-            })
+                reason: "only alphanumeric, underscore, and hyphen allowed",
+            }
         )]
         fn tag_parsing_rejects_invalid_inputs(
             #[case] input: &str,
-            #[case] expected: NoteError,
+            #[case] expected: TagError,
         ) {
             let result = Tag::try_new(input);
             assert_eq!(
