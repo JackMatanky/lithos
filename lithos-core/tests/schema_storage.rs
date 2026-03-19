@@ -116,14 +116,29 @@ fn schema_find_by_name() -> TestResult {
 
 /// Test that multiple schemas can be listed.
 ///
-/// **IGNORED**: This test triggers rkyv "subtree pointer overran range" error
-/// when deserializing multiple schemas in the same test process. This is a
-/// known limitation (see `INCREMENTAL_RESOLUTION_SUMMARY.md`) - archived
-/// pointers are only valid in the address space where they were created.
-/// Multi-schema listing should be tested via CLI-level end-to-end tests in
-/// separate processes.
+/// **IGNORED**: Critical bug in rkyv deserialization when multiple schemas
+/// exist.
+///
+/// ## Investigation Summary
+///
+/// Symptoms:
+/// - Error: "subtree pointer overran range" with size field corruption
+/// - Saving 2nd schema corrupts 1st schema's serialized data
+/// - Fails even when saving individually (not just batch save)
+/// - Fails in SAME session (not a reopen/address space issue)
+///
+/// Root Cause:
+/// - Saving second schema overwrites or corrupts first schema's rkyv bytes
+/// - Likely issue in redb table write or rkyv `HashMap` serialization
+/// - Size fields become invalid (often `u32::MAX` or corrupted values)
+///
+/// This is a critical data corruption bug that requires deep investigation
+/// of the redb/rkyv integration layer. For now, the Loader integration tests
+/// verify multi-schema functionality end-to-end (which works correctly).
+///
+/// Tracked for Phase 7 investigation.
 #[test]
-#[ignore = "rkyv address space limitation - requires CLI-level e2e test"]
+#[ignore = "Critical rkyv data corruption bug when multiple schemas exist"]
 #[expect(
     clippy::similar_names,
     reason = "Test code - prop1/props1 naming intentional for parallel \
@@ -165,10 +180,11 @@ fn schema_list() -> TestResult {
 
 /// Test that schemas can be deleted.
 ///
-/// **IGNORED**: `delete_schema()` is not yet implemented - marked as
-/// `unimplemented!()`.
+/// **IGNORED**: Implementation in progress. Issue: `SCHEMA_CHILDREN` multimap
+/// uses `&[u8]` values but batch API expects `&str`. Needs API update or
+/// different approach.
 #[test]
-#[ignore = "delete_schema not yet implemented"]
+#[ignore = "Implementation blocked by multimap API type mismatch"]
 fn schema_delete() -> TestResult {
     let test_db = TestDb::new()?;
     let repository = setup_repository(test_db.db());

@@ -728,13 +728,17 @@ impl Repository for RedbRepository {
     )]
     #[inline]
     fn delete_schema(&self, _id: SchemaId) -> Result<(), Self::Error> {
-        // Schema deletion is complex and not yet needed - requires:
-        // 1. Load schema to get its name
-        // 2. Delete from SCHEMA_BY_ID
-        // 3. Delete from SCHEMA_ID_BY_NAME
-        // 4. Delete from SCHEMA_PARENT
-        // 5. Remove from SCHEMA_CHILDREN multimap entries
-        unimplemented!("Schema deletion with proper cleanup of all references")
+        // Schema deletion requires API updates for multimap operations.
+        // The SCHEMA_CHILDREN multimap uses `&[u8]` values, but the batch API
+        // multimap_remove() expects `&str` values, causing a type mismatch.
+        //
+        // Implementation blocked pending:
+        // 1. Add multimap_remove variant for `&[u8]` values, OR
+        // 2. Change SCHEMA_CHILDREN table to use `&str` values, OR
+        // 3. Use direct database API instead of batch API
+        //
+        // For now, deletion is not critical for Phase 6.3.
+        unimplemented!("Schema deletion blocked by multimap API type mismatch")
     }
 
     // ========================================================================

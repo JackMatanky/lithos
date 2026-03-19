@@ -37,6 +37,10 @@ pub enum SchemaError {
     #[error("schema not found: {0}")]
     NotFound(String),
 
+    /// Schema not found by ID.
+    #[error("Schema not found by ID: {0}")]
+    SchemaNotFound(crate::schema::aggregate::SchemaId),
+
     /// Schema already exists.
     #[error("schema already exists: {0}")]
     AlreadyExists(String),
