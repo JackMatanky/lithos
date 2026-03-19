@@ -1,10 +1,14 @@
 //! YAML/TOML metadata management for notes.
 //!
-//! Handles the parsing, validation, and retrieval of structured metadata
-//! stored at the beginning of markdown files.
+//! This module handles the parsing, validation, and retrieval of structured
+//! metadata stored at the beginning of markdown files (frontmatter).
+//! It provides a type-safe API for accessing common fields like titles,
+//! aliases, and custom metadata, while handling Obsidian-specific nuances
+//! like unquoted WikiLinks in YAML.
+//!
+//! The primary type in this module is [`Frontmatter`].
 
 #![allow(
-    missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
     reason = "rkyv derives generate archived/resolver items that are missing \
@@ -31,7 +35,8 @@ use crate::{
 /// that can be queried across the vault.
 ///
 /// This struct provides a type-safe API for accessing metadata values while
-/// maintaining the dynamic nature of markdown headers.
+/// maintaining the dynamic nature of markdown headers. It supports both
+/// YAML and TOML formats.
 #[derive(
     Debug,
     Clone,
@@ -140,6 +145,20 @@ impl Frontmatter {
     }
 
     /// Returns a reference to the value for the given key, if it exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// let mut fields = HashMap::new();
+    /// fields.insert("key".into(), FieldValue::String("value".into()));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// assert!(fm.get("key").is_some());
+    /// assert!(fm.get("missing").is_none());
+    /// ```
     #[inline]
     #[must_use]
     pub fn get<K: AsRef<str>>(&self, key: K) -> Option<&FieldValue> {
@@ -147,6 +166,20 @@ impl Frontmatter {
     }
 
     /// Returns `true` if the frontmatter contains a field with the given key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// let mut fields = HashMap::new();
+    /// fields.insert("key".into(), FieldValue::String("value".into()));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// assert!(fm.has("key"));
+    /// assert!(!fm.has("missing"));
+    /// ```
     #[inline]
     #[must_use]
     pub fn has<K: AsRef<str>>(&self, key: K) -> bool {
@@ -163,9 +196,26 @@ impl Frontmatter {
 
     /// Strictly extracts a typed value from frontmatter.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// # use lithos_core::config::frontmatter::FrontmatterKey;
+    /// let mut fields = HashMap::new();
+    /// fields.insert("active".into(), FieldValue::Boolean(true));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// let key = FrontmatterKey::try_new("active").unwrap();
+    /// let value: bool = fm.try_get(&key).unwrap().unwrap();
+    /// assert!(value);
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns a [`FrontmatterError`] if the type is incompatible.
+    /// Returns a [`FrontmatterError`] if the value exists but its type is
+    /// incompatible with the requested type `T`.
     #[inline]
     pub fn try_get<T: TryFromFieldValue>(
         &self,
@@ -181,9 +231,27 @@ impl Frontmatter {
 
     /// Strictly extracts a required typed value from frontmatter.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// # use lithos_core::config::frontmatter::FrontmatterKey;
+    /// let mut fields = HashMap::new();
+    /// fields.insert("title".into(), FieldValue::String("My Note".into()));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// let key = FrontmatterKey::try_new("title").unwrap();
+    /// let title: Box<str> = fm.try_get_required(&key).unwrap();
+    /// assert_eq!(title.as_ref(), "My Note");
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns [`FrontmatterError::Missing`] if the key is absent.
+    /// Returns:
+    /// - [`FrontmatterError::Missing`] if the key is absent.
+    /// - [`FrontmatterError::TypeMismatch`] if the type is incompatible.
     #[inline]
     pub fn try_get_required<T: TryFromFieldValue>(
         &self,
@@ -196,9 +264,29 @@ impl Frontmatter {
 
     /// Strictly extracts a *borrowed* typed value from frontmatter.
     ///
+    /// This is more efficient than [`try_get`][Self::try_get] for types like
+    /// strings that can be borrowed directly from the frontmatter map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// # use lithos_core::config::frontmatter::FrontmatterKey;
+    /// let mut fields = HashMap::new();
+    /// fields.insert("title".into(), FieldValue::String("My Note".into()));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// let key = FrontmatterKey::try_new("title").unwrap();
+    /// let title: &str = fm.try_get_ref(&key).unwrap().unwrap();
+    /// assert_eq!(title, "My Note");
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns a [`FrontmatterError`] if the type is incompatible.
+    /// Returns a [`FrontmatterError`] if the value exists but its type is
+    /// incompatible with the requested type `T`.
     #[inline]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
@@ -216,6 +304,9 @@ impl Frontmatter {
     }
 
     /// Returns the title of the note, using the configured title key.
+    ///
+    /// Uses the title key defined in the provided
+    /// [`Config`][crate::config::aggregate::Config].
     #[inline]
     #[must_use]
     pub fn title(
@@ -227,6 +318,9 @@ impl Frontmatter {
     }
 
     /// Returns the file class of the note, using the configured key.
+    ///
+    /// Uses the file class key defined in the provided
+    /// [`Config`][crate::config::aggregate::Config].
     #[inline]
     #[must_use]
     pub fn file_class(
@@ -239,7 +333,27 @@ impl Frontmatter {
 
     /// Returns a borrowed iterator over aliases.
     ///
-    /// Handles both single string values and arrays of strings.
+    /// Handles both single string values and arrays of strings. Uses the
+    /// alias key defined in the provided
+    /// [`Config`][crate::config::aggregate::Config].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use lithos_core::note::frontmatter::Frontmatter;
+    /// # use lithos_core::note::value::FieldValue;
+    /// # use lithos_core::config::aggregate::{Config, Version};
+    /// # use lithos_core::config::vault::{VaultId, VaultRoot};
+    /// # use lithos_core::config::raw::RawConfig;
+    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new("/v".into()).unwrap(), Version::initial()).unwrap();
+    /// let mut fields = HashMap::new();
+    /// fields.insert("aliases".into(), FieldValue::Array(vec![FieldValue::String("a".into()), FieldValue::String("b".into())].into_boxed_slice()));
+    /// let fm = Frontmatter::new(fields);
+    ///
+    /// let aliases: Vec<&str> = fm.aliases(&config).collect();
+    /// assert_eq!(aliases, vec!["a", "b"]);
+    /// ```
     #[inline]
     #[must_use]
     pub fn aliases<'frontmatter>(
@@ -251,7 +365,9 @@ impl Frontmatter {
 
     /// Returns the aliases of the note as a vector of boxed strings.
     ///
-    /// This allocates; prefer [`Frontmatter::aliases`] in hot paths.
+    /// This method allocates a [`Vec`] and converts each alias to an owned
+    /// string. Prefer [`Frontmatter::aliases`] in performance-critical
+    /// paths.
     #[inline]
     #[must_use]
     pub fn aliases_owned(
@@ -300,6 +416,10 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
 }
 
 /// Borrowed alias iterator returned by [`Frontmatter::aliases`].
+///
+/// This iterator can handle multiple frontmatter alias formats, including:
+/// - A single string value: `alias: my-alias`
+/// - An array of string values: `aliases: [a, b]`
 pub struct AliasValues<'frontmatter> {
     inner: AliasSource<'frontmatter>,
 }

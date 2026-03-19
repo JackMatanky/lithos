@@ -3,6 +3,10 @@
 //! This module consolidates all manual text-scanning logic (tags, inline
 //! fields, block references) into a single boundary, reducing redundant
 //! passes over markdown content and ensuring heuristic consistency.
+//!
+//! The primary entry point is [`NoteScanner`], which handles scanning blocks
+//! for multiple types of artifacts. It also provides specialized scanners
+//! like [`TaskMarkerScanner`] for low-level parsing of task-specific syntax.
 
 use crate::note::{
     error::NoteError,
@@ -11,6 +15,9 @@ use crate::note::{
 };
 
 /// A unified result from the scanning process.
+///
+/// This enum represents the different types of metadata artifacts that can be
+/// extracted from a text block.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ScanArtifact {
@@ -23,6 +30,10 @@ pub enum ScanArtifact {
 }
 
 /// Specialized scanner for extracting metadata artifacts from markdown.
+///
+/// `NoteScanner` is designed to be used within the ingestion pipeline to
+/// identify Obsidian-style metadata that isn't natively handled by standard
+/// markdown parsers.
 #[derive(Debug, Clone, Default)]
 pub struct NoteScanner {
     /// Emoji markers used for date/status fields.
@@ -31,6 +42,8 @@ pub struct NoteScanner {
 
 impl NoteScanner {
     /// Create a new scanner with the provided emoji markers.
+    ///
+    /// Emoji markers allow for compact inline fields like `📅 2024-03-19`.
     ///
     /// # Examples
     ///
@@ -48,6 +61,12 @@ impl NoteScanner {
 
     /// Scans a block of text for tags and inline fields.
     ///
+    /// This method performs multiple passes over the text to identify:
+    /// 1. Hierarchical tags (e.g., `#work/project`)
+    /// 2. Delimited inline fields (e.g., `[key:: value]` or `(key:: value)`)
+    /// 3. Emoji-prefixed fields (if configured)
+    /// 4. Bare inline fields (e.g., `key:: value` at the start of a line)
+    ///
     /// # Examples
     ///
     /// ```
@@ -57,12 +76,14 @@ impl NoteScanner {
     /// let artifacts = scanner
     ///     .scan_block("Check #tag [key:: value]", SourceByteOffset::new(0))
     ///     .unwrap();
+    ///
     /// assert_eq!(artifacts.len(), 2);
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if position mapping fails.
+    /// Returns [`NoteError`] if position mapping fails due to overflow or
+    /// invalid UTF-8 boundaries.
     #[inline]
     pub fn scan_block(
         &self,
@@ -314,11 +335,33 @@ impl NoteScanner {
         Ok(())
     }
 
-    /// Scans the tail of a text block for a block reference (e.g., ` ^id`).
+    /// Scans the tail of a text block for an Obsidian-style block reference.
+    ///
+    /// Block references are identifiers at the very end of a block (like
+    /// paragraphs or list items) that allow linking directly to that content.
+    /// They follow the pattern ` ^block-id`, where `block-id` is
+    /// alphanumeric and preceded by a space and a caret.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::NoteScanner;
+    /// # use lithos_core::note::position::SourceByteOffset;
+    /// let scanner = NoteScanner::default();
+    /// let text = "Important point ^my-id";
+    ///
+    /// let block_ref = scanner
+    ///     .scan_tail_for_block_ref(text, SourceByteOffset::new(0))
+    ///     .unwrap()
+    ///     .unwrap();
+    ///
+    /// assert_eq!(block_ref.id(), "my-id");
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if position calculation fails.
+    /// Returns [`NoteError`] if position calculation for the caret exceeds
+    /// byte bounds.
     #[inline]
     pub fn scan_tail_for_block_ref(
         &self,
@@ -348,13 +391,18 @@ impl NoteScanner {
     }
 }
 
-/// Helper for scanning task markers from source.
+/// Helper for scanning task markers from markdown source.
+///
+/// Task markers like `- [ ]` or `1. [x]` are often handled at the block level
+/// by markdown parsers, but the specific marker character (e.g., '/', '!', '>')
+/// is needed for custom status tracking. This scanner provides precise
+/// extraction of these markers.
 pub struct TaskMarkerScanner<'source> {
     chars: std::iter::Peekable<std::str::Chars<'source>>,
 }
 
 impl<'source> TaskMarkerScanner<'source> {
-    /// Create a new scanner for a single line of text.
+    /// Create a new scanner for a single line of text or a block.
     #[inline]
     #[must_use]
     pub fn new(line: &'source str) -> Self {
@@ -363,7 +411,21 @@ impl<'source> TaskMarkerScanner<'source> {
         }
     }
 
-    /// Scans for a task marker (e.g., `- [ ]`).
+    /// Scans for the next task marker in the current source.
+    ///
+    /// This method skips leading whitespace and identifies list markers
+    /// (e.g., `-`, `*`, `+`, `1.`) followed by a checkbox `[ ]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::TaskMarkerScanner;
+    /// let mut scanner = TaskMarkerScanner::new("- [x] My task");
+    /// assert_eq!(scanner.scan(), Some('x'));
+    ///
+    /// let mut scanner = TaskMarkerScanner::new("  1. [/] Ongoing");
+    /// assert_eq!(scanner.scan(), Some('/'));
+    /// ```
     #[inline]
     pub fn scan(&mut self) -> Option<char> {
         self.skip_whitespace();
@@ -411,6 +473,10 @@ impl<'source> TaskMarkerScanner<'source> {
     }
 
     /// Converts a raw marker character into a [`RawTaskKind`].
+    ///
+    /// Maps space to [`RawTaskKind::Unchecked`], 'x'/'X' to
+    /// [`RawTaskKind::Checked`], and all other characters to
+    /// [`RawTaskKind::Other`].
     #[inline]
     #[must_use]
     pub fn raw_task_kind_from_marker(marker: char) -> RawTaskKind {
@@ -422,6 +488,22 @@ impl<'source> TaskMarkerScanner<'source> {
     }
 
     /// Helper to find a task marker in source at a given position.
+    ///
+    /// This is useful when the ingestion process identifies a block as a task
+    /// and needs to extract the precise marker character from the original
+    /// source.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::TaskMarkerScanner;
+    /// # use lithos_core::note::position::SourceByteOffset;
+    /// let source = "  - [!] Alert";
+    /// let marker =
+    ///     TaskMarkerScanner::find_in_source(source, SourceByteOffset::new(0));
+    ///
+    /// assert_eq!(marker, Some('!'));
+    /// ```
     #[inline]
     #[must_use]
     pub fn find_in_source(

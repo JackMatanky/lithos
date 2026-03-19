@@ -1,6 +1,13 @@
 //! Note aggregate root and identity types.
-
-#![expect(missing_docs, reason = "Public API documented at type level")]
+//!
+//! This module defines the core domain entities for the Note context.
+//! It handles the transition from unvalidated extraction artifacts
+//! ([`RawNote`][crate::note::raw::RawNote]) to validated, normalized domain
+//! facts ([`Note`]).
+//!
+//! The [`Note`] struct serves as the aggregate root, consolidating all
+//! metadata, structure, and content facts for a single markdown file in
+//! the vault.
 
 use std::{fmt, time::SystemTime};
 
@@ -29,6 +36,9 @@ use crate::{
 };
 
 /// Stable identifier for a note.
+///
+/// `NoteId` uses UUID v7 by default to provide time-ordered,
+/// collision-resistant identifiers that are efficient for database indexing.
 #[derive(
     Debug,
     Clone,
@@ -47,6 +57,13 @@ pub struct NoteId(Uuid);
 
 impl NoteId {
     /// Creates a new random note identifier (UUID v7).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::aggregate::NoteId;
+    /// let id = NoteId::new();
+    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -55,7 +72,16 @@ impl NoteId {
 
     /// Parses a note identifier from a string.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::aggregate::NoteId;
+    /// let id_str = "018e5462-8e31-7000-8000-000000000000";
+    /// let id = NoteId::parse(id_str).unwrap();
+    /// ```
+    ///
     /// # Errors
+    ///
     /// Returns [`uuid::Error`] if the string is not a valid UUID.
     #[inline]
     pub fn parse(id: &str) -> Result<Self, uuid::Error> {
@@ -92,6 +118,9 @@ impl From<NoteId> for Uuid {
 }
 
 /// Validated alias name for a note.
+///
+/// Aliases provide alternative names for notes, often used in `WikiLinks`
+/// for easier discovery and linking.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -103,7 +132,8 @@ impl AliasName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the alias is empty.
+    /// Returns [`NoteError::Metadata`] if the alias is empty or only
+    /// whitespace.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
@@ -128,6 +158,9 @@ impl fmt::Display for AliasName {
 }
 
 /// Validated file class name for a note.
+///
+/// File classes are a convention used in many Obsidian workflows to categorize
+/// notes and apply specific schema rules.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -139,7 +172,8 @@ impl FileClassName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Metadata`] if the class is empty.
+    /// Returns [`NoteError::Metadata`] if the class is empty or only
+    /// whitespace.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
@@ -164,6 +198,13 @@ impl fmt::Display for FileClassName {
 }
 
 /// Normalized note facts derived from raw extraction output.
+///
+/// `Note` is the primary domain entity representing a fully processed markdown
+/// note. It contains all extracted metadata, structure, and content facts
+/// in a validated and query-optimized format.
+///
+/// This struct is optimized for storage density using `Box<[T]>` for immutable
+/// collections and supports zero-copy deserialization via `rkyv`.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -191,6 +232,9 @@ pub struct Note {
 
 impl Note {
     /// Construct normalized facts from ingestion output.
+    ///
+    /// This method is primarily used by the [`RawNoteContext`] conversion
+    /// to build a `Note` from a [`RawNote`].
     #[expect(
         clippy::too_many_arguments,
         reason = "Note aggregates all note facts in one struct"
@@ -258,6 +302,10 @@ impl Note {
         }
     }
 
+    /// Creates a minimal `Note` shell with the given ID and path.
+    ///
+    /// This is useful for representing a note before its content has been
+    /// fully ingested or when performing lightweight operations.
     #[inline]
     #[must_use]
     pub fn new(id: NoteId, path: NotePath) -> Self {
@@ -282,6 +330,7 @@ impl Note {
         }
     }
 
+    /// Returns the stable identifier for this note.
     #[inline]
     #[must_use]
     pub const fn id(&self) -> NoteId {
@@ -296,96 +345,113 @@ impl Note {
         self
     }
 
+    /// Returns the vault-relative path of the note.
     #[inline]
     #[must_use]
     pub fn path(&self) -> &NotePath {
         &self.path
     }
 
+    /// Returns the BLAKE3 hash of the note's source content.
     #[inline]
     #[must_use]
     pub fn source_hash(&self) -> &str {
         &self.source_hash
     }
 
+    /// Returns the size of the note's source content in bytes.
     #[inline]
     #[must_use]
     pub const fn source_bytes(&self) -> u64 {
         self.source_bytes
     }
 
+    /// Returns the filesystem creation time of the note, if available.
     #[inline]
     #[must_use]
     pub const fn created_at(&self) -> Option<SystemTime> {
         self.created_at
     }
 
+    /// Returns the filesystem last modification time of the note, if available.
     #[inline]
     #[must_use]
     pub const fn modified_at(&self) -> Option<SystemTime> {
         self.modified_at
     }
 
+    /// Returns the parsed frontmatter of the note, if present.
     #[inline]
     #[must_use]
     pub fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
     }
 
+    /// Returns the collection of links extracted from the note's frontmatter.
     #[inline]
     #[must_use]
     pub fn frontmatter_links(&self) -> &[FrontmatterLink] {
         &self.frontmatter_links
     }
 
+    /// Returns the collection of reference-style link definitions.
     #[inline]
     #[must_use]
     pub fn reference_links(&self) -> &[ReferenceLink] {
         &self.reference_links
     }
 
+    /// Returns the collection of tags extracted from the note.
     #[inline]
     #[must_use]
     pub fn tags(&self) -> &[Tag] {
         &self.tags
     }
 
+    /// Returns the collection of headings found in the note.
     #[inline]
     #[must_use]
     pub fn headings(&self) -> &[Heading] {
         &self.headings
     }
 
+    /// Returns the collection of structural sections (paragraphs, lists, etc.).
     #[inline]
     #[must_use]
     pub fn sections(&self) -> &[Section] {
         &self.sections
     }
 
+    /// Returns the collection of inline links (Markdown and `WikiLinks`).
     #[inline]
     #[must_use]
     pub fn links(&self) -> &[Link] {
         &self.links
     }
 
+    /// Returns the collection of block reference identifiers.
     #[inline]
     #[must_use]
     pub fn block_refs(&self) -> &[BlockRef] {
         &self.block_refs
     }
 
+    /// Returns the collection of list items and their hierarchical
+    /// relationships.
     #[inline]
     #[must_use]
     pub fn list_items(&self) -> &[ListItemEntry] {
         &self.list_items
     }
 
+    /// Returns the collection of tasks extracted from list items.
     #[inline]
     #[must_use]
     pub fn tasks(&self) -> &[Task] {
         &self.tasks
     }
 
+    /// Returns the collection of inline metadata fields (`key:: value`).
     #[inline]
     #[must_use]
     pub fn inline_fields(&self) -> &[InlineField] {

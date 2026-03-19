@@ -1,4 +1,8 @@
-//! Note loader — parses markdown content and persists note facts.
+//! Note loader — orchestrates parsing and persistence of note facts.
+//!
+//! This module provides the [`Loader`] service, which coordinates the full
+//! pipeline from raw content to persisted domain facts. It acts as a
+//! higher-level facade over the parsing and repository layers.
 
 use crate::{
     config::aggregate::Config,
@@ -13,24 +17,31 @@ use crate::{
     },
 };
 
-/// Errors that can occur during note loading operations.
+/// Errors that can occur during note loading and orchestration.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum LoadError {
-    /// Ingestion (file listing or parsing) failed.
+    /// Ingestion (file reading or parsing) failed.
     #[error("ingestion error: {0}")]
     Ingestion(#[from] NoteIngestError),
 
-    /// Domain conversion failed.
+    /// Domain conversion (normalization) failed.
     #[error("domain error: {0}")]
     Domain(#[from] NoteError),
 
-    /// Storage command failed.
+    /// Persistence or database operation failed.
     #[error("storage error: {0}")]
     Storage(#[from] DbError),
 }
 
 /// Thin orchestration service for note parsing and persistence.
+///
+/// The `Loader` handles:
+/// 1. Parsing markdown source into raw artifacts via
+///    [`MarkdownParser`][crate::note::parser::MarkdownParser].
+/// 2. Resolving existing note IDs by path from the [`Repository`].
+/// 3. Normalizing raw artifacts into domain facts ([`Note`]).
+/// 4. Saving the finalized facts back to storage.
 pub struct Loader<'repo, 'config, R>
 where
     R: Repository<Error = DbError>,
@@ -43,7 +54,7 @@ impl<'repo, 'config, R> Loader<'repo, 'config, R>
 where
     R: Repository<Error = DbError>,
 {
-    /// Create a new `Loader` with repository and config.
+    /// Create a new `Loader` using the provided repository and configuration.
     #[inline]
     #[must_use]
     pub const fn new(repository: &'repo R, config: &'config Config) -> Self {
@@ -53,13 +64,19 @@ where
         }
     }
 
-    /// Parse markdown content and persist projections.
+    /// Parses markdown content and persists the resulting projections.
     ///
-    /// Returns the note ID that was inserted/updated.
+    /// This method performs the complete end-to-end transformation from
+    /// a string buffer to stored note facts.
+    ///
+    /// Returns the stable [`NoteId`] assigned or found for the path.
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] on parsing or storage failure.
+    /// Returns [`LoadError`] if:
+    /// - Markdown parsing fails.
+    /// - Domain normalization fails.
+    /// - Database persistence fails.
     #[inline]
     pub fn load_content(
         &self,
@@ -77,11 +94,14 @@ where
         self.load_raw(&raw_note)
     }
 
-    /// Persist projections from a raw note.
+    /// Persists note projections starting from a pre-parsed raw note.
+    ///
+    /// This method is useful when the ingestion phase has already
+    /// completed (e.g., during bulk ingestion).
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] on storage or domain conversion failure.
+    /// Returns [`LoadError`] if storage or domain conversion fails.
     #[inline]
     pub fn load_raw(&self, raw_note: &RawNote) -> Result<NoteId, LoadError> {
         let note_id = self
@@ -97,18 +117,20 @@ where
         Ok(saved_id)
     }
 
+    /// Returns a reference to the repository used by this loader.
     #[inline]
     #[must_use]
-    /// Access the repository used by this loader.
     pub const fn repository(&self) -> &'repo R {
         self.repository
     }
 
-    /// Record deletion of a stored note.
+    /// Records the deletion of a note from storage.
+    ///
+    /// This removes all structural facts associated with the given ID.
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] if persistence fails.
+    /// Returns [`LoadError`] if the database operation fails.
     #[inline]
     pub fn record_deleted_note(&self, id: NoteId) -> Result<(), LoadError> {
         self.repository.delete_note(id)?;

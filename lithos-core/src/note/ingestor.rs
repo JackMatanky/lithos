@@ -1,6 +1,12 @@
 //! Ingestor adapter for loading raw notes from the filesystem.
 //!
-//! Pure file-to-raw translation. No DB access. No ID assignment.
+//! This module provides the bridge between the physical filesystem and the
+//! logical parsing pipeline. It is responsible for reading content,
+//! extracting filesystem metadata (timestamps), and delegating to the
+//! markdown parser.
+//!
+//! The [`Ingestor`] is a pure file-to-raw translation layer. It does not
+//! interact with the database or assign stable identifiers.
 
 use std::{path::Path, time::SystemTime};
 
@@ -12,19 +18,14 @@ use crate::{
 
 /// Ingestor for loading raw markdown notes from a file source.
 ///
-/// This adapter is responsible for:
-/// - Reading markdown content from the vault
-/// - Computing the content hash
-/// - Extracting filesystem timestamps
-/// - Delegating to the parser ingestion pipeline
+/// This adapter orchestrates the low-level ingestion of a markdown file:
+/// 1. Reads raw bytes via [`FsReader`].
+/// 2. Extracts filesystem `created_at` and `modified_at` timestamps.
+/// 3. Initiates the [`MarkdownParser`][crate::note::parser::MarkdownParser]
+///    pipeline.
 ///
-/// It does NOT:
-/// - Assign IDs
-/// - Query the database
-/// - Perform domain validation
-///
-/// The ingestor stores a `&Config` reference to ensure it uses the final
-/// merged path values after config loading completes.
+/// The ingestor holds a reference to the active [`Config`] to ensure
+/// ingestion rules (like vault root resolution) are consistently applied.
 pub struct Ingestor<'config> {
     source: FsReader,
     config: &'config Config,
@@ -42,6 +43,9 @@ impl<'config> Ingestor<'config> {
     }
 
     /// Create a new ingestor using the vault root from config.
+    ///
+    /// This is the standard way to initialize an ingestor for a configured
+    /// vault.
     #[inline]
     #[must_use]
     pub fn from_config(config: &'config Config) -> Self {
@@ -49,7 +53,7 @@ impl<'config> Ingestor<'config> {
         Self::new(FsReader::new(root), config)
     }
 
-    /// Returns the underlying filesystem reader.
+    /// Returns a reference to the underlying filesystem reader.
     #[inline]
     #[must_use]
     pub fn source(&self) -> &FsReader {
@@ -58,8 +62,14 @@ impl<'config> Ingestor<'config> {
 
     /// Load and parse a note from a vault-relative path.
     ///
+    /// This method uses the internal `FsReader` to load the file content
+    /// and then runs it through the ingestion pipeline.
+    ///
     /// # Errors
-    /// Returns [`NoteIngestError`] if the file cannot be read or parsed.
+    ///
+    /// Returns [`NoteIngestError`] if:
+    /// - The file cannot be read from the source.
+    /// - The content fails to parse as valid markdown facts.
     #[inline]
     pub fn ingest_path(
         &self,
@@ -80,7 +90,12 @@ impl<'config> Ingestor<'config> {
 
     /// Load and parse a note from provided markdown content.
     ///
+    /// Use this method when the markdown content is already in memory
+    /// (e.g., from an LSP buffer) but needs to be processed as if it
+    /// came from a specific path.
+    ///
     /// # Errors
+    ///
     /// Returns [`NoteIngestError`] if the markdown cannot be parsed.
     #[inline]
     pub fn ingest_markdown(
@@ -98,7 +113,7 @@ impl<'config> Ingestor<'config> {
         )
     }
 
-    /// Returns the config used by this ingestor.
+    /// Returns the configuration used by this ingestor.
     #[inline]
     #[must_use]
     pub const fn config(&self) -> &'config Config {

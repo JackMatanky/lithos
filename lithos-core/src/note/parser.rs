@@ -1,4 +1,13 @@
 //! Markdown parser and extraction.
+//!
+//! This module provides the primary ingestion engine for Obsidian-compatible
+//! markdown files. It uses a single-pass event stream driven by
+//! `pulldown-cmark` to extract both structural components (headings, sections,
+//! lists) and specialized metadata (tags, inline fields, block references,
+//! frontmatter).
+//!
+//! The main entry point is [`MarkdownParser`].
+
 use std::time::SystemTime;
 
 use pulldown_cmark::{
@@ -17,17 +26,45 @@ use crate::note::{
     scanner::{NoteScanner, ScanArtifact, TaskMarkerScanner},
 };
 
-/// Markdown parser for extracting note facts.
+/// Markdown parser for extracting note facts and structure.
+///
+/// `MarkdownParser` is a stateless component that transforms markdown text
+/// into a [`RawNote`] containing all extracted artifacts. It is optimized
+/// for Obsidian-compatible syntax including `WikiLinks`, block references,
+/// and hierarchical tags.
 #[non_exhaustive]
 pub struct MarkdownParser;
 
 impl MarkdownParser {
     /// Parses markdown into a minimal AST and extracts raw note artifacts.
     ///
+    /// This is the primary entry point for the ingestion pipeline. It
+    /// performs a single-pass scan of the document using an event-driven
+    /// architecture to minimize memory allocations and redundant passes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::parser::MarkdownParser;
+    /// # use lithos_core::note::paths::NotePath;
+    /// let markdown = "# Hello World\nCheck [[link]] #tag";
+    /// let path = NotePath::try_new("hello.md").unwrap();
+    ///
+    /// let note = MarkdownParser::parse(markdown, path, None, None).unwrap();
+    ///
+    /// assert_eq!(note.headings().len(), 1);
+    /// assert_eq!(note.links().len(), 1);
+    /// assert_eq!(note.tags().len(), 1);
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns [`NoteIngestError`] if byte ranges cannot be represented or
-    /// extraction fails.
+    /// Returns [`NoteIngestError`] if:
+    /// - The source length exceeds the representable range of
+    ///   [`SourceByteOffset`].
+    /// - Structural extraction fails due to internal parser inconsistencies.
+    /// - Metadata extraction (tags, fields) encounters invalid position
+    ///   mapping.
     #[inline]
     #[expect(
         clippy::too_many_lines,
@@ -205,6 +242,23 @@ impl MarkdownParser {
 
     /// Returns the pulldown-cmark option set used for Obsidian-compatible
     /// parsing.
+    ///
+    /// This includes support for:
+    /// - Task lists (`- [ ]`)
+    /// - `WikiLinks` (`[[target]]`)
+    /// - Metadata blocks (YAML and Pluses)
+    /// - Heading attributes (`{#id}`)
+    /// - Tables, footnotes, strikethrough, and math.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pulldown_cmark::Options;
+    /// # use lithos_core::note::parser::MarkdownParser;
+    /// let options = MarkdownParser::obsidian_options();
+    /// assert!(options.contains(Options::ENABLE_WIKILINKS));
+    /// assert!(options.contains(Options::ENABLE_TASKLISTS));
+    /// ```
     #[inline]
     #[must_use]
     pub const fn obsidian_options() -> Options {
@@ -795,6 +849,7 @@ impl MarkdownParser {
     }
 }
 
+/// Represents a markdown block currently being parsed.
 struct ActiveBlock {
     kind: BlockKind,
     depth: u32,
@@ -804,6 +859,7 @@ struct ActiveBlock {
     task_marker: Option<bool>,
 }
 
+/// Types of blocks identified during parsing.
 #[derive(Debug, Clone, PartialEq)]
 enum BlockKind {
     Heading(u8),
@@ -814,6 +870,7 @@ enum BlockKind {
     CodeBlock,
 }
 
+/// Transient state for a link during extraction.
 struct LinkFrame {
     style: RawLinkStyle,
     is_embed: bool,
@@ -822,6 +879,7 @@ struct LinkFrame {
     alias: String,
 }
 
+/// Helper for splitting link targets into path and anchor.
 struct LinkTarget<'source>(&'source str);
 
 impl<'source> LinkTarget<'source> {
@@ -847,6 +905,7 @@ impl<'source> LinkTarget<'source> {
     }
 }
 
+/// A simple pool for reusing strings to minimize heap churn during parsing.
 struct StringPool {
     pool: Vec<String>,
 }
