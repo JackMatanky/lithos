@@ -1,61 +1,67 @@
-//! Schema error types.
+//! Schema error taxonomy for the schema pipeline.
 //!
-//! This module defines schema-specific errors using thiserror for structured
-//! error handling across ingestion, validation, resolution, and storage.
+//! This module centralizes error types produced by schema ingestion, parsing,
+//! validation, resolution, and storage. Errors are ordered from high-level
+//! pipeline wrappers ([`SchemaLoaderError`], [`SchemaIngestionError`],
+//! [`SchemaRepositoryError`]) down to domain and leaf errors
+//! ([`SchemaError`] and its variants).
+//!
+//! Use the wrapper errors at API boundaries (loader, ingestor, repository) and
+//! the domain errors when validating or resolving in-memory schema data.
 
 use std::path::PathBuf;
 
 use crate::db::DbError;
 
-/// Schema loader errors.
+/// High-level errors returned by schema loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaLoaderError {
-    /// Ingestion (file I/O or parsing) error.
+    /// Returned when ingestion (file I/O or parsing) fails.
     #[error(transparent)]
     Ingestion(#[from] SchemaIngestionError),
 
-    /// Repository (storage) error.
+    /// Returned when repository access fails.
     #[error(transparent)]
     Repository(#[from] SchemaRepositoryError),
 
-    /// Resolution error.
+    /// Returned when schema resolution fails.
     #[error(transparent)]
     Resolution(#[from] SchemaError),
 }
 
-/// Schema ingestion errors.
+/// Errors produced while reading schema files and building raw/domain models.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
-    /// File system error.
+    /// Returned when filesystem access fails.
     #[error(transparent)]
     File(#[from] SchemaFileError),
 
-    /// Parse error.
+    /// Returned when structured parsing fails.
     #[error(transparent)]
     Parse(#[from] SchemaParseError),
 
-    /// Version error.
+    /// Returned when schema version validation fails.
     #[error(transparent)]
     Version(#[from] SchemaVersionError),
 
-    /// Syntax validation error.
+    /// Returned when syntax validation fails.
     #[error(transparent)]
     Syntax(#[from] SchemaSyntaxError),
 
-    /// Storage error.
+    /// Returned when storage access fails during ingestion.
     #[error(transparent)]
     Storage(#[from] SchemaStorageError),
 
-    /// Repository error.
+    /// Returned when repository access fails during ingestion.
     #[error(transparent)]
     Repository(#[from] SchemaRepositoryError),
 
-    /// Schema validation error with path context.
+    /// Returned when schema validation fails with file context.
     #[error("schema validation failed in {path}: {source}")]
     Schema {
-        /// Path to the file.
+        /// Path to the schema file that failed validation.
         path: PathBuf,
         /// Underlying schema error.
         #[source]
@@ -63,105 +69,105 @@ pub enum SchemaIngestionError {
     },
 }
 
-/// Unified schema repository errors.
+/// Errors returned by schema repository implementations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaRepositoryError {
-    /// Storage/database error.
+    /// Returned when the underlying storage layer fails.
     #[error(transparent)]
     Storage(#[from] SchemaStorageError),
 
-    /// Domain validation error.
+    /// Returned when domain validation fails while saving or loading.
     #[error(transparent)]
     Domain(#[from] SchemaError),
 }
 
-/// Schema-related domain errors.
+/// Domain-level errors for in-memory schema validation and resolution.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaError {
-    /// Raw syntax validation error.
+    /// Returned when raw syntax validation fails.
     #[error(transparent)]
     Syntax(#[from] SchemaSyntaxError),
 
-    /// Property spec configuration error.
+    /// Returned when property specification configuration is invalid.
     #[error(transparent)]
     PropertySpec(#[from] PropertySpecError),
 
-    /// Property value validation error.
+    /// Returned when a value fails validation against a spec.
     #[error(transparent)]
     PropertyValue(#[from] PropertyValueError),
 
-    /// Property reference error.
+    /// Returned when a property reference is invalid or unresolved.
     #[error(transparent)]
     PropertyRef(#[from] PropertyRefError),
 
-    /// Property bank error.
+    /// Returned when property bank constraints are violated.
     #[error(transparent)]
     PropertyBank(#[from] PropertyBankError),
 
-    /// Inheritance error.
+    /// Returned when inheritance resolution fails.
     #[error(transparent)]
     Inheritance(#[from] SchemaInheritanceError),
 
-    /// Resolution error.
+    /// Returned when schema resolution fails outside inheritance concerns.
     #[error(transparent)]
     Resolution(#[from] SchemaResolutionError),
 }
 
-/// Schema file errors during ingestion.
+/// File-system and filename errors during ingestion.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaFileError {
-    /// I/O error reading file.
+    /// Returned when a schema file cannot be read.
     #[error("failed to read {path}: {source}")]
     Io {
-        /// Path to the file.
+        /// Path to the file that failed to read.
         path: PathBuf,
-        /// I/O error source.
+        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
 
-    /// Invalid filename or basename.
+    /// Returned when a filename or basename is invalid.
     #[error("invalid filename: {path} ({reason})")]
     InvalidFilename {
-        /// Path to the file.
+        /// Path to the file with an invalid name.
         path: PathBuf,
-        /// Reason for invalid filename.
+        /// Reason the filename was rejected.
         reason: Box<str>,
     },
 
-    /// Unsupported file format.
+    /// Returned when the file format is not supported.
     #[error("unsupported format for {path}: expected one of {supported:?}")]
     UnsupportedFormat {
-        /// Path to the file.
+        /// Path to the file with unsupported format.
         path: PathBuf,
         /// Supported formats.
         supported: Vec<Box<str>>,
     },
 
-    /// File system error not tied to a specific file.
+    /// Returned for filesystem errors not tied to a specific file.
     #[error("filesystem error: {reason}")]
     FileSystem {
-        /// Error details.
+        /// Error details from the filesystem layer.
         reason: Box<str>,
     },
 }
 
-/// Schema parsing errors during ingestion.
+/// Structured parse errors with file location context.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaParseError {
-    /// JSON parsing failed.
+    /// Returned when JSON parsing fails.
     #[error(
         "JSON parse error in {path} at line {line:?}, column {column:?}: \
          {message}"
     )]
     Json {
-        /// Path to the file.
+        /// Path to the file being parsed.
         path: PathBuf,
-        /// Error message from parser.
+        /// Parser error message.
         message: Box<str>,
         /// Line number (if available).
         line: Option<usize>,
@@ -169,15 +175,15 @@ pub enum SchemaParseError {
         column: Option<usize>,
     },
 
-    /// TOML parsing failed.
+    /// Returned when TOML parsing fails.
     #[error(
         "TOML parse error in {path} at line {line:?}, column {column:?}: \
          {message}"
     )]
     Toml {
-        /// Path to the file.
+        /// Path to the file being parsed.
         path: PathBuf,
-        /// Error message from parser.
+        /// Parser error message.
         message: Box<str>,
         /// Line number (if available).
         line: Option<usize>,
@@ -185,15 +191,15 @@ pub enum SchemaParseError {
         column: Option<usize>,
     },
 
-    /// YAML parsing failed.
+    /// Returned when YAML parsing fails.
     #[error(
         "YAML parse error in {path} at line {line:?}, column {column:?}: \
          {message}"
     )]
     Yaml {
-        /// Path to the file.
+        /// Path to the file being parsed.
         path: PathBuf,
-        /// Error message from parser.
+        /// Parser error message.
         message: Box<str>,
         /// Line number (if available).
         line: Option<usize>,
@@ -201,69 +207,69 @@ pub enum SchemaParseError {
         column: Option<usize>,
     },
 
-    /// Cached view deserialization failed.
+    /// Returned when cached view deserialization fails.
     #[error("cached view parse error in {path}: {reason}")]
     CachedView {
-        /// Path to the file.
+        /// Path to the cached view file.
         path: PathBuf,
-        /// Error details.
+        /// Deserialization error details.
         reason: Box<str>,
     },
 
-    /// Serialization failed.
+    /// Returned when serialization of a cached view fails.
     #[error("serialization error in {path}: {reason}")]
     Serialization {
-        /// Path to the file.
+        /// Path to the file being serialized.
         path: PathBuf,
-        /// Error details.
+        /// Serialization error details.
         reason: Box<str>,
     },
 }
 
-/// Schema version errors during ingestion.
+/// Schema version validation errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaVersionError {
-    /// Unsupported schema version.
+    /// Returned when the schema version is unsupported.
     #[error(
         "unsupported schema version in {path}: got '{found}', expected \
          '{expected}'"
     )]
     UnsupportedVersion {
-        /// Path to the file.
+        /// Path to the file with an unsupported version.
         path: PathBuf,
-        /// Found version.
+        /// Version found in the file.
         found: Box<str>,
-        /// Expected version.
+        /// Expected version value.
         expected: Box<str>,
     },
 }
 
-/// Schema name validation errors.
+/// Schema name validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaNameError {
-    /// Schema name cannot be empty.
+    /// Returned when the schema name is empty.
     #[error("schema name cannot be empty")]
     Empty,
 
-    /// Schema name too long.
+    /// Returned when the schema name exceeds the maximum length.
     #[error("schema name too long: {len} (max {max})")]
     TooLong {
-        /// Provided name length.
+        /// Length of the provided name.
         len: usize,
         /// Maximum allowed length.
         max: usize,
     },
 
-    /// Schema name is not valid for the expected pattern.
+    /// Returned when the schema name does not match the expected format.
     #[error("invalid schema name: {name}")]
     InvalidFormat {
         /// The invalid name.
         name: Box<str>,
     },
 
-    /// Schema name regex failed to compile.
+    /// Returned when the schema name regex fails to compile.
     #[error("invalid schema name regex: {reason}")]
     InvalidRegex {
         /// Regex error details.
@@ -271,7 +277,7 @@ pub enum SchemaNameError {
     },
 }
 
-/// Context for property name validation.
+/// Identifies where a property name was used for better diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PropertyNameContext {
@@ -279,7 +285,7 @@ pub enum PropertyNameContext {
     SchemaProperty,
     /// Property name defined in a property bank file.
     PropertyBank,
-    /// Property name used in `excludes` list.
+    /// Property name used in an excludes list.
     Exclude,
 }
 
@@ -295,21 +301,21 @@ impl std::fmt::Display for PropertyNameContext {
     }
 }
 
-/// Property name validation errors.
+/// Property name validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PropertyNameError {
-    /// Property name cannot be empty.
+    /// Returned when the property name is empty.
     #[error("property name cannot be empty ({context})")]
     Empty {
         /// Context of the property name.
         context: PropertyNameContext,
     },
 
-    /// Property name too long.
+    /// Returned when the property name exceeds the maximum length.
     #[error("property name too long: {len} (max {max}) ({context})")]
     TooLong {
-        /// Provided name length.
+        /// Length of the provided name.
         len: usize,
         /// Maximum allowed length.
         max: usize,
@@ -317,7 +323,7 @@ pub enum PropertyNameError {
         context: PropertyNameContext,
     },
 
-    /// Property name is not valid for the expected pattern.
+    /// Returned when the property name does not match the expected format.
     #[error("invalid property name: {name} ({context})")]
     InvalidFormat {
         /// The invalid name.
@@ -326,7 +332,7 @@ pub enum PropertyNameError {
         context: PropertyNameContext,
     },
 
-    /// Property name regex failed to compile.
+    /// Returned when the property name regex fails to compile.
     #[error("invalid property name regex: {reason}")]
     InvalidRegex {
         /// Regex error details.
@@ -334,35 +340,35 @@ pub enum PropertyNameError {
     },
 }
 
-/// Raw syntax validation errors for schema inputs.
+/// Syntax validation failures in raw schema inputs.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaSyntaxError {
-    /// Schema name validation error.
+    /// Returned when the schema name is invalid.
     #[error(transparent)]
     SchemaName(#[from] SchemaNameError),
 
-    /// Property name validation error.
+    /// Returned when a property name is invalid.
     #[error(transparent)]
     PropertyName(#[from] PropertyNameError),
 }
 
-/// Property spec configuration errors.
+/// Property spec configuration failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum PropertySpecError {
-    /// Date format is required but missing.
+    /// Returned when a date spec omits the required format.
     #[error("date format is required")]
     DateFormatRequired,
 
-    /// Invalid date format string.
+    /// Returned when a date format is invalid.
     #[error("invalid date format: {format}")]
     InvalidDateFormat {
         /// The invalid format string.
         format: Box<str>,
     },
 
-    /// Invalid regex pattern.
+    /// Returned when a regex pattern fails to compile.
     #[error("invalid regex pattern: {pattern} ({reason})")]
     InvalidRegex {
         /// Regex pattern string.
@@ -371,11 +377,11 @@ pub enum PropertySpecError {
         reason: Box<str>,
     },
 
-    /// Options list is empty.
+    /// Returned when an options list is empty.
     #[error("options list cannot be empty")]
     OptionsEmpty,
 
-    /// Option value does not match pattern.
+    /// Returned when an option value does not match a pattern constraint.
     #[error("option value '{value}' does not match pattern {pattern}")]
     OptionPatternMismatch {
         /// Option value.
@@ -384,18 +390,18 @@ pub enum PropertySpecError {
         pattern: Box<str>,
     },
 
-    /// Option value is empty or whitespace.
+    /// Returned when an option value is empty or whitespace.
     #[error("option value cannot be empty")]
     OptionValueEmpty,
 
-    /// Invalid directory path constraint.
+    /// Returned when a directory path constraint is invalid.
     #[error("invalid directory path: {path}")]
     InvalidDirectoryPath {
         /// The invalid directory path.
         path: Box<str>,
     },
 
-    /// Invalid numeric range configuration.
+    /// Returned when a numeric range is invalid.
     #[error("invalid range: min {min} cannot be greater than max {max}")]
     InvalidRange {
         /// Minimum value.
@@ -404,7 +410,7 @@ pub enum PropertySpecError {
         max: f64,
     },
 
-    /// Non-finite numeric constraint.
+    /// Returned when a numeric constraint is non-finite.
     #[error("{context} must be finite: {value}")]
     NonFinite {
         /// Provided value.
@@ -413,14 +419,14 @@ pub enum PropertySpecError {
         context: Box<str>,
     },
 
-    /// Invalid file class constraint.
+    /// Returned when a file class constraint is invalid.
     #[error("invalid file class: {class}")]
     InvalidFileClass {
         /// The invalid file class.
         class: Box<str>,
     },
 
-    /// Failure deserializing an archived spec.
+    /// Returned when an archived spec fails to deserialize.
     #[error("failed to deserialize {spec}: {reason}")]
     Deserialization {
         /// Spec name.
@@ -430,11 +436,11 @@ pub enum PropertySpecError {
     },
 }
 
-/// Property value validation errors.
+/// Property value validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum PropertyValueError {
-    /// Invalid type for property value.
+    /// Returned when a value has the wrong type.
     #[error("invalid type: {value} (expected: {expected})")]
     InvalidType {
         /// Provided value representation.
@@ -443,7 +449,7 @@ pub enum PropertyValueError {
         expected: Box<str>,
     },
 
-    /// Invalid enum value.
+    /// Returned when a value is not in the allowed options list.
     #[error("invalid enum value: {value} (allowed: {allowed:?})")]
     InvalidEnumValue {
         /// Provided value.
@@ -452,7 +458,7 @@ pub enum PropertyValueError {
         allowed: Vec<Box<str>>,
     },
 
-    /// Pattern mismatch.
+    /// Returned when a value does not match a pattern constraint.
     #[error("value {value} does not match pattern {pattern}")]
     PatternMismatch {
         /// Provided value.
@@ -461,7 +467,7 @@ pub enum PropertyValueError {
         pattern: Box<str>,
     },
 
-    /// Date format mismatch.
+    /// Returned when a value does not match a date format.
     #[error("value {value} does not match format {format}")]
     DateFormatMismatch {
         /// Provided value.
@@ -470,7 +476,7 @@ pub enum PropertyValueError {
         format: Box<str>,
     },
 
-    /// Number out of range.
+    /// Returned when a numeric value is out of range.
     #[error("number out of range: {value} (min: {min:?}, max: {max:?})")]
     NumberOutOfRange {
         /// Provided value.
@@ -481,7 +487,7 @@ pub enum PropertyValueError {
         max: Option<f64>,
     },
 
-    /// Invalid step value.
+    /// Returned when a numeric value does not align with the step constraint.
     #[error("invalid step value: {value} (step: {step})")]
     InvalidStepValue {
         /// Provided value.
@@ -490,7 +496,7 @@ pub enum PropertyValueError {
         step: f64,
     },
 
-    /// Non-finite numeric value.
+    /// Returned when a numeric value is non-finite.
     #[error("{context} must be finite: {value}")]
     NonFinite {
         /// Provided value.
@@ -500,11 +506,11 @@ pub enum PropertyValueError {
     },
 }
 
-/// Property reference errors for `$ref` handling.
+/// Errors for `$ref` property references.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PropertyRefError {
-    /// Invalid `$ref` format.
+    /// Returned when a `$ref` string is not in the expected format.
     #[error(
         "invalid property reference: '{reference}' (expected format: \
          property_bank#/<name>)"
@@ -514,14 +520,14 @@ pub enum PropertyRefError {
         reference: Box<str>,
     },
 
-    /// Property reference not found in property bank.
+    /// Returned when the referenced property does not exist.
     #[error("property reference not found: {reference}")]
     NotFound {
         /// The reference string.
         reference: Box<str>,
     },
 
-    /// Property type mismatch on `$ref` override.
+    /// Returned when a `$ref` override changes the property type.
     #[error(
         "cannot change property type via $ref override: expected {expected}, \
          got {actual}"
@@ -534,18 +540,18 @@ pub enum PropertyRefError {
     },
 }
 
-/// Property bank errors.
+/// Errors raised by property bank operations.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PropertyBankError {
-    /// Duplicate property name in the property bank.
+    /// Returned when a property name is defined more than once.
     #[error("duplicate property name: {name}")]
     DuplicatePropertyName {
         /// Property name.
         name: Box<str>,
     },
 
-    /// Duplicate property ID in the property bank.
+    /// Returned when a property ID is reused for a different name.
     #[error("duplicate property id: {id}")]
     DuplicatePropertyId {
         /// Property id.
@@ -553,25 +559,25 @@ pub enum PropertyBankError {
     },
 }
 
-/// Schema inheritance errors.
+/// Errors related to schema inheritance resolution.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaInheritanceError {
-    /// Parent schema not found.
+    /// Returned when a declared parent schema is missing.
     #[error("parent not found: {name}")]
     ParentNotFound {
         /// Parent schema name.
         name: Box<str>,
     },
 
-    /// Circular inheritance detected.
+    /// Returned when inheritance cycles are detected.
     #[error("circular schema inheritance detected: {name}")]
     CircularInheritance {
-        /// Schema name in the detected cycle.
+        /// Schema name involved in the cycle.
         name: Box<str>,
     },
 
-    /// Inheritance chain exceeds maximum depth.
+    /// Returned when inheritance depth exceeds the maximum.
     #[error("inheritance depth exceeded: {depth} (max: {max})")]
     DepthExceeded {
         /// Actual depth.
@@ -585,14 +591,14 @@ pub enum SchemaInheritanceError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaResolutionError {
-    /// Duplicate schema name detected in the batch.
+    /// Returned when duplicate schema names are detected.
     #[error("duplicate schema name: {name}")]
     DuplicateSchemaName {
         /// Schema name.
         name: Box<str>,
     },
 
-    /// Missing schema node during merge.
+    /// Returned when a schema node is missing during merge.
     #[error("schema node missing for id {id}")]
     MissingNode {
         /// Schema ID.
@@ -600,36 +606,36 @@ pub enum SchemaResolutionError {
     },
 }
 
-/// Schema storage errors.
+/// Storage-related errors for schema persistence.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaStorageError {
-    /// Storage/database error.
+    /// Returned when the database layer fails.
     #[error("storage error: {0}")]
     Storage(#[from] DbError),
 
-    /// Entity not found.
+    /// Returned when an expected entity is missing.
     #[error("not found: {name}")]
     NotFound {
-        /// Name or identifier.
+        /// Name or identifier for the missing entity.
         name: Box<str>,
     },
 
-    /// Data corruption detected in storage.
+    /// Returned when storage corruption is detected.
     #[error("data corruption: {reason}")]
     Corruption {
         /// Reason for corruption.
         reason: Box<str>,
     },
 
-    /// `PropertyBank` not found in database.
+    /// Returned when the property bank has not been initialized.
     #[error(
         "PropertyBank not found in database - initialize by loading schema \
          files or creating properties"
     )]
     PropertyBankNotFound,
 
-    /// Conflict during save/delete operations.
+    /// Returned when storage operations conflict.
     #[error("conflict: {reason}")]
     Conflict {
         /// Reason for the conflict.
