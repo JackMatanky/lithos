@@ -41,10 +41,6 @@
     reason = "Integration tests are top-level by default."
 )]
 #![expect(
-    clippy::indexing_slicing,
-    reason = "Integration tests assert on known-length test data."
-)]
-#![expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Test file - organize by functionality, not declaration order."
 )]
@@ -537,9 +533,11 @@ mod incremental_loading {
         let second = loader2.load()?;
 
         assert_eq!(second.len(), 1, "Second load: only changed schema");
-        assert_eq!(second[0].name().as_ref(), "task");
+        let changed_schema =
+            second.first().expect("Should have changed schema");
+        assert_eq!(changed_schema.name().as_ref(), "task");
         assert_eq!(
-            second[0].properties().len(),
+            changed_schema.properties().len(),
             2,
             "Should have 2 properties now"
         );
@@ -693,7 +691,12 @@ mod incremental_loading {
         let loader = Loader::new(repository, source, &config);
         let first = loader.load()?;
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].properties().len(), 1, "Should have 1 property");
+        let first_schema = first.first().expect("Should have first schema");
+        assert_eq!(
+            first_schema.properties().len(),
+            1,
+            "Should have 1 property"
+        );
 
         // WAIT for filesystem timing
         #[expect(
@@ -729,14 +732,16 @@ mod incremental_loading {
         let second = loader2.load()?;
 
         assert_eq!(second.len(), 1, "Should re-resolve schema");
+        let second_schema =
+            second.first().expect("Should have re-resolved schema");
         assert_eq!(
-            second[0].properties().len(),
+            second_schema.properties().len(),
             2,
             "Should have 2 properties now"
         );
 
         // VERIFY: Check that both properties resolved correctly
-        let task = &second[0];
+        let task = second_schema;
         assert!(task.properties().contains_key("title"));
         assert!(task.properties().contains_key("status"));
 

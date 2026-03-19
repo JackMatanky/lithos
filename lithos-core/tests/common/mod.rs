@@ -305,19 +305,6 @@ impl PropertyBuilder {
         self.build_with_spec(PropertySpec::Bool(BoolSpec::default()))
     }
 
-    /// Build a string property with custom spec.
-    ///
-    /// # Errors
-    /// Returns error if property name is invalid.
-    #[expect(
-        dead_code,
-        reason = "Will be used in CQRS tests with custom string specs"
-    )]
-    #[track_caller]
-    pub fn build_string(self, spec: StringSpec) -> TestResult<Property> {
-        self.build_with_spec(PropertySpec::String(spec))
-    }
-
     /// Build a string property with default spec.
     ///
     /// # Errors
@@ -489,67 +476,6 @@ impl SchemaBuilder {
 // ----------------------------------------------------------- //
 //                    Assertion Helpers                        //
 // ----------------------------------------------------------- //
-
-/// Assert that two schemas are equal, with detailed error messages.
-///
-/// Compares:
-/// - Name
-/// - Parent ID
-/// - Property count
-/// - Individual properties
-///
-/// # Panics
-/// Panics if schemas are not equal with detailed diff message.
-#[expect(dead_code, reason = "Will be used in upcoming CQRS integration tests")]
-#[track_caller]
-pub fn assert_schema_eq(
-    actual: &StoredSchema,
-    expected: &StoredSchema,
-    context: &str,
-) {
-    assert_eq!(
-        actual.name.as_ref(),
-        expected.name.as_ref(),
-        "{context}: Schema names should match"
-    );
-    assert_eq!(
-        actual.parent_id, expected.parent_id,
-        "{context}: Parent IDs should match"
-    );
-    assert_eq!(
-        actual.properties.len(),
-        expected.properties.len(),
-        "{context}: Property counts should match"
-    );
-
-    // Compare properties (sorted by name for stable comparison)
-    let mut actual_props = actual.properties.clone();
-    let mut expected_props = expected.properties.clone();
-    actual_props.sort_by(|a, b| a.name.cmp(&b.name));
-    expected_props.sort_by(|a, b| a.name.cmp(&b.name));
-
-    for (actual_prop, expected_prop) in
-        actual_props.iter().zip(expected_props.iter())
-    {
-        assert_eq!(
-            actual_prop.name.as_ref(),
-            expected_prop.name.as_ref(),
-            "{context}: Property names should match"
-        );
-        assert_eq!(
-            actual_prop.required,
-            expected_prop.required,
-            "{context}: Property '{}' optionality should match",
-            actual_prop.name.as_ref()
-        );
-        assert_eq!(
-            actual_prop.multi,
-            expected_prop.multi,
-            "{context}: Property '{}' multiplicity should match",
-            actual_prop.name.as_ref()
-        );
-    }
-}
 
 /// Assert that schema properties are sorted by name.
 ///

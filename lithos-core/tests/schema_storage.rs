@@ -509,16 +509,6 @@ mod batch_operations {
 /// Regression tests for specific bugs that were fixed.
 ///
 /// These tests ensure previously fixed bugs don't resurface.
-#[expect(
-    clippy::similar_names,
-    reason = "Regression tests intentionally use prop1/props1 pattern for \
-              parallel construction"
-)]
-#[expect(
-    clippy::shadow_unrelated,
-    reason = "Regression tests reuse variable names loaded1 to verify state \
-              at different points"
-)]
 mod regression_tests {
     use super::*;
 
@@ -615,35 +605,40 @@ mod regression_tests {
         let repository = setup_repository(test_db.db());
 
         // Create and save schema 1
-        let prop1 = PropertyBuilder::new("field1").build_string_default()?;
-        let mut props1 = HashMap::new();
-        props1.insert(prop1.name().clone(), prop1);
+        let field1_prop =
+            PropertyBuilder::new("field1").build_string_default()?;
+        let mut schema1_props = HashMap::new();
+        schema1_props.insert(field1_prop.name().clone(), field1_prop);
 
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema1")?,
             None,
             vec![],
-            props1,
+            schema1_props,
         );
         let id1 = *schema1.id();
         repository.save_schemas(&[schema1])?;
 
         // Verify schema 1 loads
-        let loaded1 = repository.find_schema_by_id(id1)?;
-        assert!(loaded1.is_some(), "Schema 1 should exist after first save");
+        let loaded_schema1 = repository.find_schema_by_id(id1)?;
+        assert!(
+            loaded_schema1.is_some(),
+            "Schema 1 should exist after first save"
+        );
 
         // Create and save schema 2 separately
-        let prop2 = PropertyBuilder::new("field2").build_string_default()?;
-        let mut props2 = HashMap::new();
-        props2.insert(prop2.name().clone(), prop2);
+        let field2_prop =
+            PropertyBuilder::new("field2").build_string_default()?;
+        let mut schema2_props = HashMap::new();
+        schema2_props.insert(field2_prop.name().clone(), field2_prop);
 
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema2")?,
             None,
             vec![],
-            props2,
+            schema2_props,
         );
         let id2 = *schema2.id();
         repository.save_schemas(&[schema2])?;
@@ -657,11 +652,11 @@ mod regression_tests {
         );
 
         // Verify both load individually
-        let loaded1 = repository.find_schema_by_id(id1)?;
-        assert!(loaded1.is_some(), "Schema 1 should still exist");
+        let reloaded_schema1 = repository.find_schema_by_id(id1)?;
+        assert!(reloaded_schema1.is_some(), "Schema 1 should still exist");
 
-        let loaded2 = repository.find_schema_by_id(id2)?;
-        assert!(loaded2.is_some(), "Schema 2 should exist");
+        let reloaded_schema2 = repository.find_schema_by_id(id2)?;
+        assert!(reloaded_schema2.is_some(), "Schema 2 should exist");
 
         Ok(())
     }
@@ -696,28 +691,28 @@ mod regression_tests {
         use rkyv::{access, deserialize};
 
         // Create 2 schemas
-        let prop1 =
+        let seq_field1 =
             PropertyBuilder::new("seq_field1").build_string_default()?;
-        let mut props1 = HashMap::new();
-        props1.insert(prop1.name().clone(), prop1);
+        let mut seq_schema1_props = HashMap::new();
+        seq_schema1_props.insert(seq_field1.name().clone(), seq_field1);
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema1")?,
             None,
             vec![],
-            props1,
+            seq_schema1_props,
         );
 
-        let prop2 =
+        let seq_field2 =
             PropertyBuilder::new("seq_field2").build_string_default()?;
-        let mut props2 = HashMap::new();
-        props2.insert(prop2.name().clone(), prop2);
+        let mut seq_schema2_props = HashMap::new();
+        seq_schema2_props.insert(seq_field2.name().clone(), seq_field2);
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema2")?,
             None,
             vec![],
-            props2,
+            seq_schema2_props,
         );
 
         // Serialize both
