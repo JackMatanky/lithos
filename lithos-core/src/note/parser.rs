@@ -21,37 +21,188 @@ use crate::note::{
 #[non_exhaustive]
 pub struct MarkdownParser;
 
-impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
-    #[inline]
-    fn from(kind: pulldown_cmark::MetadataBlockKind) -> Self {
-        match kind {
-            pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
-            pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
-        }
-    }
-}
-
-impl From<pulldown_cmark::LinkType> for RawLinkStyle {
-    #[inline]
-    fn from(kind: pulldown_cmark::LinkType) -> Self {
-        match kind {
-            pulldown_cmark::LinkType::WikiLink {
-                ..
-            } => Self::Wiki,
-            pulldown_cmark::LinkType::Inline
-            | pulldown_cmark::LinkType::Reference
-            | pulldown_cmark::LinkType::ReferenceUnknown
-            | pulldown_cmark::LinkType::Collapsed
-            | pulldown_cmark::LinkType::CollapsedUnknown
-            | pulldown_cmark::LinkType::Shortcut
-            | pulldown_cmark::LinkType::ShortcutUnknown
-            | pulldown_cmark::LinkType::Autolink
-            | pulldown_cmark::LinkType::Email => Self::Markdown,
-        }
-    }
-}
-
 impl MarkdownParser {
+    /// Parses markdown into a minimal AST and extracts raw note artifacts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] if byte ranges cannot be represented or
+    /// extraction fails.
+    #[inline]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Event sink matches comprehensive logic"
+    )]
+    pub fn parse(
+        markdown: &str,
+        path: NotePath,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<RawNote, NoteIngestError> {
+        let scanner = NoteScanner::default();
+        let mut pool = StringPool::new();
+
+        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
+            NoteIngestError::Source("source length out of range".into())
+        })?;
+        let source_hash = blake3::hash(markdown.as_bytes())
+            .to_hex()
+            .to_string()
+            .into_boxed_str();
+
+        let mut reference_links = Vec::new();
+        let mut block_refs = Vec::new();
+
+        let mut headings = Vec::new();
+        let mut sections = Vec::new();
+        let mut links = Vec::new();
+        let mut tags = Vec::new();
+        let mut list_items = Vec::new();
+        let mut tasks = Vec::new();
+        let mut inline_fields = Vec::new();
+        let mut frontmatter = None;
+
+        let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
+        let mut list_stack: Vec<RawListType> = Vec::with_capacity(8);
+        let mut open_item_by_depth: Vec<SourceByteOffset> =
+            Vec::with_capacity(16);
+
+        let mut depth: u32 = 0;
+
+        let mut current_link: Option<LinkFrame> = None;
+        let mut in_metadata: Option<(
+            pulldown_cmark::MetadataBlockKind,
+            SourceByteOffset,
+        )> = None;
+        let mut metadata_text = pool.take();
+
+        let parser = Parser::new_ext(markdown, Self::obsidian_options());
+        let events = parser.into_offset_iter();
+        let iter = TextMergeWithOffset::new(events);
+
+        for (event, range) in iter {
+            let start_pos = SourceByteOffset::try_from_usize(range.start)
+                .map_err(NoteIngestError::Domain)?;
+
+            if Self::handle_metadata(
+                event.clone(),
+                range.clone(),
+                &mut in_metadata,
+                &mut metadata_text,
+                &mut sections,
+                &mut frontmatter,
+            )? {
+                continue;
+            }
+
+            match event {
+                Event::Start(pulldown_cmark::Tag::MetadataBlock(kind)) => {
+                    in_metadata = Some((kind, start_pos));
+                    metadata_text.clear();
+                }
+                Event::Start(tag) => {
+                    Self::handle_start_tag(
+                        tag,
+                        start_pos,
+                        &mut depth,
+                        &mut block_stack,
+                        &mut list_stack,
+                        &mut current_link,
+                        &mut open_item_by_depth,
+                        &mut pool,
+                    );
+                }
+                Event::End(end_tag) => {
+                    Self::handle_end_tag(
+                        end_tag,
+                        range,
+                        &mut depth,
+                        &mut block_stack,
+                        &mut list_stack,
+                        &mut current_link,
+                        &mut links,
+                        &mut sections,
+                        &mut headings,
+                        &mut tags,
+                        &mut inline_fields,
+                        markdown,
+                        &mut open_item_by_depth,
+                        &mut list_items,
+                        &mut tasks,
+                        &mut block_refs,
+                        &scanner,
+                        &mut pool,
+                    )?;
+                }
+                Event::Text(text) => {
+                    Self::handle_text(
+                        text,
+                        &mut block_stack,
+                        &mut current_link,
+                        true,
+                    );
+                }
+                Event::Code(text) => {
+                    Self::handle_text(
+                        text,
+                        &mut block_stack,
+                        &mut current_link,
+                        false,
+                    );
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    Self::handle_break(&mut block_stack, &mut current_link);
+                }
+                Event::TaskListMarker(checked) => {
+                    if let Some(block) = block_stack.last_mut() {
+                        block.task_marker = Some(checked);
+                    }
+                }
+                Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::FootnoteReference(_)
+                | Event::Rule => {}
+            }
+        }
+
+        pool.put(metadata_text);
+
+        // Re-create the parser to access reference definitions (v0.13 API)
+        // Since we already consumed the first parser via into_offset_iter()
+        let parser_for_refs =
+            Parser::new_ext(markdown, Self::obsidian_options());
+        for (label, link_def) in parser_for_refs.reference_definitions().iter()
+        {
+            reference_links.push(RawReferenceLink::new(
+                label.to_owned().into_boxed_str(),
+                link_def.dest.to_string().into_boxed_str(),
+                SourceByteOffset::new(0), // RefDefs don't track original definition offset yet in cmark
+            ));
+        }
+
+        sections.sort_by_key(|section| u32::from(section.range().start()));
+
+        Ok(RawNote::new(
+            path,
+            source_hash,
+            source_bytes,
+            created_at,
+            modified_at,
+            frontmatter,
+            headings,
+            sections,
+            links,
+            tags,
+            list_items,
+            tasks,
+            inline_fields,
+            reference_links,
+            block_refs,
+        ))
+    }
+
     /// Returns the pulldown-cmark option set used for Obsidian-compatible
     /// parsing.
     #[inline]
@@ -642,187 +793,15 @@ impl MarkdownParser {
 
         Ok(())
     }
+}
 
-    /// Parses markdown into a minimal AST and extracts raw note artifacts.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] if byte ranges cannot be represented or
-    /// extraction fails.
-    #[inline]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Event sink matches comprehensive logic"
-    )]
-    pub fn parse(
-        markdown: &str,
-        path: NotePath,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<RawNote, NoteIngestError> {
-        let scanner = NoteScanner::default();
-        let mut pool = StringPool::new();
-
-        let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
-            NoteIngestError::Source("source length out of range".into())
-        })?;
-        let source_hash = blake3::hash(markdown.as_bytes())
-            .to_hex()
-            .to_string()
-            .into_boxed_str();
-
-        let mut reference_links = Vec::new();
-        let mut block_refs = Vec::new();
-
-        let mut headings = Vec::new();
-        let mut sections = Vec::new();
-        let mut links = Vec::new();
-        let mut tags = Vec::new();
-        let mut list_items = Vec::new();
-        let mut tasks = Vec::new();
-        let mut inline_fields = Vec::new();
-        let mut frontmatter = None;
-
-        let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
-        let mut list_stack: Vec<RawListType> = Vec::with_capacity(8);
-        let mut open_item_by_depth: Vec<SourceByteOffset> =
-            Vec::with_capacity(16);
-
-        let mut depth: u32 = 0;
-
-        let mut current_link: Option<LinkFrame> = None;
-        let mut in_metadata: Option<(
-            pulldown_cmark::MetadataBlockKind,
-            SourceByteOffset,
-        )> = None;
-        let mut metadata_text = pool.take();
-
-        let parser = Parser::new_ext(markdown, Self::obsidian_options());
-        let events = parser.into_offset_iter();
-        let iter = TextMergeWithOffset::new(events);
-
-        for (event, range) in iter {
-            let start_pos = SourceByteOffset::try_from_usize(range.start)
-                .map_err(NoteIngestError::Domain)?;
-
-            if Self::handle_metadata(
-                event.clone(),
-                range.clone(),
-                &mut in_metadata,
-                &mut metadata_text,
-                &mut sections,
-                &mut frontmatter,
-            )? {
-                continue;
-            }
-
-            match event {
-                Event::Start(pulldown_cmark::Tag::MetadataBlock(kind)) => {
-                    in_metadata = Some((kind, start_pos));
-                    metadata_text.clear();
-                }
-                Event::Start(tag) => {
-                    Self::handle_start_tag(
-                        tag,
-                        start_pos,
-                        &mut depth,
-                        &mut block_stack,
-                        &mut list_stack,
-                        &mut current_link,
-                        &mut open_item_by_depth,
-                        &mut pool,
-                    );
-                }
-                Event::End(end_tag) => {
-                    Self::handle_end_tag(
-                        end_tag,
-                        range,
-                        &mut depth,
-                        &mut block_stack,
-                        &mut list_stack,
-                        &mut current_link,
-                        &mut links,
-                        &mut sections,
-                        &mut headings,
-                        &mut tags,
-                        &mut inline_fields,
-                        markdown,
-                        &mut open_item_by_depth,
-                        &mut list_items,
-                        &mut tasks,
-                        &mut block_refs,
-                        &scanner,
-                        &mut pool,
-                    )?;
-                }
-                Event::Text(text) => {
-                    Self::handle_text(
-                        text,
-                        &mut block_stack,
-                        &mut current_link,
-                        true,
-                    );
-                }
-                Event::Code(text) => {
-                    Self::handle_text(
-                        text,
-                        &mut block_stack,
-                        &mut current_link,
-                        false,
-                    );
-                }
-                Event::SoftBreak | Event::HardBreak => {
-                    Self::handle_break(&mut block_stack, &mut current_link);
-                }
-                Event::TaskListMarker(checked) => {
-                    if let Some(block) = block_stack.last_mut() {
-                        block.task_marker = Some(checked);
-                    }
-                }
-                Event::InlineMath(_)
-                | Event::DisplayMath(_)
-                | Event::Html(_)
-                | Event::InlineHtml(_)
-                | Event::FootnoteReference(_)
-                | Event::Rule => {}
-            }
-        }
-
-        pool.put(metadata_text);
-
-        // Re-create the parser to access reference definitions (v0.13 API)
-        // Since we already consumed the first parser via into_offset_iter()
-        let parser_for_refs =
-            Parser::new_ext(markdown, Self::obsidian_options());
-        for (label, link_def) in parser_for_refs.reference_definitions().iter()
-        {
-            reference_links.push(RawReferenceLink::new(
-                label.to_owned().into_boxed_str(),
-                link_def.dest.to_string().into_boxed_str(),
-                SourceByteOffset::new(0), // RefDefs don't track original definition offset yet in cmark
-            ));
-        }
-
-        sections.sort_by_key(|section| u32::from(section.range().start()));
-
-        Ok(RawNote::new(
-            path,
-            source_hash,
-            source_bytes,
-            created_at,
-            modified_at,
-            frontmatter,
-            headings,
-            sections,
-            links,
-            tags,
-            list_items,
-            tasks,
-            inline_fields,
-            reference_links,
-            block_refs,
-        ))
-    }
+struct ActiveBlock {
+    kind: BlockKind,
+    depth: u32,
+    start_offset: SourceByteOffset,
+    full_text: String,
+    scannable_text: String,
+    task_marker: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -833,15 +812,6 @@ enum BlockKind {
     List,
     BlockQuote,
     CodeBlock,
-}
-
-struct ActiveBlock {
-    kind: BlockKind,
-    depth: u32,
-    start_offset: SourceByteOffset,
-    full_text: String,
-    scannable_text: String,
-    task_marker: Option<bool>,
 }
 
 struct LinkFrame {
@@ -898,9 +868,44 @@ impl StringPool {
     }
 }
 
+impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
+    #[inline]
+    fn from(kind: pulldown_cmark::MetadataBlockKind) -> Self {
+        match kind {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
+        }
+    }
+}
+
+impl From<pulldown_cmark::LinkType> for RawLinkStyle {
+    #[inline]
+    fn from(kind: pulldown_cmark::LinkType) -> Self {
+        match kind {
+            pulldown_cmark::LinkType::WikiLink {
+                ..
+            } => Self::Wiki,
+            pulldown_cmark::LinkType::Inline
+            | pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+            | pulldown_cmark::LinkType::Autolink
+            | pulldown_cmark::LinkType::Email => Self::Markdown,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+
     mod block_refs {
+        use rstest::rstest;
+
         use super::*;
 
         #[test]
@@ -980,6 +985,8 @@ mod tests {
     }
 
     mod headings {
+        use rstest::rstest;
+
         use super::*;
 
         #[rstest]
@@ -1223,6 +1230,8 @@ Paragraph with ^para-ref
     }
 
     mod tags {
+        use rstest::rstest;
+
         use super::*;
 
         #[test]
@@ -1292,13 +1301,9 @@ Paragraph with ^para-ref
         }
     }
 
-    use rstest::rstest;
-
-    use super::*;
-    use crate::note::paths::NotePath;
-
     fn parse_raw(markdown: &str) -> RawNote {
-        let path = NotePath::try_new("test.md").expect("valid test path");
+        let path = crate::note::paths::NotePath::try_new("test.md")
+            .expect("valid test path");
         MarkdownParser::parse(markdown, path, None, None)
             .expect("parsing failed")
     }
