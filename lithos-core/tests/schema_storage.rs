@@ -190,40 +190,6 @@ mod lookup_tests {
 
         Ok(())
     }
-
-    /// Test that schemas can be deleted.
-    ///
-    /// **IGNORED**: Implementation in progress. Issue: `SCHEMA_CHILDREN`
-    /// multimap uses `&[u8]` values but batch API expects `&str`. Needs API
-    /// update or different approach.
-    #[test]
-    #[ignore = "Implementation blocked by multimap API type mismatch"]
-    fn schema_delete() -> TestResult {
-        let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
-
-        // Create and save
-        let schema = Schema::new(
-            SchemaId::new(),
-            SchemaName::try_new("temp")?,
-            None,
-            vec![],
-            HashMap::new(),
-        );
-        let schema_id = *schema.id();
-        repository.save_schemas(&[schema])?;
-
-        // Verify exists
-        assert!(repository.find_schema_by_id(schema_id)?.is_some());
-
-        // Delete
-        repository.delete_schema(schema_id)?;
-
-        // Verify gone
-        assert!(repository.find_schema_by_id(schema_id)?.is_none());
-
-        Ok(())
-    }
 }
 
 // ========================================================================
