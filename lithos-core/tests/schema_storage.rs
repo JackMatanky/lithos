@@ -423,3 +423,189 @@ mod batch_operations {
         Ok(())
     }
 }
+
+// ========================================================================
+//                        Regression Tests
+// ========================================================================
+
+/// Regression tests for specific bugs that were fixed.
+///
+/// These tests ensure previously fixed bugs don't resurface.
+#[expect(
+    clippy::similar_names,
+    reason = "Regression tests intentionally use prop1/props1 pattern for \
+              parallel construction"
+)]
+#[expect(
+    clippy::shadow_unrelated,
+    reason = "Regression tests reuse variable names loaded1 to verify state \
+              at different points"
+)]
+mod regression_tests {
+    use super::*;
+
+    /// Regression test for rkyv deserialization bug with empty schemas.
+    ///
+    /// Previously failed with "subtree pointer overran range" when listing
+    /// multiple schemas. Root cause: wrong API call (`list_owned` vs
+    /// `list_key_value_pairs`).
+    ///
+    /// This test verifies the edge case of schemas with no properties.
+    #[test]
+    fn empty_schemas_batch_save_and_list() -> TestResult {
+        let test_db = TestDb::new()?;
+        let repository = setup_repository(test_db.db());
+
+        // Create 2 schemas with NO properties (edge case)
+        let schema1 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("empty_schema1")?,
+            None,
+            vec![],
+            HashMap::new(),
+        );
+        let id1 = *schema1.id();
+
+        let schema2 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("empty_schema2")?,
+            None,
+            vec![],
+            HashMap::new(),
+        );
+        let id2 = *schema2.id();
+
+        // Save both in batch
+        repository.save_schemas(&[schema1, schema2])?;
+
+        // List all schemas (this is where the bug manifested)
+        let all_schemas = repository.list_schemas()?;
+        assert_eq!(all_schemas.len(), 2, "Should list both empty schemas");
+
+        // Verify individual loads still work
+        let loaded1 = repository.find_schema_by_id(id1)?;
+        assert!(loaded1.is_some(), "Schema 1 should exist");
+
+        let loaded2 = repository.find_schema_by_id(id2)?;
+        assert!(loaded2.is_some(), "Schema 2 should exist");
+
+        Ok(())
+    }
+
+    /// Regression test: separate saves (not batch) should work correctly.
+    ///
+    /// Tests that saving schemas separately and then listing works, which
+    /// exercises a different code path than batch saves.
+    #[test]
+    fn separate_saves_then_list() -> TestResult {
+        let test_db = TestDb::new()?;
+        let repository = setup_repository(test_db.db());
+
+        // Create and save schema 1
+        let prop1 = PropertyBuilder::new("field1").build_string_default()?;
+        let mut props1 = HashMap::new();
+        props1.insert(prop1.name().clone(), prop1);
+
+        let schema1 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("separate_schema1")?,
+            None,
+            vec![],
+            props1,
+        );
+        let id1 = *schema1.id();
+        repository.save_schemas(&[schema1])?;
+
+        // Verify schema 1 loads
+        let loaded1 = repository.find_schema_by_id(id1)?;
+        assert!(loaded1.is_some(), "Schema 1 should exist after first save");
+
+        // Create and save schema 2 separately
+        let prop2 = PropertyBuilder::new("field2").build_string_default()?;
+        let mut props2 = HashMap::new();
+        props2.insert(prop2.name().clone(), prop2);
+
+        let schema2 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("separate_schema2")?,
+            None,
+            vec![],
+            props2,
+        );
+        let id2 = *schema2.id();
+        repository.save_schemas(&[schema2])?;
+
+        // Verify both schemas can be listed
+        let all_schemas = repository.list_schemas()?;
+        assert_eq!(
+            all_schemas.len(),
+            2,
+            "Should list both separately saved schemas"
+        );
+
+        // Verify both load individually
+        let loaded1 = repository.find_schema_by_id(id1)?;
+        assert!(loaded1.is_some(), "Schema 1 should still exist");
+
+        let loaded2 = repository.find_schema_by_id(id2)?;
+        assert!(loaded2.is_some(), "Schema 2 should exist");
+
+        Ok(())
+    }
+
+    /// Regression test: sequential deserialization pattern.
+    ///
+    /// Verifies that the 2-phase deserialization pattern (collect bytes, then
+    /// deserialize) works correctly. This was the defensive fix applied to
+    /// prevent redb AccessGuard/rkyv interaction issues.
+    #[test]
+    fn sequential_deserialization_pattern() -> TestResult {
+        use rkyv::{access, deserialize};
+
+        // Create 2 schemas
+        let prop1 =
+            PropertyBuilder::new("seq_field1").build_string_default()?;
+        let mut props1 = HashMap::new();
+        props1.insert(prop1.name().clone(), prop1);
+        let schema1 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("seq_schema1")?,
+            None,
+            vec![],
+            props1,
+        );
+
+        let prop2 =
+            PropertyBuilder::new("seq_field2").build_string_default()?;
+        let mut props2 = HashMap::new();
+        props2.insert(prop2.name().clone(), prop2);
+        let schema2 = Schema::new(
+            SchemaId::new(),
+            SchemaName::try_new("seq_schema2")?,
+            None,
+            vec![],
+            props2,
+        );
+
+        // Serialize both
+        let bytes1 = rkyv::to_bytes::<rkyv::rancor::Error>(&schema1)?;
+        let bytes2 = rkyv::to_bytes::<rkyv::rancor::Error>(&schema2)?;
+
+        // Simulate table scan: collect all bytes first
+        let all_bytes = vec![bytes1, bytes2];
+        let mut results = Vec::new();
+
+        // Then deserialize sequentially (2-phase pattern)
+        for bytes in &all_bytes {
+            let archived =
+                access::<rkyv::Archived<Schema>, rkyv::rancor::Error>(bytes)?;
+            let deserialized =
+                deserialize::<Schema, rkyv::rancor::Error>(archived)?;
+            results.push(deserialized);
+        }
+
+        assert_eq!(results.len(), 2, "Should deserialize both schemas");
+
+        Ok(())
+    }
+}
