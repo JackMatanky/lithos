@@ -116,28 +116,68 @@ impl TestDb {
         self.dir.path().join("lithos.redb")
     }
 
-    /// Reopen the database (workaround for rkyv deserialization limitations).
+    /// Reopen the database (simulates application restart).
     ///
-    /// Replaces the internal database Arc with a fresh Database instance.
-    /// This allows simulating multiple load sessions in the same test by
-    /// forcing the old database to close.
+    /// Closes the current database and opens a fresh instance.
+    /// This allows testing that state persists across sessions.
     ///
-    /// **IMPORTANT**: All clones of the previous `db()` Arc must be dropped
-    /// before calling this method, otherwise redb will fail with "Database
-    /// already open" error.
+    /// **IMPORTANT**: All Arc clones from previous `db()` calls must be
+    /// dropped before calling this method, otherwise redb will fail with
+    /// "Database already open" error.
     ///
     /// # Errors
-    /// Returns error if database cannot be reopened (including if the old
-    /// database is still in use).
+    /// Returns error if database cannot be reopened (including if old
+    /// Arc clones are still held).
+    ///
+    /// # Panics
+    /// Panics if there are outstanding Arc strong references (indicates a
+    /// test bug where repositories weren't properly dropped).
     pub fn reopen(&mut self) -> TestResult<Arc<Database>> {
         let path = self.path();
 
-        // Open the new database first (this will fail if old one is still open)
-        let new_db = Arc::new(Database::open(&path)?);
+        // Check if we're the only owner (catch test bugs early)
+        let strong_count = Arc::strong_count(&self.db);
+        assert!(
+            strong_count == 1,
+            "Cannot reopen database: {strong_count} outstanding Arc \
+             references (expected 1). Did you forget to drop a Repository?"
+        );
 
-        // Replace the old Arc with the new one
-        // The old Arc will be dropped here
-        self.db = new_db;
+        // CRITICAL: We must drop the old Database BEFORE opening the new one
+        // since redb uses OS-level file locks that prevent concurrent access.
+        //
+        // Strategy:
+        // 1. Create dummy database at different path
+        // 2. Swap dummy with real, extracting the old Arc
+        // 3. Unwrap and drop the old Database (releases lock)
+        // 4. Drop the dummy
+        // 5. Open real database at original path
+
+        // Step 1: Create dummy database (different path to avoid lock conflict)
+        let dummy_path = self.dir.path().join("temp_dummy.redb");
+        let dummy_db = Arc::new(Database::open(&dummy_path)?);
+
+        // Step 2: Swap, getting the old Arc
+        let old_arc = std::mem::replace(&mut self.db, dummy_db);
+
+        // Step 3: Unwrap and drop (should always succeed since strong_count ==
+        // 1)
+        #[expect(
+            clippy::panic,
+            reason = "Test infrastructure - panic for impossible state is \
+                      appropriate"
+        )]
+        let old_database = Arc::try_unwrap(old_arc).unwrap_or_else(|_| {
+            panic!(
+                "Arc::try_unwrap failed despite strong_count == 1 - this is a \
+                 bug"
+            )
+        });
+        drop(old_database); // Releases the lock!
+
+        // Step 4 & 5: Open the real database (dummy is automatically dropped
+        // when we reassign self.db)
+        self.db = Arc::new(Database::open(&path)?);
 
         Ok(Arc::clone(&self.db))
     }
