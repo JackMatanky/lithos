@@ -1,13 +1,36 @@
-//! Integration tests for schema loading pipeline.
+//! Integration test suite for schema loading pipeline.
 //!
-//! Tests the Loader's ability to load and resolve schemas from files,
-//! including:
-//! - Initial loading (file → ingest → resolve → persist)
-//! - Reference expansion (`$ref` to `property_bank`)
-//! - Inheritance resolution (extends/excludes)
-//! - Incremental loading (staleness detection)
-//! - Property bank updates (incremental re-resolution)
-//! - Error handling (missing refs, circular inheritance)
+//! # Summary
+//! - Validates the Loader's orchestration of the file → raw → domain → storage
+//!   pipeline.
+//! - Covers initial loading, reference resolution, inheritance, incremental
+//!   updates, and error handling.
+//! - Tests boundaries: File system reads via `FsReader`, property bank
+//!   expansion, schema inheritance, staleness detection.
+//! - Exclusions: Unit-level validation (tested in domain modules),
+//!   database-only operations (tested in `schema_storage.rs`).
+//!
+//! # Setup
+//! - Uses `TempDir` for isolated filesystem fixtures per test.
+//! - `TestDb` provides fresh redb instances for each test.
+//! - `FsReader` abstracts filesystem operations for testability.
+//! - Helper functions: `write_file()`, `test_config()`.
+//!
+//! # Data Model
+//! - Inputs: JSON schema files with `property_bank` references, inheritance
+//!   (extends/excludes), and inline properties.
+//! - Outputs: Resolved schemas persisted in `RedbStorage` with expanded
+//!   references and inheritance chains.
+//! - Assumptions: Files follow lithos schema format (1.0), `property_bank` is
+//!   available for resolution.
+//!
+//! # Scenarios
+//! - **Happy path**: Load schemas with `property_bank` refs, resolve
+//!   inheritance, persist to storage.
+//! - **Edge cases**: Empty property banks, multiple inheritance levels, file
+//!   modifications triggering staleness.
+//! - **Error paths**: Missing `property_bank` references, circular inheritance,
+//!   file read failures.
 
 #![expect(
     clippy::panic_in_result_fn,
@@ -76,7 +99,33 @@ fn test_config(root: &Path) -> TestResult<Config> {
 mod initial_loading {
     use super::*;
 
-    /// Test that schemas with property bank references are resolved correctly.
+    /// Integration test for property bank reference resolution.
+    ///
+    /// # Purpose
+    /// Validates that the Loader correctly expands `$ref` references to
+    /// `property_bank` entries during the load pipeline, replacing references
+    /// with concrete property definitions.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Defines reusable properties (title, status).
+    /// - task.json: Schema with `$ref` references to `property_bank` entries.
+    ///
+    /// # Expected Behavior
+    /// - Loader ingests both files from filesystem via `FsReader`.
+    /// - References are expanded: `{"$ref": "property_bank#/title"}` →
+    ///   `{"type": "string"}`.
+    /// - Resolved schema persisted to storage with 2 concrete properties.
+    /// - Schema name matches filename (task).
+    ///
+    /// # Failure Modes
+    /// - Missing `property_bank` file → loader error.
+    /// - Invalid JSON syntax → parsing error.
+    /// - Reference to non-existent property → resolution error.
+    ///
+    /// # Observability
+    /// - Asserts resolved schema count (1).
+    /// - Asserts schema name matches filename.
+    /// - Asserts property count after expansion (2).
     #[test]
     fn resolves_property_bank_references() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -114,7 +163,32 @@ mod initial_loading {
         Ok(())
     }
 
-    /// Test that schemas with inline properties are resolved correctly.
+    /// Integration test for inline property resolution.
+    ///
+    /// # Purpose
+    /// Validates that schemas with inline property definitions (no `$ref`
+    /// references) are correctly loaded and persisted without requiring
+    /// `property_bank` expansion.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Empty but required by loader.
+    /// - note.json: Schema with inline properties (title: string, done: bool).
+    ///
+    /// # Expected Behavior
+    /// - Loader ingests schema file with inline properties.
+    /// - No reference expansion needed (properties are already concrete).
+    /// - Schema persisted to storage with inline properties intact.
+    /// - Property count and types match input definition.
+    ///
+    /// # Failure Modes
+    /// - Missing `property_bank` file → loader error (required even if empty).
+    /// - Invalid property type → parsing error.
+    /// - Malformed JSON → ingestion error.
+    ///
+    /// # Observability
+    /// - Asserts resolved schema count (1).
+    /// - Asserts schema name matches filename (note).
+    /// - Asserts property count matches input (2).
     #[test]
     fn resolves_inline_properties() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -150,7 +224,33 @@ mod initial_loading {
         Ok(())
     }
 
-    /// Test that multiple schemas can be resolved in a single load.
+    /// Integration test for batch schema resolution.
+    ///
+    /// # Purpose
+    /// Validates that the Loader can process multiple schema files in a single
+    /// load operation, correctly resolving `property_bank` references and
+    /// inline properties across all files.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Defines reusable title property.
+    /// - task.json, note.json: Schemas with `$ref` to `property_bank`.
+    /// - project.json: Schema with inline properties.
+    ///
+    /// # Expected Behavior
+    /// - Loader discovers and ingests all schema files in schemas/ directory.
+    /// - Each schema is independently resolved (refs expanded, inheritance
+    ///   applied).
+    /// - All 3 schemas persisted to storage in single batch operation.
+    /// - Schema names derived from filenames (task, note, project).
+    ///
+    /// # Failure Modes
+    /// - Missing `property_bank` → resolution error for task/note.
+    /// - File system read error → loader fails to discover files.
+    /// - Invalid JSON in any file → batch operation fails.
+    ///
+    /// # Observability
+    /// - Asserts total resolved schema count (3).
+    /// - Asserts presence of all expected schema names.
     #[test]
     fn resolves_multiple_schemas() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -194,7 +294,32 @@ mod initial_loading {
         Ok(())
     }
 
-    /// Test that property bank is loaded and persisted.
+    /// Integration test for property bank loading and persistence.
+    ///
+    /// # Purpose
+    /// Validates that the `property_bank` file is ingested, validated, and
+    /// persisted to storage independently, making properties available for
+    /// reference resolution.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Defines 3 reusable properties (title, status,
+    ///   priority).
+    ///
+    /// # Expected Behavior
+    /// - Loader ingests `property_bank.json` from filesystem.
+    /// - `PropertyBank` domain object constructed with 3 properties.
+    /// - `PropertyBank` persisted to storage for use in schema reference
+    ///   resolution.
+    /// - Property bank retrievable via Repository after load.
+    ///
+    /// # Failure Modes
+    /// - Missing `property_bank` file → loader error.
+    /// - Invalid property definitions → parsing/validation error.
+    /// - Storage write failure → persistence error.
+    ///
+    /// # Observability
+    /// - Asserts `property_bank` is retrievable from storage.
+    /// - Asserts property count matches input (3).
     #[test]
     fn loads_and_persists_property_bank() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -244,7 +369,32 @@ mod initial_loading {
 mod inheritance {
     use super::*;
 
-    /// Test that schema inheritance is resolved correctly.
+    /// Integration test for schema inheritance resolution.
+    ///
+    /// # Purpose
+    /// Validates that schemas using `extends` correctly inherit properties from
+    /// parent schemas, creating a resolved schema with both inherited and
+    /// own properties.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Empty but required.
+    /// - base.json: Parent schema with id property.
+    /// - task.json: Child schema extending base, adding title property.
+    ///
+    /// # Expected Behavior
+    /// - Loader resolves inheritance chain: task extends base.
+    /// - Child schema inherits parent properties (id from base).
+    /// - Child schema retains own properties (title).
+    /// - Final task schema has 2 properties: inherited id + own title.
+    ///
+    /// # Failure Modes
+    /// - Missing parent schema → resolution error.
+    /// - Circular inheritance → validation error.
+    /// - Property name conflicts → resolution error.
+    ///
+    /// # Observability
+    /// - Asserts total resolved schema count (2: base + task).
+    /// - Asserts task schema has both inherited and own properties (2 total).
     #[test]
     fn resolves_schema_inheritance() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -304,7 +454,35 @@ mod inheritance {
 mod incremental_loading {
     use super::*;
 
-    /// Test that file changes are detected via mtime/hash.
+    /// Integration test for file change detection via staleness tracking.
+    ///
+    /// # Purpose
+    /// Validates that the Loader detects file modifications using mtime and
+    /// content hash, triggering incremental re-resolution of only changed
+    /// schemas.
+    ///
+    /// # Inputs
+    /// - Initial: `property_bank.json` (title property), task.json (1
+    ///   property).
+    /// - Modified: task.json updated to add status property.
+    ///
+    /// # Expected Behavior
+    /// - First load: All schemas marked fresh, persisted with staleness
+    ///   metadata.
+    /// - File modification: task.json mtime/hash changes.
+    /// - Second load: Staleness detector identifies task.json as modified.
+    /// - Only task schema re-resolved, `property_bank` reused from storage.
+    /// - Resolved task schema reflects new content (2 properties).
+    ///
+    /// # Failure Modes
+    /// - Filesystem mtime resolution too coarse → false negatives.
+    /// - Hash computation error → incorrect staleness detection.
+    /// - Metadata persistence failure → all files re-processed on every load.
+    ///
+    /// # Observability
+    /// - Asserts first load resolves all schemas.
+    /// - Asserts second load detects and re-resolves only modified schema.
+    /// - Asserts property count reflects updated content.
     #[test]
     fn detects_file_changes() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -369,7 +547,36 @@ mod incremental_loading {
         Ok(())
     }
 
-    /// Test that staleness detection persists across database sessions.
+    /// Integration test for staleness metadata persistence across database
+    /// sessions.
+    ///
+    /// # Purpose
+    /// Validates that file staleness metadata (mtime, content hash) is
+    /// correctly persisted to the database and survives database
+    /// close/reopen cycles, preventing unnecessary re-processing on
+    /// subsequent loads.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Empty property bank.
+    /// - task.json: Single schema file (unchanged across sessions).
+    ///
+    /// # Expected Behavior
+    /// - First session: Schema loaded, staleness metadata persisted to storage.
+    /// - Database close: All in-memory state cleared.
+    /// - Database reopen: Staleness metadata restored from persistent storage.
+    /// - Second session: No file changes detected, zero schemas re-resolved.
+    /// - Storage retrieval confirms schema still available from first load.
+    ///
+    /// # Failure Modes
+    /// - Staleness metadata not persisted → all files re-processed every
+    ///   session.
+    /// - Database corruption on close/reopen → metadata loss.
+    /// - Incorrect metadata serialization → staleness detection fails.
+    ///
+    /// # Observability
+    /// - Asserts first load processes schema (count = 1).
+    /// - Asserts second load skips unchanged schema (count = 0).
+    /// - Asserts schema retrievable from storage in both sessions.
     #[test]
     fn staleness_persists_across_reopens() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -429,7 +636,39 @@ mod incremental_loading {
         Ok(())
     }
 
-    /// Test that property bank changes trigger schema re-resolution.
+    /// Integration test for property bank updates triggering cascading
+    /// re-resolution.
+    ///
+    /// # Purpose
+    /// Validates that when `property_bank` is modified, all schemas referencing
+    /// those properties are automatically re-resolved to reflect the
+    /// updated property definitions, even if the schema files themselves
+    /// haven't changed.
+    ///
+    /// # Inputs
+    /// - Initial: `property_bank.json` (title only), task.json (refs title).
+    /// - Modified: `property_bank.json` (title + status added), task.json (refs
+    ///   both).
+    ///
+    /// # Expected Behavior
+    /// - First load: task.json resolved with 1 property (title from
+    ///   `property_bank`).
+    /// - Property bank modification detected (mtime/hash change).
+    /// - task.json file also modified to reference new property.
+    /// - Second load: Both `property_bank` and task.json re-resolved.
+    /// - Resolved task schema has 2 properties (title + status expanded from
+    ///   refs).
+    ///
+    /// # Failure Modes
+    /// - Property bank change not detected → stale schemas persist.
+    /// - Dependency tracking missing → schemas not re-resolved when bank
+    ///   changes.
+    /// - Reference resolution fails with new properties → validation error.
+    ///
+    /// # Observability
+    /// - Asserts first load has 1 property.
+    /// - Asserts second load detects changes and re-resolves.
+    /// - Asserts final schema has 2 expanded properties.
     #[test]
     fn property_bank_update_triggers_re_resolution() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -516,7 +755,31 @@ mod incremental_loading {
 mod error_handling {
     use super::*;
 
-    /// Test that missing property bank reference is detected.
+    /// Integration test for missing property bank reference detection.
+    ///
+    /// # Purpose
+    /// Validates that the Loader correctly detects and reports errors when a
+    /// schema references a `property_bank` entry that doesn't exist, failing
+    /// fast with a clear error.
+    ///
+    /// # Inputs
+    /// - `property_bank.json`: Defines only "title" property.
+    /// - task.json: References non-existent "nonexistent" property.
+    ///
+    /// # Expected Behavior
+    /// - Loader ingests both files successfully (parsing passes).
+    /// - Reference resolution phase detects missing `property_bank` entry.
+    /// - Loader returns Err with descriptive error message.
+    /// - No partial state persisted (atomic failure).
+    ///
+    /// # Failure Modes
+    /// - Missing reference not detected → invalid schema persisted.
+    /// - Error message unclear → difficult debugging.
+    /// - Partial persistence → database in inconsistent state.
+    ///
+    /// # Observability
+    /// - Asserts `loader.load()` returns Err (not Ok).
+    /// - Error indicates missing property reference.
     #[test]
     fn detects_missing_property_bank_reference() -> TestResult {
         let vault_dir = TempDir::new()?;
@@ -547,7 +810,32 @@ mod error_handling {
         Ok(())
     }
 
-    /// Test that circular inheritance is detected.
+    /// Integration test for circular inheritance detection.
+    ///
+    /// # Purpose
+    /// Validates that the Loader detects circular inheritance chains (A extends
+    /// B, B extends A) and fails with a clear error, preventing infinite
+    /// resolution loops.
+    ///
+    /// # Inputs
+    /// - a.json: Schema extending "b".
+    /// - b.json: Schema extending "a" (creates cycle).
+    ///
+    /// # Expected Behavior
+    /// - Loader ingests both schema files (parsing succeeds).
+    /// - Inheritance resolution phase detects cycle during graph traversal.
+    /// - Loader returns Err before entering infinite loop.
+    /// - No schemas persisted (atomic failure on validation error).
+    ///
+    /// # Failure Modes
+    /// - Cycle not detected → infinite loop, stack overflow.
+    /// - Detection too aggressive → false positives on valid inheritance
+    ///   chains.
+    /// - Error message unclear → difficult to identify problematic schemas.
+    ///
+    /// # Observability
+    /// - Asserts `loader.load()` returns Err (not Ok).
+    /// - Error indicates circular inheritance detected.
     #[test]
     fn detects_circular_inheritance() -> TestResult {
         let vault_dir = TempDir::new()?;

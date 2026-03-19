@@ -1,6 +1,31 @@
-//! Integration tests for Schema storage via Repository trait.
+//! Integration test suite for Schema storage via Repository trait.
 //!
-//! Tests the unified Repository implementation for storage operations.
+//! # Summary
+//! - Validates the unified Repository trait for schema persistence.
+//! - Tests roundtrip (save/load), lookup (by ID, by name, list), durability
+//!   (restart), batching, and regression scenarios.
+//! - Covers `PropertyBank` and Schema storage through redb backend.
+//! - Excludes: File I/O (tested in loader), inheritance resolution (tested in
+//!   loader), CQRS patterns (migrated to Repository).
+//!
+//! # Setup
+//! - Uses `TestDb` fixture for isolated database instances (tempfile-backed).
+//! - Uses `PropertyBuilder` and `SchemaBuilder` from `common` module.
+//! - Each test creates fresh database to ensure isolation.
+//!
+//! # Data Model
+//! - Inputs: `Schema` aggregates with properties, `PropertyBank` with
+//!   registered properties.
+//! - Outputs: Same types retrieved from storage via Repository queries.
+//! - Assumptions: Valid UUIDs, lowercase schema names, well-formed property
+//!   specs.
+//!
+//! # Scenarios
+//! - Happy path: Save schemas/banks, retrieve by ID/name, list all, batch
+//!   operations.
+//! - Edge cases: Empty schemas, separate saves (non-batch), database restarts.
+//! - Error paths: Missing schemas return None, deleted schemas verified removed
+//!   (deletion deferred).
 
 #![expect(
     clippy::panic_in_result_fn,
@@ -40,7 +65,24 @@ mod roundtrip_tests {
     pub(super) const TEST_PROPERTY_ID_A: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0A01);
 
-    /// Test that property bank can be saved and retrieved.
+    /// Integration test for `PropertyBank` save/load roundtrip.
+    ///
+    /// # Purpose
+    /// Validates that `PropertyBank` can be persisted and retrieved without
+    /// data loss.
+    ///
+    /// # Inputs
+    /// `PropertyBank` with one boolean property ("status").
+    ///
+    /// # Expected Behavior
+    /// - `save_property_bank()` persists bank to redb.
+    /// - `get_property_bank()` returns `Some(bank)` after save.
+    ///
+    /// # Failure Modes
+    /// - Bank not found after save (returns `None`).
+    ///
+    /// # Observability
+    /// Asserts `PropertyBank` exists after retrieval.
     #[test]
     fn property_bank_roundtrip() -> TestResult {
         let test_db = TestDb::new()?;
@@ -61,7 +103,23 @@ mod roundtrip_tests {
         Ok(())
     }
 
-    /// Test that schemas can be saved and retrieved.
+    /// Integration test for Schema save/load roundtrip.
+    ///
+    /// # Purpose
+    /// Validates that Schema aggregates can be persisted and retrieved by ID.
+    ///
+    /// # Inputs
+    /// Schema named "task" with one string property ("title").
+    ///
+    /// # Expected Behavior
+    /// - `save_schemas()` persists schema to redb.
+    /// - `find_schema_by_id()` returns `Some(schema)` after save.
+    ///
+    /// # Failure Modes
+    /// - Schema not found by ID after save (returns `None`).
+    ///
+    /// # Observability
+    /// Asserts Schema exists after retrieval by ID.
     #[test]
     fn schema_roundtrip() -> TestResult {
         let test_db = TestDb::new()?;
@@ -98,7 +156,24 @@ mod roundtrip_tests {
 mod lookup_tests {
     use super::*;
 
-    /// Test that schemas can be found by name.
+    /// Integration test for Schema lookup by name.
+    ///
+    /// # Purpose
+    /// Validates that schemas can be retrieved by `SchemaName` via name index.
+    ///
+    /// # Inputs
+    /// Schema named "project" saved to storage.
+    ///
+    /// # Expected Behavior
+    /// - `find_schema_id_by_name()` returns `Some(schema_id)` for existing
+    ///   schema.
+    /// - Name index (`SCHEMA_ID_BY_NAME` table) correctly maps name to ID.
+    ///
+    /// # Failure Modes
+    /// - Name not found in index (returns `None`).
+    ///
+    /// # Observability
+    /// Asserts found ID matches original schema ID.
     #[test]
     fn schema_find_by_name() -> TestResult {
         let test_db = TestDb::new()?;
@@ -126,61 +201,56 @@ mod lookup_tests {
         Ok(())
     }
 
-    /// Test that multiple schemas can be listed.
+    /// Integration test for listing all schemas.
     ///
-    /// **IGNORED**: Critical bug in rkyv deserialization when multiple schemas
-    /// exist.
+    /// # Purpose
+    /// Validates that multiple schemas can be retrieved as a list.
     ///
-    /// ## Investigation Summary
+    /// # Inputs
+    /// Two schemas saved with different properties ("item" and "person").
     ///
-    /// Symptoms:
-    /// - Error: "subtree pointer overran range" with size field corruption
-    /// - Saving 2nd schema corrupts 1st schema's serialized data
-    /// - Fails even when saving individually (not just batch save)
-    /// - Fails in SAME session (not a reopen/address space issue)
+    /// # Expected Behavior
+    /// - `list_schemas()` returns all saved schemas (count=2).
+    /// - Deserialization works correctly for multiple entries.
+    /// - Previously failed with "subtree pointer overran range" due to wrong
+    ///   API call.
     ///
-    /// Root Cause:
-    /// - Saving second schema overwrites or corrupts first schema's rkyv bytes
-    /// - Likely issue in redb table write or rkyv `HashMap` serialization
-    /// - Size fields become invalid (often `u32::MAX` or corrupted values)
+    /// # Failure Modes
+    /// - Wrong count returned.
+    /// - Deserialization error when multiple schemas exist.
     ///
-    /// This is a critical data corruption bug that requires deep investigation
-    /// of the redb/rkyv integration layer. For now, the Loader integration
-    /// tests verify multi-schema functionality end-to-end (which works
-    /// correctly).
+    /// # Observability
+    /// Asserts exact count of 2 schemas returned.
     ///
-    /// Fixed: Was caused by wrong API call (`list_owned` vs
-    /// `list_key_value_pairs`).
+    /// **Note**: This test previously exposed a critical bug (wrong use of
+    /// `list_owned` vs `list_key_value_pairs`). Kept as regression test.
     #[test]
-    #[expect(
-        clippy::similar_names,
-        reason = "Test code - prop1/props1 naming intentional for parallel \
-                  construction"
-    )]
     fn schema_list() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.db());
 
         // Save multiple schemas
-        let prop1 = PropertyBuilder::new("title").build_string_default()?;
-        let mut props1 = HashMap::new();
-        props1.insert(prop1.name().clone(), prop1);
+        let title_prop =
+            PropertyBuilder::new("title").build_string_default()?;
+        let mut task_props = HashMap::new();
+        task_props.insert(title_prop.name().clone(), title_prop);
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
             None,
             vec![],
-            props1,
+            task_props,
         );
-        let prop2 = PropertyBuilder::new("content").build_string_default()?;
-        let mut props2 = HashMap::new();
-        props2.insert(prop2.name().clone(), prop2);
+        let content_prop =
+            PropertyBuilder::new("content").build_string_default()?;
+        let mut note_props = HashMap::new();
+        note_props.insert(content_prop.name().clone(), content_prop);
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("note")?,
             None,
             vec![],
-            props2,
+            note_props,
         );
         repository.save_schemas(&[schema1, schema2])?;
 
@@ -200,10 +270,26 @@ mod durability_tests {
     use super::*;
     use crate::roundtrip_tests::TEST_PROPERTY_ID_A;
 
-    /// Test that `PropertyBank` survives database restart.
+    /// Integration test for `PropertyBank` durability across restarts.
     ///
-    /// Verifies that `PropertyBank` data persists correctly across database
-    /// close/reopen cycles (no data loss on process restart).
+    /// # Purpose
+    /// Validates that `PropertyBank` persists correctly across database
+    /// close/reopen.
+    ///
+    /// # Inputs
+    /// `PropertyBank` with one boolean property, saved before database reopen.
+    ///
+    /// # Expected Behavior
+    /// - Data survives database close/reopen cycle (simulates process restart).
+    /// - Property count and IDs match after reload.
+    /// - rkyv serialization stable across sessions.
+    ///
+    /// # Failure Modes
+    /// - `PropertyBank` not found after restart (data loss).
+    /// - Property count mismatch (corruption).
+    ///
+    /// # Observability
+    /// Asserts property count=1 and property ID matches original.
     #[test]
     fn property_bank_survives_restart() -> TestResult {
         let mut test_db = TestDb::new()?;
@@ -243,10 +329,27 @@ mod durability_tests {
         Ok(())
     }
 
-    /// Test that Schema survives database restart.
+    /// Integration test for Schema durability across restarts.
     ///
-    /// Verifies that Schema data persists correctly across database
-    /// close/reopen cycles (no data loss on process restart).
+    /// # Purpose
+    /// Validates that Schema aggregates persist correctly across database
+    /// close/reopen.
+    ///
+    /// # Inputs
+    /// Schema named "person" with one property, saved before database reopen.
+    ///
+    /// # Expected Behavior
+    /// - Schema survives database close/reopen cycle.
+    /// - Name, properties, and name index all persist correctly.
+    /// - rkyv-serialized `HashMap` stable across sessions.
+    ///
+    /// # Failure Modes
+    /// - Schema not found after restart (data loss).
+    /// - Name or property count mismatch (corruption).
+    ///
+    /// # Observability
+    /// Asserts name matches, property count=1, and name lookup works after
+    /// restart.
     #[test]
     fn schema_survives_restart() -> TestResult {
         let mut test_db = TestDb::new()?;
@@ -314,20 +417,29 @@ mod durability_tests {
 mod batch_operations {
     use super::*;
 
-    /// Test that batch save is atomic (all succeed or all fail).
+    /// Integration test for batch save atomicity (happy path).
     ///
-    /// Verifies that when saving multiple schemas in a batch, either all
-    /// schemas are saved successfully (atomic commit) or none are saved
-    /// (atomic rollback). This test verifies the HAPPY path - all schemas
-    /// save successfully and are all retrievable.
+    /// # Purpose
+    /// Validates that multiple schemas can be saved atomically in one batch.
     ///
-    /// **IGNORED**: Blocked by the same rkyv corruption bug as `schema_list`.
-    /// Saving multiple schemas triggers "subtree pointer overran range" error.
-    /// See `schema_list` test for full investigation summary.
+    /// # Inputs
+    /// Three schemas ("task", "project", "note") saved in single batch call.
     ///
-    /// NOTE: Once the corruption bug is fixed, this test verifies redb
-    /// transaction semantics. Negative testing (forcing a failure mid-batch)
-    /// would require database mocking or intentional corruption.
+    /// # Expected Behavior
+    /// - All 3 schemas persist in single redb transaction.
+    /// - All schemas retrievable after batch save.
+    /// - Previously failed with "subtree pointer overran range" due to wrong
+    ///   API.
+    ///
+    /// # Failure Modes
+    /// - Partial save (only some schemas persist) - violates atomicity.
+    /// - Deserialization error when multiple schemas exist.
+    ///
+    /// # Observability
+    /// Asserts all 3 schemas exist individually and in list (count=3).
+    ///
+    /// **Note**: This test verifies happy path only. Negative testing (rollback
+    /// on error) would require database mocking or intentional corruption.
     #[test]
     fn batch_save_is_atomic() -> TestResult {
         let test_db = TestDb::new()?;
@@ -410,13 +522,29 @@ mod batch_operations {
 mod regression_tests {
     use super::*;
 
-    /// Regression test for rkyv deserialization bug with empty schemas.
+    /// Regression test for empty schemas batch save and list.
     ///
-    /// Previously failed with "subtree pointer overran range" when listing
-    /// multiple schemas. Root cause: wrong API call (`list_owned` vs
-    /// `list_key_value_pairs`).
+    /// # Purpose
+    /// Prevents regression of rkyv deserialization bug with minimal schemas.
     ///
-    /// This test verifies the edge case of schemas with no properties.
+    /// # Inputs
+    /// Two schemas with NO properties (empty `HashMap`) saved in batch.
+    ///
+    /// # Expected Behavior
+    /// - Batch save succeeds for empty schemas.
+    /// - `list_schemas()` works correctly (returns count=2).
+    /// - Individual lookups by ID succeed.
+    ///
+    /// # Failure Modes
+    /// - "subtree pointer overran range" error (original bug).
+    /// - Wrong API call (`list_owned` trying to deserialize tuples from
+    ///   values).
+    ///
+    /// # Observability
+    /// Asserts list count=2 and both schemas findable by ID.
+    ///
+    /// **Bug Context**: Previously failed due to wrong API (`list_owned` vs
+    /// `list_key_value_pairs`). This edge case exposed the issue most clearly.
     #[test]
     fn empty_schemas_batch_save_and_list() -> TestResult {
         let test_db = TestDb::new()?;
@@ -458,10 +586,29 @@ mod regression_tests {
         Ok(())
     }
 
-    /// Regression test: separate saves (not batch) should work correctly.
+    /// Regression test for separate (non-batch) saves then list.
     ///
-    /// Tests that saving schemas separately and then listing works, which
-    /// exercises a different code path than batch saves.
+    /// # Purpose
+    /// Ensures separate save operations don't cause deserialization issues.
+    ///
+    /// # Inputs
+    /// Two schemas saved in separate `save_schemas()` calls (not batched).
+    ///
+    /// # Expected Behavior
+    /// - First save succeeds, schema1 retrievable.
+    /// - Second save succeeds, schema2 retrievable.
+    /// - `list_schemas()` returns both (count=2) after separate saves.
+    ///
+    /// # Failure Modes
+    /// - Second save corrupts first schema's data.
+    /// - List fails to deserialize after separate saves.
+    ///
+    /// # Observability
+    /// Asserts schema1 exists after first save, both exist after second save,
+    /// and list returns count=2.
+    ///
+    /// **Bug Context**: Tests different transaction pattern than batch saves,
+    /// ensuring the fix works for incremental saves too.
     #[test]
     fn separate_saves_then_list() -> TestResult {
         let test_db = TestDb::new()?;
@@ -519,11 +666,31 @@ mod regression_tests {
         Ok(())
     }
 
-    /// Regression test: sequential deserialization pattern.
+    /// Regression test for 2-phase deserialization pattern.
     ///
-    /// Verifies that the 2-phase deserialization pattern (collect bytes, then
-    /// deserialize) works correctly. This was the defensive fix applied to
-    /// prevent redb AccessGuard/rkyv interaction issues.
+    /// # Purpose
+    /// Validates the defensive fix separating redb `AccessGuard` iteration from
+    /// rkyv deserialization.
+    ///
+    /// # Inputs
+    /// Two schemas serialized to rkyv bytes, then deserialized sequentially.
+    ///
+    /// # Expected Behavior
+    /// - Phase 1: Collect all byte buffers into `Vec`.
+    /// - Phase 2: Deserialize after `AccessGuards` dropped.
+    /// - Both schemas deserialize successfully.
+    ///
+    /// # Failure Modes
+    /// - Deserialization fails in loop (`AccessGuard`/rkyv conflict).
+    /// - Memory corruption from mixing iteration and deserialization.
+    ///
+    /// # Observability
+    /// Asserts successful deserialization of 2 schemas (count=2).
+    ///
+    /// **Bug Context**: This pattern was applied defensively to `db/reader.rs`
+    /// functions (`scan_table`, `scan_table_key_value`, `scan_range`) to
+    /// prevent potential `AccessGuard` lifetime issues, though the actual
+    /// bug was wrong API usage.
     #[test]
     fn sequential_deserialization_pattern() -> TestResult {
         use rkyv::{access, deserialize};
