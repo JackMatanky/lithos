@@ -177,16 +177,16 @@ pub struct Note {
     #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
     frontmatter: Option<Frontmatter>,
-    frontmatter_links: Vec<FrontmatterLink>,
-    reference_links: Vec<ReferenceLink>,
-    tags: Vec<Tag>,
-    headings: Vec<Heading>,
-    sections: Vec<Section>,
-    links: Vec<Link>,
-    block_refs: Vec<BlockRef>,
-    list_items: Vec<ListItemEntry>,
-    tasks: Vec<Task>,
-    inline_fields: Vec<InlineField>,
+    frontmatter_links: Box<[FrontmatterLink]>,
+    reference_links: Box<[ReferenceLink]>,
+    tags: Box<[Tag]>,
+    headings: Box<[Heading]>,
+    sections: Box<[Section]>,
+    links: Box<[Link]>,
+    block_refs: Box<[BlockRef]>,
+    list_items: Box<[ListItemEntry]>,
+    tasks: Box<[Task]>,
+    inline_fields: Box<[InlineField]>,
 }
 
 impl Note {
@@ -195,7 +195,18 @@ impl Note {
         clippy::too_many_arguments,
         reason = "Note aggregates all note facts in one struct"
     )]
-    pub(crate) fn from_parts(
+    pub(crate) fn from_parts<
+        FLinks,
+        RLinks,
+        Tags,
+        Headings,
+        Sections,
+        Links,
+        BlockRefs,
+        ListItems,
+        Tasks,
+        IFields,
+    >(
         id: NoteId,
         path: NotePath,
         source_hash: Box<str>,
@@ -203,17 +214,29 @@ impl Note {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
         frontmatter: Option<Frontmatter>,
-        frontmatter_links: Vec<FrontmatterLink>,
-        reference_links: Vec<ReferenceLink>,
-        tags: Vec<Tag>,
-        headings: Vec<Heading>,
-        sections: Vec<Section>,
-        links: Vec<Link>,
-        block_refs: Vec<BlockRef>,
-        list_items: Vec<ListItemEntry>,
-        tasks: Vec<Task>,
-        inline_fields: Vec<InlineField>,
-    ) -> Self {
+        frontmatter_links: FLinks,
+        reference_links: RLinks,
+        tags: Tags,
+        headings: Headings,
+        sections: Sections,
+        links: Links,
+        block_refs: BlockRefs,
+        list_items: ListItems,
+        tasks: Tasks,
+        inline_fields: IFields,
+    ) -> Self
+    where
+        FLinks: Into<Box<[FrontmatterLink]>>,
+        RLinks: Into<Box<[ReferenceLink]>>,
+        Tags: Into<Box<[Tag]>>,
+        Headings: Into<Box<[Heading]>>,
+        Sections: Into<Box<[Section]>>,
+        Links: Into<Box<[Link]>>,
+        BlockRefs: Into<Box<[BlockRef]>>,
+        ListItems: Into<Box<[ListItemEntry]>>,
+        Tasks: Into<Box<[Task]>>,
+        IFields: Into<Box<[InlineField]>>,
+    {
         Self {
             id,
             path,
@@ -222,16 +245,16 @@ impl Note {
             created_at,
             modified_at,
             frontmatter,
-            frontmatter_links,
-            reference_links,
-            tags,
-            headings,
-            sections,
-            links,
-            block_refs,
-            list_items,
-            tasks,
-            inline_fields,
+            frontmatter_links: frontmatter_links.into(),
+            reference_links: reference_links.into(),
+            tags: tags.into(),
+            headings: headings.into(),
+            sections: sections.into(),
+            links: links.into(),
+            block_refs: block_refs.into(),
+            list_items: list_items.into(),
+            tasks: tasks.into(),
+            inline_fields: inline_fields.into(),
         }
     }
 
@@ -246,16 +269,16 @@ impl Note {
             created_at: None,
             modified_at: None,
             frontmatter: None,
-            frontmatter_links: Vec::new(),
-            reference_links: Vec::new(),
-            tags: Vec::new(),
-            headings: Vec::new(),
-            sections: Vec::new(),
-            links: Vec::new(),
-            block_refs: Vec::new(),
-            list_items: Vec::new(),
-            tasks: Vec::new(),
-            inline_fields: Vec::new(),
+            frontmatter_links: Box::new([]),
+            reference_links: Box::new([]),
+            tags: Box::new([]),
+            headings: Box::new([]),
+            sections: Box::new([]),
+            links: Box::new([]),
+            block_refs: Box::new([]),
+            list_items: Box::new([]),
+            tasks: Box::new([]),
+            inline_fields: Box::new([]),
         }
     }
 
@@ -777,7 +800,9 @@ mod tests {
         let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
 
-        let artifacts = scanner.scan_block(text, &[]).expect("scan artifacts");
+        let artifacts = scanner
+            .scan_block(text, SourceByteOffset::new(0))
+            .expect("scan artifacts");
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
@@ -786,7 +811,7 @@ mod tests {
             match artifact {
                 ScanArtifact::Tag(tag) => tags.push(tag.value().into()),
                 ScanArtifact::InlineField(field) => inline_fields.push(field),
-                ScanArtifact::BlockRef(_) | ScanArtifact::ReferenceLink(_) => {}
+                ScanArtifact::BlockRef(_) => {}
             }
         }
 

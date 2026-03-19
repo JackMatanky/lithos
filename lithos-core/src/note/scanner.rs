@@ -5,9 +5,9 @@
 //! passes over markdown content and ensuring heuristic consistency.
 
 use crate::note::{
-    error::{NoteError, NoteIngestError},
+    error::NoteError,
     position::SourceByteOffset,
-    raw::{RawBlockRef, RawInlineField, RawReferenceLink, RawTag, RawTaskKind},
+    raw::{RawBlockRef, RawInlineField, RawTag, RawTaskKind},
 };
 
 /// A unified result from the scanning process.
@@ -20,35 +20,6 @@ pub enum ScanArtifact {
     InlineField(RawInlineField),
     /// A block reference (e.g., `^block-id`).
     BlockRef(RawBlockRef),
-    /// A reference link definition (e.g., `[label]: target`).
-    ReferenceLink(RawReferenceLink),
-}
-
-/// The syntax style used for an inline field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum InlineFieldDelimiter {
-    /// `[key:: value]`.
-    Brackets,
-    /// `(key:: value)`.
-    Parentheses,
-    /// `key:: value`.
-    Bare,
-    /// `📅 2024-03-18` (Emoji-prefixed).
-    Emoji,
-}
-
-impl InlineFieldDelimiter {
-    /// Returns the character pair for delimited fields.
-    #[inline]
-    #[must_use]
-    pub const fn pair(&self) -> Option<(u8, u8)> {
-        match *self {
-            Self::Brackets => Some((b'[', b']')),
-            Self::Parentheses => Some((b'(', b')')),
-            Self::Bare | Self::Emoji => None,
-        }
-    }
 }
 
 /// Specialized scanner for extracting metadata artifacts from markdown.
@@ -75,60 +46,17 @@ impl NoteScanner {
         }
     }
 
-    /// Performs an optimized binary search to map a local text offset to a
-    /// source byte position.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::NoteScanner;
-    /// # use lithos_core::note::position::SourceByteOffset;
-    /// let segments =
-    ///     [(0, SourceByteOffset::new(100)), (10, SourceByteOffset::new(200))];
-    /// let pos = NoteScanner::map_position(&segments, 15).unwrap();
-    /// assert_eq!(u32::from(pos), 205);
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Structure`] if the offset is out of range.
-    #[inline]
-    pub fn map_position(
-        segments: &[(usize, SourceByteOffset)],
-        offset: usize,
-    ) -> Result<SourceByteOffset, NoteError> {
-        if segments.is_empty() {
-            return SourceByteOffset::try_from_usize(offset)
-                .map_err(|_error| NoteError::Structure("offset out of range"));
-        }
-
-        // Use binary search instead of linear scan for O(log n) performance
-        let idx = segments
-            .binary_search_by_key(&offset, |&(start, _)| start)
-            .unwrap_or_else(|i| i.saturating_sub(1));
-
-        let &(segment_start, segment_pos) = segments
-            .get(idx)
-            .ok_or(NoteError::Structure("inline field offset out of range"))?;
-
-        let delta = offset.saturating_sub(segment_start);
-        let base =
-            usize::try_from(u32::from(segment_pos)).map_err(|_error| {
-                NoteError::Structure("inline field offset out of range")
-            })?;
-
-        SourceByteOffset::try_from_usize(base.saturating_add(delta))
-    }
-
     /// Scans a block of text for tags and inline fields.
     ///
     /// # Examples
     ///
     /// ```
     /// # use lithos_core::note::scanner::{NoteScanner, ScanArtifact};
+    /// # use lithos_core::note::position::SourceByteOffset;
     /// let scanner = NoteScanner::default();
-    /// let artifacts =
-    ///     scanner.scan_block("Check #tag [key:: value]", &[]).unwrap();
+    /// let artifacts = scanner
+    ///     .scan_block("Check #tag [key:: value]", SourceByteOffset::new(0))
+    ///     .unwrap();
     /// assert_eq!(artifacts.len(), 2);
     /// ```
     ///
@@ -139,22 +67,22 @@ impl NoteScanner {
     pub fn scan_block(
         &self,
         text: &str,
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
     ) -> Result<Vec<ScanArtifact>, NoteError> {
         let mut artifacts = Vec::new();
 
         // 1. Scan for tags
-        Self::scan_tags(text, segments, &mut artifacts)?;
+        Self::scan_tags(text, base_offset, &mut artifacts)?;
 
         // 2. Scan for inline fields (Delimited and Bare)
-        self.scan_inline_fields(text, segments, &mut artifacts)?;
+        self.scan_inline_fields(text, base_offset, &mut artifacts)?;
 
         Ok(artifacts)
     }
 
     fn scan_tags(
         text: &str,
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
         out: &mut Vec<ScanArtifact>,
     ) -> Result<(), NoteError> {
         let mut chars = text.char_indices().peekable();
@@ -191,7 +119,7 @@ impl NoteScanner {
             };
 
             if raw.len() > 1 {
-                let position = Self::map_position(segments, start_idx)?;
+                let position = base_offset.add_offset(start_idx)?;
                 out.push(ScanArtifact::Tag(RawTag::new(raw.into(), position)));
             }
 
@@ -204,7 +132,7 @@ impl NoteScanner {
     fn scan_inline_fields(
         &self,
         text: &str,
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
         out: &mut Vec<ScanArtifact>,
     ) -> Result<(), NoteError> {
         if !text.contains("::") && self.emoji_markers.is_empty() {
@@ -218,7 +146,7 @@ impl NoteScanner {
             text,
             b'[',
             b']',
-            segments,
+            base_offset,
             &mut bracket_spans,
             out,
         )?;
@@ -228,13 +156,13 @@ impl NoteScanner {
             text,
             b'(',
             b')',
-            segments,
+            base_offset,
             &mut bracket_spans,
             out,
         )?;
 
         // 3. Emoji fields
-        self.scan_emoji_fields(text, segments, out)?;
+        self.scan_emoji_fields(text, base_offset, out)?;
 
         // 4. Bare fields (on each line, if not inside brackets)
         let mut offset = 0usize;
@@ -243,7 +171,7 @@ impl NoteScanner {
                 line,
                 offset,
                 &bracket_spans,
-                segments,
+                base_offset,
                 out,
             )?;
             offset = offset.saturating_add(line.len());
@@ -260,7 +188,7 @@ impl NoteScanner {
         text: &str,
         open_delim: u8,
         close_delim: u8,
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
         bracket_spans: &mut Vec<(usize, usize)>,
         out: &mut Vec<ScanArtifact>,
     ) -> Result<(), NoteError> {
@@ -294,7 +222,7 @@ impl NoteScanner {
                         .unwrap_or(0)
                         .saturating_add(after_open);
                     bracket_spans.push((open, end));
-                    let position = Self::map_position(segments, key_start)?;
+                    let position = base_offset.add_offset(key_start)?;
                     out.push(ScanArtifact::InlineField(RawInlineField::new(
                         key_trimmed.into(),
                         value_trimmed.into(),
@@ -310,7 +238,7 @@ impl NoteScanner {
     fn scan_emoji_fields(
         &self,
         text: &str,
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
         out: &mut Vec<ScanArtifact>,
     ) -> Result<(), NoteError> {
         if self.emoji_markers.is_empty() {
@@ -332,7 +260,7 @@ impl NoteScanner {
             }
             let mut buffer = [0u8; 4];
             let key = ch.encode_utf8(&mut buffer);
-            let position = Self::map_position(segments, idx)?;
+            let position = base_offset.add_offset(idx)?;
             out.push(ScanArtifact::InlineField(RawInlineField::new(
                 key.into(),
                 value.into(),
@@ -346,7 +274,7 @@ impl NoteScanner {
         line: &str,
         line_offset: usize,
         bracket_spans: &[(usize, usize)],
-        segments: &[(usize, SourceByteOffset)],
+        base_offset: SourceByteOffset,
         out: &mut Vec<ScanArtifact>,
     ) -> Result<(), NoteError> {
         let trimmed = line.trim_end_matches(['\n', '\r']);
@@ -376,7 +304,7 @@ impl NoteScanner {
             .any(|&(start, end)| key_start >= start && key_start < end);
 
         if !is_bracketed {
-            let position = Self::map_position(segments, key_start)?;
+            let position = base_offset.add_offset(key_start)?;
             out.push(ScanArtifact::InlineField(RawInlineField::new(
                 key_trimmed.into(),
                 value_trimmed.into(),
@@ -386,151 +314,18 @@ impl NoteScanner {
         Ok(())
     }
 
-    /// Scans the entire document for line-based artifacts (`BlockRefs` and
-    /// Reference Links).
+    /// Scans the tail of a text block for a block reference (e.g., ` ^id`).
     ///
     /// # Errors
     ///
-    /// Returns [`NoteIngestError`] if offset calculation fails.
+    /// Returns [`NoteError`] if position calculation fails.
     #[inline]
-    pub fn scan_document(
+    pub fn scan_tail_for_block_ref(
         &self,
-        markdown: &str,
-    ) -> Result<Vec<ScanArtifact>, NoteIngestError> {
-        let mut artifacts = Vec::new();
-        let mut offset = 0usize;
-        let mut in_code_block = false;
-        let mut in_frontmatter = false;
-        let mut frontmatter_fence: Option<&'static str> = None;
-
-        for line in markdown.split_inclusive('\n') {
-            let trimmed_line = line.trim_end_matches(['\n', '\r']);
-
-            // 1. Handle Frontmatter boundary
-            if offset == 0 {
-                if trimmed_line == "---" {
-                    in_frontmatter = true;
-                    frontmatter_fence = Some("---");
-                    offset = offset.saturating_add(line.len());
-                    continue;
-                }
-                if trimmed_line == "+++" {
-                    in_frontmatter = true;
-                    frontmatter_fence = Some("+++");
-                    offset = offset.saturating_add(line.len());
-                    continue;
-                }
-            }
-
-            if in_frontmatter {
-                if frontmatter_fence.is_some_and(|fence| fence == trimmed_line)
-                {
-                    in_frontmatter = false;
-                }
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            // 2. Handle Code Block boundary
-            let trimmed_start = trimmed_line.trim_start();
-            if trimmed_start.starts_with("```")
-                || trimmed_start.starts_with("~~~")
-            {
-                in_code_block = !in_code_block;
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            if in_code_block {
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-
-            // 3. Scan for Reference Link Definitions (starts with `[`)
-            if let Some(ref_link) =
-                Self::scan_ref_link_definition(line, offset)?
-            {
-                artifacts.push(ScanArtifact::ReferenceLink(ref_link));
-            }
-
-            // 4. Scan for Block References (ends with ` ^id`)
-            if let Some(block_ref) = Self::scan_block_ref(trimmed_line, offset)?
-            {
-                artifacts.push(ScanArtifact::BlockRef(block_ref));
-            }
-
-            offset = offset.saturating_add(line.len());
-        }
-
-        Ok(artifacts)
-    }
-
-    fn scan_ref_link_definition(
-        line: &str,
-        line_offset: usize,
-    ) -> Result<Option<RawReferenceLink>, NoteIngestError> {
-        let trimmed_line = line.trim_end_matches(['\n', '\r']);
-        let leading =
-            trimmed_line.chars().take_while(|ch| ch.is_whitespace()).count();
-        let content = trimmed_line.get(leading..).unwrap_or("");
-
-        if !content.starts_with('[') {
-            return Ok(None);
-        }
-
-        let Some(close) = content.find("]:") else {
-            return Ok(None);
-        };
-
-        let label = content.get(1..close).unwrap_or("");
-        let after_colon = close.saturating_add(2);
-        let mut rest = content.get(after_colon..).unwrap_or("");
-        if let Some(stripped) = rest.strip_prefix(' ') {
-            rest = stripped;
-        }
-        let dest = rest.trim_start();
-
-        if label.trim().is_empty() || dest.is_empty() {
-            return Ok(None);
-        }
-
-        let target = if let Some(stripped) = dest.strip_prefix('<')
-            && let Some(end) = stripped.find('>')
-        {
-            stripped.get(..end).unwrap_or("")
-        } else {
-            dest.split_whitespace().next().unwrap_or("")
-        };
-
-        if target.is_empty() {
-            return Ok(None);
-        }
-
-        let normalized = label
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_ascii_lowercase();
-
-        let position = SourceByteOffset::try_from_usize(
-            line_offset.saturating_add(leading),
-        )
-        .map_err(|_error| {
-            NoteIngestError::Source("reference link offset out of range".into())
-        })?;
-
-        Ok(Some(RawReferenceLink::new(
-            normalized.into_boxed_str(),
-            target.into(),
-            position,
-        )))
-    }
-
-    fn scan_block_ref(
-        trimmed_line: &str,
-        line_offset: usize,
+        text: &str,
+        base_offset: SourceByteOffset,
     ) -> Result<Option<RawBlockRef>, NoteError> {
-        let line = trimmed_line.trim_end();
+        let line = text.trim_end();
         if let Some(caret_idx) = line.rfind('^') {
             let before = line.get(..caret_idx).unwrap_or("");
             let after = line.get(caret_idx.saturating_add(1)..).unwrap_or("");
@@ -545,9 +340,7 @@ impl NoteScanner {
                 && (before.is_empty()
                     || before.chars().last().is_some_and(char::is_whitespace))
             {
-                let position = SourceByteOffset::try_from_usize(
-                    line_offset.saturating_add(caret_idx),
-                )?;
+                let position = base_offset.add_offset(caret_idx)?;
                 return Ok(Some(RawBlockRef::new(id.into(), position)));
             }
         }
@@ -648,92 +441,10 @@ impl<'source> TaskMarkerScanner<'source> {
     reason = "Tests grouped by behavior"
 )]
 mod tests {
-    use proptest::prelude::*;
     use rstest::rstest;
 
     use super::*;
     use crate::note::raw::RawTaskKind;
-
-    mod proptests {
-        use super::*;
-
-        proptest! {
-            #[test]
-            fn map_position_is_monotonic(
-                segments in prop::collection::vec((0usize..1000usize, 0u32..u32::try_from(1000usize).unwrap_or(u32::MAX)), 1..10)
-                    .prop_map(|mut v| {
-                        v.sort_by_key(|s| s.0);
-                        v.iter().map(|&(o, p)| (o, SourceByteOffset::new(p))).collect::<Vec<_>>()
-                    }),
-                offset in 0usize..2000usize
-            ) {
-                let pos = NoteScanner::map_position(&segments, offset);
-                if let Ok(p) = pos {
-                    // Position should be >= offset if segments start at 0 and have pos >= 0
-                    // Or more generally, it should not crash.
-                    let val: u32 = u32::from(p);
-                    let _: u32 = val;
-                }
-            }
-        }
-    }
-
-    mod map_position {
-        use super::*;
-
-        #[test]
-        fn should_map_offset_directly_when_no_segments() {
-            let segments = [];
-            let pos = NoteScanner::map_position(&segments, 10).unwrap();
-            assert_eq!(u32::from(pos), 10);
-        }
-
-        #[test]
-        fn should_map_exact_segment_start() {
-            let segments = [(0, SourceByteOffset::new(100))];
-            let pos = NoteScanner::map_position(&segments, 0).unwrap();
-            assert_eq!(u32::from(pos), 100);
-        }
-
-        #[test]
-        fn should_map_offset_within_segment() {
-            let segments = [(5, SourceByteOffset::new(100))];
-            // offset 10 is 5 bytes after segment start (5)
-            // pos should be 100 + 5 = 105
-            let pos = NoteScanner::map_position(&segments, 10).unwrap();
-            assert_eq!(u32::from(pos), 105);
-        }
-
-        #[test]
-        fn should_select_correct_segment_using_binary_search() {
-            let segments = [
-                (0, SourceByteOffset::new(100)),
-                (10, SourceByteOffset::new(200)),
-                (20, SourceByteOffset::new(300)),
-            ];
-
-            // Offset 5 -> segment 0 (pos 100) -> 100 + 5 = 105
-            assert_eq!(
-                u32::from(NoteScanner::map_position(&segments, 5).unwrap()),
-                105
-            );
-            // Offset 10 -> segment 1 (pos 200) -> 200 + 0 = 200
-            assert_eq!(
-                u32::from(NoteScanner::map_position(&segments, 10).unwrap()),
-                200
-            );
-            // Offset 15 -> segment 1 (pos 200) -> 200 + 5 = 205
-            assert_eq!(
-                u32::from(NoteScanner::map_position(&segments, 15).unwrap()),
-                205
-            );
-            // Offset 25 -> segment 2 (pos 300) -> 300 + 5 = 305
-            assert_eq!(
-                u32::from(NoteScanner::map_position(&segments, 25).unwrap()),
-                305
-            );
-        }
-    }
 
     mod scan_block {
         use super::*;
@@ -745,26 +456,34 @@ mod tests {
             fn should_extract_simple_and_hierarchical_tags() {
                 let scanner = NoteScanner::default();
                 let text = "Text with #tag and #nested/tag.";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts = scanner
+                    .scan_block(text, SourceByteOffset::new(100))
+                    .unwrap();
 
                 let tags: Vec<_> = artifacts
                     .into_iter()
                     .filter_map(|a| match a {
-                        ScanArtifact::Tag(t) => Some(t.value().to_owned()),
+                        ScanArtifact::Tag(t) => Some((
+                            t.value().to_owned(),
+                            u32::from(t.position()),
+                        )),
                         ScanArtifact::InlineField(_)
-                        | ScanArtifact::BlockRef(_)
-                        | ScanArtifact::ReferenceLink(_) => None,
+                        | ScanArtifact::BlockRef(_) => None,
                     })
                     .collect();
 
-                assert_eq!(tags, vec!["#tag", "#nested/tag"]);
+                assert_eq!(tags, vec![
+                    ("#tag".to_owned(), 110),
+                    ("#nested/tag".to_owned(), 119)
+                ]);
             }
 
             #[test]
             fn should_ignore_tags_preceded_by_alphanumeric() {
                 let scanner = NoteScanner::default();
                 let text = "word#tag";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let tag_count = artifacts
                     .iter()
@@ -777,7 +496,8 @@ mod tests {
             fn should_ignore_single_hash() {
                 let scanner = NoteScanner::default();
                 let text = "Just a # and some text";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let tag_count = artifacts
                     .iter()
@@ -794,34 +514,36 @@ mod tests {
             fn should_extract_bracketed_and_parenthesized_fields() {
                 let scanner = NoteScanner::default();
                 let text = "[key1:: val1] and (key2:: val2)";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts = scanner
+                    .scan_block(text, SourceByteOffset::new(10))
+                    .unwrap();
 
                 let fields: Vec<_> = artifacts
                     .into_iter()
                     .filter_map(|a| match a {
-                        ScanArtifact::InlineField(f) => {
-                            Some((f.key().to_owned(), f.value().to_owned()))
+                        ScanArtifact::InlineField(f) => Some((
+                            f.key().to_owned(),
+                            f.value().to_owned(),
+                            u32::from(f.position()),
+                        )),
+                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
+                            None
                         }
-                        ScanArtifact::Tag(_)
-                        | ScanArtifact::BlockRef(_)
-                        | ScanArtifact::ReferenceLink(_) => None,
                     })
                     .collect();
 
-                assert_eq!(
-                    fields
-                        .iter()
-                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-                        .collect::<Vec<_>>(),
-                    vec![("key1", "val1"), ("key2", "val2")]
-                );
+                assert_eq!(fields, vec![
+                    ("key1".to_owned(), "val1".to_owned(), 11),
+                    ("key2".to_owned(), "val2".to_owned(), 29)
+                ]);
             }
 
             #[test]
             fn should_extract_bare_fields() {
                 let scanner = NoteScanner::default();
                 let text = "bare_key:: bare_val\nAnother line";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let fields: Vec<_> = artifacts
                     .into_iter()
@@ -829,9 +551,9 @@ mod tests {
                         ScanArtifact::InlineField(f) => {
                             Some((f.key().to_owned(), f.value().to_owned()))
                         }
-                        ScanArtifact::Tag(_)
-                        | ScanArtifact::BlockRef(_)
-                        | ScanArtifact::ReferenceLink(_) => None,
+                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
+                            None
+                        }
                     })
                     .collect();
 
@@ -847,10 +569,9 @@ mod tests {
             #[test]
             fn should_ignore_bare_fields_inside_brackets() {
                 let scanner = NoteScanner::default();
-                // "nested:: field" is inside [], so it should be captured as
-                // delimited, NOT duplicated as bare.
                 let text = "[key:: nested:: field]";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let fields: Vec<_> = artifacts
                     .into_iter()
@@ -858,9 +579,9 @@ mod tests {
                         ScanArtifact::InlineField(f) => {
                             Some((f.key().to_owned(), f.value().to_owned()))
                         }
-                        ScanArtifact::Tag(_)
-                        | ScanArtifact::BlockRef(_)
-                        | ScanArtifact::ReferenceLink(_) => None,
+                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
+                            None
+                        }
                     })
                     .collect();
 
@@ -877,7 +598,8 @@ mod tests {
             fn should_extract_emoji_fields() {
                 let scanner = NoteScanner::new(vec!['\u{1f4c5}', '\u{2705}']);
                 let text = "\u{1f4c5} 2024-03-19 and \u{2705} done";
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let fields: Vec<_> = artifacts
                     .into_iter()
@@ -885,9 +607,9 @@ mod tests {
                         ScanArtifact::InlineField(f) => {
                             Some((f.key().to_owned(), f.value().to_owned()))
                         }
-                        ScanArtifact::Tag(_)
-                        | ScanArtifact::BlockRef(_)
-                        | ScanArtifact::ReferenceLink(_) => None,
+                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
+                            None
+                        }
                     })
                     .collect();
 
@@ -905,7 +627,8 @@ mod tests {
             #[case::special_chars("key!:: value")]
             fn should_ignore_invalid_bare_keys(#[case] text: &str) {
                 let scanner = NoteScanner::default();
-                let artifacts = scanner.scan_block(text, &[]).unwrap();
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
                 let field_count = artifacts
                     .iter()
@@ -916,106 +639,36 @@ mod tests {
         }
     }
 
-    mod scan_document {
+    mod scan_tail_for_block_ref {
         use super::*;
 
         #[test]
-        fn should_extract_block_refs_and_ref_links() {
+        fn should_extract_block_ref_from_tail() {
             let scanner = NoteScanner::default();
-            let markdown = "
-Paragraph with a block ref ^my-id
+            let text = "Paragraph with a block ref ^my-id";
+            let block_ref = scanner
+                .scan_tail_for_block_ref(text, SourceByteOffset::new(50))
+                .unwrap()
+                .expect("block ref should be found");
 
-[link-label]: https://example.com\
-                            ";
-            let artifacts = scanner.scan_document(markdown).unwrap();
-
-            let mut block_ref = None;
-            let mut ref_link = None;
-
-            for a in artifacts {
-                match a {
-                    ScanArtifact::BlockRef(r) => {
-                        block_ref = Some(r);
-                    }
-                    ScanArtifact::ReferenceLink(l) => {
-                        ref_link = Some(l);
-                    }
-                    ScanArtifact::Tag(_) | ScanArtifact::InlineField(_) => {}
-                }
-            }
-
-            assert_eq!(block_ref.unwrap().id(), "my-id");
-            assert_eq!(ref_link.unwrap().id(), "link-label");
+            assert_eq!(block_ref.id(), "my-id");
+            assert_eq!(u32::from(block_ref.position()), 50 + 27);
         }
 
         #[test]
-        fn should_ignore_artifacts_in_frontmatter() {
+        fn should_ignore_invalid_block_refs() {
             let scanner = NoteScanner::default();
-            let markdown = "---
-aliases: [^not-a-block-ref]
----
-Actual ^block-ref
-";
-            let artifacts = scanner.scan_document(markdown).unwrap();
+            let text = "No space^id";
+            let block_ref = scanner
+                .scan_tail_for_block_ref(text, SourceByteOffset::new(0))
+                .unwrap();
+            assert!(block_ref.is_none());
 
-            let block_refs: Vec<_> = artifacts
-                .into_iter()
-                .filter_map(|a| match a {
-                    ScanArtifact::BlockRef(r) => Some(r.id().to_owned()),
-                    ScanArtifact::Tag(_)
-                    | ScanArtifact::InlineField(_)
-                    | ScanArtifact::ReferenceLink(_) => None,
-                })
-                .collect();
-
-            assert_eq!(block_refs, vec!["block-ref"]);
-        }
-
-        #[test]
-        fn should_ignore_artifacts_in_code_blocks() {
-            let scanner = NoteScanner::default();
-            let markdown = "
-```rust
-let x = \"^not-a-ref\";
-```
-Actual ^block-ref
-";
-            let artifacts = scanner.scan_document(markdown).unwrap();
-
-            let block_refs: Vec<_> = artifacts
-                .into_iter()
-                .filter_map(|a| match a {
-                    ScanArtifact::BlockRef(r) => Some(r.id().to_owned()),
-                    ScanArtifact::Tag(_)
-                    | ScanArtifact::InlineField(_)
-                    | ScanArtifact::ReferenceLink(_) => None,
-                })
-                .collect();
-
-            assert_eq!(block_refs, vec!["block-ref"]);
-        }
-
-        #[test]
-        fn should_handle_various_reference_link_formats() {
-            let scanner = NoteScanner::default();
-            let markdown = "
-[simple]: target
-[bracketed]: <bracket-target>
-  [indented]: target
-";
-            let artifacts = scanner.scan_document(markdown).unwrap();
-
-            let labels: Vec<_> = artifacts
-                .into_iter()
-                .filter_map(|a| match a {
-                    ScanArtifact::ReferenceLink(l) => Some(l.id().to_owned()),
-                    ScanArtifact::Tag(_)
-                    | ScanArtifact::InlineField(_)
-                    | ScanArtifact::BlockRef(_) => None,
-                })
-                .collect();
-
-            assert_eq!(labels, vec!["simple", "bracketed", "indented"]);
+            let text2 = " ^ invalid id";
+            let block_ref2 = scanner
+                .scan_tail_for_block_ref(text2, SourceByteOffset::new(0))
+                .unwrap();
+            assert!(block_ref2.is_none());
         }
     }
 

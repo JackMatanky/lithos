@@ -64,7 +64,7 @@ pub struct Task {
     status: StatusName,
     text: TaskText,
     range: SourceByteRange,
-    tags: Vec<Tag>,
+    tags: Box<[Tag]>,
     metadata: TaskMetadata,
     schedule: TaskSchedule,
 }
@@ -77,9 +77,9 @@ impl Task {
     pub(crate) fn build_many(
         raw: &RawNote,
         config: &Config,
-    ) -> Result<Vec<Task>, NoteError> {
+    ) -> Result<Box<[Task]>, NoteError> {
         if raw.tasks().is_empty() {
-            return Ok(Vec::new());
+            return Ok(Box::new([]));
         }
 
         let mut tasks = Vec::new();
@@ -89,7 +89,7 @@ impl Task {
                 tasks.push(task);
             }
         }
-        Ok(tasks)
+        Ok(tasks.into_boxed_slice())
     }
 
     /// Creates a new [`Task`] from parsed attributes.
@@ -231,7 +231,8 @@ impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
             .tags()
             .iter()
             .filter_map(|tag| Tag::try_from_token(tag).ok())
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         let builder = TaskBuilder::new(ctx.config.task());
         builder.promote_from_raw(ctx.raw, tags, status_symbol)
     }
@@ -287,7 +288,7 @@ impl From<TaskId> for Uuid {
 /// Parsed task attributes captured from checkbox text.
 #[derive(Debug, Clone, Default)]
 pub struct TaskAttributes {
-    tags: Vec<Tag>,
+    tags: Box<[Tag]>,
     metadata: TaskMetadata,
     schedule: TaskSchedule,
 }
@@ -310,7 +311,7 @@ impl TaskAttributes {
 /// Builder for [`TaskAttributes`].
 #[derive(Debug, Default)]
 pub struct TaskAttributesBuilder {
-    tags: Vec<Tag>,
+    tags: Box<[Tag]>,
     metadata: TaskMetadata,
     schedule: TaskSchedule,
 }
@@ -318,8 +319,8 @@ pub struct TaskAttributesBuilder {
 impl TaskAttributesBuilder {
     #[inline]
     #[must_use]
-    pub fn tags(mut self, tags: Vec<Tag>) -> Self {
-        self.tags = tags;
+    pub fn tags<T: Into<Box<[Tag]>>>(mut self, tags: T) -> Self {
+        self.tags = tags.into();
         self
     }
 
@@ -859,7 +860,7 @@ impl<'config> TaskBuilder<'config> {
     fn promote_from_raw(
         &self,
         raw: &RawTask,
-        tags: Vec<Tag>,
+        tags: Box<[Tag]>,
         status_symbol: StatusSymbol,
     ) -> Result<Option<Task>, NoteError> {
         if !self.should_promote_from_tags(&tags) {
@@ -993,7 +994,7 @@ struct ParsedInlineFields {
 }
 
 impl ParsedInlineFields {
-    fn into_attributes(self, tags: Vec<Tag>) -> TaskAttributes {
+    fn into_attributes(self, tags: Box<[Tag]>) -> TaskAttributes {
         self.slots
             .apply_to_builder(TaskAttributes::builder().tags(tags))
             .metadata(self.metadata)
@@ -1530,7 +1531,9 @@ mod tests {
         let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
 
-        let artifacts = scanner.scan_block(text, &[]).expect("scan artifacts");
+        let artifacts = scanner
+            .scan_block(text, SourceByteOffset::new(0))
+            .expect("scan artifacts");
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
@@ -1539,7 +1542,7 @@ mod tests {
             match artifact {
                 ScanArtifact::Tag(tag) => tags.push(tag.value().into()),
                 ScanArtifact::InlineField(field) => inline_fields.push(field),
-                ScanArtifact::BlockRef(_) | ScanArtifact::ReferenceLink(_) => {}
+                ScanArtifact::BlockRef(_) => {}
             }
         }
 

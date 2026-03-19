@@ -1527,24 +1527,28 @@ mod tests {
         let range = SourceByteRange::new(base, base).expect("valid range");
 
         let scanner = NoteScanner::default();
-        let artifacts =
-            scanner.scan_block(raw_task_text, &[]).expect("scan artifacts");
+        let artifacts = scanner
+            .scan_block(raw_task_text, SourceByteOffset::new(0))
+            .expect("scan artifacts");
 
-        let mut inline_fields = Vec::new();
+        let mut task_tags = Vec::new();
+        let mut task_fields = Vec::new();
+
         for artifact in artifacts {
             match artifact {
-                ScanArtifact::InlineField(field) => inline_fields.push(field),
-                ScanArtifact::Tag(_)
-                | ScanArtifact::BlockRef(_)
-                | ScanArtifact::ReferenceLink(_) => {}
+                ScanArtifact::Tag(tag) => {
+                    task_tags.push(tag.value().into());
+                }
+                ScanArtifact::InlineField(field) => task_fields.push(field),
+                ScanArtifact::BlockRef(_) => {}
             }
         }
 
         let tasks = vec![RawTask::new(
             RawTaskKind::Unchecked(' '),
             raw_task_text.into(),
-            vec!["#task".into()],
-            inline_fields,
+            task_tags,
+            task_fields,
             range,
         )];
         RawNote::new(

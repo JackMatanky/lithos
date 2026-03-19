@@ -2,7 +2,7 @@
 use std::time::SystemTime;
 
 use pulldown_cmark::{
-    Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
+    Event, LinkType, Options, Parser, TagEnd, utils::TextMergeWithOffset,
 };
 
 use crate::note::{
@@ -12,12 +12,12 @@ use crate::note::{
     raw::{
         RawFrontmatter, RawFrontmatterFormat, RawHeading, RawInlineField,
         RawLink, RawLinkStyle, RawListDepth, RawListItem, RawListType, RawNote,
-        RawSection, RawSectionKind, RawTag, RawTask,
+        RawReferenceLink, RawSection, RawSectionKind, RawTag, RawTask,
     },
     scanner::{NoteScanner, ScanArtifact, TaskMarkerScanner},
 };
 
-/// Returns the pulldown-cmark option set used for Obsidian-compatible parsing.
+/// Markdown parser for extracting note facts.
 #[non_exhaustive]
 pub struct MarkdownParser;
 
@@ -91,6 +91,7 @@ impl MarkdownParser {
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListType>,
         current_link: &mut Option<LinkFrame>,
+        pool: &mut StringPool,
     ) {
         let kind = match tag {
             pulldown_cmark::Tag::Heading {
@@ -121,7 +122,7 @@ impl MarkdownParser {
                     is_embed: false,
                     target: dest_url.to_string(),
                     start: start_pos,
-                    alias: String::new(),
+                    alias: pool.take(),
                 });
                 None
             }
@@ -130,12 +131,13 @@ impl MarkdownParser {
                 dest_url,
                 ..
             } => {
+                let is_embed = matches!(link_type, LinkType::WikiLink { .. });
                 *current_link = Some(LinkFrame {
                     style: link_type.into(),
-                    is_embed: true,
+                    is_embed,
                     target: dest_url.to_string(),
                     start: start_pos,
-                    alias: String::new(),
+                    alias: pool.take(),
                 });
                 None
             }
@@ -168,9 +170,8 @@ impl MarkdownParser {
                 kind: bkind,
                 depth: current_depth,
                 start_offset: start_pos,
-                full_text: String::new(),
-                scannable_text: String::new(),
-                scannable_segments: Vec::new(),
+                full_text: pool.take(),
+                scannable_text: pool.take(),
                 task_marker: None,
             });
         }
@@ -197,11 +198,13 @@ impl MarkdownParser {
         open_item_by_depth: &mut Vec<SourceByteOffset>,
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
+        block_refs: &mut Vec<crate::note::raw::RawBlockRef>,
         scanner: &NoteScanner,
+        pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
         match end_tag {
             pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image => {
-                if let Some(link) = current_link.take() {
+                if let Some(mut link) = current_link.take() {
                     let alias = if link.alias.trim().is_empty() {
                         None
                     } else {
@@ -217,6 +220,7 @@ impl MarkdownParser {
                         anchor.map(Into::into),
                         link.start,
                     ));
+                    pool.put(std::mem::take(&mut link.alias));
                 }
             }
             pulldown_cmark::TagEnd::Heading(_)
@@ -225,7 +229,7 @@ impl MarkdownParser {
             | pulldown_cmark::TagEnd::List(_)
             | pulldown_cmark::TagEnd::BlockQuote(_)
             | pulldown_cmark::TagEnd::CodeBlock => {
-                if let Some(block) = block_stack.pop() {
+                if let Some(mut block) = block_stack.pop() {
                     if matches!(
                         block.kind,
                         BlockKind::List
@@ -270,6 +274,7 @@ impl MarkdownParser {
                                 tags,
                                 inline_fields,
                                 block_stack,
+                                block_refs,
                                 scanner,
                             )?;
                         }
@@ -285,6 +290,7 @@ impl MarkdownParser {
                                 open_item_by_depth,
                                 list_items,
                                 tasks,
+                                block_refs,
                                 scanner,
                             )?;
                         }
@@ -306,6 +312,8 @@ impl MarkdownParser {
                             ));
                         }
                     }
+                    pool.put(std::mem::take(&mut block.full_text));
+                    pool.put(std::mem::take(&mut block.scannable_text));
                 }
             }
             pulldown_cmark::TagEnd::HtmlBlock
@@ -333,7 +341,6 @@ impl MarkdownParser {
     )]
     fn handle_text(
         text: pulldown_cmark::CowStr<'_>,
-        start_pos: SourceByteOffset,
         block_stack: &mut [ActiveBlock],
         current_link: &mut Option<LinkFrame>,
     ) {
@@ -341,9 +348,6 @@ impl MarkdownParser {
         if let Some(block) = block_stack.last_mut() {
             block.full_text.push_str(text_str);
             if current_link.is_none() {
-                block
-                    .scannable_segments
-                    .push((block.scannable_text.len(), start_pos));
                 block.scannable_text.push_str(text_str);
             }
         }
@@ -353,7 +357,6 @@ impl MarkdownParser {
     }
 
     fn handle_break(
-        start_pos: SourceByteOffset,
         block_stack: &mut [ActiveBlock],
         current_link: &mut Option<LinkFrame>,
     ) {
@@ -377,9 +380,6 @@ impl MarkdownParser {
                 && !block.scannable_text.ends_with(' ')
                 && !block.scannable_text.ends_with('\n')
             {
-                block
-                    .scannable_segments
-                    .push((block.scannable_text.len(), start_pos));
                 block.scannable_text.push_str(brk);
             }
         }
@@ -448,14 +448,14 @@ impl MarkdownParser {
         inline_fields: &mut Vec<RawInlineField>,
     ) -> Result<(), NoteIngestError> {
         let artifacts = scanner
-            .scan_block(&block.scannable_text, &block.scannable_segments)
+            .scan_block(&block.scannable_text, block.start_offset)
             .map_err(NoteIngestError::Domain)?;
 
         for artifact in artifacts {
             match artifact {
                 ScanArtifact::Tag(tag) => tags.push(tag),
                 ScanArtifact::InlineField(field) => inline_fields.push(field),
-                ScanArtifact::BlockRef(_) | ScanArtifact::ReferenceLink(_) => {}
+                ScanArtifact::BlockRef(_) => {}
             }
         }
         Ok(())
@@ -473,6 +473,7 @@ impl MarkdownParser {
         tags: &mut Vec<RawTag>,
         inline_fields: &mut Vec<RawInlineField>,
         block_stack: &mut [ActiveBlock],
+        block_refs: &mut Vec<crate::note::raw::RawBlockRef>,
         scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
@@ -482,6 +483,13 @@ impl MarkdownParser {
         ));
 
         Self::collect_block_artifacts(block, scanner, tags, inline_fields)?;
+
+        if let Some(block_ref) = scanner
+            .scan_tail_for_block_ref(&block.full_text, block.start_offset)
+            .map_err(NoteIngestError::Domain)?
+        {
+            block_refs.push(block_ref);
+        }
 
         if let Some(parent) = block_stack.last_mut()
             && matches!(parent.kind, BlockKind::ListItem)
@@ -509,6 +517,7 @@ impl MarkdownParser {
         open_item_by_depth: &mut Vec<SourceByteOffset>,
         list_items: &mut Vec<RawListItem>,
         tasks: &mut Vec<RawTask>,
+        block_refs: &mut Vec<crate::note::raw::RawBlockRef>,
         scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
@@ -518,6 +527,13 @@ impl MarkdownParser {
         ));
 
         Self::collect_block_artifacts(block, scanner, tags, inline_fields)?;
+
+        if let Some(block_ref) = scanner
+            .scan_tail_for_block_ref(&block.full_text, block.start_offset)
+            .map_err(NoteIngestError::Domain)?
+        {
+            block_refs.push(block_ref);
+        }
 
         let list_type =
             list_stack.last().copied().unwrap_or(RawListType::Unordered);
@@ -576,7 +592,7 @@ impl MarkdownParser {
             let mut task_fields = Vec::new();
 
             let task_artifacts = scanner
-                .scan_block(&block.full_text, &block.scannable_segments)
+                .scan_block(&block.full_text, block.start_offset)
                 .map_err(NoteIngestError::Domain)?;
 
             for artifact in task_artifacts {
@@ -585,8 +601,7 @@ impl MarkdownParser {
                         task_tags.push(tag.value().into());
                     }
                     ScanArtifact::InlineField(field) => task_fields.push(field),
-                    ScanArtifact::BlockRef(_)
-                    | ScanArtifact::ReferenceLink(_) => {}
+                    ScanArtifact::BlockRef(_) => {}
                 }
             }
 
@@ -629,6 +644,7 @@ impl MarkdownParser {
         modified_at: Option<SystemTime>,
     ) -> Result<RawNote, NoteIngestError> {
         let scanner = NoteScanner::default();
+        let mut pool = StringPool::new();
 
         let source_bytes = u64::try_from(markdown.len()).map_err(|_error| {
             NoteIngestError::Source("source length out of range".into())
@@ -641,18 +657,6 @@ impl MarkdownParser {
         let mut reference_links = Vec::new();
         let mut block_refs = Vec::new();
 
-        for artifact in scanner.scan_document(markdown)? {
-            match artifact {
-                ScanArtifact::ReferenceLink(link) => {
-                    reference_links.push(link);
-                }
-                ScanArtifact::BlockRef(block_ref) => {
-                    block_refs.push(block_ref);
-                }
-                ScanArtifact::Tag(_) | ScanArtifact::InlineField(_) => {}
-            }
-        }
-
         let mut headings = Vec::new();
         let mut sections = Vec::new();
         let mut links = Vec::new();
@@ -662,9 +666,10 @@ impl MarkdownParser {
         let mut inline_fields = Vec::new();
         let mut frontmatter = None;
 
-        let mut block_stack: Vec<ActiveBlock> = Vec::new();
-        let mut list_stack: Vec<RawListType> = Vec::new();
-        let mut open_item_by_depth: Vec<SourceByteOffset> = Vec::new();
+        let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
+        let mut list_stack: Vec<RawListType> = Vec::with_capacity(8);
+        let mut open_item_by_depth: Vec<SourceByteOffset> =
+            Vec::with_capacity(8);
 
         let mut depth: u32 = 0;
 
@@ -673,10 +678,10 @@ impl MarkdownParser {
             pulldown_cmark::MetadataBlockKind,
             SourceByteOffset,
         )> = None;
-        let mut metadata_text = String::new();
+        let mut metadata_text = pool.take();
 
-        let events = Parser::new_ext(markdown, Self::obsidian_options())
-            .into_offset_iter();
+        let parser = Parser::new_ext(markdown, Self::obsidian_options());
+        let events = parser.into_offset_iter();
         let iter = TextMergeWithOffset::new(events);
 
         for (event, range) in iter {
@@ -707,6 +712,7 @@ impl MarkdownParser {
                         &mut block_stack,
                         &mut list_stack,
                         &mut current_link,
+                        &mut pool,
                     );
                 }
                 Event::End(end_tag) => {
@@ -726,23 +732,20 @@ impl MarkdownParser {
                         &mut open_item_by_depth,
                         &mut list_items,
                         &mut tasks,
+                        &mut block_refs,
                         &scanner,
+                        &mut pool,
                     )?;
                 }
                 Event::Text(text) | Event::Code(text) => {
                     Self::handle_text(
                         text,
-                        start_pos,
                         &mut block_stack,
                         &mut current_link,
                     );
                 }
                 Event::SoftBreak | Event::HardBreak => {
-                    Self::handle_break(
-                        start_pos,
-                        &mut block_stack,
-                        &mut current_link,
-                    );
+                    Self::handle_break(&mut block_stack, &mut current_link);
                 }
                 Event::TaskListMarker(checked) => {
                     if let Some(block) = block_stack.last_mut() {
@@ -756,6 +759,21 @@ impl MarkdownParser {
                 | Event::FootnoteReference(_)
                 | Event::Rule => {}
             }
+        }
+
+        pool.put(metadata_text);
+
+        // Re-create the parser to access reference definitions (v0.13 API)
+        // Since we already consumed the first parser via into_offset_iter()
+        let parser_for_refs =
+            Parser::new_ext(markdown, Self::obsidian_options());
+        for (label, link_def) in parser_for_refs.reference_definitions().iter()
+        {
+            reference_links.push(RawReferenceLink::new(
+                label.to_owned().into_boxed_str(),
+                link_def.dest.to_string().into_boxed_str(),
+                SourceByteOffset::new(0), // RefDefs don't track original definition offset yet in cmark
+            ));
         }
 
         sections.sort_by_key(|section| u32::from(section.range().start()));
@@ -796,7 +814,6 @@ struct ActiveBlock {
     start_offset: SourceByteOffset,
     full_text: String,
     scannable_text: String,
-    scannable_segments: Vec<(usize, SourceByteOffset)>,
     task_marker: Option<bool>,
 }
 
@@ -830,6 +847,27 @@ impl<'source> LinkTarget<'source> {
             || self.0.starts_with("https://")
             || self.0.starts_with("ftp://")
             || self.0.starts_with("mailto:")
+    }
+}
+
+struct StringPool {
+    pool: Vec<String>,
+}
+
+impl StringPool {
+    fn new() -> Self {
+        Self {
+            pool: Vec::with_capacity(16),
+        }
+    }
+
+    fn take(&mut self) -> String {
+        self.pool.pop().unwrap_or_else(|| String::with_capacity(128))
+    }
+
+    fn put(&mut self, mut s: String) {
+        s.clear();
+        self.pool.push(s);
     }
 }
 

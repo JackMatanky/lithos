@@ -59,6 +59,19 @@ impl SourceByteOffset {
             NoteError::Structure("source offset out of range")
         })
     }
+
+    /// Adds a relative offset to this byte offset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the resulting offset cannot fit in
+    /// `u32`.
+    #[inline]
+    pub fn add_offset(&self, delta: usize) -> Result<Self, NoteError> {
+        let base = usize::try_from(self.0)
+            .map_err(|_error| NoteError::Structure("offset overflow"))?;
+        Self::try_from_usize(base.saturating_add(delta))
+    }
 }
 
 impl From<u32> for SourceByteOffset {

@@ -567,8 +567,8 @@ impl RawTag {
 pub struct RawTask {
     task_kind: RawTaskKind,
     text: Box<str>,
-    tags: Vec<Box<str>>,
-    inline_fields: Vec<RawInlineField>,
+    tags: Box<[Box<str>]>,
+    inline_fields: Box<[RawInlineField]>,
     range: SourceByteRange,
 }
 
@@ -576,18 +576,22 @@ impl RawTask {
     /// Create a raw task entry.
     #[inline]
     #[must_use]
-    pub fn new(
+    pub fn new<Tags, Fields>(
         task_kind: RawTaskKind,
         text: Box<str>,
-        tags: Vec<Box<str>>,
-        inline_fields: Vec<RawInlineField>,
+        tags: Tags,
+        inline_fields: Fields,
         range: SourceByteRange,
-    ) -> Self {
+    ) -> Self
+    where
+        Tags: Into<Box<[Box<str>]>>,
+        Fields: Into<Box<[RawInlineField]>>,
+    {
         Self {
             task_kind,
             text,
-            tags,
-            inline_fields,
+            tags: tags.into(),
+            inline_fields: inline_fields.into(),
             range,
         }
     }
@@ -638,15 +642,15 @@ pub struct RawNote {
     created_at: Option<SystemTime>,
     modified_at: Option<SystemTime>,
     frontmatter: Option<RawFrontmatter>,
-    headings: Vec<RawHeading>,
-    sections: Vec<RawSection>,
-    links: Vec<RawLink>,
-    tags: Vec<RawTag>,
-    list_items: Vec<RawListItem>,
-    tasks: Vec<RawTask>,
-    inline_fields: Vec<RawInlineField>,
-    reference_links: Vec<RawReferenceLink>,
-    block_refs: Vec<RawBlockRef>,
+    headings: Box<[RawHeading]>,
+    sections: Box<[RawSection]>,
+    links: Box<[RawLink]>,
+    tags: Box<[RawTag]>,
+    list_items: Box<[RawListItem]>,
+    tasks: Box<[RawTask]>,
+    inline_fields: Box<[RawInlineField]>,
+    reference_links: Box<[RawReferenceLink]>,
+    block_refs: Box<[RawBlockRef]>,
 }
 
 impl RawNote {
@@ -657,23 +661,44 @@ impl RawNote {
         clippy::too_many_arguments,
         reason = "RawNote bundles full extraction output"
     )]
-    pub fn new(
+    pub fn new<
+        Headings,
+        Sections,
+        Links,
+        Tags,
+        ListItems,
+        Tasks,
+        InlineFields,
+        RefLinks,
+        BlockRefs,
+    >(
         path: NotePath,
         source_hash: Box<str>,
         source_bytes: u64,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
         frontmatter: Option<RawFrontmatter>,
-        headings: Vec<RawHeading>,
-        sections: Vec<RawSection>,
-        links: Vec<RawLink>,
-        tags: Vec<RawTag>,
-        list_items: Vec<RawListItem>,
-        tasks: Vec<RawTask>,
-        inline_fields: Vec<RawInlineField>,
-        reference_links: Vec<RawReferenceLink>,
-        block_refs: Vec<RawBlockRef>,
-    ) -> Self {
+        headings: Headings,
+        sections: Sections,
+        links: Links,
+        tags: Tags,
+        list_items: ListItems,
+        tasks: Tasks,
+        inline_fields: InlineFields,
+        reference_links: RefLinks,
+        block_refs: BlockRefs,
+    ) -> Self
+    where
+        Headings: Into<Box<[RawHeading]>>,
+        Sections: Into<Box<[RawSection]>>,
+        Links: Into<Box<[RawLink]>>,
+        Tags: Into<Box<[RawTag]>>,
+        ListItems: Into<Box<[RawListItem]>>,
+        Tasks: Into<Box<[RawTask]>>,
+        InlineFields: Into<Box<[RawInlineField]>>,
+        RefLinks: Into<Box<[RawReferenceLink]>>,
+        BlockRefs: Into<Box<[RawBlockRef]>>,
+    {
         Self {
             path,
             source_hash,
@@ -681,15 +706,15 @@ impl RawNote {
             created_at,
             modified_at,
             frontmatter,
-            headings,
-            sections,
-            links,
-            tags,
-            list_items,
-            tasks,
-            inline_fields,
-            reference_links,
-            block_refs,
+            headings: headings.into(),
+            sections: sections.into(),
+            links: links.into(),
+            tags: tags.into(),
+            list_items: list_items.into(),
+            tasks: tasks.into(),
+            inline_fields: inline_fields.into(),
+            reference_links: reference_links.into(),
+            block_refs: block_refs.into(),
         }
     }
 
