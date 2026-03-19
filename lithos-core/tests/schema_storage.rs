@@ -149,9 +149,9 @@ mod lookup_tests {
     /// tests verify multi-schema functionality end-to-end (which works
     /// correctly).
     ///
-    /// Tracked for Phase 7 investigation.
+    /// Fixed: Was caused by wrong API call (`list_owned` vs
+    /// `list_key_value_pairs`).
     #[test]
-    #[ignore = "Critical rkyv data corruption bug when multiple schemas exist"]
     #[expect(
         clippy::similar_names,
         reason = "Test code - prop1/props1 naming intentional for parallel \
@@ -363,7 +363,6 @@ mod batch_operations {
     /// transaction semantics. Negative testing (forcing a failure mid-batch)
     /// would require database mocking or intentional corruption.
     #[test]
-    #[ignore = "Blocked by rkyv corruption bug when saving multiple schemas"]
     fn batch_save_is_atomic() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.db());

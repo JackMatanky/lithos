@@ -503,8 +503,8 @@ impl Repository for RedbRepository {
     fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error> {
         use crate::schema::db_table::SCHEMA_BY_ID;
 
-        let pairs: Vec<(Box<str>, Schema)> =
-            self.db.list_owned(SCHEMA_BY_ID)?;
+        let pairs: Vec<(String, Schema)> =
+            self.db.list_key_value_pairs(SCHEMA_BY_ID)?;
 
         Ok(pairs.into_iter().map(|(_id, schema)| schema).collect())
     }
@@ -516,10 +516,10 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::SCHEMA_ID_BY_NAME;
 
         self.db
-            .list_owned(SCHEMA_ID_BY_NAME)?
+            .list_key_value_pairs(SCHEMA_ID_BY_NAME)?
             .into_iter()
-            .map(|(name_str, id): (Box<str>, SchemaId)| {
-                SchemaName::try_new(name_str.as_ref()).map(|name| (name, id))
+            .map(|(name_str, id): (String, SchemaId)| {
+                SchemaName::try_new(&name_str).map(|name| (name, id))
             })
             .collect()
     }
