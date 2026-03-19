@@ -88,7 +88,8 @@ impl<'db, 'config> Service<'db, 'config> {
             path_set.insert(note_path.as_str().into());
         }
 
-        let stored_notes = loader.repository().list()?;
+        let stored_notes =
+            loader.repository().list().map_err(ServiceError::Repository)?;
         for stored in stored_notes {
             if !path_set.contains(stored.path().as_str()) {
                 loader
@@ -99,7 +100,10 @@ impl<'db, 'config> Service<'db, 'config> {
 
         let mut note_ids = Vec::with_capacity(paths.len());
         for note_path in paths {
-            let stored = loader.repository().find_by_path(&note_path)?;
+            let stored = loader
+                .repository()
+                .find_by_path(&note_path)
+                .map_err(ServiceError::Repository)?;
             let metadata = ingestor
                 .source()
                 .metadata(Path::new(note_path.as_str()))

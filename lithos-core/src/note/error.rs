@@ -14,9 +14,51 @@
 //! 5. **Orchestration**: The top-level coordination of the full pipeline
 //!    ([`NoteLoadError`]).
 //!
-//! All errors use `thiserror` for descriptive formatting and support
-//! zero-copy patterns by using `Box<str>` for dynamic message data where
-//! applicable.
+//! # Hierarchy
+//!
+//! ```text
+//! NoteLoadError (Orchestration)
+//!  ├── NoteIngestError (Ingestion Phase)
+//!  │    ├── NoteFileError (I/O & Vault Boundaries)
+//!  │    └── NoteParseError (Syntax & Extraction)
+//!  ├── NoteError (Domain Umbrella)
+//!  │    ├── TagError, TaskError, LinkError, etc.
+//!  │    └── NoteFileError (Logical path validation)
+//!  └── NoteRepositoryError (Persistence Phase)
+//!       └── DbError (Storage Layer)
+//! ```
+//!
+//! # Design Principles
+//!
+//! - **Context Preservation**: Every layer wraps the previous one using
+//!   `#[error(transparent)]` to ensure the root cause is preserved in the
+//!   `source()` chain.
+//! - **Performance**: Dynamic error data uses `Box<str>` instead of `String` to
+//!   minimize heap allocations in hot paths like indexing and LSP queries.
+//! - **Phase Orientation**: Errors are categorized by where they occur in the
+//!   pipeline, preventing the "everything is an ingestion error" anti-pattern.
+//!
+//! # Usage Guidelines
+//!
+//! | Error Type              | When to Use                                                            |
+//! | :---------------------- | :--------------------------------------------------------------------- |
+//! | [`NoteError`]           | Pure domain logic, entity constructors, and normalization methods.     |
+//! | [`NoteIngestError`]     | Readers, scanners, and parsers bridging raw bytes to structured facts. |
+//! | [`NoteRepositoryError`] | Storage adapters, indexing logic, and identity stability checks.       |
+//! | [`NoteLoadError`]       | Cross-cutting services coordinating the entire lifecycle.              |
+//!
+//! # Examples
+//!
+//! ## Handling a Load Failure
+//!
+//! ```ignore
+//! match loader.load_content(path, content, None, None) {
+//!     Err(NoteLoadError::Ingestion(e)) => handle_syntax_error(e),
+//!     Err(NoteLoadError::Persistence(e)) => handle_database_error(e),
+//!     Err(NoteLoadError::Validation(e)) => handle_domain_violation(e),
+//!     Ok(id) => proceed(id),
+//! }
+//! ```
 
 use std::path::PathBuf;
 
@@ -93,6 +135,19 @@ pub enum NoteIngestError {
     Domain(#[from] NoteError),
 }
 
+impl From<crate::fs::error::ParseError> for NoteIngestError {
+    #[inline]
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        #[expect(clippy::unwrap_used, reason = "Static dummy path is valid")]
+        let dummy_path = NotePath::try_new("vault.md").unwrap();
+        NoteFileError::ReadFailed {
+            path: dummy_path,
+            message: err.to_string().into(),
+        }
+        .into()
+    }
+}
+
 /// Orchestration error returned by the Note
 /// [Loader][crate::note::loader::Loader].
 ///
@@ -112,6 +167,13 @@ pub enum NoteLoadError {
     /// The note could not be saved to or retrieved from the repository.
     #[error("persistence failed: {0}")]
     Persistence(#[from] NoteRepositoryError),
+}
+
+impl From<crate::db::DbError> for NoteLoadError {
+    #[inline]
+    fn from(err: crate::db::DbError) -> Self {
+        NoteLoadError::Persistence(NoteRepositoryError::Storage(err))
+    }
 }
 
 // --- Pipeline & Interface Errors ---
@@ -452,9 +514,9 @@ pub enum StructureError {
         "source offset {offset} out of bounds (source length: {source_len})"
     )]
     OutOfBounds {
-        /// The problematic offset.
+        /// Problematic offset.
         offset: usize,
-        /// Total length of the source buffer in bytes.
+        /// Total buffer length.
         source_len: usize,
     },
 
@@ -584,24 +646,239 @@ impl FrontmatterError {
     }
 }
 
-// --- Conversions ---
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl From<crate::db::DbError> for NoteLoadError {
-    #[inline]
-    fn from(err: crate::db::DbError) -> Self {
-        NoteLoadError::Persistence(NoteRepositoryError::Storage(err))
-    }
-}
+    /// Tests error conversion chains and `#[from]` implementations.
+    mod conversions {
 
-impl From<crate::fs::error::ParseError> for NoteIngestError {
-    #[inline]
-    fn from(err: crate::fs::error::ParseError) -> Self {
-        #[expect(clippy::unwrap_used, reason = "Static dummy path is valid")]
-        let dummy_path = NotePath::try_new("vault.md").unwrap();
-        NoteFileError::ReadFailed {
-            path: dummy_path,
-            message: err.to_string().into(),
+        use super::*;
+        use crate::db::DbError;
+
+        #[test]
+        fn db_error_to_load_error_chain() {
+            let db_err = DbError::Table("test failure".into());
+            let load_err: NoteLoadError = db_err.into();
+
+            assert!(
+                matches!(
+                    &load_err,
+                    NoteLoadError::Persistence(NoteRepositoryError::Storage(source))
+                    if source.to_string() == "table error: test failure"
+                ),
+                "Expected Persistence(Storage) error chain, got: {load_err:?}"
+            );
         }
-        .into()
+
+        #[test]
+        fn tag_error_to_domain_umbrella() {
+            let tag_err = TagError::EmptyTag;
+            let note_err: NoteError = tag_err.into();
+            assert!(matches!(note_err, NoteError::Tag(TagError::EmptyTag)));
+        }
+
+        #[test]
+        fn file_error_to_ingest_umbrella() {
+            let file_err = NoteFileError::InvalidPath {
+                path: "bad/path".into(),
+                reason: "traversal",
+            };
+            let ingest_err: NoteIngestError = file_err.into();
+            assert!(matches!(
+                ingest_err,
+                NoteIngestError::File(NoteFileError::InvalidPath { .. })
+            ));
+        }
+    }
+
+    /// Tests the `Display` implementation for various error variants.
+    mod formatting {
+        use std::path::PathBuf;
+
+        use rstest::rstest;
+
+        use super::*;
+        use crate::note::aggregate::NoteId;
+
+        #[test]
+        fn note_file_error_formatting() {
+            let escape_err = NoteFileError::VaultRootEscape {
+                path: PathBuf::from("/etc/passwd"),
+            };
+            assert!(escape_err.to_string().contains("/etc/passwd"));
+            assert!(escape_err.to_string().contains("outside the vault root"));
+
+            let ext_err = NoteFileError::UnsupportedExtension {
+                path: "note.txt".into(),
+                found: "txt".into(),
+            };
+            assert!(ext_err.to_string().contains("note.txt"));
+            assert!(ext_err.to_string().contains("expected .md, found 'txt'"));
+        }
+
+        #[test]
+        fn note_parse_error_formatting() {
+            let markdown_err = NoteParseError::Markdown {
+                line: 10,
+                column: 5,
+                reason: "unbalanced bracket".into(),
+            };
+            let msg = markdown_err.to_string();
+            assert!(msg.contains("line 10"));
+            assert!(msg.contains("col 5"));
+            assert!(msg.contains("unbalanced bracket"));
+
+            let large_err = NoteParseError::SourceTooLarge {
+                size: 5000,
+                limit: 1000,
+            };
+            assert!(large_err.to_string().contains("5000 bytes"));
+            assert!(large_err.to_string().contains("limit: 1000"));
+        }
+
+        #[test]
+        fn repository_error_formatting() {
+            let id = NoteId::new();
+            let corruption_err = NoteRepositoryError::Corruption {
+                id,
+                reason: "invalid bytes".into(),
+            };
+            assert!(corruption_err.to_string().contains(&id.to_string()));
+            assert!(corruption_err.to_string().contains("invalid bytes"));
+
+            let limit_err = NoteRepositoryError::ResourceLimitExceeded {
+                current: 100,
+                limit: 50,
+                context: "tasks",
+            };
+            assert!(limit_err.to_string().contains("tasks has 100 items"));
+            assert!(limit_err.to_string().contains("limit: 50"));
+        }
+
+        #[rstest]
+        #[case::tag(TagError::MissingHash, "must start with '#'")]
+        #[case::task(TaskError::EmptyText, "text cannot be empty")]
+        #[case::link(LinkError::EmptyTarget, "target cannot be empty")]
+        #[case::heading(HeadingError::EmptyContent, "content cannot be empty")]
+        #[case::list(ListError::MaxNestingExceeded { current: 10, limit: 5 }, "depth: 10, limit: 5")]
+        fn sub_domain_error_formatting(
+            #[case] err: impl std::fmt::Display,
+            #[case] expected: &str,
+        ) {
+            assert!(err.to_string().contains(expected));
+        }
+    }
+
+    /// Tests the `FrontmatterError` contextual helper.
+    mod frontmatter_helpers {
+        use super::*;
+
+        #[test]
+        fn with_key_adds_missing_context() {
+            let err = FrontmatterError::KeyMissing {
+                key: "".into(),
+            };
+            let err = err.with_key("author");
+            assert!(
+                matches!(
+                    &err,
+                    FrontmatterError::KeyMissing { key }
+                    if key.as_ref() == "author"
+                ),
+                "Expected KeyMissing with 'author' context, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn with_key_does_not_overwrite_existing_context() {
+            let err = FrontmatterError::TypeMismatch {
+                key: "date".into(),
+                expected: "string",
+                actual: "number",
+            };
+            let err = err.with_key("original");
+            assert!(
+                matches!(
+                    &err,
+                    FrontmatterError::TypeMismatch { key, .. }
+                    if key.as_ref() == "date"
+                ),
+                "Expected TypeMismatch to retain 'date' context, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn with_key_ignores_non_extraction_errors() {
+            let err = FrontmatterError::InvalidAlias {
+                value: "bad alias".into(),
+                reason: "empty",
+            };
+            let err = err.with_key("ignored");
+            assert!(
+                matches!(
+                    &err,
+                    FrontmatterError::InvalidAlias { value, .. }
+                    if value.as_ref() == "bad alias"
+                ),
+                "Expected InvalidAlias to retain its value, got: {err:?}"
+            );
+        }
+    }
+
+    /// Tests for equality logic and deep enum matching.
+    mod logic {
+        use super::*;
+
+        #[test]
+        fn error_equality_with_nested_variants() {
+            let err1 = NoteError::Tag(TagError::InvalidSegment {
+                segment: "work".into(),
+                reason: "bad char",
+            });
+            let err2 = NoteError::Tag(TagError::InvalidSegment {
+                segment: "work".into(),
+                reason: "bad char",
+            });
+            let err3 = NoteError::Tag(TagError::InvalidSegment {
+                segment: "life".into(),
+                reason: "bad char",
+            });
+
+            assert_eq!(err1, err2);
+            assert_ne!(err1, err3);
+        }
+
+        #[test]
+        fn matches_named_fields_with_guards() {
+            let err = NoteParseError::Markdown {
+                line: 42,
+                column: 1,
+                reason: "EOF".into(),
+            };
+
+            assert!(matches!(
+                err,
+                NoteParseError::Markdown {
+                    line,
+                    column,
+                    ..
+                } if line == 42 && column == 1
+            ));
+        }
+    }
+
+    mod thread_safety {
+        use super::*;
+
+        fn is_send_sync<T: Send + Sync>() {}
+
+        #[test]
+        fn errors_are_send_and_sync() {
+            is_send_sync::<NoteError>();
+            is_send_sync::<NoteIngestError>();
+            is_send_sync::<NoteLoadError>();
+            is_send_sync::<NoteRepositoryError>();
+        }
     }
 }

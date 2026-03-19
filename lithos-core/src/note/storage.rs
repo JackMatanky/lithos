@@ -736,16 +736,16 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             .db
             .multimap_get(index_table, index_key)
             .map_err(NoteRepositoryError::Storage)?;
-        let mut note_ids = BTreeSet::new();
+        let mut note_ids = BTreeSet::<Box<str>>::new();
         for note_id_str in note_refs {
-            note_ids.insert(note_id_str);
+            note_ids.insert(note_id_str.into());
         }
 
         let mut notes = Vec::with_capacity(note_ids.len());
         for note_id_str in note_ids {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>(STORED_NOTES, &note_id_str)
+                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
                 .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
@@ -767,7 +767,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         for note_id_str in note_refs {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>(STORED_NOTES, &note_id_str)
+                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
                 .map_err(NoteRepositoryError::Storage)?
             {
                 notes.push(note);
