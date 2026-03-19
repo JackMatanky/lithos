@@ -734,7 +734,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawTask, RawTaskKind},
+            raw::{RawTask, RawTaskMarker},
             scanner::{NoteScanner, ScanArtifact},
             task::RawTaskContext,
         },
@@ -890,7 +890,7 @@ mod tests {
         }
 
         RawTask::new(
-            RawTaskKind::Unchecked(' '),
+            RawTaskMarker::Unchecked(' '),
             text.into(),
             tags,
             inline_fields,

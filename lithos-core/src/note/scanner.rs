@@ -11,7 +11,7 @@
 use crate::note::{
     error::NoteError,
     position::SourceByteOffset,
-    raw::{RawBlockRef, RawInlineField, RawTag, RawTaskKind},
+    raw::{RawBlockRef, RawInlineField, RawTag, RawTaskMarker},
 };
 
 /// A unified result from the scanning process.
@@ -472,18 +472,18 @@ impl<'source> TaskMarkerScanner<'source> {
         Some(marker)
     }
 
-    /// Converts a raw marker character into a [`RawTaskKind`].
+    /// Converts a raw marker character into a [`RawTaskMarker`].
     ///
-    /// Maps space to [`RawTaskKind::Unchecked`], 'x'/'X' to
-    /// [`RawTaskKind::Checked`], and all other characters to
-    /// [`RawTaskKind::Other`].
+    /// Maps space to [`RawTaskMarker::Unchecked`], 'x'/'X' to
+    /// [`RawTaskMarker::Checked`], and all other characters to
+    /// [`RawTaskMarker::Other`].
     #[inline]
     #[must_use]
-    pub fn raw_task_kind_from_marker(marker: char) -> RawTaskKind {
+    pub fn raw_task_marker_from_char(marker: char) -> RawTaskMarker {
         match marker {
-            ' ' => RawTaskKind::Unchecked(marker),
-            'x' | 'X' => RawTaskKind::Checked(marker),
-            _ => RawTaskKind::Other(marker),
+            ' ' => RawTaskMarker::Unchecked(marker),
+            'x' | 'X' => RawTaskMarker::Checked(marker),
+            _ => RawTaskMarker::Other(marker),
         }
     }
 
@@ -526,7 +526,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::note::raw::RawTaskKind;
+    use crate::note::raw::RawTaskMarker;
 
     mod scan_block {
         use super::*;
@@ -783,22 +783,22 @@ mod tests {
         }
 
         #[test]
-        fn should_convert_marker_to_raw_task_kind() {
+        fn should_convert_marker_to_raw_task_marker() {
             assert!(matches!(
-                TaskMarkerScanner::raw_task_kind_from_marker(' '),
-                RawTaskKind::Unchecked(' ')
+                TaskMarkerScanner::raw_task_marker_from_char(' '),
+                RawTaskMarker::Unchecked(' ')
             ));
             assert!(matches!(
-                TaskMarkerScanner::raw_task_kind_from_marker('x'),
-                RawTaskKind::Checked('x')
+                TaskMarkerScanner::raw_task_marker_from_char('x'),
+                RawTaskMarker::Checked('x')
             ));
             assert!(matches!(
-                TaskMarkerScanner::raw_task_kind_from_marker('X'),
-                RawTaskKind::Checked('X')
+                TaskMarkerScanner::raw_task_marker_from_char('X'),
+                RawTaskMarker::Checked('X')
             ));
             assert!(matches!(
-                TaskMarkerScanner::raw_task_kind_from_marker('!'),
-                RawTaskKind::Other('!')
+                TaskMarkerScanner::raw_task_marker_from_char('!'),
+                RawTaskMarker::Other('!')
             ));
         }
     }

@@ -294,7 +294,7 @@ impl RawLink {
 /// Raw task marker kind extracted from a list item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum RawTaskKind {
+pub enum RawTaskMarker {
     /// Unchecked task marker (typically `[ ]`).
     Unchecked(char),
     /// Checked task marker (typically `[x]`).
@@ -303,7 +303,7 @@ pub enum RawTaskKind {
     Other(char),
 }
 
-impl RawTaskKind {
+impl RawTaskMarker {
     /// Returns the raw marker character.
     #[inline]
     #[must_use]
@@ -341,7 +341,7 @@ pub struct RawListItem {
     list_type: RawListType,
     depth: RawListDepth,
     text: Box<str>,
-    task_kind: Option<RawTaskKind>,
+    task_marker: Option<RawTaskMarker>,
     range: SourceByteRange,
     parent: Option<SourceByteOffset>,
 }
@@ -358,7 +358,7 @@ impl RawListItem {
         list_type: RawListType,
         depth: RawListDepth,
         text: Box<str>,
-        task_kind: Option<RawTaskKind>,
+        task_marker: Option<RawTaskMarker>,
         range: SourceByteRange,
         parent: Option<SourceByteOffset>,
     ) -> Self {
@@ -366,7 +366,7 @@ impl RawListItem {
             list_type,
             depth,
             text,
-            task_kind,
+            task_marker,
             range,
             parent,
         }
@@ -396,8 +396,8 @@ impl RawListItem {
     /// Return the raw task marker kind, if present.
     #[inline]
     #[must_use]
-    pub const fn task_kind(&self) -> Option<RawTaskKind> {
-        self.task_kind
+    pub const fn task_marker(&self) -> Option<RawTaskMarker> {
+        self.task_marker
     }
 
     /// Return the source byte range.
@@ -565,7 +565,7 @@ impl RawTag {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawTask {
-    task_kind: RawTaskKind,
+    task_marker: RawTaskMarker,
     text: Box<str>,
     tags: Box<[Box<str>]>,
     inline_fields: Box<[RawInlineField]>,
@@ -577,7 +577,7 @@ impl RawTask {
     #[inline]
     #[must_use]
     pub fn new<Tags, Fields>(
-        task_kind: RawTaskKind,
+        task_marker: RawTaskMarker,
         text: Box<str>,
         tags: Tags,
         inline_fields: Fields,
@@ -588,7 +588,7 @@ impl RawTask {
         Fields: Into<Box<[RawInlineField]>>,
     {
         Self {
-            task_kind,
+            task_marker,
             text,
             tags: tags.into(),
             inline_fields: inline_fields.into(),
@@ -599,8 +599,8 @@ impl RawTask {
     /// Return the task marker kind.
     #[inline]
     #[must_use]
-    pub const fn task_kind(&self) -> RawTaskKind {
-        self.task_kind
+    pub const fn task_marker(&self) -> RawTaskMarker {
+        self.task_marker
     }
 
     /// Return the raw task text.

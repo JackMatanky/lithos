@@ -794,7 +794,7 @@ impl MarkdownParser {
             open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
         };
 
-        let task_kind = match block.task_marker {
+        let task_marker = match block.task_marker {
             Some(checked) => {
                 let fallback = if checked {
                     'x'
@@ -806,14 +806,14 @@ impl MarkdownParser {
                     block.start_offset,
                 )
                 .unwrap_or(fallback);
-                Some(TaskMarkerScanner::raw_task_kind_from_marker(marker))
+                Some(TaskMarkerScanner::raw_task_marker_from_char(marker))
             }
             None => None,
         };
 
         let raw_text: Box<str> = block.full_text.trim().into();
 
-        if let Some(tk) = task_kind {
+        if let Some(tk) = task_marker {
             list_items.push(RawListItem::new(
                 list_type,
                 list_depth,
@@ -1360,8 +1360,8 @@ Paragraph with ^para-ref
             let md = "- [X] Done";
             let raw = parse_raw(md);
             assert!(matches!(
-                raw.tasks().first().expect("task exists").task_kind(),
-                crate::note::raw::RawTaskKind::Checked('X')
+                raw.tasks().first().expect("task exists").task_marker(),
+                crate::note::raw::RawTaskMarker::Checked('X')
             ));
         }
 

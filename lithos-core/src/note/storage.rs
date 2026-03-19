@@ -1275,7 +1275,7 @@ mod tests {
             aggregate::{Note, NoteId, RawNoteContext},
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskKind},
+            raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskMarker},
             scanner::{NoteScanner, ScanArtifact},
         },
     };
@@ -1411,7 +1411,7 @@ mod tests {
         }
 
         let tasks = vec![RawTask::new(
-            RawTaskKind::Unchecked(' '),
+            RawTaskMarker::Unchecked(' '),
             raw_task_text.into(),
             task_tags,
             task_fields,

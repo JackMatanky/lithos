@@ -225,7 +225,7 @@ impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
     #[inline]
     fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
         let status_symbol =
-            StatusSymbol::try_new(ctx.raw.task_kind().marker())?;
+            StatusSymbol::try_new(ctx.raw.task_marker().marker())?;
         let tags = ctx
             .raw
             .tags()
@@ -1394,7 +1394,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawTask, RawTaskKind},
+            raw::{RawTask, RawTaskMarker},
             scanner::{NoteScanner, ScanArtifact},
         },
     };
@@ -1549,7 +1549,7 @@ mod tests {
         }
 
         RawTask::new(
-            RawTaskKind::Unchecked(' '),
+            RawTaskMarker::Unchecked(' '),
             text.into(),
             tags,
             inline_fields,

@@ -459,8 +459,8 @@ impl TryFrom<RawListItem> for ListItemEntry {
             }
         };
         let status = raw
-            .task_kind()
-            .map(|kind| StatusSymbol::try_new(kind.marker()))
+            .task_marker()
+            .map(|marker| StatusSymbol::try_new(marker.marker()))
             .transpose()?;
 
         Ok(ListItemEntry::new(raw.range(), depth, raw.parent(), status, None))
