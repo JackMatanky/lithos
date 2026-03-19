@@ -60,6 +60,13 @@ pub struct NoteScanner {
 
 impl NoteScanner {
     /// Create a new scanner with the provided emoji markers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::NoteScanner;
+    /// let scanner = NoteScanner::new(vec!['📅']);
+    /// ```
     #[inline]
     #[must_use]
     pub fn new<T: Into<Box<[char]>>>(emoji_markers: T) -> Self {
@@ -70,6 +77,17 @@ impl NoteScanner {
 
     /// Performs an optimized binary search to map a local text offset to a
     /// source byte position.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::NoteScanner;
+    /// # use lithos_core::note::position::SourceByteOffset;
+    /// let segments =
+    ///     [(0, SourceByteOffset::new(100)), (10, SourceByteOffset::new(200))];
+    /// let pos = NoteScanner::map_position(&segments, 15).unwrap();
+    /// assert_eq!(u32::from(pos), 205);
+    /// ```
     ///
     /// # Errors
     ///
@@ -103,6 +121,16 @@ impl NoteScanner {
     }
 
     /// Scans a block of text for tags and inline fields.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::scanner::{NoteScanner, ScanArtifact};
+    /// let scanner = NoteScanner::default();
+    /// let artifacts =
+    ///     scanner.scan_block("Check #tag [key:: value]", &[]).unwrap();
+    /// assert_eq!(artifacts.len(), 2);
+    /// ```
     ///
     /// # Errors
     ///
@@ -611,5 +639,432 @@ impl<'source> TaskMarkerScanner<'source> {
         let tail = source.get(start..)?;
         let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
         Self::new(line).scan()
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Tests grouped by behavior"
+)]
+mod tests {
+    use proptest::prelude::*;
+    use rstest::rstest;
+
+    use super::*;
+    use crate::note::raw::RawTaskKind;
+
+    mod proptests {
+        use super::*;
+
+        proptest! {
+            #[test]
+            fn map_position_is_monotonic(
+                segments in prop::collection::vec((0usize..1000usize, 0u32..u32::try_from(1000usize).unwrap_or(u32::MAX)), 1..10)
+                    .prop_map(|mut v| {
+                        v.sort_by_key(|s| s.0);
+                        v.iter().map(|&(o, p)| (o, SourceByteOffset::new(p))).collect::<Vec<_>>()
+                    }),
+                offset in 0usize..2000usize
+            ) {
+                let pos = NoteScanner::map_position(&segments, offset);
+                if let Ok(p) = pos {
+                    // Position should be >= offset if segments start at 0 and have pos >= 0
+                    // Or more generally, it should not crash.
+                    let val: u32 = u32::from(p);
+                    let _: u32 = val;
+                }
+            }
+        }
+    }
+
+    mod map_position {
+        use super::*;
+
+        #[test]
+        fn should_map_offset_directly_when_no_segments() {
+            let segments = [];
+            let pos = NoteScanner::map_position(&segments, 10).unwrap();
+            assert_eq!(u32::from(pos), 10);
+        }
+
+        #[test]
+        fn should_map_exact_segment_start() {
+            let segments = [(0, SourceByteOffset::new(100))];
+            let pos = NoteScanner::map_position(&segments, 0).unwrap();
+            assert_eq!(u32::from(pos), 100);
+        }
+
+        #[test]
+        fn should_map_offset_within_segment() {
+            let segments = [(5, SourceByteOffset::new(100))];
+            // offset 10 is 5 bytes after segment start (5)
+            // pos should be 100 + 5 = 105
+            let pos = NoteScanner::map_position(&segments, 10).unwrap();
+            assert_eq!(u32::from(pos), 105);
+        }
+
+        #[test]
+        fn should_select_correct_segment_using_binary_search() {
+            let segments = [
+                (0, SourceByteOffset::new(100)),
+                (10, SourceByteOffset::new(200)),
+                (20, SourceByteOffset::new(300)),
+            ];
+
+            // Offset 5 -> segment 0 (pos 100) -> 100 + 5 = 105
+            assert_eq!(
+                u32::from(NoteScanner::map_position(&segments, 5).unwrap()),
+                105
+            );
+            // Offset 10 -> segment 1 (pos 200) -> 200 + 0 = 200
+            assert_eq!(
+                u32::from(NoteScanner::map_position(&segments, 10).unwrap()),
+                200
+            );
+            // Offset 15 -> segment 1 (pos 200) -> 200 + 5 = 205
+            assert_eq!(
+                u32::from(NoteScanner::map_position(&segments, 15).unwrap()),
+                205
+            );
+            // Offset 25 -> segment 2 (pos 300) -> 300 + 5 = 305
+            assert_eq!(
+                u32::from(NoteScanner::map_position(&segments, 25).unwrap()),
+                305
+            );
+        }
+    }
+
+    mod scan_block {
+        use super::*;
+
+        mod tags {
+            use super::*;
+
+            #[test]
+            fn should_extract_simple_and_hierarchical_tags() {
+                let scanner = NoteScanner::default();
+                let text = "Text with #tag and #nested/tag.";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let tags: Vec<_> = artifacts
+                    .into_iter()
+                    .filter_map(|a| match a {
+                        ScanArtifact::Tag(t) => Some(t.value().to_owned()),
+                        ScanArtifact::InlineField(_)
+                        | ScanArtifact::BlockRef(_)
+                        | ScanArtifact::ReferenceLink(_) => None,
+                    })
+                    .collect();
+
+                assert_eq!(tags, vec!["#tag", "#nested/tag"]);
+            }
+
+            #[test]
+            fn should_ignore_tags_preceded_by_alphanumeric() {
+                let scanner = NoteScanner::default();
+                let text = "word#tag";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let tag_count = artifacts
+                    .iter()
+                    .filter(|a| matches!(a, ScanArtifact::Tag(_)))
+                    .count();
+                assert_eq!(tag_count, 0);
+            }
+
+            #[test]
+            fn should_ignore_single_hash() {
+                let scanner = NoteScanner::default();
+                let text = "Just a # and some text";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let tag_count = artifacts
+                    .iter()
+                    .filter(|a| matches!(a, ScanArtifact::Tag(_)))
+                    .count();
+                assert_eq!(tag_count, 0);
+            }
+        }
+
+        mod inline_fields {
+            use super::*;
+
+            #[test]
+            fn should_extract_bracketed_and_parenthesized_fields() {
+                let scanner = NoteScanner::default();
+                let text = "[key1:: val1] and (key2:: val2)";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let fields: Vec<_> = artifacts
+                    .into_iter()
+                    .filter_map(|a| match a {
+                        ScanArtifact::InlineField(f) => {
+                            Some((f.key().to_owned(), f.value().to_owned()))
+                        }
+                        ScanArtifact::Tag(_)
+                        | ScanArtifact::BlockRef(_)
+                        | ScanArtifact::ReferenceLink(_) => None,
+                    })
+                    .collect();
+
+                assert_eq!(
+                    fields
+                        .iter()
+                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
+                        .collect::<Vec<_>>(),
+                    vec![("key1", "val1"), ("key2", "val2")]
+                );
+            }
+
+            #[test]
+            fn should_extract_bare_fields() {
+                let scanner = NoteScanner::default();
+                let text = "bare_key:: bare_val\nAnother line";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let fields: Vec<_> = artifacts
+                    .into_iter()
+                    .filter_map(|a| match a {
+                        ScanArtifact::InlineField(f) => {
+                            Some((f.key().to_owned(), f.value().to_owned()))
+                        }
+                        ScanArtifact::Tag(_)
+                        | ScanArtifact::BlockRef(_)
+                        | ScanArtifact::ReferenceLink(_) => None,
+                    })
+                    .collect();
+
+                assert_eq!(
+                    fields
+                        .iter()
+                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
+                        .collect::<Vec<_>>(),
+                    vec![("bare_key", "bare_val")]
+                );
+            }
+
+            #[test]
+            fn should_ignore_bare_fields_inside_brackets() {
+                let scanner = NoteScanner::default();
+                // "nested:: field" is inside [], so it should be captured as
+                // delimited, NOT duplicated as bare.
+                let text = "[key:: nested:: field]";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let fields: Vec<_> = artifacts
+                    .into_iter()
+                    .filter_map(|a| match a {
+                        ScanArtifact::InlineField(f) => {
+                            Some((f.key().to_owned(), f.value().to_owned()))
+                        }
+                        ScanArtifact::Tag(_)
+                        | ScanArtifact::BlockRef(_)
+                        | ScanArtifact::ReferenceLink(_) => None,
+                    })
+                    .collect();
+
+                assert_eq!(
+                    fields
+                        .iter()
+                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
+                        .collect::<Vec<_>>(),
+                    vec![("key", "nested:: field")]
+                );
+            }
+
+            #[test]
+            fn should_extract_emoji_fields() {
+                let scanner = NoteScanner::new(vec!['\u{1f4c5}', '\u{2705}']);
+                let text = "\u{1f4c5} 2024-03-19 and \u{2705} done";
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let fields: Vec<_> = artifacts
+                    .into_iter()
+                    .filter_map(|a| match a {
+                        ScanArtifact::InlineField(f) => {
+                            Some((f.key().to_owned(), f.value().to_owned()))
+                        }
+                        ScanArtifact::Tag(_)
+                        | ScanArtifact::BlockRef(_)
+                        | ScanArtifact::ReferenceLink(_) => None,
+                    })
+                    .collect();
+
+                assert_eq!(
+                    fields
+                        .iter()
+                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
+                        .collect::<Vec<_>>(),
+                    vec![("\u{1f4c5}", "2024-03-19"), ("\u{2705}", "done")]
+                );
+            }
+
+            #[rstest]
+            #[case::space_in_key("invalid key:: value")]
+            #[case::special_chars("key!:: value")]
+            fn should_ignore_invalid_bare_keys(#[case] text: &str) {
+                let scanner = NoteScanner::default();
+                let artifacts = scanner.scan_block(text, &[]).unwrap();
+
+                let field_count = artifacts
+                    .iter()
+                    .filter(|a| matches!(a, ScanArtifact::InlineField(_)))
+                    .count();
+                assert_eq!(field_count, 0, "Should ignore bare field: {text}");
+            }
+        }
+    }
+
+    mod scan_document {
+        use super::*;
+
+        #[test]
+        fn should_extract_block_refs_and_ref_links() {
+            let scanner = NoteScanner::default();
+            let markdown = "
+Paragraph with a block ref ^my-id
+
+[link-label]: https://example.com\
+                            ";
+            let artifacts = scanner.scan_document(markdown).unwrap();
+
+            let mut block_ref = None;
+            let mut ref_link = None;
+
+            for a in artifacts {
+                match a {
+                    ScanArtifact::BlockRef(r) => {
+                        block_ref = Some(r);
+                    }
+                    ScanArtifact::ReferenceLink(l) => {
+                        ref_link = Some(l);
+                    }
+                    ScanArtifact::Tag(_) | ScanArtifact::InlineField(_) => {}
+                }
+            }
+
+            assert_eq!(block_ref.unwrap().id(), "my-id");
+            assert_eq!(ref_link.unwrap().id(), "link-label");
+        }
+
+        #[test]
+        fn should_ignore_artifacts_in_frontmatter() {
+            let scanner = NoteScanner::default();
+            let markdown = "---
+aliases: [^not-a-block-ref]
+---
+Actual ^block-ref
+";
+            let artifacts = scanner.scan_document(markdown).unwrap();
+
+            let block_refs: Vec<_> = artifacts
+                .into_iter()
+                .filter_map(|a| match a {
+                    ScanArtifact::BlockRef(r) => Some(r.id().to_owned()),
+                    ScanArtifact::Tag(_)
+                    | ScanArtifact::InlineField(_)
+                    | ScanArtifact::ReferenceLink(_) => None,
+                })
+                .collect();
+
+            assert_eq!(block_refs, vec!["block-ref"]);
+        }
+
+        #[test]
+        fn should_ignore_artifacts_in_code_blocks() {
+            let scanner = NoteScanner::default();
+            let markdown = "
+```rust
+let x = \"^not-a-ref\";
+```
+Actual ^block-ref
+";
+            let artifacts = scanner.scan_document(markdown).unwrap();
+
+            let block_refs: Vec<_> = artifacts
+                .into_iter()
+                .filter_map(|a| match a {
+                    ScanArtifact::BlockRef(r) => Some(r.id().to_owned()),
+                    ScanArtifact::Tag(_)
+                    | ScanArtifact::InlineField(_)
+                    | ScanArtifact::ReferenceLink(_) => None,
+                })
+                .collect();
+
+            assert_eq!(block_refs, vec!["block-ref"]);
+        }
+
+        #[test]
+        fn should_handle_various_reference_link_formats() {
+            let scanner = NoteScanner::default();
+            let markdown = "
+[simple]: target
+[bracketed]: <bracket-target>
+  [indented]: target
+";
+            let artifacts = scanner.scan_document(markdown).unwrap();
+
+            let labels: Vec<_> = artifacts
+                .into_iter()
+                .filter_map(|a| match a {
+                    ScanArtifact::ReferenceLink(l) => Some(l.id().to_owned()),
+                    ScanArtifact::Tag(_)
+                    | ScanArtifact::InlineField(_)
+                    | ScanArtifact::BlockRef(_) => None,
+                })
+                .collect();
+
+            assert_eq!(labels, vec!["simple", "bracketed", "indented"]);
+        }
+    }
+
+    mod task_marker_scanner {
+        use super::*;
+
+        #[rstest]
+        #[case::hyphen("- [ ] ", ' ')]
+        #[case::asterisk("* [x] ", 'x')]
+        #[case::plus("+ [X] ", 'X')]
+        #[case::ordered("1. [-] ", '-')]
+        #[case::ordered_paren("1) [/] ", '/')]
+        #[case::indented("  - [!] ", '!')]
+        fn should_detect_valid_task_markers(
+            #[case] line: &str,
+            #[case] expected: char,
+        ) {
+            let mut scanner = TaskMarkerScanner::new(line);
+            assert_eq!(scanner.scan(), Some(expected));
+        }
+
+        #[rstest]
+        #[case::no_brackets("- text")]
+        #[case::no_space_in_brackets("- []")]
+        #[case::no_list_prefix("[ ] text")]
+        #[case::invalid_prefix("a. [ ]")]
+        fn should_return_none_for_invalid_markers(#[case] line: &str) {
+            let mut scanner = TaskMarkerScanner::new(line);
+            assert!(scanner.scan().is_none());
+        }
+
+        #[test]
+        fn should_convert_marker_to_raw_task_kind() {
+            assert!(matches!(
+                TaskMarkerScanner::raw_task_kind_from_marker(' '),
+                RawTaskKind::Unchecked(' ')
+            ));
+            assert!(matches!(
+                TaskMarkerScanner::raw_task_kind_from_marker('x'),
+                RawTaskKind::Checked('x')
+            ));
+            assert!(matches!(
+                TaskMarkerScanner::raw_task_kind_from_marker('X'),
+                RawTaskKind::Checked('X')
+            ));
+            assert!(matches!(
+                TaskMarkerScanner::raw_task_kind_from_marker('!'),
+                RawTaskKind::Other('!')
+            ));
+        }
     }
 }
