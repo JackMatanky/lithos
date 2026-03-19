@@ -162,17 +162,51 @@ Summary [0.582s] 13 tests run: 13 passed, 2 skipped
 
 ---
 
-## Next Steps: Phase 7 - Production Readiness
+## Coverage Gap Analysis ✅
 
-**Phase 6.3 is COMPLETE!** All integration tests passing. Ready for Phase 7:
+**CRITICAL UPDATE**: Initial review stated "no valuable tests lost" - this was WRONG.
 
-1. **Investigate schema_list corruption** - Deep dive into redb/rkyv integration
-2. **Fix multimap API** - Add `&[u8]` support or convert SCHEMA_CHILDREN to use `&str`
-3. **Complete delete_schema** - Once API is fixed
-4. Remove deprecated `all_schemas()` method
-5. Remove deprecated `schema()` method
-6. Update loader.rs comment (line 262-263) - "RawSchemaView already persisted" is NOW TRUE
+Comprehensive analysis of 65 deleted integration tests revealed:
+- ❌ **Initial Assessment**: "67% gap rate" (only checked integration tests)
+- ✅ **Corrected Assessment**: "18% true gap rate" after checking 266 unit tests
+
+**Key Discoveries**:
+- ✅ **82% coverage** (49/60 deleted tests covered by unit or integration tests)
+- ✅ **TOML/YAML parsing fully tested** (unit tests in ingestor.rs)
+- ✅ **PropertyBank operations well-tested** (12/13 concerns covered)
+- ✅ **Incremental resolution well-tested** (4/5 concerns covered)
+- ❌ **11 TRUE gaps** (5 HIGH-priority)
+
+**Documents**:
+- `DELETED_TESTS_COVERAGE_ANALYSIS.md` - Original (incorrect) analysis
+- `UNIT_TEST_COVERAGE_MAPPING.md` - Comprehensive unit test mapping (ACCURATE)
+- `PHASE_7_1_TEST_SPECS.md` - Implementation specs for 5 HIGH-priority tests
+
+---
+
+## Next Steps: Phase 7.1 - Critical Test Recovery
+
+**Phase 6.3 is COMPLETE!** All integration tests passing. Phase 7.1 required before merge:
+
+### Phase 7.1 - MUST HAVE (5 tests, ~2-3 hours)
+
+**HIGH-Priority Gaps**:
+1. ❌ `property_bank_survives_restart` - Test restart durability
+2. ❌ `schema_survives_restart` - Test restart durability
+3. ❌ `detect_corrupted_schema_bytes` - Test rkyv validation
+4. ❌ `detect_corrupted_name_index` - Test index integrity
+5. ❌ `batch_save_is_atomic` - Test transaction rollback
+
+**See**: `PHASE_7_1_TEST_SPECS.md` for detailed implementation specs
+
+### Phase 7.2+ - CAN DEFER (Post-Merge)
+
+1. **Investigate schema_list corruption** (rkyv bug - existing blocker)
+2. **Fix multimap API** (existing blocker for schema_delete)
+3. **Add 4 MEDIUM-priority tests** (corruption detection edge cases)
+4. **Add 2 LOW-priority tests** (version independence)
+5. Remove deprecated methods (`all_schemas()`, `schema()`)
+6. Update loader.rs comment (line 262-263)
 7. Final cleanup and documentation review
-8. Merge `schema-refactor` branch
 
-**Status**: Phase 6.3 ✅ COMPLETE - 13/13 integration tests passing, 2 documented issues for Phase 7!
+**Status**: Phase 6.3 ✅ COMPLETE - Phase 7.1 required before merge (5 tests, ~2-3 hours)

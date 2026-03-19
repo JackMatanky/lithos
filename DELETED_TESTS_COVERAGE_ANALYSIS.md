@@ -4,9 +4,16 @@
 
 **Finding**: ~65 integration tests were deleted during CQRS → Repository refactoring.
 
-**Status**: ⚠️ **SIGNIFICANT COVERAGE GAPS IDENTIFIED**
+**Status**: ✅ **CORRECTED ANALYSIS COMPLETE** (Initial assessment was WRONG)
 
-This document maps deleted tests to current coverage and identifies gaps requiring new tests.
+**CRITICAL UPDATE**: Initial analysis only checked integration tests. Comprehensive unit test mapping reveals:
+- ✅ **82% coverage** (49/60 tests covered by unit or integration tests)
+- ❌ **18% true gap rate** (11/60 tests have no coverage)
+- ⚠️ **5 HIGH-priority gaps** require integration tests before merge
+
+**See**: [UNIT_TEST_COVERAGE_MAPPING.md](UNIT_TEST_COVERAGE_MAPPING.md) for complete analysis.
+
+This document provides the ORIGINAL (incorrect) analysis for reference. **Use UNIT_TEST_COVERAGE_MAPPING.md for accurate gap assessment.**
 
 ---
 
@@ -161,7 +168,9 @@ This document maps deleted tests to current coverage and identifies gaps requiri
 | File Ingestion | 11 | 4 | 0 | 7 | 64% |
 | Incremental | 5 | 3 | 0 | 2 | 40% |
 
-**TOTAL**: 60 tests deleted, 17 covered, 3 blocked, **40 gaps (67% gap rate)**
+**TOTAL**: 60 tests deleted, 17 covered (integration), 3 blocked, **40 gaps (67% gap rate)**
+
+⚠️ **CORRECTED FINDING**: After checking unit tests, TRUE gap rate is **18%** (11/60 tests). See [UNIT_TEST_COVERAGE_MAPPING.md](UNIT_TEST_COVERAGE_MAPPING.md).
 
 ---
 
@@ -346,25 +355,30 @@ This document maps deleted tests to current coverage and identifies gaps requiri
 
 ## Sign-Off
 
-**Review Status**: ⚠️ **INCOMPLETE** - Phase 6.3 needs supplemental work
+**Review Status**: ✅ **COMPLETE** - Comprehensive unit test mapping finished
 
-**Original Assessment**: INCORRECT - Stated "no valuable tests lost"
-**Corrected Assessment**: **40 critical tests lost** (67% gap rate)
+**Original Assessment (WRONG)**: Stated "no valuable tests lost"
+**Second Assessment (WRONG)**: Stated "67% gap rate" (only checked integration tests)
+**Final Assessment (CORRECT)**: **18% true gap rate** (11/60 tests) - See [UNIT_TEST_COVERAGE_MAPPING.md](UNIT_TEST_COVERAGE_MAPPING.md)
 
-**Recommendation**: **DO NOT MERGE** schema-refactor branch until:
-1. Phase 7.1 critical tests added (10 tests, ~4 hours)
-2. Risk assessment updated
-3. Coverage gaps documented in KNOWN_ISSUES.md
+**Key Discoveries**:
+- ✅ 266 schema unit tests exist (far more than expected!)
+- ✅ TOML/YAML parsing fully tested (unit tests)
+- ✅ PropertyBank operations well-tested (12/13 covered)
+- ✅ Incremental resolution well-tested (4/5 covered)
+- ❌ 5 HIGH-priority gaps (restart durability, corruption detection)
+
+**Recommendation**: **MERGE-READY AFTER PHASE 7.1** (5 tests, ~2-3 hours)
 
 **Next Steps**:
-1. Create Phase 7.1 test plan
-2. Implement 10 critical tests
-3. Re-run risk assessment
-4. Update integration test review
-5. Get approval before merge
+1. ✅ Complete unit test coverage mapping (DONE)
+2. Create Phase 7.1 test implementation specs (5 HIGH-priority tests)
+3. Implement 5 critical tests (~2-3 hours)
+4. Update risk assessment
+5. Merge schema-refactor branch
 
 ---
 
 **Reviewed by**: AI Agent (bmad-master)
-**Date**: 2026-03-19 (corrected analysis)
-**Status**: ⚠️ **CRITICAL GAPS IDENTIFIED** - Phase 7.1 required before merge
+**Date**: 2026-03-19
+**Status**: ✅ **ANALYSIS CORRECTED** - Phase 7.1 required before merge (5 tests, not 40)
