@@ -10,7 +10,7 @@
 
 The schema module implements two parallel pipelines:
 
-1. **PropertyBank Pipeline**: Discovery → Branching (NEW/FRESH/STALE) → Construction → Persistence
+1. **PropertyBank Pipeline**: Discovery → Branching (NEW/FreshTimestamp/STALE) → Construction → Persistence
 2. **Schema Pipeline**: File → Raw → Expanded → Tree → Merged → Storage
 
 Both pipelines share infrastructure (Ingestor, Repository) and follow distinct stages with clear inputs/outputs but **lack explicit state machine enforcement**. This leads to:
@@ -32,7 +32,7 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
 
 **State Machines**:
 
-1. `PropertyBankStateMachine` - 6 states, branching based on staleness (NEW/FRESH/FRESH+TS/STALE paths)
+1. `PropertyBankStateMachine` - 6 states, branching based on staleness (NEW/FreshTimestamp/FreshContent/STALE paths)
 2. `SchemaStateMachine` - 10 states, complex branching with staleness optimizations
 
 ---
@@ -48,42 +48,42 @@ The PropertyBank follows a **branching pipeline** with 6 distinct states, determ
 │ Discovery │──────┐
 └───────────┘      │
                    │  Query DB for RawPropertyBankView
-                   │  Determine staleness (NEW/FRESH/FRESH+TS/STALE)
+                   │  Determine staleness (NEW/FreshTimestamp/FreshContent/STALE)
                    │
        ┌───────────┴───────────┬─────────────────┬──────────────┐
        │                       │                 │              │
        ▼                       ▼                 ▼              ▼
-    ┌─────┐               ┌───────┐         ┌────────┐      ┌───────┐
-    │ NEW │               │ FRESH │         │FRESH+TS│      │ STALE │
-    └──┬──┘               └───┬───┘         └───┬────┘      └───┬───┘
-       │                      │                 │               │
-       ▼                      │                 │               ▼
-  ┌────────────┐              │                 │         ┌────────────┐
-  │FileParsed  │              │                 │         │FileParsed  │
-  │(+view)     │              │                 │         │(+view)     │
-  └─────┬──────┘              │                 │         └─────┬──────┘
-        │                     │                 │               │
-        ▼                     │                 │               ▼
-  ┌──────────────┐            │                 │         ┌──────────────┐
-  │BaseConstructed│           │                 │         │PropertyDelta │
-  │(from scratch) │           │                 │         └──────┬───────┘
-  └──────┬────────┘           │                 │                │
-         │                    │                 │                ▼
-         │                    │                 │         ┌──────────────┐
-         │                    │                 │         │BaseConstructed│
-         │                    │                 │         │(from DB)     │
-         │                    │                 │         └──────┬───────┘
-         │                    │                 │                │
-         │                    │                 │                ▼
-         │                    │                 │         ┌────────────┐
-         │                    │                 │         │DeltaApplied│
-         │                    │                 │         │(+view)     │
-         │                    │                 │         └─────┬──────┘
-         │                    │                 │               │
-         ▼                    ▼                 ▼               ▼
-  ┌──────────────────────────────────────────────────────────────┐
-  │                        Completed                             │
-  └──────────────────────────────────────────────────────────────┘
+    ┌─────┐               ┌──────────────┐  ┌────────────┐  ┌───────┐
+    │ NEW │               │FreshTimestamp│  │FreshContent│  │ STALE │
+    └──┬──┘               └──────┬───────┘  └──────┬─────┘  └───┬───┘
+       │                         │                 │            │
+       ▼                         │                 │            ▼
+  ┌────────────┐                 │                 │      ┌────────────┐
+  │FileParsed  │                 │                 │      │FileParsed  │
+  │(+view)     │                 │                 │      │(+view)     │
+  └─────┬──────┘                 │                 │      └─────┬──────┘
+        │                        │                 │            │
+        ▼                        │                 │            ▼
+  ┌──────────────┐               │                 │      ┌──────────────┐
+  │BaseConstructed│              │                 │      │PropertyDelta │
+  │(from scratch) │              │                 │      └──────┬───────┘
+  └──────┬────────┘              │                 │             │
+         │                       │                 │             ▼
+         │                       │                 │      ┌──────────────┐
+         │                       │                 │      │BaseConstructed│
+         │                       │                 │      │(from DB)     │
+         │                       │                 │      └──────┬───────┘
+         │                       │                 │             │
+         │                       │                 │             ▼
+         │                       │                 │      ┌────────────┐
+         │                       │                 │      │DeltaApplied│
+         │                       │                 │      │(+view)     │
+         │                       │                 │      └─────┬──────┘
+         │                       │                 │            │
+         ▼                       ▼                 ▼            ▼
+  ┌───────────────────────────────────────────────────────────────────┐
+  │                           Completed                               │
+  └───────────────────────────────────────────────────────────────────┘
 ```
 
 **State Details**:
@@ -116,12 +116,12 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 3. If `Some(view)`:
    - Extract file timestamps (`created_at`, `modified_at`)
    - Compare with `view.file_times()`
-   - **If timestamps match** → **FRESH** path
+   - **If timestamps match** → **FreshTimestamp** path
    - **If timestamps differ**:
      - Read file content with `FsReader::read_with()`
      - Compute `blake3::hash()` of content
      - Compare with `view.hashes().content_hash()`
-     - **If hash matches** → **FRESH+TS** path (timestamp update needed)
+     - **If hash matches** → **FreshContent** path (timestamp update needed)
      - **If hash differs** → **STALE** path
 
 **Errors**: `SchemaRepositoryError`, `SchemaFileError`
@@ -130,8 +130,8 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 **Output**: `PropertyBankPath` enum with one of:
 
 - `PropertyBankPath::New(PropertyBankPipeline<FileParsed>)`
-- `PropertyBankPath::Fresh(PropertyBankPipeline<BaseConstructed>)`
-- `PropertyBankPath::FreshWithTimestampUpdate(PropertyBankPipeline<BaseConstructed>)`
+- `PropertyBankPath::FreshTimestamp(PropertyBankPipeline<BaseConstructed>)`
+- `PropertyBankPath::FreshContent(PropertyBankPipeline<BaseConstructed>)`
 - `PropertyBankPath::Stale(PropertyBankPipeline<FileParsed>)`
 
 ---
@@ -179,7 +179,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 ---
 
-#### **Path 2: FRESH** (Timestamps match)
+#### **Path 2: FreshTimestamp** (Timestamps match)
 
 **Steps**:
 
@@ -199,7 +199,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 ---
 
-#### **Path 3: FRESH+TS** (Content hash matches but timestamps differ)
+#### **Path 3: FreshContent** (Content hash matches but timestamps differ)
 
 **Steps**:
 
@@ -285,22 +285,22 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 | Path         | Trigger                         | File I/O         | Parsing             | DB Reads  | DB Writes   | Notes                  |
 | ------------ | ------------------------------- | ---------------- | ------------------- | --------- | ----------- | ---------------------- |
 | **NEW**      | No view in DB                   | ✅ Full read     | ✅ Parse + validate | -         | Bank + View | First time seeing file |
-| **FRESH**    | Timestamps match                | ❌ None          | ❌ None             | Bank only | -           | Fastest path (cached)  |
-| **FRESH+TS** | Hash matches, timestamps differ | ✅ Read for hash | ❌ None             | Bank only | View only   | Clock skew handling    |
+| **FreshTimestamp** | Timestamps match          | ❌ None          | ❌ None             | Bank only | -           | Fastest path (cached)  |
+| **FreshContent**   | Hash matches, timestamps differ | ✅ Read for hash | ❌ None             | Bank only | View only   | Clock skew handling    |
 | **STALE**    | Hash differs                    | ✅ Full read     | ✅ Parse + validate | Bank only | Bank + View | Incremental update     |
 
 **Two-Tier Staleness Check** (fast path → slow path):
 
 1. **Fast Path** (no file I/O): Compare timestamps
    - `view.file_times().is_timestamp_match(created_at, modified_at)`
-   - If match → FRESH path
+   - If match → FreshTimestamp path
    - If mismatch → proceed to slow path
 
 2. **Slow Path** (single file read): Compare content hash
    - Read file content with `FsReader::read_with()`
    - Compute `blake3::hash(content.as_bytes())`
    - `view.hashes().is_content_match(content_hash)`
-   - If match → FRESH+TS path
+   - If match → FreshContent path
    - If mismatch → STALE path
 
 **Key Optimization**: Content hash check prevents unnecessary re-parsing when timestamps change but content is identical (e.g., file copied, touched, or clock skew).
@@ -596,10 +596,10 @@ The Schema pipeline is **complex and branching** with 10 primary states:
                                    │
                    ┌───────────────┼───────────────┐
                    ▼               ▼               ▼
-           ┌──────────┐    ┌──────────┐    ┌──────────┐
-           │   NEW    │    │   STALE  │    │  FRESH   │
-           └─────┬────┘    └─────┬────┘    └─────┬────┘
-                 │               │               │
+           ┌──────────┐    ┌──────────┐    ┌──────────────┐
+           │   NEW    │    │   STALE  │    │FreshTimestamp│
+           └─────┬────┘    └─────┬────┘    │/FreshContent │
+                 │               │         └─────┬────────┘
                  ├───────────────┘               │
                  ▼                               │
          ┌──────────────┐                        │
@@ -636,10 +636,10 @@ The Schema pipeline is **complex and branching** with 10 primary states:
 | State                | Data Structure                | Location                     | Transitions       | Notes                    |
 | -------------------- | ----------------------------- | ---------------------------- | ----------------- | ------------------------ |
 | **1. FileRefList**   | `Vec<PathBuf>`                | `Ingestor::ingest_all()`     | → BulkStaleness   | List of all schema files |
-| **2. BulkStaleness** | `HashMap<Path, SchemaResult>` | `Ingestor::ingest_all()`     | → NEW/STALE/FRESH | Partition by staleness   |
+| **2. BulkStaleness** | `HashMap<Path, SchemaResult>` | `Ingestor::ingest_all()`     | → NEW/STALE/FreshTimestamp/FreshContent | Partition by staleness   |
 | **3a. NEW**          | `(SchemaId, RawSchema)`       | `SchemaResult::New`          | → RefExpanded     | First-time file          |
 | **3b. STALE**        | `(SchemaId, RawSchema)`       | `SchemaResult::Stale`        | → RefExpanded     | File changed             |
-| **3c. FRESH**        | `SchemaId`                    | `SchemaResult::Fresh`        | → (skip pipeline) | File unchanged           |
+| **3c. FreshTimestamp/FreshContent** | `SchemaId`   | `SchemaResult::Fresh`        | → (skip pipeline) | File unchanged           |
 | **4. RawSchema**     | `RawSchema`                   | After parsing                | → RefExpanded     | Syntax-validated         |
 | **5. RefExpanded**   | `RefExpandedSchema`           | `RefExpander::expand_all()`  | → SchemaTree      | Bank refs resolved       |
 | **6. SchemaTree**    | `SchemaTree`                  | `Extender::build()`          | → Schema          | Topological order        |
@@ -672,11 +672,11 @@ The Schema pipeline is **complex and branching** with 10 primary states:
 2. **Per-file staleness check**:
    - Compare timestamps (fast path, no I/O)
    - If mismatch, read file and compare hash (slow path)
-   - Classify as NEW/STALE/FRESH
+   - Classify as NEW/STALE/FreshTimestamp/FreshContent
 3. **Result variants**:
    - `SchemaResult::New { id, raw }` - no view in DB
    - `SchemaResult::Stale { id, raw, expanded }` - hash mismatch
-   - `SchemaResult::Fresh { id, expanded }` - hash match
+   - `SchemaResult::Fresh { id, expanded }` - hash match/timestamp match
      **Errors**: `SchemaRepositoryError`, `SchemaFileError`
      **Location**: `Ingestor::ingest_all()` lines 781-816
 
@@ -1021,13 +1021,13 @@ impl PropertyBankPipeline<Discovery> {
             None => Ok(PropertyBankPath::New(/* transition to FileParsed */)),
             Some(view) => {
                 if timestamps_match(&view, &self.data.path)? {
-                    Ok(PropertyBankPath::Fresh(/* transition to BaseConstructed */))
+                    Ok(PropertyBankPath::FreshTimestamp(/* transition to BaseConstructed */))
                 } else {
                     let content = read_file(&self.data.path)?;
                     let hash = blake3::hash(content.as_bytes());
 
                     if view.hashes().is_content_match(hash.as_bytes()) {
-                        Ok(PropertyBankPath::FreshWithTimestampUpdate(
+                        Ok(PropertyBankPath::FreshContent(
                             /* transition to BaseConstructed */
                         ))
                     } else {
@@ -1124,7 +1124,7 @@ impl PropertyBankPipeline<BaseConstructed> {
         })
     }
 
-    // FRESH+TS path: Update view timestamps only
+    // FreshContent path: Update view timestamps only
     pub fn update_timestamps(mut self, new_timestamps: FileTimes) -> Result<PropertyBankPipeline<Completed>, Error> {
         let view = self.data.repo.get_raw_property_bank_view()?.unwrap();
         let mut updated_view = view.clone();
@@ -1135,7 +1135,7 @@ impl PropertyBankPipeline<BaseConstructed> {
         Ok(self.persist(repo, /* bank_modified: */ false)?)
     }
 
-    // NEW and FRESH paths: Persist (view already in data if NEW)
+    // NEW and FreshTimestamp paths: Persist (view already in data if NEW)
     pub fn persist(self, repo: &Repository, bank_modified: bool) -> Result<PropertyBankPipeline<Completed>, Error> {
         // Persist bank (if modified)
         if bank_modified {
@@ -1185,8 +1185,8 @@ impl PropertyBankPipeline<Completed> {
 ```rust
 enum PropertyBankPath {
     New(PropertyBankPipeline<FileParsed>),
-    Fresh(PropertyBankPipeline<BaseConstructed>),
-    FreshWithTimestampUpdate(PropertyBankPipeline<BaseConstructed>),
+    FreshTimestamp(PropertyBankPipeline<BaseConstructed>),
+    FreshContent(PropertyBankPipeline<BaseConstructed>),
     Stale(PropertyBankPipeline<FileParsed>),
 }
 
@@ -1199,11 +1199,11 @@ impl PropertyBankPath {
                     .create_view()?
                     .persist(repo)
             }
-            PropertyBankPath::Fresh(pipeline) => {
+            PropertyBankPath::FreshTimestamp(pipeline) => {
                 // Already BaseConstructed, no persistence needed
                 pipeline.persist_noop()
             }
-            PropertyBankPath::FreshWithTimestampUpdate(pipeline) => {
+            PropertyBankPath::FreshContent(pipeline) => {
                 let view = repo.get_raw_property_bank_view()?.unwrap();
                 pipeline
                     .update_timestamps(view)?
