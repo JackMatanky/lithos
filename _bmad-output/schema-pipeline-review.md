@@ -20,8 +20,9 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
 - **Difficult-to-track** intermediate data flows
 - **Complex staleness detection** interleaved with processing
 - **"Validate, then use" anti-pattern** in Raw types (violates "parse, don't validate")
+- **Redundant abstraction layers** (`Ingestor` acting as an unnecessary middleman)
 
-**Recommendation**: Implement **two separate state machines** with prerequisite refactoring:
+**Recommendation**: Implement **two separate state machines**, eliminate the `Ingestor`, and refactor `Loader` into a `Builder` facade.
 
 **Prerequisites**:
 
@@ -29,6 +30,10 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
    - Move validation into parsing constructors
    - Make fields private, add public accessors
    - Guarantee validity at type level
+
+**Architectural Shifts**:
+1. **Eliminate `Ingestor`**: Move all filesystem and DB access directly into state machine transition logic.
+2. **Refactor `Loader` to `Builder`**: Convert the complex orchestrator into a thin 20-line facade that simply instantiates and drives the state machines.
 
 **State Machines**:
 
@@ -1713,45 +1718,46 @@ This allows step-by-step execution while maintaining type safety.
 6. Create ADR documenting the refactoring decision
 7. **Deliverable**: Production-ready state machines with docs
 
-### 6.2 Backward Compatibility
+### 6.2 The Builder Facade (Replacing Loader and Ingestor)
 
-**Keep Existing API**: Wrap state machine in facade
+**New Architecture**: Replace the complex `Loader` orchestration and redundant `Ingestor` with a thin `Builder` facade that simply drives the state machines.
 
 ```rust
-impl Loader<'_, R> {
-    pub fn load(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
-        // Internal: Use state machines
-        let bank = self.load_property_bank_internal()?;
-        let schemas = self.load_schemas_internal(&bank)?;
+pub struct Builder<'config, R> {
+    config: &'config Config,
+    source: FsReader,
+    repository: R,
+}
+
+impl<'config, R: Repository> Builder<'config, R> {
+    pub fn build(&self) -> Result<Vec<Schema>, SchemaBuilderError> {
+        // 1. Drive the PropertyBank state machine to completion
+        let bank = PropertyBankPipeline::<Discovery>::new(
+            self.config.paths().property_bank_path(),
+            &self.source,
+            &self.repository
+        )
+        .discover()?
+        .into_completed(&self.repository)?
+        .into_bank();
+
+        // 2. Drive the Schema state machine to completion
+        let schemas = SchemaPipeline::<Discovery>::new(
+            self.config.paths().schemas_dir(),
+            &self.source,
+            &self.repository,
+            &bank
+        )
+        .discover()?
+        .into_completed(&self.repository)?
+        .into_schemas();
+
         Ok(schemas)
-    }
-
-    fn load_property_bank_internal(&self)
-        -> Result<PropertyBank, SchemaLoaderError>
-    {
-        let path = self.config.paths().property_bank_path();
-        let repo = self.ingestor.repository();
-
-        // Discovery phase
-        let pipeline = PropertyBankPipeline::<Discovery>::new(&path, repo);
-        let branch = pipeline.discover()?;
-
-        // Process based on branch
-        let completed = branch.into_completed(repo)?;
-
-        Ok(completed.into_bank())
-    }
-
-    fn load_schemas_internal(&self, bank: &PropertyBank)
-        -> Result<Vec<Schema>, SchemaLoaderError>
-    {
-        // Schema state machine logic
-        // ...
     }
 }
 ```
 
-**External API unchanged**, internal refactored to use state machines.
+**External API simplified**, internal complexity pushed into isolated state machines.
 
 ### 6.3 Testing Strategy
 
