@@ -864,7 +864,30 @@ mod tests {
         emoji_markers: &[char],
     ) -> Option<Task> {
         let raw = raw_task_from_text(text, emoji_markers);
-        let ctx = RawTaskContext::new(&raw, config);
+        let scanner = NoteScanner::new(emoji_markers.to_vec());
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+
+        let mut task_tags = Vec::new();
+        let mut task_fields = Vec::new();
+        for artifact in artifacts {
+            match artifact {
+                ScanArtifact::Tag(tag) => {
+                    if let Ok(t) = Tag::try_from_token(tag.value()) {
+                        task_tags.push(t);
+                    }
+                }
+                ScanArtifact::InlineField(field) => task_fields.push(field),
+                ScanArtifact::BlockRef(_) => {}
+            }
+        }
+
+        let ctx = RawTaskContext::new(
+            &raw,
+            config,
+            task_tags.into_boxed_slice(),
+            task_fields.into_boxed_slice(),
+        );
         Option::<Task>::try_from(ctx).expect("task conversion")
     }
 

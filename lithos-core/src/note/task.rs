@@ -83,8 +83,48 @@ impl Task {
         }
 
         let mut tasks = Vec::new();
+        let mut tags_iter = raw.tags().iter().peekable();
+        let mut fields_iter = raw.inline_fields().iter().peekable();
+
         for raw_task in raw.tasks() {
-            let ctx = RawTaskContext::new(raw_task, config);
+            let range = raw_task.range();
+
+            // Collect tags within this task's range
+            let mut task_tags = Vec::new();
+            while let Some(tag) = tags_iter.peek() {
+                if tag.position() < range.start() {
+                    tags_iter.next();
+                    continue;
+                }
+                if tag.position() >= range.end() {
+                    break;
+                }
+                if let Ok(tag) = Tag::try_from_token(tag.value()) {
+                    task_tags.push(tag);
+                }
+                tags_iter.next();
+            }
+
+            // Collect inline fields within this task's range
+            let mut task_fields = Vec::new();
+            while let Some(field) = fields_iter.peek() {
+                if field.position() < range.start() {
+                    fields_iter.next();
+                    continue;
+                }
+                if field.position() >= range.end() {
+                    break;
+                }
+                task_fields.push((*field).clone());
+                fields_iter.next();
+            }
+
+            let ctx = RawTaskContext::new(
+                raw_task,
+                config,
+                task_tags.into_boxed_slice(),
+                task_fields.into_boxed_slice(),
+            );
             if let Some(task) = Option::<Task>::try_from(ctx)? {
                 tasks.push(task);
             }
@@ -207,14 +247,23 @@ impl Task {
 pub(crate) struct RawTaskContext<'raw> {
     raw: &'raw RawTask,
     config: &'raw Config,
+    tags: Box<[Tag]>,
+    inline_fields: Box<[RawInlineField]>,
 }
 
 impl<'raw> RawTaskContext<'raw> {
     #[inline]
-    pub(crate) const fn new(raw: &'raw RawTask, config: &'raw Config) -> Self {
+    pub(crate) fn new(
+        raw: &'raw RawTask,
+        config: &'raw Config,
+        tags: Box<[Tag]>,
+        inline_fields: Box<[RawInlineField]>,
+    ) -> Self {
         Self {
             raw,
             config,
+            tags,
+            inline_fields,
         }
     }
 }
@@ -226,15 +275,13 @@ impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
     fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
         let status_symbol =
             StatusSymbol::try_new(ctx.raw.task_marker().marker())?;
-        let tags = ctx
-            .raw
-            .tags()
-            .iter()
-            .filter_map(|tag| Tag::try_from_token(tag).ok())
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
         let builder = TaskBuilder::new(ctx.config.task());
-        builder.promote_from_raw(ctx.raw, tags, status_symbol)
+        builder.promote_from_raw(
+            ctx.raw,
+            ctx.tags,
+            &ctx.inline_fields,
+            status_symbol,
+        )
     }
 }
 
@@ -864,6 +911,7 @@ impl<'config> TaskBuilder<'config> {
         &self,
         raw: &RawTask,
         tags: Box<[Tag]>,
+        inline_fields: &[RawInlineField],
         status_symbol: StatusSymbol,
     ) -> Result<Option<Task>, NoteError> {
         if !self.should_promote_from_tags(&tags) {
@@ -879,7 +927,7 @@ impl<'config> TaskBuilder<'config> {
             })?
             .clone();
         let text = self.extract_clean_text(raw.text())?;
-        let parsed = self.parse_inline_fields(raw.inline_fields())?;
+        let parsed = self.parse_inline_fields(inline_fields)?;
         let attributes = parsed.into_attributes(tags);
 
         Task::try_new(status, text, raw.range(), attributes)
@@ -1523,7 +1571,30 @@ mod tests {
         emoji_markers: &[char],
     ) -> Option<Task> {
         let raw = raw_task_from_text(text, emoji_markers);
-        let ctx = RawTaskContext::new(&raw, config);
+        let scanner = NoteScanner::new(emoji_markers.to_vec());
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+
+        let mut task_tags = Vec::new();
+        let mut task_fields = Vec::new();
+        for artifact in artifacts {
+            match artifact {
+                ScanArtifact::Tag(tag) => {
+                    if let Ok(t) = Tag::try_from_token(tag.value()) {
+                        task_tags.push(t);
+                    }
+                }
+                ScanArtifact::InlineField(field) => task_fields.push(field),
+                ScanArtifact::BlockRef(_) => {}
+            }
+        }
+
+        let ctx = RawTaskContext::new(
+            &raw,
+            config,
+            task_tags.into_boxed_slice(),
+            task_fields.into_boxed_slice(),
+        );
         Option::<Task>::try_from(ctx).expect("task conversion")
     }
 

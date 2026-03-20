@@ -322,9 +322,7 @@ impl MarkdownParser {
             pulldown_cmark::Tag::Item => Some(BlockKind::ListItem),
             pulldown_cmark::Tag::List(list_start) => {
                 let list_type = match list_start {
-                    Some(start) => RawListType::Ordered {
-                        start,
-                    },
+                    Some(start) => RawListType::Ordered(start),
                     None => RawListType::Unordered,
                 };
                 list_stack.push(list_type);
@@ -823,28 +821,11 @@ impl MarkdownParser {
                 parent_pos,
             ));
 
-            let mut task_tags = Vec::new();
-            let mut task_fields = Vec::new();
-
-            let task_artifacts = scanner
-                .scan_block(&block.full_text, block.start_offset)
-                .map_err(NoteIngestError::Domain)?;
-
-            for artifact in task_artifacts {
-                match artifact {
-                    ScanArtifact::Tag(tag) => {
-                        task_tags.push(tag.value().into());
-                    }
-                    ScanArtifact::InlineField(field) => task_fields.push(field),
-                    ScanArtifact::BlockRef(_) => {}
-                }
-            }
-
             tasks.push(RawTask::new(
                 tk,
                 raw_text,
-                task_tags,
-                task_fields,
+                Vec::new(),
+                Vec::new(),
                 block_range,
             ));
         } else {
@@ -1236,9 +1217,7 @@ mod tests {
             let raw = parse_raw(md);
             assert!(matches!(
                 raw.list_items().first().expect("item exists").list_type(),
-                RawListType::Ordered {
-                    start: 1
-                }
+                RawListType::Ordered(1)
             ));
         }
     }
@@ -1339,7 +1318,7 @@ Paragraph with ^para-ref
         use super::*;
 
         #[test]
-        fn should_promote_to_raw_task_with_metadata() {
+        fn should_promote_to_raw_task_and_collect_artifacts_in_note() {
             let md = "- [ ] #task Do it [priority:: 1]";
             let raw = parse_raw(md);
             assert_eq!(raw.tasks().len(), 1);
@@ -1347,12 +1326,11 @@ Paragraph with ^para-ref
 
             // RawTask holds the raw text from the block.
             assert_eq!(task.text(), "#task Do it [priority:: 1]");
-            assert!(task.tags().contains(&"#task".into()));
-            assert_eq!(task.inline_fields().len(), 1);
-            assert_eq!(
-                task.inline_fields().first().expect("field exists").key(),
-                "priority"
-            );
+
+            // Artifacts are collected in the note's pools, not the RawTask
+            // itself
+            assert!(raw.tags().iter().any(|t| t.value() == "#task"));
+            assert!(raw.inline_fields().iter().any(|f| f.key() == "priority"));
         }
 
         #[test]

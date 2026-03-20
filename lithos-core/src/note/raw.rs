@@ -320,9 +320,7 @@ impl RawTaskMarker {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RawListType {
-    Ordered {
-        start: u64,
-    },
+    Ordered(u64),
     Unordered,
 }
 

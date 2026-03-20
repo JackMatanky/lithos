@@ -482,10 +482,7 @@ impl TryFrom<RawListItem> for ListItemEntry {
 #[non_exhaustive]
 pub enum ListType {
     /// Ordered list starting at the given number.
-    Ordered {
-        /// Starting index for the list (usually 1).
-        start: u64,
-    },
+    Ordered(u64),
     /// Unordered list (bullets).
     Unordered,
 }

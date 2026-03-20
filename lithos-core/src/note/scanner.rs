@@ -8,6 +8,8 @@
 //! for multiple types of artifacts. It also provides specialized scanners
 //! like [`TaskMarkerScanner`] for low-level parsing of task-specific syntax.
 
+use std::{iter::Peekable, str::CharIndices};
+
 use crate::note::{
     error::NoteError,
     position::SourceByteOffset,
@@ -59,31 +61,11 @@ impl NoteScanner {
         }
     }
 
-    /// Scans a block of text for tags and inline fields.
-    ///
-    /// This method performs multiple passes over the text to identify:
-    /// 1. Hierarchical tags (e.g., `#work/project`)
-    /// 2. Delimited inline fields (e.g., `[key:: value]` or `(key:: value)`)
-    /// 3. Emoji-prefixed fields (if configured)
-    /// 4. Bare inline fields (e.g., `key:: value` at the start of a line)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::{NoteScanner, ScanArtifact};
-    /// # use lithos_core::note::position::SourceByteOffset;
-    /// let scanner = NoteScanner::default();
-    /// let artifacts = scanner
-    ///     .scan_block("Check #tag [key:: value]", SourceByteOffset::new(0))
-    ///     .unwrap();
-    ///
-    /// assert_eq!(artifacts.len(), 2);
-    /// ```
+    /// Scans a block of text for tags and inline fields in a single pass.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if position mapping fails due to overflow or
-    /// invalid UTF-8 boundaries.
+    /// Returns [`NoteError`] if position mapping fails.
     #[inline]
     pub fn scan_block(
         &self,
@@ -91,248 +73,288 @@ impl NoteScanner {
         base_offset: SourceByteOffset,
     ) -> Result<Vec<ScanArtifact>, NoteError> {
         let mut artifacts = Vec::new();
+        let mut chars = text.char_indices().peekable();
+        let mut line_start = true;
+        let mut prev_alnum = false;
 
-        // 1. Scan for tags
-        Self::scan_tags(text, base_offset, &mut artifacts)?;
+        while let Some(&(_idx, ch)) = chars.peek() {
+            if ch == '\n' || ch == '\r' {
+                line_start = true;
+                prev_alnum = false;
+                chars.next();
+                continue;
+            }
 
-        // 2. Scan for inline fields (Delimited and Bare)
-        self.scan_inline_fields(text, base_offset, &mut artifacts)?;
+            let triggered = if ch == '#' && !prev_alnum {
+                if let Some(tag) =
+                    self.scan_tag_inner(text, &mut chars, base_offset)?
+                {
+                    artifacts.push(ScanArtifact::Tag(tag));
+                    true
+                } else {
+                    false
+                }
+            } else if ch == '[' || ch == '(' {
+                if let Some(field) = self.scan_delimited_field_inner(
+                    text,
+                    &mut chars,
+                    base_offset,
+                )? {
+                    artifacts.push(ScanArtifact::InlineField(field));
+                    true
+                } else {
+                    false
+                }
+            } else if self.emoji_markers.contains(&ch) {
+                if let Some(field) =
+                    self.scan_emoji_field_inner(text, &mut chars, base_offset)?
+                {
+                    artifacts.push(ScanArtifact::InlineField(field));
+                    true
+                } else {
+                    false
+                }
+            } else if line_start {
+                if let Some(field) =
+                    self.scan_bare_field_inner(text, &mut chars, base_offset)?
+                {
+                    artifacts.push(ScanArtifact::InlineField(field));
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if triggered {
+                line_start = false;
+                prev_alnum = true; // Most artifacts end with alnum
+            } else if let Some((_, next_ch)) = chars.next() {
+                if !next_ch.is_whitespace() {
+                    line_start = false;
+                }
+                prev_alnum = next_ch.is_alphanumeric();
+            } else {
+                // End of stream
+                break;
+            }
+        }
 
         Ok(artifacts)
     }
 
-    fn scan_tags(
+    /// Internal handler for tag scanning.
+    ///
+    /// Consumes the `#` and all valid tag characters.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if position mapping fails.
+    #[inline]
+    pub fn scan_tag_inner(
+        &self,
         text: &str,
+        chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
-        out: &mut Vec<ScanArtifact>,
-    ) -> Result<(), NoteError> {
-        let mut chars = text.char_indices().peekable();
-        let mut prev_is_alnum = false;
+    ) -> Result<Option<RawTag>, NoteError> {
+        let Some((start_idx, _)) = chars.next() else {
+            return Ok(None);
+        };
 
-        while let Some((start_idx, ch)) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-
-            while let Some(&(next_idx, next_ch)) = chars.peek() {
-                if !(next_ch.is_alphanumeric()
-                    || matches!(next_ch, '_' | '-' | '/'))
-                {
-                    break;
-                }
+        let mut end_idx = start_idx.saturating_add(1);
+        while let Some(&(next_idx, next_ch)) = chars.peek() {
+            if next_ch.is_alphanumeric() || matches!(next_ch, '_' | '-' | '/') {
                 chars.next();
-                let Some(updated) = next_idx.checked_add(next_ch.len_utf8())
-                else {
-                    break;
-                };
-                end_idx = updated;
-            }
-
-            let Some(raw) = text.get(start_idx..end_idx) else {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            };
-
-            if raw.len() > 1 {
-                let position = base_offset.add_offset(start_idx)?;
-                out.push(ScanArtifact::Tag(RawTag::new(raw.into(), position)));
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
-        }
-        Ok(())
-    }
-
-    fn scan_inline_fields(
-        &self,
-        text: &str,
-        base_offset: SourceByteOffset,
-        out: &mut Vec<ScanArtifact>,
-    ) -> Result<(), NoteError> {
-        if !text.contains("::") && self.emoji_markers.is_empty() {
-            return Ok(());
-        }
-
-        let mut bracket_spans = Vec::new();
-
-        // 1. Delimited (Brackets)
-        Self::scan_delimited_fields(
-            text,
-            b'[',
-            b']',
-            base_offset,
-            &mut bracket_spans,
-            out,
-        )?;
-
-        // 2. Delimited (Parentheses)
-        Self::scan_delimited_fields(
-            text,
-            b'(',
-            b')',
-            base_offset,
-            &mut bracket_spans,
-            out,
-        )?;
-
-        // 3. Emoji fields
-        self.scan_emoji_fields(text, base_offset, out)?;
-
-        // 4. Bare fields (on each line, if not inside brackets)
-        let mut offset = 0usize;
-        for line in text.split_inclusive(['\n', '\r']) {
-            Self::scan_bare_fields(
-                line,
-                offset,
-                &bracket_spans,
-                base_offset,
-                out,
-            )?;
-            offset = offset.saturating_add(line.len());
-        }
-
-        Ok(())
-    }
-
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Internal multi-pass scanning logic"
-    )]
-    fn scan_delimited_fields(
-        text: &str,
-        open_delim: u8,
-        close_delim: u8,
-        base_offset: SourceByteOffset,
-        bracket_spans: &mut Vec<(usize, usize)>,
-        out: &mut Vec<ScanArtifact>,
-    ) -> Result<(), NoteError> {
-        let bytes = text.as_bytes();
-        let mut cursor = 0;
-        while let Some(open_rel) = bytes
-            .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
-        {
-            let open = cursor.saturating_add(open_rel);
-            let after_open = open.saturating_add(1);
-            let Some(close_rel) = bytes
-                .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == close_delim))
-            else {
+                end_idx = next_idx.saturating_add(next_ch.len_utf8());
+            } else {
                 break;
-            };
-            let close = after_open.saturating_add(close_rel);
-            let end = close.saturating_add(1);
-            let Some(inner) = text.get(after_open..close) else {
-                cursor = end;
-                continue;
-            };
-
-            if let Some((key, value)) = inner.split_once("::") {
-                let key_trimmed = key.trim();
-                let value_trimmed = value.trim();
-                if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
-                    let key_start = key
-                        .find(key_trimmed)
-                        .unwrap_or(0)
-                        .saturating_add(after_open);
-                    bracket_spans.push((open, end));
-                    let position = base_offset.add_offset(key_start)?;
-                    out.push(ScanArtifact::InlineField(RawInlineField::new(
-                        key_trimmed.into(),
-                        value_trimmed.into(),
-                        position,
-                    )));
-                }
             }
-            cursor = end;
         }
-        Ok(())
+
+        if let Some(raw) = text.get(start_idx..end_idx)
+            && raw.len() > 1
+        {
+            let position = base_offset.add_offset(start_idx)?;
+            Ok(Some(RawTag::new(raw.into(), position)))
+        } else {
+            Ok(None)
+        }
     }
 
-    fn scan_emoji_fields(
+    /// Internal handler for delimited inline fields `[key:: value]` or `(key::
+    /// value)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if position mapping fails.
+    #[inline]
+    #[expect(clippy::excessive_nesting, reason = "Parser state-machine depth")]
+    pub fn scan_delimited_field_inner(
         &self,
         text: &str,
+        chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
-        out: &mut Vec<ScanArtifact>,
-    ) -> Result<(), NoteError> {
-        if self.emoji_markers.is_empty() {
-            return Ok(());
+    ) -> Result<Option<RawInlineField>, NoteError> {
+        let Some((start_idx, open_delim)) = chars.next() else {
+            return Ok(None);
+        };
+        let close_delim = if open_delim == '[' {
+            ']'
+        } else {
+            ')'
+        };
+
+        let mut inner_text = String::with_capacity(32);
+        let mut consumed_count = 0usize;
+        let lookahead = chars.clone();
+
+        for (idx, ch) in lookahead {
+            consumed_count = consumed_count.saturating_add(1);
+            if ch == close_delim {
+                if let Some((key, value)) = inner_text.split_once("::") {
+                    let key_trimmed = key.trim();
+                    let value_trimmed = value.trim();
+                    if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
+                        for _ in 0..consumed_count {
+                            chars.next();
+                        }
+                        let key_start_rel = text
+                            .get(start_idx..idx)
+                            .and_then(|s| s.find(key_trimmed))
+                            .unwrap_or(1);
+                        let position = base_offset.add_offset(
+                            start_idx.saturating_add(key_start_rel),
+                        )?;
+                        return Ok(Some(RawInlineField::new(
+                            key_trimmed.into(),
+                            value_trimmed.into(),
+                            position,
+                        )));
+                    }
+                }
+                break;
+            }
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+            inner_text.push(ch);
         }
-        for (idx, ch) in text.char_indices() {
-            if !self.emoji_markers.contains(&ch) {
-                continue;
-            }
-            let value_start = idx.saturating_add(ch.len_utf8());
-            let Some(tail) = text.get(value_start..) else {
-                continue;
-            };
-            let Some(value) = tail.split_whitespace().next() else {
-                continue;
-            };
-            if value.is_empty() {
-                continue;
-            }
+
+        Ok(None)
+    }
+
+    /// Internal handler for emoji-prefixed fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if position mapping fails.
+    #[inline]
+    pub fn scan_emoji_field_inner(
+        &self,
+        _text: &str,
+        chars: &mut Peekable<CharIndices<'_>>,
+        base_offset: SourceByteOffset,
+    ) -> Result<Option<RawInlineField>, NoteError> {
+        let Some((idx, ch)) = chars.next() else {
+            return Ok(None);
+        };
+
+        while let Some(&(_, next_ch)) = chars.peek()
+            && next_ch.is_whitespace()
+            && next_ch != '\n'
+            && next_ch != '\r'
+        {
+            chars.next();
+        }
+
+        let mut value = String::with_capacity(16);
+        while let Some(&(_, next_ch)) = chars.peek()
+            && !next_ch.is_whitespace()
+        {
+            value.push(next_ch);
+            chars.next();
+        }
+
+        if value.is_empty() {
+            Ok(None)
+        } else {
             let mut buffer = [0u8; 4];
             let key = ch.encode_utf8(&mut buffer);
             let position = base_offset.add_offset(idx)?;
-            out.push(ScanArtifact::InlineField(RawInlineField::new(
-                key.into(),
-                value.into(),
-                position,
-            )));
+            Ok(Some(RawInlineField::new(key.into(), value.into(), position)))
         }
-        Ok(())
     }
 
-    fn scan_bare_fields(
-        line: &str,
-        line_offset: usize,
-        bracket_spans: &[(usize, usize)],
+    /// Internal handler for bare fields `key:: value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if position mapping fails.
+    #[inline]
+    #[expect(clippy::excessive_nesting, reason = "Parser state-machine depth")]
+    pub fn scan_bare_field_inner(
+        &self,
+        _text: &str,
+        chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
-        out: &mut Vec<ScanArtifact>,
-    ) -> Result<(), NoteError> {
-        let trimmed = line.trim_end_matches(['\n', '\r']);
-        let Some((key, value)) = trimmed.split_once("::") else {
-            return Ok(());
-        };
-        let key_trimmed = key.trim();
-        let value_trimmed = value.trim();
-        if key_trimmed.is_empty() || value_trimmed.is_empty() {
-            return Ok(());
+    ) -> Result<Option<RawInlineField>, NoteError> {
+        let mut key = String::with_capacity(16);
+        let mut consumed_count = 0usize;
+        let mut lookahead = chars.clone();
+        let mut first_idx = None;
+
+        while let Some((idx, ch)) = lookahead.next() {
+            if first_idx.is_none() {
+                first_idx = Some(idx);
+            }
+            consumed_count = consumed_count.saturating_add(1);
+            if ch == ':' {
+                let mut peek_next = lookahead.clone();
+                if let Some((_, ':')) = peek_next.next() {
+                    lookahead.next();
+                    consumed_count = consumed_count.saturating_add(1);
+                    let key_trimmed = key.trim();
+                    if !key_trimmed.is_empty()
+                        && key_trimmed.chars().all(|c| {
+                            c.is_ascii_alphanumeric() || c == '_' || c == '-'
+                        })
+                    {
+                        let mut value = String::with_capacity(16);
+                        for (_, vch) in lookahead.by_ref() {
+                            consumed_count = consumed_count.saturating_add(1);
+                            if vch == '\n' || vch == '\r' {
+                                break;
+                            }
+                            value.push(vch);
+                        }
+                        let value_trimmed = value.trim();
+                        if !value_trimmed.is_empty() {
+                            for _ in 0..consumed_count {
+                                chars.next();
+                            }
+                            let position = base_offset
+                                .add_offset(first_idx.unwrap_or(idx))?;
+                            return Ok(Some(RawInlineField::new(
+                                key_trimmed.into(),
+                                value_trimmed.into(),
+                                position,
+                            )));
+                        }
+                    }
+                    break;
+                }
+            }
+            if ch == '\n'
+                || ch == '\r'
+                || (ch.is_whitespace() && !key.is_empty())
+            {
+                break;
+            }
+            key.push(ch);
         }
 
-        // Bare fields must have "sane" keys to avoid false positives with
-        // markdown syntax (like [ or #) or long sentences.
-        // We reject spaces in bare keys to keep it unambiguous.
-        if !key_trimmed
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Ok(());
-        }
-
-        let key_start =
-            trimmed.find(key_trimmed).unwrap_or(0).saturating_add(line_offset);
-        let is_bracketed = bracket_spans
-            .iter()
-            .any(|&(start, end)| key_start >= start && key_start < end);
-
-        if !is_bracketed {
-            let position = base_offset.add_offset(key_start)?;
-            out.push(ScanArtifact::InlineField(RawInlineField::new(
-                key_trimmed.into(),
-                value_trimmed.into(),
-                position,
-            )));
-        }
-        Ok(())
+        Ok(None)
     }
 
     /// Scans the tail of a text block for an Obsidian-style block reference.
