@@ -114,27 +114,24 @@ impl NoteScanner {
                 } else {
                     false
                 }
-            } else if line_start {
-                if let Some(field) =
+            } else if line_start
+                && let Some(field) =
                     self.scan_bare_field_inner(text, &mut chars, base_offset)?
-                {
-                    artifacts.push(ScanArtifact::InlineField(field));
-                    true
-                } else {
-                    false
-                }
+            {
+                artifacts.push(ScanArtifact::InlineField(field));
+                true
             } else {
                 false
             };
 
             if triggered {
                 line_start = false;
-                prev_alnum = true; // Most artifacts end with alnum
-            } else if let Some((_, next_ch)) = chars.next() {
-                if !next_ch.is_whitespace() {
+                prev_alnum = true;
+            } else if let Some((_, consumed_ch)) = chars.next() {
+                if !consumed_ch.is_whitespace() {
                     line_start = false;
                 }
-                prev_alnum = next_ch.is_alphanumeric();
+                prev_alnum = consumed_ch.is_alphanumeric();
             } else {
                 // End of stream
                 break;
@@ -146,7 +143,8 @@ impl NoteScanner {
 
     /// Internal handler for tag scanning.
     ///
-    /// Consumes the `#` and all valid tag characters.
+    /// Consumes the `#` and all valid tag characters ONLY if a valid tag is
+    /// found.
     ///
     /// # Errors
     ///
@@ -158,14 +156,18 @@ impl NoteScanner {
         chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
     ) -> Result<Option<RawTag>, NoteError> {
-        let Some((start_idx, _)) = chars.next() else {
+        let mut lookahead = chars.clone();
+        let Some((start_idx, _hash)) = lookahead.next() else {
             return Ok(None);
         };
 
         let mut end_idx = start_idx.saturating_add(1);
-        while let Some(&(next_idx, next_ch)) = chars.peek() {
+        let mut consumed_count = 1usize;
+
+        while let Some(&(next_idx, next_ch)) = lookahead.peek() {
             if next_ch.is_alphanumeric() || matches!(next_ch, '_' | '-' | '/') {
-                chars.next();
+                lookahead.next();
+                consumed_count = consumed_count.saturating_add(1);
                 end_idx = next_idx.saturating_add(next_ch.len_utf8());
             } else {
                 break;
@@ -175,6 +177,9 @@ impl NoteScanner {
         if let Some(raw) = text.get(start_idx..end_idx)
             && raw.len() > 1
         {
+            for _ in 0..consumed_count {
+                chars.next();
+            }
             let position = base_offset.add_offset(start_idx)?;
             Ok(Some(RawTag::new(raw.into(), position)))
         } else {
@@ -196,7 +201,8 @@ impl NoteScanner {
         chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
     ) -> Result<Option<RawInlineField>, NoteError> {
-        let Some((start_idx, open_delim)) = chars.next() else {
+        let mut lookahead = chars.clone();
+        let Some((start_idx, open_delim)) = lookahead.next() else {
             return Ok(None);
         };
         let close_delim = if open_delim == '[' {
@@ -206,8 +212,7 @@ impl NoteScanner {
         };
 
         let mut inner_text = String::with_capacity(32);
-        let mut consumed_count = 0usize;
-        let lookahead = chars.clone();
+        let mut consumed_count = 1usize;
 
         for (idx, ch) in lookahead {
             consumed_count = consumed_count.saturating_add(1);
@@ -256,29 +261,36 @@ impl NoteScanner {
         chars: &mut Peekable<CharIndices<'_>>,
         base_offset: SourceByteOffset,
     ) -> Result<Option<RawInlineField>, NoteError> {
-        let Some((idx, ch)) = chars.next() else {
+        let mut lookahead = chars.clone();
+        let Some((idx, ch)) = lookahead.next() else {
             return Ok(None);
         };
+        let mut consumed_count = 1usize;
 
-        while let Some(&(_, next_ch)) = chars.peek()
+        while let Some(&(_, next_ch)) = lookahead.peek()
             && next_ch.is_whitespace()
             && next_ch != '\n'
             && next_ch != '\r'
         {
-            chars.next();
+            lookahead.next();
+            consumed_count = consumed_count.saturating_add(1);
         }
 
         let mut value = String::with_capacity(16);
-        while let Some(&(_, next_ch)) = chars.peek()
+        while let Some(&(_, next_ch)) = lookahead.peek()
             && !next_ch.is_whitespace()
         {
             value.push(next_ch);
-            chars.next();
+            lookahead.next();
+            consumed_count = consumed_count.saturating_add(1);
         }
 
         if value.is_empty() {
             Ok(None)
         } else {
+            for _ in 0..consumed_count {
+                chars.next();
+            }
             let mut buffer = [0u8; 4];
             let key = ch.encode_utf8(&mut buffer);
             let position = base_offset.add_offset(idx)?;
@@ -608,6 +620,28 @@ mod tests {
                     .filter(|a| matches!(a, ScanArtifact::Tag(_)))
                     .count();
                 assert_eq!(tag_count, 0);
+            }
+
+            #[test]
+            #[expect(clippy::panic, reason = "Test assertion")]
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "Slice pattern match"
+            )]
+            fn should_not_skip_triggers_after_failed_tag() {
+                let scanner = NoteScanner::default();
+                let text = "#[field:: value]";
+                let artifacts =
+                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+
+                assert_eq!(artifacts.len(), 1);
+                match &*artifacts {
+                    [ScanArtifact::InlineField(f)] => {
+                        assert_eq!(f.key(), "field");
+                        assert_eq!(f.value(), "value");
+                    }
+                    _ => panic!("Expected exactly one inline field"),
+                }
             }
         }
 
