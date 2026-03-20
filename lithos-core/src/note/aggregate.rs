@@ -734,8 +734,8 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawTask, RawTaskMarker},
-            scanner::{NoteScanner, ScanArtifact},
+            raw::{RawInlineField, RawTask, RawTaskMarker},
+            scanner::{NoteScanner, ScannedArtifact},
             task::RawTaskContext,
         },
     };
@@ -859,26 +859,43 @@ mod tests {
     }
 
     fn promote_task(
-        text: &str,
+        promoted_text: &str,
         config: &Config,
         emoji_markers: &[char],
     ) -> Option<Task> {
-        let raw = raw_task_from_text(text, emoji_markers);
+        let raw = raw_task_from_text(promoted_text, emoji_markers);
         let scanner = NoteScanner::new(emoji_markers.to_vec());
-        let artifacts =
-            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        let artifacts = scanner
+            .scan_block(promoted_text, SourceByteOffset::new(0))
+            .unwrap();
 
         let mut task_tags = Vec::new();
         let mut task_fields = Vec::new();
-        for artifact in artifacts {
-            match artifact {
-                ScanArtifact::Tag(tag) => {
-                    if let Ok(t) = Tag::try_from_token(tag.value()) {
+        for artifact in &artifacts {
+            match *artifact {
+                ScannedArtifact::Tag {
+                    text: tag_text,
+                    ..
+                } => {
+                    if let Ok(t) = Tag::try_from_token(tag_text) {
                         task_tags.push(t);
                     }
                 }
-                ScanArtifact::InlineField(field) => task_fields.push(field),
-                ScanArtifact::BlockRef(_) => {}
+                ScannedArtifact::InlineField {
+                    key,
+                    value,
+                    position,
+                } => task_fields.push(RawInlineField::new(
+                    (*key).into(),
+                    (*value).into(),
+                    position,
+                )),
+                ScannedArtifact::BlockRef {
+                    ..
+                }
+                | ScannedArtifact::TaskMarker {
+                    ..
+                } => {}
             }
         }
 
@@ -891,30 +908,47 @@ mod tests {
         Option::<Task>::try_from(ctx).expect("task conversion")
     }
 
-    fn raw_task_from_text(text: &str, emoji_markers: &[char]) -> RawTask {
+    fn raw_task_from_text(raw_text: &str, emoji_markers: &[char]) -> RawTask {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
-        let end = SourceByteOffset::try_from_usize(text.len()).unwrap_or(start);
+        let end =
+            SourceByteOffset::try_from_usize(raw_text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
 
         let artifacts = scanner
-            .scan_block(text, SourceByteOffset::new(0))
+            .scan_block(raw_text, SourceByteOffset::new(0))
             .expect("scan artifacts");
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
 
-        for artifact in artifacts {
-            match artifact {
-                ScanArtifact::Tag(tag) => tags.push(tag.value().into()),
-                ScanArtifact::InlineField(field) => inline_fields.push(field),
-                ScanArtifact::BlockRef(_) => {}
+        for artifact in &artifacts {
+            match *artifact {
+                ScannedArtifact::Tag {
+                    text: tag_text,
+                    ..
+                } => tags.push((*tag_text).into()),
+                ScannedArtifact::InlineField {
+                    key,
+                    value,
+                    position,
+                } => inline_fields.push(RawInlineField::new(
+                    (*key).into(),
+                    (*value).into(),
+                    position,
+                )),
+                ScannedArtifact::BlockRef {
+                    ..
+                }
+                | ScannedArtifact::TaskMarker {
+                    ..
+                } => {}
             }
         }
 
         RawTask::new(
             RawTaskMarker::Unchecked(' '),
-            text.into(),
+            raw_text.into(),
             tags,
             inline_fields,
             range,

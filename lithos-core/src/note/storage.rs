@@ -1275,8 +1275,11 @@ mod tests {
             aggregate::{Note, NoteId, RawNoteContext},
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawFrontmatter, RawNote, RawTag, RawTask, RawTaskMarker},
-            scanner::{NoteScanner, ScanArtifact},
+            raw::{
+                RawFrontmatter, RawInlineField, RawNote, RawTag, RawTask,
+                RawTaskMarker,
+            },
+            scanner::{NoteScanner, ScannedArtifact},
         },
     };
 
@@ -1400,13 +1403,29 @@ mod tests {
         let mut task_tags = Vec::new();
         let mut task_fields = Vec::new();
 
-        for artifact in artifacts {
-            match artifact {
-                ScanArtifact::Tag(tag) => {
-                    task_tags.push(tag.value().into());
+        for artifact in &artifacts {
+            match *artifact {
+                ScannedArtifact::Tag {
+                    text,
+                    ..
+                } => {
+                    task_tags.push((*text).into());
                 }
-                ScanArtifact::InlineField(field) => task_fields.push(field),
-                ScanArtifact::BlockRef(_) => {}
+                ScannedArtifact::InlineField {
+                    key,
+                    value,
+                    position,
+                } => task_fields.push(RawInlineField::new(
+                    (*key).into(),
+                    (*value).into(),
+                    position,
+                )),
+                ScannedArtifact::BlockRef {
+                    ..
+                }
+                | ScannedArtifact::TaskMarker {
+                    ..
+                } => {}
             }
         }
 

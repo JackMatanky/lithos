@@ -304,6 +304,21 @@ pub enum RawTaskMarker {
 }
 
 impl RawTaskMarker {
+    /// Create a raw task marker from a character.
+    ///
+    /// Maps space to [`RawTaskMarker::Unchecked`], 'x'/'X' to
+    /// [`RawTaskMarker::Checked`], and all other characters to
+    /// [`RawTaskMarker::Other`].
+    #[inline]
+    #[must_use]
+    pub fn from_char(marker: char) -> Self {
+        match marker {
+            ' ' => Self::Unchecked(marker),
+            'x' | 'X' => Self::Checked(marker),
+            _ => Self::Other(marker),
+        }
+    }
+
     /// Returns the raw marker character.
     #[inline]
     #[must_use]

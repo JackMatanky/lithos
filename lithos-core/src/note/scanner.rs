@@ -1,58 +1,77 @@
 //! Unified scanning utilities for Note metadata and structure.
 //!
 //! This module consolidates all manual text-scanning logic (tags, inline
-//! fields, block references) into a single boundary, reducing redundant
-//! passes over markdown content and ensuring heuristic consistency.
+//! fields, block references, and task markers) into a single high-performance
+//! state machine. It uses a cursor-based, single-pass approach to identify
+//! Obsidian-style metadata that isn't natively handled by standard markdown
+//! parsers.
 //!
-//! The primary entry point is [`NoteScanner`], which handles scanning blocks
-//! for multiple types of artifacts. It also provides specialized scanners
-//! like [`TaskMarkerScanner`] for low-level parsing of task-specific syntax.
+//! The primary entry point is [`NoteScanner`], which processes text blocks
+//! and yields zero-copy [`ScannedArtifact`]s.
 
-use std::{iter::Peekable, str::CharIndices};
+use crate::note::{error::NoteError, position::SourceByteOffset};
 
-use crate::note::{
-    error::NoteError,
-    position::SourceByteOffset,
-    raw::{RawBlockRef, RawInlineField, RawTag, RawTaskMarker},
-};
-
-/// A unified result from the scanning process.
-///
-/// This enum represents the different types of metadata artifacts that can be
-/// extracted from a text block.
-#[derive(Debug, Clone, PartialEq)]
+/// A zero-copy artifact extracted from a text block.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ScanArtifact {
+pub enum ScannedArtifact<'source> {
     /// A hashtag (e.g., `#work/project`).
-    Tag(RawTag),
-    /// An inline field (e.g., `[key:: value]`).
-    InlineField(RawInlineField),
+    Tag {
+        /// The raw tag text including the `#`.
+        text: &'source str,
+        /// Source position of the `#`.
+        position: SourceByteOffset,
+    },
+    /// An inline field (e.g., `[key:: value]` or `📅 2024-03-19`).
+    InlineField {
+        /// The field key.
+        key: &'source str,
+        /// The field value.
+        value: &'source str,
+        /// Source position of the key start.
+        position: SourceByteOffset,
+    },
     /// A block reference (e.g., `^block-id`).
-    BlockRef(RawBlockRef),
+    BlockRef {
+        /// The block identifier excluding the `^`.
+        id: &'source str,
+        /// Source position of the `^`.
+        position: SourceByteOffset,
+    },
+    /// A task marker (e.g., the `x` in `- [x]`).
+    TaskMarker {
+        /// The character inside the checkbox.
+        marker: char,
+        /// Source position of the marker character.
+        position: SourceByteOffset,
+    },
 }
 
-/// Specialized scanner for extracting metadata artifacts from markdown.
-///
-/// `NoteScanner` is designed to be used within the ingestion pipeline to
-/// identify Obsidian-style metadata that isn't natively handled by standard
-/// markdown parsers.
-#[derive(Debug, Clone, Default)]
+/// A cursor-based scanner for extracting metadata artifacts from markdown.
+#[derive(Debug, Clone)]
 pub struct NoteScanner {
-    /// Emoji markers used for date/status fields.
+    /// Emoji markers used for colon-less inline fields.
     emoji_markers: Box<[char]>,
+}
+
+impl Default for NoteScanner {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            emoji_markers: vec![
+                '\u{1f4c5}', // 📅
+                '\u{2705}',  // ✅
+                '\u{23f0}',  // ⏰
+                '\u{1f6eb}', // 🛫
+                '\u{23f3}',  // ⏳
+            ]
+            .into(),
+        }
+    }
 }
 
 impl NoteScanner {
     /// Create a new scanner with the provided emoji markers.
-    ///
-    /// Emoji markers allow for compact inline fields like `📅 2024-03-19`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::NoteScanner;
-    /// let scanner = NoteScanner::new(vec!['📅']);
-    /// ```
     #[inline]
     #[must_use]
     pub fn new<T: Into<Box<[char]>>>(emoji_markers: T) -> Self {
@@ -61,801 +80,627 @@ impl NoteScanner {
         }
     }
 
-    /// Scans a block of text for tags and inline fields in a single pass.
+    /// Scans a block of text for all metadata artifacts in a single pass.
     ///
     /// # Errors
     ///
     /// Returns [`NoteError`] if position mapping fails.
     #[inline]
-    pub fn scan_block(
+    pub fn scan_block<'source>(
         &self,
-        text: &str,
+        text: &'source str,
         base_offset: SourceByteOffset,
-    ) -> Result<Vec<ScanArtifact>, NoteError> {
+    ) -> Result<Vec<ScannedArtifact<'source>>, NoteError> {
+        let mut cursor = Cursor::new(text, base_offset);
         let mut artifacts = Vec::new();
-        let mut chars = text.char_indices().peekable();
-        let mut line_start = true;
-        let mut prev_alnum = false;
-
-        while let Some(&(_idx, ch)) = chars.peek() {
-            if ch == '\n' || ch == '\r' {
-                line_start = true;
-                prev_alnum = false;
-                chars.next();
-                continue;
-            }
-
-            let triggered = if ch == '#' && !prev_alnum {
-                if let Some(tag) =
-                    self.scan_tag_inner(text, &mut chars, base_offset)?
-                {
-                    artifacts.push(ScanArtifact::Tag(tag));
-                    true
-                } else {
-                    false
-                }
-            } else if ch == '[' || ch == '(' {
-                if let Some(field) = self.scan_delimited_field_inner(
-                    text,
-                    &mut chars,
-                    base_offset,
-                )? {
-                    artifacts.push(ScanArtifact::InlineField(field));
-                    true
-                } else {
-                    false
-                }
-            } else if self.emoji_markers.contains(&ch) {
-                if let Some(field) =
-                    self.scan_emoji_field_inner(text, &mut chars, base_offset)?
-                {
-                    artifacts.push(ScanArtifact::InlineField(field));
-                    true
-                } else {
-                    false
-                }
-            } else if line_start
-                && let Some(field) =
-                    self.scan_bare_field_inner(text, &mut chars, base_offset)?
-            {
-                artifacts.push(ScanArtifact::InlineField(field));
-                true
-            } else {
-                false
-            };
-
-            if triggered {
-                line_start = false;
-                prev_alnum = true;
-            } else if let Some((_, consumed_ch)) = chars.next() {
-                if !consumed_ch.is_whitespace() {
-                    line_start = false;
-                }
-                prev_alnum = consumed_ch.is_alphanumeric();
-            } else {
-                // End of stream
-                break;
-            }
-        }
-
+        self.scan_cursor(&mut cursor, &mut artifacts)?;
         Ok(artifacts)
     }
 
-    /// Internal handler for tag scanning.
+    /// Continues scanning from a provided cursor state.
     ///
-    /// Consumes the `#` and all valid tag characters ONLY if a valid tag is
-    /// found.
+    /// This is useful for scanning disjoint text segments while maintaining
+    /// line-start and alphanumeric context.
     ///
     /// # Errors
     ///
     /// Returns [`NoteError`] if position mapping fails.
     #[inline]
-    pub fn scan_tag_inner(
+    pub fn scan_cursor<'source>(
         &self,
-        text: &str,
-        chars: &mut Peekable<CharIndices<'_>>,
-        base_offset: SourceByteOffset,
-    ) -> Result<Option<RawTag>, NoteError> {
-        let mut lookahead = chars.clone();
-        let Some((start_idx, _hash)) = lookahead.next() else {
-            return Ok(None);
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        while !cursor.is_eof() {
+            match cursor.mode {
+                ScanMode::AtLineStart => {
+                    Self::handle_line_start(cursor, artifacts)?;
+                }
+                ScanMode::InBody => {
+                    self.handle_body(cursor, artifacts)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_line_start<'source>(
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        cursor.skip_whitespace_on_line();
+
+        let Some(first) = cursor.peek_byte() else {
+            cursor.mode = ScanMode::InBody;
+            return Ok(());
         };
 
-        let mut end_idx = start_idx.saturating_add(1);
-        let mut consumed_count = 1usize;
+        if first == b'\n' || first == b'\r' {
+            cursor.mode = ScanMode::InBody;
+            return Ok(());
+        }
 
-        while let Some(&(next_idx, next_ch)) = lookahead.peek() {
-            if next_ch.is_alphanumeric() || matches!(next_ch, '_' | '-' | '/') {
-                lookahead.next();
-                consumed_count = consumed_count.saturating_add(1);
-                end_idx = next_idx.saturating_add(next_ch.len_utf8());
+        // Try to match list prefix: -, *, +, or 1.
+        if let Some(prefix_len) = Self::match_list_prefix(cursor) {
+            cursor.advance(prefix_len)?;
+            cursor.skip_whitespace_on_line();
+
+            // Try to match checkbox: [x]
+            if cursor.rest.starts_with('[')
+                && let Some(marker_char) = cursor.rest.chars().nth(1)
+                && cursor.rest.get(2..3) == Some("]")
+            {
+                let marker_pos = cursor.offset.add_offset(1)?;
+                artifacts.push(ScannedArtifact::TaskMarker {
+                    marker: marker_char,
+                    position: marker_pos,
+                });
+                cursor.advance(3)?;
+            }
+        } else if let Some(field) = Self::scan_bare_field(cursor)? {
+            artifacts.push(field);
+        } else {
+            // No trigger at line start
+        }
+
+        cursor.mode = ScanMode::InBody;
+        Ok(())
+    }
+
+    fn match_list_prefix(cursor: &Cursor<'_>) -> Option<usize> {
+        let first = cursor.peek_byte()?;
+        if matches!(first, b'-' | b'*' | b'+') {
+            return Some(1);
+        }
+        if first.is_ascii_digit() {
+            let bytes = cursor.rest.as_bytes();
+            let mut idx = 0usize;
+            while let Some(&b) = bytes.get(idx)
+                && b.is_ascii_digit()
+            {
+                idx = idx.saturating_add(1);
+            }
+            if let Some(&b) = bytes.get(idx)
+                && matches!(b, b'.' | b')')
+            {
+                return Some(idx.saturating_add(1));
+            }
+        }
+        None
+    }
+
+    fn handle_body<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        match cursor.peek_byte() {
+            Some(b'#') if !cursor.prev_alnum => {
+                if let Some(tag) = Self::scan_tag(cursor)? {
+                    artifacts.push(tag);
+                } else {
+                    cursor.advance(1)?;
+                }
+            }
+            Some(b'[' | b'(') => {
+                if let Some(field) = Self::scan_delimited_field(cursor)? {
+                    artifacts.push(field);
+                } else {
+                    cursor.advance(1)?;
+                }
+            }
+            Some(b'^') if !cursor.prev_alnum => {
+                if let Some(block_ref) = Self::scan_block_ref(cursor)? {
+                    artifacts.push(block_ref);
+                } else {
+                    cursor.advance(1)?;
+                }
+            }
+            Some(b'\n' | b'\r') => {
+                cursor.advance(1)?;
+                cursor.mode = ScanMode::AtLineStart;
+                cursor.prev_alnum = false;
+            }
+            Some(b) if b < 128 => {
+                cursor.prev_alnum = b.is_ascii_alphanumeric();
+                cursor.advance(1)?;
+            }
+            Some(_) => {
+                // Multi-byte Unicode character
+                let ch = cursor.rest.chars().next().unwrap_or('\0');
+                if self.emoji_markers.contains(&ch) {
+                    if let Some(field) = Self::scan_emoji_field(cursor)? {
+                        artifacts.push(field);
+                    } else {
+                        cursor.advance(ch.len_utf8())?;
+                    }
+                } else {
+                    cursor.prev_alnum = ch.is_alphanumeric();
+                    cursor.advance(ch.len_utf8())?;
+                }
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
+    fn scan_tag<'source>(
+        cursor: &mut Cursor<'source>,
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let bytes = cursor.rest.as_bytes();
+        let mut idx = 1usize; // skip '#'
+        while let Some(&b) = bytes.get(idx) {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'/') {
+                idx = idx.saturating_add(1);
+            } else if b >= 128 {
+                // Potential Unicode alphanumeric in tag
+                if let Some(ch) =
+                    cursor.rest.get(idx..).and_then(|s| s.chars().next())
+                    && ch.is_alphanumeric()
+                {
+                    idx = idx.saturating_add(ch.len_utf8());
+                    continue;
+                }
+                break;
             } else {
                 break;
             }
         }
 
-        if let Some(raw) = text.get(start_idx..end_idx)
-            && raw.len() > 1
-        {
-            for _ in 0..consumed_count {
-                chars.next();
-            }
-            let position = base_offset.add_offset(start_idx)?;
-            Ok(Some(RawTag::new(raw.into(), position)))
+        if idx > 1 {
+            let text = cursor.rest.get(..idx).unwrap_or("");
+            let position = cursor.offset;
+            cursor.advance(idx)?;
+            Ok(Some(ScannedArtifact::Tag {
+                text,
+                position,
+            }))
         } else {
             Ok(None)
         }
     }
 
-    /// Internal handler for delimited inline fields `[key:: value]` or `(key::
-    /// value)`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if position mapping fails.
-    #[inline]
-    #[expect(clippy::excessive_nesting, reason = "Parser state-machine depth")]
-    pub fn scan_delimited_field_inner(
-        &self,
-        text: &str,
-        chars: &mut Peekable<CharIndices<'_>>,
-        base_offset: SourceByteOffset,
-    ) -> Result<Option<RawInlineField>, NoteError> {
-        let mut lookahead = chars.clone();
-        let Some((start_idx, open_delim)) = lookahead.next() else {
-            return Ok(None);
-        };
-        let close_delim = if open_delim == '[' {
-            ']'
+    fn scan_delimited_field<'source>(
+        cursor: &mut Cursor<'source>,
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let open = cursor.peek_byte().unwrap_or(b'[');
+        let close = if open == b'[' {
+            b']'
         } else {
-            ')'
+            b')'
         };
 
-        let mut inner_text = String::with_capacity(32);
-        let mut consumed_count = 1usize;
-
-        for (idx, ch) in lookahead {
-            consumed_count = consumed_count.saturating_add(1);
-            if ch == close_delim {
-                if let Some((key, value)) = inner_text.split_once("::") {
-                    let key_trimmed = key.trim();
-                    let value_trimmed = value.trim();
-                    if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
-                        for _ in 0..consumed_count {
-                            chars.next();
-                        }
-                        let key_start_rel = text
-                            .get(start_idx..idx)
-                            .and_then(|s| s.find(key_trimmed))
-                            .unwrap_or(1);
-                        let position = base_offset.add_offset(
-                            start_idx.saturating_add(key_start_rel),
-                        )?;
-                        return Ok(Some(RawInlineField::new(
-                            key_trimmed.into(),
-                            value_trimmed.into(),
-                            position,
-                        )));
-                    }
+        if let Some(close_idx) = cursor.rest.find(char::from(close)) {
+            let inner = cursor.rest.get(1..close_idx).unwrap_or("");
+            if let Some((key, value)) = inner.split_once("::") {
+                let key_trimmed = key.trim();
+                let value_trimmed = value.trim();
+                if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
+                    let key_start_offset =
+                        inner.find(key_trimmed).unwrap_or(0).saturating_add(1);
+                    let position =
+                        cursor.offset.add_offset(key_start_offset)?;
+                    let artifact = ScannedArtifact::InlineField {
+                        key: key_trimmed,
+                        value: value_trimmed,
+                        position,
+                    };
+                    cursor.advance(close_idx.saturating_add(1))?;
+                    return Ok(Some(artifact));
                 }
-                break;
             }
-            if ch == '\n' || ch == '\r' {
-                break;
-            }
-            inner_text.push(ch);
         }
-
         Ok(None)
     }
 
-    /// Internal handler for emoji-prefixed fields.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if position mapping fails.
-    #[inline]
-    pub fn scan_emoji_field_inner(
-        &self,
-        _text: &str,
-        chars: &mut Peekable<CharIndices<'_>>,
-        base_offset: SourceByteOffset,
-    ) -> Result<Option<RawInlineField>, NoteError> {
-        let mut lookahead = chars.clone();
-        let Some((idx, ch)) = lookahead.next() else {
+    fn scan_emoji_field<'source>(
+        cursor: &mut Cursor<'source>,
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let Some(emoji_ch) = cursor.rest.chars().next() else {
             return Ok(None);
         };
-        let mut consumed_count = 1usize;
+        let emoji_len = emoji_ch.len_utf8();
+        let position = cursor.offset;
 
-        while let Some(&(_, next_ch)) = lookahead.peek()
-            && next_ch.is_whitespace()
-            && next_ch != '\n'
-            && next_ch != '\r'
+        let Some(mut after_emoji) = cursor.rest.get(emoji_len..) else {
+            return Ok(None);
+        };
+        let mut consumed = emoji_len;
+
+        // Skip leading whitespace after emoji
+        while let Some(ch) = after_emoji.chars().next()
+            && ch.is_whitespace()
+            && ch != '\n'
+            && ch != '\r'
         {
-            lookahead.next();
-            consumed_count = consumed_count.saturating_add(1);
+            let len = ch.len_utf8();
+            after_emoji = after_emoji.get(len..).unwrap_or("");
+            consumed = consumed.saturating_add(len);
         }
 
-        let mut value = String::with_capacity(16);
-        while let Some(&(_, next_ch)) = lookahead.peek()
-            && !next_ch.is_whitespace()
-        {
-            value.push(next_ch);
-            lookahead.next();
-            consumed_count = consumed_count.saturating_add(1);
-        }
-
-        if value.is_empty() {
-            Ok(None)
-        } else {
-            for _ in 0..consumed_count {
-                chars.next();
+        // Capture until next whitespace or end of line/block
+        let mut val_len = 0usize;
+        for ch in after_emoji.chars() {
+            if ch.is_whitespace() {
+                break;
             }
-            let mut buffer = [0u8; 4];
-            let key = ch.encode_utf8(&mut buffer);
-            let position = base_offset.add_offset(idx)?;
-            Ok(Some(RawInlineField::new(key.into(), value.into(), position)))
+            val_len = val_len.saturating_add(ch.len_utf8());
+        }
+
+        if val_len > 0 {
+            let key = cursor.rest.get(..emoji_len).unwrap_or("");
+            let value = after_emoji.get(..val_len).unwrap_or("");
+            cursor.advance(consumed.saturating_add(val_len))?;
+            Ok(Some(ScannedArtifact::InlineField {
+                key,
+                value,
+                position,
+            }))
+        } else {
+            Ok(None)
         }
     }
 
-    /// Internal handler for bare fields `key:: value`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if position mapping fails.
-    #[inline]
-    #[expect(clippy::excessive_nesting, reason = "Parser state-machine depth")]
-    pub fn scan_bare_field_inner(
-        &self,
-        _text: &str,
-        chars: &mut Peekable<CharIndices<'_>>,
-        base_offset: SourceByteOffset,
-    ) -> Result<Option<RawInlineField>, NoteError> {
-        let mut key = String::with_capacity(16);
-        let mut consumed_count = 0usize;
-        let mut lookahead = chars.clone();
-        let mut first_idx = None;
+    fn scan_bare_field<'source>(
+        cursor: &mut Cursor<'source>,
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let bytes = cursor.rest.as_bytes();
+        let mut key_len = 0usize;
 
-        while let Some((idx, ch)) = lookahead.next() {
-            if first_idx.is_none() {
-                first_idx = Some(idx);
+        while let Some(&b) = bytes.get(key_len) {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-') {
+                key_len = key_len.saturating_add(1);
+            } else {
+                break;
             }
-            consumed_count = consumed_count.saturating_add(1);
-            if ch == ':' {
-                let mut peek_next = lookahead.clone();
-                if let Some((_, ':')) = peek_next.next() {
-                    lookahead.next();
-                    consumed_count = consumed_count.saturating_add(1);
-                    let key_trimmed = key.trim();
-                    if !key_trimmed.is_empty()
-                        && key_trimmed.chars().all(|c| {
-                            c.is_ascii_alphanumeric() || c == '_' || c == '-'
-                        })
-                    {
-                        let mut value = String::with_capacity(16);
-                        for (_, vch) in lookahead.by_ref() {
-                            consumed_count = consumed_count.saturating_add(1);
-                            if vch == '\n' || vch == '\r' {
-                                break;
-                            }
-                            value.push(vch);
-                        }
-                        let value_trimmed = value.trim();
-                        if !value_trimmed.is_empty() {
-                            for _ in 0..consumed_count {
-                                chars.next();
-                            }
-                            let position = base_offset
-                                .add_offset(first_idx.unwrap_or(idx))?;
-                            return Ok(Some(RawInlineField::new(
-                                key_trimmed.into(),
-                                value_trimmed.into(),
-                                position,
-                            )));
-                        }
-                    }
+        }
+
+        if key_len > 0
+            && cursor.rest.get(key_len..).is_some_and(|s| s.starts_with("::"))
+        {
+            let key = cursor.rest.get(..key_len).unwrap_or("");
+            let after_colons =
+                cursor.rest.get(key_len.saturating_add(2)..).unwrap_or("");
+            let mut val_len = 0usize;
+            for ch in after_colons.chars() {
+                if ch == '\n' || ch == '\r' {
                     break;
                 }
+                val_len = val_len.saturating_add(ch.len_utf8());
             }
-            if ch == '\n'
-                || ch == '\r'
-                || (ch.is_whitespace() && !key.is_empty())
-            {
+
+            let value = after_colons.get(..val_len).unwrap_or("").trim();
+            if !value.is_empty() {
+                let artifact = ScannedArtifact::InlineField {
+                    key,
+                    value,
+                    position: cursor.offset,
+                };
+                cursor.advance(
+                    key_len.saturating_add(2).saturating_add(val_len),
+                )?;
+                return Ok(Some(artifact));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn scan_block_ref<'source>(
+        cursor: &mut Cursor<'source>,
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let bytes = cursor.rest.as_bytes();
+        let mut len = 1usize; // skip '^'
+        while let Some(&b) = bytes.get(len) {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_') {
+                len = len.saturating_add(1);
+            } else {
                 break;
             }
-            key.push(ch);
         }
 
-        Ok(None)
-    }
-
-    /// Scans the tail of a text block for an Obsidian-style block reference.
-    ///
-    /// Block references are identifiers at the very end of a block (like
-    /// paragraphs or list items) that allow linking directly to that content.
-    /// They follow the pattern ` ^block-id`, where `block-id` is
-    /// alphanumeric and preceded by a space and a caret.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::NoteScanner;
-    /// # use lithos_core::note::position::SourceByteOffset;
-    /// let scanner = NoteScanner::default();
-    /// let text = "Important point ^my-id";
-    ///
-    /// let block_ref = scanner
-    ///     .scan_tail_for_block_ref(text, SourceByteOffset::new(0))
-    ///     .unwrap()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(block_ref.id(), "my-id");
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if position calculation for the caret exceeds
-    /// byte bounds.
-    #[inline]
-    pub fn scan_tail_for_block_ref(
-        &self,
-        text: &str,
-        base_offset: SourceByteOffset,
-    ) -> Result<Option<RawBlockRef>, NoteError> {
-        let line = text.trim_end();
-        if let Some(caret_idx) = line.rfind('^') {
-            let before = line.get(..caret_idx).unwrap_or("");
-            let after = line.get(caret_idx.saturating_add(1)..).unwrap_or("");
-            let id = after.trim();
-
-            let valid = !id.is_empty()
-                && id.chars().all(|ch| {
-                    ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
-                });
-
-            if valid
-                && (before.is_empty()
-                    || before.chars().last().is_some_and(char::is_whitespace))
-            {
-                let position = base_offset.add_offset(caret_idx)?;
-                return Ok(Some(RawBlockRef::new(id.into(), position)));
+        if len > 1 {
+            let remaining = cursor.rest.get(len..).unwrap_or("");
+            let mut tail_len = 0usize;
+            for ch in remaining.chars() {
+                if ch == '\n' || ch == '\r' {
+                    break;
+                }
+                if !ch.is_whitespace() {
+                    return Ok(None);
+                }
+                tail_len = tail_len.saturating_add(ch.len_utf8());
             }
+
+            let id = cursor.rest.get(1..len).unwrap_or("");
+            let position = cursor.offset;
+            cursor.advance(len.saturating_add(tail_len))?;
+            Ok(Some(ScannedArtifact::BlockRef {
+                id,
+                position,
+            }))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 }
 
-/// Helper for scanning task markers from markdown source.
-///
-/// Task markers like `- [ ]` or `1. [x]` are often handled at the block level
-/// by markdown parsers, but the specific marker character (e.g., '/', '!', '>')
-/// is needed for custom status tracking. This scanner provides precise
-/// extraction of these markers.
-pub struct TaskMarkerScanner<'source> {
-    chars: std::iter::Peekable<std::str::Chars<'source>>,
+/// Internal state for the scanner.
+#[derive(Debug, Clone)]
+pub struct Cursor<'source> {
+    rest: &'source str,
+    offset: SourceByteOffset,
+    mode: ScanMode,
+    prev_alnum: bool,
 }
 
-impl<'source> TaskMarkerScanner<'source> {
-    /// Create a new scanner for a single line of text or a block.
+impl<'source> Cursor<'source> {
+    /// Create a new cursor at the start of a text block.
     #[inline]
     #[must_use]
-    pub fn new(line: &'source str) -> Self {
+    pub fn new(text: &'source str, base_offset: SourceByteOffset) -> Self {
         Self {
-            chars: line.chars().peekable(),
+            rest: text,
+            offset: base_offset,
+            mode: ScanMode::AtLineStart,
+            prev_alnum: false,
         }
     }
 
-    /// Scans for the next task marker in the current source.
-    ///
-    /// This method skips leading whitespace and identifies list markers
-    /// (e.g., `-`, `*`, `+`, `1.`) followed by a checkbox `[ ]`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::TaskMarkerScanner;
-    /// let mut scanner = TaskMarkerScanner::new("- [x] My task");
-    /// assert_eq!(scanner.scan(), Some('x'));
-    ///
-    /// let mut scanner = TaskMarkerScanner::new("  1. [/] Ongoing");
-    /// assert_eq!(scanner.scan(), Some('/'));
-    /// ```
+    /// Reset the cursor to point to new text, maintaining line-start and
+    /// alphanumeric context.
     #[inline]
-    pub fn scan(&mut self) -> Option<char> {
-        self.skip_whitespace();
-        self.consume_list_marker()?;
-        self.skip_whitespace();
-        self.parse_checkbox_marker()
+    pub fn reset(&mut self, text: &'source str, base_offset: SourceByteOffset) {
+        self.rest = text;
+        self.offset = base_offset;
     }
 
-    fn skip_whitespace(&mut self) {
-        while matches!(self.chars.peek(), Some(ch) if ch.is_whitespace()) {
-            self.chars.next();
-        }
+    #[inline]
+    fn is_eof(&self) -> bool {
+        self.rest.is_empty()
     }
 
-    fn consume_list_marker(&mut self) -> Option<()> {
-        let first = self.chars.peek().copied()?;
-        if matches!(first, '-' | '*' | '+') {
-            self.chars.next();
-            return Some(());
-        }
-        if !first.is_ascii_digit() {
-            return None;
-        }
-        while matches!(self.chars.peek(), Some(ch) if ch.is_ascii_digit()) {
-            self.chars.next();
-        }
-        match self.chars.peek().copied()? {
-            '.' | ')' => {
-                self.chars.next();
-                Some(())
+    #[inline]
+    fn peek_byte(&self) -> Option<u8> {
+        self.rest.as_bytes().first().copied()
+    }
+
+    #[inline]
+    fn advance(&mut self, bytes: usize) -> Result<(), NoteError> {
+        self.rest = self.rest.get(bytes..).unwrap_or("");
+        self.offset = self.offset.add_offset(bytes)?;
+        Ok(())
+    }
+
+    fn skip_whitespace_on_line(&mut self) {
+        let bytes = self.rest.as_bytes();
+        let mut idx = 0usize;
+        while let Some(&b) = bytes.get(idx) {
+            if b == b' ' || b == b'\t' {
+                idx = idx.saturating_add(1);
+            } else {
+                break;
             }
-            _ => None,
+        }
+        if idx > 0 {
+            let _result = self.advance(idx);
         }
     }
+}
 
-    fn parse_checkbox_marker(&mut self) -> Option<char> {
-        if self.chars.next()? != '[' {
-            return None;
-        }
-        let marker = self.chars.next()?;
-        if self.chars.next()? != ']' {
-            return None;
-        }
-        Some(marker)
-    }
-
-    /// Converts a raw marker character into a [`RawTaskMarker`].
-    ///
-    /// Maps space to [`RawTaskMarker::Unchecked`], 'x'/'X' to
-    /// [`RawTaskMarker::Checked`], and all other characters to
-    /// [`RawTaskMarker::Other`].
-    #[inline]
-    #[must_use]
-    pub fn raw_task_marker_from_char(marker: char) -> RawTaskMarker {
-        match marker {
-            ' ' => RawTaskMarker::Unchecked(marker),
-            'x' | 'X' => RawTaskMarker::Checked(marker),
-            _ => RawTaskMarker::Other(marker),
-        }
-    }
-
-    /// Helper to find a task marker in source at a given position.
-    ///
-    /// This is useful when the ingestion process identifies a block as a task
-    /// and needs to extract the precise marker character from the original
-    /// source.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::TaskMarkerScanner;
-    /// # use lithos_core::note::position::SourceByteOffset;
-    /// let source = "  - [!] Alert";
-    /// let marker =
-    ///     TaskMarkerScanner::find_in_source(source, SourceByteOffset::new(0));
-    ///
-    /// assert_eq!(marker, Some('!'));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn find_in_source(
-        source: &'source str,
-        position: SourceByteOffset,
-    ) -> Option<char> {
-        let start = usize::try_from(u32::from(position)).ok()?;
-        let tail = source.get(start..)?;
-        let line = tail.split(['\n', '\r']).next().unwrap_or(tail);
-        Self::new(line).scan()
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScanMode {
+    AtLineStart,
+    InBody,
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Tests grouped by behavior"
-)]
 mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::note::raw::RawTaskMarker;
 
-    mod scan_block {
-        use super::*;
+    #[test]
+    fn should_scan_complex_block() {
+        let scanner = NoteScanner::new(vec!['\u{1f4c5}', '\u{2705}']);
+        let text =
+            "- [x] #task [priority:: high] \u{1f4c5} 2023-04-09\nNext line ^id";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
-        mod tags {
-            use super::*;
+        assert_eq!(artifacts.len(), 5);
+        assert!(matches!(
+            artifacts.first(),
+            Some(&ScannedArtifact::TaskMarker {
+                marker: 'x',
+                ..
+            })
+        ));
+        assert!(matches!(
+            artifacts.get(1),
+            Some(&ScannedArtifact::Tag {
+                text: "#task",
+                ..
+            })
+        ));
+        assert!(matches!(
+            artifacts.get(2),
+            Some(&ScannedArtifact::InlineField {
+                key: "priority",
+                value: "high",
+                ..
+            })
+        ));
+        assert!(matches!(
+            artifacts.get(3),
+            Some(&ScannedArtifact::InlineField {
+                key: "\u{1f4c5}",
+                value: "2023-04-09",
+                ..
+            })
+        ));
+        assert!(matches!(
+            artifacts.get(4),
+            Some(&ScannedArtifact::BlockRef {
+                id: "id",
+                ..
+            })
+        ));
+    }
 
-            #[test]
-            fn should_extract_simple_and_hierarchical_tags() {
-                let scanner = NoteScanner::default();
-                let text = "Text with #tag and #nested/tag.";
-                let artifacts = scanner
-                    .scan_block(text, SourceByteOffset::new(100))
-                    .unwrap();
+    #[rstest]
+    #[case("- [ ] ", ' ')]
+    #[case("* [x] ", 'x')]
+    #[case("1. [/] ", '/')]
+    #[case("  - [-] ", '-')]
+    fn should_scan_task_markers(#[case] text: &str, #[case] expected: char) {
+        let scanner = NoteScanner::default();
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert!(
+            matches!(
+                artifacts.first(),
+                Some(ScannedArtifact::TaskMarker { marker, .. }) if *marker == expected
+            ),
+            "Expected TaskMarker with {expected}, got {artifacts:?}"
+        );
+    }
 
-                let tags: Vec<_> = artifacts
-                    .into_iter()
-                    .filter_map(|a| match a {
-                        ScanArtifact::Tag(t) => Some((
-                            t.value().to_owned(),
-                            u32::from(t.position()),
-                        )),
-                        ScanArtifact::InlineField(_)
-                        | ScanArtifact::BlockRef(_) => None,
-                    })
-                    .collect();
+    #[test]
+    fn should_handle_emoji_fields_without_colons() {
+        let scanner = NoteScanner::new(vec!['\u{1f4c5}', '\u{2705}']);
+        let text = "Completed \u{1f4c5} 2023-04-09 \u{2705} 2023-04-10";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
 
-                assert_eq!(tags, vec![
-                    ("#tag".to_owned(), 110),
-                    ("#nested/tag".to_owned(), 119)
-                ]);
-            }
-
-            #[test]
-            fn should_ignore_tags_preceded_by_alphanumeric() {
-                let scanner = NoteScanner::default();
-                let text = "word#tag";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let tag_count = artifacts
-                    .iter()
-                    .filter(|a| matches!(a, ScanArtifact::Tag(_)))
-                    .count();
-                assert_eq!(tag_count, 0);
-            }
-
-            #[test]
-            fn should_ignore_single_hash() {
-                let scanner = NoteScanner::default();
-                let text = "Just a # and some text";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let tag_count = artifacts
-                    .iter()
-                    .filter(|a| matches!(a, ScanArtifact::Tag(_)))
-                    .count();
-                assert_eq!(tag_count, 0);
-            }
-
-            #[test]
-            #[expect(clippy::panic, reason = "Test assertion")]
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "Slice pattern match"
-            )]
-            fn should_not_skip_triggers_after_failed_tag() {
-                let scanner = NoteScanner::default();
-                let text = "#[field:: value]";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                assert_eq!(artifacts.len(), 1);
-                match &*artifacts {
-                    [ScanArtifact::InlineField(f)] => {
-                        assert_eq!(f.key(), "field");
-                        assert_eq!(f.value(), "value");
-                    }
-                    _ => panic!("Expected exactly one inline field"),
-                }
-            }
+        assert_eq!(artifacts.len(), 2);
+        if let Some(&ScannedArtifact::InlineField {
+            key,
+            value,
+            ..
+        }) = artifacts.first()
+        {
+            assert_eq!(key, "\u{1f4c5}");
+            assert_eq!(value, "2023-04-09");
         }
-
-        mod inline_fields {
-            use super::*;
-
-            #[test]
-            fn should_extract_bracketed_and_parenthesized_fields() {
-                let scanner = NoteScanner::default();
-                let text = "[key1:: val1] and (key2:: val2)";
-                let artifacts = scanner
-                    .scan_block(text, SourceByteOffset::new(10))
-                    .unwrap();
-
-                let fields: Vec<_> = artifacts
-                    .into_iter()
-                    .filter_map(|a| match a {
-                        ScanArtifact::InlineField(f) => Some((
-                            f.key().to_owned(),
-                            f.value().to_owned(),
-                            u32::from(f.position()),
-                        )),
-                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
-                            None
-                        }
-                    })
-                    .collect();
-
-                assert_eq!(fields, vec![
-                    ("key1".to_owned(), "val1".to_owned(), 11),
-                    ("key2".to_owned(), "val2".to_owned(), 29)
-                ]);
-            }
-
-            #[test]
-            fn should_extract_bare_fields() {
-                let scanner = NoteScanner::default();
-                let text = "bare_key:: bare_val\nAnother line";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let fields: Vec<_> = artifacts
-                    .into_iter()
-                    .filter_map(|a| match a {
-                        ScanArtifact::InlineField(f) => {
-                            Some((f.key().to_owned(), f.value().to_owned()))
-                        }
-                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
-                            None
-                        }
-                    })
-                    .collect();
-
-                assert_eq!(
-                    fields
-                        .iter()
-                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-                        .collect::<Vec<_>>(),
-                    vec![("bare_key", "bare_val")]
-                );
-            }
-
-            #[test]
-            fn should_ignore_bare_fields_inside_brackets() {
-                let scanner = NoteScanner::default();
-                let text = "[key:: nested:: field]";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let fields: Vec<_> = artifacts
-                    .into_iter()
-                    .filter_map(|a| match a {
-                        ScanArtifact::InlineField(f) => {
-                            Some((f.key().to_owned(), f.value().to_owned()))
-                        }
-                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
-                            None
-                        }
-                    })
-                    .collect();
-
-                assert_eq!(
-                    fields
-                        .iter()
-                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-                        .collect::<Vec<_>>(),
-                    vec![("key", "nested:: field")]
-                );
-            }
-
-            #[test]
-            fn should_extract_emoji_fields() {
-                let scanner = NoteScanner::new(vec!['\u{1f4c5}', '\u{2705}']);
-                let text = "\u{1f4c5} 2024-03-19 and \u{2705} done";
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let fields: Vec<_> = artifacts
-                    .into_iter()
-                    .filter_map(|a| match a {
-                        ScanArtifact::InlineField(f) => {
-                            Some((f.key().to_owned(), f.value().to_owned()))
-                        }
-                        ScanArtifact::Tag(_) | ScanArtifact::BlockRef(_) => {
-                            None
-                        }
-                    })
-                    .collect();
-
-                assert_eq!(
-                    fields
-                        .iter()
-                        .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-                        .collect::<Vec<_>>(),
-                    vec![("\u{1f4c5}", "2024-03-19"), ("\u{2705}", "done")]
-                );
-            }
-
-            #[rstest]
-            #[case::space_in_key("invalid key:: value")]
-            #[case::special_chars("key!:: value")]
-            fn should_ignore_invalid_bare_keys(#[case] text: &str) {
-                let scanner = NoteScanner::default();
-                let artifacts =
-                    scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
-
-                let field_count = artifacts
-                    .iter()
-                    .filter(|a| matches!(a, ScanArtifact::InlineField(_)))
-                    .count();
-                assert_eq!(field_count, 0, "Should ignore bare field: {text}");
-            }
+        if let Some(&ScannedArtifact::InlineField {
+            key,
+            value,
+            ..
+        }) = artifacts.get(1)
+        {
+            assert_eq!(key, "\u{2705}");
+            assert_eq!(value, "2023-04-10");
         }
     }
 
-    mod scan_tail_for_block_ref {
-        use super::*;
-
-        #[test]
-        fn should_extract_block_ref_from_tail() {
-            let scanner = NoteScanner::default();
-            let text = "Paragraph with a block ref ^my-id";
-            let block_ref = scanner
-                .scan_tail_for_block_ref(text, SourceByteOffset::new(50))
-                .unwrap()
-                .expect("block ref should be found");
-
-            assert_eq!(block_ref.id(), "my-id");
-            assert_eq!(u32::from(block_ref.position()), 50 + 27);
-        }
-
-        #[test]
-        fn should_ignore_invalid_block_refs() {
-            let scanner = NoteScanner::default();
-            let text = "No space^id";
-            let block_ref = scanner
-                .scan_tail_for_block_ref(text, SourceByteOffset::new(0))
-                .unwrap();
-            assert!(block_ref.is_none());
-
-            let text2 = " ^ invalid id";
-            let block_ref2 = scanner
-                .scan_tail_for_block_ref(text2, SourceByteOffset::new(0))
-                .unwrap();
-            assert!(block_ref2.is_none());
-        }
+    #[test]
+    fn should_ignore_tags_preceded_by_alnum() {
+        let scanner = NoteScanner::default();
+        let text = "word#tag";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert!(artifacts.is_empty());
     }
 
-    mod task_marker_scanner {
-        use super::*;
+    #[test]
+    fn should_handle_failed_tag_followed_by_field() {
+        let scanner = NoteScanner::default();
+        let text = "#[key:: val]";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert!(matches!(
+            artifacts.first(),
+            Some(&ScannedArtifact::InlineField {
+                key: "key",
+                ..
+            })
+        ));
+    }
 
-        #[rstest]
-        #[case::hyphen("- [ ] ", ' ')]
-        #[case::asterisk("* [x] ", 'x')]
-        #[case::plus("+ [X] ", 'X')]
-        #[case::ordered("1. [-] ", '-')]
-        #[case::ordered_paren("1) [/] ", '/')]
-        #[case::indented("  - [!] ", '!')]
-        fn should_detect_valid_task_markers(
-            #[case] line: &str,
-            #[case] expected: char,
-        ) {
-            let mut scanner = TaskMarkerScanner::new(line);
-            assert_eq!(scanner.scan(), Some(expected));
-        }
+    #[test]
+    fn should_handle_block_ref_at_end_of_line() {
+        let scanner = NoteScanner::default();
+        let text = "Important point ^my-id\nNext line";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert!(
+            matches!(artifacts.first(), Some(ScannedArtifact::BlockRef { id, .. }) if *id == "my-id"),
+            "Expected BlockRef with id 'my-id', got {artifacts:?}"
+        );
+    }
 
-        #[rstest]
-        #[case::no_brackets("- text")]
-        #[case::no_space_in_brackets("- []")]
-        #[case::no_list_prefix("[ ] text")]
-        #[case::invalid_prefix("a. [ ]")]
-        fn should_return_none_for_invalid_markers(#[case] line: &str) {
-            let mut scanner = TaskMarkerScanner::new(line);
-            assert!(scanner.scan().is_none());
-        }
+    #[test]
+    fn should_ignore_block_ref_in_middle_of_text() {
+        let scanner = NoteScanner::default();
+        let text = "Important ^my-id point";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert!(artifacts.is_empty());
+    }
 
-        #[test]
-        fn should_convert_marker_to_raw_task_marker() {
-            assert!(matches!(
-                TaskMarkerScanner::raw_task_marker_from_char(' '),
-                RawTaskMarker::Unchecked(' ')
-            ));
-            assert!(matches!(
-                TaskMarkerScanner::raw_task_marker_from_char('x'),
-                RawTaskMarker::Checked('x')
-            ));
-            assert!(matches!(
-                TaskMarkerScanner::raw_task_marker_from_char('X'),
-                RawTaskMarker::Checked('X')
-            ));
-            assert!(matches!(
-                TaskMarkerScanner::raw_task_marker_from_char('!'),
-                RawTaskMarker::Other('!')
-            ));
+    #[test]
+    fn should_scan_bare_fields_at_line_start() {
+        let scanner = NoteScanner::default();
+        let text = "key:: value\n- List item\nnext_key:: next_value";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert_eq!(artifacts.len(), 2);
+        assert!(matches!(
+            artifacts.first(),
+            Some(&ScannedArtifact::InlineField {
+                key: "key",
+                value: "value",
+                ..
+            })
+        ));
+        assert!(matches!(
+            artifacts.get(1),
+            Some(&ScannedArtifact::InlineField {
+                key: "next_key",
+                value: "next_value",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn should_handle_bare_emoji_field_at_end_of_text() {
+        let scanner = NoteScanner::default();
+        let text = "Task completed \u{2705} 2023-04-09";
+        let artifacts =
+            scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        if let Some(&ScannedArtifact::InlineField {
+            key,
+            value,
+            ..
+        }) = artifacts.first()
+        {
+            assert_eq!(key, "\u{2705}");
+            assert_eq!(value, "2023-04-09");
         }
     }
 }

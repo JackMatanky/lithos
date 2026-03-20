@@ -66,6 +66,14 @@ impl SourceByteOffset {
         })
     }
 
+    /// Returns the offset as a `usize`.
+    #[inline]
+    #[must_use]
+    #[expect(clippy::as_conversions, reason = "u32 always fits in usize")]
+    pub const fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+
     /// Adds a relative offset to this byte offset.
     ///
     /// # Errors
@@ -74,13 +82,7 @@ impl SourceByteOffset {
     /// cannot fit in `u32`.
     #[inline]
     pub fn add_offset(&self, delta: usize) -> Result<Self, NoteError> {
-        let base = usize::try_from(self.0).map_err(|_err| {
-            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
-            StructureError::OffsetOverflow {
-                offset: self.0 as usize,
-                delta,
-            }
-        })?;
+        let base = self.as_usize();
         Self::try_from_usize(base.saturating_add(delta))
     }
 }
