@@ -5,6 +5,7 @@
 
 use std::{collections::HashSet, path::Path};
 
+use super::staleness::StalenessPolicy;
 use crate::{
     config::aggregate::Config,
     db::{Database, DbError},
@@ -23,6 +24,10 @@ use crate::{
 /// Errors surfaced during vault loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "ServiceError is standard for application services"
+)]
 pub enum ServiceError {
     /// Ingestion (file I/O or parsing) failed.
     #[error("ingestion failed: {0}")]
@@ -81,6 +86,7 @@ impl<'db, 'config> Service<'db, 'config> {
 
         let repository = RedbRepository::new(self.db, self.config);
         let loader = NoteLoader::new(&repository, self.config);
+        let policy = StalenessPolicy::new();
 
         let mut path_set: HashSet<Box<str>> =
             HashSet::with_capacity(paths.len());
@@ -116,12 +122,7 @@ impl<'db, 'config> Service<'db, 'config> {
             let size = metadata.len();
 
             if let Some(stored) = stored.as_ref() {
-                let is_same_size = stored.source_bytes() == size;
-                let is_same_mtime =
-                    stored.modified_at().zip(modified).is_some_and(
-                        |(stored_time, current)| stored_time == current,
-                    );
-                if is_same_size && is_same_mtime {
+                if policy.is_metadata_fresh(stored, size, modified) {
                     continue;
                 }
 
@@ -134,7 +135,8 @@ impl<'db, 'config> Service<'db, 'config> {
                     })?;
                 let hash =
                     blake3::hash(markdown.as_bytes()).to_hex().to_string();
-                if is_same_size && stored.source_hash() == hash {
+
+                if policy.is_content_fresh(stored, size, &hash) {
                     continue;
                 }
 

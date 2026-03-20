@@ -12,7 +12,9 @@
     reason = "Repository methods share error semantics"
 )]
 
-use std::{fmt::Write as _, path::Path, time::SystemTime};
+use std::{
+    collections::HashSet, fmt::Write as _, path::Path, time::SystemTime,
+};
 
 use uuid::Uuid;
 
@@ -529,6 +531,165 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         Ok(())
     }
 
+    fn update_indexes(
+        batch: &mut BatchWriter,
+        old_index: Option<&IndexData>,
+        new_index: &IndexData,
+        id_str: &str,
+    ) -> Result<(), NoteRepositoryError> {
+        if let Some(old) = old_index {
+            Self::diff_update_multimap(
+                batch,
+                PATH_TO_ID,
+                Some(old.path.as_ref()),
+                Some(new_index.path.as_ref()),
+                id_str,
+            )?;
+            Self::diff_update_multimap(
+                batch,
+                FOLDER_TO_ID,
+                old.folder.as_deref(),
+                new_index.folder.as_deref(),
+                id_str,
+            )?;
+            Self::diff_update_multimap_vec(
+                batch,
+                TAGS_TO_NOTES,
+                &old.tags,
+                &new_index.tags,
+                id_str,
+            )?;
+            Self::diff_update_multimap_vec(
+                batch,
+                ALIAS_TO_ID,
+                &old.aliases,
+                &new_index.aliases,
+                id_str,
+            )?;
+            Self::diff_update_multimap(
+                batch,
+                FILE_CLASS_TO_ID,
+                old.file_class.as_deref(),
+                new_index.file_class.as_deref(),
+                id_str,
+            )?;
+            Self::diff_update_multimap_vec(
+                batch,
+                FRONTMATTER_KV,
+                &old.frontmatter_entries,
+                &new_index.frontmatter_entries,
+                id_str,
+            )?;
+
+            Self::update_task_indexes_diff(
+                batch,
+                &old.task_indexes,
+                &new_index.task_indexes,
+                id_str,
+            )
+        } else {
+            Self::insert_indexes(batch, new_index, id_str)
+        }
+    }
+
+    fn diff_update_multimap(
+        batch: &mut BatchWriter,
+        table: redb::MultimapTableDefinition<&str, &str>,
+        old_val: Option<&str>,
+        new_val: Option<&str>,
+        id_str: &str,
+    ) -> Result<(), NoteRepositoryError> {
+        if old_val == new_val {
+            return Ok(());
+        }
+        if let Some(old) = old_val {
+            batch.multimap_remove(table, old, id_str)?;
+        }
+        if let Some(new) = new_val {
+            batch.multimap_insert(table, new, id_str)?;
+        }
+        Ok(())
+    }
+
+    fn diff_update_multimap_vec(
+        batch: &mut BatchWriter,
+        table: redb::MultimapTableDefinition<&str, &str>,
+        old_items: &[Box<str>],
+        new_items: &[Box<str>],
+        id_str: &str,
+    ) -> Result<(), NoteRepositoryError> {
+        let old_set: HashSet<&str> =
+            old_items.iter().map(std::convert::AsRef::as_ref).collect();
+        let new_set: HashSet<&str> =
+            new_items.iter().map(std::convert::AsRef::as_ref).collect();
+
+        for removed in old_set.difference(&new_set) {
+            batch.multimap_remove(table, removed, id_str)?;
+        }
+        for added in new_set.difference(&old_set) {
+            batch.multimap_insert(table, added, id_str)?;
+        }
+        Ok(())
+    }
+
+    fn update_task_indexes_diff(
+        batch: &mut BatchWriter,
+        old: &TaskIndexData,
+        new: &TaskIndexData,
+        id_str: &str,
+    ) -> Result<(), NoteRepositoryError> {
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_STATUS,
+            &old.status_keys,
+            &new.status_keys,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_CREATED_DATE,
+            &old.created_dates,
+            &new.created_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_DUE_DATE,
+            &old.due_dates,
+            &new.due_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_REMINDER_DATE,
+            &old.reminder_dates,
+            &new.reminder_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_COMPLETED_DATE,
+            &old.completed_dates,
+            &new.completed_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_METADATA,
+            &old.metadata_keys,
+            &new.metadata_keys,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_DEPENDS_ON,
+            &old.depends_on,
+            &new.depends_on,
+            id_str,
+        )?;
+        Ok(())
+    }
+
     fn task_metadata_keys(
         metadata: &TaskMetadata,
         config: &Config,
@@ -951,13 +1112,14 @@ impl Repository for RedbRepository<'_, '_> {
 
         self.db
             .batch_write(|batch| {
-                if let Some(old_index_data) = old_index_data {
-                    Self::remove_indexes(batch, &old_index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                }
+                Self::update_indexes(
+                    batch,
+                    old_index_data.as_ref(),
+                    &index_data,
+                    id_str,
+                )
+                .map_err(|err| DbError::Table(err.to_string()))?;
 
-                Self::insert_indexes(batch, &index_data, id_str)
-                    .map_err(|err| DbError::Table(err.to_string()))?;
                 batch.put(STORED_NOTES, id_str, &stored_note)?;
                 Self::insert_note_event(batch, &event)
                     .map_err(|err| DbError::Table(err.to_string()))?;
