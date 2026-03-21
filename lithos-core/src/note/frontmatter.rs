@@ -29,205 +29,30 @@ use crate::{
     config::frontmatter::FrontmatterKey, note::raw::RawFrontmatterFormat,
 };
 
-/// Validated alias name for a note.
-///
-/// Aliases provide alternative names for notes, often used in `WikiLinks`
-/// for easier discovery and linking.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct AliasName(Box<str>);
+// ----------------------------------------------------------- //
+//                            Macro                            //
+// ----------------------------------------------------------- //
 
-impl AliasName {
-    /// Creates a validated alias name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrontmatterError::InvalidAlias`] if the alias is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.is_empty() {
-            return Err(FrontmatterError::InvalidAlias {
-                value: value.into(),
-                reason: "alias cannot be empty",
-            }
-            .into());
+macro_rules! frontmatter_get_ops {
+    ($name:ident, $type:ty) => {
+        /// Extracts a value of the specified type.
+        ///
+        /// # Errors
+        ///
+        /// Returns a [`FrontmatterError`] if the type is incompatible.
+        #[inline]
+        pub fn $name(
+            &self,
+            key: &FrontmatterKey,
+        ) -> Result<Option<$type>, FrontmatterError> {
+            self.try_get::<$type>(key).map_err(|err| err.with_key(key.as_str()))
         }
-        Ok(Self(value.into()))
-    }
-
-    /// Returns the alias as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+    };
 }
 
-impl fmt::Display for AliasName {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Validated file class name for a note.
-///
-/// File classes are a convention used in many Obsidian workflows to categorize
-/// notes and apply specific schema rules.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct FileClassName(Box<str>);
-
-impl FileClassName {
-    /// Creates a validated file class name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrontmatterError::InvalidFileClass`] if the class is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.is_empty() {
-            return Err(FrontmatterError::InvalidFileClass {
-                value: value.into(),
-                reason: "file class cannot be empty",
-            }
-            .into());
-        }
-        Ok(Self(value.into()))
-    }
-
-    /// Returns the file class as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for FileClassName {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// A specialized field for handling date and time metadata in frontmatter.
-///
-/// This type wraps a [`FieldValue`] and provides heuristic parsing for various
-/// date and time formats commonly found in Markdown metadata. It is used
-/// primarily for `date_created` and `date_modified` attributes.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct FrontmatterDateField(FieldValue);
-
-impl FrontmatterDateField {
-    /// Attempts to create a date field from any [`FieldValue`].
-    ///
-    /// 1. If the value is already temporal (Date/DateTime), it is used as-is.
-    /// 2. If it is a String, we attempt heuristic parsing against common
-    ///    formats.
-    #[inline]
-    #[must_use]
-    pub fn try_from_value(value: &FieldValue) -> Option<Self> {
-        if value.is_temporal() {
-            return Some(Self(value.clone()));
-        }
-
-        if let Some(s) = value.as_str() {
-            return Self::parse_heuristically(s).map(Self);
-        }
-
-        None
-    }
-
-    /// Returns the inner [`FieldValue`].
-    #[inline]
-    #[must_use]
-    pub const fn as_field_value(&self) -> &FieldValue {
-        &self.0
-    }
-
-    /// Returns the value as a [`NaiveDate`] if possible.
-    #[inline]
-    #[must_use]
-    pub fn as_naive_date(&self) -> Option<NaiveDate> {
-        self.0
-            .as_naive_date()
-            .or_else(|| self.0.as_datetime().map(|dt| dt.date_naive()))
-    }
-
-    /// Returns the value as a [`DateTime<FixedOffset>`] if possible.
-    #[inline]
-    #[must_use]
-    pub fn as_datetime(&self) -> Option<DateTime<FixedOffset>> {
-        self.0.as_datetime()
-    }
-
-    /// Internal heuristic parsing for common Markdown metadata formats.
-    fn parse_heuristically(s: &str) -> Option<FieldValue> {
-        // 1. Try ISO 8601 / RFC 3339 (handled by chrono native)
-        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-            return Some(FieldValue::DateTime(dt.into()));
-        }
-
-        // 2. Try common YMD formats (Standard)
-        let ymd_formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"];
-        for fmt in ymd_formats {
-            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
-                return Some(FieldValue::Date(d.into()));
-            }
-        }
-
-        // 3. Try common DMY formats (International)
-        let dmy_formats = ["%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"];
-        for fmt in dmy_formats {
-            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
-                return Some(FieldValue::Date(d.into()));
-            }
-        }
-
-        // 4. Try common MDY formats (US)
-        let mdy_formats = ["%m-%d-%Y", "%m/%d/%Y"];
-        for fmt in mdy_formats {
-            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
-                return Some(FieldValue::Date(d.into()));
-            }
-        }
-
-        None
-    }
-}
+// ----------------------------------------------------------- //
+//                     Main Frontmatter Type                   //
+// ----------------------------------------------------------- //
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -265,49 +90,6 @@ pub struct Frontmatter {
     date_created: Option<FrontmatterDateField>,
     /// Explicit modification date from frontmatter.
     date_modified: Option<FrontmatterDateField>,
-}
-
-/// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
-///
-/// Pattern breakdown:
-/// 1. `^(\s*[\w_-]+\s*:\s*)`: Matches the key and colon, including indentation.
-/// 2. `([^"'\s|>].*\[\[.*\]\].*)`: Matches values starting with a
-///    non-quote/special char that contain a wikilink.
-#[expect(clippy::expect_used, reason = "Static regex compilation")]
-static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*\[\[.*\]\].*)$"#)
-            .expect("valid regex")
-    });
-
-/// Regex for identifying unquoted Obsidian wikilinks in YAML list items.
-///
-/// Pattern breakdown:
-/// 1. `^(\s*-\s*)`: Matches the list dash and indentation.
-/// 2. `([^"'\s].*\[\[.*\]\].*)`: Matches values starting with a non-quote/space
-///    that contain a wikilink.
-#[expect(clippy::expect_used, reason = "Static regex compilation")]
-static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*\[\[.*\]\].*)$"#)
-            .expect("valid regex")
-    });
-
-macro_rules! frontmatter_get_ops {
-    ($name:ident, $type:ty) => {
-        /// Extracts a value of the specified type.
-        ///
-        /// # Errors
-        ///
-        /// Returns a [`FrontmatterError`] if the type is incompatible.
-        #[inline]
-        pub fn $name(
-            &self,
-            key: &FrontmatterKey,
-        ) -> Result<Option<$type>, FrontmatterError> {
-            self.try_get::<$type>(key).map_err(|err| err.with_key(key.as_str()))
-        }
-    };
 }
 
 impl Frontmatter {
@@ -728,6 +510,214 @@ impl Frontmatter {
     }
 }
 
+// ----------------------------------------------------------- //
+//                      Domain Logic Types                     //
+// ----------------------------------------------------------- //
+
+/// Validated alias name for a note.
+///
+/// Aliases provide alternative names for notes, often used in `WikiLinks`
+/// for easier discovery and linking.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct AliasName(Box<str>);
+
+impl AliasName {
+    /// Creates a validated alias name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterError::InvalidAlias`] if the alias is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.is_empty() {
+            return Err(FrontmatterError::InvalidAlias {
+                value: value.into(),
+                reason: "alias cannot be empty",
+            }
+            .into());
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the alias as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AliasName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Validated file class name for a note.
+///
+/// File classes are a convention used in many Obsidian workflows to categorize
+/// notes and apply specific schema rules.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FileClassName(Box<str>);
+
+impl FileClassName {
+    /// Creates a validated file class name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterError::InvalidFileClass`] if the class is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.is_empty() {
+            return Err(FrontmatterError::InvalidFileClass {
+                value: value.into(),
+                reason: "file class cannot be empty",
+            }
+            .into());
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the file class as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for FileClassName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A specialized field for handling date and time metadata in frontmatter.
+///
+/// This type wraps a [`FieldValue`] and provides heuristic parsing for various
+/// date and time formats commonly found in Markdown metadata. It is used
+/// primarily for `date_created` and `date_modified` attributes.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FrontmatterDateField(FieldValue);
+
+impl FrontmatterDateField {
+    /// Attempts to create a date field from any [`FieldValue`].
+    ///
+    /// 1. If the value is already temporal (Date/DateTime), it is used as-is.
+    /// 2. If it is a String, we attempt heuristic parsing against common
+    ///    formats.
+    #[inline]
+    #[must_use]
+    pub fn try_from_value(value: &FieldValue) -> Option<Self> {
+        if value.is_temporal() {
+            return Some(Self(value.clone()));
+        }
+
+        if let Some(s) = value.as_str() {
+            return Self::parse_heuristically(s).map(Self);
+        }
+
+        None
+    }
+
+    /// Returns the inner [`FieldValue`].
+    #[inline]
+    #[must_use]
+    pub const fn as_field_value(&self) -> &FieldValue {
+        &self.0
+    }
+
+    /// Returns the value as a [`NaiveDate`] if possible.
+    #[inline]
+    #[must_use]
+    pub fn as_naive_date(&self) -> Option<NaiveDate> {
+        self.0
+            .as_naive_date()
+            .or_else(|| self.0.as_datetime().map(|dt| dt.date_naive()))
+    }
+
+    /// Returns the value as a [`DateTime<FixedOffset>`] if possible.
+    #[inline]
+    #[must_use]
+    pub fn as_datetime(&self) -> Option<DateTime<FixedOffset>> {
+        self.0.as_datetime()
+    }
+
+    /// Internal heuristic parsing for common Markdown metadata formats.
+    fn parse_heuristically(s: &str) -> Option<FieldValue> {
+        // 1. Try ISO 8601 / RFC 3339 (handled by chrono native)
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Some(FieldValue::DateTime(dt.into()));
+        }
+
+        // 2. Try common YMD formats (Standard)
+        let ymd_formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"];
+        for fmt in ymd_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        // 3. Try common DMY formats (International)
+        let dmy_formats = ["%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"];
+        for fmt in dmy_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        // 4. Try common MDY formats (US)
+        let mdy_formats = ["%m-%d-%Y", "%m/%d/%Y"];
+        for fmt in mdy_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        None
+    }
+}
+
+// ----------------------------------------------------------- //
+//                      Support Iterators                      //
+// ----------------------------------------------------------- //
+
 /// Borrowed frontmatter fields iterator.
 pub(crate) struct FrontmatterFields<'frontmatter> {
     inner: std::collections::hash_map::Iter<'frontmatter, Box<str>, FieldValue>,
@@ -758,11 +748,6 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
 /// - An array of string values: `aliases: [a, b]`
 pub struct AliasValues<'frontmatter> {
     inner: AliasSource<'frontmatter>,
-}
-
-enum AliasSource<'frontmatter> {
-    Empty,
-    Array(std::slice::Iter<'frontmatter, AliasName>),
 }
 
 impl<'frontmatter> AliasValues<'frontmatter> {
@@ -807,6 +792,45 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
         }
     }
 }
+
+enum AliasSource<'frontmatter> {
+    Empty,
+    Array(std::slice::Iter<'frontmatter, AliasName>),
+}
+
+// ----------------------------------------------------------- //
+//                      Internal Helpers                       //
+// ----------------------------------------------------------- //
+
+/// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
+///
+/// Pattern breakdown:
+/// 1. `^(\s*[\w_-]+\s*:\s*)`: Matches the key and colon, including indentation.
+/// 2. `([^"'\s|>].*\[\[.*\]\].*)`: Matches values starting with a
+///    non-quote/special char that contain a wikilink.
+#[expect(clippy::expect_used, reason = "Static regex compilation")]
+static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| {
+        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*\[\[.*\]\].*)$"#)
+            .expect("valid regex")
+    });
+
+/// Regex for identifying unquoted Obsidian wikilinks in YAML list items.
+///
+/// Pattern breakdown:
+/// 1. `^(\s*-\s*)`: Matches the list dash and indentation.
+/// 2. `([^"'\s].*\[\[.*\]\].*)`: Matches values starting with a non-quote/space
+///    that contain a wikilink.
+#[expect(clippy::expect_used, reason = "Static regex compilation")]
+static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| {
+        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*\[\[.*\]\].*)$"#)
+            .expect("valid regex")
+    });
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
 
 #[cfg(test)]
 #[expect(
