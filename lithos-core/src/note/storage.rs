@@ -746,7 +746,8 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
 
     fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
         let mut entries = Vec::new();
-        let mut fields: Vec<_> = frontmatter.fields().collect();
+        let mut fields: Vec<(&str, &FieldValue)> =
+            frontmatter.list_fields().collect();
         fields.sort_by(|left, right| left.0.cmp(right.0));
 
         for (key, value) in fields {
@@ -804,6 +805,9 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
                 out.extend(Self::field_value_index_values(item));
             }
             return out;
+        }
+        if value.is_null() {
+            return vec!["null".into()];
         }
 
         vec![value.to_json_string().into()]
@@ -887,6 +891,9 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
                     Self::encode_metadata_key(field, "o:", encoded.as_str())
                         .into(),
                 );
+            }
+            FieldValue::Null => {
+                out.push(Self::encode_metadata_key(field, "null:", "").into());
             }
         }
     }

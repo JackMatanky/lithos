@@ -121,7 +121,7 @@ impl From<NoteId> for Uuid {
 ///
 /// `Note` is the primary domain entity representing a fully processed markdown
 /// note. It contains all extracted metadata, structure, and content facts
-/// in a validated and query-optimized format.
+/// in a validated and normalized domain format.
 ///
 /// This struct is optimized for storage density using `Box<[T]>` for immutable
 /// collections and supports zero-copy deserialization via `rkyv`.
@@ -391,7 +391,7 @@ impl Note {
         tags: &mut Vec<Tag>,
     ) {
         let key = config.frontmatter().tags();
-        let Some(value) = frontmatter.get(key.as_str()) else {
+        let Some(value) = frontmatter.find_field(key.as_str()) else {
             return;
         };
 
@@ -426,7 +426,7 @@ impl Note {
         frontmatter: &Frontmatter,
         links: &mut Vec<FrontmatterLink>,
     ) {
-        for (key, value) in frontmatter.fields() {
+        for (key, value) in frontmatter.list_fields() {
             Note::collect_frontmatter_links_for_value(key, value, links);
         }
     }

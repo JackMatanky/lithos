@@ -45,7 +45,8 @@ macro_rules! frontmatter_get_ops {
             &self,
             key: &FrontmatterKey,
         ) -> Result<Option<$type>, FrontmatterError> {
-            self.try_get::<$type>(key).map_err(|err| err.with_key(key.as_str()))
+            self.find_typed::<$type>(key)
+                .map_err(|err| err.with_key(key.as_str()))
         }
     };
 }
@@ -93,11 +94,11 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
-    frontmatter_get_ops!(try_get_bool, bool);
+    frontmatter_get_ops!(find_bool, bool);
 
-    frontmatter_get_ops!(try_get_str, Box<str>);
+    frontmatter_get_ops!(find_str, Box<str>);
 
-    frontmatter_get_ops!(try_get_number, f64);
+    frontmatter_get_ops!(find_number, f64);
 
     /// Parses a frontmatter block into structured fields.
     ///
@@ -287,12 +288,12 @@ impl Frontmatter {
     /// fields.insert("key".into(), FieldValue::String("value".into()));
     /// let fm = Frontmatter::new(fields);
     ///
-    /// assert!(fm.get("key").is_some());
-    /// assert!(fm.get("missing").is_none());
+    /// assert!(fm.find_field("key").is_some());
+    /// assert!(fm.find_field("missing").is_none());
     /// ```
     #[inline]
     #[must_use]
-    pub fn get<K: AsRef<str>>(&self, key: K) -> Option<&FieldValue> {
+    pub fn find_field<K: AsRef<str>>(&self, key: K) -> Option<&FieldValue> {
         self.fields.get(key.as_ref())
     }
 
@@ -319,7 +320,7 @@ impl Frontmatter {
 
     #[inline]
     #[must_use]
-    pub(crate) fn fields(&self) -> FrontmatterFields<'_> {
+    pub(crate) fn list_fields(&self) -> FrontmatterFields<'_> {
         FrontmatterFields {
             inner: self.fields.iter(),
         }
@@ -339,7 +340,7 @@ impl Frontmatter {
     /// let fm = Frontmatter::new(fields);
     ///
     /// let key = FrontmatterKey::try_new("active").unwrap();
-    /// let value: bool = fm.try_get(&key).unwrap().unwrap();
+    /// let value: bool = fm.find_typed(&key).unwrap().unwrap();
     /// assert!(value);
     /// ```
     ///
@@ -348,11 +349,11 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the value exists but its type is
     /// incompatible with the requested type `T`.
     #[inline]
-    pub fn try_get<T: TryFromFieldValue>(
+    pub fn find_typed<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError> {
-        let Some(value) = self.get(key.as_str()) else {
+        let Some(value) = self.find_field(key.as_str()) else {
             return Ok(None);
         };
         T::try_from_value(value)
@@ -374,7 +375,7 @@ impl Frontmatter {
     /// let fm = Frontmatter::new(fields);
     ///
     /// let key = FrontmatterKey::try_new("title").unwrap();
-    /// let title: Box<str> = fm.try_get_required(&key).unwrap();
+    /// let title: Box<str> = fm.get_typed(&key).unwrap();
     /// assert_eq!(title.as_ref(), "My Note");
     /// ```
     ///
@@ -384,11 +385,11 @@ impl Frontmatter {
     /// - [`FrontmatterError::Missing`] if the key is absent.
     /// - [`FrontmatterError::TypeMismatch`] if the type is incompatible.
     #[inline]
-    pub fn try_get_required<T: TryFromFieldValue>(
+    pub fn get_typed<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError> {
-        self.try_get(key)?
+        self.find_typed(key)?
             .ok_or_else(|| FrontmatterError::KeyMissing {
                 key: key.as_str().into(),
             })
@@ -397,8 +398,8 @@ impl Frontmatter {
 
     /// Strictly extracts a *borrowed* typed value from frontmatter.
     ///
-    /// This is more efficient than [`try_get`][Self::try_get] for types like
-    /// strings that can be borrowed directly from the frontmatter map.
+    /// This is more efficient than [`find_typed`][Self::find_typed] for types
+    /// like strings that can be borrowed directly from the frontmatter map.
     ///
     /// # Examples
     ///
@@ -412,7 +413,7 @@ impl Frontmatter {
     /// let fm = Frontmatter::new(fields);
     ///
     /// let key = FrontmatterKey::try_new("title").unwrap();
-    /// let title: &str = fm.try_get_ref(&key).unwrap().unwrap();
+    /// let title: &str = fm.find_typed_ref(&key).unwrap().unwrap();
     /// assert_eq!(title, "My Note");
     /// ```
     ///
@@ -421,14 +422,14 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the value exists but its type is
     /// incompatible with the requested type `T`.
     #[inline]
-    pub fn try_get_ref<'frontmatter, T>(
+    pub fn find_typed_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError>
     where
         T: TryFromFieldValueRef<'frontmatter>,
     {
-        let Some(value) = self.get(key.as_str()) else {
+        let Some(value) = self.find_field(key.as_str()) else {
             return Ok(None);
         };
         T::try_from_value_ref(value)
@@ -473,7 +474,7 @@ impl Frontmatter {
     /// Returns the aliases of the note as a vector of boxed strings.
     #[inline]
     #[must_use]
-    pub fn aliases_owned(&self) -> Vec<Box<str>> {
+    pub fn to_aliases(&self) -> Vec<Box<str>> {
         self.aliases().map(Into::into).collect()
     }
 
@@ -493,9 +494,22 @@ impl Frontmatter {
         self.date_modified.as_ref()
     }
 
-    fn sanitize_yaml_obsidian_links(text: &str) -> String {
+    fn sanitize_yaml_obsidian_links(text: &str) -> std::borrow::Cow<'_, str> {
         let step1 = YAML_MAP_LINK_RE.replace_all(text, r#"$1"$2""#);
-        YAML_LIST_LINK_RE.replace_all(&step1, r#"$1"$2""#).into_owned()
+        match step1 {
+            std::borrow::Cow::Borrowed(_) => {
+                YAML_LIST_LINK_RE.replace_all(text, r#"$1"$2""#)
+            }
+            std::borrow::Cow::Owned(s1) => {
+                let step2 = YAML_LIST_LINK_RE.replace_all(&s1, r#"$1"$2""#);
+                match step2 {
+                    std::borrow::Cow::Borrowed(_) => {
+                        std::borrow::Cow::Owned(s1)
+                    }
+                    std::borrow::Cow::Owned(s2) => std::borrow::Cow::Owned(s2),
+                }
+            }
+        }
     }
 }
 
@@ -1169,7 +1183,7 @@ mod tests {
             fields.insert("d".into(), FieldValue::Date(date.into()));
             let fm = Frontmatter::new(fields);
             let key = FrontmatterKey::try_new("d").unwrap();
-            let dt: Result<Option<DateTime<Utc>>, _> = fm.try_get(&key);
+            let dt: Result<Option<DateTime<Utc>>, _> = fm.find_typed(&key);
             assert!(dt.is_ok());
             assert!(dt.unwrap().is_some());
         }
@@ -1203,7 +1217,7 @@ mod tests {
         fn object_coerces_to_object() {
             let mut obj_map = HashMap::new();
             obj_map.insert("k".into(), FieldValue::Boolean(false));
-            let value = FieldValue::Object(obj_map);
+            let value = FieldValue::Object(Box::new(obj_map));
             assert!(
                 value.object_fields().is_some(),
                 "Object should coerce to fields"
@@ -1214,7 +1228,7 @@ mod tests {
         fn object_does_not_coerce_to_string() {
             let mut obj_map = HashMap::new();
             obj_map.insert("k".into(), FieldValue::Boolean(false));
-            let value = FieldValue::Object(obj_map);
+            let value = FieldValue::Object(Box::new(obj_map));
             assert!(
                 value.as_str().is_none(),
                 "Object should not coerce to string"
@@ -1277,7 +1291,7 @@ mod tests {
         fn try_get_returns_string_value() {
             let fm = fixtures::frontmatter_for_try_get();
             let key = FrontmatterKey::try_new("s").expect("valid key");
-            let result = fm.try_get::<Box<str>>(&key);
+            let result = fm.find_typed::<Box<str>>(&key);
             assert_eq!(
                 result,
                 Ok(Some("text".into())),
@@ -1289,7 +1303,7 @@ mod tests {
         fn try_get_returns_boolean_value() {
             let fm = fixtures::frontmatter_for_try_get();
             let key = FrontmatterKey::try_new("b").expect("valid key");
-            let result = fm.try_get::<bool>(&key);
+            let result = fm.find_typed::<bool>(&key);
             assert_eq!(
                 result,
                 Ok(Some(true)),
@@ -1301,7 +1315,7 @@ mod tests {
         fn try_get_returns_number_value() {
             let fm = fixtures::frontmatter_for_try_get();
             let key = FrontmatterKey::try_new("n").expect("valid key");
-            let result = fm.try_get::<f64>(&key);
+            let result = fm.find_typed::<f64>(&key);
             assert_eq!(
                 result,
                 Ok(Some(1.5f64)),
@@ -1313,7 +1327,7 @@ mod tests {
         fn try_get_returns_type_mismatch_error() {
             let fm = fixtures::frontmatter_for_try_get();
             let lookup_key = FrontmatterKey::try_new("s").expect("valid key");
-            let result = fm.try_get::<bool>(&lookup_key);
+            let result = fm.find_typed::<bool>(&lookup_key);
             assert!(
                 matches!(
                     &result,
@@ -1335,7 +1349,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             let lookup_key =
                 FrontmatterKey::try_new("aliases").expect("valid key");
-            let result = fm.try_get_required::<Vec<Box<str>>>(&lookup_key);
+            let result = fm.get_typed::<Vec<Box<str>>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
@@ -1353,7 +1367,7 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get("aliases").and_then(string_array_lossy),
+                fm.find_field("aliases").and_then(string_array_lossy),
                 Some(vec!["ok".into()])
             );
         }
@@ -1376,7 +1390,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_number();
             let lookup_key =
                 FrontmatterKey::try_new("missing").expect("valid key");
-            let result = fm.try_get_required::<Box<str>>(&lookup_key);
+            let result = fm.get_typed::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
@@ -1391,7 +1405,7 @@ mod tests {
         fn strict_get_required_reports_type_mismatch() {
             let fm = fixtures::frontmatter_with_number();
             let lookup_key = FrontmatterKey::try_new("n").expect("valid key");
-            let result = fm.try_get_required::<Box<str>>(&lookup_key);
+            let result = fm.get_typed::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
@@ -1412,7 +1426,7 @@ mod tests {
         fn strict_date_reports_type_mismatch_on_non_date() {
             let fm = fixtures::frontmatter_with_invalid_date();
             let lookup_key = FrontmatterKey::try_new("d").expect("valid key");
-            let result = fm.try_get_required::<DateTime<Utc>>(&lookup_key);
+            let result = fm.get_typed::<DateTime<Utc>>(&lookup_key);
             assert!(
                 matches!(
                     &result,

@@ -54,9 +54,14 @@ pub enum FieldValue {
     /// Numeric value (float).
     Number(f64),
     /// Nested object of values.
-    Object(#[rkyv(omit_bounds)] HashMap<Box<str>, FieldValue>),
+    ///
+    /// Boxed to keep the enum size small (improves cache performance for
+    /// smaller variants).
+    Object(#[rkyv(omit_bounds)] Box<HashMap<Box<str>, FieldValue>>),
     /// String value.
     String(Box<str>),
+    /// Null/empty value.
+    Null,
 }
 
 /// Internal archivable representation of a `chrono::NaiveDate`.
@@ -253,7 +258,15 @@ impl FieldValue {
             Self::Number(_) => "number",
             Self::Object(_) => "object",
             Self::String(_) => "string",
+            Self::Null => "null",
         }
+    }
+
+    /// Returns true if this is a `Null` variant.
+    #[inline]
+    #[must_use]
+    pub const fn is_null(&self) -> bool {
+        matches!(self, Self::Null)
     }
 
     /// Returns the boolean value if this is a `Boolean` variant.
@@ -356,7 +369,7 @@ impl FieldValue {
     #[must_use]
     pub fn as_object(&self) -> Option<&HashMap<Box<str>, FieldValue>> {
         if let Self::Object(obj) = self {
-            Some(obj)
+            Some(obj.as_ref())
         } else {
             None
         }
@@ -450,16 +463,17 @@ impl Serialize for FieldValue {
                 let d: TimeDelta = val.into();
                 serializer.serialize_str(&d.to_string())
             }
-            &Self::Number(n) => serializer.serialize_f64(n),
+            Self::Number(n) => serializer.serialize_f64(*n),
             #[expect(clippy::iter_over_hash_type, reason = "Internal matching")]
             Self::Object(obj) => {
                 let mut map = serializer.serialize_map(Some(obj.len()))?;
-                for (key, val) in obj {
+                for (key, val) in obj.as_ref() {
                     map.serialize_entry(key, val)?;
                 }
                 map.end()
             }
             Self::String(s) => serializer.serialize_str(s),
+            Self::Null => serializer.serialize_none(),
         }
     }
 }
@@ -553,11 +567,15 @@ impl<'de> Deserialize<'de> for FieldValue {
                 {
                     fields.insert(key, value);
                 }
-                Ok(FieldValue::Object(fields))
+                Ok(FieldValue::Object(Box::new(fields)))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> {
+                Ok(FieldValue::Null)
             }
 
             fn visit_unit<E>(self) -> Result<Self::Value, E> {
-                Ok(FieldValue::String("".into()))
+                Ok(FieldValue::Null)
             }
         }
 
@@ -838,7 +856,8 @@ mod tests {
             vec![
                 FieldValue::Number(1.0),
                 FieldValue::Boolean(true),
-                FieldValue::Object(obj),
+                FieldValue::Object(Box::new(obj)),
+                FieldValue::Null,
             ]
             .into_boxed_slice(),
         );
@@ -906,7 +925,8 @@ mod tests {
             FieldValue::Array(vec![].into_boxed_slice()).type_name(),
             "array"
         );
-        assert_eq!(FieldValue::Object(HashMap::new()).type_name(), "object");
+        assert_eq!(FieldValue::Object(Box::default()).type_name(), "object");
+        assert_eq!(FieldValue::Null.type_name(), "null");
     }
 
     #[test]
@@ -922,6 +942,10 @@ mod tests {
         let json_time = "\"14:30:00\"";
         let val_time: FieldValue = serde_json::from_str(json_time).unwrap();
         assert!(matches!(val_time, FieldValue::Time(_)));
+
+        let json_null = "null";
+        let val_null: FieldValue = serde_json::from_str(json_null).unwrap();
+        assert!(matches!(val_null, FieldValue::Null));
     }
 
     #[test]
