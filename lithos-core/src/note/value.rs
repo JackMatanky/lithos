@@ -389,6 +389,36 @@ impl FieldValue {
     pub fn to_json_string(&self) -> String {
         serde_json::to_string(self).unwrap_or_default()
     }
+
+    /// Attempts to parse a string variant as a [`NaiveDate`] with a custom
+    /// format.
+    #[inline]
+    #[must_use]
+    pub fn parse_as_date(&self, format: &str) -> Option<NaiveDate> {
+        let s = self.as_str()?;
+        NaiveDate::parse_from_str(s, format).ok()
+    }
+
+    /// Attempts to parse a string variant as a [`DateTime<FixedOffset>`] with a
+    /// custom format.
+    #[inline]
+    #[must_use]
+    pub fn parse_as_datetime(
+        &self,
+        format: &str,
+    ) -> Option<DateTime<FixedOffset>> {
+        let s = self.as_str()?;
+        DateTime::parse_from_str(s, format).ok()
+    }
+
+    /// Attempts to parse a string variant as a [`NaiveTime`] with a custom
+    /// format.
+    #[inline]
+    #[must_use]
+    pub fn parse_as_time(&self, format: &str) -> Option<NaiveTime> {
+        let s = self.as_str()?;
+        NaiveTime::parse_from_str(s, format).ok()
+    }
 }
 
 impl Serialize for FieldValue {
@@ -912,5 +942,23 @@ mod tests {
         let duration = TimeDelta::hours(2);
         let val_dur = FieldValue::Duration(duration.into());
         assert_eq!(val_dur.as_duration(), Some(duration));
+    }
+
+    #[test]
+    fn manual_temporal_parsing() {
+        let val_date = FieldValue::String("21-03-2024".into());
+        let date = val_date.parse_as_date("%d-%m-%Y").unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 3, 21).unwrap());
+
+        let val_dt = FieldValue::String("2024-03-21T14:30:00+00:00".into());
+        let dt = val_dt.parse_as_datetime("%Y-%m-%dT%H:%M:%S%z").unwrap();
+        assert_eq!(dt.timestamp(), 1_711_031_400);
+
+        let val_time = FieldValue::String("14:30".into());
+        let time = val_time.parse_as_time("%H:%M").unwrap();
+        assert_eq!(time, NaiveTime::from_hms_opt(14, 30, 0).unwrap());
+
+        let val_invalid = FieldValue::String("not a date".into());
+        assert!(val_invalid.parse_as_date("%Y-%m-%d").is_none());
     }
 }

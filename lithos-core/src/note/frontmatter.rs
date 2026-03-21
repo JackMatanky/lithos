@@ -17,6 +17,7 @@
 
 use std::{collections::HashMap, fmt};
 
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use regex::Regex;
 
 use super::{
@@ -132,6 +133,102 @@ impl fmt::Display for FileClassName {
     }
 }
 
+/// A specialized field for handling date and time metadata in frontmatter.
+///
+/// This type wraps a [`FieldValue`] and provides heuristic parsing for various
+/// date and time formats commonly found in Markdown metadata. It is used
+/// primarily for `date_created` and `date_modified` attributes.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FrontmatterDateField(FieldValue);
+
+impl FrontmatterDateField {
+    /// Attempts to create a date field from any [`FieldValue`].
+    ///
+    /// 1. If the value is already temporal (Date/DateTime), it is used as-is.
+    /// 2. If it is a String, we attempt heuristic parsing against common
+    ///    formats.
+    #[inline]
+    #[must_use]
+    pub fn try_from_value(value: &FieldValue) -> Option<Self> {
+        if value.is_temporal() {
+            return Some(Self(value.clone()));
+        }
+
+        if let Some(s) = value.as_str() {
+            return Self::parse_heuristically(s).map(Self);
+        }
+
+        None
+    }
+
+    /// Returns the inner [`FieldValue`].
+    #[inline]
+    #[must_use]
+    pub const fn as_field_value(&self) -> &FieldValue {
+        &self.0
+    }
+
+    /// Returns the value as a [`NaiveDate`] if possible.
+    #[inline]
+    #[must_use]
+    pub fn as_naive_date(&self) -> Option<NaiveDate> {
+        self.0
+            .as_naive_date()
+            .or_else(|| self.0.as_datetime().map(|dt| dt.date_naive()))
+    }
+
+    /// Returns the value as a [`DateTime<FixedOffset>`] if possible.
+    #[inline]
+    #[must_use]
+    pub fn as_datetime(&self) -> Option<DateTime<FixedOffset>> {
+        self.0.as_datetime()
+    }
+
+    /// Internal heuristic parsing for common Markdown metadata formats.
+    fn parse_heuristically(s: &str) -> Option<FieldValue> {
+        // 1. Try ISO 8601 / RFC 3339 (handled by chrono native)
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Some(FieldValue::DateTime(dt.into()));
+        }
+
+        // 2. Try common YMD formats (Standard)
+        let ymd_formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"];
+        for fmt in ymd_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        // 3. Try common DMY formats (International)
+        let dmy_formats = ["%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"];
+        for fmt in dmy_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        // 4. Try common MDY formats (US)
+        let mdy_formats = ["%m-%d-%Y", "%m/%d/%Y"];
+        for fmt in mdy_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(FieldValue::Date(d.into()));
+            }
+        }
+
+        None
+    }
+}
+
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
 /// Frontmatter provides structured key-value pairs at the beginning of a
@@ -165,9 +262,9 @@ pub struct Frontmatter {
     /// File class as it appears in the file.
     file_class: Option<FileClassName>,
     /// Explicit creation date from frontmatter.
-    date_created: Option<FieldValue>,
+    date_created: Option<FrontmatterDateField>,
     /// Explicit modification date from frontmatter.
-    date_modified: Option<FieldValue>,
+    date_modified: Option<FrontmatterDateField>,
 }
 
 /// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
@@ -304,13 +401,11 @@ impl Frontmatter {
 
         let date_created = fields
             .get(fm_config.date_created().as_str())
-            .cloned()
-            .filter(FieldValue::is_temporal);
+            .and_then(FrontmatterDateField::try_from_value);
 
         let date_modified = fields
             .get(fm_config.date_modified().as_str())
-            .cloned()
-            .filter(FieldValue::is_temporal);
+            .and_then(FrontmatterDateField::try_from_value);
 
         Self {
             fields,
@@ -352,8 +447,7 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns [`FrontmatterError::TypeMismatch`] if `date_created` or
-    /// `date_modified` are not temporal variants.
+    /// Returns [`NoteError`] if any invariant is violated.
     #[inline]
     #[expect(
         clippy::too_many_arguments,
@@ -365,30 +459,9 @@ impl Frontmatter {
         aliases: Option<Box<[AliasName]>>,
         tags: Option<Box<[Tag]>>,
         file_class: Option<FileClassName>,
-        date_created: Option<FieldValue>,
-        date_modified: Option<FieldValue>,
+        date_created: Option<FrontmatterDateField>,
+        date_modified: Option<FrontmatterDateField>,
     ) -> Result<Self, NoteError> {
-        if let Some(d) = date_created.as_ref()
-            && !d.is_temporal()
-        {
-            return Err(FrontmatterError::TypeMismatch {
-                key: "date_created".into(),
-                expected: "date or datetime",
-                actual: d.type_name(),
-            }
-            .into());
-        }
-        if let Some(d) = date_modified.as_ref()
-            && !d.is_temporal()
-        {
-            return Err(FrontmatterError::TypeMismatch {
-                key: "date_modified".into(),
-                expected: "date or datetime",
-                actual: d.type_name(),
-            }
-            .into());
-        }
-
         Ok(Self {
             fields,
             title,
@@ -637,7 +710,7 @@ impl Frontmatter {
     /// frontmatter.
     #[inline]
     #[must_use]
-    pub const fn date_created(&self) -> Option<&FieldValue> {
+    pub const fn date_created(&self) -> Option<&FrontmatterDateField> {
         self.date_created.as_ref()
     }
 
@@ -645,7 +718,7 @@ impl Frontmatter {
     /// frontmatter.
     #[inline]
     #[must_use]
-    pub const fn date_modified(&self) -> Option<&FieldValue> {
+    pub const fn date_modified(&self) -> Option<&FrontmatterDateField> {
         self.date_modified.as_ref()
     }
 
@@ -951,6 +1024,59 @@ mod tests {
         )]
 
         use super::*;
+
+        #[test]
+        fn date_field_parses_iso_8601_string() {
+            let s = "2024-03-21T14:30:00+01:00";
+            let val = FieldValue::String(s.into());
+            let field = FrontmatterDateField::try_from_value(&val).unwrap();
+            assert!(matches!(field.as_field_value(), FieldValue::DateTime(_)));
+            assert_eq!(
+                field.as_datetime().unwrap().to_rfc3339(),
+                "2024-03-21T14:30:00+01:00"
+            );
+        }
+
+        #[test]
+        fn date_field_parses_standard_ymd_variants() {
+            let variants = ["2024-03-21", "2024/03/21", "2024.03.21"];
+            for s in variants {
+                let val = FieldValue::String(s.into());
+                let field = FrontmatterDateField::try_from_value(&val).unwrap();
+                assert!(
+                    matches!(field.as_field_value(), FieldValue::Date(_)),
+                    "Failed to parse variant: {s}"
+                );
+                assert_eq!(
+                    field.as_naive_date().unwrap(),
+                    NaiveDate::from_ymd_opt(2024, 3, 21).unwrap()
+                );
+            }
+        }
+
+        #[test]
+        fn date_field_parses_international_dmy_variants() {
+            let variants = ["21-03-2024", "21/03/2024", "21.03.2024"];
+            for s in variants {
+                let val = FieldValue::String(s.into());
+                let field = FrontmatterDateField::try_from_value(&val).unwrap();
+                assert!(
+                    matches!(field.as_field_value(), FieldValue::Date(_)),
+                    "Failed to parse variant: {s}"
+                );
+                assert_eq!(
+                    field.as_naive_date().unwrap(),
+                    NaiveDate::from_ymd_opt(2024, 3, 21).unwrap()
+                );
+            }
+        }
+
+        #[test]
+        fn date_field_ignores_invalid_format_strings() {
+            let val = FieldValue::String("not a date".into());
+            let field = FrontmatterDateField::try_from_value(&val);
+            assert!(field.is_none());
+        }
 
         #[test]
         fn array_coerces_to_array() {
