@@ -717,28 +717,21 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 └─────────────────────────────────────┬──────────────────────────────────────┘
                                       │
                                       ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                              IndexesEvaluated                              │
-│         (Builds name_to_id and id_to_name index maps for Extender)         │
-└─────────────────────────────────────┬──────────────────────────────────────┘
-                                      │
-                                      ▼
                           (Proceeds to Tree Building)
 ```
 
 **State Details (Phase 1: Discovery to Expansion)**:
 
-| State | Data Structure | Used By Paths | Notes |
-|-------|---------------|---------------|-------|
-| **1. Discovery** | `PropertyBankPath`, Config | All | Batches files, queries DB, tracks deleted schemas, determines `SchemaPipelinePath` |
-| **2. FileParsed** | `RawSchema`, metadata | NEW, STALE | Parses file, validates, builds `bank_references` map |
-| **3. SchemaPropertyDelta** | Schema delta info | STALE | Finds new/modified/removed properties in schema file |
-| **4. RawConstructed** | `RawSchemaView`, `RawPropertyMap` | All | Fetches baseline from DB or builds from scratch |
-| **5. BankReferenceDelta** | PB refs to re-expand | FRESH*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta` |
-| **6. DeltaApplied** | `RawSchema` (updated) | STALE | Applies schema file changes to baseline |
-| **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All | Verifies `extends` validity, tracks structural changes |
-| **8. RefsExpanded** | `RefExpandedSchema` | All | Expands refs, constructs `SchemaVersion`, persists view |
-| **9. IndexesEvaluated** | `name_to_id`, `id_to_name` maps | All | Replaces Extender Phase 1 to prevent double iteration |
+| State                      | Data Structure               | Used By Paths                        | Notes                                                      |
+| -------------------------- | ---------------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| **1. Discovery**           | `PropertyBankPath`, Config   | All                                  | Batches files, queries DB, tracks deleted schemas, builds initial `name_to_id`/`id_to_name` maps, determines `SchemaPipelinePath` |
+| **2. FileParsed**          | `RawSchema`, metadata        | NEW, STALE                           | Parses file, validates, builds `bank_references` map       |
+| **3. SchemaPropertyDelta** | Schema delta info            | STALE                                | Finds new/modified/removed properties in schema file       |
+| **4. RawConstructed**      | `RawSchemaView`, `RawPropertyMap` | All                                  | Fetches baseline from DB or builds from scratch            |
+| **5. BankReferenceDelta**  | PB refs to re-expand         | FRESH\*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta`     |
+| **6. DeltaApplied**        | `RawSchema` (updated)        | STALE                                | Applies schema file changes to baseline                    |
+| **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All                                  | Verifies `extends` validity, tracks structural changes     |
+| **8. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, injects NEW schemas into index maps, constructs `SchemaVersion`, persists view |
 
 ### 2.2 Phase 1: File Discovery to Expansion
 
@@ -751,6 +744,7 @@ The action taken on each schema depends on a combination of **its own staleness*
   - Scan directory (excluding `property_bank`).
   - Fetch `RawSchemaView`s from DB for all files (via `SCHEMA_ID_BY_PATH` -> `SchemaId` -> `RAW_SCHEMA_VIEWS`).
   - **Track Deleted Schemas**: Identify schemas that exist in DB but not on filesystem.
+  - **Initialize Index Maps**: Create the baseline `name_to_id` and `id_to_name` maps using the queried `SchemaId`s and filenames (minus any deleted schemas).
   - Determine `SchemaPipelinePath` (`New`, `FreshTimestamp`, `FreshContent`, `Stale`) for each file via timestamp and content hash checks.
 - **Super-Fast Path Output**:
   - If **Property Bank is Fresh*** AND **all schema files are Fresh*** AND **no schemas are deleted**:
@@ -776,6 +770,7 @@ _No cached view exists. Must do full expansion._
 - **State 8 (RefsExpanded):**
   - Do full reference expansion on all properties against the `PropertyBank`.
   - Construct final `SchemaVersion` embedding `expanded_properties` and `bank_references`.
+  - Inject newly generated `SchemaId` and schema name into the `name_to_id` and `id_to_name` index maps.
   - Update `RawSchemaView` and persist it.
 
 ---
@@ -868,17 +863,14 @@ _Both changed. Expand schema changes PLUS affected PB references._
 
 - `Vec<(SchemaId, RefExpandedSchema)>` (stale schemas)
 - `HashMap<SchemaId, Schema>` (known_parents, from DB)
+- `name_to_id: HashMap<Box<str>, SchemaId>` (from Phase 1 Discovery & RefsExpanded)
+- `id_to_name: HashMap<SchemaId, Box<str>>` (from Phase 1 Discovery & RefsExpanded)
 
 **Output**: `SchemaTree` (topologically ordered)
 
-**Operations** (6 phases in `Extender::build()` lines 222-250):
+**Operations** (formerly 6 phases in `Extender::build()`, now 5 phases):
 
-**Phase 1**: Build name indexes
-
-- `name_to_id: HashMap<Box<str>, SchemaId>` - forward lookup
-- `id_to_name: HashMap<SchemaId, Box<str>>` - reverse lookup
-- Includes both stale schemas and known_parents
-- Detect duplicate names
+*(Note: Phase 1 "Build name indexes" is now handled organically during Phase 1 of the pipeline. Baseline is loaded in Discovery, and NEW schemas are injected during RefsExpanded, preventing duplicate iteration.)*
 
 **Phase 2**: Build node map
 
@@ -1416,6 +1408,7 @@ impl SchemaPipeline<Discovery> {
     pub fn discover(self) -> Result<SchemaPipelineResult, Error> {
         // Fetch RawSchemaViews via SCHEMA_ID_BY_PATH
         // Detect deleted schemas
+        // Initialize base name_to_id and id_to_name maps from DB query
         // If PB is Fresh, all schemas Fresh, and no deletions -> Super-Fast Path
         // Otherwise, return a mapped SchemaPipelinePath for each schema
     }
@@ -1473,14 +1466,8 @@ impl SchemaPipeline<InheritanceEvaluated> {
 }
 
 impl SchemaPipeline<RefsExpanded> {
-    pub fn evaluate_indexes(self) -> SchemaPipeline<IndexesEvaluated> {
-        // Contributes schema name and ID to name_to_id and id_to_name index maps
-    }
-}
-
-impl SchemaPipeline<IndexesEvaluated> {
     pub fn into_expanded_schema(self) -> (SchemaId, RefExpandedSchema) {
-        // Yields the finalized RefExpandedSchema and ID ready for Tree building
+        // Yields the finalized RefExpandedSchema. For NEW schemas, injects into index maps.
     }
 }
 ```
@@ -1500,14 +1487,13 @@ impl SchemaPipelinePath {
         self,
         repo: &Repository,
         pb_path: &PropertyBankPath
-    ) -> Result<SchemaPipeline<IndexesEvaluated>, Error> {
+    ) -> Result<SchemaPipeline<RefsExpanded>, Error> {
         match self {
             SchemaPipelinePath::New(pipeline) => {
                 pipeline
                     .into_raw_constructed()
                     .evaluate_inheritance()
-                    .expand_refs(pb_path.bank())?
-                    .evaluate_indexes()
+                    .expand_refs(pb_path.bank())
             },
             SchemaPipelinePath::FreshTimestamp(pipeline) | SchemaPipelinePath::FreshContent(pipeline) => {
                 if let Some(pb_delta) = pb_path.delta() {
@@ -1515,14 +1501,12 @@ impl SchemaPipelinePath {
                     pipeline
                         .compute_bank_delta(pb_delta)
                         .evaluate_inheritance()
-                        .expand_refs(pb_path.bank())?
-                        .evaluate_indexes()
+                        .expand_refs(pb_path.bank())
                 } else {
                     // Flow B: Fresh Schema + Fresh PB
                     pipeline
                         .evaluate_inheritance()
-                        .expand_refs(pb_path.bank())? // Does zero-expansion internally
-                        .evaluate_indexes()
+                        .expand_refs(pb_path.bank()) // Does zero-expansion internally
                 }
             },
             SchemaPipelinePath::Stale(pipeline) => {
@@ -1532,8 +1516,7 @@ impl SchemaPipelinePath {
                     .fetch_base(repo)?
                     .apply_schema_delta()
                     .evaluate_inheritance(&cached_view)
-                    .expand_refs(pb_path.bank())?
-                    .evaluate_indexes()
+                    .expand_refs(pb_path.bank())
             }
         }
     }
