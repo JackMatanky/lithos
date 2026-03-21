@@ -547,7 +547,8 @@ impl AliasName {
         if value.is_empty() {
             return Err(FrontmatterError::InvalidAlias {
                 value: value.into(),
-                reason: "alias cannot be empty",
+                reason: "alias cannot be an empty string; omit the value or \
+                         delete the key if no alias is desired",
             }
             .into());
         }
@@ -599,7 +600,8 @@ impl FileClassName {
         if value.is_empty() {
             return Err(FrontmatterError::InvalidFileClass {
                 value: value.into(),
-                reason: "file class cannot be empty",
+                reason: "file class cannot be an empty string; omit the value \
+                         or delete the key if no file class is desired",
             }
             .into());
         }
@@ -802,25 +804,26 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
 ///
 /// Pattern breakdown:
 /// 1. `^(\s*[\w_-]+\s*:\s*)`: Matches the key and colon, including indentation.
-/// 2. `([^"'\s|>].*\[\[.*\]\].*)`: Matches values starting with a
-///    non-quote/special char that contain a wikilink.
+/// 2. `([^"'\s|>].*?\[\[.*\]\].*|\[\[.*\]\].*)`: Matches values starting with a
+///    non-quote/special char that contain a wikilink, or start with one.
 #[expect(clippy::expect_used, reason = "Static regex compilation")]
-static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*\[\[.*\]\].*)$"#)
+static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(
+    || {
+        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*?\[\[.*\]\].*|\[\[.*\]\].*)$"#)
             .expect("valid regex")
-    });
+    },
+);
 
 /// Regex for identifying unquoted Obsidian wikilinks in YAML list items.
 ///
 /// Pattern breakdown:
 /// 1. `^(\s*-\s*)`: Matches the list dash and indentation.
-/// 2. `([^"'\s].*\[\[.*\]\].*)`: Matches values starting with a non-quote/space
-///    that contain a wikilink.
+/// 2. `([^"'\s].*?\[\[.*\]\].*|\[\[.*\]\].*)`: Matches values starting with a
+///    non-quote/space that contain a wikilink, or start with one.
 #[expect(clippy::expect_used, reason = "Static regex compilation")]
 static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*\[\[.*\]\].*)$"#)
+        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*?\[\[.*\]\].*|\[\[.*\]\].*)$"#)
             .expect("valid regex")
     });
 
@@ -834,22 +837,13 @@ static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
     reason = "Test module organization"
 )]
 mod tests {
-    /// Test fixtures and builders for Frontmatter tests.
-    #[expect(
-        dead_code,
-        reason = "Fixture helpers are used by multiple test modules"
-    )]
     mod fixtures {
         use std::collections::HashMap;
-
-        use chrono::{FixedOffset, TimeZone as _, Utc};
 
         use crate::{
             config::aggregate::Config,
             note::{frontmatter::Frontmatter, value::FieldValue},
         };
-
-        pub const TEST_TIMESTAMP: i64 = 1_700_000_000;
 
         /// Builder for creating test Frontmatter instances.
         pub struct FrontmatterBuilder {
@@ -869,31 +863,6 @@ mod tests {
                 self
             }
 
-            pub fn with_boolean(mut self, key: &str, value: bool) -> Self {
-                self.fields.insert(key.into(), FieldValue::Boolean(value));
-                self
-            }
-
-            pub fn with_number(mut self, key: &str, value: f64) -> Self {
-                self.fields.insert(key.into(), FieldValue::Number(value));
-                self
-            }
-
-            pub fn with_date(mut self, key: &str, timestamp: i64) -> Self {
-                let dt = Utc
-                    .timestamp_opt(timestamp, 0)
-                    .single()
-                    .expect("valid timestamp");
-                self.fields.insert(
-                    key.into(),
-                    FieldValue::DateTime(
-                        dt.with_timezone(&FixedOffset::east_opt(0).unwrap())
-                            .into(),
-                    ),
-                );
-                self
-            }
-
             pub fn with_array(
                 mut self,
                 key: &str,
@@ -906,20 +875,24 @@ mod tests {
                 self
             }
 
-            pub fn build(self) -> Frontmatter {
+            #[expect(clippy::unused_self, reason = "Test helper ergonomics")]
+            pub fn config(&self) -> Config {
+                Self::build_config()
+            }
+
+            fn build_config() -> Config {
                 use crate::config::{
                     aggregate::Version,
                     raw::RawConfig,
                     vault::{VaultId, VaultRoot},
                 };
-                let config = crate::config::aggregate::Config::build(
+                crate::config::aggregate::Config::build(
                     &RawConfig::default(),
                     VaultId::new(),
                     VaultRoot::try_new(std::path::PathBuf::from("/v")).unwrap(),
                     Version::initial(),
                 )
-                .unwrap();
-                Frontmatter::from_fields(self.fields, &config)
+                .unwrap()
             }
 
             pub fn build_with_config(self, config: &Config) -> Frontmatter {
@@ -956,330 +929,138 @@ mod tests {
             )
             .expect("Config build should succeed")
         }
-
-        pub fn frontmatter_with_custom_keys() -> Frontmatter {
-            let config = config_with_custom_frontmatter_keys();
-            FrontmatterBuilder::new()
-                .with_string("subject", "Subj")
-                .with_string("kind", "Note")
-                .with_string("names", "Alias")
-                .build_with_config(&config)
-        }
-
-        pub fn frontmatter_with_title() -> Frontmatter {
-            FrontmatterBuilder::new().with_string("title", "Test").build()
-        }
-
-        pub fn frontmatter_with_string_arrays() -> Frontmatter {
-            FrontmatterBuilder::new()
-                .with_string("single", "a")
-                .with_array("multi", vec![FieldValue::String("b".into())])
-                .build()
-        }
-
-        pub fn frontmatter_with_scalar_values() -> Frontmatter {
-            FrontmatterBuilder::new()
-                .with_boolean("b", true)
-                .with_number("n", 1.0)
-                .with_string("s", "s")
-                .with_date("d", TEST_TIMESTAMP)
-                .build()
-        }
-
-        pub fn frontmatter_for_try_get() -> Frontmatter {
-            let mut fields = HashMap::new();
-            fields.insert("s".into(), FieldValue::String("text".into()));
-            fields.insert("b".into(), FieldValue::Boolean(true));
-            fields.insert("n".into(), FieldValue::Number(1.5f64));
-            Frontmatter::new(fields)
-        }
-
-        pub fn frontmatter_with_aliases_mixed() -> Frontmatter {
-            let mut fields = HashMap::new();
-            fields.insert(
-                "aliases".into(),
-                FieldValue::Array(
-                    vec![
-                        FieldValue::String("ok".into()),
-                        FieldValue::Number(123.0),
-                    ]
-                    .into_boxed_slice(),
-                ),
-            );
-            Frontmatter::new(fields)
-        }
-
-        pub fn frontmatter_with_number() -> Frontmatter {
-            let mut fields = HashMap::new();
-            fields.insert("n".into(), FieldValue::Number(1.0f64));
-            Frontmatter::new(fields)
-        }
-
-        pub fn frontmatter_with_invalid_date() -> Frontmatter {
-            let mut fields = HashMap::new();
-            // Boolean is not a temporal type
-            fields.insert("d".into(), FieldValue::Boolean(true));
-            // Actually Frontmatter struct now caches these, so we use try_new.
-            Frontmatter::try_new(fields, None, None, None, None, None, None)
-                .unwrap()
-        }
-
-        pub fn sample_datetime() -> chrono::DateTime<Utc> {
-            Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0)
-                .single()
-                .expect("Valid date should be created")
-        }
     }
 
-    use chrono::{DateTime, NaiveDate, Utc};
+    use rstest::rstest;
 
     use super::*;
     use crate::note::{error::FrontmatterError, frontmatter::FrontmatterKey};
 
-    mod field_value {
-        #![allow(
-            clippy::items_after_statements,
-            clippy::no_effect_underscore_binding,
-            reason = "Test code style"
-        )]
-
+    mod constructor {
         use super::*;
-        use crate::note::frontmatter::tests::fixtures::{
-            FrontmatterBuilder, config_with_custom_frontmatter_keys,
-        };
 
         #[test]
-        fn alias_field_preserves_singular_shape() {
-            let config = config_with_custom_frontmatter_keys();
-            let fm = FrontmatterBuilder::new()
-                .with_string("subject", "Title")
-                .with_string("names", "Primary")
-                .build_with_config(&config);
-
-            assert_eq!(fm.alias_str(), Some("Primary"));
-            let all: Vec<&str> = fm.aliases().collect();
-            assert_eq!(all, vec!["Primary"]);
+        fn should_create_empty_frontmatter() {
+            let fm = Frontmatter::new(HashMap::new());
+            assert!(fm.fields.is_empty(), "Frontmatter should be empty");
+            assert!(fm.title().is_none());
         }
 
         #[test]
-        fn alias_field_preserves_list_shape() {
-            let config = config_with_custom_frontmatter_keys();
-            let fm = FrontmatterBuilder::new()
-                .with_array("names", vec![
-                    FieldValue::String("a".into()),
-                    FieldValue::String("b".into()),
-                ])
-                .build_with_config(&config);
-
-            assert_eq!(fm.alias_str(), None);
-            let all: Vec<&str> = fm.aliases().collect();
-            assert_eq!(all, vec!["a", "b"]);
-        }
-
-        #[test]
-        fn date_field_parses_iso_8601_string() {
-            let s = "2024-03-21T14:30:00+01:00";
-            let val = FieldValue::String(s.into());
-            let field = FrontmatterDateField::try_from_value(&val).unwrap();
-            assert!(matches!(field.as_field_value(), FieldValue::DateTime(_)));
-            assert_eq!(
-                field.as_datetime().unwrap().to_rfc3339(),
-                "2024-03-21T14:30:00+01:00"
-            );
-        }
-
-        #[test]
-        fn date_field_parses_standard_ymd_variants() {
-            let variants = ["2024-03-21", "2024/03/21", "2024.03.21"];
-            for s in variants {
-                let val = FieldValue::String(s.into());
-                let field = FrontmatterDateField::try_from_value(&val).unwrap();
-                assert!(
-                    matches!(field.as_field_value(), FieldValue::Date(_)),
-                    "Failed to parse variant: {s}"
-                );
-                assert_eq!(
-                    field.as_naive_date().unwrap(),
-                    NaiveDate::from_ymd_opt(2024, 3, 21).unwrap()
-                );
-            }
-        }
-
-        #[test]
-        fn date_field_parses_international_dmy_variants() {
-            let variants = ["21-03-2024", "21/03/2024", "21.03.2024"];
-            for s in variants {
-                let val = FieldValue::String(s.into());
-                let field = FrontmatterDateField::try_from_value(&val).unwrap();
-                assert!(
-                    matches!(field.as_field_value(), FieldValue::Date(_)),
-                    "Failed to parse variant: {s}"
-                );
-                assert_eq!(
-                    field.as_naive_date().unwrap(),
-                    NaiveDate::from_ymd_opt(2024, 3, 21).unwrap()
-                );
-            }
-        }
-
-        #[test]
-        fn date_field_ignores_invalid_format_strings() {
-            let val = FieldValue::String("not a date".into());
-            let field = FrontmatterDateField::try_from_value(&val);
-            assert!(field.is_none());
-        }
-
-        #[test]
-        fn array_coerces_to_array() {
-            let value = FieldValue::Array(
-                vec![FieldValue::Boolean(true)].into_boxed_slice(),
-            );
-            assert!(
-                value.array_items().is_some(),
-                "Array should coerce to items"
-            );
-        }
-
-        #[test]
-        fn array_does_not_coerce_to_bool() {
-            let value = FieldValue::Array(
-                vec![FieldValue::Boolean(true)].into_boxed_slice(),
-            );
-            assert!(
-                value.as_bool().is_none(),
-                "Array should not coerce to bool"
-            );
-        }
-
-        #[test]
-        fn boolean_coerces_to_bool() {
-            let value = FieldValue::Boolean(true);
-            assert!(value.as_bool().is_some(), "Boolean should coerce to bool");
-        }
-
-        #[test]
-        fn boolean_does_not_coerce_to_array() {
-            let value = FieldValue::Boolean(true);
-            assert!(
-                value.array_items().is_none(),
-                "Boolean should not coerce to array"
-            );
-        }
-
-        #[test]
-        fn date_coerces_to_naive_date() {
-            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
-            let value = FieldValue::Date(date.into());
-            assert!(
-                value.as_naive_date().is_some(),
-                "Date should coerce to NaiveDate"
-            );
-        }
-
-        #[test]
-        fn date_coerces_to_datetime_via_try_get() {
-            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
+        fn should_extract_attributes_from_fields() {
+            let config = fixtures::config_with_custom_frontmatter_keys();
             let mut fields = HashMap::new();
-            fields.insert("d".into(), FieldValue::Date(date.into()));
-            let fm = Frontmatter::new(fields);
-            let key = FrontmatterKey::try_new("d").unwrap();
-            let dt: Result<Option<DateTime<Utc>>, _> = fm.find_typed(&key);
-            assert!(dt.is_ok());
-            assert!(dt.unwrap().is_some());
+            fields.insert("subject".into(), FieldValue::String("Title".into()));
+            fields.insert("kind".into(), FieldValue::String("Class".into()));
+
+            let fm = Frontmatter::from_fields(fields, &config);
+
+            assert_eq!(fm.title(), Some("Title"));
+            assert_eq!(fm.file_class(), Some("Class"));
+        }
+    }
+
+    mod parsing {
+        use super::*;
+
+        fn config_fixture() -> crate::config::aggregate::Config {
+            fixtures::FrontmatterBuilder::new().config()
+        }
+
+        #[rstest]
+        #[case::simple_yaml(
+            RawFrontmatterFormat::Yaml,
+            "title: Hello\ncount: 42",
+            "title",
+            FieldValue::String("Hello".into())
+        )]
+        #[case::simple_toml(
+            RawFrontmatterFormat::Toml,
+            "title = \"Hello\"\ncount = 42",
+            "title",
+            FieldValue::String("Hello".into())
+        )]
+        fn should_parse_valid_frontmatter(
+            #[case] format: RawFrontmatterFormat,
+            #[case] text: &str,
+            #[case] key: &str,
+            #[case] expected: FieldValue,
+        ) {
+            let config = config_fixture();
+            let fm = Frontmatter::parse(format, text, &config)
+                .expect("Parse should succeed");
+            assert_eq!(fm.find_field(key), Some(&expected));
         }
 
         #[test]
-        fn date_does_not_coerce_to_number() {
-            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
-            let value = FieldValue::Date(date.into());
+        fn should_report_yaml_syntax_error_with_location() {
+            let config = config_fixture();
+            let text = "key: : invalid";
+            let result =
+                Frontmatter::parse(RawFrontmatterFormat::Yaml, text, &config);
+
             assert!(
-                value.as_number().is_none(),
-                "Date should not coerce to number"
+                matches!(
+                    result,
+                    Err(NoteParseError::Frontmatter {
+                        format: "YAML",
+                        line: Some(_),
+                        ..
+                    })
+                ),
+                "Expected YAML error with location, got: {result:?}"
             );
         }
 
-        #[test]
-        fn number_coerces_to_number() {
-            let value = FieldValue::Number(1.0f64);
-            assert!(value.as_number().is_some(), "Number should coerce to f64");
+        #[rstest]
+        #[case::map_link("link: [[Note]]", "link: \"[[Note]]\"")]
+        #[case::list_link("- [[Note]]", "- \"[[Note]]\"")]
+        #[case::mixed(
+            "key: val\nlink: [[Note]]\n- [[Other]]",
+            "key: val\nlink: \"[[Note]]\"\n- \"[[Other]]\""
+        )]
+        #[case::already_quoted("link: \"[[Note]]\"", "link: \"[[Note]]\"")]
+        #[case::map_with_alias(
+            "link: [[Note|Alias]]",
+            "link: \"[[Note|Alias]]\""
+        )]
+        fn should_sanitize_obsidian_links(
+            #[case] input: &str,
+            #[case] expected: &str,
+        ) {
+            let sanitized = Frontmatter::sanitize_yaml_obsidian_links(input);
+            assert_eq!(sanitized, expected);
         }
+    }
+
+    mod validation {
+        use super::*;
 
         #[test]
-        fn number_does_not_coerce_to_date() {
-            let value = FieldValue::Number(1.0f64);
+        fn alias_name_should_reject_empty_string() {
+            let result = AliasName::try_new("");
             assert!(
-                value.as_naive_date().is_none(),
-                "Number should not coerce to date"
+                matches!(
+                    result,
+                    Err(NoteError::Frontmatter(
+                        FrontmatterError::InvalidAlias { .. }
+                    ))
+                ),
+                "Expected invalid alias error, got: {result:?}"
             );
         }
 
         #[test]
-        fn object_coerces_to_object() {
-            let mut obj_map = HashMap::new();
-            obj_map.insert("k".into(), FieldValue::Boolean(false));
-            let value = FieldValue::Object(Box::new(obj_map));
+        fn file_class_name_should_reject_empty_string() {
+            let result = FileClassName::try_new("");
             assert!(
-                value.object_fields().is_some(),
-                "Object should coerce to fields"
-            );
-        }
-
-        #[test]
-        fn object_does_not_coerce_to_string() {
-            let mut obj_map = HashMap::new();
-            obj_map.insert("k".into(), FieldValue::Boolean(false));
-            let value = FieldValue::Object(Box::new(obj_map));
-            assert!(
-                value.as_str().is_none(),
-                "Object should not coerce to string"
-            );
-        }
-
-        #[test]
-        fn string_coerces_to_str() {
-            let value = FieldValue::String("s".into());
-            assert!(value.as_str().is_some(), "String should coerce to str");
-        }
-
-        #[test]
-        fn string_does_not_coerce_to_object() {
-            let value = FieldValue::String("s".into());
-            assert!(
-                value.object_fields().is_none(),
-                "String should not coerce to object"
-            );
-        }
-
-        #[test]
-        fn date_field_returns_naive_date() {
-            let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-            let val = FieldValue::Date(date.into());
-            assert_eq!(
-                val.as_naive_date(),
-                Some(date),
-                "Date field should return NaiveDate"
-            );
-        }
-
-        #[test]
-        fn converts_numeric_values_correctly() {
-            let val = FieldValue::Number(42.0f64);
-            let observed = val.as_number();
-            assert_eq!(
-                observed,
-                Some(42.0f64),
-                "Numeric field should convert to f64"
-            );
-        }
-
-        #[test]
-        fn converts_boolean_values_correctly() {
-            let val = FieldValue::Boolean(true);
-            let observed = val.as_bool();
-            assert_eq!(
-                observed,
-                Some(true),
-                "Boolean field should convert to bool"
+                matches!(
+                    result,
+                    Err(NoteError::Frontmatter(
+                        FrontmatterError::InvalidFileClass { .. }
+                    ))
+                ),
+                "Expected invalid file class error, got: {result:?}"
             );
         }
     }
@@ -1288,156 +1069,143 @@ mod tests {
         use super::*;
 
         #[test]
-        fn try_get_returns_string_value() {
-            let fm = fixtures::frontmatter_for_try_get();
-            let key = FrontmatterKey::try_new("s").expect("valid key");
-            let result = fm.find_typed::<Box<str>>(&key);
+        fn should_retrieve_typed_values() {
+            let mut fields = HashMap::new();
+            fields.insert("b".into(), FieldValue::Boolean(true));
+            fields.insert("s".into(), FieldValue::String("text".into()));
+            fields.insert("n".into(), FieldValue::Number(1.5f64));
+            let fm = Frontmatter::new(fields);
+
+            let key_b = FrontmatterKey::try_new("b").unwrap();
+            let key_s = FrontmatterKey::try_new("s").unwrap();
+            let key_n = FrontmatterKey::try_new("n").unwrap();
+
+            assert_eq!(fm.find_typed::<bool>(&key_b).unwrap(), Some(true));
             assert_eq!(
-                result,
-                Ok(Some("text".into())),
-                "Should retrieve and convert String field"
+                fm.find_typed::<Box<str>>(&key_s).unwrap(),
+                Some("text".into())
             );
+            assert_eq!(fm.find_typed::<f64>(&key_n).unwrap(), Some(1.5f64));
         }
 
         #[test]
-        fn try_get_returns_boolean_value() {
-            let fm = fixtures::frontmatter_for_try_get();
-            let key = FrontmatterKey::try_new("b").expect("valid key");
+        fn should_error_on_type_mismatch() {
+            let mut fields = HashMap::new();
+            fields.insert("s".into(), FieldValue::String("text".into()));
+            let fm = Frontmatter::new(fields);
+            let key = FrontmatterKey::try_new("s").unwrap();
+
             let result = fm.find_typed::<bool>(&key);
-            assert_eq!(
-                result,
-                Ok(Some(true)),
-                "Should retrieve and convert Boolean field"
-            );
-        }
-
-        #[test]
-        fn try_get_returns_number_value() {
-            let fm = fixtures::frontmatter_for_try_get();
-            let key = FrontmatterKey::try_new("n").expect("valid key");
-            let result = fm.find_typed::<f64>(&key);
-            assert_eq!(
-                result,
-                Ok(Some(1.5f64)),
-                "Should retrieve and convert Number field"
-            );
-        }
-
-        #[test]
-        fn try_get_returns_type_mismatch_error() {
-            let fm = fixtures::frontmatter_for_try_get();
-            let lookup_key = FrontmatterKey::try_new("s").expect("valid key");
-            let result = fm.find_typed::<bool>(&lookup_key);
             assert!(
                 matches!(
-                    &result,
+                    result,
                     Err(FrontmatterError::TypeMismatch {
-                        key: error_key,
-                        expected,
-                        actual,
-                    })
-                        if error_key.as_ref() == "s"
-                            && *expected == "boolean"
-                            && *actual == "string"
-                ),
-                "type mismatch should error: {result:?}"
-            );
-        }
-
-        #[test]
-        fn strict_string_vec_errors_on_non_string_array_elements() {
-            let fm = fixtures::frontmatter_with_aliases_mixed();
-            let lookup_key =
-                FrontmatterKey::try_new("aliases").expect("valid key");
-            let result = fm.get_typed::<Vec<Box<str>>>(&lookup_key);
-            assert!(
-                matches!(
-                    &result,
-                    Err(FrontmatterError::TypeMismatch {
-                        key: error_key,
-                        expected: "string",
+                        expected: "boolean",
+                        actual: "string",
                         ..
-                    }) if error_key.as_ref() == "aliases"
+                    })
                 ),
-                "strict extraction should fail: {result:?}"
+                "Expected type mismatch error, got: {result:?}"
             );
         }
 
         #[test]
-        fn lenient_string_vec_drops_non_string_elements() {
-            let fm = fixtures::frontmatter_with_aliases_mixed();
-            assert_eq!(
-                fm.find_field("aliases").and_then(string_array_lossy),
-                Some(vec!["ok".into()])
+        fn should_borrow_typed_values() {
+            let mut fields = HashMap::new();
+            fields.insert("s".into(), FieldValue::String("text".into()));
+            let fm = Frontmatter::new(fields);
+            let key = FrontmatterKey::try_new("s").unwrap();
+
+            let val: &str = fm.find_typed_ref(&key).unwrap().unwrap();
+            assert_eq!(val, "text");
+        }
+    }
+
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn aliases_should_flatten_single_and_list() {
+            let config = fixtures::config_with_custom_frontmatter_keys();
+
+            // Single
+            let fm_single = fixtures::FrontmatterBuilder::new()
+                .with_string("names", "A")
+                .build_with_config(&config);
+            assert_eq!(fm_single.aliases().collect::<Vec<_>>(), vec!["A"]);
+            assert_eq!(fm_single.alias_str(), Some("A"));
+
+            // List
+            let fm_list = fixtures::FrontmatterBuilder::new()
+                .with_array("names", vec![
+                    FieldValue::String("A".into()),
+                    FieldValue::String("B".into()),
+                ])
+                .build_with_config(&config);
+            assert_eq!(fm_list.aliases().collect::<Vec<_>>(), vec!["A", "B"]);
+            assert_eq!(fm_list.alias_str(), None);
+        }
+
+        #[test]
+        fn tags_should_parse_from_string_or_list() {
+            let config = fixtures::config_with_custom_frontmatter_keys();
+
+            // String
+            let fm_str = fixtures::FrontmatterBuilder::new()
+                .with_string("labels", "#a, #b #c")
+                .build_with_config(&config);
+            assert_eq!(fm_str.tags.as_ref().unwrap().len(), 3);
+
+            // List
+            let fm_list = fixtures::FrontmatterBuilder::new()
+                .with_array("labels", vec![
+                    FieldValue::String("#a".into()),
+                    FieldValue::String("#b".into()),
+                ])
+                .build_with_config(&config);
+            assert_eq!(fm_list.tags.as_ref().unwrap().len(), 2);
+        }
+    }
+
+    mod temporal {
+        use super::*;
+
+        #[rstest]
+        #[case::iso("2024-03-21T14:30:00Z")]
+        #[case::ymd_dash("2024-03-21")]
+        #[case::ymd_slash("2024/03/21")]
+        #[case::ymd_dot("2024.03.21")]
+        #[case::dmy_dash("21-03-2024")]
+        #[case::mdy_slash("03/21/2024")]
+        fn should_parse_dates_heuristically(#[case] input: &str) {
+            let val = FieldValue::String(input.into());
+            let field = FrontmatterDateField::try_from_value(&val);
+            assert!(
+                field.is_some(),
+                "Failed to parse date heuristically: {input}"
             );
         }
 
-        fn string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
-            if let Some(items) = value.as_array() {
-                let out = items
-                    .iter()
-                    .filter_map(FieldValue::as_str)
-                    .map(Into::into)
-                    .collect();
-                return Some(out);
+        #[test]
+        fn should_reject_invalid_date_strings() {
+            let val = FieldValue::String("not-a-date".into());
+            let field = FrontmatterDateField::try_from_value(&val);
+            assert!(field.is_none());
+        }
+    }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        proptest! {
+            #[test]
+            fn sanitize_is_idempotent(s in ".*") {
+                let s1 = Frontmatter::sanitize_yaml_obsidian_links(&s);
+                let s2 = Frontmatter::sanitize_yaml_obsidian_links(&s1);
+                prop_assert_eq!(s1.as_ref(), s2.as_ref());
             }
-
-            value.as_str().map(|s| vec![s.into()])
-        }
-
-        #[test]
-        fn strict_get_required_reports_missing_key() {
-            let fm = fixtures::frontmatter_with_number();
-            let lookup_key =
-                FrontmatterKey::try_new("missing").expect("valid key");
-            let result = fm.get_typed::<Box<str>>(&lookup_key);
-            assert!(
-                matches!(
-                    &result,
-                    Err(FrontmatterError::KeyMissing { key: error_key })
-                        if error_key.as_ref() == "missing"
-                ),
-                "missing key should error: {result:?}"
-            );
-        }
-
-        #[test]
-        fn strict_get_required_reports_type_mismatch() {
-            let fm = fixtures::frontmatter_with_number();
-            let lookup_key = FrontmatterKey::try_new("n").expect("valid key");
-            let result = fm.get_typed::<Box<str>>(&lookup_key);
-            assert!(
-                matches!(
-                    &result,
-                    Err(FrontmatterError::TypeMismatch {
-                        key: error_key,
-                        expected,
-                        actual,
-                    })
-                        if error_key.as_ref() == "n"
-                            && *expected == "string"
-                            && *actual == "number"
-                ),
-                "type mismatch should error: {result:?}"
-            );
-        }
-
-        #[test]
-        fn strict_date_reports_type_mismatch_on_non_date() {
-            let fm = fixtures::frontmatter_with_invalid_date();
-            let lookup_key = FrontmatterKey::try_new("d").expect("valid key");
-            let result = fm.get_typed::<DateTime<Utc>>(&lookup_key);
-            assert!(
-                matches!(
-                    &result,
-                    Err(FrontmatterError::TypeMismatch {
-                        key: error_key,
-                        expected: "datetime",
-                        ..
-                    }) if error_key.as_ref() == "d"
-                ),
-                "type mismatch should error: {result:?}"
-            );
         }
     }
 }
