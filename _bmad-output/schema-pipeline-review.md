@@ -717,21 +717,28 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 └─────────────────────────────────────┬──────────────────────────────────────┘
                                       │
                                       ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              IndexesEvaluated                              │
+│         (Builds name_to_id and id_to_name index maps for Extender)         │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+                                      ▼
                           (Proceeds to Tree Building)
 ```
 
 **State Details (Phase 1: Discovery to Expansion)**:
 
-| State                      | Data Structure               | Used By Paths                        | Notes                                                      |
-| -------------------------- | ---------------------------- | ------------------------------------ | ---------------------------------------------------------- |
-| **1. Discovery**           | `PropertyBankPath`, Config   | All                                  | Batches files, queries DB, tracks deleted schemas, determines `SchemaPipelinePath` |
-| **2. FileParsed**          | `RawSchema`, metadata        | NEW, STALE                           | Parses file, validates, builds `bank_references` map       |
-| **3. SchemaPropertyDelta** | Schema delta info            | STALE                                | Finds new/modified/removed properties in schema file       |
-| **4. RawConstructed**      | `RawSchemaView`, `RawPropertyMap` | All                                  | Fetches baseline from DB or builds from scratch            |
-| **5. BankReferenceDelta**  | PB refs to re-expand         | FRESH\*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta`     |
-| **6. DeltaApplied**        | `RawSchema` (updated)        | STALE                                | Applies schema file changes to baseline                    |
-| **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All                                  | Verifies `extends` validity, tracks structural changes     |
-| **8. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, constructs `SchemaVersion`, persists view    |
+| State | Data Structure | Used By Paths | Notes |
+|-------|---------------|---------------|-------|
+| **1. Discovery** | `PropertyBankPath`, Config | All | Batches files, queries DB, tracks deleted schemas, determines `SchemaPipelinePath` |
+| **2. FileParsed** | `RawSchema`, metadata | NEW, STALE | Parses file, validates, builds `bank_references` map |
+| **3. SchemaPropertyDelta** | Schema delta info | STALE | Finds new/modified/removed properties in schema file |
+| **4. RawConstructed** | `RawSchemaView`, `RawPropertyMap` | All | Fetches baseline from DB or builds from scratch |
+| **5. BankReferenceDelta** | PB refs to re-expand | FRESH*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta` |
+| **6. DeltaApplied** | `RawSchema` (updated) | STALE | Applies schema file changes to baseline |
+| **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All | Verifies `extends` validity, tracks structural changes |
+| **8. RefsExpanded** | `RefExpandedSchema` | All | Expands refs, constructs `SchemaVersion`, persists view |
+| **9. IndexesEvaluated** | `name_to_id`, `id_to_name` maps | All | Replaces Extender Phase 1 to prevent double iteration |
 
 ### 2.2 Phase 1: File Discovery to Expansion
 
@@ -1466,8 +1473,14 @@ impl SchemaPipeline<InheritanceEvaluated> {
 }
 
 impl SchemaPipeline<RefsExpanded> {
-    pub fn into_expanded_schema(self) -> RefExpandedSchema {
-        // Yields the finalized RefExpandedSchema ready for Tree building
+    pub fn evaluate_indexes(self) -> SchemaPipeline<IndexesEvaluated> {
+        // Contributes schema name and ID to name_to_id and id_to_name index maps
+    }
+}
+
+impl SchemaPipeline<IndexesEvaluated> {
+    pub fn into_expanded_schema(self) -> (SchemaId, RefExpandedSchema) {
+        // Yields the finalized RefExpandedSchema and ID ready for Tree building
     }
 }
 ```
@@ -1487,13 +1500,14 @@ impl SchemaPipelinePath {
         self,
         repo: &Repository,
         pb_path: &PropertyBankPath
-    ) -> Result<SchemaPipeline<RefsExpanded>, Error> {
+    ) -> Result<SchemaPipeline<IndexesEvaluated>, Error> {
         match self {
             SchemaPipelinePath::New(pipeline) => {
                 pipeline
                     .into_raw_constructed()
                     .evaluate_inheritance()
-                    .expand_refs(pb_path.bank())
+                    .expand_refs(pb_path.bank())?
+                    .evaluate_indexes()
             },
             SchemaPipelinePath::FreshTimestamp(pipeline) | SchemaPipelinePath::FreshContent(pipeline) => {
                 if let Some(pb_delta) = pb_path.delta() {
@@ -1501,12 +1515,14 @@ impl SchemaPipelinePath {
                     pipeline
                         .compute_bank_delta(pb_delta)
                         .evaluate_inheritance()
-                        .expand_refs(pb_path.bank())
+                        .expand_refs(pb_path.bank())?
+                        .evaluate_indexes()
                 } else {
                     // Flow B: Fresh Schema + Fresh PB
                     pipeline
                         .evaluate_inheritance()
-                        .expand_refs(pb_path.bank()) // Does zero-expansion internally
+                        .expand_refs(pb_path.bank())? // Does zero-expansion internally
+                        .evaluate_indexes()
                 }
             },
             SchemaPipelinePath::Stale(pipeline) => {
@@ -1516,7 +1532,8 @@ impl SchemaPipelinePath {
                     .fetch_base(repo)?
                     .apply_schema_delta()
                     .evaluate_inheritance(&cached_view)
-                    .expand_refs(pb_path.bank())
+                    .expand_refs(pb_path.bank())?
+                    .evaluate_indexes()
             }
         }
     }
