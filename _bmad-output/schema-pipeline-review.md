@@ -417,6 +417,87 @@ where
 }
 ```
 
+**Step 1.5: Create `RawPropertyRefPath` Wrapper Type**
+
+Replace the raw `Box<str>` in `RawPropertyRef` with a dedicated type that parses the `$ref` path and ensures it points to a property bank property.
+
+```rust
+/// Validated reference path to a property bank entry.
+///
+/// Ensures the path is properly formatted (e.g., `property_bank#/name`)
+/// and allows O(1) extraction of the target property name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RawPropertyRefPath {
+    full_path: Box<str>,
+    target_name: PropertyName,
+}
+
+impl RawPropertyRefPath {
+    pub fn target_name(&self) -> &PropertyName {
+        &self.target_name
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.full_path
+    }
+}
+
+// Custom Deserialize to validate format and extract target name
+impl<'de> Deserialize<'de> for RawPropertyRefPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let path = String::deserialize(deserializer)?;
+
+        let target = path
+            .strip_prefix("property_bank#/")
+            .ok_or_else(|| serde::de::Error::custom("Must start with 'property_bank#/'"))?;
+
+        let target_name = PropertyName::try_new(target)
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(RawPropertyRefPath {
+            full_path: path.into_boxed_str(),
+            target_name,
+        })
+    }
+}
+
+// Then update RawPropertyRef
+pub struct RawPropertyRef {
+    #[serde(rename = "$ref")]
+    pub ref_path: RawPropertyRefPath, // Guarantees valid format & target name
+    // ... overrides
+}
+```
+
+**Step 1.6: Construct `bank_references` in `SchemaVersion::new`**
+
+Add a `bank_references: HashMap<PropertyName, PropertyName>` field to `SchemaVersion`. We construct this seamlessly during instantiation by filtering `raw.properties` for `RawPropertyRef` and grabbing the already-validated `target_name`:
+
+```rust
+// Inside SchemaVersion::new(..., raw: &RawSchema)
+let mut bank_references = HashMap::new();
+
+for (prop_name, raw_prop) in raw.properties() {
+    if let RawProperty::Ref(ref_entry) = raw_prop {
+        // prop_name is already a valid PropertyName
+        // ref_entry.ref_path.target_name() is already a valid PropertyName
+        bank_references.insert(
+            prop_name.clone(),
+            ref_entry.ref_path.target_name().clone()
+        );
+    }
+}
+
+Ok(Self {
+    // ...
+    bank_references,
+    expanded_properties: None,
+})
+```
+
 **Step 2: Update `RawPropertyBank` to Use `RawPropertyMap<T>`**
 
 ```rust
@@ -644,7 +725,7 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 | **1. Discovery** | `PropertyBankPath`, Config | All | Batches files, queries DB, determines `SchemaPipelinePath` |
 | **2. FileParsed** | `RawSchema`, metadata | NEW, STALE | Parses file, validates, builds `bank_references` map |
 | **3. SchemaPropertyDelta** | Schema delta info | STALE | Finds new/modified/removed properties in schema file |
-| **4. RawConstructed** | `RawSchemaView`, `RawSchema` | FRESH*, STALE | Fetches baseline from DB, deserializes `raw_properties` |
+| **4. RawConstructed** | `RawSchemaView`, `RawSchema` | All | Fetches baseline from DB or builds from scratch |
 | **5. BankReferenceDelta** | PB refs to re-expand | FRESH*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta` |
 | **6. DeltaApplied** | `RawSchema` (updated) | STALE | Applies schema file changes to baseline |
 | **7. RefsExpanded** | `RefExpandedSchema` | All | Expands refs, constructs `SchemaVersion`, persists view |
@@ -668,11 +749,13 @@ The action taken on each schema depends on a combination of **its own staleness*
 - **State 2 (FileParsed):**
   - Read file, parse into `RawSchema`.
   - Extract metadata, compute content hash.
-  - Build `bank_references` (`HashMap<PropertyName, PropertyName>`) by parsing `RawPropertyRefPath`s.
+- **State 4 (RawConstructed):**
+  - Build `RawSchemaView` from scratch using the parsed `RawSchema`.
+  - Compute `bank_references` (`HashMap<PropertyName, PropertyName>`) inside `SchemaVersion::new` by iterating over `RawSchema.properties` and extracting the `target_name` from any `RawPropertyRefPath`.
 - **State 7 (RefsExpanded):**
   - Do full reference expansion on all properties against the `PropertyBank`.
-  - Construct `SchemaVersion` embedding `expanded_properties` and `bank_references`.
-  - Create `RawSchemaView` and persist it.
+  - Construct final `SchemaVersion` embedding `expanded_properties` and `bank_references`.
+  - Update `RawSchemaView` and persist it.
 
 ---
 
@@ -705,30 +788,33 @@ The action taken on each schema depends on a combination of **its own staleness*
 #### **Flow D: Schema is STALE AND Property Bank is Fresh***
 *Schema changed, PB didn't. Only expand schema changes.*
 - **State 2 (FileParsed):**
-  - Read new file, parse to `RawSchema`, build new `bank_references` map.
+  - Read new file, parse to `RawSchema`.
 - **State 3 (SchemaPropertyDelta):**
   - Compare new property hashes against cached view to find new/modified/removed schema properties.
 - **State 4 (RawConstructed):**
   - Fetch cached `RawSchemaView` as baseline.
 - **State 6 (DeltaApplied):**
   - Apply `SchemaPropertyDelta` to baseline raw properties.
+  - Build new `RawSchemaView` from the updated `RawSchema`, computing the new `bank_references` map.
 - **State 7 (RefsExpanded):**
   - Expand only the NEW or MODIFIED properties from State 3.
-  - Construct new `SchemaVersion` with updated `expanded_properties`, update view, and persist.
+  - Construct final `SchemaVersion` with updated `expanded_properties`, update view, and persist.
 
 ---
 
 #### **Flow E: Schema is STALE AND Property Bank is STALE**
 *Both changed. Expand schema changes PLUS affected PB references.*
-- **State 2 (FileParsed):** Parse new file, build `bank_references` map.
+- **State 2 (FileParsed):** Parse new file.
 - **State 3 (SchemaPropertyDelta):** Compute schema file changes.
 - **State 4 (RawConstructed):** Fetch cached `RawSchemaView` baseline.
 - **State 5 (BankReferenceDelta):** Intersect *cached* `bank_references` with PB's `PropertyDelta`.
-- **State 6 (DeltaApplied):** Apply `SchemaPropertyDelta` to baseline.
+- **State 6 (DeltaApplied):**
+  - Apply `SchemaPropertyDelta` to baseline.
+  - Build new `RawSchemaView` from the updated `RawSchema`, computing the new `bank_references` map.
 - **State 7 (RefsExpanded):**
   - Expand NEW/MODIFIED properties from State 3.
   - Re-expand unmodified schema properties flagged by State 5.
-  - Construct new `SchemaVersion`, update view, persist.
+  - Construct final `SchemaVersion`, update view, persist.
 
 ---
 
