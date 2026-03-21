@@ -706,6 +706,12 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
         │        │                                                    │
         ▼        ▼                                                    ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
+│                            InheritanceEvaluated                            │
+│           (Verify extends, track extends/excludes delta changes)           │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────────┐
 │                                RefsExpanded                                │
 │            (Full, Partial, or Zero expansion depending on path)            │
 └─────────────────────────────────────┬──────────────────────────────────────┘
@@ -718,13 +724,14 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 
 | State                      | Data Structure               | Used By Paths                        | Notes                                                      |
 | -------------------------- | ---------------------------- | ------------------------------------ | ---------------------------------------------------------- |
-| **1. Discovery**           | `PropertyBankPath`, Config   | All                                  | Batches files, queries DB, determines `SchemaPipelinePath` |
+| **1. Discovery**           | `PropertyBankPath`, Config   | All                                  | Batches files, queries DB, tracks deleted schemas, determines `SchemaPipelinePath` |
 | **2. FileParsed**          | `RawSchema`, metadata        | NEW, STALE                           | Parses file, validates, builds `bank_references` map       |
 | **3. SchemaPropertyDelta** | Schema delta info            | STALE                                | Finds new/modified/removed properties in schema file       |
-| **4. RawConstructed**      | `RawSchemaView`, `RawSchema` | All                                  | Fetches baseline from DB or builds from scratch            |
+| **4. RawConstructed**      | `RawSchemaView`, `RawPropertyMap` | All                                  | Fetches baseline from DB or builds from scratch            |
 | **5. BankReferenceDelta**  | PB refs to re-expand         | FRESH\*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta`     |
 | **6. DeltaApplied**        | `RawSchema` (updated)        | STALE                                | Applies schema file changes to baseline                    |
-| **7. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, constructs `SchemaVersion`, persists view    |
+| **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All                                  | Verifies `extends` validity, tracks structural changes     |
+| **8. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, constructs `SchemaVersion`, persists view    |
 
 ### 2.2 Phase 1: File Discovery to Expansion
 
@@ -735,9 +742,15 @@ The action taken on each schema depends on a combination of **its own staleness*
 - **Input:** `PropertyBankPath` (with `PropertyDelta` if PB is STALE), Config schema dir
 - **Operations:**
   - Scan directory (excluding `property_bank`).
-  - Fetch `RawSchemaView`s from DB for all files.
+  - Fetch `RawSchemaView`s from DB for all files (via `SCHEMA_ID_BY_PATH` -> `SchemaId` -> `RAW_SCHEMA_VIEWS`).
+  - **Track Deleted Schemas**: Identify schemas that exist in DB but not on filesystem.
   - Determine `SchemaPipelinePath` (`New`, `FreshTimestamp`, `FreshContent`, `Stale`) for each file via timestamp and content hash checks.
-- **Output:** Branches into one of the following 5 flows.
+- **Super-Fast Path Output**:
+  - If **Property Bank is Fresh*** AND **all schema files are Fresh*** AND **no schemas are deleted**:
+    - Call `RawSchemaView::update_from_timestamps` for any `FreshContent` schemas and persist view.
+    - Go straight to retrieving full `Schema` through `SCHEMA_BY_ID`.
+    - **Skip Phase 1 and 2 entirely!**
+- **Standard Output:** Branches into one of the following 5 flows.
 
 ---
 
@@ -751,7 +764,9 @@ _No cached view exists. Must do full expansion._
 - **State 4 (RawConstructed):**
   - Build `RawSchemaView` from scratch using the parsed `RawSchema`.
   - Compute `bank_references` (`HashMap<PropertyName, PropertyName>`) inside `SchemaVersion::new` by iterating over `RawSchema.properties` and extracting the `target_name` from any `RawPropertyRefPath`.
-- **State 7 (RefsExpanded):**
+- **State 7 (InheritanceEvaluated):**
+  - Verify `extends` SchemaName refers to an actual schema.
+- **State 8 (RefsExpanded):**
   - Do full reference expansion on all properties against the `PropertyBank`.
   - Construct final `SchemaVersion` embedding `expanded_properties` and `bank_references`.
   - Update `RawSchemaView` and persist it.
@@ -762,7 +777,9 @@ _No cached view exists. Must do full expansion._
 
 _Zero changes. Skip parsing entirely._
 
-- **State 7 (RefsExpanded):**
+- **State 7 (InheritanceEvaluated):**
+  - If any schemas were deleted globally, re-verify `extends` SchemaName in `SchemaVersion` still refers to an actual schema.
+- **State 8 (RefsExpanded):**
   - Instantly construct `RefExpandedSchema` using top-level metadata from the `RawSchemaView` (`name`, `extends`, `excludes`) and its cached `expanded_properties`.
   - _No `RawSchema` deserialization occurs!_
   - No DB persistence needed.
@@ -779,9 +796,11 @@ _Schema file didn't change, but some of its PB references might have._
 - **State 5 (BankReferenceDelta):**
   - Intersect the view's `bank_references` map with the PB's `PropertyDelta.changed` list.
   - Output: specific schema property names needing re-expansion.
-  - _If intersection is empty, jump straight to RefsExpanded._
-- **State 7 (RefsExpanded):**
-  - Deserialize `raw_properties` from JSON bytes (only because we must re-expand).
+  - _If intersection is empty, jump straight to InheritanceEvaluated._
+- **State 7 (InheritanceEvaluated):**
+  - If any schemas were deleted globally, re-verify `extends` SchemaName still refers to an actual schema.
+- **State 8 (RefsExpanded):**
+  - Deserialize `raw_properties` from JSON bytes via `RawPropertyMap` (only because we must re-expand).
   - Re-run expansion _only_ on the affected properties identified in State 5.
   - Update those specific keys in the cached `expanded_properties`.
   - Construct new `SchemaVersion`, update view, and persist.
@@ -796,12 +815,17 @@ _Schema changed, PB didn't. Only expand schema changes._
   - Read new file, parse to `RawSchema`.
 - **State 3 (SchemaPropertyDelta):**
   - Compare new property hashes against cached view to find new/modified/removed schema properties.
+  - _Note: Only operates on deserialized `raw_properties` from `SchemaVersion`, no need to reconstruct full baseline `RawSchema`._
 - **State 4 (RawConstructed):**
   - Fetch cached `RawSchemaView` as baseline.
 - **State 6 (DeltaApplied):**
   - Apply `SchemaPropertyDelta` to baseline raw properties.
   - Build new `RawSchemaView` from the updated `RawSchema`, computing the new `bank_references` map.
-- **State 7 (RefsExpanded):**
+- **State 7 (InheritanceEvaluated):**
+  - Compare `extends` SchemaName with `SchemaVersion`. Track if changed (affects inheritance tree).
+  - Verify `extends` refers to an actual schema.
+  - Compare `excludes` Vec<PropertyName> with `SchemaVersion`. Track if changed (affects property merging).
+- **State 8 (RefsExpanded):**
   - Expand only the NEW or MODIFIED properties from State 3.
   - Construct final `SchemaVersion` with updated `expanded_properties`, update view, and persist.
 
@@ -812,13 +836,17 @@ _Schema changed, PB didn't. Only expand schema changes._
 _Both changed. Expand schema changes PLUS affected PB references._
 
 - **State 2 (FileParsed):** Parse new file.
-- **State 3 (SchemaPropertyDelta):** Compute schema file changes.
+- **State 3 (SchemaPropertyDelta):** Compute schema file changes (using deserialized `raw_properties` from view).
 - **State 4 (RawConstructed):** Fetch cached `RawSchemaView` baseline.
 - **State 5 (BankReferenceDelta):** Intersect _cached_ `bank_references` with PB's `PropertyDelta`.
 - **State 6 (DeltaApplied):**
   - Apply `SchemaPropertyDelta` to baseline.
   - Build new `RawSchemaView` from the updated `RawSchema`, computing the new `bank_references` map.
-- **State 7 (RefsExpanded):**
+- **State 7 (InheritanceEvaluated):**
+  - Compare `extends` SchemaName with `SchemaVersion`. Track if changed.
+  - Verify `extends` refers to an actual schema.
+  - Compare `excludes` Vec<PropertyName> with `SchemaVersion`. Track if changed.
+- **State 8 (RefsExpanded):**
   - Expand NEW/MODIFIED properties from State 3.
   - Re-expand unmodified schema properties flagged by State 5.
   - Construct final `SchemaVersion`, update view, persist.
