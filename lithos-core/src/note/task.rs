@@ -14,6 +14,7 @@
 
 use std::{borrow::Borrow, collections::HashMap, fmt};
 
+use chrono::{FixedOffset, TimeZone as _, Utc};
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -1424,7 +1425,18 @@ impl InlineFieldState {
         }
         let parsed = Self::parse_default_date(value, key)?;
         let key = TaskFieldKey::try_new(key)?;
-        self.metadata.insert(key, FieldValue::Date(parsed.as_i64()));
+
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Default offsets and timestamps are guaranteed valid"
+        )]
+        let dt = Utc
+            .timestamp_opt(parsed.as_i64(), 0)
+            .single()
+            .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().unwrap())
+            .with_timezone(&FixedOffset::east_opt(0).unwrap());
+
+        self.metadata.insert(key, FieldValue::DateTime(dt.into()));
         Ok(())
     }
 }

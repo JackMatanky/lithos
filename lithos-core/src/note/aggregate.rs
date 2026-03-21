@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::{
     config::aggregate::Config,
     note::{
-        error::{FrontmatterError, NoteError},
+        error::NoteError,
         frontmatter::Frontmatter,
         heading::Heading,
         inline_fields::InlineField,
@@ -114,94 +114,6 @@ impl From<NoteId> for Uuid {
     #[inline]
     fn from(id: NoteId) -> Uuid {
         id.0
-    }
-}
-
-/// Validated alias name for a note.
-///
-/// Aliases provide alternative names for notes, often used in `WikiLinks`
-/// for easier discovery and linking.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct AliasName(Box<str>);
-
-impl AliasName {
-    /// Creates a validated alias name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrontmatterError::InvalidAlias`] if the alias is empty or only
-    /// whitespace.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
-            return Err(FrontmatterError::InvalidAlias {
-                value: value.into(),
-                reason: "alias cannot be empty",
-            }
-            .into());
-        }
-        Ok(Self(value.trim().into()))
-    }
-
-    /// Returns the alias as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for AliasName {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Validated file class name for a note.
-///
-/// File classes are a convention used in many Obsidian workflows to categorize
-/// notes and apply specific schema rules.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct FileClassName(Box<str>);
-
-impl FileClassName {
-    /// Creates a validated file class name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrontmatterError::InvalidFileClass`] if the class is empty or
-    /// only whitespace.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
-            return Err(FrontmatterError::InvalidFileClass {
-                value: value.into(),
-                reason: "file class cannot be empty",
-            }
-            .into());
-        }
-        Ok(Self(value.trim().into()))
-    }
-
-    /// Returns the file class as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for FileClassName {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -624,7 +536,7 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
             .raw
             .frontmatter()
             .cloned()
-            .map(Frontmatter::try_from)
+            .map(|raw| Frontmatter::parse(raw.kind(), raw.text(), ctx.config))
             .transpose()?;
 
         let mut tags = Vec::new();

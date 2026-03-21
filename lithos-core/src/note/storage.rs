@@ -16,6 +16,7 @@ use std::{
     collections::HashSet, fmt::Write as _, path::Path, time::SystemTime,
 };
 
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeDelta};
 use uuid::Uuid;
 
 use crate::{
@@ -29,13 +30,13 @@ use crate::{
         TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE, TASKS_BY_DEPENDS_ON,
         TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
         TASKS_BY_STATUS,
-        aggregate::{AliasName, FileClassName, Note, NoteId},
+        aggregate::{Note, NoteId},
         error::NoteRepositoryError,
         events::{
             NoteChangeKind, NoteEvent, NoteEventKind, NoteEventPayload,
             NoteEventPayloadV1,
         },
-        frontmatter::Frontmatter,
+        frontmatter::{AliasName, FileClassName, Frontmatter},
         paths::{FolderPath, NotePath},
         task::{Task, TaskDateKind, TaskMetadata, TaskPriority, TaskTimestamp},
         value::FieldValue,
@@ -783,8 +784,17 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
                 vec!["false".into()]
             };
         }
-        if let Some(timestamp) = value.as_date() {
-            return vec![Self::format_i64(timestamp)];
+        if let Some(dt) = value.as_naive_date() {
+            return vec![dt.to_string().into()];
+        }
+        if let Some(dt) = value.as_datetime() {
+            return vec![dt.to_rfc3339().into()];
+        }
+        if let Some(t) = value.as_naive_time() {
+            return vec![t.to_string().into()];
+        }
+        if let Some(d) = value.as_duration() {
+            return vec![d.to_string().into()];
         }
         if let Some(number) = value.as_number() {
             return vec![Self::format_f64(number)];
@@ -840,10 +850,31 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
                 );
             }
             FieldValue::Date(value) => {
-                let mut buffer = itoa::Buffer::new();
-                let encoded = buffer.format(*value);
+                let dt: NaiveDate = (*value).into();
+                let encoded = dt.to_string();
                 out.push(
-                    Self::encode_metadata_key(field, "d:", encoded).into(),
+                    Self::encode_metadata_key(field, "d:", &encoded).into(),
+                );
+            }
+            FieldValue::DateTime(value) => {
+                let dt: DateTime<FixedOffset> = (*value).into();
+                let encoded = dt.to_rfc3339();
+                out.push(
+                    Self::encode_metadata_key(field, "dt:", &encoded).into(),
+                );
+            }
+            FieldValue::Time(value) => {
+                let t: NaiveTime = (*value).into();
+                let encoded = t.to_string();
+                out.push(
+                    Self::encode_metadata_key(field, "t:", &encoded).into(),
+                );
+            }
+            FieldValue::Duration(value) => {
+                let d: TimeDelta = (*value).into();
+                let encoded = d.to_string();
+                out.push(
+                    Self::encode_metadata_key(field, "dur:", &encoded).into(),
                 );
             }
             FieldValue::Array(values) => {

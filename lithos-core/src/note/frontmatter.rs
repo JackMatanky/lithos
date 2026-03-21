@@ -15,18 +15,122 @@
               docs"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use regex::Regex;
 
 use super::{
-    error::{FrontmatterError, NoteParseError},
+    error::{FrontmatterError, NoteError, NoteParseError},
+    tag::Tag,
     value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
 };
 use crate::{
-    config::frontmatter::FrontmatterKey,
-    note::raw::{RawFrontmatter, RawFrontmatterFormat},
+    config::frontmatter::FrontmatterKey, note::raw::RawFrontmatterFormat,
 };
+
+/// Validated alias name for a note.
+///
+/// Aliases provide alternative names for notes, often used in `WikiLinks`
+/// for easier discovery and linking.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct AliasName(Box<str>);
+
+impl AliasName {
+    /// Creates a validated alias name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterError::InvalidAlias`] if the alias is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.is_empty() {
+            return Err(FrontmatterError::InvalidAlias {
+                value: value.into(),
+                reason: "alias cannot be empty",
+            }
+            .into());
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the alias as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AliasName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Validated file class name for a note.
+///
+/// File classes are a convention used in many Obsidian workflows to categorize
+/// notes and apply specific schema rules.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FileClassName(Box<str>);
+
+impl FileClassName {
+    /// Creates a validated file class name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterError::InvalidFileClass`] if the class is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.is_empty() {
+            return Err(FrontmatterError::InvalidFileClass {
+                value: value.into(),
+                reason: "file class cannot be empty",
+            }
+            .into());
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the file class as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for FileClassName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -48,11 +152,22 @@ use crate::{
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key-value pairs of metadata fields.
     fields: HashMap<Box<str>, FieldValue>,
+    /// Title as it appears in the file.
+    title: Option<Box<str>>,
+    /// Aliases as they appear in the file.
+    aliases: Option<Box<[AliasName]>>,
+    /// Tags as they appear in the file.
+    tags: Option<Box<[Tag]>>,
+    /// File class as it appears in the file.
+    file_class: Option<FileClassName>,
+    /// Explicit creation date from frontmatter.
+    date_created: Option<FieldValue>,
+    /// Explicit modification date from frontmatter.
+    date_modified: Option<FieldValue>,
 }
 
 /// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
@@ -114,12 +229,10 @@ impl Frontmatter {
     pub(crate) fn parse(
         format: RawFrontmatterFormat,
         text: &str,
+        config: &crate::config::aggregate::Config,
     ) -> Result<Self, NoteParseError> {
-        match format {
+        let fields: HashMap<Box<str>, FieldValue> = match format {
             RawFrontmatterFormat::Yaml => {
-                if let Ok(fm) = serde_yaml::from_str::<Self>(text) {
-                    return Ok(fm);
-                }
                 let sanitized = Self::sanitize_yaml_obsidian_links(text);
                 serde_yaml::from_str(&sanitized).map_err(|e| {
                     let location = e.location();
@@ -131,25 +244,177 @@ impl Frontmatter {
                             .map(serde_yaml::Location::column),
                         reason: e.to_string().into(),
                     }
-                })
+                })?
             }
             RawFrontmatterFormat::Toml => {
-                toml::from_str(text).map_err(|e| NoteParseError::Frontmatter {
-                    format: "TOML",
-                    line: None,
-                    column: None,
-                    reason: e.to_string().into(),
-                })
+                toml::from_str(text).map_err(|e| {
+                    NoteParseError::Frontmatter {
+                        format: "TOML",
+                        line: None,
+                        column: None,
+                        reason: e.to_string().into(),
+                    }
+                })?
+            }
+        };
+
+        Ok(Self::from_fields(fields, config))
+    }
+
+    /// Creates a new [`Frontmatter`] instance from a field map, extracting
+    /// explicit attributes using the provided configuration.
+    #[inline]
+    #[must_use]
+    pub fn from_fields(
+        fields: HashMap<Box<str>, FieldValue>,
+        config: &crate::config::aggregate::Config,
+    ) -> Self {
+        let fm_config = config.frontmatter();
+
+        let title = fields
+            .get(fm_config.title().as_str())
+            .and_then(FieldValue::as_str)
+            .map(Into::into);
+
+        let aliases = fields.get(fm_config.alias().as_str()).map(|v| {
+            if let Some(s) = v.as_str() {
+                vec![AliasName(s.into())].into_boxed_slice()
+            } else if let Some(arr) = v.as_array() {
+                arr.iter()
+                    .filter_map(|item| {
+                        item.as_str().map(|s| AliasName(s.into()))
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            } else {
+                Box::new([])
+            }
+        });
+
+        let tags = fields.get(fm_config.tags().as_str()).map(|v| {
+            let mut tags = Vec::new();
+            Self::collect_tags_from_value(v, &mut tags);
+            tags.into_boxed_slice()
+        });
+
+        let file_class = fields
+            .get(fm_config.file_class().as_str())
+            .and_then(FieldValue::as_str)
+            .map(|s| FileClassName(s.into()));
+
+        let date_created = fields
+            .get(fm_config.date_created().as_str())
+            .cloned()
+            .filter(FieldValue::is_temporal);
+
+        let date_modified = fields
+            .get(fm_config.date_modified().as_str())
+            .cloned()
+            .filter(FieldValue::is_temporal);
+
+        Self {
+            fields,
+            title,
+            aliases,
+            tags,
+            file_class,
+            date_created,
+            date_modified,
+        }
+    }
+
+    fn collect_tags_from_value(value: &FieldValue, out: &mut Vec<Tag>) {
+        if let Some(text) = value.as_str() {
+            Self::collect_tags_from_str(text, out);
+        } else if let Some(values) = value.as_array() {
+            for item in values {
+                if let Some(text) = item.as_str() {
+                    Self::collect_tags_from_str(text, out);
+                }
+            }
+        } else {
+            // Non-taggable value types are ignored.
+        }
+    }
+
+    fn collect_tags_from_str(text: &str, out: &mut Vec<Tag>) {
+        for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
+            let token = token.trim();
+            if !token.is_empty()
+                && let Ok(tag) = Tag::try_from_token(token)
+            {
+                out.push(tag);
             }
         }
     }
 
+    /// Creates a new [`Frontmatter`] instance with explicit values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterError::TypeMismatch`] if `date_created` or
+    /// `date_modified` are not temporal variants.
+    #[inline]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Explicit attribute construction"
+    )]
+    pub fn try_new(
+        fields: HashMap<Box<str>, FieldValue>,
+        title: Option<Box<str>>,
+        aliases: Option<Box<[AliasName]>>,
+        tags: Option<Box<[Tag]>>,
+        file_class: Option<FileClassName>,
+        date_created: Option<FieldValue>,
+        date_modified: Option<FieldValue>,
+    ) -> Result<Self, NoteError> {
+        if let Some(d) = date_created.as_ref()
+            && !d.is_temporal()
+        {
+            return Err(FrontmatterError::TypeMismatch {
+                key: "date_created".into(),
+                expected: "date or datetime",
+                actual: d.type_name(),
+            }
+            .into());
+        }
+        if let Some(d) = date_modified.as_ref()
+            && !d.is_temporal()
+        {
+            return Err(FrontmatterError::TypeMismatch {
+                key: "date_modified".into(),
+                expected: "date or datetime",
+                actual: d.type_name(),
+            }
+            .into());
+        }
+
+        Ok(Self {
+            fields,
+            title,
+            aliases,
+            tags,
+            file_class,
+            date_created,
+            date_modified,
+        })
+    }
+
     /// Creates a new [`Frontmatter`] instance from a field map.
+    ///
+    /// Use [`from_fields`][Self::from_fields] to extract explicit attributes
+    /// using a configuration.
     #[inline]
     #[must_use]
     pub fn new(fields: HashMap<Box<str>, FieldValue>) -> Self {
         Self {
             fields,
+            title: None,
+            aliases: None,
+            tags: None,
+            file_class: None,
+            date_created: None,
+            date_modified: None,
         }
     }
 
@@ -322,10 +587,9 @@ impl Frontmatter {
     #[must_use]
     pub fn title(
         &self,
-        config: &crate::config::aggregate::Config,
+        _config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().title().as_str())
-            .and_then(FieldValue::as_str)
+        self.title.as_deref()
     }
 
     /// Returns the file class of the note, using the configured key.
@@ -336,10 +600,9 @@ impl Frontmatter {
     #[must_use]
     pub fn file_class(
         &self,
-        config: &crate::config::aggregate::Config,
+        _config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().file_class().as_str())
-            .and_then(FieldValue::as_str)
+        self.file_class.as_ref().map(FileClassName::as_str)
     }
 
     /// Returns a borrowed iterator over aliases.
@@ -347,31 +610,13 @@ impl Frontmatter {
     /// Handles both single string values and arrays of strings. Uses the
     /// alias key defined in the provided
     /// [`Config`][crate::config::aggregate::Config].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::collections::HashMap;
-    /// # use lithos_core::note::frontmatter::Frontmatter;
-    /// # use lithos_core::note::value::FieldValue;
-    /// # use lithos_core::config::aggregate::{Config, Version};
-    /// # use lithos_core::config::vault::{VaultId, VaultRoot};
-    /// # use lithos_core::config::raw::RawConfig;
-    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new("/v".into()).unwrap(), Version::initial()).unwrap();
-    /// let mut fields = HashMap::new();
-    /// fields.insert("aliases".into(), FieldValue::Array(vec![FieldValue::String("a".into()), FieldValue::String("b".into())].into_boxed_slice()));
-    /// let fm = Frontmatter::new(fields);
-    ///
-    /// let aliases: Vec<&str> = fm.aliases(&config).collect();
-    /// assert_eq!(aliases, vec!["a", "b"]);
-    /// ```
     #[inline]
     #[must_use]
     pub fn aliases<'frontmatter>(
         &'frontmatter self,
-        config: &crate::config::aggregate::Config,
+        _config: &crate::config::aggregate::Config,
     ) -> AliasValues<'frontmatter> {
-        AliasValues::new(self.get(config.frontmatter().alias().as_str()))
+        AliasValues::new(self.aliases.as_deref())
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
@@ -388,18 +633,25 @@ impl Frontmatter {
         self.aliases(config).map(Into::into).collect()
     }
 
+    /// Returns the explicit creation date of the note, if present in
+    /// frontmatter.
+    #[inline]
+    #[must_use]
+    pub const fn date_created(&self) -> Option<&FieldValue> {
+        self.date_created.as_ref()
+    }
+
+    /// Returns the explicit modification date of the note, if present in
+    /// frontmatter.
+    #[inline]
+    #[must_use]
+    pub const fn date_modified(&self) -> Option<&FieldValue> {
+        self.date_modified.as_ref()
+    }
+
     fn sanitize_yaml_obsidian_links(text: &str) -> String {
         let step1 = YAML_MAP_LINK_RE.replace_all(text, r#"$1"$2""#);
         YAML_LIST_LINK_RE.replace_all(&step1, r#"$1"$2""#).into_owned()
-    }
-}
-
-impl TryFrom<RawFrontmatter> for Frontmatter {
-    type Error = NoteParseError;
-
-    #[inline]
-    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
-        Frontmatter::parse(raw.kind(), raw.text())
     }
 }
 
@@ -437,20 +689,13 @@ pub struct AliasValues<'frontmatter> {
 
 enum AliasSource<'frontmatter> {
     Empty,
-    Single(Option<&'frontmatter str>),
-    Array(std::slice::Iter<'frontmatter, FieldValue>),
+    Array(std::slice::Iter<'frontmatter, AliasName>),
 }
 
 impl<'frontmatter> AliasValues<'frontmatter> {
-    fn new(value: Option<&'frontmatter FieldValue>) -> Self {
-        let inner = if let Some(value) = value {
-            if let Some(text) = value.as_str() {
-                AliasSource::Single(Some(text))
-            } else if let Some(values) = value.as_array() {
-                AliasSource::Array(values.iter())
-            } else {
-                AliasSource::Empty
-            }
+    fn new(aliases: Option<&'frontmatter [AliasName]>) -> Self {
+        let inner = if let Some(aliases) = aliases {
+            AliasSource::Array(aliases.iter())
         } else {
             AliasSource::Empty
         };
@@ -471,9 +716,8 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner {
             AliasSource::Empty => None,
-            AliasSource::Single(ref mut value) => value.take(),
             AliasSource::Array(ref mut iter) => {
-                iter.find_map(|item| item.as_str())
+                iter.next().map(AliasName::as_str)
             }
         }
     }
@@ -485,17 +729,17 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
     )]
     fn size_hint(&self) -> (usize, Option<usize>) {
         match &self.inner {
-            AliasSource::Empty | AliasSource::Single(None) => (0, Some(0)),
-            AliasSource::Single(Some(_)) => (1, Some(1)),
-            AliasSource::Array(iter) => {
-                let (_, upper) = iter.size_hint();
-                (0, upper)
-            }
+            AliasSource::Empty => (0, Some(0)),
+            AliasSource::Array(iter) => iter.size_hint(),
         }
     }
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module organization"
+)]
 mod tests {
     /// Test fixtures and builders for Frontmatter tests.
     #[expect(
@@ -503,10 +747,16 @@ mod tests {
         reason = "Fixture helpers are used by multiple test modules"
     )]
     mod fixtures {
-        use chrono::{DateTime, TimeZone as _, Utc};
+        use std::collections::HashMap;
 
-        use super::{super::*, TEST_TIMESTAMP};
-        use crate::{config::aggregate::Config, note::error::NoteError};
+        use chrono::{FixedOffset, TimeZone as _, Utc};
+
+        use crate::{
+            config::aggregate::Config,
+            note::{frontmatter::Frontmatter, value::FieldValue},
+        };
+
+        pub const TEST_TIMESTAMP: i64 = 1_700_000_000;
 
         /// Builder for creating test Frontmatter instances.
         pub struct FrontmatterBuilder {
@@ -537,7 +787,17 @@ mod tests {
             }
 
             pub fn with_date(mut self, key: &str, timestamp: i64) -> Self {
-                self.fields.insert(key.into(), FieldValue::Date(timestamp));
+                let dt = Utc
+                    .timestamp_opt(timestamp, 0)
+                    .single()
+                    .expect("valid timestamp");
+                self.fields.insert(
+                    key.into(),
+                    FieldValue::DateTime(
+                        dt.with_timezone(&FixedOffset::east_opt(0).unwrap())
+                            .into(),
+                    ),
+                );
                 self
             }
 
@@ -553,18 +813,30 @@ mod tests {
                 self
             }
 
-            #[expect(
-                clippy::unnecessary_wraps,
-                reason = "Fixture builder keeps Result parity with fallible \
-                          builders"
-            )]
-            pub fn build(self) -> Result<Frontmatter, NoteError> {
-                Ok(Frontmatter::new(self.fields))
+            pub fn build(self) -> Frontmatter {
+                use crate::config::{
+                    aggregate::Version,
+                    raw::RawConfig,
+                    vault::{VaultId, VaultRoot},
+                };
+                let config = crate::config::aggregate::Config::build(
+                    &RawConfig::default(),
+                    VaultId::new(),
+                    VaultRoot::try_new(std::path::PathBuf::from("/v")).unwrap(),
+                    Version::initial(),
+                )
+                .unwrap();
+                Frontmatter::from_fields(self.fields, &config)
+            }
+
+            pub fn build_with_config(self, config: &Config) -> Frontmatter {
+                Frontmatter::from_fields(self.fields, config)
             }
         }
 
         pub fn config_with_custom_frontmatter_keys() -> Config {
             use crate::config::{
+                aggregate::Version,
                 frontmatter::RawFrontmatter,
                 raw::RawConfig,
                 vault::{VaultId, VaultRoot},
@@ -587,25 +859,22 @@ mod tests {
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/v"))
                     .expect("vault_root"),
-                crate::config::aggregate::Version::initial(),
+                Version::initial(),
             )
             .expect("Config build should succeed")
         }
 
         pub fn frontmatter_with_custom_keys() -> Frontmatter {
+            let config = config_with_custom_frontmatter_keys();
             FrontmatterBuilder::new()
                 .with_string("subject", "Subj")
                 .with_string("kind", "Note")
                 .with_string("names", "Alias")
-                .build()
-                .expect("Frontmatter build should succeed")
+                .build_with_config(&config)
         }
 
         pub fn frontmatter_with_title() -> Frontmatter {
-            FrontmatterBuilder::new()
-                .with_string("title", "Test")
-                .build()
-                .expect("Frontmatter build should succeed")
+            FrontmatterBuilder::new().with_string("title", "Test").build()
         }
 
         pub fn frontmatter_with_string_arrays() -> Frontmatter {
@@ -613,7 +882,6 @@ mod tests {
                 .with_string("single", "a")
                 .with_array("multi", vec![FieldValue::String("b".into())])
                 .build()
-                .expect("Frontmatter build should succeed")
         }
 
         pub fn frontmatter_with_scalar_values() -> Frontmatter {
@@ -623,7 +891,6 @@ mod tests {
                 .with_string("s", "s")
                 .with_date("d", TEST_TIMESTAMP)
                 .build()
-                .expect("Frontmatter build should succeed")
         }
 
         pub fn frontmatter_for_try_get() -> Frontmatter {
@@ -657,16 +924,24 @@ mod tests {
 
         pub fn frontmatter_with_invalid_date() -> Frontmatter {
             let mut fields = HashMap::new();
-            fields.insert("d".into(), FieldValue::Date(i64::MAX));
-            Frontmatter::new(fields)
+            // Boolean is not a temporal type
+            fields.insert("d".into(), FieldValue::Boolean(true));
+            // Actually Frontmatter struct now caches these, so we use try_new.
+            Frontmatter::try_new(fields, None, None, None, None, None, None)
+                .unwrap()
         }
 
-        pub fn sample_datetime() -> DateTime<Utc> {
+        pub fn sample_datetime() -> chrono::DateTime<Utc> {
             Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0)
                 .single()
                 .expect("Valid date should be created")
         }
     }
+
+    use chrono::{DateTime, NaiveDate, Utc};
+
+    use super::*;
+    use crate::note::{error::FrontmatterError, frontmatter::FrontmatterKey};
 
     mod field_value {
         #![allow(
@@ -675,7 +950,7 @@ mod tests {
             reason = "Test code style"
         )]
 
-        use super::{super::*, TEST_TIMESTAMP, fixtures};
+        use super::*;
 
         #[test]
         fn array_coerces_to_array() {
@@ -715,25 +990,31 @@ mod tests {
         }
 
         #[test]
-        fn date_coerces_to_timestamp() {
-            let value = FieldValue::Date(TEST_TIMESTAMP);
+        fn date_coerces_to_naive_date() {
+            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
+            let value = FieldValue::Date(date.into());
             assert!(
-                value.as_date().is_some(),
-                "Date should coerce to timestamp"
+                value.as_naive_date().is_some(),
+                "Date should coerce to NaiveDate"
             );
         }
 
         #[test]
-        fn date_coerces_to_datetime() {
-            let _value = FieldValue::Date(TEST_TIMESTAMP);
-            use chrono::{TimeZone as _, Utc};
-            let dt = Utc.timestamp_opt(TEST_TIMESTAMP, 0).single();
-            assert!(dt.is_some(), "Date should coerce to DateTime");
+        fn date_coerces_to_datetime_via_try_get() {
+            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
+            let mut fields = HashMap::new();
+            fields.insert("d".into(), FieldValue::Date(date.into()));
+            let fm = Frontmatter::new(fields);
+            let key = FrontmatterKey::try_new("d").unwrap();
+            let dt: Result<Option<DateTime<Utc>>, _> = fm.try_get(&key);
+            assert!(dt.is_ok());
+            assert!(dt.unwrap().is_some());
         }
 
         #[test]
         fn date_does_not_coerce_to_number() {
-            let value = FieldValue::Date(TEST_TIMESTAMP);
+            let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
+            let value = FieldValue::Date(date.into());
             assert!(
                 value.as_number().is_none(),
                 "Date should not coerce to number"
@@ -750,7 +1031,7 @@ mod tests {
         fn number_does_not_coerce_to_date() {
             let value = FieldValue::Number(1.0f64);
             assert!(
-                value.as_date().is_none(),
+                value.as_naive_date().is_none(),
                 "Number should not coerce to date"
             );
         }
@@ -793,23 +1074,14 @@ mod tests {
         }
 
         #[test]
-        fn date_field_returns_timestamp() {
-            let timestamp = fixtures::sample_datetime().timestamp();
-            let val = FieldValue::Date(timestamp);
+        fn date_field_returns_naive_date() {
+            let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+            let val = FieldValue::Date(date.into());
             assert_eq!(
-                val.as_date(),
-                Some(timestamp),
-                "Date field should return timestamp"
+                val.as_naive_date(),
+                Some(date),
+                "Date field should return NaiveDate"
             );
-        }
-
-        #[test]
-        fn date_field_returns_datetime_with_expected_year() {
-            let timestamp = fixtures::sample_datetime().timestamp();
-            use chrono::{TimeZone as _, Utc};
-            let _val = FieldValue::Date(timestamp);
-            let dt = Utc.timestamp_opt(timestamp, 0).single();
-            assert!(dt.is_some(), "Date field should convert to DateTime");
         }
 
         #[test]
@@ -836,9 +1108,7 @@ mod tests {
     }
 
     mod conversions {
-        use chrono::{DateTime, Utc};
-
-        use super::{super::*, fixtures};
+        use super::*;
 
         #[test]
         fn try_get_returns_string_value() {
@@ -926,12 +1196,13 @@ mod tests {
         }
 
         fn string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
-            if let Some(items) = value.array_items() {
-                return Some(
-                    items
-                        .filter_map(|item| item.as_str().map(Into::into))
-                        .collect(),
-                );
+            if let Some(items) = value.as_array() {
+                let out = items
+                    .iter()
+                    .filter_map(FieldValue::as_str)
+                    .map(Into::into)
+                    .collect();
+                return Some(out);
             }
 
             value.as_str().map(|s| vec![s.into()])
@@ -975,23 +1246,21 @@ mod tests {
         }
 
         #[test]
-        fn strict_date_reports_invalid_timestamp() {
+        fn strict_date_reports_type_mismatch_on_non_date() {
             let fm = fixtures::frontmatter_with_invalid_date();
             let lookup_key = FrontmatterKey::try_new("d").expect("valid key");
             let result = fm.try_get_required::<DateTime<Utc>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
-                    Err(FrontmatterError::InvalidDateTimestamp {
+                    Err(FrontmatterError::TypeMismatch {
                         key: error_key,
-                        timestamp,
-                    })
-                        if error_key.as_ref() == "d" && *timestamp == i64::MAX
+                        expected: "datetime",
+                        ..
+                    }) if error_key.as_ref() == "d"
                 ),
-                "invalid timestamp should error: {result:?}"
+                "type mismatch should error: {result:?}"
             );
         }
     }
-
-    const TEST_TIMESTAMP: i64 = 1_700_000_000;
 }

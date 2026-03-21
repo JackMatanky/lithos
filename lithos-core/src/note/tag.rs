@@ -17,6 +17,7 @@
 use std::ops::Deref;
 
 use rkyv::{Archive, Deserialize, Serialize};
+use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 
 use super::error::TagError;
 
@@ -36,7 +37,17 @@ use super::error::TagError;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    SerdeSerialize,
+    SerdeDeserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Tag {
@@ -106,7 +117,16 @@ impl Tag {
 
 /// Internal wrapper for the full tag path string (without leading `#`).
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    SerdeSerialize,
+    SerdeDeserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
 struct TagPath(Box<str>);
@@ -141,7 +161,17 @@ impl TagPath {
 }
 
 /// Internal wrapper for tag segments.
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    SerdeSerialize,
+    SerdeDeserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
 #[rkyv(derive(Debug))]
 pub struct Segments(Vec<Box<str>>);
 

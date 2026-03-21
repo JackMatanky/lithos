@@ -10,7 +10,10 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, TimeZone as _, Utc};
+use chrono::{
+    DateTime, Datelike as _, FixedOffset, NaiveDate, NaiveTime, TimeDelta,
+    TimeZone as _, Utc,
+};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _,
 };
@@ -22,9 +25,6 @@ use super::error::FrontmatterError;
 /// This enum represents the set of supported value types in the note domain.
 /// It is used for both frontmatter (YAML/TOML) and task metadata (`[key::
 /// value]`).
-///
-/// Note: `DateTime` is stored as an `i64` Unix timestamp for `rkyv`
-/// compatibility.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -43,14 +43,193 @@ pub enum FieldValue {
     Array(#[rkyv(omit_bounds)] Box<[FieldValue]>),
     /// Boolean value.
     Boolean(bool),
-    /// Date/time value (stored as Unix timestamp for serialization).
-    Date(i64),
+    /// Date value (YYYY-MM-DD).
+    Date(NaiveDateValue),
+    /// Date/time value with offset.
+    DateTime(DateTimeValue),
+    /// Wall clock time.
+    Time(NaiveTimeValue),
+    /// Time duration.
+    Duration(DurationValue),
     /// Numeric value (float).
     Number(f64),
     /// Nested object of values.
     Object(#[rkyv(omit_bounds)] HashMap<Box<str>, FieldValue>),
     /// String value.
     String(Box<str>),
+}
+
+/// Internal archivable representation of a `chrono::NaiveDate`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NaiveDateValue {
+    /// Days since January 1, 1 CE.
+    num_days: i32,
+}
+
+impl From<NaiveDate> for NaiveDateValue {
+    #[inline]
+    fn from(date: NaiveDate) -> Self {
+        Self {
+            num_days: date.num_days_from_ce(),
+        }
+    }
+}
+
+impl From<NaiveDateValue> for NaiveDate {
+    #[inline]
+    fn from(val: NaiveDateValue) -> Self {
+        NaiveDate::from_num_days_from_ce_opt(val.num_days).unwrap_or_default()
+    }
+}
+
+/// Internal archivable representation of a `chrono::DateTime<FixedOffset>`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct DateTimeValue {
+    /// Seconds since Unix epoch.
+    timestamp: i64,
+    /// Nanoseconds part.
+    nanos: u32,
+    /// Offset from UTC in seconds.
+    offset_secs: i32,
+}
+
+impl From<DateTime<FixedOffset>> for DateTimeValue {
+    #[inline]
+    fn from(dt: DateTime<FixedOffset>) -> Self {
+        Self {
+            timestamp: dt.timestamp(),
+            nanos: dt.timestamp_subsec_nanos(),
+            offset_secs: dt.offset().local_minus_utc(),
+        }
+    }
+}
+
+impl From<DateTimeValue> for DateTime<FixedOffset> {
+    #[inline]
+    fn from(val: DateTimeValue) -> Self {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Default offsets and epoch timestamps are guaranteed \
+                      valid"
+        )]
+        let offset = FixedOffset::east_opt(val.offset_secs)
+            .unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Epoch timestamp is guaranteed valid"
+        )]
+        offset.timestamp_opt(val.timestamp, val.nanos).single().unwrap_or_else(
+            || Utc.timestamp_opt(0, 0).single().unwrap().with_timezone(&offset),
+        )
+    }
+}
+
+/// Internal archivable representation of a `chrono::NaiveTime`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NaiveTimeValue {
+    /// Seconds since midnight.
+    secs: u32,
+    /// Nanoseconds part.
+    nanos: u32,
+}
+
+impl From<NaiveTime> for NaiveTimeValue {
+    #[inline]
+    fn from(time: NaiveTime) -> Self {
+        use chrono::Timelike as _;
+        Self {
+            secs: time.num_seconds_from_midnight(),
+            nanos: time.nanosecond(),
+        }
+    }
+}
+
+impl From<NaiveTimeValue> for NaiveTime {
+    #[inline]
+    fn from(val: NaiveTimeValue) -> Self {
+        NaiveTime::from_num_seconds_from_midnight_opt(val.secs, val.nanos)
+            .unwrap_or_default()
+    }
+}
+
+/// Internal archivable representation of a `chrono::TimeDelta`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct DurationValue {
+    /// Total seconds.
+    secs: i64,
+    /// Nanoseconds part.
+    nanos: u32,
+}
+
+impl From<TimeDelta> for DurationValue {
+    #[inline]
+    fn from(delta: TimeDelta) -> Self {
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_sign_loss,
+            reason = "Nanoseconds are positive"
+        )]
+        Self {
+            secs: delta.num_seconds(),
+            nanos: delta.subsec_nanos() as u32,
+        }
+    }
+}
+
+impl From<DurationValue> for TimeDelta {
+    #[inline]
+    fn from(val: DurationValue) -> Self {
+        TimeDelta::new(val.secs, val.nanos).unwrap_or_else(TimeDelta::zero)
+    }
 }
 
 #[expect(
@@ -68,6 +247,9 @@ impl FieldValue {
             Self::Array(_) => "array",
             Self::Boolean(_) => "boolean",
             Self::Date(_) => "date",
+            Self::DateTime(_) => "datetime",
+            Self::Time(_) => "time",
+            Self::Duration(_) => "duration",
             Self::Number(_) => "number",
             Self::Object(_) => "object",
             Self::String(_) => "string",
@@ -85,15 +267,55 @@ impl FieldValue {
         }
     }
 
-    /// Returns the date timestamp if this is a `Date` variant.
+    /// Returns the date value if this is a `Date` variant.
     #[inline]
     #[must_use]
-    pub fn as_date(&self) -> Option<i64> {
-        if let &Self::Date(timestamp) = self {
-            Some(timestamp)
+    pub fn as_naive_date(&self) -> Option<NaiveDate> {
+        if let &Self::Date(val) = self {
+            Some(val.into())
         } else {
             None
         }
+    }
+
+    /// Returns the datetime value if this is a `DateTime` variant.
+    #[inline]
+    #[must_use]
+    pub fn as_datetime(&self) -> Option<DateTime<FixedOffset>> {
+        if let &Self::DateTime(val) = self {
+            Some(val.into())
+        } else {
+            None
+        }
+    }
+
+    /// Returns the time value if this is a `Time` variant.
+    #[inline]
+    #[must_use]
+    pub fn as_naive_time(&self) -> Option<NaiveTime> {
+        if let &Self::Time(val) = self {
+            Some(val.into())
+        } else {
+            None
+        }
+    }
+
+    /// Returns the duration value if this is a `Duration` variant.
+    #[inline]
+    #[must_use]
+    pub fn as_duration(&self) -> Option<TimeDelta> {
+        if let &Self::Duration(val) = self {
+            Some(val.into())
+        } else {
+            None
+        }
+    }
+
+    /// Returns true if this value represents a date or time.
+    #[inline]
+    #[must_use]
+    pub fn is_temporal(&self) -> bool {
+        matches!(self, Self::Date(_) | Self::DateTime(_) | Self::Time(_))
     }
 
     /// Returns the number value if this is a `Number` variant.
@@ -182,10 +404,21 @@ impl Serialize for FieldValue {
         match self {
             Self::Array(arr) => serializer.collect_seq(arr.iter()),
             &Self::Boolean(b) => serializer.serialize_bool(b),
-            &Self::Date(ts) => {
-                let datetime = DateTime::from_timestamp(ts, 0)
-                    .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
-                serializer.serialize_str(&datetime.to_rfc3339())
+            &Self::Date(val) => {
+                let dt: NaiveDate = val.into();
+                serializer.serialize_str(&dt.to_string())
+            }
+            &Self::DateTime(val) => {
+                let dt: DateTime<FixedOffset> = val.into();
+                serializer.serialize_str(&dt.to_rfc3339())
+            }
+            &Self::Time(val) => {
+                let t: NaiveTime = val.into();
+                serializer.serialize_str(&t.to_string())
+            }
+            &Self::Duration(val) => {
+                let d: TimeDelta = val.into();
+                serializer.serialize_str(&d.to_string())
             }
             &Self::Number(n) => serializer.serialize_f64(n),
             #[expect(clippy::iter_over_hash_type, reason = "Internal matching")]
@@ -251,16 +484,18 @@ impl<'de> Deserialize<'de> for FieldValue {
             where
                 E: serde::de::Error,
             {
-                // Try parsing as ISO8601 date or YYYY-MM-DD
+                // Try parsing prioritized temporal types
                 if let Ok(dt) = DateTime::parse_from_rfc3339(v) {
-                    return Ok(FieldValue::Date(dt.timestamp()));
+                    return Ok(FieldValue::DateTime(dt.into()));
                 }
-                if let Ok(dt) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
-                    && let Some(naive) = dt.and_hms_opt(0, 0, 0)
-                {
-                    return Ok(FieldValue::Date(
-                        Utc.from_utc_datetime(&naive).timestamp(),
-                    ));
+                if let Ok(d) = NaiveDate::parse_from_str(v, "%Y-%m-%d") {
+                    return Ok(FieldValue::Date(d.into()));
+                }
+                if let Ok(t) = NaiveTime::parse_from_str(v, "%H:%M:%S") {
+                    return Ok(FieldValue::Time(t.into()));
+                }
+                if let Ok(t) = NaiveTime::parse_from_str(v, "%H:%M") {
+                    return Ok(FieldValue::Time(t.into()));
                 }
                 Ok(FieldValue::String(v.into()))
             }
@@ -423,17 +658,84 @@ impl TryFromFieldValue for Box<str> {
 impl TryFromFieldValue for DateTime<Utc> {
     #[inline]
     fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        let ts =
-            value.as_date().ok_or_else(|| FrontmatterError::TypeMismatch {
-                key: "".into(),
-                expected: "date",
-                actual: value.type_name(),
-            })?;
-        Utc.timestamp_opt(ts, 0).single().ok_or({
-            FrontmatterError::InvalidDateTimestamp {
-                key: "".into(),
-                timestamp: ts,
+        if let Some(dt) = value.as_datetime() {
+            return Ok(dt.with_timezone(&Utc));
+        }
+        if let Some(d) = value.as_naive_date()
+            && let Some(naive) = d.and_hms_opt(0, 0, 0)
+        {
+            return Ok(Utc.from_utc_datetime(&naive));
+        }
+        Err(FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "datetime",
+            actual: value.type_name(),
+        })
+    }
+}
+
+impl TryFromFieldValue for DateTime<FixedOffset> {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        if let Some(dt) = value.as_datetime() {
+            return Ok(dt);
+        }
+        if let Some(d) = value.as_naive_date() {
+            #[expect(clippy::unwrap_used, reason = "Zero offset is valid")]
+            let offset = FixedOffset::east_opt(0).unwrap();
+            if let Some(naive) = d.and_hms_opt(0, 0, 0) {
+                return Ok(offset.from_utc_datetime(&naive));
             }
+        }
+        Err(FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "datetime",
+            actual: value.type_name(),
+        })
+    }
+}
+
+impl TryFromFieldValue for NaiveDate {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        if let Some(d) = value.as_naive_date() {
+            return Ok(d);
+        }
+        if let Some(dt) = value.as_datetime() {
+            return Ok(dt.date_naive());
+        }
+        Err(FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "date",
+            actual: value.type_name(),
+        })
+    }
+}
+
+impl TryFromFieldValue for NaiveTime {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        if let Some(t) = value.as_naive_time() {
+            return Ok(t);
+        }
+        if let Some(dt) = value.as_datetime() {
+            return Ok(dt.time());
+        }
+        Err(FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "time",
+            actual: value.type_name(),
+        })
+    }
+}
+
+impl TryFromFieldValue for TimeDelta {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_duration().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "duration",
+            actual: value.type_name(),
         })
     }
 }
@@ -543,11 +845,72 @@ mod tests {
         assert_eq!(FieldValue::String("".into()).type_name(), "string");
         assert_eq!(FieldValue::Number(0.0f64).type_name(), "number");
         assert_eq!(FieldValue::Boolean(true).type_name(), "boolean");
-        assert_eq!(FieldValue::Date(0i64).type_name(), "date");
+        assert_eq!(
+            FieldValue::Date(
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap().into()
+            )
+            .type_name(),
+            "date"
+        );
+        assert_eq!(
+            FieldValue::DateTime(
+                DateTime::parse_from_rfc3339("2024-03-20T14:30:00Z")
+                    .unwrap()
+                    .into()
+            )
+            .type_name(),
+            "datetime"
+        );
+        assert_eq!(
+            FieldValue::Time(
+                NaiveTime::from_hms_opt(14, 30, 0).unwrap().into()
+            )
+            .type_name(),
+            "time"
+        );
+        assert_eq!(
+            FieldValue::Duration(TimeDelta::hours(2).into()).type_name(),
+            "duration"
+        );
         assert_eq!(
             FieldValue::Array(vec![].into_boxed_slice()).type_name(),
             "array"
         );
         assert_eq!(FieldValue::Object(HashMap::new()).type_name(), "object");
+    }
+
+    #[test]
+    fn temporal_parsing() {
+        let json_date = "\"2024-03-20\"";
+        let val_date: FieldValue = serde_json::from_str(json_date).unwrap();
+        assert!(matches!(val_date, FieldValue::Date(_)));
+
+        let json_dt = "\"2024-03-20T14:30:00Z\"";
+        let val_dt: FieldValue = serde_json::from_str(json_dt).unwrap();
+        assert!(matches!(val_dt, FieldValue::DateTime(_)));
+
+        let json_time = "\"14:30:00\"";
+        let val_time: FieldValue = serde_json::from_str(json_time).unwrap();
+        assert!(matches!(val_time, FieldValue::Time(_)));
+    }
+
+    #[test]
+    fn conversion_traits() {
+        let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
+        let val_date = FieldValue::Date(date.into());
+        assert_eq!(val_date.as_naive_date(), Some(date));
+
+        let dt =
+            DateTime::parse_from_rfc3339("2024-03-20T14:30:00+01:00").unwrap();
+        let val_dt = FieldValue::DateTime(dt.into());
+        assert_eq!(val_dt.as_datetime(), Some(dt));
+
+        let time = NaiveTime::from_hms_opt(14, 30, 0).unwrap();
+        let val_time = FieldValue::Time(time.into());
+        assert_eq!(val_time.as_naive_time(), Some(time));
+
+        let duration = TimeDelta::hours(2);
+        let val_dur = FieldValue::Duration(duration.into());
+        assert_eq!(val_dur.as_duration(), Some(duration));
     }
 }
