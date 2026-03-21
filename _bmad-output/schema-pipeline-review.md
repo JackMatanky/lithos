@@ -32,6 +32,7 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
    - Guarantee validity at type level
 
 **Architectural Shifts**:
+
 1. **Eliminate `Ingestor`**: Move all filesystem and DB access directly into state machine transition logic.
 2. **Refactor `Loader` to `Builder`**: Convert the complex orchestrator into a thin 20-line facade that simply instantiates and drives the state machines.
 
@@ -285,12 +286,12 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 
 **Four Distinct Paths** based on view existence and content comparison:
 
-| Path         | Trigger                         | File I/O         | Parsing             | DB Reads  | DB Writes   | Notes                  |
-| ------------ | ------------------------------- | ---------------- | ------------------- | --------- | ----------- | ---------------------- |
-| **NEW**      | No view in DB                   | ✅ Full read     | ✅ Parse + validate | -         | Bank + View | First time seeing file |
-| **FreshTimestamp** | Timestamps match          | ❌ None          | ❌ None             | Bank only | -           | Fastest path (cached)  |
+| Path               | Trigger                         | File I/O         | Parsing             | DB Reads  | DB Writes   | Notes                  |
+| ------------------ | ------------------------------- | ---------------- | ------------------- | --------- | ----------- | ---------------------- |
+| **NEW**            | No view in DB                   | ✅ Full read     | ✅ Parse + validate | -         | Bank + View | First time seeing file |
+| **FreshTimestamp** | Timestamps match                | ❌ None          | ❌ None             | Bank only | -           | Fastest path (cached)  |
 | **FreshContent**   | Hash matches, timestamps differ | ✅ Read for hash | ❌ None             | Bank only | View only   | Clock skew handling    |
-| **STALE**    | Hash differs                    | ✅ Full read     | ✅ Parse + validate | Bank only | Bank + View | Incremental update     |
+| **STALE**          | Hash differs                    | ✅ Full read     | ✅ Parse + validate | Bank only | Bank + View | Incremental update     |
 
 **Two-Tier Staleness Check** (fast path → slow path):
 
@@ -669,8 +670,8 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                                Discovery                                 │
-│                     (Determines SchemaPipelinePath)                      │
-│               (NEW / FreshTimestamp / FreshContent / STALE)              │
+│                 (Query DB for RawSchemaView by filename)                 │
+│   (Determine SchemaPipelinePath: NEW/FreshTimestamp/FreshContent/STALE)  │
 └───────┬─────────────────┬─────────────────┬──────────────────┬───────────┘
         │                 │                 │                  │
         ▼                 ▼                 ▼                  ▼
@@ -715,21 +716,22 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 
 **State Details (Phase 1: Discovery to Expansion)**:
 
-| State | Data Structure | Used By Paths | Notes |
-|-------|---------------|---------------|-------|
-| **1. Discovery** | `PropertyBankPath`, Config | All | Batches files, queries DB, determines `SchemaPipelinePath` |
-| **2. FileParsed** | `RawSchema`, metadata | NEW, STALE | Parses file, validates, builds `bank_references` map |
-| **3. SchemaPropertyDelta** | Schema delta info | STALE | Finds new/modified/removed properties in schema file |
-| **4. RawConstructed** | `RawSchemaView`, `RawSchema` | All | Fetches baseline from DB or builds from scratch |
-| **5. BankReferenceDelta** | PB refs to re-expand | FRESH*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta` |
-| **6. DeltaApplied** | `RawSchema` (updated) | STALE | Applies schema file changes to baseline |
-| **7. RefsExpanded** | `RefExpandedSchema` | All | Expands refs, constructs `SchemaVersion`, persists view |
+| State                      | Data Structure               | Used By Paths                        | Notes                                                      |
+| -------------------------- | ---------------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| **1. Discovery**           | `PropertyBankPath`, Config   | All                                  | Batches files, queries DB, determines `SchemaPipelinePath` |
+| **2. FileParsed**          | `RawSchema`, metadata        | NEW, STALE                           | Parses file, validates, builds `bank_references` map       |
+| **3. SchemaPropertyDelta** | Schema delta info            | STALE                                | Finds new/modified/removed properties in schema file       |
+| **4. RawConstructed**      | `RawSchemaView`, `RawSchema` | All                                  | Fetches baseline from DB or builds from scratch            |
+| **5. BankReferenceDelta**  | PB refs to re-expand         | FRESH\*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta`     |
+| **6. DeltaApplied**        | `RawSchema` (updated)        | STALE                                | Applies schema file changes to baseline                    |
+| **7. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, constructs `SchemaVersion`, persists view    |
 
 ### 2.2 Phase 1: File Discovery to Expansion
 
 The action taken on each schema depends on a combination of **its own staleness** AND the **Property Bank's staleness**. The pipeline branches into 5 distinct flows.
 
 #### **State 1: Discovery** (All Paths)
+
 - **Input:** `PropertyBankPath` (with `PropertyDelta` if PB is STALE), Config schema dir
 - **Operations:**
   - Scan directory (excluding `property_bank`).
@@ -740,7 +742,9 @@ The action taken on each schema depends on a combination of **its own staleness*
 ---
 
 #### **Flow A: Schema is NEW**
-*No cached view exists. Must do full expansion.*
+
+_No cached view exists. Must do full expansion._
+
 - **State 2 (FileParsed):**
   - Read file, parse into `RawSchema`.
   - Extract metadata, compute content hash.
@@ -755,33 +759,39 @@ The action taken on each schema depends on a combination of **its own staleness*
 ---
 
 #### **Flow B: Schema is Fresh* AND Property Bank is Fresh***
-*Zero changes. Skip parsing entirely.*
+
+_Zero changes. Skip parsing entirely._
+
 - **State 7 (RefsExpanded):**
   - Instantly construct `RefExpandedSchema` using top-level metadata from the `RawSchemaView` (`name`, `extends`, `excludes`) and its cached `expanded_properties`.
-  - *No `RawSchema` deserialization occurs!*
+  - _No `RawSchema` deserialization occurs!_
   - No DB persistence needed.
 
 ---
 
-#### **Flow C: Schema is Fresh* AND Property Bank is STALE**
-*Schema file didn't change, but some of its PB references might have.*
+#### **Flow C: Schema is Fresh\* AND Property Bank is STALE**
+
+_Schema file didn't change, but some of its PB references might have._
+
 - **State 4 (RawConstructed):**
   - Fetch cached `RawSchemaView`.
   - If `FreshContent`, update view timestamps.
 - **State 5 (BankReferenceDelta):**
   - Intersect the view's `bank_references` map with the PB's `PropertyDelta.changed` list.
   - Output: specific schema property names needing re-expansion.
-  - *If intersection is empty, jump straight to RefsExpanded.*
+  - _If intersection is empty, jump straight to RefsExpanded._
 - **State 7 (RefsExpanded):**
   - Deserialize `raw_properties` from JSON bytes (only because we must re-expand).
-  - Re-run expansion *only* on the affected properties identified in State 5.
+  - Re-run expansion _only_ on the affected properties identified in State 5.
   - Update those specific keys in the cached `expanded_properties`.
   - Construct new `SchemaVersion`, update view, and persist.
 
 ---
 
-#### **Flow D: Schema is STALE AND Property Bank is Fresh***
-*Schema changed, PB didn't. Only expand schema changes.*
+#### **Flow D: Schema is STALE AND Property Bank is Fresh\***
+
+_Schema changed, PB didn't. Only expand schema changes._
+
 - **State 2 (FileParsed):**
   - Read new file, parse to `RawSchema`.
 - **State 3 (SchemaPropertyDelta):**
@@ -798,11 +808,13 @@ The action taken on each schema depends on a combination of **its own staleness*
 ---
 
 #### **Flow E: Schema is STALE AND Property Bank is STALE**
-*Both changed. Expand schema changes PLUS affected PB references.*
+
+_Both changed. Expand schema changes PLUS affected PB references._
+
 - **State 2 (FileParsed):** Parse new file.
 - **State 3 (SchemaPropertyDelta):** Compute schema file changes.
 - **State 4 (RawConstructed):** Fetch cached `RawSchemaView` baseline.
-- **State 5 (BankReferenceDelta):** Intersect *cached* `bank_references` with PB's `PropertyDelta`.
+- **State 5 (BankReferenceDelta):** Intersect _cached_ `bank_references` with PB's `PropertyDelta`.
 - **State 6 (DeltaApplied):**
   - Apply `SchemaPropertyDelta` to baseline.
   - Build new `RawSchemaView` from the updated `RawSchema`, computing the new `bank_references` map.
@@ -939,7 +951,7 @@ The action taken on each schema depends on a combination of **its own staleness*
 
 ### 2.3 Cached Expansion Optimization
 
-*(This concept is now natively handled by Flow C: Schema is Fresh AND PB is STALE, where we use the `BankReferenceDelta` to perform partial expansion.)*
+_(This concept is now natively handled by Flow C: Schema is Fresh AND PB is STALE, where we use the `BankReferenceDelta` to perform partial expansion.)_
 
 ---
 
