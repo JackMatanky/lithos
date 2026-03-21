@@ -49,46 +49,44 @@ Both pipelines share infrastructure (Ingestor, Repository) and follow distinct s
 The PropertyBank follows a **branching pipeline** with 6 distinct states, determined by staleness detection:
 
 ```
-┌───────────┐
-│ Discovery │──────┐
-└───────────┘      │
-                   │  Query DB for RawPropertyBankView
-                   │  Determine staleness (NEW/FreshTimestamp/FreshContent/STALE)
-                   │
-       ┌───────────┴───────────┬─────────────────┬──────────────┐
-       │                       │                 │              │
-       ▼                       ▼                 ▼              ▼
-    ┌─────┐               ┌──────────────┐  ┌────────────┐  ┌───────┐
-    │ NEW │               │FreshTimestamp│  │FreshContent│  │ STALE │
-    └──┬──┘               └──────┬───────┘  └──────┬─────┘  └───┬───┘
-       │                         │                 │            │
-       ▼                         │                 │            ▼
-  ┌────────────┐                 │                 │      ┌────────────┐
-  │FileParsed  │                 │                 │      │FileParsed  │
-  │(+view)     │                 │                 │      │(+view)     │
-  └─────┬──────┘                 │                 │      └─────┬──────┘
-        │                        │                 │            │
-        ▼                        │                 │            ▼
-  ┌──────────────┐               │                 │      ┌──────────────┐
-  │BaseConstructed│              │                 │      │PropertyDelta │
-  │(from scratch) │              │                 │      └──────┬───────┘
-  └──────┬────────┘              │                 │             │
-         │                       │                 │             ▼
-         │                       │                 │      ┌──────────────┐
-         │                       │                 │      │BaseConstructed│
-         │                       │                 │      │(from DB)     │
-         │                       │                 │      └──────┬───────┘
-         │                       │                 │             │
-         │                       │                 │             ▼
-         │                       │                 │      ┌────────────┐
-         │                       │                 │      │DeltaApplied│
-         │                       │                 │      │(+view)     │
-         │                       │                 │      └─────┬──────┘
-         │                       │                 │            │
-         ▼                       ▼                 ▼            ▼
-  ┌───────────────────────────────────────────────────────────────────┐
-  │                           Completed                               │
-  └───────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                              Discovery                               │
+│                   (Query DB for RawPropertyBankView)                 │
+│             (Determine NEW/FreshTimestamp/FreshContent/STALE)        │
+└───────┬─────────────────┬────────────────┬─────────────────┬─────────┘
+        │                 │                │                 │
+        ▼                 ▼                ▼                 ▼
+    ┌───────┐     ┌──────────────┐  ┌────────────┐       ┌───────┐
+    │  NEW  │     │FreshTimestamp│  │FreshContent│       │ STALE │
+    └───┬───┘     └───────┬──────┘  └──────┬─────┘       └───┬───┘
+        │                 │                │                 │
+        ▼                 │                │                 ▼
+  ┌───────────┐           │                │           ┌───────────┐
+  │FileParsed │           │                │           │FileParsed │
+  │  (+view)  │           │                │           │  (+view)  │
+  └─────┬─────┘           │                │           └─────┬─────┘
+        │                 │                │                 │
+        │                 │                │                 ▼
+        │                 │                │         ┌──────────────┐
+        │                 │                │         │PropertyDelta │
+        │                 │                │         └──────┬───────┘
+        │                 │                │                │
+        ▼                 ▼                ▼                ▼
+ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  ┌──────────────┐
+ │BaseConstructed││BaseConstructed││BaseConstructed│ │BaseConstructed│
+ │(from scratch)│ │  (from DB)   │ │ (+upd times) │  │  (from DB)   │
+ └──────┬───────┘ └───────┬──────┘ └───────┬──────┘  └───────┬──────┘
+        │                 │                │                 │
+        │                 │                │                 ▼
+        │                 │                │           ┌────────────┐
+        │                 │                │           │DeltaApplied│
+        │                 │                │           │  (+view)   │
+        │                 │                │           └─────┬──────┘
+        │                 │                │                 │
+        ▼                 ▼                ▼                 ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                              Completed                               │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 **State Details**:
