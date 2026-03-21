@@ -585,140 +585,156 @@ self.source.read_with(path, |path, content| {
 
 ### 2.1 State Identification
 
-The Schema pipeline is **complex and branching** with 10 primary states:
+The Schema pipeline is **complex and branching**, tracking both its own file staleness and the upstream `PropertyBank` staleness. The first phase of the pipeline (through reference expansion) consists of 7 states:
 
 ```
-                                  ┌─────────────────┐
-                                  │  FileRef List   │
-                                  │  (Vec<Path>)    │
-                                  └────────┬────────┘
-                                           │
-                                           ▼
-                         ┌─────────────────────────────────┐
-                         │    Bulk Staleness Detection     │
-                         │    (partition all schemas)      │
-                         └─────────┬───────────────────────┘
-                                   │
-                   ┌───────────────┼───────────────┐
-                   ▼               ▼               ▼
-           ┌──────────┐    ┌──────────┐    ┌──────────────┐
-           │   NEW    │    │   STALE  │    │FreshTimestamp│
-           └─────┬────┘    └─────┬────┘    │/FreshContent │
-                 │               │         └─────┬────────┘
-                 ├───────────────┘               │
-                 ▼                               │
-         ┌──────────────┐                        │
-         │  RawSchema   │                        │
-         │  (parsed)    │                        │
-         └──────┬───────┘                        │
-                │                                │
-                ▼                                │
-    ┌────────────────────────┐                   │
-    │  RefExpandedSchema     │                   │
-    │  (refs resolved)       │                   │
-    └────────────┬───────────┘                   │
-                 │                               │
-                 ▼                               │
-         ┌──────────────┐                        │
-         │  SchemaTree  │ ←──────────────────────┘
-         │  (topology)  │    (known_parents)
-         └──────┬───────┘
-                │
-                ▼
-         ┌──────────────┐
-         │   Schema     │
-         │  (resolved)  │
-         └──────┬───────┘
-                │
-                ▼
-         ┌──────────────┐
-         │  Persisted   │
-         └──────────────┘
+┌─────────────┐
+│  Discovery  │──────────────┐
+└─────────────┘              │
+                             │ Determines SchemaPipelinePath
+                             │ (New/FreshTimestamp/FreshContent/Stale)
+                             │
+     ┌───────────────┴───────────────┬───────────────────────────┐
+     │                               │                           │
+     ▼                               ▼                           ▼
+  ┌─────┐                     ┌──────────────┐               ┌───────┐
+  │ NEW │                     │FreshTimestamp│               │ STALE │
+  └──┬──┘                     │/FreshContent │               └───┬───┘
+     │                        └──────┬───────┘                   │
+     │                               │                           │
+     ▼                               │                           ▼
+┌────────────┐                       │                     ┌────────────┐
+│FileParsed  │                       │                     │FileParsed  │
+└─────┬──────┘                       │                     └─────┬──────┘
+      │                              │                           │
+      │                              │                           ▼
+      │                              │                  ┌───────────────────┐
+      │                              │                  │SchemaPropertyDelta│
+      │                              │                  └────────┬──────────┘
+      │                              │                           │
+      │                              ▼                           ▼
+      │                     ┌────────────────┐          ┌────────────────┐
+      │                     │ RawConstructed │          │ RawConstructed │
+      │                     │   (from DB)    │          │   (from DB)    │
+      │                     └────────┬───────┘          └────────┬───────┘
+      │                              │                           │
+      │                              ▼                           ▼
+      │           (If PB STALE) ┌──────────────────┐ (If PB STALE)
+      │           ┌─────────────┤BankReferenceDelta├─────────────┐
+      │           │             └──────────────────┘             │
+      │           │                                              ▼
+      │           │                                     ┌────────────┐
+      │           │                                     │DeltaApplied│
+      │           │                                     └─────┬──────┘
+      │           │                                           │
+      ▼           ▼                                           ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                           RefsExpanded                            │
+│        (Full, Partial, or Zero expansion depending on path)       │
+└─────────────────────────────────┬─────────────────────────────────┘
+                                  │
+                                  ▼
+                        (Proceeds to Tree Building)
 ```
 
-**State Details**:
+**State Details (Phase 1: Discovery to Expansion)**:
 
-| State                | Data Structure                | Location                     | Transitions       | Notes                    |
-| -------------------- | ----------------------------- | ---------------------------- | ----------------- | ------------------------ |
-| **1. FileRefList**   | `Vec<PathBuf>`                | `Ingestor::ingest_all()`     | → BulkStaleness   | List of all schema files |
-| **2. BulkStaleness** | `HashMap<Path, SchemaResult>` | `Ingestor::ingest_all()`     | → NEW/STALE/FreshTimestamp/FreshContent | Partition by staleness   |
-| **3a. NEW**          | `(SchemaId, RawSchema)`       | `SchemaResult::New`          | → RefExpanded     | First-time file          |
-| **3b. STALE**        | `(SchemaId, RawSchema)`       | `SchemaResult::Stale`        | → RefExpanded     | File changed             |
-| **3c. FreshTimestamp/FreshContent** | `SchemaId`   | `SchemaResult::Fresh`        | → (skip pipeline) | File unchanged           |
-| **4. RawSchema**     | `RawSchema`                   | After parsing                | → RefExpanded     | Syntax-validated         |
-| **5. RefExpanded**   | `RefExpandedSchema`           | `RefExpander::expand_all()`  | → SchemaTree      | Bank refs resolved       |
-| **6. SchemaTree**    | `SchemaTree`                  | `Extender::build()`          | → Schema          | Topological order        |
-| **7. Schema**        | `Schema`                      | `Merger::resolve()`          | → Persisted       | Fully resolved           |
-| **8. Persisted**     | `Schema` (in DB)              | `Repository::save_schemas()` | → Done            | Cached in database       |
+| State | Data Structure | Used By Paths | Notes |
+|-------|---------------|---------------|-------|
+| **1. Discovery** | `PropertyBankPath`, Config | All | Batches files, queries DB, determines `SchemaPipelinePath` |
+| **2. FileParsed** | `RawSchema`, metadata | NEW, STALE | Parses file, validates, builds `bank_references` map |
+| **3. SchemaPropertyDelta** | Schema delta info | STALE | Finds new/modified/removed properties in schema file |
+| **4. RawConstructed** | `RawSchemaView`, `RawSchema` | FRESH*, STALE | Fetches baseline from DB, deserializes `raw_properties` |
+| **5. BankReferenceDelta** | PB refs to re-expand | FRESH*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta` |
+| **6. DeltaApplied** | `RawSchema` (updated) | STALE | Applies schema file changes to baseline |
+| **7. RefsExpanded** | `RefExpandedSchema` | All | Expands refs, constructs `SchemaVersion`, persists view |
 
-### 2.2 Stage-by-Stage Breakdown
+### 2.2 Phase 1: File Discovery to Expansion
 
-#### Stage 1: File Discovery
+The action taken on each schema depends on a combination of **its own staleness** AND the **Property Bank's staleness**. The pipeline branches into 5 distinct flows.
 
-**Input**: Config paths
-**Output**: `Vec<PathBuf>` (all schema files)
-**Operations**:
+#### **State 1: Discovery** (All Paths)
+- **Input:** `PropertyBankPath` (with `PropertyDelta` if PB is STALE), Config schema dir
+- **Operations:**
+  - Scan directory (excluding `property_bank`).
+  - Fetch `RawSchemaView`s from DB for all files.
+  - Determine `SchemaPipelinePath` (`New`, `FreshTimestamp`, `FreshContent`, `Stale`) for each file via timestamp and content hash checks.
+- **Output:** Branches into one of the following 5 flows.
 
-- Scan schemas directory for `**/*.json`, `**/*.toml`, `**/*.yaml`
-- Exclude property_bank file
-- Return list of paths
-  **Errors**: `SchemaFileError::FileSystem`
-  **Location**: `Ingestor::list_all_schema_files()` lines 821-849
+---
 
-#### Stage 2: Bulk Staleness Partitioning
+#### **Flow A: Schema is NEW**
+*No cached view exists. Must do full expansion.*
+- **State 2 (FileParsed):**
+  - Read file, parse into `RawSchema`.
+  - Extract metadata, compute content hash.
+  - Build `bank_references` (`HashMap<PropertyName, PropertyName>`) by parsing `RawPropertyRefPath`s.
+- **State 7 (RefsExpanded):**
+  - Do full reference expansion on all properties against the `PropertyBank`.
+  - Construct `SchemaVersion` embedding `expanded_properties` and `bank_references`.
+  - Create `RawSchemaView` and persist it.
 
-**Input**: `Vec<PathBuf>` (file list)
-**Output**: `HashMap<PathBuf, SchemaResult>` (partitioned by staleness)
-**Operations**:
+---
 
-1. **Bulk queries** (NO N+1):
-   - `Repository::find_raw_schema_views_by_paths()` → `HashMap<Path, RawSchemaView>`
-   - `Repository::find_schema_ids_by_paths()` → `HashMap<Path, SchemaId>`
-2. **Per-file staleness check**:
-   - Compare timestamps (fast path, no I/O)
-   - If mismatch, read file and compare hash (slow path)
-   - Classify as NEW/STALE/FreshTimestamp/FreshContent
-3. **Result variants**:
-   - `SchemaResult::New { id, raw }` - no view in DB
-   - `SchemaResult::Stale { id, raw, expanded }` - hash mismatch
-   - `SchemaResult::Fresh { id, expanded }` - hash match/timestamp match
-     **Errors**: `SchemaRepositoryError`, `SchemaFileError`
-     **Location**: `Ingestor::ingest_all()` lines 781-816
+#### **Flow B: Schema is Fresh* AND Property Bank is Fresh***
+*Zero changes. Skip parsing entirely.*
+- **State 7 (RefsExpanded):**
+  - Instantly construct `RefExpandedSchema` using top-level metadata from the `RawSchemaView` (`name`, `extends`, `excludes`) and its cached `expanded_properties`.
+  - *No `RawSchema` deserialization occurs!*
+  - No DB persistence needed.
 
-#### Stage 3a-c: Schema Result Partitioning
+---
 
-**Input**: `HashMap<PathBuf, SchemaResult>`
-**Output**: Three vectors: `needs_expansion`, `cached_expansion`, `fresh_ids`
-**Operations** (in `Loader::load()` lines 150-202):
+#### **Flow C: Schema is Fresh* AND Property Bank is STALE**
+*Schema file didn't change, but some of its PB references might have.*
+- **State 4 (RawConstructed):**
+  - Fetch cached `RawSchemaView`.
+  - If `FreshContent`, update view timestamps.
+- **State 5 (BankReferenceDelta):**
+  - Intersect the view's `bank_references` map with the PB's `PropertyDelta.changed` list.
+  - Output: specific schema property names needing re-expansion.
+  - *If intersection is empty, jump straight to RefsExpanded.*
+- **State 7 (RefsExpanded):**
+  - Deserialize `raw_properties` from JSON bytes (only because we must re-expand).
+  - Re-run expansion *only* on the affected properties identified in State 5.
+  - Update those specific keys in the cached `expanded_properties`.
+  - Construct new `SchemaVersion`, update view, and persist.
 
-- **Bank Fresh + Schema Fresh** → `fresh_ids` (fully reusable, skip all stages)
-- **Bank Stale + Schema Fresh + Has Cache** → `cached_expansion` (skip RefExpander)
-- **Bank Stale + Schema Fresh + No Cache** → `needs_expansion` (run full pipeline)
-- **File Changed or New** → `needs_expansion` (run full pipeline)
-  **Location**: `Loader::load()` lines 150-202
+---
 
-#### Stage 4: Property Reference Expansion
+#### **Flow D: Schema is STALE AND Property Bank is Fresh***
+*Schema changed, PB didn't. Only expand schema changes.*
+- **State 2 (FileParsed):**
+  - Read new file, parse to `RawSchema`, build new `bank_references` map.
+- **State 3 (SchemaPropertyDelta):**
+  - Compare new property hashes against cached view to find new/modified/removed schema properties.
+- **State 4 (RawConstructed):**
+  - Fetch cached `RawSchemaView` as baseline.
+- **State 6 (DeltaApplied):**
+  - Apply `SchemaPropertyDelta` to baseline raw properties.
+- **State 7 (RefsExpanded):**
+  - Expand only the NEW or MODIFIED properties from State 3.
+  - Construct new `SchemaVersion` with updated `expanded_properties`, update view, and persist.
 
-**Input**: `Vec<(SchemaId, RawSchema)>` (needs expansion)
-**Output**: `Vec<(SchemaId, RefExpandedSchema)>`
-**Operations**:
+---
 
-- For each schema:
-  - For each property in `raw.properties`:
-    - **Inline property** → Convert `RawPropertySpec` to `PropertySpec` directly
-    - **Bank reference** (`$ref`) → Lookup in `PropertyBank`, apply overrides via `Resolver::from_bank_ref()`
-  - Store result as `HashMap<PropertyName, Property>`
-    **Errors**: `SchemaError::PropertyRef(NotFound)`, `PropertySpec` conversion errors
-    **Location**: `RefExpander::expand_all()` in `expander.rs:105-116`
+#### **Flow E: Schema is STALE AND Property Bank is STALE**
+*Both changed. Expand schema changes PLUS affected PB references.*
+- **State 2 (FileParsed):** Parse new file, build `bank_references` map.
+- **State 3 (SchemaPropertyDelta):** Compute schema file changes.
+- **State 4 (RawConstructed):** Fetch cached `RawSchemaView` baseline.
+- **State 5 (BankReferenceDelta):** Intersect *cached* `bank_references` with PB's `PropertyDelta`.
+- **State 6 (DeltaApplied):** Apply `SchemaPropertyDelta` to baseline.
+- **State 7 (RefsExpanded):**
+  - Expand NEW/MODIFIED properties from State 3.
+  - Re-expand unmodified schema properties flagged by State 5.
+  - Construct new `SchemaVersion`, update view, persist.
 
-**Key Substeps**:
+---
 
-1. `RefExpander::expand_schema()` - process one schema
-2. `RefExpander::expand_property()` - process one property
-   - `RawProperty::Inline` → Direct conversion
-   - `RawProperty::Ref` → Bank lookup + override application
+### 2.3 Phase 2: Tree Building and Resolution
 
-#### Stage 5: Inheritance Tree Building
+#### State 8: Inheritance Tree Building
 
 **Input**:
 
@@ -780,7 +796,7 @@ The Schema pipeline is **complex and branching** with 10 primary states:
 
 **Location**: `Extender::build()` in `extender.rs:222-250`
 
-#### Stage 6: Property Merging (Schema Resolution)
+#### State 9: Property Merging (Schema Resolution)
 
 **Input**:
 
@@ -821,7 +837,7 @@ The Schema pipeline is **complex and branching** with 10 primary states:
 
 **Location**: `Merger::resolve()` in `merger.rs:69-152`
 
-#### Stage 7-8: Persistence
+#### State 10: Persistence
 
 **Input**: `Vec<Schema>` (resolved)
 **Output**: Persisted to database
@@ -840,29 +856,9 @@ The Schema pipeline is **complex and branching** with 10 primary states:
 **Errors**: `SchemaRepositoryError::Storage`
 **Location**: `Loader::persist_resolved_schemas()`, `Loader::persist_inheritance_metadata()`
 
-### 2.3 Cached Expansion Optimization (Phase 5.2)
+### 2.3 Cached Expansion Optimization
 
-**Special Path**: When PropertyBank is stale but Schema file is fresh AND cached expansion exists
-
-**Input**: `Vec<(SchemaId, HashMap<PropertyName, Property>)>` (cached_expansion)
-**Output**: `Vec<Schema>` (resolved via cached path)
-
-**Operations** (lines 282-319):
-
-1. For each `(id, cached_props)`:
-   - Load `RawSchemaView` from DB
-   - Extract `raw.name`, `raw.extends`, `raw.excludes`
-   - Construct `RefExpandedSchema` directly from cached properties (skip `RefExpander`!)
-2. Call `Extender::build()` with cached expansions + known_parents
-3. Call `Merger::resolve()` as normal
-
-**Key Optimization**: Skips property reference expansion when:
-
-- Schema file unchanged (timestamps + hash match)
-- PropertyBank changed
-- Previous expansion cached in `RawSchemaView.current().expanded_properties()`
-
-**Location**: `Loader::resolve_with_cached_expansion()` lines 282-319
+*(This concept is now natively handled by Flow C: Schema is Fresh AND PB is STALE, where we use the `BankReferenceDelta` to perform partial expansion.)*
 
 ---
 
