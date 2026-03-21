@@ -1363,18 +1363,20 @@ impl PropertyBankPath {
 
 ### 4.2 Schema State Machine
 
-**Typestate Pattern Application** (more complex):
+**Phase 1: Discovery to Expansion (8 States)**
+
+The schema pipeline models the complex leveled staleness paths using a unified state machine with explicit branching via the `SchemaPipelinePath` enum.
 
 ```rust
-// Primary states
-struct FileList;          // Vec<PathBuf>
-struct BulkStaleness;     // HashMap<Path, SchemaResult>
-struct Partitioned;       // Three vectors split
-struct Expanded;          // RefExpandedSchema
-struct Tree;              // SchemaTree
-struct Resolved;          // Vec<Schema>
-struct Persisted;         // Saved to DB
-struct Completed;         // Done
+// Phase 1 States (zero-sized markers)
+struct Discovery;
+struct FileParsed;
+struct SchemaPropertyDelta;
+struct RawConstructed;
+struct BankReferenceDelta;
+struct DeltaApplied;
+struct InheritanceEvaluated;
+struct RefsExpanded;
 
 // Generic state machine
 struct SchemaPipeline<S> {
@@ -1382,69 +1384,143 @@ struct SchemaPipeline<S> {
     _state: PhantomData<S>,
 }
 
-// State-specific operations
-impl SchemaPipeline<FileList> {
-    pub fn new(paths: Vec<PathBuf>) -> Self { /* ... */ }
-    pub fn check_staleness(self, repo: &Repository)
-        -> Result<SchemaPipeline<BulkStaleness>, Error> { /* ... */ }
+// Sealed state trait
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::Discovery {}
+    impl Sealed for super::FileParsed {}
+    impl Sealed for super::SchemaPropertyDelta {}
+    impl Sealed for super::RawConstructed {}
+    impl Sealed for super::BankReferenceDelta {}
+    impl Sealed for super::DeltaApplied {}
+    impl Sealed for super::InheritanceEvaluated {}
+    impl Sealed for super::RefsExpanded {}
 }
-
-impl SchemaPipeline<BulkStaleness> {
-    pub fn partition(self, bank_is_fresh: bool)
-        -> SchemaPipeline<Partitioned> { /* ... */ }
-}
-
-impl SchemaPipeline<Partitioned> {
-    pub fn expand_refs(self, bank: &PropertyBank)
-        -> Result<SchemaPipeline<Expanded>, Error> { /* ... */ }
-
-    pub fn skip_expansion_if_cached(self)
-        -> Result<SchemaPipeline<Expanded>, Error> { /* ... */ }
-}
-
-impl SchemaPipeline<Expanded> {
-    pub fn build_tree(self, known_parents: &HashMap<SchemaId, Schema>)
-        -> Result<SchemaPipeline<Tree>, Error> { /* ... */ }
-}
-
-impl SchemaPipeline<Tree> {
-    pub fn resolve(self, known_parents: &HashMap<SchemaId, Schema>)
-        -> Result<SchemaPipeline<Resolved>, Error> { /* ... */ }
-}
-
-impl SchemaPipeline<Resolved> {
-    pub fn persist(self, repo: &Repository)
-        -> Result<SchemaPipeline<Persisted>, Error> { /* ... */ }
-}
-
-impl SchemaPipeline<Persisted> {
-    pub fn complete(self) -> SchemaPipeline<Completed> { /* ... */ }
-}
-
-impl SchemaPipeline<Completed> {
-    pub fn schemas(&self) -> &[Schema] { /* ... */ }
-}
+pub trait SchemaState: sealed::Sealed {}
+impl<T: sealed::Sealed> SchemaState for T {}
 ```
 
-**Branch Handling**:
+**State-Specific Operations**:
 
 ```rust
-// Use enums for branching states
-enum PartitionedSchemas {
-    NeedsExpansion {
-        needs_expansion: Vec<(SchemaId, RawSchema)>,
-        cached_expansion: Vec<(SchemaId, HashMap<PropertyName, Property>)>,
-        fresh_ids: Vec<SchemaId>,
-    },
-}
+impl SchemaPipeline<Discovery> {
+    pub fn new(paths: Vec<PathBuf>, pb_path: PropertyBankPath, repo: &Repository) -> Self { /* ... */ }
 
-impl SchemaPipeline<Partitioned> {
-    pub fn into_branches(self) -> PartitionedSchemas {
-        // Extract three vectors
+    pub fn discover(self) -> Result<SchemaPipelineResult, Error> {
+        // Fetch RawSchemaViews via SCHEMA_ID_BY_PATH
+        // Detect deleted schemas
+        // If PB is Fresh, all schemas Fresh, and no deletions -> Super-Fast Path
+        // Otherwise, return a mapped SchemaPipelinePath for each schema
     }
 }
 
-// Process each branch through its path
+impl SchemaPipeline<FileParsed> {
+    pub fn parse_file(path: &Path) -> Result<Self, Error> {
+        // Parse into RawSchema
+        // Build bank_references map from RawPropertyRefPaths
+    }
+
+    // NEW path jumps directly to RawConstructed
+    pub fn into_raw_constructed(self) -> SchemaPipeline<RawConstructed> { /* ... */ }
+
+    // STALE path computes delta
+    pub fn compute_schema_delta(self, cached_view: &RawSchemaView)
+        -> SchemaPipeline<SchemaPropertyDelta> { /* ... */ }
+}
+
+impl SchemaPipeline<SchemaPropertyDelta> {
+    pub fn fetch_base(self, repo: &Repository) -> Result<SchemaPipeline<RawConstructed>, Error> {
+        // STALE path fetches DB baseline
+    }
+}
+
+impl SchemaPipeline<RawConstructed> {
+    // FRESH schema with STALE PB -> check bank references
+    pub fn compute_bank_delta(self, pb_delta: &PropertyDelta)
+        -> SchemaPipeline<BankReferenceDelta> { /* ... */ }
+
+    // STALE schema -> apply schema delta
+    pub fn apply_schema_delta(self) -> SchemaPipeline<DeltaApplied> { /* ... */ }
+
+    // NEW schema -> evaluate inheritance
+    pub fn evaluate_inheritance(self) -> SchemaPipeline<InheritanceEvaluated> { /* ... */ }
+}
+
+impl SchemaPipeline<BankReferenceDelta> {
+    pub fn evaluate_inheritance(self) -> SchemaPipeline<InheritanceEvaluated> {
+        // Re-verify extends if any schemas were deleted globally
+    }
+}
+
+impl SchemaPipeline<DeltaApplied> {
+    pub fn evaluate_inheritance(self, cached_view: &RawSchemaView) -> SchemaPipeline<InheritanceEvaluated> {
+        // Verify extends, compute delta for extends/excludes
+    }
+}
+
+impl SchemaPipeline<InheritanceEvaluated> {
+    pub fn expand_refs(self, bank: &PropertyBank) -> Result<SchemaPipeline<RefsExpanded>, Error> {
+        // Perform full, partial, or zero expansion based on upstream deltas
+        // Construct SchemaVersion, update RawSchemaView, and persist
+    }
+}
+
+impl SchemaPipeline<RefsExpanded> {
+    pub fn into_expanded_schema(self) -> RefExpandedSchema {
+        // Yields the finalized RefExpandedSchema ready for Tree building
+    }
+}
+```
+
+**Branching Enum** (Returned from Discovery for each file):
+
+```rust
+enum SchemaPipelinePath {
+    New(SchemaPipeline<FileParsed>),
+    FreshTimestamp(SchemaPipeline<RawConstructed>),
+    FreshContent(SchemaPipeline<RawConstructed>),
+    Stale(SchemaPipeline<FileParsed>),
+}
+
+impl SchemaPipelinePath {
+    pub fn into_expanded(
+        self,
+        repo: &Repository,
+        pb_path: &PropertyBankPath
+    ) -> Result<SchemaPipeline<RefsExpanded>, Error> {
+        match self {
+            SchemaPipelinePath::New(pipeline) => {
+                pipeline
+                    .into_raw_constructed()
+                    .evaluate_inheritance()
+                    .expand_refs(pb_path.bank())
+            },
+            SchemaPipelinePath::FreshTimestamp(pipeline) | SchemaPipelinePath::FreshContent(pipeline) => {
+                if let Some(pb_delta) = pb_path.delta() {
+                    // Flow C: Fresh Schema + STALE PB
+                    pipeline
+                        .compute_bank_delta(pb_delta)
+                        .evaluate_inheritance()
+                        .expand_refs(pb_path.bank())
+                } else {
+                    // Flow B: Fresh Schema + Fresh PB
+                    pipeline
+                        .evaluate_inheritance()
+                        .expand_refs(pb_path.bank()) // Does zero-expansion internally
+                }
+            },
+            SchemaPipelinePath::Stale(pipeline) => {
+                let cached_view = repo.get_raw_schema_view()?.unwrap();
+                pipeline
+                    .compute_schema_delta(&cached_view)
+                    .fetch_base(repo)?
+                    .apply_schema_delta()
+                    .evaluate_inheritance(&cached_view)
+                    .expand_refs(pb_path.bank())
+            }
+        }
+    }
+}
 ```
 
 ### 4.3 Loader Orchestration with State Machines
