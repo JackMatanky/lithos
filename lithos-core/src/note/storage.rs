@@ -219,11 +219,10 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     fn collect_index_data_from_facts(&self, facts: &Note) -> IndexData {
         let frontmatter = facts.frontmatter();
         let aliases = frontmatter
-            .map(|fm| fm.aliases(self.config).map(Into::into).collect())
+            .map(|fm| fm.aliases().map(Into::into).collect())
             .unwrap_or_default();
-        let file_class = frontmatter
-            .and_then(|fm| fm.file_class(self.config))
-            .map(Into::into);
+        let file_class =
+            frontmatter.and_then(|fm| fm.file_class()).map(Into::into);
         let frontmatter_entries =
             frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
 

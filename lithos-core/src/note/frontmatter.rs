@@ -80,8 +80,8 @@ pub struct Frontmatter {
     fields: HashMap<Box<str>, FieldValue>,
     /// Title as it appears in the file.
     title: Option<Box<str>>,
-    /// Aliases as they appear in the file.
-    aliases: Option<Box<[AliasName]>>,
+    /// Aliases as they appear in the file (preserving singular vs plural).
+    aliases: Option<AliasField>,
     /// Tags as they appear in the file.
     tags: Option<Box<[Tag]>>,
     /// File class as it appears in the file.
@@ -155,18 +155,20 @@ impl Frontmatter {
             .and_then(FieldValue::as_str)
             .map(Into::into);
 
-        let aliases = fields.get(fm_config.alias().as_str()).map(|v| {
+        let aliases = fields.get(fm_config.alias().as_str()).and_then(|v| {
             if let Some(s) = v.as_str() {
-                vec![AliasName(s.into())].into_boxed_slice()
+                Some(AliasField::Single(AliasName(s.into())))
             } else if let Some(arr) = v.as_array() {
-                arr.iter()
+                let names = arr
+                    .iter()
                     .filter_map(|item| {
                         item.as_str().map(|s| AliasName(s.into()))
                     })
                     .collect::<Vec<_>>()
-                    .into_boxed_slice()
+                    .into_boxed_slice();
+                Some(AliasField::List(names))
             } else {
-                Box::new([])
+                None
             }
         });
 
@@ -238,7 +240,7 @@ impl Frontmatter {
     pub fn try_new(
         fields: HashMap<Box<str>, FieldValue>,
         title: Option<Box<str>>,
-        aliases: Option<Box<[AliasName]>>,
+        aliases: Option<AliasField>,
         tags: Option<Box<[Tag]>>,
         file_class: Option<FileClassName>,
         date_created: Option<FrontmatterDateField>,
@@ -434,58 +436,45 @@ impl Frontmatter {
             .map_err(|err| err.with_key(key.as_str()))
     }
 
-    /// Returns the title of the note, using the configured title key.
-    ///
-    /// Uses the title key defined in the provided
-    /// [`Config`][crate::config::aggregate::Config].
+    /// Returns the title of the note.
     #[inline]
     #[must_use]
-    pub fn title(
-        &self,
-        _config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
+    pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
-    /// Returns the file class of the note, using the configured key.
-    ///
-    /// Uses the file class key defined in the provided
-    /// [`Config`][crate::config::aggregate::Config].
+    /// Returns the file class of the note.
     #[inline]
     #[must_use]
-    pub fn file_class(
-        &self,
-        _config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
+    pub fn file_class(&self) -> Option<&str> {
         self.file_class.as_ref().map(FileClassName::as_str)
     }
 
-    /// Returns a borrowed iterator over aliases.
-    ///
-    /// Handles both single string values and arrays of strings. Uses the
-    /// alias key defined in the provided
-    /// [`Config`][crate::config::aggregate::Config].
+    /// Returns an iterator over all aliases.
+    #[inline]
+    pub fn aliases(&self) -> impl Iterator<Item = &str> {
+        self.aliases
+            .as_ref()
+            .into_iter()
+            .flat_map(AliasField::as_slice)
+            .map(AliasName::as_str)
+    }
+
+    /// Returns the primary alias only if it was provided as a single string.
     #[inline]
     #[must_use]
-    pub fn aliases<'frontmatter>(
-        &'frontmatter self,
-        _config: &crate::config::aggregate::Config,
-    ) -> AliasValues<'frontmatter> {
-        AliasValues::new(self.aliases.as_deref())
+    pub fn alias_str(&self) -> Option<&str> {
+        self.aliases
+            .as_ref()
+            .and_then(AliasField::as_single)
+            .map(AliasName::as_str)
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
-    ///
-    /// This method allocates a [`Vec`] and converts each alias to an owned
-    /// string. Prefer [`Frontmatter::aliases`] in performance-critical
-    /// paths.
     #[inline]
     #[must_use]
-    pub fn aliases_owned(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Vec<Box<str>> {
-        self.aliases(config).map(Into::into).collect()
+    pub fn aliases_owned(&self) -> Vec<Box<str>> {
+        self.aliases().map(Into::into).collect()
     }
 
     /// Returns the explicit creation date of the note, if present in
@@ -618,6 +607,56 @@ impl fmt::Display for FileClassName {
     }
 }
 
+/// Represents the shape of alias declarations in frontmatter.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub enum AliasField {
+    /// Provided as a single string: `alias: my-alias`.
+    Single(AliasName),
+    /// Provided as a list: `aliases: [a, b]`.
+    List(Box<[AliasName]>),
+}
+
+impl AliasField {
+    /// Returns the aliases as a slice.
+    #[inline]
+    #[must_use]
+    pub fn as_slice(&self) -> &[AliasName] {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Explicit matching on references"
+        )]
+        match self {
+            Self::Single(s) => std::slice::from_ref(s),
+            Self::List(arr) => arr,
+        }
+    }
+
+    /// Returns the alias only if it was provided as a single string.
+    #[inline]
+    #[must_use]
+    pub fn as_single(&self) -> Option<&AliasName> {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Explicit matching on references"
+        )]
+        if let Self::Single(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
 /// A specialized field for handling date and time metadata in frontmatter.
 ///
 /// This type wraps a [`FieldValue`] and provides heuristic parsing for various
@@ -739,63 +778,6 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
-}
-
-/// Borrowed alias iterator returned by [`Frontmatter::aliases`].
-///
-/// This iterator can handle multiple frontmatter alias formats, including:
-/// - A single string value: `alias: my-alias`
-/// - An array of string values: `aliases: [a, b]`
-pub struct AliasValues<'frontmatter> {
-    inner: AliasSource<'frontmatter>,
-}
-
-impl<'frontmatter> AliasValues<'frontmatter> {
-    fn new(aliases: Option<&'frontmatter [AliasName]>) -> Self {
-        let inner = if let Some(aliases) = aliases {
-            AliasSource::Array(aliases.iter())
-        } else {
-            AliasSource::Empty
-        };
-        Self {
-            inner,
-        }
-    }
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Iterator wrapper forwards core methods only."
-)]
-impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
-    type Item = &'frontmatter str;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.inner {
-            AliasSource::Empty => None,
-            AliasSource::Array(ref mut iter) => {
-                iter.next().map(AliasName::as_str)
-            }
-        }
-    }
-
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        match &self.inner {
-            AliasSource::Empty => (0, Some(0)),
-            AliasSource::Array(iter) => iter.size_hint(),
-        }
-    }
-}
-
-enum AliasSource<'frontmatter> {
-    Empty,
-    Array(std::slice::Iter<'frontmatter, AliasName>),
 }
 
 // ----------------------------------------------------------- //
@@ -1048,6 +1030,37 @@ mod tests {
         )]
 
         use super::*;
+        use crate::note::frontmatter::tests::fixtures::{
+            FrontmatterBuilder, config_with_custom_frontmatter_keys,
+        };
+
+        #[test]
+        fn alias_field_preserves_singular_shape() {
+            let config = config_with_custom_frontmatter_keys();
+            let fm = FrontmatterBuilder::new()
+                .with_string("subject", "Title")
+                .with_string("names", "Primary")
+                .build_with_config(&config);
+
+            assert_eq!(fm.alias_str(), Some("Primary"));
+            let all: Vec<&str> = fm.aliases().collect();
+            assert_eq!(all, vec!["Primary"]);
+        }
+
+        #[test]
+        fn alias_field_preserves_list_shape() {
+            let config = config_with_custom_frontmatter_keys();
+            let fm = FrontmatterBuilder::new()
+                .with_array("names", vec![
+                    FieldValue::String("a".into()),
+                    FieldValue::String("b".into()),
+                ])
+                .build_with_config(&config);
+
+            assert_eq!(fm.alias_str(), None);
+            let all: Vec<&str> = fm.aliases().collect();
+            assert_eq!(all, vec!["a", "b"]);
+        }
 
         #[test]
         fn date_field_parses_iso_8601_string() {
