@@ -668,56 +668,56 @@ self.source.read_with(path, |path, content| {
 The Schema pipeline is **complex and branching**, tracking both its own file staleness and the upstream `PropertyBank` staleness. The first phase of the pipeline (through reference expansion) consists of 7 states:
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                Discovery                                 │
-│                 (Query DB for RawSchemaView by filename)                 │
-│   (Determine SchemaPipelinePath: NEW/FreshTimestamp/FreshContent/STALE)  │
-└───────┬─────────────────┬─────────────────┬──────────────────┬───────────┘
-        │                 │                 │                  │
-        ▼                 ▼                 ▼                  ▼
-    ┌───────┐     ┌──────────────┐   ┌────────────┐        ┌───────┐
-    │  NEW  │     │FreshTimestamp│   │FreshContent│        │ STALE │
-    └───┬───┘     └───────┬──────┘   └──────┬─────┘        └───┬───┘
-        │                 │                 │                  │
-        ▼                 │                 │                  ▼
-  ┌───────────┐           │                 │            ┌───────────┐
-  │FileParsed │           │                 │            │FileParsed │
-  └─────┬─────┘           │                 │            └─────┬─────┘
-        │                 │                 │                  │
-        │                 │                 │                  ▼
-        │                 │                 │          ┌───────────────────┐
-        │                 │                 │          │SchemaPropertyDelta│
-        │                 │                 │          └────────┬──────────┘
-        │                 │                 │                   │
-        ▼                 ▼                 ▼                   ▼
- ┌──────────────┐ ┌──────────────┐  ┌──────────────┐   ┌──────────────┐
- │RawConstructed│ │RawConstructed│  │RawConstructed│   │RawConstructed│
- │(from scratch)│ │  (from DB)   │  │ (+upd times) │   │  (from DB)   │
- └──────┬───────┘ └───────┬──────┘  └───────┬──────┘   └───────┬──────┘
-        │                 │                 │                  │
-        │                 ▼                 ▼                  ▼
-        │        (If PB STALE) ┌────────────────────────┐ (If PB STALE)
-        │        ┌─────────────┤   BankReferenceDelta   ├─────────────┐
-        │        │             └────────────────────────┘             │
-        │        │                                                    ▼
-        │        │                                              ┌────────────┐
-        │        │                                              │DeltaApplied│
-        │        │                                              └─────┬──────┘
-        │        │                                                    │
-        ▼        ▼                                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                            InheritanceEvaluated                            │
-│           (Verify extends, track extends/excludes delta changes)           │
-└─────────────────────────────────────┬──────────────────────────────────────┘
-                                      │
-                                      ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                                RefsExpanded                                │
-│            (Full, Partial, or Zero expansion depending on path)            │
-└─────────────────────────────────────┬──────────────────────────────────────┘
-                                      │
-                                      ▼
-                          (Proceeds to Tree Building)
+┌───────────────────────────────────────────────────────────────────────────┐
+│                                 Discovery                                 │
+│                 (Query DB for RawSchemaView by filename)                  │
+│   (Determine SchemaPipelinePath: NEW/FreshTimestamp/FreshContent/STALE)   │
+└───────┬────────────────────────────┬──────────────┬──────────────────┬────┘
+        │                            │              │                  │
+        ▼                            ▼              ▼                  ▼
+    ┌───────┐                 ┌──────────────┐ ┌────────────┐      ┌───────┐
+    │  NEW  │                 │FreshTimestamp│ │FreshContent│      │ STALE │
+    └───┬───┘                 └──────┬───────┘ └──────┬─────┘      └───┬───┘
+        │                            │                │                │
+        ▼                            ├─(If PB STALE)─┐│                ▼
+  ┌───────────┐                      │               ││          ┌───────────┐
+  │FileParsed │                      │               ▼│          │FileParsed │
+  └─────┬─────┘                      │      ┌────────────────┐   └─────┬─────┘
+        │                            │      │ RawConstructed │         │
+        │                            │      │   (from DB)    │         ▼
+        │                            │      └────────┬───────┘   ┌───────────────────┐
+        │                            │               │           │SchemaPropertyDelta│
+        │                            │               │           └────────┬──────────┘
+        ▼                            │               │                    ▼
+ ┌──────────────┐                    │               │    ┌──────────────┐ ┌────────────────┐
+ │RawConstructed│                    │               │    │RawConstructed│ │ RawConstructed │
+ │(from scratch)│                    │               │    │ (+upd times) │ │   (from DB)    │
+ └──────┬───────┘                    │               │    └──────┬───────┘ └────────┬───────┘
+        │                            │               │           │                  │
+        │                            │               ▼           ▼                  ▼
+        │                            │         ┌────────────────────────┐           │
+        │                            │         │   BankReferenceDelta   │◀(PB STAL)─┤
+        │                            │         └─────────────┬──────────┘           │
+        │                            │                       │                      ▼
+        │                            │                       │                ┌────────────┐
+        │                            │                       │                │DeltaApplied│
+        │                            │                       │                └─────┬──────┘
+        │                            │                       │                      │
+        │  ◀─────────────────────────┴────────(If PB FRESH)──┴───────(If PB FRESH)  │
+        ▼                                                                           ▼
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                                 InheritanceEvaluated                                  │
+│                (Verify extends, track extends/excludes delta changes)                 │
+└──────────────────────────────────────────┬────────────────────────────────────────────┘
+                                           │
+                                           ▼
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                                     RefsExpanded                                      │
+│                 (Full, Partial, or Zero expansion depending on path)                  │
+└──────────────────────────────────────────┬────────────────────────────────────────────┘
+                                           │
+                                           ▼
+                              (Proceeds to Tree Building)
 ```
 
 **State Details (Phase 1: Discovery to Expansion)**:
@@ -731,7 +731,8 @@ The Schema pipeline is **complex and branching**, tracking both its own file sta
 | **5. BankReferenceDelta**  | PB refs to re-expand         | FRESH\*(+PB STALE), STALE(+PB STALE) | Intersects `bank_references` with PB's `PropertyDelta`     |
 | **6. DeltaApplied**        | `RawSchema` (updated)        | STALE                                | Applies schema file changes to baseline                    |
 | **7. InheritanceEvaluated**| `extends`/`excludes` delta   | All                                  | Verifies `extends` validity, tracks structural changes     |
-| **8. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, injects NEW schemas into index maps, constructs `SchemaVersion`, persists view |
+| **8. IndexesEvaluated**    | `name_to_id`, `id_to_name`   | All                                  | Injects NEW schemas into index maps                        |
+| **9. RefsExpanded**        | `RefExpandedSchema`          | All                                  | Expands refs, constructs `SchemaVersion`, persists view    |
 
 ### 2.2 Phase 1: File Discovery to Expansion
 
