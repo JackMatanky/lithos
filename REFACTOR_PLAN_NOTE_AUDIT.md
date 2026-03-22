@@ -59,7 +59,7 @@ Directory: `lithos-core/src/note/`
 - `structure.rs` — sections + block refs; types: `Section`, `BlockRef`; deps: none; ownership: public.
 - `paths.rs` — path value objects; types: `NotePath`, `FolderPath`; deps: none; ownership: public.
 - `position.rs` — source positions/ranges; types: `SourceByteOffset`, `SourceByteRange`, `SourceLocation`; deps: none; ownership: public.
-- `identity.rs` — note identity; types: `NoteId`, `AliasName`, `FileClassName`; deps: `uuid`; ownership: public.
+- `identity.rs` — note identity; types: `NoteId`, `AliasValue`, `FileClassValue`; deps: `uuid`; ownership: public.
 
 ### 1.2 Component Inventory (Initial)
 

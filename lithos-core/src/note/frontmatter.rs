@@ -81,15 +81,15 @@ pub struct Frontmatter {
     /// Title as it appears in the file.
     title: Option<Box<str>>,
     /// Aliases as they appear in the file (preserving singular vs plural).
-    aliases: Option<AliasField>,
+    aliases: Option<AliasValueKind>,
     /// Tags as they appear in the file.
     tags: Option<Box<[Tag]>>,
     /// File class as it appears in the file.
-    file_class: Option<FileClassName>,
+    file_class: Option<FileClassValue>,
     /// Explicit creation date from frontmatter.
-    date_created: Option<FrontmatterDateField>,
+    date_created: Option<FrontmatterDateValue>,
     /// Explicit modification date from frontmatter.
-    date_modified: Option<FrontmatterDateField>,
+    date_modified: Option<FrontmatterDateValue>,
 }
 
 impl Frontmatter {
@@ -155,16 +155,16 @@ impl Frontmatter {
 
         let aliases = fields.get(spec.alias_key.as_ref()).and_then(|v| {
             if let Some(s) = v.as_str() {
-                Some(AliasField::Single(AliasName(s.into())))
+                Some(AliasValueKind::Single(AliasValue(s.into())))
             } else if let Some(arr) = v.as_array() {
                 let names = arr
                     .iter()
                     .filter_map(|item| {
-                        item.as_str().map(|s| AliasName(s.into()))
+                        item.as_str().map(|s| AliasValue(s.into()))
                     })
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
-                Some(AliasField::List(names))
+                Some(AliasValueKind::List(names))
             } else {
                 None
             }
@@ -179,15 +179,15 @@ impl Frontmatter {
         let file_class = fields
             .get(spec.file_class_key.as_ref())
             .and_then(FieldValue::as_str)
-            .map(|s| FileClassName(s.into()));
+            .map(|s| FileClassValue(s.into()));
 
         let date_created = fields
             .get(spec.date_created_key.as_ref())
-            .and_then(FrontmatterDateField::try_from_value);
+            .and_then(FrontmatterDateValue::try_from_value);
 
         let date_modified = fields
             .get(spec.date_modified_key.as_ref())
-            .and_then(FrontmatterDateField::try_from_value);
+            .and_then(FrontmatterDateValue::try_from_value);
 
         Self {
             fields,
@@ -238,11 +238,11 @@ impl Frontmatter {
     pub fn try_new(
         fields: HashMap<Box<str>, FieldValue>,
         title: Option<Box<str>>,
-        aliases: Option<AliasField>,
+        aliases: Option<AliasValueKind>,
         tags: Option<Box<[Tag]>>,
-        file_class: Option<FileClassName>,
-        date_created: Option<FrontmatterDateField>,
-        date_modified: Option<FrontmatterDateField>,
+        file_class: Option<FileClassValue>,
+        date_created: Option<FrontmatterDateValue>,
+        date_modified: Option<FrontmatterDateValue>,
     ) -> Result<Self, NoteError> {
         Ok(Self {
             fields,
@@ -435,7 +435,7 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn file_class(&self) -> Option<&str> {
-        self.file_class.as_ref().map(FileClassName::as_str)
+        self.file_class.as_ref().map(FileClassValue::as_str)
     }
 
     /// Returns an iterator over all aliases.
@@ -444,8 +444,8 @@ impl Frontmatter {
         self.aliases
             .as_ref()
             .into_iter()
-            .flat_map(AliasField::as_slice)
-            .map(AliasName::as_str)
+            .flat_map(AliasValueKind::as_slice)
+            .map(AliasValue::as_str)
     }
 
     /// Returns the collection of tags extracted from the frontmatter.
@@ -461,8 +461,8 @@ impl Frontmatter {
     pub fn alias_str(&self) -> Option<&str> {
         self.aliases
             .as_ref()
-            .and_then(AliasField::as_single)
-            .map(AliasName::as_str)
+            .and_then(AliasValueKind::as_single)
+            .map(AliasValue::as_str)
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
@@ -476,7 +476,7 @@ impl Frontmatter {
     /// frontmatter.
     #[inline]
     #[must_use]
-    pub const fn date_created(&self) -> Option<&FrontmatterDateField> {
+    pub const fn date_created(&self) -> Option<&FrontmatterDateValue> {
         self.date_created.as_ref()
     }
 
@@ -484,7 +484,7 @@ impl Frontmatter {
     /// frontmatter.
     #[inline]
     #[must_use]
-    pub const fn date_modified(&self) -> Option<&FrontmatterDateField> {
+    pub const fn date_modified(&self) -> Option<&FrontmatterDateValue> {
         self.date_modified.as_ref()
     }
 
@@ -528,9 +528,9 @@ impl Frontmatter {
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct AliasName(Box<str>);
+pub struct AliasValue(Box<str>);
 
-impl AliasName {
+impl AliasValue {
     /// Creates a validated alias name.
     ///
     /// # Errors
@@ -557,7 +557,7 @@ impl AliasName {
     }
 }
 
-impl fmt::Display for AliasName {
+impl fmt::Display for AliasValue {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -581,9 +581,9 @@ impl fmt::Display for AliasName {
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct FileClassName(Box<str>);
+pub struct FileClassValue(Box<str>);
 
-impl FileClassName {
+impl FileClassValue {
     /// Creates a validated file class name.
     ///
     /// # Errors
@@ -610,7 +610,7 @@ impl FileClassName {
     }
 }
 
-impl fmt::Display for FileClassName {
+impl fmt::Display for FileClassValue {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -629,18 +629,18 @@ impl fmt::Display for FileClassName {
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub enum AliasField {
+pub enum AliasValueKind {
     /// Provided as a single string: `alias: my-alias`.
-    Single(AliasName),
+    Single(AliasValue),
     /// Provided as a list: `aliases: [a, b]`.
-    List(Box<[AliasName]>),
+    List(Box<[AliasValue]>),
 }
 
-impl AliasField {
+impl AliasValueKind {
     /// Returns the aliases as a slice.
     #[inline]
     #[must_use]
-    pub fn as_slice(&self) -> &[AliasName] {
+    pub fn as_slice(&self) -> &[AliasValue] {
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "Explicit matching on references"
@@ -654,7 +654,7 @@ impl AliasField {
     /// Returns the alias only if it was provided as a single string.
     #[inline]
     #[must_use]
-    pub fn as_single(&self) -> Option<&AliasName> {
+    pub fn as_single(&self) -> Option<&AliasValue> {
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "Explicit matching on references"
@@ -683,9 +683,9 @@ impl AliasField {
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct FrontmatterDateField(FieldValue);
+pub struct FrontmatterDateValue(FieldValue);
 
-impl FrontmatterDateField {
+impl FrontmatterDateValue {
     /// Attempts to create a date field from any [`FieldValue`].
     ///
     /// 1. If the value is already temporal (Date/DateTime), it is used as-is.
@@ -824,64 +824,35 @@ static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
-#[cfg(test)]
+
 #[cfg(test)]
 mod tests {
-    mod fixtures {
-        use std::collections::HashMap;
+    use rstest::*;
 
-        use crate::{
-            config::frontmatter::FrontmatterConfigSpec,
-            note::{frontmatter::Frontmatter, value::FieldValue},
-        };
+    use super::*;
 
-        pub struct FrontmatterBuilder {
-            pub fields: HashMap<Box<str>, FieldValue>,
-        }
+    #[fixture]
+    fn default_spec() -> FrontmatterConfigSpec {
+        FrontmatterConfigSpec::new(
+            "title".into(),
+            "aliases".into(),
+            "tags".into(),
+            "file_class".into(),
+            "date_created".into(),
+            "date_modified".into(),
+        )
+    }
 
-        impl FrontmatterBuilder {
-            pub fn new() -> Self {
-                Self {
-                    fields: HashMap::new(),
-                }
-            }
-
-            pub fn with_string(mut self, key: &str, value: &str) -> Self {
-                self.fields
-                    .insert(key.into(), FieldValue::String(value.into()));
-                self
-            }
-
-            #[expect(clippy::unused_self, reason = "Test helper ergonomics")]
-            pub fn spec(&self) -> FrontmatterConfigSpec {
-                FrontmatterConfigSpec::new(
-                    "title".into(),
-                    "aliases".into(),
-                    "tags".into(),
-                    "file_class".into(),
-                    "date_created".into(),
-                    "date_modified".into(),
-                )
-            }
-
-            pub fn build_with_spec(
-                self,
-                spec: &FrontmatterConfigSpec,
-            ) -> Frontmatter {
-                Frontmatter::from_fields(self.fields, spec)
-            }
-        }
-
-        pub fn spec_with_custom_keys() -> FrontmatterConfigSpec {
-            FrontmatterConfigSpec::new(
-                "subject".into(),
-                "names".into(),
-                "labels".into(),
-                "kind".into(),
-                "date_created".into(),
-                "date_modified".into(),
-            )
-        }
+    #[fixture]
+    fn custom_spec() -> FrontmatterConfigSpec {
+        FrontmatterConfigSpec::new(
+            "subject".into(),
+            "names".into(),
+            "labels".into(),
+            "kind".into(),
+            "created".into(),
+            "updated".into(),
+        )
     }
 
     mod constructor {
@@ -890,84 +861,363 @@ mod tests {
         #[test]
         fn should_create_empty_frontmatter() {
             let fm = Frontmatter::new(HashMap::new());
-            assert!(fm.fields.is_empty());
+            assert!(
+                fm.fields.is_empty(),
+                "Expected empty fields, got: {:?}",
+                fm.fields
+            );
+            assert!(fm.title().is_none(), "Expected no title");
         }
 
-        #[test]
-        fn should_extract_attributes_from_fields() {
-            let spec = fixtures::spec_with_custom_keys();
+        #[rstest]
+        fn should_extract_attributes_from_fields_with_default_spec(
+            default_spec: FrontmatterConfigSpec,
+        ) {
             let mut fields = HashMap::new();
-            fields.insert("subject".into(), FieldValue::String("Title".into()));
-            let fm = Frontmatter::from_fields(fields, &spec);
-            assert_eq!(fm.title(), Some("Title"));
+            fields
+                .insert("title".into(), FieldValue::String("Test Note".into()));
+            fields.insert(
+                "aliases".into(),
+                FieldValue::Array(
+                    vec![FieldValue::String("A1".into())].into_boxed_slice(),
+                ),
+            );
+            fields.insert("tags".into(), FieldValue::String("t1, t2".into()));
+
+            let fm = Frontmatter::from_fields(fields, &default_spec);
+
+            assert_eq!(
+                fm.title(),
+                Some("Test Note"),
+                "Title mismatch with default spec"
+            );
+            assert_eq!(
+                fm.aliases().collect::<Vec<_>>(),
+                vec!["A1"],
+                "Aliases mismatch"
+            );
+            assert_eq!(
+                fm.tags().map(<[Tag]>::len),
+                Some(2),
+                "Tags count mismatch"
+            );
+        }
+
+        #[rstest]
+        fn should_extract_attributes_from_fields_with_custom_spec(
+            custom_spec: FrontmatterConfigSpec,
+        ) {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "subject".into(),
+                FieldValue::String("Custom Subject".into()),
+            );
+            fields.insert("names".into(), FieldValue::String("Alias1".into()));
+
+            let fm = Frontmatter::from_fields(fields, &custom_spec);
+
+            assert_eq!(
+                fm.title(),
+                Some("Custom Subject"),
+                "Title mismatch with custom spec"
+            );
+            assert_eq!(
+                fm.aliases().collect::<Vec<_>>(),
+                vec!["Alias1"],
+                "Alias mismatch (single string)"
+            );
         }
     }
 
     mod parsing {
         use super::*;
+        use crate::note::raw::RawFrontmatterFormat;
 
         #[rstest]
-        #[case::simple_yaml(RawFrontmatterFormat::Yaml, "title: Hello", "title", FieldValue::String("Hello".into()))]
-        fn should_parse_valid_frontmatter(
+        #[case::yaml_simple(
+            RawFrontmatterFormat::Yaml,
+            "key: value\nnum: 42",
+            "key",
+            FieldValue::String("value".into())
+        )]
+        #[case::toml_simple(
+            RawFrontmatterFormat::Toml,
+            "key = \"value\"\nnum = 42",
+            "key",
+            FieldValue::String("value".into())
+        )]
+        #[case::yaml_nested(
+            RawFrontmatterFormat::Yaml,
+            "outer:\n  inner: true",
+            "outer",
+            FieldValue::Object(Box::new(HashMap::from([("inner".into(), FieldValue::Boolean(true))])))
+        )]
+        fn should_parse_valid_formats(
             #[case] format: RawFrontmatterFormat,
             #[case] text: &str,
             #[case] key: &str,
             #[case] expected: FieldValue,
+            default_spec: FrontmatterConfigSpec,
         ) {
-            let spec = fixtures::FrontmatterBuilder::new().spec();
-            let fm = Frontmatter::parse(format, text, &spec).unwrap();
-            assert_eq!(fm.find_field(key), Some(&expected));
+            let fm = Frontmatter::parse(format, text, &default_spec);
+            assert!(fm.is_ok(), "Failed to parse {:?}: {:?}", format, fm.err());
+            let fm = fm.unwrap();
+            assert_eq!(
+                fm.find_field(key),
+                Some(&expected),
+                "Field mismatch for key: {key}"
+            );
         }
 
-        #[test]
-        fn should_report_yaml_syntax_error_with_location() {
-            let spec = fixtures::FrontmatterBuilder::new().spec();
+        #[rstest]
+        fn should_report_yaml_syntax_error_with_location(
+            default_spec: FrontmatterConfigSpec,
+        ) {
+            let text = "key: : invalid";
             let result = Frontmatter::parse(
                 RawFrontmatterFormat::Yaml,
-                "key: : invalid",
-                &spec,
+                text,
+                &default_spec,
             );
-            assert!(matches!(result, Err(NoteParseError::Frontmatter { .. })));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(NoteParseError::Frontmatter {
+                        format: "YAML",
+                        ..
+                    })
+                ),
+                "Expected YAML parse error, got: {result:?}"
+            );
+
+            if let Err(NoteParseError::Frontmatter {
+                line,
+                ..
+            }) = result
+            {
+                assert!(line.is_some(), "Expected line number in YAML error");
+            }
+        }
+
+        #[rstest]
+        fn should_report_toml_syntax_error(
+            default_spec: FrontmatterConfigSpec,
+        ) {
+            let text = "key = invalid_no_quotes";
+            let result = Frontmatter::parse(
+                RawFrontmatterFormat::Toml,
+                text,
+                &default_spec,
+            );
+
+            assert!(
+                matches!(
+                    result,
+                    Err(NoteParseError::Frontmatter {
+                        format: "TOML",
+                        ..
+                    })
+                ),
+                "Expected TOML parse error, got: {result:?}"
+            );
+        }
+    }
+
+    mod sanitization {
+        use super::*;
+        use crate::note::raw::RawFrontmatterFormat;
+
+        #[rstest]
+        #[case::yaml_map_link("link: [[My Page]]", "link: \"[[My Page]]\"")]
+        #[case::yaml_list_link("- [[Another Page]]", "- \"[[Another Page]]\"")]
+        #[case::yaml_map_link_with_display(
+            "link: [[My Page|Display]]",
+            "link: \"[[My Page|Display]]\""
+        )]
+        #[case::yaml_mixed(
+            "title: Hello\nlink: [[Page]]\n- [[Item]]",
+            "title: Hello\nlink: \"[[Page]]\"\n- \"[[Item]]\""
+        )]
+        #[case::yaml_already_quoted(
+            "link: \"[[Already Quoted]]\"",
+            "link: \"[[Already Quoted]]\""
+        )]
+        fn should_sanitize_obsidian_links_in_yaml(
+            #[case] input: &str,
+            #[case] expected: &str,
+        ) {
+            let result = Frontmatter::sanitize_yaml_obsidian_links(input);
+            assert_eq!(
+                result.as_ref(),
+                expected,
+                "Sanitization failed for input: {input}"
+            );
+        }
+
+        #[rstest]
+        fn should_parse_yaml_with_unquoted_links(
+            default_spec: FrontmatterConfigSpec,
+        ) {
+            let text = "link: [[Obsidian Link]]";
+            let fm = Frontmatter::parse(
+                RawFrontmatterFormat::Yaml,
+                text,
+                &default_spec,
+            )
+            .unwrap();
+            assert_eq!(
+                fm.find_str("link").unwrap().unwrap().as_ref(),
+                "[[Obsidian Link]]"
+            );
         }
     }
 
     mod validation {
         use super::*;
+
         #[test]
         fn alias_name_should_reject_empty_string() {
-            AliasName::try_new("").unwrap_err();
+            let res = AliasValue::try_new("");
+            assert!(
+                res.is_err(),
+                "Expected error for empty alias, got: {res:?}"
+            );
         }
-    }
 
-    mod conversions {
-        use super::*;
         #[test]
-        fn should_retrieve_typed_values() {
-            let mut fields = HashMap::new();
-            fields.insert("b".into(), FieldValue::Boolean(true));
-            let fm = Frontmatter::new(fields);
-            assert_eq!(fm.find_typed::<bool>("b").unwrap(), Some(true));
+        fn file_class_name_should_reject_empty_string() {
+            let res = FileClassValue::try_new("");
+            assert!(
+                res.is_err(),
+                "Expected error for empty file class, got: {res:?}"
+            );
         }
     }
 
     mod accessors {
         use super::*;
+
         #[test]
-        fn aliases_should_flatten_single_and_list() {
-            let spec = fixtures::spec_with_custom_keys();
-            let fm = fixtures::FrontmatterBuilder::new()
-                .with_string("names", "A")
-                .build_with_spec(&spec);
-            assert_eq!(fm.aliases().collect::<Vec<_>>(), vec!["A"]);
+        fn find_typed_should_handle_type_mismatch() {
+            let mut fields = HashMap::new();
+            fields.insert("num".into(), FieldValue::Number(42.0f64));
+            let fm = Frontmatter::new(fields);
+
+            let res = fm.find_typed::<bool>("num");
+            assert!(res.is_err(), "Expected type mismatch error, got: {res:?}");
+            if let Err(FrontmatterError::TypeMismatch {
+                key,
+                ..
+            }) = res
+            {
+                assert_eq!(key.as_ref(), "num");
+            }
+        }
+
+        #[test]
+        fn get_typed_should_handle_missing_key() {
+            let fm = Frontmatter::new(HashMap::new());
+            let res = fm.get_typed::<bool>("missing");
+            assert!(
+                matches!(res, Err(FrontmatterError::KeyMissing { .. })),
+                "Expected KeyMissing error, got: {res:?}"
+            );
+        }
+
+        #[test]
+        fn find_typed_ref_should_borrow_strings() {
+            let mut fields = HashMap::new();
+            fields.insert("s".into(), FieldValue::String("hello".into()));
+            let fm = Frontmatter::new(fields);
+
+            let s: &str = fm.find_typed_ref("s").unwrap().unwrap();
+            assert_eq!(s, "hello");
+        }
+
+        #[rstest]
+        fn aliases_iterator_should_handle_all_shapes(
+            default_spec: FrontmatterConfigSpec,
+        ) {
+            let mut fields = HashMap::new();
+
+            // Case 1: Single string
+            fields.insert("aliases".into(), FieldValue::String("A1".into()));
+            let fm1 = Frontmatter::from_fields(fields.clone(), &default_spec);
+            assert_eq!(fm1.aliases().collect::<Vec<_>>(), vec!["A1"]);
+
+            // Case 2: List of strings
+            fields.insert(
+                "aliases".into(),
+                FieldValue::Array(
+                    vec![
+                        FieldValue::String("A2".into()),
+                        FieldValue::String("A3".into()),
+                    ]
+                    .into_boxed_slice(),
+                ),
+            );
+            let fm2 = Frontmatter::from_fields(fields, &default_spec);
+            assert_eq!(fm2.aliases().collect::<Vec<_>>(), vec!["A2", "A3"]);
+        }
+
+        #[rstest]
+        fn tags_should_be_collected_from_mixed_formats(
+            default_spec: FrontmatterConfigSpec,
+        ) {
+            let mut fields = HashMap::new();
+
+            // Mixed: string with commas and an array of strings
+            fields.insert(
+                "tags".into(),
+                FieldValue::Array(
+                    vec![
+                        FieldValue::String("t1, t2".into()),
+                        FieldValue::String("t3".into()),
+                    ]
+                    .into_boxed_slice(),
+                ),
+            );
+
+            let fm = Frontmatter::from_fields(fields, &default_spec);
+            let tags = fm.tags().unwrap();
+            let tag_names: Vec<String> =
+                tags.iter().map(|t| format!("#{}", t.full_path())).collect();
+            assert_eq!(tag_names, vec!["#t1", "#t2", "#t3"]);
         }
     }
 
     mod temporal {
         use super::*;
+
+        #[rstest]
+        #[case::iso("2024-03-21T12:00:00Z")]
+        #[case::ymd_dash("2024-03-21")]
+        #[case::ymd_slash("2024/03/21")]
+        #[case::dmy_dash("21-03-2024")]
+        #[case::mdy_slash("03/21/2024")]
+        fn should_parse_dates_heuristically(#[case] input: &str) {
+            let val = FieldValue::String(input.into());
+            let field = FrontmatterDateValue::try_from_value(&val);
+            assert!(
+                field.is_some(),
+                "Failed to parse date heuristically: {input}"
+            );
+        }
+
         #[test]
-        fn should_parse_dates_heuristically() {
-            let val = FieldValue::String("2024-03-21".into());
-            assert!(FrontmatterDateField::try_from_value(&val).is_some());
+        fn should_reject_invalid_dates() {
+            let val = FieldValue::String("2024-02-31".into());
+            let field = FrontmatterDateValue::try_from_value(&val);
+            assert!(field.is_none(), "Should have rejected invalid date");
+        }
+
+        #[test]
+        fn should_handle_native_temporal_values() {
+            let dt = chrono::Utc::now().fixed_offset();
+            let val = FieldValue::DateTime(dt.into());
+            let field = FrontmatterDateValue::try_from_value(&val).unwrap();
+            assert_eq!(field.as_datetime(), Some(dt));
         }
     }
 
@@ -975,6 +1225,7 @@ mod tests {
         use proptest::prelude::*;
 
         use super::*;
+
         proptest! {
             #[test]
             fn sanitize_is_idempotent(s in ".*") {
@@ -982,13 +1233,12 @@ mod tests {
                 let s2 = Frontmatter::sanitize_yaml_obsidian_links(&s1);
                 prop_assert_eq!(s1.as_ref(), s2.as_ref());
             }
+
+            #[test]
+            fn alias_name_accepts_valid_strings(s in "[a-zA-Z0-9_-]+") {
+                let res = AliasValue::try_new(&s);
+                prop_assert!(res.is_ok());
+            }
         }
     }
-
-    use std::collections::HashMap;
-
-    use rstest::rstest;
-
-    use super::*;
-    use crate::note::{error::NoteParseError, value::FieldValue};
 }

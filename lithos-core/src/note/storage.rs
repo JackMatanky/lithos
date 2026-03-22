@@ -36,7 +36,7 @@ use crate::{
             NoteChangeKind, NoteEvent, NoteEventKind, NoteEventPayload,
             NoteEventPayloadV1,
         },
-        frontmatter::{AliasName, FileClassName, Frontmatter},
+        frontmatter::{AliasValue, FileClassValue, Frontmatter},
         paths::{FolderPath, NotePath},
         task::{Task, TaskDateKind, TaskMetadata, TaskPriority, TaskTimestamp},
         value::FieldValue,
@@ -71,7 +71,7 @@ pub trait Repository: Send + Sync {
     /// Finds a stored note projection by its configured alias.
     fn find_by_alias(
         &self,
-        alias: &AliasName,
+        alias: &AliasValue,
     ) -> Result<Option<NoteView>, Self::Error>;
 
     /// Finds a stored note projection by its unique UUID v7 identifier.
@@ -89,7 +89,7 @@ pub trait Repository: Send + Sync {
     /// Finds all stored note projections belonging to a specific file class.
     fn list_by_file_class(
         &self,
-        class: &FileClassName,
+        class: &FileClassValue,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored note projections located within a specific vault
@@ -1170,7 +1170,7 @@ impl Repository for RedbRepository<'_, '_> {
     #[inline]
     fn find_by_alias(
         &self,
-        alias: &AliasName,
+        alias: &AliasValue,
     ) -> Result<Option<NoteView>, Self::Error> {
         let ids = self
             .db
@@ -1226,7 +1226,7 @@ impl Repository for RedbRepository<'_, '_> {
     #[inline]
     fn list_by_file_class(
         &self,
-        class: &FileClassName,
+        class: &FileClassValue,
     ) -> Result<Vec<NoteView>, Self::Error> {
         let ids = self
             .db
