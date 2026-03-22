@@ -147,34 +147,36 @@ impl HashMetadata {
 
     /// Compute property hashes from raw properties (for schemas).
     ///
+    /// Now accepts `HashMap` with `PropertyName` keys (not Box<str>).
     /// This is the canonical hash computation used by schemas.
     #[inline]
     #[must_use]
     pub fn compute_property_hashes(
-        properties: &std::collections::HashMap<Box<str>, RawProperty>,
+        properties: &HashMap<PropertyName, RawProperty>,
     ) -> HashMap<PropertyName, [u8; 32]> {
         properties
             .iter()
-            .filter_map(|(name, prop)| {
+            .map(|(name, prop)| {
                 let hash = Self::hash_property(prop);
-                PropertyName::try_new(name.as_ref()).ok().map(|pn| (pn, hash))
+                (name.clone(), hash)
             })
             .collect()
     }
 
     /// Compute property hashes from raw property bank entries.
     ///
+    /// Now accepts `HashMap` with `PropertyName` keys (not Box<str>).
     /// This is the canonical hash computation used by property banks.
     #[inline]
     #[must_use]
     pub fn compute_property_hashes_for_bank(
-        properties: &std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+        properties: &HashMap<PropertyName, RawPropertyBankEntry>,
     ) -> HashMap<PropertyName, [u8; 32]> {
         properties
             .iter()
-            .filter_map(|(name, entry)| {
+            .map(|(name, entry)| {
                 let hash = Self::hash_property_bank_entry(entry);
-                PropertyName::try_new(name.as_ref()).ok().map(|pn| (pn, hash))
+                (name.clone(), hash)
             })
             .collect()
     }

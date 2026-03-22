@@ -298,9 +298,9 @@ where
 
             // Construct RefExpandedSchema directly from cached properties
             let exp_schema = RefExpandedSchema {
-                name: raw.name,
-                extends: raw.extends,
-                excludes: raw.excludes,
+                name: raw.name().into(),
+                extends: raw.extends().map(std::convert::Into::into),
+                excludes: raw.excludes().to_vec(),
                 properties: cached_props,
             };
 
@@ -385,7 +385,7 @@ where
         schemas
             .iter()
             .map(|(id, raw)| {
-                SchemaName::try_new(&raw.name).map(|name| (name, *id))
+                SchemaName::try_new(raw.name()).map(|name| (name, *id))
             })
             .collect::<Result<HashMap<_, _>, _>>()
             .map_err(SchemaLoaderError::Resolution)
@@ -425,15 +425,14 @@ where
 
         for (schema_id, raw) in schemas {
             // Resolve parent name to ID
-            let parent = if let Some(parent_name) = &raw.extends {
-                let pid =
-                    *name_to_id.get(parent_name.as_ref()).ok_or_else(|| {
-                        SchemaLoaderError::Resolution(SchemaError::Inheritance(
-                            super::error::SchemaInheritanceError::ParentNotFound {
-                                name: parent_name.clone(),
-                            },
-                        ))
-                    })?;
+            let parent = if let Some(parent_name) = raw.extends() {
+                let pid = *name_to_id.get(parent_name).ok_or_else(|| {
+                    SchemaLoaderError::Resolution(SchemaError::Inheritance(
+                        super::error::SchemaInheritanceError::ParentNotFound {
+                            name: (*parent_name).into(),
+                        },
+                    ))
+                })?;
                 Some(pid)
             } else {
                 None
@@ -458,7 +457,7 @@ where
             let metadata = SchemaInheritanceView {
                 parent,
                 ancestors,
-                excludes: raw.excludes.clone(),
+                excludes: raw.excludes().to_vec(),
                 ancestors_hash,
                 resolved_at: SystemTime::now(),
             };

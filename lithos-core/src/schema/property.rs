@@ -266,6 +266,7 @@ impl Display for PropertyId {
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
+#[derive(serde::Serialize)]
 pub struct PropertyName(Box<str>);
 
 impl PropertyName {

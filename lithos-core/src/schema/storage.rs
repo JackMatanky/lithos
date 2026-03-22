@@ -1090,12 +1090,4 @@ mod tests {
 
         assert!(results.is_empty(), "should return empty map for no matches");
     }
-
-    #[test]
-    #[ignore = "RedbRepository implementation pending - migrate from \
-                db_query/db_command"]
-    fn redb_repository_skeleton_exists() {
-        // This test documents that the skeleton exists but implementation is
-        // pending Remove #[ignore] as methods are implemented
-    }
 }

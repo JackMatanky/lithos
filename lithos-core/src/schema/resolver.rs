@@ -183,19 +183,13 @@ impl Resolver {
     ///
     /// // Valid: Override number constraints
     /// let base = PropertySpec::Number(NumberSpec::default());
-    /// let overrides = RawPropertyRef {
-    ///     ref_path: "property_bank#/test".into(),
-    ///     required: None,
-    ///     multi: None,
-    ///     number: RawNumberSpec {
-    ///         min: Some(0.0f64),
-    ///         max: Some(100.0f64),
-    ///         step: None,
-    ///     },
-    ///     string: RawStringSpec::default(),
-    ///     date: RawDateSpec::default(),
-    ///     file: RawFileSpec::default(),
-    /// };
+    /// let json = r#"{
+    ///     "$ref": "property_bank#/test",
+    ///     "min": 0.0,
+    ///     "max": 100.0
+    /// }"#;
+    /// let overrides: RawPropertyRef = serde_json::from_str(json)
+    ///     .expect("Valid ref with number override");
     /// let result = Resolver::spec(&base, &overrides);
     /// assert!(result.is_ok());
     /// assert!(matches!(result.unwrap(), PropertySpec::Number(_)));
@@ -376,13 +370,7 @@ mod tests {
     use crate::schema::{
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
         property_spec::{BoolSpec, NumberSpec, PropertySpec, StringSpec},
-        raw::{
-            property::RawPropertyRef,
-            property_spec::{
-                RawDateSpec, RawFileSpec, RawNumberSpec, RawOptions,
-                RawStringSpec,
-            },
-        },
+        raw::property::RawPropertyRef,
     };
 
     // ── Fixtures ────────────────────────────────────────────────────────────
@@ -417,15 +405,10 @@ mod tests {
         }
 
         pub fn ref_entry(ref_path: &str) -> RawPropertyRef {
-            RawPropertyRef {
-                ref_path: ref_path.into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            }
+            // RawPropertyRefPath validates during deserialization
+            let json = format!(r#"{{"$ref": "{ref_path}"}}"#);
+            serde_json::from_str(&json)
+                .expect("Test fixture should create valid RawPropertyRef")
         }
 
         pub fn ref_with_overrides(
@@ -433,15 +416,22 @@ mod tests {
             required: Option<bool>,
             multi: Option<bool>,
         ) -> RawPropertyRef {
-            RawPropertyRef {
-                ref_path: ref_path.into(),
-                required,
-                multi,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
+            use std::fmt::Write as _;
+
+            // Build JSON with optional overrides
+            let mut json = format!(r#"{{"$ref": "{ref_path}""#);
+            if let Some(req) = required {
+                write!(json, r#", "required": {req}"#)
+                    .expect("write to string fails only on OOM");
             }
+            if let Some(m) = multi {
+                write!(json, r#", "multi": {m}"#)
+                    .expect("write to string fails only on OOM");
+            }
+            json.push('}');
+
+            serde_json::from_str(&json)
+                .expect("Test fixture should create valid RawPropertyRef")
         }
     }
 
@@ -519,19 +509,12 @@ mod tests {
         #[test]
         fn bool_rejects_number_override() {
             let base = PropertySpec::Bool(BoolSpec);
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec {
-                    min: Some(0.0f64),
-                    max: None,
-                    step: None,
-                },
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "min": 0.0
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with number override should deserialize");
 
             let result = Resolver::spec(&base, &ref_entry);
             let err = result.unwrap_err();
@@ -546,18 +529,12 @@ mod tests {
         #[test]
         fn bool_rejects_string_override() {
             let base = PropertySpec::Bool(BoolSpec);
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec {
-                    options: Some(RawOptions::List(vec!["a".into()])),
-                    pattern: None,
-                },
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "options": ["a"]
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with string override should deserialize");
 
             let result = Resolver::spec(&base, &ref_entry);
             let _err = result.unwrap_err();
@@ -566,19 +543,13 @@ mod tests {
         #[test]
         fn number_accepts_number_override() {
             let base = PropertySpec::Number(NumberSpec::default());
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec {
-                    min: Some(0.0f64),
-                    max: Some(100.0f64),
-                    step: None,
-                },
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "min": 0.0,
+                "max": 100.0
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with number override should deserialize");
 
             let result = Resolver::spec(&base, &ref_entry);
             assert!(result.is_ok());
@@ -590,18 +561,12 @@ mod tests {
         #[test]
         fn number_rejects_string_override() {
             let base = PropertySpec::Number(NumberSpec::default());
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec {
-                    options: Some(RawOptions::List(vec!["a".into()])),
-                    pattern: None,
-                },
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "options": ["a"]
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with string override should deserialize");
 
             let result = Resolver::spec(&base, &ref_entry);
             let _err = result.unwrap_err();
@@ -610,18 +575,12 @@ mod tests {
         #[test]
         fn string_accepts_string_override() {
             let base = PropertySpec::String(StringSpec::default());
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec {
-                    options: Some(RawOptions::List(vec!["valid".into()])),
-                    pattern: None,
-                },
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "options": ["a"]
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with string override should deserialize");
 
             let result = Resolver::spec(&base, &ref_entry);
             assert!(result.is_ok());
@@ -703,19 +662,12 @@ mod tests {
         #[test]
         fn rejects_type_mismatch() {
             let base = fixtures::bool_property("test");
-            let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec {
-                    min: Some(0.0f64),
-                    max: None,
-                    step: None,
-                },
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            };
+            let json = r#"{
+                "$ref": "property_bank#/test",
+                "min": 0.0
+            }"#;
+            let ref_entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with number override should deserialize");
 
             let result = Resolver::from_bank_ref(&base, &ref_entry);
             let _err = result.unwrap_err();

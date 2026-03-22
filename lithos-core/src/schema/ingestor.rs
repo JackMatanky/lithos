@@ -578,7 +578,7 @@ where
             let raw = raw.validated(&path.to_string_lossy())?;
 
             // Compute new hashes and find changed properties
-            let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(&raw.properties);
+            let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(raw.properties());
             let changed = cached_view.current().map_or_else(
                 || {
                     // If no current version, all properties are "changed"
@@ -695,15 +695,15 @@ where
             }
 
             // Parse from the content we just read (single file read)
-            let mut raw: RawSchema =
+            let raw: RawSchema =
                 FsReader::parse_structured_from_str(path, content)?;
-            raw.name = filename_stem.into();
-            let mut raw = raw.validated(&path.to_string_lossy())?;
-
-            raw.metadata = RawSchemaMetadata {
-                created_at,
-                modified_at,
-            };
+            let raw = raw
+                .with_name(filename_stem.into())
+                .validated(&path.to_string_lossy())?
+                .with_metadata(RawSchemaMetadata {
+                    created_at,
+                    modified_at,
+                });
 
             // Create view with content for caching
             let view =
@@ -895,7 +895,7 @@ where
                     // Content unchanged despite timestamp difference
                     // Parse just to return the raw schema, but it's still
                     // "fresh"
-                    let mut raw: RawSchema =
+                    let raw: RawSchema =
                         FsReader::parse_structured_from_str(path, content)?;
                     let filename_stem =
                         self.source.basename(path).map_err(|e| {
@@ -906,13 +906,14 @@ where
                                 },
                             )
                         })?;
-                    raw.name = filename_stem.into();
-                    let raw = raw.validated(&path.to_string_lossy())?;
+                    let raw = raw
+                        .with_name(filename_stem.into())
+                        .validated(&path.to_string_lossy())?;
                     return Ok((raw, true));
                 }
 
                 // Content changed - parse fully and save view
-                let mut raw: RawSchema =
+                let raw: RawSchema =
                     FsReader::parse_structured_from_str(path, content)?;
                 let filename_stem =
                     self.source.basename(path).map_err(|e| {
@@ -923,13 +924,13 @@ where
                             },
                         )
                     })?;
-                raw.name = filename_stem.into();
-                let mut raw = raw.validated(&path.to_string_lossy())?;
-
-                raw.metadata = RawSchemaMetadata {
-                    created_at,
-                    modified_at,
-                };
+                let raw = raw
+                    .with_name(filename_stem.into())
+                    .validated(&path.to_string_lossy())?
+                    .with_metadata(RawSchemaMetadata {
+                        created_at,
+                        modified_at,
+                    });
 
                 // Create and save RawSchemaView for staleness detection
                 let rel_path = path.to_string_lossy();
@@ -1061,7 +1062,7 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         fs::FsReader,
-        schema::{raw::RawSchemaVersion, storage::RedbRepository},
+        schema::storage::RedbRepository,
     };
 
     fn write_file(root: &Path, relative: &str, content: &str) -> PathBuf {
@@ -1439,7 +1440,10 @@ mod tests {
             );
 
             // Verify content is identical
-            assert_eq!(first_result.as_ref().name, second_result.as_ref().name);
+            assert_eq!(
+                first_result.as_ref().name(),
+                second_result.as_ref().name()
+            );
         }
 
         /// Test: Stale schema detected by modification.
@@ -1486,8 +1490,8 @@ mod tests {
             );
 
             // Verify content changed
-            assert_eq!(first_result.as_ref().properties.len(), 0);
-            assert_eq!(second_result.as_ref().properties.len(), 1);
+            assert_eq!(first_result.as_ref().properties().len(), 0);
+            assert_eq!(second_result.as_ref().properties().len(), 1);
         }
 
         /// Test: New schema is detected as stale (no view exists).
@@ -1696,14 +1700,13 @@ mod tests {
         #[test]
         fn new_variant_returns_id_and_raw() {
             let id = SchemaId::new();
-            let raw = RawSchema {
-                version: RawSchemaVersion::default(),
-                name: "test".into(),
-                extends: None,
-                excludes: vec![],
-                properties: std::collections::HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "name": "test",
+                "properties": {}
+            });
+            let raw: RawSchema =
+                serde_json::from_value(raw_json).expect("valid schema JSON");
 
             let result = SchemaResult::New {
                 id,
@@ -1739,14 +1742,13 @@ mod tests {
         #[test]
         fn stale_variant_returns_id_raw_and_expanded() {
             let id = SchemaId::new();
-            let raw = RawSchema {
-                version: RawSchemaVersion::default(),
-                name: "test".into(),
-                extends: None,
-                excludes: vec![],
-                properties: std::collections::HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "name": "test",
+                "properties": {}
+            });
+            let raw: RawSchema =
+                serde_json::from_value(raw_json).expect("valid schema JSON");
             let expanded = Some(std::collections::HashMap::new());
 
             let result = SchemaResult::Stale {
@@ -1966,7 +1968,9 @@ mod tests {
             let names: Vec<&str> = ingestion_result
                 .schemas
                 .values()
-                .filter_map(|r| r.raw().map(|raw| raw.name.as_ref()))
+                .filter_map(|r| {
+                    r.raw().map(crate::schema::raw::RawSchema::name)
+                })
                 .collect();
             assert!(names.contains(&"note"));
             assert!(names.contains(&"task"));
@@ -2002,7 +2006,7 @@ mod tests {
                 .next()
                 .expect("should have one schema");
             let raw = schema_result.raw().expect("should have raw schema");
-            assert_eq!(raw.name.as_ref(), "project");
+            assert_eq!(raw.name(), "project");
         }
 
         #[test]
@@ -2056,7 +2060,7 @@ mod tests {
                 .next()
                 .expect("should have one schema");
             let raw = schema_result.raw().expect("should have raw schema");
-            assert_eq!(raw.version.as_ref(), "1.0");
+            assert_eq!(raw.version().as_str(), "1.0");
         }
     }
 }

@@ -3,10 +3,7 @@
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
 
-use std::{
-    collections::{HashMap, VecDeque},
-    path::Path,
-};
+use std::{collections::VecDeque, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -14,10 +11,7 @@ use super::{PropertyBankVersion, SchemaVersion};
 use crate::schema::{
     aggregate::SchemaName,
     property::PropertyName,
-    raw::{
-        RawPropertyBank, RawSchema, RawSchemaMetadata,
-        property::{RawProperty, RawPropertyBankEntry},
-    },
+    raw::{RawPropertyBank, RawSchema},
 };
 
 /// Maximum number of versions to retain per file.
@@ -159,38 +153,25 @@ impl RawSchemaView {
             return Ok(None);
         };
 
-        // Deserialize properties from serde JSON
-        let name: Box<str> = self.name().into();
-        let properties: HashMap<Box<str>, RawProperty> =
-            serde_json::from_slice(version.raw_properties()).map_err(|e| {
-                crate::schema::error::SchemaIngestionError::Parse(
-                    crate::schema::error::SchemaParseError::CachedView {
-                        path: std::path::PathBuf::from(name.as_ref()),
-                        reason: format!(
-                            "failed to deserialize properties: {e}"
-                        )
-                        .into(),
-                    },
-                )
-            })?;
+        // Deserialize full RawSchema from stored JSON
+        // raw_properties contains the complete RawSchema JSON (not just
+        // properties)
+        let raw_schema =
+            serde_json::from_slice::<RawSchema>(version.raw_properties())
+                .map_err(|e| {
+                    crate::schema::error::SchemaIngestionError::Parse(
+                        crate::schema::error::SchemaParseError::CachedView {
+                            path: std::path::PathBuf::from(self.name()),
+                            reason: format!(
+                                "failed to reconstruct schema: {e}"
+                            )
+                            .into(),
+                        },
+                    )
+                })?
+                .with_name(self.name().into());
 
-        let excludes: Vec<Box<str>> = version
-            .excludes()
-            .iter()
-            .map(|prop_name| prop_name.as_str().into())
-            .collect();
-
-        let extends: Option<Box<str>> =
-            version.extends().map(|schema_name| schema_name.as_str().into());
-
-        Ok(Some(RawSchema {
-            version: version.version().into(),
-            name,
-            extends,
-            excludes,
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        }))
+        Ok(Some(raw_schema))
     }
 
     /// Creates a view from a raw schema with content.
@@ -220,11 +201,11 @@ impl RawSchemaView {
 
         // Compute per-property hashes
         let property_hashes =
-            HashMetadata::compute_property_hashes(&raw.properties);
+            HashMetadata::compute_property_hashes(raw.properties());
 
         let file_times = FileTimesMetadata::new(
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
+            raw.metadata().created_at,
+            raw.metadata().modified_at,
         );
         let hashes =
             HashMetadata::new(*content_hash.as_bytes(), property_hashes);
@@ -332,25 +313,24 @@ impl RawPropertyBankView {
             return Ok(None);
         };
 
-        // Deserialize properties from serde JSON
-        let properties: HashMap<Box<str>, RawPropertyBankEntry> =
-            serde_json::from_slice(version.raw_properties()).map_err(|e| {
-                crate::schema::error::SchemaIngestionError::Parse(
-                    crate::schema::error::SchemaParseError::CachedView {
-                        path: std::path::PathBuf::from("property_bank"),
-                        reason: format!(
-                            "failed to deserialize properties: {e}"
-                        )
-                        .into(),
-                    },
-                )
-            })?;
+        // Deserialize full RawPropertyBank from stored JSON
+        // raw_properties contains the complete RawPropertyBank JSON (not just
+        // properties)
+        let raw_bank: RawPropertyBank =
+            serde_json::from_slice::<RawPropertyBank>(version.raw_properties())
+                .map_err(|e| {
+                    crate::schema::error::SchemaIngestionError::Parse(
+                        crate::schema::error::SchemaParseError::CachedView {
+                            path: std::path::PathBuf::from("property_bank"),
+                            reason: format!(
+                                "failed to reconstruct property bank: {e}"
+                            )
+                            .into(),
+                        },
+                    )
+                })?;
 
-        Ok(Some(RawPropertyBank {
-            version: version.version().into(),
-            properties,
-            metadata: RawSchemaMetadata::default(),
-        }))
+        Ok(Some(raw_bank))
     }
 
     /// Creates a view from a raw property bank with content.
@@ -373,11 +353,11 @@ impl RawPropertyBankView {
 
         // Compute per-property hashes
         let property_hashes =
-            HashMetadata::compute_property_hashes_for_bank(&raw.properties);
+            HashMetadata::compute_property_hashes_for_bank(raw.properties());
 
         let file_times = FileTimesMetadata::new(
-            raw.metadata.created_at,
-            raw.metadata.modified_at,
+            raw.metadata().created_at,
+            raw.metadata().modified_at,
         );
         let hashes =
             HashMetadata::new(*content_hash.as_bytes(), property_hashes);
@@ -522,21 +502,20 @@ mod tests {
 
         use super::super::{FilePath, RawSchemaView, SchemaVersion};
         use crate::schema::{
-            raw::{RawSchema, RawSchemaMetadata, RawSchemaVersion},
+            raw::RawSchema,
             views::{FileTimesMetadata, HashMetadata},
         };
 
         #[test]
         fn to_raw_reconstructs_schema() {
-            // Create a test RawSchema
-            let raw = RawSchema {
-                version: RawSchemaVersion::default(),
-                name: "test".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            // Create a test RawSchema via deserialization
+            let json = r#"{
+                "$version": "1.0",
+                "properties": {}
+            }"#;
+            let raw = serde_json::from_str::<RawSchema>(json)
+                .expect("valid schema should deserialize")
+                .with_name("test".into());
 
             let file_times = FileTimesMetadata::new(None, None);
             let hashes = HashMetadata::new([0; 32], HashMap::new());
@@ -549,7 +528,8 @@ mod tests {
                 .to_raw()
                 .expect("should succeed")
                 .expect("should have value");
-            assert_eq!(reconstructed.name.as_ref(), "test");
+            assert_eq!(reconstructed.name(), "test");
+            assert_eq!(reconstructed.properties().len(), 0);
         }
     }
 
@@ -558,18 +538,20 @@ mod tests {
 
         use super::super::{PropertyBankVersion, RawPropertyBankView};
         use crate::schema::{
-            raw::{RawPropertyBank, RawSchemaMetadata, RawSchemaVersion},
+            raw::RawPropertyBank,
             views::{FileTimesMetadata, HashMetadata},
         };
 
         #[test]
         fn to_raw_reconstructs_property_bank() {
-            // Create a test RawPropertyBank
-            let raw = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            // Create a test RawPropertyBank via deserialization
+            let json = r#"{
+                "$version": "1.0",
+                "properties": {}
+            }"#;
+            let raw: RawPropertyBank =
+                serde_json::from_str::<RawPropertyBank>(json)
+                    .expect("valid property bank should deserialize");
 
             let file_times = FileTimesMetadata::new(None, None);
             let hashes = HashMetadata::new([0; 32], HashMap::new());
@@ -582,7 +564,7 @@ mod tests {
                 .to_raw()
                 .expect("should succeed")
                 .expect("should have value");
-            assert_eq!(reconstructed.properties.len(), 0);
+            assert_eq!(reconstructed.properties().len(), 0);
         }
     }
 }

@@ -264,7 +264,7 @@ impl PropertyBank {
         let mut any_changed = false;
 
         for name in changed {
-            if let Some(raw_entry) = raw.properties.get(name.as_ref()) {
+            if let Some(raw_entry) = raw.properties().get(name.as_ref()) {
                 // Property exists in raw - update or insert
                 let spec = raw_entry.spec.clone().try_into()?;
                 let multiplicity = if raw_entry.multi {
@@ -338,12 +338,13 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
     fn try_from(raw: RawPropertyBank) -> Result<Self, Self::Error> {
         let mut bank = Self::new();
 
-        let mut entries: Vec<_> = raw.properties.into_iter().collect();
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut entries: Vec<_> = raw.properties().iter().collect();
+        entries.sort_by(|left, right| left.0.cmp(right.0));
 
         for (name, entry) in entries {
-            let prop_name = PropertyName::try_from(name)?;
-            let spec = entry.spec.try_into()?;
+            // Keys in RawPropertyMap are already PropertyName, no conversion
+            // needed
+            let spec = entry.spec.clone().try_into()?;
             let multiplicity = if entry.multi {
                 Multiplicity::Many
             } else {
@@ -352,7 +353,7 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
 
             let property = Property::new(
                 PropertyId::new(),
-                prop_name,
+                name.clone(),
                 Optionality::Optional,
                 multiplicity,
                 spec,
@@ -502,7 +503,7 @@ mod tests {
             property::{
                 Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
-            property_spec::{BoolSpec, PropertySpec, StringSpec},
+            property_spec::{BoolSpec, PropertySpec},
         },
         *,
     };
@@ -532,13 +533,13 @@ mod tests {
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0702);
 
     mod property_bank {
-        use std::collections::HashMap;
-
         use super::*;
-        use crate::schema::raw::{
-            RawPropertyBank, RawSchemaMetadata, RawSchemaVersion,
-            property::RawPropertyBankEntry,
-            property_spec::{RawPropertySpec, RawStringSpec},
+        use crate::schema::{
+            property::{
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
+            },
+            property_spec::{PropertySpec, StringSpec},
+            raw::RawPropertyBank,
         };
 
         /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
@@ -693,17 +694,18 @@ mod tests {
             );
             bank.register(prop).expect("initial registration succeeds");
 
-            let mut properties = HashMap::new();
-            properties.insert("status".into(), RawPropertyBankEntry {
-                multi: false,
-                spec: RawPropertySpec::String(RawStringSpec::default()),
+            // Use JSON deserialization to construct RawPropertyBank
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "status": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-
-            let raw = RawPropertyBank {
-                version: "1.0".into(),
-                properties,
-                metadata: crate::schema::raw::RawSchemaMetadata::default(),
-            };
+            let raw: RawPropertyBank = serde_json::from_value(raw_json)
+                .expect("valid property bank JSON");
 
             // Use update_from_raw to update only the "status" property
             let changed = vec![name.clone()];
@@ -819,22 +821,22 @@ mod tests {
         fn update_from_raw_incremental_update() {
             let mut bank = PropertyBank::new();
 
-            // Initial property bank
-            let mut raw_properties = HashMap::new();
-            raw_properties.insert("title".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: false,
+            // Initial property bank using JSON deserialization
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    },
+                    "status": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-            raw_properties.insert("status".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: false,
-            });
-
-            let raw = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: raw_properties.clone(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw: RawPropertyBank = serde_json::from_value(raw_json)
+                .expect("valid property bank JSON");
 
             // Initial load
             let changed = vec![
@@ -845,17 +847,23 @@ mod tests {
 
             assert_eq!(bank.all().count(), 2);
 
-            // Modify one property
-            raw_properties.insert("title".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: true, // Changed to multi
+            // Modify one property (multi changed to true)
+            let raw_updated_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": true,  // Changed to multi
+                        "type": "string"
+                    },
+                    "status": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-
-            let raw_updated = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: raw_properties,
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw_updated: RawPropertyBank =
+                serde_json::from_value(raw_updated_json)
+                    .expect("valid property bank JSON");
 
             // Incremental update (only title changed)
             let changed_props = vec![PropertyName::try_new("title").unwrap()];
@@ -875,17 +883,17 @@ mod tests {
         fn update_from_raw_empty_changed_is_noop() {
             let mut bank = PropertyBank::new();
 
-            let mut raw_properties = HashMap::new();
-            raw_properties.insert("title".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: false,
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-
-            let raw = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: raw_properties,
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw: RawPropertyBank = serde_json::from_value(raw_json)
+                .expect("valid property bank JSON");
 
             let version_before = bank.version();
 
@@ -902,21 +910,21 @@ mod tests {
             let mut bank = PropertyBank::new();
 
             // Initial property bank with two properties
-            let mut raw_properties = HashMap::new();
-            raw_properties.insert("title".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: false,
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    },
+                    "status": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-            raw_properties.insert("status".into(), RawPropertyBankEntry {
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-                multi: false,
-            });
-
-            let raw = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: raw_properties,
-                metadata: RawSchemaMetadata::default(),
-            };
+            let raw: RawPropertyBank = serde_json::from_value(raw_json)
+                .expect("valid property bank JSON");
 
             let changed = vec![
                 PropertyName::try_new("title").unwrap(),
@@ -926,21 +934,19 @@ mod tests {
 
             assert_eq!(bank.all().count(), 2);
 
-            // Remove status property
-            let mut raw_properties_updated = HashMap::new();
-            raw_properties_updated.insert(
-                "title".into(),
-                RawPropertyBankEntry {
-                    spec: RawPropertySpec::String(RawStringSpec::default()),
-                    multi: false,
-                },
-            );
-
-            let raw_updated = RawPropertyBank {
-                version: RawSchemaVersion::default(),
-                properties: raw_properties_updated,
-                metadata: RawSchemaMetadata::default(),
-            };
+            // Remove status property (only title remains)
+            let raw_updated_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
+            });
+            let raw_updated: RawPropertyBank =
+                serde_json::from_value(raw_updated_json)
+                    .expect("valid property bank JSON");
 
             // Update with status in changed list (it was removed from raw)
             let changed_props = vec![PropertyName::try_new("status").unwrap()];

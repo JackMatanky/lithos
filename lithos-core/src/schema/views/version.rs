@@ -27,7 +27,7 @@ use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
     property::{Property, PropertyName},
-    raw::{RawPropertyBank, RawSchema},
+    raw::{RawPropertyBank, RawSchema, property::RawProperty},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +81,11 @@ pub struct SchemaVersion {
     /// is independent of the original schema file format (TOML/JSON/YAML).
     raw_properties: Vec<u8>,
 
+    /// Map of schema property name to property bank target name.
+    ///
+    /// Extracted from `$ref` entries during ingestion.
+    bank_references: HashMap<PropertyName, PropertyName>,
+
     /// Cached expanded properties (from `RefExpander`).
     ///
     /// Enables skipping expansion when `PropertyBank` is fresh.
@@ -99,14 +104,14 @@ impl SchemaVersion {
         raw: &RawSchema,
     ) -> Result<Self, SchemaIngestionError> {
         // Validate and convert excludes
-        let mut excludes = Vec::with_capacity(raw.excludes.len());
-        for exclude in &raw.excludes {
+        let mut excludes = Vec::with_capacity(raw.excludes().len());
+        for exclude in raw.excludes() {
             let prop_name = PropertyName::try_new_with_context(
                 exclude.as_ref(),
                 crate::schema::error::PropertyNameContext::Exclude,
             )
             .map_err(|e| SchemaIngestionError::Schema {
-                path: PathBuf::from(raw.name.as_ref()),
+                path: PathBuf::from(raw.name()),
                 source: e,
             })?;
             excludes.push(prop_name);
@@ -114,50 +119,59 @@ impl SchemaVersion {
 
         // Validate extends if present
         let extends = raw
-            .extends
-            .as_ref()
+            .extends()
             .map(|name| {
-                SchemaName::try_new(name.as_ref()).map_err(|e| {
+                SchemaName::try_new(name).map_err(|e| {
                     SchemaIngestionError::Schema {
-                        path: PathBuf::from(raw.name.as_ref()),
+                        path: PathBuf::from(raw.name()),
                         source: e,
                     }
                 })
             })
             .transpose()?;
 
-        // Validate property names (without consuming the map)
+        // Property names are already validated via RawPropertyMap
+        // deserialization No need to validate them again here
+
+        // Serialize the complete raw schema via serde (not rkyv)
+        let raw_properties = serde_json::to_vec(raw).map_err(|e| {
+            SchemaIngestionError::Parse(
+                crate::schema::error::SchemaParseError::Serialization {
+                    path: PathBuf::from(raw.name()),
+                    reason: e.to_string().into(),
+                },
+            )
+        })?;
+
+        // Extract bank references from properties map
+        let mut bank_references = HashMap::new();
         #[expect(
             clippy::iter_over_hash_type,
-            reason = "Validation does not depend on iteration order"
+            reason = "Iteration order does not affect the collected bank \
+                      references"
         )]
-        for prop_name in raw.properties.keys() {
-            PropertyName::try_new(prop_name.as_ref()).map_err(|e| {
-                SchemaIngestionError::Schema {
-                    path: PathBuf::from(raw.name.as_ref()),
-                    source: e,
-                }
-            })?;
+        for (prop_name, entry) in raw.properties() {
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "Match ergonomics is used for cleaner code despite \
+                          reference mismatch"
+            )]
+            if let RawProperty::Ref(ref_entry) = entry {
+                bank_references.insert(
+                    prop_name.clone(),
+                    ref_entry.ref_path.target_name().clone(),
+                );
+            }
         }
-
-        // Serialize properties via serde (not rkyv)
-        let raw_properties =
-            serde_json::to_vec(&raw.properties).map_err(|e| {
-                SchemaIngestionError::Parse(
-                    crate::schema::error::SchemaParseError::Serialization {
-                        path: PathBuf::from(raw.name.as_ref()),
-                        reason: e.to_string().into(),
-                    },
-                )
-            })?;
 
         Ok(Self {
             file_times,
             hashes,
-            version: raw.version.as_str().into(),
+            version: raw.version().as_str().into(),
             extends,
             excludes,
             raw_properties,
+            bank_references,
             expanded_properties: None,
         })
     }
@@ -202,6 +216,15 @@ impl SchemaVersion {
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
         &self.excludes
+    }
+
+    /// Get bank property references.
+    ///
+    /// Returns a map of schema property name to target bank property name.
+    #[inline]
+    #[must_use]
+    pub fn bank_references(&self) -> &HashMap<PropertyName, PropertyName> {
+        &self.bank_references
     }
 
     /// Get cached expanded properties if available.
@@ -275,37 +298,23 @@ impl PropertyBankVersion {
         hashes: HashMetadata,
         raw: &RawPropertyBank,
     ) -> Result<Self, SchemaIngestionError> {
-        // Validate property names (without consuming the map)
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Validation does not depend on iteration order"
-        )]
-        for prop_name in raw.properties.keys() {
-            PropertyName::try_new_with_context(
-                prop_name.as_ref(),
-                crate::schema::error::PropertyNameContext::PropertyBank,
-            )
-            .map_err(|e| SchemaIngestionError::Schema {
-                path: PathBuf::from("property_bank"),
-                source: e,
-            })?;
-        }
+        // Property names are already validated via RawPropertyMap
+        // deserialization No need to validate them again here
 
-        // Serialize properties via serde (not rkyv)
-        let raw_properties =
-            serde_json::to_vec(&raw.properties).map_err(|e| {
-                SchemaIngestionError::Parse(
-                    crate::schema::error::SchemaParseError::Serialization {
-                        path: PathBuf::from("property_bank"),
-                        reason: e.to_string().into(),
-                    },
-                )
-            })?;
+        // Serialize the complete raw property bank via serde (not rkyv)
+        let raw_properties = serde_json::to_vec(raw).map_err(|e| {
+            SchemaIngestionError::Parse(
+                crate::schema::error::SchemaParseError::Serialization {
+                    path: PathBuf::from("property_bank"),
+                    reason: e.to_string().into(),
+                },
+            )
+        })?;
 
         Ok(Self {
             file_times,
             hashes,
-            version: raw.version.as_str().into(),
+            version: raw.version().as_str().into(),
             raw_properties,
         })
     }
@@ -344,19 +353,14 @@ mod tests {
     use std::{collections::HashMap, time::SystemTime};
 
     use super::*;
-    use crate::schema::raw::{
-        RawSchemaMetadata, RawSchemaVersion, property::RawProperty,
-    };
 
     fn create_test_raw_schema() -> RawSchema {
-        RawSchema {
-            version: RawSchemaVersion::default(),
-            name: "test".into(),
-            extends: None,
-            excludes: Vec::new(),
-            properties: HashMap::new(),
-            metadata: RawSchemaMetadata::default(),
-        }
+        let json = serde_json::json!({
+            "$version": "1.0",
+            "name": "test",
+            "properties": {}
+        });
+        serde_json::from_value(json).expect("valid test fixture")
     }
 
     #[test]
@@ -379,26 +383,28 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_validates_property_names() {
-        let mut raw = create_test_raw_schema();
-        raw.properties.insert(
-            "Invalid Name!".into(), // Invalid property name
-            RawProperty::Inline(crate::schema::raw::property::RawPropertyInline {
-                required: false,
-                multi: false,
-                spec: crate::schema::raw::property_spec::RawPropertySpec::Bool(
-                    crate::schema::raw::property_spec::RawBoolSpec,
-                ),
-            }),
-        );
+    fn schema_version_bank_references() {
+        let json = serde_json::json!({
+            "$version": "1.0",
+            "properties": {
+                "inline": { "type": "bool" },
+                "referenced": { "$ref": "property_bank#/status" }
+            }
+        });
+        let raw: RawSchema = serde_json::from_value(json).unwrap();
 
-        let file_times = FileTimesMetadata::new(
-            Some(SystemTime::now()),
-            Some(SystemTime::now()),
-        );
-        let hashes = HashMetadata::new([1u8; 32], HashMap::default());
+        let file_times = FileTimesMetadata::new(None, None);
+        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
-        let result = SchemaVersion::new(file_times, hashes, &raw);
-        result.unwrap_err();
+        let refs = version.bank_references();
+        assert_eq!(refs.len(), 1);
+        let status_name = PropertyName::try_new("status").unwrap();
+        let ref_name = PropertyName::try_new("referenced").unwrap();
+        assert_eq!(refs.get(&ref_name), Some(&status_name));
     }
+
+    // Note: Property name validation now happens during RawPropertyMap
+    // deserialization Invalid property names cannot be constructed, making
+    // this test obsolete
 }

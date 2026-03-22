@@ -32,7 +32,7 @@ pub mod property_spec;
 
 use std::{collections::HashMap, time::SystemTime};
 
-use super::error::{SchemaError, SchemaIngestionError};
+use super::error::SchemaIngestionError;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema Types
@@ -40,61 +40,125 @@ use super::error::{SchemaError, SchemaIngestionError};
 
 /// Raw schema definition loaded from vault files.
 ///
+/// Property names are validated during deserialization via `RawPropertyMap`,
+/// ensuring all keys are valid `PropertyName` instances.
+///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
-/// use lithos_core::schema::raw::{RawPropertySpec, RawBoolSpec};
-/// use std::collections::HashMap;
-/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// use lithos_core::schema::raw::RawSchema;
 ///
-/// let mut properties = HashMap::new();
-/// properties.insert(
-///     "archived".into(),
-///     RawProperty::Inline(RawPropertyInline {
-///         required: false,
-///         multi: false,
-///         spec: RawPropertySpec::Bool(RawBoolSpec),
-///     }),
-/// );
-/// let schema = RawSchema {
-///     name: "note".into(),
-///     extends: None,
-///     excludes: Vec::new(),
-///     properties,
-/// };
-/// assert_eq!(schema.properties.len(), 1, "Schema should contain one property");
-/// # Ok(())
-/// # }
+/// // Properties are validated during deserialization
+/// let toml = r#"
+/// [properties.my_property]
+/// type = "bool"
+/// required = true
+/// "#;
+/// let mut schema: RawSchema = toml::from_str(toml)?;
+/// schema = schema.with_name("note".into());
+/// // schema.properties() returns HashMap<PropertyName, RawProperty>
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
     #[serde(rename = "$version", default)]
-    pub version: RawSchemaVersion,
+    version: RawSchemaVersion,
+
     /// Schema name (always derived from filename by Ingestor).
     ///
     /// This field is NOT read from the file - it is always set by the Ingestor
     /// based on the filename (without extension). The file format does not
     /// include a `name` field.
     #[serde(skip)]
-    pub name: Box<str>,
+    name: Box<str>,
+
     /// Optional parent schema name for inheritance.
-    pub extends: Option<Box<str>>,
+    extends: Option<Box<str>>,
+
     /// Property names to exclude from parent schema.
     #[serde(default)]
-    pub excludes: Vec<Box<str>>,
-    /// Map of property name to property definition.
-    pub properties: HashMap<Box<str>, property::RawProperty>,
+    excludes: Vec<Box<str>>,
+
+    /// Validated property map (keys are guaranteed valid `PropertyNames`).
+    properties: property::RawPropertyMap<property::RawProperty>,
+
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip)]
-    pub metadata: RawSchemaMetadata,
+    metadata: RawSchemaMetadata,
 }
 
 impl RawSchema {
+    /// Returns the schema version.
+    #[inline]
+    #[must_use]
+    pub fn version(&self) -> &RawSchemaVersion {
+        &self.version
+    }
+
+    /// Returns the schema name.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the parent schema name (if present).
+    #[inline]
+    #[must_use]
+    pub fn extends(&self) -> Option<&str> {
+        self.extends.as_deref()
+    }
+
+    /// Returns the excluded property names.
+    #[inline]
+    #[must_use]
+    pub fn excludes(&self) -> &[Box<str>] {
+        &self.excludes
+    }
+
+    /// Returns the properties map.
+    ///
+    /// All keys are guaranteed to be valid `PropertyName` instances.
+    #[inline]
+    #[must_use]
+    pub fn properties(
+        &self,
+    ) -> &HashMap<super::property::PropertyName, property::RawProperty> {
+        self.properties.as_map()
+    }
+
+    /// Returns the metadata.
+    #[inline]
+    #[must_use]
+    pub fn metadata(&self) -> &RawSchemaMetadata {
+        &self.metadata
+    }
+
+    /// Set the schema name (called by Ingestor after deserialization).
+    ///
+    /// The name is derived from the filename, not the file content.
+    #[inline]
+    #[must_use]
+    pub fn with_name(mut self, name: Box<str>) -> Self {
+        self.name = name;
+        self
+    }
+
+    /// Set metadata (called by Ingestor after deserialization).
+    #[inline]
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: RawSchemaMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
+
     /// Validate the schema version matches the expected version.
+    ///
+    /// This is separate from property key validation (which happens during
+    /// deserialization) because version errors need path context for better
+    /// error messages.
     ///
     /// # Errors
     /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
@@ -107,106 +171,170 @@ impl RawSchema {
         self.version.validate(path)
     }
 
-    /// Validate raw schema syntax and structure.
+    /// Consuming constructor that validates the schema version and
+    /// inheritance fields.
     ///
-    /// This performs syntactic validation only:
-    /// - Schema name syntax (via `SchemaName`)
-    /// - Unique property names
-    /// - Parent schema name syntax (if present)
-    /// - Exclude property name syntax
-    ///
-    /// Semantic validation (property refs exist, circular inheritance, etc.)
-    /// happens during resolution.
+    /// Property name validation happens during deserialization via
+    /// `RawPropertyMap`, so this only validates version, extends, and excludes.
     ///
     /// # Errors
-    /// Returns `SchemaError` if validation fails.
+    /// Returns `SchemaIngestionError` if validation fails.
     #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
+    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
+        use super::{aggregate::SchemaName, property::PropertyName};
+
+        self.validate_version(path)?;
+
         // Validate schema name syntax
-        use super::aggregate::SchemaName;
-        SchemaName::try_new(self.name.as_ref())?;
+        SchemaName::try_new(self.name.as_ref()).map_err(|error| {
+            SchemaIngestionError::Schema {
+                path: path.into(),
+                source: error,
+            }
+        })?;
 
         // Validate parent schema name syntax (if present)
         if let Some(parent) = self.extends.as_ref() {
-            SchemaName::try_new(parent.as_ref())?;
+            SchemaName::try_new(parent.as_ref()).map_err(|error| {
+                SchemaIngestionError::Schema {
+                    path: path.into(),
+                    source: error,
+                }
+            })?;
         }
 
         // Validate excludes syntax
         for excluded in &self.excludes {
-            use super::property::PropertyName;
             PropertyName::try_new_with_context(
                 excluded.as_ref(),
                 super::error::PropertyNameContext::Exclude,
-            )?;
+            )
+            .map_err(|error| SchemaIngestionError::Schema {
+                path: path.into(),
+                source: error,
+            })?;
         }
 
-        // Check for duplicate property names
-        // (HashMap ensures uniqueness, but check for clarity)
-        if self.properties.is_empty() {
-            // Empty properties is valid (may inherit all from parent)
-            return Ok(());
-        }
-
-        // Validate property name syntax
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Validation does not depend on iteration order"
-        )]
-        for prop_name in self.properties.keys() {
-            use super::property::PropertyName;
-            PropertyName::try_new(prop_name.as_ref())?;
-        }
-
-        Ok(())
-    }
-
-    /// Consuming constructor that validates the schema.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
-        self.validate_version(path)?;
-        self.validate().map_err(|error| SchemaIngestionError::Schema {
-            path: path.into(),
-            source: error,
-        })?;
         Ok(self)
     }
 }
 
 /// Raw property bank loaded from vault files.
 ///
+/// Property names are validated during deserialization via `RawPropertyMap`,
+/// ensuring all keys are valid `PropertyName` instances.
+///
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::raw::RawPropertyBank;
 ///
-/// let bank = RawPropertyBank {
-///     properties: std::collections::HashMap::new(),
-/// };
-/// let _ = bank;
+/// // Properties are validated during deserialization
+/// let toml = r#"
+/// [properties.my_property]
+/// type = "bool"
+/// "#;
+/// let bank: RawPropertyBank = toml::from_str(toml)?;
+/// // bank.properties() returns HashMap<PropertyName, RawPropertyBankEntry>
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
     /// Property bank format version (defaults to "1.0" if not specified).
     #[serde(rename = "$version", default)]
-    pub version: RawSchemaVersion,
-    /// Map of property name to property definition.
-    pub properties: HashMap<Box<str>, property::RawPropertyBankEntry>,
+    version: RawSchemaVersion,
+
+    /// Validated property map (keys are guaranteed valid `PropertyNames`).
+    properties: property::RawPropertyMap<property::RawPropertyBankEntry>,
+
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip)]
-    pub metadata: RawSchemaMetadata,
+    metadata: RawSchemaMetadata,
 }
 
 impl RawPropertyBank {
+    /// Returns the schema version.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::RawPropertyBank;
+    /// # let bank: RawPropertyBank = unimplemented!();
+    /// assert_eq!(bank.version().as_str(), "1.0");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn version(&self) -> &RawSchemaVersion {
+        &self.version
+    }
+
+    /// Returns the properties map.
+    ///
+    /// All keys are guaranteed to be valid `PropertyName` instances.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::RawPropertyBank;
+    /// # let bank: RawPropertyBank = unimplemented!();
+    /// for (name, entry) in bank.properties() {
+    ///     // name is &PropertyName - already validated
+    ///     println!("{}: {:?}", name.as_str(), entry);
+    /// }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn properties(
+        &self,
+    ) -> &HashMap<super::property::PropertyName, property::RawPropertyBankEntry>
+    {
+        self.properties.as_map()
+    }
+
+    /// Returns the metadata.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::RawPropertyBank;
+    /// # let bank: RawPropertyBank = unimplemented!();
+    /// let metadata = bank.metadata();
+    /// println!("Created: {:?}", metadata.created_at);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn metadata(&self) -> &RawSchemaMetadata {
+        &self.metadata
+    }
+
+    /// Set metadata (called by Ingestor after deserialization).
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::{RawPropertyBank, RawSchemaMetadata};
+    /// # let mut bank: RawPropertyBank = unimplemented!();
+    /// # let metadata: RawSchemaMetadata = unimplemented!();
+    /// bank.set_metadata(metadata);
+    /// ```
+    #[inline]
+    pub fn set_metadata(&mut self, metadata: RawSchemaMetadata) {
+        self.metadata = metadata;
+    }
+
     /// Validate the property bank version matches the expected version.
+    ///
+    /// This is separate from property key validation (which happens during
+    /// deserialization) because version errors need path context for better
+    /// error messages.
     ///
     /// # Errors
     /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
     /// does not match.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::RawPropertyBank;
+    /// # let bank: RawPropertyBank = unimplemented!();
+    /// bank.validate_version("schemas/property_bank.toml")?;
+    /// ```
     #[inline]
     pub fn validate_version(
         &self,
@@ -215,44 +343,23 @@ impl RawPropertyBank {
         self.version.validate(path)
     }
 
-    /// Validate raw property bank syntax and structure.
+    /// Consuming constructor that validates the property bank version.
     ///
-    /// This performs syntactic validation only:
-    /// - Property names are unique (enforced by `HashMap` structure)
-    /// - Property name syntax (via `PropertyName`)
-    /// - Property specs are valid (enforced by serde deserialization)
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
-        // Validate property name syntax
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Validation does not depend on iteration order"
-        )]
-        for prop_name in self.properties.keys() {
-            use super::property::PropertyName;
-            PropertyName::try_new_with_context(
-                prop_name.as_ref(),
-                super::error::PropertyNameContext::PropertyBank,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// Consuming constructor that validates the property bank.
+    /// Property name validation happens during deserialization via
+    /// `RawPropertyMap`, so this only validates the version field.
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if validation fails.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::raw::RawPropertyBank;
+    /// # let bank: RawPropertyBank = unimplemented!();
+    /// let bank = bank.validated("schemas/property_bank.toml")?;
+    /// ```
     #[inline]
     pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
         self.validate_version(path)?;
-        self.validate().map_err(|error| SchemaIngestionError::Schema {
-            path: path.into(),
-            source: error,
-        })?;
         Ok(self)
     }
 }
@@ -376,12 +483,31 @@ impl AsRef<str> for RawSchemaVersion {
     reason = "Test helpers are grouped at the top for readability"
 )]
 mod tests {
-    use std::collections::HashMap;
+    use super::*;
 
-    use super::{property, property_spec, *};
-
-    fn schema_name() -> Box<str> {
-        "note".into()
+    // Helper to construct RawSchema using JSON deserialization
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test fixture indices into known-fixed JSON object"
+    )]
+    fn create_raw_schema(
+        name: &str,
+        extends: Option<&str>,
+        excludes: &[&str],
+    ) -> RawSchema {
+        let mut json = serde_json::json!({
+            "$version": "1.0",
+            "properties": {}
+        });
+        if let Some(parent) = extends {
+            json["extends"] = serde_json::json!(parent);
+        }
+        if !excludes.is_empty() {
+            json["excludes"] = serde_json::json!(excludes);
+        }
+        serde_json::from_value::<RawSchema>(json)
+            .expect("valid schema JSON")
+            .with_name(name.into())
     }
 
     mod raw_schema {
@@ -389,173 +515,92 @@ mod tests {
 
         #[test]
         fn defaults_to_empty_excludes() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: schema_name(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            let schema = create_raw_schema("note", None, &[]);
 
             assert!(
-                schema.excludes.is_empty(),
+                schema.excludes().is_empty(),
                 "RawSchema should have empty excludes by default"
             );
         }
 
         #[test]
         fn defaults_to_no_extends() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: schema_name(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
+            let schema = create_raw_schema("note", None, &[]);
 
             assert!(
-                schema.extends.is_none(),
+                schema.extends().is_none(),
                 "RawSchema should have no extends by default"
             );
         }
 
         #[test]
         fn validate_valid() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "test_schema".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema = create_raw_schema("test_schema", None, &[]);
             schema.validated("test").unwrap();
         }
 
         #[test]
         fn validate_with_parent() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "child_schema".into(),
-                extends: Some("parent_schema".into()),
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema =
+                create_raw_schema("child_schema", Some("parent_schema"), &[]);
             schema.validated("test").unwrap();
         }
 
         #[test]
         fn validate_with_excludes() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "test".into(),
-                extends: Some("parent".into()),
-                excludes: vec!["prop1".into(), "prop2".into()],
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema =
+                create_raw_schema("test", Some("parent"), &["prop1", "prop2"]);
             schema.validated("test").unwrap();
         }
 
         #[test]
         fn validate_invalid_name() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "Invalid Name".into(), // Uppercase + space
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema = create_raw_schema("Invalid Name", None, &[]); // Uppercase + space
             schema.validated("test").unwrap_err();
         }
 
         #[test]
         fn validate_invalid_parent_name() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "child".into(),
-                extends: Some("Parent!Invalid".into()), /* Uppercase +
-                                                         * special char */
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema =
+                create_raw_schema("child", Some("Parent!Invalid"), &[]); // Uppercase + special char
             schema.validated("test").unwrap_err();
         }
 
         #[test]
         fn validate_invalid_exclude_name() {
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "test".into(),
-                extends: Some("parent".into()),
-                excludes: vec!["Invalid Property".into()], // Space
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let schema = create_raw_schema("test", Some("parent"), &[
+                "Invalid Property",
+            ]); // Space
             schema.validated("test").unwrap_err();
         }
 
         #[test]
         fn validate_with_valid_properties() {
-            let mut properties = HashMap::new();
-            properties.insert(
-                "valid_property".into(),
-                property::RawProperty::Inline(property::RawPropertyInline {
-                    required: false,
-                    multi: false,
-                    spec: property_spec::RawPropertySpec::Bool(
-                        property_spec::RawBoolSpec,
-                    ),
-                }),
-            );
-
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "test".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties,
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "valid_property": { "type": "bool" }
+                }
+            });
+            let schema = serde_json::from_value::<RawSchema>(json)
+                .unwrap()
+                .with_name("test".into());
             schema.validated("test").unwrap();
         }
 
         #[test]
         fn validate_invalid_property_name() {
-            let mut properties = HashMap::new();
-            properties.insert(
-                "Invalid Property!".into(), // Space + special char
-                property::RawProperty::Inline(property::RawPropertyInline {
-                    required: false,
-                    multi: false,
-                    spec: property_spec::RawPropertySpec::Bool(
-                        property_spec::RawBoolSpec,
-                    ),
-                }),
-            );
-
-            let schema = RawSchema {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                name: "test".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties,
-                metadata: RawSchemaMetadata::default(),
-            };
-
-            schema.validated("test").unwrap_err();
+            // Property name validation now happens during deserialization
+            // Invalid property names cannot be constructed via RawPropertyMap
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "name": "test",
+                "properties": {
+                    "Invalid Property!": { "type": "bool" }  // Space + special char
+                }
+            });
+            // Deserialization should fail
+            serde_json::from_value::<RawSchema>(json).unwrap_err();
         }
     }
 
@@ -564,54 +609,44 @@ mod tests {
 
         #[test]
         fn validate_valid() {
-            let mut properties = HashMap::new();
-            properties.insert("title".into(), property::RawPropertyBankEntry {
-                multi: false,
-                spec: property_spec::RawPropertySpec::String(
-                    property_spec::RawStringSpec::default(),
-                ),
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
             });
-
-            let bank = RawPropertyBank {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                properties,
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let bank: RawPropertyBank = serde_json::from_value(json).unwrap();
             bank.validated("test").unwrap();
         }
 
         #[test]
         fn validate_empty() {
-            let bank = RawPropertyBank {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                properties: HashMap::new(),
-                metadata: RawSchemaMetadata::default(),
-            };
-
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            let bank: RawPropertyBank = serde_json::from_value(json).unwrap();
             bank.validated("test").unwrap();
         }
 
         #[test]
         fn validate_invalid_property_name() {
-            let mut properties = HashMap::new();
-            properties.insert(
-                "Invalid Name!".into(), // Space + special char
-                property::RawPropertyBankEntry {
-                    multi: false,
-                    spec: property_spec::RawPropertySpec::Bool(
-                        property_spec::RawBoolSpec,
-                    ),
-                },
-            );
-
-            let bank = RawPropertyBank {
-                version: RawSchemaVersion::SUPPORTED.into(),
-                properties,
-                metadata: RawSchemaMetadata::default(),
-            };
-
-            bank.validated("test").unwrap_err();
+            // Property name validation now happens during deserialization
+            // Invalid property names cannot be constructed via RawPropertyMap
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "Invalid Name!": {  // Space + special char
+                        "multi": false,
+                        "type": "bool"
+                    }
+                }
+            });
+            // Deserialization should fail
+            serde_json::from_value::<RawPropertyBank>(json).unwrap_err();
         }
     }
 }
