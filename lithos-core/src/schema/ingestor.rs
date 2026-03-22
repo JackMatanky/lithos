@@ -544,7 +544,7 @@ where
 
             // Create view with content for caching
             let view =
-                RawPropertyBankView::try_from_with_content(&raw, content)?;
+                RawPropertyBankView::try_from_raw_with_content(&raw, content)?;
 
             self.repository
                 .save_raw_property_bank_view(filename, &view)
@@ -618,7 +618,7 @@ where
 
             // Create updated view
             let view =
-                RawPropertyBankView::try_from_with_content(&raw, content)?;
+                RawPropertyBankView::try_from_raw_with_content(&raw, content)?;
 
             self.repository
                 .save_raw_property_bank_view(filename, &view)

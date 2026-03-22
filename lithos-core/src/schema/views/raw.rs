@@ -342,7 +342,7 @@ impl RawPropertyBankView {
     /// # Errors
     /// Returns error if metadata is missing or validation fails.
     #[inline]
-    pub fn try_from_with_content(
+    pub fn try_from_raw_with_content(
         raw: &RawPropertyBank,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
