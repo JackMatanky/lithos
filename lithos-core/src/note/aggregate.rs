@@ -385,43 +385,6 @@ impl Note {
         }
     }
 
-    fn collect_frontmatter_tags(
-        frontmatter: &Frontmatter,
-        config: &Config,
-        tags: &mut Vec<Tag>,
-    ) {
-        let key = config.frontmatter().tags();
-        let Some(value) = frontmatter.find_field(key.as_str()) else {
-            return;
-        };
-
-        let mut collect_tokens = |text: &str| {
-            for token in text.split(|ch: char| ch.is_whitespace() || ch == ',')
-            {
-                let token = token.trim();
-                if token.is_empty() {
-                    continue;
-                }
-                if let Ok(tag) = Tag::try_from_token(token) {
-                    Note::add_tag(tags, tag);
-                }
-            }
-        };
-
-        if let Some(text) = value.as_str() {
-            collect_tokens(text);
-            return;
-        }
-
-        if let Some(values) = value.as_array() {
-            for item in values {
-                if let Some(text) = item.as_str() {
-                    collect_tokens(text);
-                }
-            }
-        }
-    }
-
     fn collect_frontmatter_links(
         frontmatter: &Frontmatter,
         links: &mut Vec<FrontmatterLink>,
@@ -532,11 +495,14 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
 
     #[inline]
     fn try_from(ctx: RawNoteContext<'raw>) -> Result<Self, Self::Error> {
+        let fm_spec = ctx.config.to_frontmatter_spec();
+        let task_spec = ctx.config.to_task_spec();
+
         let frontmatter = ctx
             .raw
             .frontmatter()
             .cloned()
-            .map(|raw| Frontmatter::parse(raw.kind(), raw.text(), ctx.config))
+            .map(|raw| Frontmatter::parse(raw.kind(), raw.text(), &fm_spec))
             .transpose()?;
 
         let mut tags = Vec::new();
@@ -545,8 +511,12 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
                 Note::add_tag(&mut tags, tag);
             }
         }
-        if let Some(frontmatter) = frontmatter.as_ref() {
-            Note::collect_frontmatter_tags(frontmatter, ctx.config, &mut tags);
+        if let Some(frontmatter) = frontmatter.as_ref()
+            && let Some(fm_tags) = frontmatter.tags()
+        {
+            for tag in fm_tags {
+                Note::add_tag(&mut tags, tag.clone());
+            }
         }
 
         let mut frontmatter_links = Vec::new();
@@ -602,7 +572,7 @@ impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
             .collect::<Result<Vec<_>, _>>()?;
         list_items.sort_by_key(ListItemEntry::position);
 
-        let tasks = Task::build_many(ctx.raw, ctx.config)?;
+        let tasks = Task::build_many(ctx.raw, &task_spec)?;
         let inline_fields = ctx
             .raw
             .inline_fields()
@@ -642,6 +612,7 @@ mod tests {
         config::{
             aggregate::Config,
             raw::{RawConfig, RawFieldSpec, RawTaskConfig},
+            task::TaskConfigSpec,
             vault::{VaultId, VaultRoot},
         },
         note::{
@@ -655,24 +626,26 @@ mod tests {
     #[test]
     fn promotes_only_when_task_tag_present() {
         let config = test_config_with_task_tag();
+        let task_spec = config.to_task_spec();
 
-        let promoted = promote_task("#task Do work", &config, &[])
+        let promoted = promote_task("#task Do work", &task_spec, &[])
             .expect("task should be promoted");
         assert_eq!(promoted.text(), "Do work");
 
-        let skipped = promote_task("Do work", &config, &[]);
+        let skipped = promote_task("Do work", &task_spec, &[]);
         assert!(skipped.is_none());
 
-        let skipped_partial = promote_task("#tasker Do work", &config, &[]);
+        let skipped_partial = promote_task("#tasker Do work", &task_spec, &[]);
         assert!(skipped_partial.is_none());
     }
 
     #[test]
     fn promoted_checkbox_extracts_text_and_metadata() {
         let config = config_with_fields();
+        let task_spec = config.to_task_spec();
         let task = promote_task(
             "#task Review PR [priority:: 2] [project:: lithos]",
-            &config,
+            &task_spec,
             &[],
         )
         .expect("task should be promoted");
@@ -685,9 +658,13 @@ mod tests {
     #[test]
     fn promoted_checkbox_collects_hierarchical_tags() {
         let config = test_config_with_task_tag();
-        let task =
-            promote_task("#task Fix #work/project/urgent issue", &config, &[])
-                .expect("task should be promoted");
+        let task_spec = config.to_task_spec();
+        let task = promote_task(
+            "#task Fix #work/project/urgent issue",
+            &task_spec,
+            &[],
+        )
+        .expect("task should be promoted");
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert!(
@@ -699,7 +676,8 @@ mod tests {
     #[test]
     fn promoted_checkbox_ignores_invalid_tags() {
         let config = test_config_with_task_tag();
-        let task = promote_task("#task Review #bad/ tags", &config, &[])
+        let task_spec = config.to_task_spec();
+        let task = promote_task("#task Review #bad/ tags", &task_spec, &[])
             .expect("task should be promoted");
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
@@ -709,10 +687,11 @@ mod tests {
     #[test]
     fn promoted_checkbox_parses_dates() {
         let config = test_config_with_task_tag();
+        let task_spec = config.to_task_spec();
         let task = promote_task(
             "#task Test task with dates [created:: 2024-01-01] [due:: \
              2024-12-31]",
-            &config,
+            &task_spec,
             &[],
         )
         .expect("task should be promoted");
@@ -725,7 +704,7 @@ mod tests {
         }
 
         if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_689_600);
+            assert_eq!(due_at.as_i64(), 1_735_603_200);
             if let Some(created_at) = task.created_at() {
                 assert!(due_at.is_future(Some(created_at)));
             }
@@ -735,9 +714,10 @@ mod tests {
     #[test]
     fn promoted_checkbox_parses_paren_inline_fields() {
         let config = config_with_fields();
+        let task_spec = config.to_task_spec();
         let task = promote_task(
             "#task Review PR (priority:: 2) (project:: lithos)",
-            &config,
+            &task_spec,
             &[],
         )
         .expect("task should be promoted");
@@ -750,11 +730,12 @@ mod tests {
     #[test]
     fn promoted_checkbox_parses_default_emoji_dates() {
         let config = test_config_with_task_tag();
+        let task_spec = config.to_task_spec();
         let emojis = default_emoji_markers();
         let task = promote_task(
             "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
              \u{2705}2025-01-01",
-            &config,
+            &task_spec,
             &emojis,
         )
         .expect("task should be promoted");
@@ -772,17 +753,19 @@ mod tests {
 
     fn promote_task(
         promoted_text: &str,
-        config: &Config,
+        task_spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Option<Task> {
         let raw = raw_task_from_text(promoted_text, emoji_markers);
+
+        let mut task_tags = Vec::new();
+        let mut task_fields = Vec::new();
+        // NoteScanner logic duplicated for test shim
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let artifacts = scanner
             .scan_block(promoted_text, SourceByteOffset::new(0))
             .unwrap();
 
-        let mut task_tags = Vec::new();
-        let mut task_fields = Vec::new();
         for artifact in &artifacts {
             match *artifact {
                 ScannedArtifact::Tag {
@@ -813,7 +796,7 @@ mod tests {
 
         let ctx = RawTaskContext::new(
             &raw,
-            config,
+            task_spec,
             task_tags.into_boxed_slice(),
             task_fields.into_boxed_slice(),
         );

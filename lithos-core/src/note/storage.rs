@@ -381,7 +381,7 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         let mut depends_on = Vec::new();
 
         for task in facts.tasks() {
-            status_keys.push(task.status().as_str().into());
+            status_keys.push(task.status().into());
             if let Some(timestamp) = task.created_at() {
                 created_dates.push(Self::format_i64(timestamp.as_i64()));
             }
@@ -1408,7 +1408,9 @@ impl Repository for RedbRepository<'_, '_> {
     ) -> Result<Vec<TaskView>, Self::Error> {
         let notes =
             self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())?;
-        Ok(Self::collect_tasks_matching(&notes, |task| task.status() == status))
+        Ok(Self::collect_tasks_matching(&notes, |task| {
+            task.status() == status.as_str()
+        }))
     }
 
     #[inline]
@@ -1594,7 +1596,9 @@ mod tests {
         let base = SourceByteOffset::new(0);
         let range = SourceByteRange::new(base, base).expect("valid range");
 
-        let scanner = NoteScanner::default();
+        let config = crate::config::aggregate::fixtures::test_config();
+        let task_spec = config.to_task_spec();
+        let scanner = NoteScanner::new(task_spec.emoji_markers.as_ref());
         let artifacts = scanner
             .scan_block(raw_task_text, SourceByteOffset::new(0))
             .expect("scan artifacts");

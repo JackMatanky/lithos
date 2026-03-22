@@ -67,11 +67,13 @@ where
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, NoteLoadError> {
+        let task_spec = self.config.to_task_spec();
         let raw_note = parser::MarkdownParser::parse(
             markdown,
             path.clone(),
             created_at,
             modified_at,
+            &task_spec,
         )?;
         self.load_raw(&raw_note)
     }

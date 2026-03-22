@@ -299,6 +299,79 @@ impl Task {
 //                    Building Block Types                     //
 // ----------------------------------------------------------- //
 
+/// Identified temporal slots for task metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemporalSlot {
+    /// When the task was created.
+    Created,
+    /// When the task is due.
+    Due,
+    /// When to remind about the task.
+    Reminder,
+    /// When the task was completed.
+    Completed,
+    /// When the task should start.
+    Start,
+    /// When the task is scheduled.
+    Scheduled,
+}
+
+/// Mapping from keyword to temporal slot, format, and optional emoji.
+pub type TemporalMapping =
+    HashMap<Box<str>, (TemporalSlot, String, Option<char>)>;
+
+/// Lightweight contract for task scanning and promotion.
+///
+/// This struct consolidates all configuration rules needed to identify and
+/// promote checkboxes into domain Tasks, using only basic data types.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct TaskConfigSpec {
+    /// Whether task processing is enabled globally.
+    pub enabled: bool,
+    /// Whether emoji format is allowed for task metadata.
+    pub use_emoji: bool,
+    /// Emojis that trigger colon-less inline fields (e.g., 📅).
+    pub emoji_markers: Box<[char]>,
+    /// Tags that trigger task promotion (e.g., #task).
+    pub promotion_tags: Box<[Box<str>]>,
+    /// Maps checkbox symbols to status names (e.g., 'x' -> "done").
+    pub status_mappings: HashMap<char, Box<str>>,
+    /// Maps keywords to temporal slots and their parsing rules.
+    pub temporal_specs: TemporalMapping,
+    /// Maps keywords to custom field validation rules.
+    pub field_specs: HashMap<Box<str>, FieldSpec>,
+}
+
+impl TaskConfigSpec {
+    /// Creates a new task configuration spec.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mapping contract provides exhaustive domain facts"
+    )]
+    pub fn new(
+        enabled: bool,
+        use_emoji: bool,
+        emoji_markers: Box<[char]>,
+        promotion_tags: Box<[Box<str>]>,
+        status_mappings: HashMap<char, Box<str>>,
+        temporal_specs: TemporalMapping,
+        field_specs: HashMap<Box<str>, FieldSpec>,
+    ) -> Self {
+        Self {
+            enabled,
+            use_emoji,
+            emoji_markers,
+            promotion_tags,
+            status_mappings,
+            temporal_specs,
+            field_specs,
+        }
+    }
+}
+
 /// Task status type (aligned with Tasks plugin).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,

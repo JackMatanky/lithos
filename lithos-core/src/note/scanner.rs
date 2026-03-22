@@ -75,26 +75,6 @@ pub struct NoteScanner {
     emoji_markers: Box<[char]>,
 }
 
-impl Default for NoteScanner {
-    /// Creates a `NoteScanner` with standard Obsidian emoji markers.
-    ///
-    /// Default markers include: 📅 (due), ✅ (done), ⏰ (reminder), 🛫 (start),
-    /// and ⏳ (scheduled).
-    #[inline]
-    fn default() -> Self {
-        Self {
-            emoji_markers: vec![
-                '\u{1f4c5}', // 📅
-                '\u{2705}',  // ✅
-                '\u{23f0}',  // ⏰
-                '\u{1f6eb}', // 🛫
-                '\u{23f3}',  // ⏳
-            ]
-            .into(),
-        }
-    }
-}
-
 impl NoteScanner {
     /// Create a new scanner with a custom set of emoji markers.
     #[inline]
@@ -120,7 +100,7 @@ impl NoteScanner {
     /// ```
     /// # use lithos_core::note::scanner::NoteScanner;
     /// # use lithos_core::note::position::SourceByteOffset;
-    /// let scanner = NoteScanner::default();
+    /// let scanner = NoteScanner::new(vec!['📅']);
     /// let artifacts = scanner
     ///     .scan_block("#work [due:: tomorrow]", SourceByteOffset::new(0))
     ///     .unwrap();
@@ -597,7 +577,7 @@ mod tests {
     mod block_ref {
         use rstest::rstest;
 
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[rstest]
         #[case::at_end("Block text ^id", "id")]
@@ -608,13 +588,13 @@ mod tests {
             #[case] text: &str,
             #[case] expected_id: &str,
         ) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::BlockRef { id, .. } if id == &expected_id),
+                matches!(first, ScannedArtifact::BlockRef { id, .. } if *id == expected_id),
                 "Expected BlockRef with id '{expected_id}', got {first:?}"
             );
         }
@@ -624,7 +604,7 @@ mod tests {
         #[case::no_space("Text^id")]
         #[case::preceded_by_alnum("word^id")]
         fn should_ignore_invalid_block_refs(#[case] text: &str) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert!(artifacts.is_empty(), "Failed for: {text}");
@@ -635,13 +615,6 @@ mod tests {
         use super::super::*;
 
         #[test]
-        fn should_create_with_default_emojis() {
-            let scanner = NoteScanner::default();
-            assert!(!scanner.emoji_markers.is_empty());
-            assert!(scanner.emoji_markers.contains(&'\u{1f4c5}'));
-        }
-
-        #[test]
         fn should_create_with_custom_emojis() {
             let scanner = NoteScanner::new(vec!['\u{2b50}']);
             assert_eq!(scanner.emoji_markers.len(), 1);
@@ -650,13 +623,13 @@ mod tests {
     }
 
     mod cursor {
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[test]
         fn should_handle_unicode_advancement() {
             let text = "\u{1f980}#rust";
             let mut cursor = Cursor::new(text, SourceByteOffset::new(0));
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let mut artifacts = Vec::new();
 
             scanner.scan_cursor(&mut cursor, &mut artifacts).unwrap();
@@ -674,7 +647,7 @@ mod tests {
             let mut cursor = Cursor::new(text, SourceByteOffset::new(0));
             assert_eq!(cursor.mode, ScanMode::AtLineStart);
 
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let mut artifacts = Vec::new();
             scanner.scan_cursor(&mut cursor, &mut artifacts).unwrap();
 
@@ -689,7 +662,7 @@ mod tests {
     mod inline_field {
         use rstest::rstest;
 
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[rstest]
         #[case::bracketed("[key:: val]", "key", "val")]
@@ -701,48 +674,48 @@ mod tests {
             #[case] key: &str,
             #[case] val: &str,
         ) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key: k, value: v, .. } if k == &key && v == &val),
+                matches!(first, ScannedArtifact::InlineField { key: k, value: v, .. } if *k == key && *v == val),
                 "Expected InlineField '{key}: {val}', got {first:?}"
             );
         }
 
         #[test]
         fn should_extract_emoji_field() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts = scanner
                 .scan_block("\u{1f4c5} 2024-03-20", SourceByteOffset::new(0))
                 .unwrap();
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == &"\u{1f4c5}" && value == &"2024-03-20"),
+                matches!(first, ScannedArtifact::InlineField { key, value, .. } if *key == "\u{1f4c5}" && *value == "2024-03-20"),
                 "Expected InlineField with emoji, got {first:?}"
             );
         }
 
         #[test]
         fn should_extract_bare_field_at_line_start() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let text = "bare_key:: bare_value";
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == &"bare_key" && value == &"bare_value"),
+                matches!(first, ScannedArtifact::InlineField { key, value, .. } if *key == "bare_key" && *value == "bare_value"),
                 "Expected bare InlineField, got {first:?}"
             );
         }
 
         #[test]
         fn should_ignore_bare_field_in_body() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let text = "Not a bare_key:: bare_value";
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
@@ -751,11 +724,11 @@ mod tests {
     }
 
     mod scan_block {
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[test]
         fn should_extract_all_artifact_types() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let text = "- [x] #task [priority:: high] \u{1f4c5} \
                         2024-03-20\nSummary ^ref-id";
             let artifacts =
@@ -803,7 +776,7 @@ mod tests {
 
         #[test]
         fn should_handle_empty_input() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block("", SourceByteOffset::new(0)).unwrap();
             assert!(artifacts.is_empty());
@@ -811,11 +784,11 @@ mod tests {
     }
 
     mod scan_cursor {
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[test]
         fn should_maintain_context_across_segments() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let mut cursor =
                 Cursor::new("Segment 1 #tag1 ", SourceByteOffset::new(0));
             let mut artifacts = Vec::new();
@@ -847,7 +820,7 @@ mod tests {
     mod tag {
         use rstest::rstest;
 
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[rstest]
         #[case::simple("#tag", 1)]
@@ -857,7 +830,7 @@ mod tests {
         #[case::unicode("#\u{03b1}\u{03b2}\u{03b3}", 1)]
         #[case::multiple("#one #two", 2)]
         fn should_extract_valid_tags(#[case] text: &str, #[case] count: usize) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert_eq!(artifacts.len(), count);
@@ -871,7 +844,7 @@ mod tests {
         #[case::single_hash("#")]
         #[case::empty_hash("# ")]
         fn should_ignore_invalid_tags(#[case] text: &str) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert!(artifacts.is_empty(), "Failed for: {text}");
@@ -879,7 +852,7 @@ mod tests {
 
         #[test]
         fn should_track_absolute_position() {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts = scanner
                 .scan_block("  #tag", SourceByteOffset::new(10))
                 .unwrap();
@@ -894,7 +867,7 @@ mod tests {
     mod task_marker {
         use rstest::rstest;
 
-        use super::super::*;
+        use super::{super::*, scanner_fixture};
 
         #[rstest]
         #[case::hyphen("- [ ] ", ' ')]
@@ -902,12 +875,12 @@ mod tests {
         #[case::plus("+ [X] ", 'X')]
         #[case::ordered("1. [/] ", '/')]
         #[case::ordered_paren("1) [!] ", '!')]
-        #[case::indented("  - [-] ", '-')]
+        #[case::ordered_indented("  - [-] ", '-')]
         fn should_extract_task_markers(
             #[case] text: &str,
             #[case] expected: char,
         ) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert!(
@@ -924,7 +897,7 @@ mod tests {
         #[case::missing_bracket("- x]")]
         #[case::malformed_checkbox("- []")]
         fn should_ignore_malformed_tasks(#[case] text: &str) {
-            let scanner = NoteScanner::default();
+            let scanner = scanner_fixture();
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             let has_task = artifacts
@@ -932,5 +905,15 @@ mod tests {
                 .any(|a| matches!(a, ScannedArtifact::TaskMarker { .. }));
             assert!(!has_task, "Should not have task for: {text}");
         }
+    }
+
+    fn scanner_fixture() -> super::NoteScanner {
+        super::NoteScanner::new(vec![
+            '\u{1f4c5}', // 📅
+            '\u{2705}',  // ✅
+            '\u{23f0}',  // ⏰
+            '\u{1f6eb}', // 🛫
+            '\u{23f3}',  // ⏳
+        ])
     }
 }

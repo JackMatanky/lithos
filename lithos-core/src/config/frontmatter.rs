@@ -134,6 +134,54 @@ impl Frontmatter {
     }
 }
 
+/// Lightweight mapping contract for frontmatter extraction.
+///
+/// This struct allows the note module to identify explicit metadata fields
+/// using basic types, decoupling it from the full configuration aggregate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct FrontmatterConfigSpec {
+    /// Frontmatter key for note titles.
+    pub title_key: Box<str>,
+    /// Frontmatter key for note aliases.
+    pub alias_key: Box<str>,
+    /// Frontmatter key for note tags.
+    pub tags_key: Box<str>,
+    /// Frontmatter key for note file class.
+    pub file_class_key: Box<str>,
+    /// Frontmatter key for note creation date.
+    pub date_created_key: Box<str>,
+    /// Frontmatter key for note modification date.
+    pub date_modified_key: Box<str>,
+}
+
+impl FrontmatterConfigSpec {
+    /// Creates a new frontmatter configuration spec.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mapping contract provides exhaustive domain facts"
+    )]
+    pub fn new(
+        title_key: Box<str>,
+        alias_key: Box<str>,
+        tags_key: Box<str>,
+        file_class_key: Box<str>,
+        date_created_key: Box<str>,
+        date_modified_key: Box<str>,
+    ) -> Self {
+        Self {
+            title_key,
+            alias_key,
+            tags_key,
+            file_class_key,
+            date_created_key,
+            date_modified_key,
+        }
+    }
+}
+
 /// A validated frontmatter key.
 ///
 /// Ensures that frontmatter keys are not empty, maintaining the integrity

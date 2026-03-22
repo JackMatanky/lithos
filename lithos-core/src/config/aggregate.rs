@@ -4,17 +4,19 @@
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
 
+use std::collections::HashMap;
+
 use rkyv::with::Skip;
 use tracing::instrument;
 
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
-    frontmatter::Frontmatter,
+    frontmatter::{Frontmatter, FrontmatterConfigSpec},
     logging::Logging,
     paths::{ArchivedPaths, Paths},
     raw,
-    task::Task,
+    task::{Task, TaskConfigSpec, TemporalSlot},
     vault::{Metadata, VaultId, VaultRoot},
 };
 
@@ -83,6 +85,88 @@ impl Config {
     #[must_use]
     pub const fn task(&self) -> &Task {
         &self.task
+    }
+
+    /// Maps the current configuration into a lightweight contract for
+    /// frontmatter extraction.
+    #[inline]
+    #[must_use]
+    pub fn to_frontmatter_spec(&self) -> FrontmatterConfigSpec {
+        FrontmatterConfigSpec {
+            title_key: self.frontmatter.title().as_str().into(),
+            alias_key: self.frontmatter.alias().as_str().into(),
+            tags_key: self.frontmatter.tags().as_str().into(),
+            file_class_key: self.frontmatter.file_class().as_str().into(),
+            date_created_key: self.frontmatter.date_created().as_str().into(),
+            date_modified_key: self.frontmatter.date_modified().as_str().into(),
+        }
+    }
+
+    /// Maps the current configuration into a lightweight contract for task
+    /// scanning and promotion.
+    #[inline]
+    #[must_use]
+    pub fn to_task_spec(&self) -> TaskConfigSpec {
+        let mut emoji_markers = Vec::new();
+        let mut temporal_specs = HashMap::new();
+
+        let date_slots = [
+            (self.task.created(), TemporalSlot::Created),
+            (self.task.due(), TemporalSlot::Due),
+            (self.task.reminder(), TemporalSlot::Reminder),
+            (self.task.completed(), TemporalSlot::Completed),
+            (self.task.start(), TemporalSlot::Start),
+            (self.task.scheduled(), TemporalSlot::Scheduled),
+        ];
+
+        for (opt_spec, slot) in date_slots {
+            if let Some(spec) = opt_spec {
+                let keyword = spec.keyword().as_str().into();
+                let format = spec.format().to_owned();
+                let emoji = spec.emoji();
+                if let Some(e) = emoji {
+                    emoji_markers.push(e);
+                }
+                temporal_specs.insert(keyword, (slot, format, emoji));
+            }
+        }
+
+        // Include default Obsidian task emojis if emoji support is enabled
+        if self.task.use_emoji() {
+            let defaults = [
+                '\u{2795}',  // ➕ created
+                '\u{1f4c5}', // 📅 due
+                '\u{2705}',  // ✅ completed
+                '\u{23f3}',  // ⏳ scheduled
+                '\u{1f6eb}', // 🛫 start
+                '\u{274c}',  // ❌ cancelled
+                '\u{23f0}',  // ⏰ reminder
+            ];
+            for emoji in defaults {
+                if !emoji_markers.contains(&emoji) {
+                    emoji_markers.push(emoji);
+                }
+            }
+        }
+
+        let promotion_tags =
+            self.task.tags().iter().map(|t| t.as_str().into()).collect();
+
+        let mut status_mappings = HashMap::new();
+        for (_, spec) in self.task.status() {
+            status_mappings
+                .insert(spec.symbol().value(), spec.name().as_str().into());
+        }
+
+        TaskConfigSpec {
+            enabled: self.task.enabled(),
+            use_emoji: self.task.use_emoji(),
+            emoji_markers: emoji_markers.into_boxed_slice(),
+            promotion_tags,
+            status_mappings,
+            temporal_specs,
+            field_specs: self.task.fields().clone(),
+        }
     }
 
     /// Create a new Config with the specified version, keeping all other fields
@@ -259,103 +343,104 @@ impl TryFrom<u64> for Version {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod fixtures {
+    use std::path::PathBuf;
 
-    mod fixtures {
-        use std::path::PathBuf;
+    use super::*;
+    use crate::config::{
+        frontmatter::RawFrontmatter,
+        logging::RawLogging,
+        vault::{AppVersion, VaultName},
+    };
 
-        use super::super::*;
-        use crate::config::{
-            frontmatter::RawFrontmatter,
-            logging::RawLogging,
-            vault::{AppVersion, VaultName},
-        };
+    pub fn vault_id() -> VaultId {
+        VaultId::new()
+    }
 
-        pub fn vault_id() -> VaultId {
-            VaultId::new()
-        }
+    pub fn vault_root(path: &str) -> VaultRoot {
+        VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
+    }
 
-        pub fn vault_root(path: &str) -> VaultRoot {
-            VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
-        }
+    /// Create a Config with test values. Only available in tests.
+    pub fn test_config() -> Config {
+        let test_root = VaultRoot::try_new("/test-vault".into())
+            .expect("test vault root must be valid");
+        let test_name = VaultName::from_root(&test_root);
+        let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
+            .expect("package version is non-empty");
 
-        /// Create a Config with test values. Only available in tests.
-        pub fn test_config() -> Config {
-            let test_root = VaultRoot::try_new("/test-vault".into())
-                .expect("test vault root must be valid");
-            let test_name = VaultName::from_root(&test_root);
-            let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
-                .expect("package version is non-empty");
-
-            Config {
-                version: Version::initial(),
-                vault_metadata: Metadata::new(
-                    VaultId::new(),
-                    test_root,
-                    Some(test_name),
-                    Some(test_version),
-                )
-                .expect("test metadata must be valid"),
-                logging: Logging::default(),
-                paths: Paths::default(),
-                frontmatter: Frontmatter::default(),
-                task: Task::default(),
-                pending_events: vec![],
-            }
-        }
-
-        pub fn merged_config_with_sample_overrides() -> Config {
-            let raw = raw::RawConfig {
-                paths: raw::RawPathsConfig {
-                    schemas_dir: Some("schemas".to_owned()),
-                    templates_dir: Some("custom_templates".to_owned()),
-                    property_bank_file: Some("property_bank.json".to_owned()),
-                    cache_dir: Some(".lithos".to_owned()),
-                },
-                frontmatter: Some(RawFrontmatter {
-                    alias_key: Some("aliases".to_owned()),
-                    tags_key: None,
-                    date_created_key: Some("created".to_owned()),
-                    date_modified_key: Some("modified".to_owned()),
-                    file_class_key: Some("type".to_owned()),
-                    title_key: Some("title".to_owned()),
-                }),
-                logging: Some(RawLogging {
-                    log_level: Some("debug".to_owned()),
-                }),
-                task: None,
-                trusted_vaults: None,
-            };
-            Config::build(
-                &raw,
-                vault_id(),
-                vault_root("/vault"),
-                Version::initial(),
+        Config {
+            version: Version::initial(),
+            vault_metadata: Metadata::new(
+                VaultId::new(),
+                test_root,
+                Some(test_name),
+                Some(test_version),
             )
-            .expect("Config build should succeed with sample data")
-        }
-
-        pub fn merged_config_with_empty_inputs() -> Config {
-            let raw = raw::RawConfig::default();
-            Config::build(
-                &raw,
-                vault_id(),
-                vault_root("/vault"),
-                Version::initial(),
-            )
-            .expect("Merge with empty values should succeed")
-        }
-
-        pub fn config_with_cleared_events() -> Config {
-            let mut config = test_config();
-            let _events: Vec<Events> = config.take_events();
-            config
+            .expect("test metadata must be valid"),
+            logging: Logging::default(),
+            paths: Paths::default(),
+            frontmatter: Frontmatter::default(),
+            task: Task::default(),
+            pending_events: vec![],
         }
     }
 
+    pub fn merged_config_with_sample_overrides() -> Config {
+        let raw = raw::RawConfig {
+            paths: raw::RawPathsConfig {
+                schemas_dir: Some("schemas".to_owned()),
+                templates_dir: Some("custom_templates".to_owned()),
+                property_bank_file: Some("property_bank.json".to_owned()),
+                cache_dir: Some(".lithos".to_owned()),
+            },
+            frontmatter: Some(RawFrontmatter {
+                alias_key: Some("aliases".to_owned()),
+                tags_key: None,
+                date_created_key: Some("created".to_owned()),
+                date_modified_key: Some("modified".to_owned()),
+                file_class_key: Some("type".to_owned()),
+                title_key: Some("title".to_owned()),
+            }),
+            logging: Some(RawLogging {
+                log_level: Some("debug".to_owned()),
+            }),
+            task: None,
+            trusted_vaults: None,
+        };
+        Config::build(
+            &raw,
+            vault_id(),
+            vault_root("/vault"),
+            Version::initial(),
+        )
+        .expect("Config build should succeed with sample data")
+    }
+
+    pub fn merged_config_with_empty_inputs() -> Config {
+        let raw = raw::RawConfig::default();
+        Config::build(
+            &raw,
+            vault_id(),
+            vault_root("/vault"),
+            Version::initial(),
+        )
+        .expect("Merge with empty values should succeed")
+    }
+
+    pub fn config_with_cleared_events() -> Config {
+        let mut config = test_config();
+        let _events: Vec<Events> = config.take_events();
+        config
+    }
+}
+
+#[cfg(test)]
+mod tests {
     use super::*;
 
     mod integrity {
+
         use super::*;
 
         #[test]
@@ -467,6 +552,27 @@ mod tests {
 
     mod build_tests {
         use super::*;
+
+        #[test]
+        fn should_map_to_frontmatter_spec() {
+            let config = fixtures::test_config();
+            let spec = config.to_frontmatter_spec();
+            assert_eq!(spec.title_key.as_ref(), "title");
+            assert_eq!(spec.alias_key.as_ref(), "aliases");
+        }
+
+        #[test]
+        fn should_map_to_task_spec_with_defaults() {
+            let config = fixtures::test_config();
+            let spec = config.to_task_spec();
+            assert!(spec.enabled);
+            assert!(spec.use_emoji);
+            assert!(spec.emoji_markers.contains(&'\u{1f4c5}')); // 📅
+            #[expect(clippy::indexing_slicing, reason = "Test assertion")]
+            {
+                assert_eq!(spec.status_mappings[&'x'].as_ref(), "done");
+            }
+        }
 
         #[test]
         fn builds_config_from_empty_raw() {

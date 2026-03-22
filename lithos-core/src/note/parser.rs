@@ -52,8 +52,9 @@ impl MarkdownParser {
         path: NotePath,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
+        task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<RawNote, NoteIngestError> {
-        let scanner = NoteScanner::default();
+        let scanner = NoteScanner::new(task_spec.emoji_markers.as_ref());
         let mut pool = StringPool::new();
 
         let _source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
@@ -927,10 +928,32 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::task::TaskConfigSpec;
+
+    fn task_spec_fixture() -> TaskConfigSpec {
+        TaskConfigSpec {
+            enabled: true,
+            use_emoji: true,
+            emoji_markers: vec![
+                '\u{1f4c5}', // 📅
+                '\u{2705}',  // ✅
+                '\u{23f0}',  // ⏰
+                '\u{1f6eb}', // 🛫
+                '\u{23f3}',  // ⏳
+            ]
+            .into(),
+            promotion_tags: vec!["task".into()].into(),
+            status_mappings: std::collections::HashMap::new(),
+            temporal_specs: std::collections::HashMap::new(),
+            field_specs: std::collections::HashMap::new(),
+        }
+    }
+
     fn parse_raw(markdown: &str) -> RawNote {
         let path = crate::note::paths::NotePath::try_new("test.md")
             .expect("valid test path");
-        MarkdownParser::parse(markdown, path, None, None)
+        let spec = task_spec_fixture();
+        MarkdownParser::parse(markdown, path, None, None, &spec)
             .expect("parsing failed")
     }
 

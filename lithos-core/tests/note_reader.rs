@@ -212,7 +212,7 @@ mod tests {
         let fixture = build_fixture(markdown).expect("fixture");
         let tasks = total_tasks(&fixture).expect("tasks");
         let status_names: Vec<&str> =
-            tasks.iter().map(|task| task.status().as_str()).collect();
+            tasks.iter().map(lithos_core::note::task::Task::status).collect();
         let status = fixture.config.task().status();
         let todo = status
             .name_for_symbol(StatusSymbol::try_new(' ').expect("todo symbol"))
@@ -279,7 +279,7 @@ mod tests {
         let tasks = total_tasks(&fixture).expect("tasks");
         let task = tasks.first().expect("task exists");
         assert_eq!(fixture.note.path().as_str(), "notes/note.md");
-        assert!(!task.status().as_str().is_empty());
+        assert!(!task.status().is_empty());
     }
 
     #[test]

@@ -221,9 +221,29 @@ use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use lithos_core::{
+    config::task::TaskConfigSpec,
     fs::FsReader,
     note::{parser, paths::NotePath},
 };
+
+fn task_spec_fixture() -> TaskConfigSpec {
+    TaskConfigSpec::new(
+        true,
+        true,
+        vec![
+            '\u{1f4c5}', // 📅
+            '\u{2705}',  // ✅
+            '\u{23f0}',  // ⏰
+            '\u{1f6eb}', // 🛫
+            '\u{23f3}',  // ⏳
+        ]
+        .into(),
+        vec!["task".into()].into(),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+    )
+}
 
 /// Simple markdown sample: minimal note structure (~100 bytes).
 fn simple_markdown() -> &'static str {
@@ -390,6 +410,8 @@ fn bench_ingest_group(
 ) {
     let mut ingest_group = c.benchmark_group("note_parsing");
 
+    let task_spec = task_spec_fixture();
+
     // Simple benchmark
     std::fs::write(root.join("notes/simple.md"), samples.simple)
         .expect("write simple markdown");
@@ -400,9 +422,10 @@ fn bench_ingest_group(
                 .read_to_string(std::path::Path::new("notes/simple.md"))
                 .expect("read markdown");
             let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, None, None)
-                    .expect("ingest markdown");
+            let raw_note = parser::MarkdownParser::parse(
+                &markdown, path, None, None, &task_spec,
+            )
+            .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -417,9 +440,10 @@ fn bench_ingest_group(
                 .read_to_string(std::path::Path::new("notes/medium.md"))
                 .expect("read markdown");
             let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, None, None)
-                    .expect("ingest markdown");
+            let raw_note = parser::MarkdownParser::parse(
+                &markdown, path, None, None, &task_spec,
+            )
+            .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -435,9 +459,10 @@ fn bench_ingest_group(
                 .expect("read markdown");
             let path =
                 NotePath::try_new("notes/complex.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, None, None)
-                    .expect("ingest markdown");
+            let raw_note = parser::MarkdownParser::parse(
+                &markdown, path, None, None, &task_spec,
+            )
+            .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -448,14 +473,21 @@ fn bench_ingest_group(
 fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     let mut parse_group = c.benchmark_group("note_parsing_ingest_only");
 
+    let task_spec = task_spec_fixture();
+
     // Ingest-only simple benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
     parse_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
             let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let outcome =
-                parser::MarkdownParser::parse(samples.simple, path, None, None)
-                    .expect("extract markdown");
+            let outcome = parser::MarkdownParser::parse(
+                samples.simple,
+                path,
+                None,
+                None,
+                &task_spec,
+            )
+            .expect("extract markdown");
             black_box(outcome);
         });
     });
@@ -465,9 +497,14 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
             let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let outcome =
-                parser::MarkdownParser::parse(samples.medium, path, None, None)
-                    .expect("extract markdown");
+            let outcome = parser::MarkdownParser::parse(
+                samples.medium,
+                path,
+                None,
+                None,
+                &task_spec,
+            )
+            .expect("extract markdown");
             black_box(outcome);
         });
     });
@@ -483,6 +520,7 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
                 path,
                 None,
                 None,
+                &task_spec,
             )
             .expect("extract markdown");
             black_box(outcome);

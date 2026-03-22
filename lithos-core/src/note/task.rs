@@ -25,10 +25,7 @@ use super::{
     tag::Tag,
     value::FieldValue,
 };
-use crate::config::{
-    aggregate::Config,
-    task::{StatusName, StatusSymbol},
-};
+use crate::config::task::TaskConfigSpec;
 
 // --- Deleted RawTaskInlineField alias ---
 
@@ -42,13 +39,12 @@ use crate::config::{
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, position::{SourceByteOffset, SourceByteRange}};
-/// # use lithos_core::config::task::StatusName;
 /// # use lithos_core::note::task::TaskAttributes;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let status = StatusName::try_new("todo")?;
+/// let status = "todo";
 /// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10))?;
 /// let task = Task::try_new(
-///     status,
+///     status.into(),
 ///     "Urgent work",
 ///     range,
 ///     TaskAttributes::default(),
@@ -62,7 +58,7 @@ use crate::config::{
 #[rkyv(derive(Debug))]
 pub struct Task {
     id: TaskId,
-    status: StatusName,
+    status: Box<str>,
     text: TaskText,
     range: SourceByteRange,
     tags: Box<[Tag]>,
@@ -77,7 +73,7 @@ impl Task {
     /// Returns [`NoteError`] if task promotion or attribute parsing fails.
     pub(crate) fn build_many(
         raw: &RawNote,
-        config: &Config,
+        task_spec: &TaskConfigSpec,
     ) -> Result<Box<[Task]>, NoteError> {
         if raw.tasks().is_empty() {
             return Ok(Box::new([]));
@@ -122,7 +118,7 @@ impl Task {
 
             let ctx = RawTaskContext::new(
                 raw_task,
-                config,
+                task_spec,
                 task_tags.into_boxed_slice(),
                 task_fields.into_boxed_slice(),
             );
@@ -140,7 +136,7 @@ impl Task {
     /// Returns [`TaskError`] if the task text is empty.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(
-        status: StatusName,
+        status: Box<str>,
         text: T,
         range: SourceByteRange,
         attributes: TaskAttributes,
@@ -168,7 +164,7 @@ impl Task {
     /// Returns the current task status.
     #[inline]
     #[must_use]
-    pub fn status(&self) -> &StatusName {
+    pub fn status(&self) -> &str {
         &self.status
     }
 
@@ -247,7 +243,7 @@ impl Task {
 
 pub(crate) struct RawTaskContext<'raw> {
     raw: &'raw RawTask,
-    config: &'raw Config,
+    task_spec: &'raw TaskConfigSpec,
     tags: Box<[Tag]>,
     inline_fields: Box<[RawInlineField]>,
 }
@@ -256,13 +252,13 @@ impl<'raw> RawTaskContext<'raw> {
     #[inline]
     pub(crate) fn new(
         raw: &'raw RawTask,
-        config: &'raw Config,
+        task_spec: &'raw TaskConfigSpec,
         tags: Box<[Tag]>,
         inline_fields: Box<[RawInlineField]>,
     ) -> Self {
         Self {
             raw,
-            config,
+            task_spec,
             tags,
             inline_fields,
         }
@@ -274,15 +270,8 @@ impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
 
     #[inline]
     fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
-        let status_symbol =
-            StatusSymbol::try_new(ctx.raw.task_marker().marker())?;
-        let builder = TaskBuilder::new(ctx.config.task());
-        builder.promote_from_raw(
-            ctx.raw,
-            ctx.tags,
-            &ctx.inline_fields,
-            status_symbol,
-        )
+        let builder = TaskBuilder::new(ctx.task_spec);
+        builder.promote_from_raw(ctx.raw, ctx.tags, &ctx.inline_fields)
     }
 }
 
@@ -896,15 +885,15 @@ impl Default for TaskMetadata {
     }
 }
 
-struct TaskBuilder<'config> {
-    config: &'config crate::config::task::Task,
+struct TaskBuilder<'spec> {
+    spec: &'spec TaskConfigSpec,
 }
 
-impl<'config> TaskBuilder<'config> {
+impl<'spec> TaskBuilder<'spec> {
     #[inline]
-    const fn new(config: &'config crate::config::task::Task) -> Self {
+    const fn new(spec: &'spec TaskConfigSpec) -> Self {
         Self {
-            config,
+            spec,
         }
     }
 
@@ -913,20 +902,25 @@ impl<'config> TaskBuilder<'config> {
         raw: &RawTask,
         tags: Box<[Tag]>,
         inline_fields: &[RawInlineField],
-        status_symbol: StatusSymbol,
     ) -> Result<Option<Task>, NoteError> {
+        if !self.spec.enabled {
+            return Ok(None);
+        }
+
         if !self.should_promote_from_tags(&tags) {
             return Ok(None);
         }
 
+        let symbol = raw.task_marker().marker();
         let status = self
-            .config
-            .status()
-            .name_for_symbol(status_symbol)
-            .ok_or_else(|| TaskError::UnrecognizedStatus {
-                symbol: status_symbol.value(),
+            .spec
+            .status_mappings
+            .get(&symbol)
+            .ok_or(TaskError::UnrecognizedStatus {
+                symbol,
             })?
             .clone();
+
         let text = self.extract_clean_text(raw.text())?;
         let parsed = self.parse_inline_fields(inline_fields)?;
         let attributes = parsed.into_attributes(tags);
@@ -937,13 +931,10 @@ impl<'config> TaskBuilder<'config> {
     }
 
     fn should_promote_from_tags(&self, tags: &[Tag]) -> bool {
-        self.config.tags().iter().any(|config_tag| {
-            tags.iter().any(|tag| {
-                config_tag
-                    .as_str()
-                    .strip_prefix('#')
-                    .is_some_and(|raw| raw == tag.full_path())
-            })
+        self.spec.promotion_tags.iter().any(|config_tag| {
+            let config_tag_path =
+                config_tag.strip_prefix('#').unwrap_or(config_tag);
+            tags.iter().any(|tag| config_tag_path == tag.full_path())
         })
     }
 
@@ -956,8 +947,17 @@ impl<'config> TaskBuilder<'config> {
         let mut stripped = true;
         while stripped {
             stripped = false;
-            for tag in self.config.tags() {
-                if let Some(rest) = text.strip_prefix(tag.as_str()) {
+            for tag in self.spec.promotion_tags.as_ref() {
+                if let Some(rest) = text.strip_prefix(tag.as_ref()) {
+                    text = rest.trim_start();
+                    stripped = true;
+                }
+                // Also check with # prefix for fidelity if needed, but spec
+                // contains raw tag names.
+                if let Some(rest) = text
+                    .strip_prefix('#')
+                    .and_then(|s| s.strip_prefix(tag.as_ref()))
+                {
                     text = rest.trim_start();
                     stripped = true;
                 }
@@ -983,7 +983,7 @@ impl<'config> TaskBuilder<'config> {
 
         for pair in inline_fields {
             state.handle_any_inline_field(
-                self.config,
+                self.spec,
                 pair.key(),
                 pair.value(),
             )?;
@@ -1054,12 +1054,14 @@ impl ParsedInlineFields {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DateSlot {
     Created,
     Due,
     Reminder,
     Completed,
+    Start,
+    Scheduled,
 }
 
 #[derive(Debug, Default)]
@@ -1084,6 +1086,7 @@ impl TemporalSlots {
             DateSlot::Due => self.due,
             DateSlot::Reminder => self.reminder,
             DateSlot::Completed => self.completed,
+            DateSlot::Start | DateSlot::Scheduled => None, /* Not yet supported in TaskSchedule */
         }
     }
 
@@ -1093,6 +1096,8 @@ impl TemporalSlots {
             DateSlot::Due => self.due = Some(value),
             DateSlot::Reminder => self.reminder = Some(value),
             DateSlot::Completed => self.completed = Some(value),
+            DateSlot::Start | DateSlot::Scheduled => {} /* Not yet supported
+                                                         * in TaskSchedule */
         }
     }
 
@@ -1121,36 +1126,26 @@ impl InlineFieldState {
 
     fn handle_any_inline_field(
         &mut self,
-        config: &crate::config::task::Task,
+        spec: &TaskConfigSpec,
         key: &str,
         value: &str,
     ) -> Result<(), NoteError> {
-        // 1. Try user-configured emoji mapping
-        if let Some((slot, spec)) = Self::match_date_spec_by_emoji(config, key)
-        {
+        // 1. Try user-configured mapping
+        if let Some((slot, format, _emoji)) = Self::match_date_spec(spec, key) {
             if self.slots.get(slot).is_none() {
-                let parsed = Self::parse_date_str(value, spec)?;
+                let parsed = Self::parse_date_str(value, key, format)?;
                 self.slots.set(slot, parsed);
             }
             return Ok(());
         }
 
-        // 2. Try user-configured text mapping
-        if let Some((slot, spec)) = Self::match_date_spec(config, key) {
-            if self.slots.get(slot).is_none() {
-                let parsed = Self::parse_date_str(value, spec)?;
-                self.slots.set(slot, parsed);
-            }
-            return Ok(());
-        }
-
-        // 3. Try default emoji mappings
+        // 2. Try default emoji mappings
         if self.handle_default_emoji(key, value)? {
             return Ok(());
         }
 
-        // 4. Handle as standard metadata
-        Self::insert_metadata(config, &mut self.metadata, key, value)
+        // 3. Handle as standard metadata
+        Self::insert_metadata(spec, &mut self.metadata, key, value)
     }
 
     fn handle_default_emoji(
@@ -1248,42 +1243,41 @@ impl InlineFieldState {
         }
     }
 
-    fn match_date_spec<'config>(
-        config: &'config crate::config::task::Task,
+    #[expect(
+        clippy::type_complexity,
+        reason = "Match ergonomics are preferred for domain facts"
+    )]
+    fn match_date_spec<'spec>(
+        spec: &'spec TaskConfigSpec,
         keyword: &str,
-    ) -> Option<(DateSlot, &'config crate::config::value::DateSpec)> {
-        if let Some(spec) = config.created()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Created, spec));
-        }
-        if let Some(spec) = config.due()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Due, spec));
-        }
-        if let Some(spec) = config.reminder()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Reminder, spec));
-        }
-        if let Some(spec) = config.completed()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some((DateSlot::Completed, spec));
-        }
-        None
+    ) -> Option<(DateSlot, &'spec str, Option<char>)> {
+        use crate::config::task::TemporalSlot;
+
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics are preferred for mapping lookups"
+        )]
+        let (slot_enum, format, emoji) = spec.temporal_specs.get(keyword)?;
+        let slot = match *slot_enum {
+            TemporalSlot::Created => DateSlot::Created,
+            TemporalSlot::Due => DateSlot::Due,
+            TemporalSlot::Reminder => DateSlot::Reminder,
+            TemporalSlot::Completed => DateSlot::Completed,
+            TemporalSlot::Start => DateSlot::Start,
+            TemporalSlot::Scheduled => DateSlot::Scheduled,
+        };
+        Some((slot, format.as_str(), *emoji))
     }
 
     fn insert_metadata(
-        config: &crate::config::task::Task,
+        spec: &TaskConfigSpec,
         metadata: &mut TaskMetadata,
         keyword: &str,
         raw_value: &str,
     ) -> Result<(), NoteError> {
-        if let Some(spec) = config.field_spec(keyword) {
-            let json_value = Self::parse_metadata_value(raw_value, spec)?;
-            spec.validate_raw_value(&json_value).map_err(|_error| {
+        if let Some(field_spec) = spec.field_specs.get(keyword) {
+            let json_value = Self::parse_metadata_value(raw_value, field_spec)?;
+            field_spec.validate_raw_value(&json_value).map_err(|_error| {
                 TaskError::InvalidMetadataField {
                     key: keyword.into(),
                     reason: "failed validation",
@@ -1306,23 +1300,24 @@ impl InlineFieldState {
 
     fn parse_date_str(
         raw_value: &str,
-        spec: &crate::config::value::DateSpec,
+        keyword: &str,
+        format: &str,
     ) -> Result<TaskTimestamp, NoteError> {
         if let Ok(naive) =
-            chrono::NaiveDateTime::parse_from_str(raw_value, spec.format())
+            chrono::NaiveDateTime::parse_from_str(raw_value, format)
         {
             return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
         }
 
-        let date = chrono::NaiveDate::parse_from_str(raw_value, spec.format())
+        let date = chrono::NaiveDate::parse_from_str(raw_value, format)
             .map_err(|_error| TaskError::InvalidDate {
-                keyword: spec.keyword().as_str().into(),
+                keyword: keyword.into(),
                 raw: raw_value.into(),
                 reason: "failed to parse date string",
             })?;
         let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
             TaskError::InvalidDate {
-                keyword: spec.keyword().as_str().into(),
+                keyword: keyword.into(),
                 raw: raw_value.into(),
                 reason: "invalid time",
             }
@@ -1335,7 +1330,7 @@ impl InlineFieldState {
         raw_value: &str,
         field: &str,
     ) -> Result<TaskTimestamp, NoteError> {
-        let formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"];
+        let formats = ["%Y-%m-%d%H:%M", "%Y-%m-%d %H:%M"];
         for format in formats {
             if let Ok(naive) =
                 chrono::NaiveDateTime::parse_from_str(raw_value, format)
@@ -1358,41 +1353,6 @@ impl InlineFieldState {
             }
         })?;
         Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-    }
-
-    fn match_date_spec_by_emoji<'config>(
-        config: &'config crate::config::task::Task,
-        emoji: &str,
-    ) -> Option<(DateSlot, &'config crate::config::value::DateSpec)> {
-        if let Some(spec) = config.created()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Created, spec));
-        }
-        if let Some(spec) = config.due()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Due, spec));
-        }
-        if let Some(spec) = config.reminder()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Reminder, spec));
-        }
-        if let Some(spec) = config.completed()
-            && spec.emoji().is_some_and(|spec_emoji| {
-                Self::emoji_matches(emoji, spec_emoji)
-            })
-        {
-            return Some((DateSlot::Completed, spec));
-        }
-        None
     }
 
     fn emoji_matches(token: &str, emoji: char) -> bool {
@@ -1447,39 +1407,76 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::{
-            aggregate::Config,
-            raw::{RawConfig, RawFieldSpec, RawTaskConfig},
-            vault::{VaultId, VaultRoot},
-        },
+        config::task::{TaskConfigSpec, TemporalSlot},
         note::{
-            position::{SourceByteOffset, SourceByteRange},
-            raw::{RawInlineField, RawTask, RawTaskMarker},
+            raw::RawTaskMarker,
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
 
+    fn task_spec_fixture() -> TaskConfigSpec {
+        let mut temporal_specs = HashMap::new();
+        temporal_specs.insert(
+            "due".into(),
+            (TemporalSlot::Due, "%Y-%m-%d".to_owned(), Some('\u{1f4c5}')),
+        );
+        temporal_specs.insert(
+            "created".into(),
+            (TemporalSlot::Created, "%Y-%m-%d".to_owned(), Some('\u{2795}')),
+        );
+
+        TaskConfigSpec {
+            enabled: true,
+            use_emoji: true,
+            emoji_markers: vec!['\u{1f4c5}', '\u{2795}', '\u{2705}'].into(),
+            promotion_tags: vec!["task".into()].into(),
+            status_mappings: [(' ', "todo".into()), ('x', "done".into())]
+                .into_iter()
+                .collect(),
+            temporal_specs,
+            field_specs: HashMap::new(),
+        }
+    }
+
     #[test]
     fn promotes_only_when_task_tag_present() {
-        let config = test_config_with_task_tag();
+        let spec = task_spec_fixture();
 
-        let promoted = promote_task("#task Do work", &config, &[])
+        let promoted = promote_task("#task Do work", &spec, &[])
             .expect("task should be promoted");
         assert_eq!(promoted.text(), "Do work");
 
-        let skipped = promote_task("Do work", &config, &[]);
+        let skipped = promote_task("Do work", &spec, &[]);
         assert!(skipped.is_none());
 
-        let skipped_partial = promote_task("#tasker Do work", &config, &[]);
+        let skipped_partial = promote_task("#tasker Do work", &spec, &[]);
         assert!(skipped_partial.is_none());
     }
 
     #[test]
     fn promoted_checkbox_extracts_text_and_metadata() {
-        let config = config_with_fields();
+        let mut spec = task_spec_fixture();
+        spec.field_specs.insert(
+            "priority".into(),
+            crate::config::value::FieldSpec::Integer {
+                name: crate::config::value::FieldName::try_new("priority")
+                    .unwrap(),
+                bounds: crate::bounds::Bounds::Unbounded,
+            },
+        );
+        spec.field_specs.insert(
+            "project".into(),
+            crate::config::value::FieldSpec::String {
+                name: crate::config::value::FieldName::try_new("project")
+                    .unwrap(),
+                pattern: None,
+                compiled: None,
+            },
+        );
+
         let task = promote_task(
             "#task Review PR [priority:: 2] [project:: lithos]",
-            &config,
+            &spec,
             &[],
         )
         .expect("task should be promoted");
@@ -1491,9 +1488,9 @@ mod tests {
 
     #[test]
     fn promoted_checkbox_collects_hierarchical_tags() {
-        let config = test_config_with_task_tag();
+        let spec = task_spec_fixture();
         let task =
-            promote_task("#task Fix #work/project/urgent issue", &config, &[])
+            promote_task("#task Fix #work/project/urgent issue", &spec, &[])
                 .expect("task should be promoted");
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
@@ -1505,8 +1502,8 @@ mod tests {
 
     #[test]
     fn promoted_checkbox_ignores_invalid_tags() {
-        let config = test_config_with_task_tag();
-        let task = promote_task("#task Review #bad/ tags", &config, &[])
+        let spec = task_spec_fixture();
+        let task = promote_task("#task Review #bad/ tags", &spec, &[])
             .expect("task should be promoted");
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
@@ -1515,11 +1512,11 @@ mod tests {
 
     #[test]
     fn promoted_checkbox_parses_dates() {
-        let config = test_config_with_task_tag();
+        let spec = task_spec_fixture();
         let task = promote_task(
             "#task Test task with dates [created:: 2024-01-01] [due:: \
              2024-12-31]",
-            &config,
+            &spec,
             &[],
         )
         .expect("task should be promoted");
@@ -1532,7 +1529,7 @@ mod tests {
         }
 
         if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_689_600);
+            assert_eq!(due_at.as_i64(), 1_735_603_200);
             if let Some(created_at) = task.created_at() {
                 assert!(due_at.is_future(Some(created_at)));
             }
@@ -1541,10 +1538,28 @@ mod tests {
 
     #[test]
     fn promoted_checkbox_parses_paren_inline_fields() {
-        let config = config_with_fields();
+        let mut spec = task_spec_fixture();
+        spec.field_specs.insert(
+            "priority".into(),
+            crate::config::value::FieldSpec::Integer {
+                name: crate::config::value::FieldName::try_new("priority")
+                    .unwrap(),
+                bounds: crate::bounds::Bounds::Unbounded,
+            },
+        );
+        spec.field_specs.insert(
+            "project".into(),
+            crate::config::value::FieldSpec::String {
+                name: crate::config::value::FieldName::try_new("project")
+                    .unwrap(),
+                pattern: None,
+                compiled: None,
+            },
+        );
+
         let task = promote_task(
             "#task Review PR (priority:: 2) (project:: lithos)",
-            &config,
+            &spec,
             &[],
         )
         .expect("task should be promoted");
@@ -1556,12 +1571,12 @@ mod tests {
 
     #[test]
     fn promoted_checkbox_parses_default_emoji_dates() {
-        let config = test_config_with_task_tag();
+        let spec = task_spec_fixture();
         let emojis = default_emoji_markers();
         let task = promote_task(
             "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
              \u{2705}2025-01-01",
-            &config,
+            &spec,
             &emojis,
         )
         .expect("task should be promoted");
@@ -1579,17 +1594,20 @@ mod tests {
 
     fn promote_task(
         promoted_text: &str,
-        config: &Config,
+        spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Option<Task> {
         let raw = raw_task_from_text(promoted_text, emoji_markers);
+
+        let mut task_tags = Vec::new();
+        let mut task_fields = Vec::new();
+
+        // NoteScanner logic duplicated for test shim
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let artifacts = scanner
             .scan_block(promoted_text, SourceByteOffset::new(0))
             .unwrap();
 
-        let mut task_tags = Vec::new();
-        let mut task_fields = Vec::new();
         for artifact in &artifacts {
             match *artifact {
                 ScannedArtifact::Tag {
@@ -1620,7 +1638,7 @@ mod tests {
 
         let ctx = RawTaskContext::new(
             &raw,
-            config,
+            spec,
             task_tags.into_boxed_slice(),
             task_fields.into_boxed_slice(),
         );
@@ -1683,58 +1701,5 @@ mod tests {
             '\u{1f6eb}',
             '\u{274c}',
         ]
-    }
-
-    fn test_config_with_task_tag() -> Config {
-        let raw = RawConfig {
-            task: Some(RawTaskConfig {
-                task_tags: Some(vec!["#task".into()]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        Config::build(
-            &raw,
-            VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
-            crate::config::aggregate::Version::initial(),
-        )
-        .expect("failed to build test config")
-    }
-
-    fn config_with_fields() -> Config {
-        let mut fields = HashMap::new();
-        fields.insert("priority".into(), RawFieldSpec::Integer {
-            min: None,
-            max: None,
-        });
-        fields.insert("project".into(), RawFieldSpec::String {
-            pattern: None,
-        });
-
-        let raw = RawConfig {
-            task: Some(RawTaskConfig {
-                enabled: Some(true),
-                task_tags: Some(vec!["#task".into()]),
-                status: None,
-                dates: None,
-                fields: Some(fields),
-                indexing: None,
-                dependencies: None,
-                use_emoji: None,
-            }),
-            ..Default::default()
-        };
-
-        Config::build(
-            &raw,
-            VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
-            crate::config::aggregate::Version::initial(),
-        )
-        .expect("failed to build test config")
     }
 }
