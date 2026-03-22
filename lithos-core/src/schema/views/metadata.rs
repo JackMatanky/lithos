@@ -7,10 +7,7 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-use crate::schema::{
-    property::PropertyName,
-    raw::property::{RawProperty, RawPropertyBankEntry},
-};
+use crate::schema::{property::PropertyName, raw::property::RawPropertyMap};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  FileTimesMetadata
@@ -145,37 +142,19 @@ impl HashMetadata {
         self.content == *hash
     }
 
-    /// Compute property hashes from raw properties (for schemas).
+    /// Compute property hashes from a validated property map.
     ///
-    /// Now accepts `HashMap` with `PropertyName` keys (not Box<str>).
-    /// This is the canonical hash computation used by schemas.
+    /// This is the canonical hash computation used by both schemas and
+    /// property banks.
     #[inline]
     #[must_use]
-    pub fn compute_property_hashes(
-        properties: &HashMap<PropertyName, RawProperty>,
+    pub fn compute_property_hashes<T: serde::Serialize + std::fmt::Debug>(
+        properties: &RawPropertyMap<T>,
     ) -> HashMap<PropertyName, [u8; 32]> {
         properties
             .iter()
             .map(|(name, prop)| {
-                let hash = Self::hash_property(prop);
-                (name.clone(), hash)
-            })
-            .collect()
-    }
-
-    /// Compute property hashes from raw property bank entries.
-    ///
-    /// Now accepts `HashMap` with `PropertyName` keys (not Box<str>).
-    /// This is the canonical hash computation used by property banks.
-    #[inline]
-    #[must_use]
-    pub fn compute_property_hashes_for_bank(
-        properties: &HashMap<PropertyName, RawPropertyBankEntry>,
-    ) -> HashMap<PropertyName, [u8; 32]> {
-        properties
-            .iter()
-            .map(|(name, entry)| {
-                let hash = Self::hash_property_bank_entry(entry);
+                let hash = Self::hash_value(prop);
                 (name.clone(), hash)
             })
             .collect()
@@ -222,37 +201,22 @@ impl HashMetadata {
         changed
     }
 
-    /// Hash a single property definition.
+    /// Hash a single property definition or bank entry.
     ///
     /// Uses JSON serialization to ensure consistent hashing across all
     /// property types and variants.
-    fn hash_property(prop: &RawProperty) -> [u8; 32] {
+    fn hash_value<T: serde::Serialize + std::fmt::Debug>(
+        value: &T,
+    ) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
 
         // Serialize to JSON for consistent hashing
         // This is fine for metadata operations (not a hot path)
-        if let Ok(json) = serde_json::to_string(prop) {
+        if let Ok(json) = serde_json::to_string(value) {
             hasher.update(json.as_bytes());
         } else {
             // Fallback: use debug representation
-            hasher.update(format!("{prop:?}").as_bytes());
-        }
-
-        *hasher.finalize().as_bytes()
-    }
-
-    /// Hash a single property bank entry.
-    ///
-    /// Uses JSON serialization to ensure consistent hashing.
-    fn hash_property_bank_entry(entry: &RawPropertyBankEntry) -> [u8; 32] {
-        let mut hasher = blake3::Hasher::new();
-
-        // Serialize to JSON for consistent hashing
-        if let Ok(json) = serde_json::to_string(entry) {
-            hasher.update(json.as_bytes());
-        } else {
-            // Fallback: use debug representation
-            hasher.update(format!("{entry:?}").as_bytes());
+            hasher.update(format!("{value:?}").as_bytes());
         }
 
         *hasher.finalize().as_bytes()

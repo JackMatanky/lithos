@@ -584,7 +584,7 @@ where
             });
 
             // Compute new hashes and find changed properties
-            let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(raw.properties());
+            let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes(raw.properties());
             let changed = cached_view.current().map_or_else(
                 || {
                     // If no current version, all properties are "changed"

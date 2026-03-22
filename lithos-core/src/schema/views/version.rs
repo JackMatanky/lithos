@@ -123,11 +123,6 @@ impl SchemaVersion {
 
         // Extract bank references from properties map
         let mut bank_references = HashMap::new();
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Iteration order does not affect the collected bank \
-                      references"
-        )]
         for (prop_name, entry) in raw.properties() {
             #[expect(
                 clippy::pattern_type_mismatch,

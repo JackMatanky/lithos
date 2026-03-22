@@ -4,7 +4,7 @@
 //! schema files and property banks from the vault. These types represent
 //! the "aggregate" inputs that combine multiple properties and metadata.
 
-use std::{collections::HashMap, time::SystemTime};
+use std::time::SystemTime;
 
 use super::property::{RawProperty, RawPropertyBankEntry, RawPropertyMap};
 use crate::schema::{
@@ -115,8 +115,8 @@ impl RawSchema {
     /// All keys are guaranteed to be valid `PropertyName` instances.
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &HashMap<PropertyName, RawProperty> {
-        self.properties.as_map()
+    pub fn properties(&self) -> &RawPropertyMap<RawProperty> {
+        &self.properties
     }
 
     /// Returns the file timestamps.
@@ -231,15 +231,15 @@ impl RawPropertyBank {
     /// ```ignore
     /// # use lithos_core::schema::raw::RawPropertyBank;
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// for (name, entry) in bank.properties() {
+    /// for (name, entry) in bank.properties().iter() {
     ///     // name is &PropertyName - already validated
     ///     println!("{}: {:?}", name.as_str(), entry);
     /// }
     /// ```
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &HashMap<PropertyName, RawPropertyBankEntry> {
-        self.properties.as_map()
+    pub fn properties(&self) -> &RawPropertyMap<RawPropertyBankEntry> {
+        &self.properties
     }
 
     /// Returns the file timestamps.

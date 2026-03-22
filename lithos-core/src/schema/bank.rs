@@ -264,7 +264,7 @@ impl PropertyBank {
         let mut any_changed = false;
 
         for name in changed {
-            if let Some(raw_entry) = raw.properties().get(name.as_ref()) {
+            if let Some(raw_entry) = raw.properties().get(name) {
                 // Property exists in raw - update or insert
                 let spec = raw_entry.spec.clone().try_into()?;
                 let multiplicity = if raw_entry.multi {

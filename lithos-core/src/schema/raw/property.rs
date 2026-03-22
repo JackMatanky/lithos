@@ -190,6 +190,17 @@ impl<T> RawPropertyMap<T> {
     }
 }
 
+impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
+    type IntoIter =
+        std::collections::hash_map::Iter<'lifetime, PropertyName, T>;
+    type Item = (&'lifetime PropertyName, &'lifetime T);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
 // Custom Deserialize implementation validates keys during parsing
 impl<'de, T> Deserialize<'de> for RawPropertyMap<T>
 where

@@ -119,10 +119,6 @@ impl<'bank> RefExpander<'bank> {
     ) -> Result<RefExpandedSchema, SchemaError> {
         let mut properties = HashMap::with_capacity(raw.properties().len());
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "HashMap iteration is intentional for property expansion"
-        )]
         for (prop_name, entry) in raw.properties() {
             let (name, prop) = self.expand_property(prop_name, entry)?;
             properties.insert(name.clone(), prop);

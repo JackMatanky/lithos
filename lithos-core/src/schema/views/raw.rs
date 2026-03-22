@@ -353,7 +353,7 @@ impl RawPropertyBankView {
 
         // Compute per-property hashes
         let property_hashes =
-            HashMetadata::compute_property_hashes_for_bank(raw.properties());
+            HashMetadata::compute_property_hashes(raw.properties());
 
         let file_times = FileTimesMetadata::new(
             raw.file_times().created_at,
