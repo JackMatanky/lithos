@@ -204,8 +204,8 @@ impl RawSchemaView {
             HashMetadata::compute_property_hashes(raw.properties());
 
         let file_times = FileTimesMetadata::new(
-            raw.metadata().created_at,
-            raw.metadata().modified_at,
+            raw.file_times().created_at,
+            raw.file_times().modified_at,
         );
         let hashes =
             HashMetadata::new(*content_hash.as_bytes(), property_hashes);
@@ -356,8 +356,8 @@ impl RawPropertyBankView {
             HashMetadata::compute_property_hashes_for_bank(raw.properties());
 
         let file_times = FileTimesMetadata::new(
-            raw.metadata().created_at,
-            raw.metadata().modified_at,
+            raw.file_times().created_at,
+            raw.file_times().modified_at,
         );
         let hashes =
             HashMetadata::new(*content_hash.as_bytes(), property_hashes);

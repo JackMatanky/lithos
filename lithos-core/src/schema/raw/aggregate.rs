@@ -78,7 +78,7 @@ pub struct RawSchema {
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip)]
-    metadata: RawSchemaMetadata,
+    file_times: RawFileTimes,
 }
 
 impl RawSchema {
@@ -119,11 +119,11 @@ impl RawSchema {
         self.properties.as_map()
     }
 
-    /// Returns the metadata.
+    /// Returns the file timestamps.
     #[inline]
     #[must_use]
-    pub fn metadata(&self) -> &RawSchemaMetadata {
-        &self.metadata
+    pub fn file_times(&self) -> &RawFileTimes {
+        &self.file_times
     }
 
     /// Set the schema name (called by Ingestor after deserialization).
@@ -136,11 +136,11 @@ impl RawSchema {
         self
     }
 
-    /// Set metadata (called by Ingestor after deserialization).
+    /// Set file timestamps (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_metadata(mut self, metadata: RawSchemaMetadata) -> Self {
-        self.metadata = metadata;
+    pub fn with_file_times(mut self, file_times: RawFileTimes) -> Self {
+        self.file_times = file_times;
         self
     }
 
@@ -205,7 +205,7 @@ pub struct RawPropertyBank {
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip)]
-    metadata: RawSchemaMetadata,
+    file_times: RawFileTimes,
 }
 
 impl RawPropertyBank {
@@ -242,34 +242,34 @@ impl RawPropertyBank {
         self.properties.as_map()
     }
 
-    /// Returns the metadata.
+    /// Returns the file timestamps.
     ///
     /// # Examples
     /// ```ignore
     /// # use lithos_core::schema::raw::RawPropertyBank;
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// let metadata = bank.metadata();
-    /// println!("Created: {:?}", metadata.created_at);
+    /// let file_times = bank.file_times();
+    /// println!("Created: {:?}", file_times.created_at);
     /// ```
     #[inline]
     #[must_use]
-    pub fn metadata(&self) -> &RawSchemaMetadata {
-        &self.metadata
+    pub fn file_times(&self) -> &RawFileTimes {
+        &self.file_times
     }
 
-    /// Set metadata (called by Ingestor after deserialization).
+    /// Set file timestamps (called by Ingestor after deserialization).
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::schema::raw::{RawPropertyBank, RawSchemaMetadata};
+    /// # use lithos_core::schema::raw::{RawPropertyBank, RawFileTimes};
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// # let metadata: RawSchemaMetadata = unimplemented!();
-    /// let bank = bank.with_metadata(metadata);
+    /// # let file_times: RawFileTimes = unimplemented!();
+    /// let bank = bank.with_file_times(file_times);
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_metadata(mut self, metadata: RawSchemaMetadata) -> Self {
-        self.metadata = metadata;
+    pub fn with_file_times(mut self, file_times: RawFileTimes) -> Self {
+        self.file_times = file_times;
         self
     }
 }
@@ -288,7 +288,7 @@ impl RawPropertyBank {
 /// duplication and keep the Raw* types focused on parsing.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[non_exhaustive]
-pub struct RawSchemaMetadata {
+pub struct RawFileTimes {
     /// File creation timestamp (birthtime).
     ///
     /// None if the filesystem doesn't support birthtime.

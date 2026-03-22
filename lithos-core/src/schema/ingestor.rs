@@ -23,7 +23,7 @@ use crate::{
             SchemaStorageError,
         },
         property::{Property, PropertyName},
-        raw::{RawPropertyBank, RawSchema, RawSchemaMetadata},
+        raw::{RawFileTimes, RawPropertyBank, RawSchema},
         storage::Repository,
         views::raw::{RawPropertyBankView, RawSchemaView},
     },
@@ -520,7 +520,7 @@ where
 
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
-            let raw = raw.with_metadata(RawSchemaMetadata {
+            let raw = raw.with_file_times(RawFileTimes {
                 created_at,
                 modified_at,
             });
@@ -578,7 +578,7 @@ where
             // Parse new version
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
-            let raw = raw.with_metadata(RawSchemaMetadata {
+            let raw = raw.with_file_times(RawFileTimes {
                 created_at,
                 modified_at,
             });
@@ -706,7 +706,7 @@ where
             let raw = raw
                 .with_name(filename_stem.into())
                 .validated(&path.to_string_lossy())?
-                .with_metadata(RawSchemaMetadata {
+                .with_file_times(RawFileTimes {
                     created_at,
                     modified_at,
                 });
@@ -933,7 +933,7 @@ where
                 let raw = raw
                     .with_name(filename_stem.into())
                     .validated(&path.to_string_lossy())?
-                    .with_metadata(RawSchemaMetadata {
+                    .with_file_times(RawFileTimes {
                         created_at,
                         modified_at,
                     });

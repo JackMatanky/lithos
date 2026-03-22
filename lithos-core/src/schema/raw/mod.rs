@@ -89,8 +89,8 @@ pub type RawSchema = aggregate::RawSchema;
 /// Raw property bank loaded from vault files.
 pub type RawPropertyBank = aggregate::RawPropertyBank;
 
-/// Raw file metadata for staleness detection.
-pub type RawSchemaMetadata = aggregate::RawSchemaMetadata;
+/// Raw file timestamps for staleness detection.
+pub type RawFileTimes = aggregate::RawFileTimes;
 
 /// Schema format version.
 pub type RawSchemaVersion = aggregate::RawSchemaVersion;
