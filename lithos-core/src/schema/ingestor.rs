@@ -520,7 +520,6 @@ where
 
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
-            let raw = raw.validated(&path.to_string_lossy())?;
 
             // Create view with content for caching
             let view =
@@ -575,7 +574,6 @@ where
             // Parse new version
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
-            let raw = raw.validated(&path.to_string_lossy())?;
 
             // Compute new hashes and find changed properties
             let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(raw.properties());
