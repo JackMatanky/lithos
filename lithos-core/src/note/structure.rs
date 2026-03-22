@@ -117,14 +117,14 @@ impl Section {
     pub const fn range(&self) -> SourceByteRange {
         self.range
     }
-}
 
-impl TryFrom<RawSection> for Section {
-    type Error = NoteError;
-
+    /// Convert from a raw section.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if validation fails.
     #[inline]
-    fn try_from(raw: RawSection) -> Result<Self, Self::Error> {
-        let kind = match raw.kind() {
+    pub fn try_from_raw(raw: &RawSection) -> Result<Self, NoteError> {
+        let kind = match raw.kind {
             RawSectionKind::Heading => SectionKind::Heading,
             RawSectionKind::Paragraph => SectionKind::Paragraph,
             RawSectionKind::CodeBlock => SectionKind::Code,
@@ -132,7 +132,7 @@ impl TryFrom<RawSection> for Section {
             RawSectionKind::List => SectionKind::List,
             RawSectionKind::Frontmatter => SectionKind::Frontmatter,
         };
-        Ok(Section::new(kind, None, raw.range()))
+        Ok(Section::new(kind, None, raw.range))
     }
 }
 
@@ -213,15 +213,15 @@ impl BlockRef {
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
-}
 
-impl TryFrom<RawBlockRef> for BlockRef {
-    type Error = NoteError;
-
+    /// Convert from a raw block reference.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if validation fails.
     #[inline]
-    fn try_from(raw: RawBlockRef) -> Result<Self, Self::Error> {
-        let id = BlockRefId::try_new(raw.id())?;
-        Ok(BlockRef::new(id, raw.position()))
+    pub fn try_from_raw(raw: &RawBlockRef<'_>) -> Result<Self, NoteError> {
+        let id = BlockRefId::try_new(raw.id.as_ref())?;
+        Ok(BlockRef::new(id, raw.position))
     }
 }
 

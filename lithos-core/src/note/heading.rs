@@ -80,15 +80,16 @@ impl Heading {
     pub fn text(&self) -> &str {
         self.text.as_str()
     }
-}
 
-impl TryFrom<RawHeading> for Heading {
-    type Error = NoteError;
-
+    /// Convert from a raw heading.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if validation fails.
     #[inline]
-    fn try_from(raw: RawHeading) -> Result<Self, Self::Error> {
-        let level = HeadingLevel::try_new(raw.level())?;
-        Heading::try_new(level, raw.text(), raw.position()).map_err(Into::into)
+    pub fn try_from_raw(raw: &RawHeading<'_>) -> Result<Self, NoteError> {
+        let level = HeadingLevel::try_new(raw.level)?;
+        Heading::try_new(level, raw.text.as_ref(), raw.position)
+            .map_err(Into::into)
     }
 }
 

@@ -21,7 +21,7 @@ use uuid::Uuid;
 use super::{
     error::{NoteError, TaskError},
     position::{SourceByteOffset, SourceByteRange},
-    raw::{RawInlineField, RawNote, RawTask},
+    raw::{RawInlineField, RawTask},
     tag::Tag,
     value::FieldValue,
 };
@@ -67,68 +67,6 @@ pub struct Task {
 }
 
 impl Task {
-    /// Builds a collection of tasks from raw extraction data.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if task promotion or attribute parsing fails.
-    pub(crate) fn build_many(
-        raw: &RawNote,
-        task_spec: &TaskConfigSpec,
-    ) -> Result<Box<[Task]>, NoteError> {
-        if raw.tasks().is_empty() {
-            return Ok(Box::new([]));
-        }
-
-        let mut tasks = Vec::new();
-        let mut tags_iter = raw.tags().iter().peekable();
-        let mut fields_iter = raw.inline_fields().iter().peekable();
-
-        for raw_task in raw.tasks() {
-            let range = raw_task.range();
-
-            // Collect tags within this task's range
-            let mut task_tags = Vec::new();
-            while let Some(tag) = tags_iter.peek() {
-                if tag.position() < range.start() {
-                    tags_iter.next();
-                    continue;
-                }
-                if tag.position() >= range.end() {
-                    break;
-                }
-                if let Ok(tag) = Tag::try_from_token(tag.value()) {
-                    task_tags.push(tag);
-                }
-                tags_iter.next();
-            }
-
-            // Collect inline fields within this task's range
-            let mut task_fields = Vec::new();
-            while let Some(field) = fields_iter.peek() {
-                if field.position() < range.start() {
-                    fields_iter.next();
-                    continue;
-                }
-                if field.position() >= range.end() {
-                    break;
-                }
-                task_fields.push((*field).clone());
-                fields_iter.next();
-            }
-
-            let ctx = RawTaskContext::new(
-                raw_task,
-                task_spec,
-                task_tags.into_boxed_slice(),
-                task_fields.into_boxed_slice(),
-            );
-            if let Some(task) = Option::<Task>::try_from(ctx)? {
-                tasks.push(task);
-            }
-        }
-        Ok(tasks.into_boxed_slice())
-    }
-
     /// Creates a new [`Task`] from parsed attributes.
     ///
     /// # Errors
@@ -241,37 +179,13 @@ impl Task {
     }
 }
 
-pub(crate) struct RawTaskContext<'raw> {
-    raw: &'raw RawTask,
-    task_spec: &'raw TaskConfigSpec,
-    tags: Box<[Tag]>,
-    inline_fields: Box<[RawInlineField]>,
-}
-
-impl<'raw> RawTaskContext<'raw> {
-    #[inline]
-    pub(crate) fn new(
-        raw: &'raw RawTask,
-        task_spec: &'raw TaskConfigSpec,
-        tags: Box<[Tag]>,
-        inline_fields: Box<[RawInlineField]>,
-    ) -> Self {
-        Self {
-            raw,
-            task_spec,
-            tags,
-            inline_fields,
-        }
-    }
-}
-
-impl<'raw> TryFrom<RawTaskContext<'raw>> for Option<Task> {
+impl<'source> TryFrom<RawTask<'source>> for Option<Task> {
     type Error = NoteError;
 
     #[inline]
-    fn try_from(ctx: RawTaskContext<'raw>) -> Result<Self, Self::Error> {
-        let builder = TaskBuilder::new(ctx.task_spec);
-        builder.promote_from_raw(ctx.raw, ctx.tags, &ctx.inline_fields)
+    fn try_from(raw: RawTask<'source>) -> Result<Self, Self::Error> {
+        let builder = TaskBuilder::new(raw.spec.as_ref());
+        builder.promote_from_raw(&raw)
     }
 }
 
@@ -885,33 +799,39 @@ impl Default for TaskMetadata {
     }
 }
 
-struct TaskBuilder<'spec> {
+pub(crate) struct TaskBuilder<'spec> {
     spec: &'spec TaskConfigSpec,
 }
 
 impl<'spec> TaskBuilder<'spec> {
     #[inline]
-    const fn new(spec: &'spec TaskConfigSpec) -> Self {
+    pub(crate) const fn new(spec: &'spec TaskConfigSpec) -> Self {
         Self {
             spec,
         }
     }
 
-    fn promote_from_raw(
+    pub fn promote_from_raw(
         &self,
-        raw: &RawTask,
-        tags: Box<[Tag]>,
-        inline_fields: &[RawInlineField],
+        raw: &RawTask<'_>,
     ) -> Result<Option<Task>, NoteError> {
         if !self.spec.enabled {
             return Ok(None);
         }
 
+        let mut tags = Vec::with_capacity(raw.tags.len());
+        for raw_tag in &raw.tags {
+            if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
+                tags.push(tag);
+            }
+        }
+        let tags = tags.into_boxed_slice();
+
         if !self.should_promote_from_tags(&tags) {
             return Ok(None);
         }
 
-        let symbol = raw.task_marker().marker();
+        let symbol = raw.task_marker.marker();
         let status = self
             .spec
             .status_mappings
@@ -921,11 +841,11 @@ impl<'spec> TaskBuilder<'spec> {
             })?
             .clone();
 
-        let text = self.extract_clean_text(raw.text())?;
-        let parsed = self.parse_inline_fields(inline_fields)?;
+        let text = self.extract_clean_text(raw.text.as_ref())?;
+        let parsed = self.parse_inline_fields(&raw.inline_fields)?;
         let attributes = parsed.into_attributes(tags);
 
-        Task::try_new(status, text, raw.range(), attributes)
+        Task::try_new(status, text, raw.range, attributes)
             .map(Some)
             .map_err(Into::into)
     }
@@ -977,15 +897,15 @@ impl<'spec> TaskBuilder<'spec> {
 
     fn parse_inline_fields(
         &self,
-        inline_fields: &[RawInlineField],
+        inline_fields: &[RawInlineField<'_>],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
         for pair in inline_fields {
             state.handle_any_inline_field(
                 self.spec,
-                pair.key(),
-                pair.value(),
+                pair.key.as_ref(),
+                pair.value.as_ref(),
             )?;
         }
 
@@ -1409,7 +1329,7 @@ mod tests {
     use crate::{
         config::task::{TaskConfigSpec, TemporalSlot},
         note::{
-            raw::RawTaskMarker,
+            raw::{RawInlineField, RawTag, RawTask, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -1612,19 +1532,15 @@ mod tests {
             match *artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
-                    ..
-                } => {
-                    if let Ok(t) = Tag::try_from_token(tag_text) {
-                        task_tags.push(t);
-                    }
-                }
+                    position,
+                } => task_tags.push(RawTag::new(tag_text.into(), position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
                 } => task_fields.push(RawInlineField::new(
-                    (*key).into(),
-                    (*value).into(),
+                    key.into(),
+                    value.into(),
                     position,
                 )),
                 ScannedArtifact::BlockRef {
@@ -1636,16 +1552,21 @@ mod tests {
             }
         }
 
-        let ctx = RawTaskContext::new(
-            &raw,
-            spec,
-            task_tags.into_boxed_slice(),
-            task_fields.into_boxed_slice(),
+        let raw = RawTask::new(
+            std::sync::Arc::new(spec.clone()),
+            raw.task_marker,
+            raw.text,
+            task_tags,
+            task_fields,
+            raw.range,
         );
-        Option::<Task>::try_from(ctx).expect("task conversion")
+        Option::<Task>::try_from(raw).expect("task conversion")
     }
 
-    fn raw_task_from_text(raw_text: &str, emoji_markers: &[char]) -> RawTask {
+    fn raw_task_from_text<'source>(
+        raw_text: &'source str,
+        emoji_markers: &[char],
+    ) -> RawTask<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end =
@@ -1663,15 +1584,15 @@ mod tests {
             match *artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
-                    ..
-                } => tags.push((*tag_text).into()),
+                    position,
+                } => tags.push(RawTag::new(tag_text.into(), position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
                 } => inline_fields.push(RawInlineField::new(
-                    (*key).into(),
-                    (*value).into(),
+                    key.into(),
+                    value.into(),
                     position,
                 )),
                 ScannedArtifact::BlockRef {
@@ -1684,6 +1605,7 @@ mod tests {
         }
 
         RawTask::new(
+            std::sync::Arc::new(task_spec_fixture()),
             RawTaskMarker::Unchecked(' '),
             raw_text.into(),
             tags,

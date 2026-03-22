@@ -144,15 +144,15 @@ impl InlineField {
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
-}
 
-impl From<RawInlineField> for InlineField {
+    /// Convert from a raw inline field.
     #[inline]
-    fn from(raw: RawInlineField) -> Self {
+    #[must_use]
+    pub fn from_raw(raw: &RawInlineField<'_>) -> Self {
         InlineField::new(
-            raw.key().into(),
-            FieldValue::String(raw.value().into()),
-            raw.position(),
+            raw.key.as_ref().into(),
+            FieldValue::String(raw.value.as_ref().into()),
+            raw.position,
         )
     }
 }

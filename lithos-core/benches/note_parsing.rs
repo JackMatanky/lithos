@@ -215,13 +215,13 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use lithos_core::{
-    config::task::TaskConfigSpec,
+    config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
     fs::FsReader,
     note::{parser, paths::NotePath},
 };
@@ -242,6 +242,17 @@ fn task_spec_fixture() -> TaskConfigSpec {
         std::collections::HashMap::new(),
         std::collections::HashMap::new(),
         std::collections::HashMap::new(),
+    )
+}
+
+fn frontmatter_spec_fixture() -> FrontmatterConfigSpec {
+    FrontmatterConfigSpec::new(
+        "title".into(),
+        "aliases".into(),
+        "tags".into(),
+        "file_class".into(),
+        "date_created".into(),
+        "date_modified".into(),
     )
 }
 
@@ -410,7 +421,8 @@ fn bench_ingest_group(
 ) {
     let mut ingest_group = c.benchmark_group("note_parsing");
 
-    let task_spec = task_spec_fixture();
+    let frontmatter_spec = Arc::new(frontmatter_spec_fixture());
+    let task_spec = Arc::new(task_spec_fixture());
 
     // Simple benchmark
     std::fs::write(root.join("notes/simple.md"), samples.simple)
@@ -423,7 +435,12 @@ fn bench_ingest_group(
                 .expect("read markdown");
             let path = NotePath::try_new("notes/simple.md").expect("note path");
             let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
+                &markdown,
+                path,
+                None,
+                None,
+                &frontmatter_spec,
+                &task_spec,
             )
             .expect("ingest markdown");
             black_box(raw_note);
@@ -441,7 +458,12 @@ fn bench_ingest_group(
                 .expect("read markdown");
             let path = NotePath::try_new("notes/medium.md").expect("note path");
             let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
+                &markdown,
+                path,
+                None,
+                None,
+                &frontmatter_spec,
+                &task_spec,
             )
             .expect("ingest markdown");
             black_box(raw_note);
@@ -460,7 +482,12 @@ fn bench_ingest_group(
             let path =
                 NotePath::try_new("notes/complex.md").expect("note path");
             let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
+                &markdown,
+                path,
+                None,
+                None,
+                &frontmatter_spec,
+                &task_spec,
             )
             .expect("ingest markdown");
             black_box(raw_note);
@@ -473,7 +500,8 @@ fn bench_ingest_group(
 fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     let mut parse_group = c.benchmark_group("note_parsing_ingest_only");
 
-    let task_spec = task_spec_fixture();
+    let frontmatter_spec = Arc::new(frontmatter_spec_fixture());
+    let task_spec = Arc::new(task_spec_fixture());
 
     // Ingest-only simple benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
@@ -485,6 +513,7 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
                 path,
                 None,
                 None,
+                &frontmatter_spec,
                 &task_spec,
             )
             .expect("extract markdown");
@@ -502,6 +531,7 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
                 path,
                 None,
                 None,
+                &frontmatter_spec,
                 &task_spec,
             )
             .expect("extract markdown");
@@ -520,6 +550,7 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
                 path,
                 None,
                 None,
+                &frontmatter_spec,
                 &task_spec,
             )
             .expect("extract markdown");

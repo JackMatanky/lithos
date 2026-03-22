@@ -368,6 +368,32 @@ impl ListItem {
             *slot = None;
         }
     }
+
+    /// Convert from a raw list item.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if validation fails.
+    #[inline]
+    pub fn try_from_raw(raw: &RawListItem<'_>) -> Result<Self, NoteError> {
+        let status = raw
+            .task_marker
+            .map(|marker| StatusSymbol::try_new(marker.marker()))
+            .transpose()?;
+
+        if let Some(status) = status {
+            Ok(Self::Checkbox {
+                text: raw.text.as_ref().into(),
+                status,
+                range: raw.range,
+                task_id: None,
+            })
+        } else {
+            Ok(Self::Plain {
+                text: raw.text.as_ref().into(),
+                range: raw.range,
+            })
+        }
+    }
 }
 
 /// List item metadata entry for indexing.
@@ -445,25 +471,25 @@ impl ListItemEntry {
     pub const fn task_id(&self) -> Option<TaskId> {
         self.task_id
     }
-}
 
-impl TryFrom<RawListItem> for ListItemEntry {
-    type Error = NoteError;
-
+    /// Convert from a raw list item.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if validation fails.
     #[inline]
-    fn try_from(raw: RawListItem) -> Result<Self, Self::Error> {
-        let depth = match raw.depth() {
+    pub fn try_from_raw(raw: &RawListItem<'_>) -> Result<Self, NoteError> {
+        let depth = match raw.depth {
             RawListDepth::Root => ListDepth::root(),
             RawListDepth::Nested(value) => {
                 ListDepth::try_new(usize::from(value))?
             }
         };
         let status = raw
-            .task_marker()
+            .task_marker
             .map(|marker| StatusSymbol::try_new(marker.marker()))
             .transpose()?;
 
-        Ok(ListItemEntry::new(raw.range(), depth, raw.parent(), status, None))
+        Ok(ListItemEntry::new(raw.range, depth, raw.parent, status, None))
     }
 }
 

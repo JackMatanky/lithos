@@ -17,22 +17,22 @@ use rkyv::{
 };
 use uuid::Uuid;
 
-use crate::{
-    config::aggregate::Config,
-    note::{
-        error::NoteError,
-        frontmatter::Frontmatter,
-        heading::Heading,
-        inline_fields::InlineField,
-        link::{FrontmatterLink, Link, ReferenceLink},
-        list::ListItemEntry,
-        paths::NotePath,
-        raw::RawNote,
-        structure::{BlockRef, Section},
-        tag::Tag,
-        task::Task,
-        value::FieldValue,
+use crate::note::{
+    error::NoteError,
+    frontmatter::Frontmatter,
+    heading::Heading,
+    inline_fields::InlineField,
+    link::{FrontmatterLink, Link, ReferenceLink},
+    list::ListItemEntry,
+    paths::NotePath,
+    raw::{
+        RawBlockRef, RawHeading, RawInlineField, RawLink, RawListItem, RawNote,
+        RawReferenceLink, RawSection, RawTag, RawTask,
     },
+    structure::{BlockRef, Section},
+    tag::Tag,
+    task::Task,
+    value::FieldValue,
 };
 
 /// Stable identifier for a note.
@@ -153,7 +153,7 @@ pub struct Note {
 impl Note {
     /// Construct normalized facts from ingestion output.
     ///
-    /// This method is primarily used by the [`RawNoteContext`] conversion
+    /// This method is primarily used by the raw note conversion
     /// to build a `Note` from a [`RawNote`].
     #[expect(
         clippy::too_many_arguments,
@@ -378,14 +378,13 @@ impl Note {
         &self.inline_fields
     }
 
-    fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
-        if !tags.iter().any(|existing| existing.full_path() == tag.full_path())
-        {
+    pub(crate) fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
+        if !tags.iter().any(|t| t.full_path() == tag.full_path()) {
             tags.push(tag);
         }
     }
 
-    fn collect_frontmatter_links(
+    pub(crate) fn collect_frontmatter_links(
         frontmatter: &Frontmatter,
         links: &mut Vec<FrontmatterLink>,
     ) {
@@ -465,129 +464,171 @@ impl Note {
         combined.push_str("]]");
         combined
     }
-}
 
-/// Conversion context for building `Note` from `RawNote` + Config.
-pub(crate) struct RawNoteContext<'raw> {
-    raw: &'raw RawNote,
-    config: &'raw Config,
-    id: NoteId,
-}
-
-impl<'raw> RawNoteContext<'raw> {
-    #[inline]
-    #[must_use]
-    pub(crate) const fn new(
-        id: NoteId,
-        raw: &'raw RawNote,
-        config: &'raw Config,
-    ) -> Self {
-        Self {
-            raw,
-            config,
-            id,
-        }
-    }
-}
-
-impl<'raw> TryFrom<RawNoteContext<'raw>> for Note {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(ctx: RawNoteContext<'raw>) -> Result<Self, Self::Error> {
-        let fm_spec = ctx.config.to_frontmatter_spec();
-        let task_spec = ctx.config.to_task_spec();
-
-        let frontmatter = ctx
-            .raw
-            .frontmatter()
-            .cloned()
-            .map(|raw| Frontmatter::parse(raw.kind(), raw.text(), &fm_spec))
-            .transpose()?;
-
+    fn collect_tags_from_raw(
+        raw_tags: &[RawTag<'_>],
+        raw_tasks: &[RawTask<'_>],
+        frontmatter: Option<&Frontmatter>,
+    ) -> Vec<Tag> {
         let mut tags = Vec::new();
-        for raw_tag in ctx.raw.tags() {
-            if let Ok(tag) = Tag::try_from_token(raw_tag.value()) {
+        for raw_tag in raw_tags {
+            if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
                 Note::add_tag(&mut tags, tag);
             }
         }
-        if let Some(frontmatter) = frontmatter.as_ref()
+        for raw_task in raw_tasks {
+            for raw_tag in &raw_task.tags {
+                if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
+                    Note::add_tag(&mut tags, tag);
+                }
+            }
+        }
+        if let Some(frontmatter) = frontmatter
             && let Some(fm_tags) = frontmatter.tags()
         {
             for tag in fm_tags {
                 Note::add_tag(&mut tags, tag.clone());
             }
         }
+        tags
+    }
 
+    fn collect_frontmatter_links_from(
+        frontmatter: Option<&Frontmatter>,
+    ) -> Vec<FrontmatterLink> {
         let mut frontmatter_links = Vec::new();
-        if let Some(frontmatter) = frontmatter.as_ref() {
+        if let Some(frontmatter) = frontmatter {
             Note::collect_frontmatter_links(
                 frontmatter,
                 &mut frontmatter_links,
             );
         }
+        frontmatter_links
+    }
 
-        let reference_links = ctx
-            .raw
-            .reference_links()
-            .iter()
-            .cloned()
-            .map(ReferenceLink::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
+    fn collect_reference_links_from(
+        reference_links: Vec<RawReferenceLink<'_>>,
+    ) -> Result<Vec<ReferenceLink>, NoteError> {
+        reference_links.into_iter().map(ReferenceLink::try_from_raw).collect()
+    }
 
-        let headings = ctx
-            .raw
-            .headings()
-            .iter()
-            .cloned()
-            .map(Heading::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let sections = ctx
-            .raw
-            .sections()
-            .iter()
-            .cloned()
-            .map(Section::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let links = ctx
-            .raw
-            .links()
-            .iter()
-            .cloned()
-            .map(Link::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let block_refs = ctx
-            .raw
-            .block_refs()
-            .iter()
-            .cloned()
-            .map(BlockRef::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut list_items = ctx
-            .raw
-            .list_items()
-            .iter()
-            .cloned()
-            .map(ListItemEntry::try_from)
+    fn collect_headings_from(
+        headings: Vec<RawHeading<'_>>,
+    ) -> Result<Vec<Heading>, NoteError> {
+        headings.into_iter().map(|raw| Heading::try_from_raw(&raw)).collect()
+    }
+
+    fn collect_sections_from(
+        sections: Vec<RawSection>,
+    ) -> Result<Vec<Section>, NoteError> {
+        sections.into_iter().map(|raw| Section::try_from_raw(&raw)).collect()
+    }
+
+    fn collect_links_from(
+        links: Vec<RawLink<'_>>,
+    ) -> Result<Vec<Link>, NoteError> {
+        links.into_iter().map(Link::try_from_raw).collect()
+    }
+
+    fn collect_block_refs_from(
+        block_refs: Vec<RawBlockRef<'_>>,
+    ) -> Result<Vec<BlockRef>, NoteError> {
+        block_refs.into_iter().map(|raw| BlockRef::try_from_raw(&raw)).collect()
+    }
+
+    fn collect_list_items_from(
+        list_items: Vec<RawListItem<'_>>,
+    ) -> Result<Vec<ListItemEntry>, NoteError> {
+        let mut list_items = list_items
+            .into_iter()
+            .map(|raw| ListItemEntry::try_from_raw(&raw))
             .collect::<Result<Vec<_>, _>>()?;
         list_items.sort_by_key(ListItemEntry::position);
+        Ok(list_items)
+    }
 
-        let tasks = Task::build_many(ctx.raw, &task_spec)?;
-        let inline_fields = ctx
-            .raw
-            .inline_fields()
-            .iter()
-            .cloned()
-            .map(InlineField::from)
+    fn collect_inline_fields_from(
+        raw_inline_fields: Vec<RawInlineField<'_>>,
+        raw_tasks: &[RawTask<'_>],
+    ) -> Vec<InlineField> {
+        let mut inline_fields = raw_inline_fields
+            .into_iter()
+            .map(|raw| InlineField::from_raw(&raw))
             .collect::<Vec<_>>();
 
+        for raw_task in raw_tasks {
+            inline_fields.extend(
+                raw_task.inline_fields.iter().map(InlineField::from_raw),
+            );
+        }
+
+        inline_fields
+    }
+
+    fn collect_tasks_from(
+        raw_tasks: Vec<RawTask<'_>>,
+    ) -> Result<Vec<Task>, NoteError> {
+        let mut tasks = Vec::with_capacity(raw_tasks.len());
+        for raw_task in raw_tasks {
+            if let Some(task) = Option::<Task>::try_from(raw_task)? {
+                tasks.push(task);
+            }
+        }
+        Ok(tasks)
+    }
+}
+
+impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(
+        (raw, id): (RawNote<'source>, NoteId),
+    ) -> Result<Self, Self::Error> {
+        let RawNote {
+            path,
+            source_hash,
+            source_bytes,
+            created_at,
+            modified_at,
+            frontmatter,
+            headings,
+            sections,
+            links,
+            tags: raw_tags,
+            list_items,
+            tasks: raw_tasks,
+            inline_fields: raw_inline_fields,
+            reference_links,
+            block_refs,
+        } = raw;
+
+        let frontmatter = frontmatter.map(Frontmatter::try_from).transpose()?;
+        let tags = Note::collect_tags_from_raw(
+            &raw_tags,
+            &raw_tasks,
+            frontmatter.as_ref(),
+        );
+        let frontmatter_links =
+            Note::collect_frontmatter_links_from(frontmatter.as_ref());
+        let reference_links =
+            Note::collect_reference_links_from(reference_links)?;
+        let headings = Note::collect_headings_from(headings)?;
+        let sections = Note::collect_sections_from(sections)?;
+        let links = Note::collect_links_from(links)?;
+        let block_refs = Note::collect_block_refs_from(block_refs)?;
+        let list_items = Note::collect_list_items_from(list_items)?;
+        let inline_fields =
+            Note::collect_inline_fields_from(raw_inline_fields, &raw_tasks);
+        let tasks = Note::collect_tasks_from(raw_tasks)?;
+
         Ok(Self::from_parts(
-            ctx.id,
-            ctx.raw.path().clone(),
-            ctx.raw.source_hash().into(),
-            ctx.raw.source_bytes(),
-            ctx.raw.created_at(),
-            ctx.raw.modified_at(),
+            id,
+            path,
+            source_hash,
+            source_bytes,
+            created_at,
+            modified_at,
             frontmatter,
             frontmatter_links,
             reference_links,
@@ -617,9 +658,8 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawInlineField, RawTask, RawTaskMarker},
+            raw::{RawInlineField, RawTag, RawTask, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
-            task::RawTaskContext,
         },
     };
 
@@ -756,54 +796,15 @@ mod tests {
         task_spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Option<Task> {
-        let raw = raw_task_from_text(promoted_text, emoji_markers);
-
-        let mut task_tags = Vec::new();
-        let mut task_fields = Vec::new();
-        // NoteScanner logic duplicated for test shim
-        let scanner = NoteScanner::new(emoji_markers.to_vec());
-        let artifacts = scanner
-            .scan_block(promoted_text, SourceByteOffset::new(0))
-            .unwrap();
-
-        for artifact in &artifacts {
-            match *artifact {
-                ScannedArtifact::Tag {
-                    text: tag_text,
-                    ..
-                } => {
-                    if let Ok(t) = Tag::try_from_token(tag_text) {
-                        task_tags.push(t);
-                    }
-                }
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    position,
-                } => task_fields.push(RawInlineField::new(
-                    (*key).into(),
-                    (*value).into(),
-                    position,
-                )),
-                ScannedArtifact::BlockRef {
-                    ..
-                }
-                | ScannedArtifact::TaskMarker {
-                    ..
-                } => {}
-            }
-        }
-
-        let ctx = RawTaskContext::new(
-            &raw,
-            task_spec,
-            task_tags.into_boxed_slice(),
-            task_fields.into_boxed_slice(),
-        );
-        Option::<Task>::try_from(ctx).expect("task conversion")
+        let raw = raw_task_from_text(promoted_text, emoji_markers, task_spec);
+        Option::<Task>::try_from(raw).expect("task conversion")
     }
 
-    fn raw_task_from_text(raw_text: &str, emoji_markers: &[char]) -> RawTask {
+    fn raw_task_from_text<'source>(
+        raw_text: &'source str,
+        emoji_markers: &[char],
+        task_spec: &TaskConfigSpec,
+    ) -> RawTask<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end =
@@ -821,15 +822,15 @@ mod tests {
             match *artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
-                    ..
-                } => tags.push((*tag_text).into()),
+                    position,
+                } => tags.push(RawTag::new(tag_text.into(), position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
                 } => inline_fields.push(RawInlineField::new(
-                    (*key).into(),
-                    (*value).into(),
+                    key.into(),
+                    value.into(),
                     position,
                 )),
                 ScannedArtifact::BlockRef {
@@ -842,6 +843,7 @@ mod tests {
         }
 
         RawTask::new(
+            std::sync::Arc::new(task_spec.clone()),
             RawTaskMarker::Unchecked(' '),
             raw_text.into(),
             tags,

@@ -1473,7 +1473,7 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            aggregate::{Note, NoteId, RawNoteContext},
+            aggregate::{Note, NoteId},
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
             raw::{
@@ -1555,7 +1555,7 @@ mod tests {
         .map_err(|e| e.to_string())
     }
 
-    fn raw_note(path: NotePath) -> RawNote {
+    fn raw_note(path: NotePath) -> RawNote<'static> {
         RawNote::new(
             path,
             "hash".into(),
@@ -1579,8 +1579,13 @@ mod tests {
         dead_code,
         reason = "Legacy test helper maintained for future task query tests"
     )]
-    fn raw_note_with_indexes(path: NotePath) -> RawNote {
+    fn raw_note_with_indexes(path: NotePath) -> RawNote<'static> {
+        let config = crate::config::aggregate::fixtures::test_config();
+        let frontmatter_spec =
+            std::sync::Arc::new(config.to_frontmatter_spec());
+        let task_spec = std::sync::Arc::new(config.to_task_spec());
         let frontmatter = RawFrontmatter::new(
+            frontmatter_spec,
             crate::note::raw::RawFrontmatterFormat::Yaml,
             "aliases:\n  - Alias\nfile_class: Class\ncategory: docs\n".into(),
             SourceByteRange::new(
@@ -1596,8 +1601,6 @@ mod tests {
         let base = SourceByteOffset::new(0);
         let range = SourceByteRange::new(base, base).expect("valid range");
 
-        let config = crate::config::aggregate::fixtures::test_config();
-        let task_spec = config.to_task_spec();
         let scanner = NoteScanner::new(task_spec.emoji_markers.as_ref());
         let artifacts = scanner
             .scan_block(raw_task_text, SourceByteOffset::new(0))
@@ -1610,17 +1613,15 @@ mod tests {
             match *artifact {
                 ScannedArtifact::Tag {
                     text,
-                    ..
-                } => {
-                    task_tags.push((*text).into());
-                }
+                    position,
+                } => task_tags.push(RawTag::new(text.into(), position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
                 } => task_fields.push(RawInlineField::new(
-                    (*key).into(),
-                    (*value).into(),
+                    key.into(),
+                    value.into(),
                     position,
                 )),
                 ScannedArtifact::BlockRef {
@@ -1633,6 +1634,7 @@ mod tests {
         }
 
         let tasks = vec![RawTask::new(
+            task_spec,
             RawTaskMarker::Unchecked(' '),
             raw_task_text.into(),
             task_tags,
@@ -1679,11 +1681,11 @@ mod tests {
             }
         })?;
         let raw = raw_note(path.clone());
-        let facts =
-            Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
-                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+        let facts = Note::try_from((raw, NoteId::new())).map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
                 message: err.to_string().into(),
-            })?;
+            }
+        })?;
 
         let note_id = repo.save(&facts)?;
         let stored =
@@ -1714,11 +1716,11 @@ mod tests {
             }
         })?;
         let raw = raw_note(path.clone());
-        let facts =
-            Note::try_from(RawNoteContext::new(NoteId::new(), &raw, &config))
-                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+        let facts = Note::try_from((raw, NoteId::new())).map_err(|err| {
+            NoteRepositoryError::ConstraintViolation {
                 message: err.to_string().into(),
-            })?;
+            }
+        })?;
         let note_id = repo.save(&facts)?;
 
         repo.delete_note(note_id)?;

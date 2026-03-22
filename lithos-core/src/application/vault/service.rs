@@ -149,14 +149,14 @@ impl<'db, 'config> Service<'db, 'config> {
                     )
                     .map_err(ServiceError::from)?;
                 let note_id =
-                    loader.load_raw(&raw_note).map_err(map_load_error)?;
+                    loader.load_raw(raw_note).map_err(map_load_error)?;
                 note_ids.push(note_id);
             } else {
                 let raw_note = ingestor
                     .ingest_path(&note_path)
                     .map_err(ServiceError::from)?;
                 let note_id =
-                    loader.load_raw(&raw_note).map_err(map_load_error)?;
+                    loader.load_raw(raw_note).map_err(map_load_error)?;
                 note_ids.push(note_id);
             }
         }

@@ -26,7 +26,8 @@ use super::{
     value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
 };
 use crate::{
-    config::frontmatter::FrontmatterConfigSpec, note::raw::RawFrontmatterFormat,
+    config::frontmatter::FrontmatterConfigSpec,
+    note::raw::{RawFrontmatter, RawFrontmatterFormat},
 };
 
 // ----------------------------------------------------------- //
@@ -138,6 +139,16 @@ impl Frontmatter {
         };
 
         Ok(Self::from_fields(fields, fm_spec))
+    }
+
+    /// Converts a raw frontmatter block into validated frontmatter.
+    ///
+    /// # Errors
+    /// Returns [`NoteError`] if parsing or validation fails.
+    #[inline]
+    pub fn try_from_raw(raw: &RawFrontmatter<'_>) -> Result<Self, NoteError> {
+        Self::parse(raw.kind, raw.text.as_ref(), raw.spec.as_ref())
+            .map_err(Into::into)
     }
 
     /// Creates a new [`Frontmatter`] instance from a field map, extracting
@@ -504,6 +515,15 @@ impl Frontmatter {
                 }
             }
         }
+    }
+}
+
+impl<'source> TryFrom<RawFrontmatter<'source>> for Frontmatter {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawFrontmatter<'source>) -> Result<Self, Self::Error> {
+        Self::try_from_raw(&raw)
     }
 }
 
