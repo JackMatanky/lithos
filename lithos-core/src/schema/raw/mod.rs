@@ -58,6 +58,7 @@ use super::error::SchemaIngestionError;
 /// // schema.properties() returns HashMap<PropertyName, RawProperty>
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
@@ -73,11 +74,15 @@ pub struct RawSchema {
     name: Box<str>,
 
     /// Optional parent schema name for inheritance.
-    extends: Option<Box<str>>,
+    /// Validated during deserialization via `SchemaName`'s custom Deserialize
+    /// impl.
+    extends: Option<super::aggregate::SchemaName>,
 
     /// Property names to exclude from parent schema.
+    /// Validated during deserialization via `PropertyName`'s custom
+    /// Deserialize impl.
     #[serde(default)]
-    excludes: Vec<Box<str>>,
+    excludes: Vec<super::property::PropertyName>,
 
     /// Validated property map (keys are guaranteed valid `PropertyNames`).
     properties: property::RawPropertyMap<property::RawProperty>,
@@ -107,14 +112,14 @@ impl RawSchema {
     /// Returns the parent schema name (if present).
     #[inline]
     #[must_use]
-    pub fn extends(&self) -> Option<&str> {
-        self.extends.as_deref()
+    pub fn extends(&self) -> Option<&super::aggregate::SchemaName> {
+        self.extends.as_ref()
     }
 
     /// Returns the excluded property names.
     #[inline]
     #[must_use]
-    pub fn excludes(&self) -> &[Box<str>] {
+    pub fn excludes(&self) -> &[super::property::PropertyName] {
         &self.excludes
     }
 
@@ -154,38 +159,21 @@ impl RawSchema {
         self
     }
 
-    /// Validate the schema version matches the expected version.
+    /// Consuming constructor that validates the schema name.
     ///
-    /// This is separate from property key validation (which happens during
-    /// deserialization) because version errors need path context for better
-    /// error messages.
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match.
-    #[inline]
-    pub fn validate_version(
-        &self,
-        path: &str,
-    ) -> Result<(), SchemaIngestionError> {
-        self.version.validate(path)
-    }
-
-    /// Consuming constructor that validates the schema version and
-    /// inheritance fields.
-    ///
-    /// Property name validation happens during deserialization via
-    /// `RawPropertyMap`, so this only validates version, extends, and excludes.
+    /// Property names in `properties`, `extends`, and `excludes` are already
+    /// validated during deserialization via custom `Deserialize`
+    /// implementations. Version is validated during deserialization. This
+    /// method only validates:
+    /// - Schema name (derived from filename, needs file path context)
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if validation fails.
     #[inline]
     pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
-        use super::{aggregate::SchemaName, property::PropertyName};
+        use super::aggregate::SchemaName;
 
-        self.validate_version(path)?;
-
-        // Validate schema name syntax
+        // Validate schema name syntax (filename → SchemaName conversion)
         SchemaName::try_new(self.name.as_ref()).map_err(|error| {
             SchemaIngestionError::Schema {
                 path: path.into(),
@@ -193,27 +181,8 @@ impl RawSchema {
             }
         })?;
 
-        // Validate parent schema name syntax (if present)
-        if let Some(parent) = self.extends.as_ref() {
-            SchemaName::try_new(parent.as_ref()).map_err(|error| {
-                SchemaIngestionError::Schema {
-                    path: path.into(),
-                    source: error,
-                }
-            })?;
-        }
-
-        // Validate excludes syntax
-        for excluded in &self.excludes {
-            PropertyName::try_new_with_context(
-                excluded.as_ref(),
-                super::error::PropertyNameContext::Exclude,
-            )
-            .map_err(|error| SchemaIngestionError::Schema {
-                path: path.into(),
-                source: error,
-            })?;
-        }
+        // extends and excludes are already validated by serde
+        // (custom Deserialize impls ensure type safety)
 
         Ok(self)
     }
@@ -237,9 +206,12 @@ impl RawSchema {
 /// // bank.properties() returns HashMap<PropertyName, RawPropertyBankEntry>
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
     /// Property bank format version (defaults to "1.0" if not specified).
+    /// Validated during deserialization via `RawSchemaVersion`'s custom
+    /// Deserialize impl.
     #[serde(rename = "$version", default)]
     version: RawSchemaVersion,
 
@@ -319,37 +291,14 @@ impl RawPropertyBank {
         self.metadata = metadata;
     }
 
-    /// Validate the property bank version matches the expected version.
+    /// Consuming constructor that validates the property bank.
     ///
-    /// This is separate from property key validation (which happens during
-    /// deserialization) because version errors need path context for better
-    /// error messages.
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::schema::raw::RawPropertyBank;
-    /// # let bank: RawPropertyBank = unimplemented!();
-    /// bank.validate_version("schemas/property_bank.toml")?;
-    /// ```
-    #[inline]
-    pub fn validate_version(
-        &self,
-        path: &str,
-    ) -> Result<(), SchemaIngestionError> {
-        self.version.validate(path)
-    }
-
-    /// Consuming constructor that validates the property bank version.
-    ///
-    /// Property name validation happens during deserialization via
-    /// `RawPropertyMap`, so this only validates the version field.
+    /// Property names are already validated during deserialization via
+    /// `RawPropertyMap`. Version is validated during deserialization via
+    /// `RawSchemaVersion`. This method is kept for API consistency.
     ///
     /// # Errors
-    /// Returns `SchemaIngestionError` if validation fails.
+    /// Currently never fails, but returns `Result` for API consistency.
     ///
     /// # Examples
     /// ```ignore
@@ -358,8 +307,10 @@ impl RawPropertyBank {
     /// let bank = bank.validated("schemas/property_bank.toml")?;
     /// ```
     #[inline]
-    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
-        self.validate_version(path)?;
+    pub fn validated(self, _path: &str) -> Result<Self, SchemaIngestionError> {
+        // All validation now happens during deserialization:
+        // - Property names validated by RawPropertyMap
+        // - Version validated by RawSchemaVersion::deserialize
         Ok(self)
     }
 }
@@ -395,50 +346,49 @@ pub struct RawSchemaMetadata {
 /// Schema format version.
 ///
 /// Represents the version string from schema and property bank files.
-/// Validates against the supported version constant.
+/// Validates against the supported version constant during deserialization.
 ///
 /// # Design Note
 ///
-/// This type uses the `validated()` pattern (validate after deserialization)
-/// rather than "parse, don't validate" because Raw types are meant to be
-/// direct representations of file contents, not domain types. A more idiomatic
-/// solution would use custom serde deserializers to validate during parsing,
-/// but that trades off error reporting quality and pipeline flexibility.
-///
-/// TODO: Revisit this design to find a more idiomatic Rust solution that
-/// maintains the benefits of separate parsing and validation phases.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
+/// This type implements custom `serde::Deserialize` to validate the version
+/// string during parsing, following the "parse, don't validate" principle.
+/// Invalid versions are rejected immediately with clear error messages.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RawSchemaVersion(Box<str>);
 
 impl RawSchemaVersion {
     /// Current supported schema version.
     pub const SUPPORTED: &'static str = "1.0";
 
-    /// Validates the version against the expected version.
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match the expected version.
-    #[inline]
-    pub fn validate(&self, path: &str) -> Result<(), SchemaIngestionError> {
-        if self.0.as_ref() != Self::SUPPORTED {
-            return Err(SchemaIngestionError::Version(
-                super::error::SchemaVersionError::UnsupportedVersion {
-                    path: path.into(),
-                    found: self.0.clone(),
-                    expected: Self::SUPPORTED.into(),
-                },
-            ));
-        }
-        Ok(())
-    }
-
     /// Returns the version string.
     #[must_use]
     #[inline]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "deserialize_in_place is not applicable for this wrapper"
+)]
+impl<'de> serde::Deserialize<'de> for RawSchemaVersion {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = Box::<str>::deserialize(deserializer)?;
+
+        if s.as_ref() != Self::SUPPORTED {
+            return Err(serde::de::Error::custom(format!(
+                "unsupported schema version '{}', expected '{}'",
+                s,
+                Self::SUPPORTED
+            )));
+        }
+
+        Ok(Self(s))
     }
 }
 
@@ -561,17 +511,29 @@ mod tests {
 
         #[test]
         fn validate_invalid_parent_name() {
-            let schema =
-                create_raw_schema("child", Some("Parent!Invalid"), &[]); // Uppercase + special char
-            schema.validated("test").unwrap_err();
+            // Parent name validation now happens during deserialization
+            // Invalid parent names cannot be constructed via SchemaName
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "extends": "Parent!Invalid",  // Uppercase + special char
+                "properties": {}
+            });
+            // Deserialization should fail
+            serde_json::from_value::<RawSchema>(json).unwrap_err();
         }
 
         #[test]
         fn validate_invalid_exclude_name() {
-            let schema = create_raw_schema("test", Some("parent"), &[
-                "Invalid Property",
-            ]); // Space
-            schema.validated("test").unwrap_err();
+            // Exclude name validation now happens during deserialization
+            // Invalid property names cannot be constructed via PropertyName
+            let json = serde_json::json!({
+                "$version": "1.0",
+                "extends": "parent",
+                "excludes": ["Invalid Property"],  // Space
+                "properties": {}
+            });
+            // Deserialization should fail
+            serde_json::from_value::<RawSchema>(json).unwrap_err();
         }
 
         #[test]

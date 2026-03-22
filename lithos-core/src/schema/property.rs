@@ -426,6 +426,21 @@ impl TryFrom<Box<str>> for PropertyName {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "deserialize_in_place is not applicable for this wrapper"
+)]
+impl<'de> serde::Deserialize<'de> for PropertyName {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = Box::<str>::deserialize(deserializer)?;
+        Self::try_from(s).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Typed reference to a property definition in the property bank.
 ///
 /// The only valid format is `property_bank#/<name>` where `<name>` is a

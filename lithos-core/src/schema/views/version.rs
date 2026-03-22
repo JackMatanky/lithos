@@ -103,32 +103,10 @@ impl SchemaVersion {
         hashes: HashMetadata,
         raw: &RawSchema,
     ) -> Result<Self, SchemaIngestionError> {
-        // Validate and convert excludes
-        let mut excludes = Vec::with_capacity(raw.excludes().len());
-        for exclude in raw.excludes() {
-            let prop_name = PropertyName::try_new_with_context(
-                exclude.as_ref(),
-                crate::schema::error::PropertyNameContext::Exclude,
-            )
-            .map_err(|e| SchemaIngestionError::Schema {
-                path: PathBuf::from(raw.name()),
-                source: e,
-            })?;
-            excludes.push(prop_name);
-        }
-
-        // Validate extends if present
-        let extends = raw
-            .extends()
-            .map(|name| {
-                SchemaName::try_new(name).map_err(|e| {
-                    SchemaIngestionError::Schema {
-                        path: PathBuf::from(raw.name()),
-                        source: e,
-                    }
-                })
-            })
-            .transpose()?;
+        // extends and excludes are already validated during deserialization
+        // (custom Deserialize impls ensure type safety)
+        let extends = raw.extends().cloned();
+        let excludes = raw.excludes().to_vec();
 
         // Property names are already validated via RawPropertyMap
         // deserialization No need to validate them again here
@@ -357,10 +335,11 @@ mod tests {
     fn create_test_raw_schema() -> RawSchema {
         let json = serde_json::json!({
             "$version": "1.0",
-            "name": "test",
             "properties": {}
         });
-        serde_json::from_value(json).expect("valid test fixture")
+        serde_json::from_value::<RawSchema>(json)
+            .expect("valid test fixture")
+            .with_name("test".into())
     }
 
     #[test]

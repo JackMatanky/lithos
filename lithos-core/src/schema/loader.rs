@@ -299,8 +299,12 @@ where
             // Construct RefExpandedSchema directly from cached properties
             let exp_schema = RefExpandedSchema {
                 name: raw.name().into(),
-                extends: raw.extends().map(std::convert::Into::into),
-                excludes: raw.excludes().to_vec(),
+                extends: raw.extends().map(|s| s.as_str().into()),
+                excludes: raw
+                    .excludes()
+                    .iter()
+                    .map(|p| p.as_str().into())
+                    .collect(),
                 properties: cached_props,
             };
 
@@ -429,7 +433,7 @@ where
                 let pid = *name_to_id.get(parent_name).ok_or_else(|| {
                     SchemaLoaderError::Resolution(SchemaError::Inheritance(
                         super::error::SchemaInheritanceError::ParentNotFound {
-                            name: (*parent_name).into(),
+                            name: parent_name.as_str().into(),
                         },
                     ))
                 })?;
@@ -457,7 +461,11 @@ where
             let metadata = SchemaInheritanceView {
                 parent,
                 ancestors,
-                excludes: raw.excludes().to_vec(),
+                excludes: raw
+                    .excludes()
+                    .iter()
+                    .map(|p| p.as_str().into())
+                    .collect(),
                 ancestors_hash,
                 resolved_at: SystemTime::now(),
             };

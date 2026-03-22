@@ -1406,7 +1406,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/note.json",
-                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);
@@ -1453,7 +1453,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/task.json",
-                r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);
@@ -1475,7 +1475,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/task.json",
-                r#"{"$version": "1.0", "name": "task", "properties": {"title": {"type": "string"}}}"#,
+                r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#,
             );
 
             // Second load - should detect staleness
@@ -1501,7 +1501,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/project.json",
-                r#"{"$version": "1.0", "name": "project", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);
@@ -1537,12 +1537,12 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/note.json",
-                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
             write_file(
                 dir.path(),
                 "schemas/task.json",
-                r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);
@@ -1588,7 +1588,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/note.json",
-                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);
@@ -1702,11 +1702,11 @@ mod tests {
             let id = SchemaId::new();
             let raw_json = serde_json::json!({
                 "$version": "1.0",
-                "name": "test",
                 "properties": {}
             });
-            let raw: RawSchema =
-                serde_json::from_value(raw_json).expect("valid schema JSON");
+            let raw = serde_json::from_value::<RawSchema>(raw_json)
+                .expect("valid schema JSON")
+                .with_name("test".into());
 
             let result = SchemaResult::New {
                 id,
@@ -1744,11 +1744,11 @@ mod tests {
             let id = SchemaId::new();
             let raw_json = serde_json::json!({
                 "$version": "1.0",
-                "name": "test",
                 "properties": {}
             });
-            let raw: RawSchema =
-                serde_json::from_value(raw_json).expect("valid schema JSON");
+            let raw = serde_json::from_value::<RawSchema>(raw_json)
+                .expect("valid schema JSON")
+                .with_name("test".into());
             let expanded = Some(std::collections::HashMap::new());
 
             let result = SchemaResult::Stale {
@@ -1941,12 +1941,12 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/note.json",
-                r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
+                r#"{"$version": "1.0", "properties": {}}"#,
             );
             write_file(
                 dir.path(),
                 "schemas/task.yaml",
-                "$version: \"1.0\"\nname: task\nproperties: {}",
+                "$version: \"1.0\"\nproperties: {}",
             );
             write_file(
                 dir.path(),
@@ -2042,7 +2042,7 @@ mod tests {
             write_file(
                 dir.path(),
                 "schemas/note.json",
-                r#"{"name": "note", "properties": {}}"#,
+                r#"{"properties": {}}"#,
             );
 
             let config = test_config(dir.path(), None);

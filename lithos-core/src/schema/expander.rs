@@ -130,8 +130,12 @@ impl<'bank> RefExpander<'bank> {
 
         Ok(RefExpandedSchema {
             name: raw.name().into(),
-            extends: raw.extends().map(std::convert::Into::into),
-            excludes: raw.excludes().to_vec(),
+            extends: raw.extends().map(|s| s.as_str().into()),
+            excludes: raw
+                .excludes()
+                .iter()
+                .map(|p| p.as_str().into())
+                .collect(),
             properties,
         })
     }
@@ -386,14 +390,14 @@ mod tests {
             // Use JSON deserialization to construct RawSchema
             let raw_json = serde_json::json!({
                 "$version": "1.0",
-                "name": "test",
                 "properties": {
                     "z": { "type": "bool" },
                     "a": { "type": "bool" }
                 }
             });
-            let raw: RawSchema =
-                serde_json::from_value(raw_json).expect("valid schema JSON");
+            let raw = serde_json::from_value::<RawSchema>(raw_json)
+                .expect("valid schema JSON")
+                .with_name("test".into());
 
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;
@@ -417,13 +421,13 @@ mod tests {
             // Use JSON deserialization to construct RawSchema
             let raw_json = serde_json::json!({
                 "$version": "1.0",
-                "name": "child",
                 "extends": "parent",
                 "excludes": ["old-prop"],
                 "properties": {}
             });
-            let raw: RawSchema =
-                serde_json::from_value(raw_json).expect("valid schema JSON");
+            let raw = serde_json::from_value::<RawSchema>(raw_json)
+                .expect("valid schema JSON")
+                .with_name("child".into());
 
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;

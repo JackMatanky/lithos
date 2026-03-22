@@ -315,10 +315,11 @@ impl Display for SchemaId {
 /// # }
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
+#[derive(serde::Serialize)]
 pub struct SchemaName(Box<str>);
 
 impl SchemaName {
@@ -454,6 +455,21 @@ impl TryFrom<Box<str>> for SchemaName {
     fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
         Self::validate(&value)?;
         Ok(Self(value))
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "deserialize_in_place is not applicable for this wrapper"
+)]
+impl<'de> serde::Deserialize<'de> for SchemaName {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = Box::<str>::deserialize(deserializer)?;
+        Self::try_from(s).map_err(serde::de::Error::custom)
     }
 }
 
