@@ -272,6 +272,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn get_raw_property_bank_view(
         &self,
+        filename: &str,
     ) -> Result<Option<super::views::RawPropertyBankView>, Self::Error>;
 
     /// Saves the raw property bank view.
@@ -281,6 +282,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the save fails.
     fn save_raw_property_bank_view(
         &self,
+        filename: &str,
         view: &super::views::RawPropertyBankView,
     ) -> Result<(), Self::Error>;
 
@@ -820,19 +822,13 @@ impl Repository for RedbRepository {
         id: SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::{
-            RAW_SCHEMA_VIEW_BY_PATH, RAW_SCHEMA_VIEWS,
-        };
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
 
         let key = id.to_string();
         self.db
             .batch_write(|batch| {
                 batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
-                batch.put(
-                    RAW_SCHEMA_VIEW_BY_PATH,
-                    view.file_path().as_str(),
-                    &id,
-                )?;
+                batch.put(SCHEMA_ID_BY_PATH, view.file_path().as_str(), &id)?;
                 Ok(())
             })
             .map_err(map_db_error)?;
@@ -843,27 +839,25 @@ impl Repository for RedbRepository {
     #[inline]
     fn get_raw_property_bank_view(
         &self,
+        filename: &str,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-        use crate::schema::db_table::{
-            RAW_PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-        };
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .get_owned(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY)
+            .get_owned(RAW_PROPERTY_BANK_VIEW, filename)
             .map_err(map_db_error)
     }
 
     #[inline]
     fn save_raw_property_bank_view(
         &self,
+        filename: &str,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::{
-            RAW_PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-        };
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .put(RAW_PROPERTY_BANK_VIEW, RAW_PROPERTY_BANK_KEY, view)
+            .put(RAW_PROPERTY_BANK_VIEW, filename, view)
             .map_err(map_db_error)
     }
 
@@ -872,12 +866,12 @@ impl Repository for RedbRepository {
         &self,
         file_path: &str,
     ) -> Result<Option<RawSchemaView>, Self::Error> {
-        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
         // First lookup SchemaId by path
         let id = self
             .db
-            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, file_path)
             .map_err(map_db_error)?;
 
         match id {
@@ -891,10 +885,10 @@ impl Repository for RedbRepository {
         &self,
         file_path: &str,
     ) -> Result<Option<SchemaId>, Self::Error> {
-        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
         self.db
-            .get_owned::<SchemaId>(RAW_SCHEMA_VIEW_BY_PATH, file_path)
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, file_path)
             .map_err(map_db_error)
     }
 
@@ -906,9 +900,7 @@ impl Repository for RedbRepository {
         HashMap<std::path::PathBuf, super::views::RawSchemaView>,
         Self::Error,
     > {
-        use crate::schema::db_table::{
-            RAW_SCHEMA_VIEW_BY_PATH, RAW_SCHEMA_VIEWS,
-        };
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
 
         // Perform all queries in a single read transaction
         self.db
@@ -920,7 +912,7 @@ impl Repository for RedbRepository {
 
                     // Step 1: Look up SchemaId by path
                     let Some(id) = reader.get_owned::<SchemaId>(
-                        RAW_SCHEMA_VIEW_BY_PATH,
+                        SCHEMA_ID_BY_PATH,
                         path_key.as_ref(),
                     )?
                     else {
@@ -947,7 +939,7 @@ impl Repository for RedbRepository {
         &self,
         file_paths: &[std::path::PathBuf],
     ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error> {
-        use crate::schema::db_table::RAW_SCHEMA_VIEW_BY_PATH;
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
         // Perform all queries in a single read transaction
         self.db
@@ -957,7 +949,7 @@ impl Repository for RedbRepository {
                 for path in file_paths {
                     let path_key = path.to_string_lossy();
                     if let Some(id) = reader.get_owned::<SchemaId>(
-                        RAW_SCHEMA_VIEW_BY_PATH,
+                        SCHEMA_ID_BY_PATH,
                         path_key.as_ref(),
                     )? {
                         results.insert(path.clone(), id);

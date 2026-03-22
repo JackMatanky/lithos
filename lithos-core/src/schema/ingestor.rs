@@ -472,6 +472,15 @@ where
     ) -> Result<PropertyBankResult, SchemaIngestionError> {
         let path = self.config.paths().property_bank_path();
 
+        // Extract filename for database key
+        let filename =
+            path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+                SchemaIngestionError::File(SchemaFileError::InvalidFilename {
+                    path: path.clone(),
+                    reason: "missing filename".into(),
+                })
+            })?;
+
         // Extract timestamps once (needed for staleness check and metadata)
         let created_at = self.source.created_at(&path);
         let modified_at = self.source.modified_at(&path);
@@ -479,13 +488,14 @@ where
         // Load cached view if exists
         let cached_view = self
             .repository
-            .get_raw_property_bank_view()
+            .get_raw_property_bank_view(filename)
             .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
         // Case 1: No cached version - this is a NEW property bank
         let Some(view) = cached_view else {
             return self.ingest_new_property_bank(
                 &path,
+                filename,
                 created_at,
                 modified_at,
             );
@@ -506,12 +516,19 @@ where
         }
 
         // Case 3: STALE - file changed, compute incremental update
-        self.ingest_stale_property_bank(&path, created_at, modified_at, &view)
+        self.ingest_stale_property_bank(
+            &path,
+            filename,
+            created_at,
+            modified_at,
+            &view,
+        )
     }
 
     fn ingest_new_property_bank(
         &self,
         path: &Path,
+        filename: &str,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<PropertyBankResult, SchemaIngestionError> {
@@ -530,7 +547,7 @@ where
                 RawPropertyBankView::try_from_with_content(&raw, content)?;
 
             self.repository
-                .save_raw_property_bank_view(&view)
+                .save_raw_property_bank_view(filename, &view)
                 .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             // Create PropertyBank
@@ -549,9 +566,15 @@ where
         })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "File metadata parameters are cohesive and splitting would \
+                  reduce clarity"
+    )]
     fn ingest_stale_property_bank(
         &self,
         path: &Path,
+        filename: &str,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
         cached_view: &RawPropertyBankView,
@@ -598,7 +621,7 @@ where
                 RawPropertyBankView::try_from_with_content(&raw, content)?;
 
             self.repository
-                .save_raw_property_bank_view(&view)
+                .save_raw_property_bank_view(filename, &view)
                 .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
             // Update PropertyBank incrementally
@@ -666,14 +689,22 @@ where
             })
         })?;
 
-        let rel_path = path.to_string_lossy();
+        // Extract filename with extension for database key
+        let filename =
+            path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+                SchemaIngestionError::File(SchemaFileError::InvalidFilename {
+                    path: path.to_path_buf(),
+                    reason: "missing filename".into(),
+                })
+            })?;
+
         let created_at = self.source.created_at(path);
         let modified_at = self.source.modified_at(path);
 
         // Load cached view if exists
         let cached_view = self
             .repository
-            .find_raw_schema_view_by_path(&rel_path)
+            .find_raw_schema_view_by_path(filename)
             .map_err(|e| SchemaIngestionError::Repository(e.into()))?;
 
         // Fast path: Check timestamps (no file I/O)
@@ -713,11 +744,11 @@ where
 
             // Create view with content for caching
             let view =
-                RawSchemaView::try_from_with_content(&raw, &rel_path, content)?;
+                RawSchemaView::try_from_with_content(&raw, filename, content)?;
 
             let schema_id = self
                 .repository
-                .find_schema_id_by_path(&rel_path)
+                .find_schema_id_by_path(filename)
                 .map_err(|e| SchemaIngestionError::Repository(e.into()))?
                 .unwrap_or_else(SchemaId::new);
 
@@ -1308,7 +1339,7 @@ mod tests {
             // Verify view was saved to database
             let repository2 = RedbRepository::new(db);
             let cached_view = repository2
-                .get_raw_property_bank_view()
+                .get_raw_property_bank_view("property_bank.json")
                 .expect("should query view");
             assert!(
                 cached_view.is_some(),

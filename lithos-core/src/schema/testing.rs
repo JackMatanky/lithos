@@ -107,8 +107,9 @@ pub struct InMemoryRepository {
     /// Path-to-ID lookup for raw views: file path → `SchemaId`
     path_to_id: Arc<RwLock<HashMap<PathBuf, SchemaId>>>,
 
-    /// Raw property bank view for staleness detection
-    raw_bank_view: Arc<RwLock<Option<RawPropertyBankView>>>,
+    /// Raw property bank views for staleness detection: filename →
+    /// `RawPropertyBankView`
+    raw_bank_views: Arc<RwLock<HashMap<String, RawPropertyBankView>>>,
 
     /// Cached inheritance metadata: `SchemaId` → `SchemaInheritanceView`
     inheritance_metadata: Arc<RwLock<HashMap<SchemaId, SchemaInheritanceView>>>,
@@ -132,7 +133,7 @@ impl InMemoryRepository {
             inheritance_relations: Arc::new(RwLock::new(Vec::new())),
             raw_schema_views: Arc::new(RwLock::new(HashMap::new())),
             path_to_id: Arc::new(RwLock::new(HashMap::new())),
-            raw_bank_view: Arc::new(RwLock::new(None)),
+            raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
             inheritance_metadata: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -172,7 +173,7 @@ impl InMemoryRepository {
         self.inheritance_relations.write().expect("Lock poisoned").clear();
         self.raw_schema_views.write().expect("Lock poisoned").clear();
         self.path_to_id.write().expect("Lock poisoned").clear();
-        *self.raw_bank_view.write().expect("Lock poisoned") = None;
+        self.raw_bank_views.write().expect("Lock poisoned").clear();
         self.inheritance_metadata.write().expect("Lock poisoned").clear();
     }
 }
@@ -484,23 +485,25 @@ impl Repository for InMemoryRepository {
 
     fn get_raw_property_bank_view(
         &self,
+        filename: &str,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-        let view = self.raw_bank_view.read().map_err(|_| {
+        let views = self.raw_bank_views.read().map_err(|_| {
             InMemoryError::lock_poisoned("get_raw_property_bank_view")
         })?;
 
-        Ok(view.clone())
+        Ok(views.get(filename).cloned())
     }
 
     fn save_raw_property_bank_view(
         &self,
+        filename: &str,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
-        let mut storage = self.raw_bank_view.write().map_err(|_| {
+        let mut views = self.raw_bank_views.write().map_err(|_| {
             InMemoryError::lock_poisoned("save_raw_property_bank_view")
         })?;
 
-        *storage = Some(view.clone());
+        views.insert(filename.to_owned(), view.clone());
 
         Ok(())
     }

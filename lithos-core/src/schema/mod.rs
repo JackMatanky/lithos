@@ -114,9 +114,6 @@ pub(crate) mod db_table {
     /// Key for `PropertyBank` singleton table.
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 
-    /// Key for `RawPropertyBankView` singleton table.
-    pub(crate) const RAW_PROPERTY_BANK_KEY: &str = "property-bank";
-
     // ========================================================================
     // Raw View Storage (for staleness detection)
     // ========================================================================
@@ -126,16 +123,17 @@ pub(crate) mod db_table {
     pub(crate) const RAW_SCHEMA_VIEWS: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_schema_views");
 
-    /// Raw property bank view singleton (key: `PROPERTY_BANK_KEY`, value:
+    /// Raw property bank view (key: filename with extension, value:
     /// rkyv-serialized `RawPropertyBankView`).
+    /// Key examples: "property-bank.toml", "property-bank.json".
     pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_property_bank_view");
 
-    /// Maps file path to `SchemaId` for raw view lookup by path.
-    /// Key: `file_path` (e.g., "schemas/note.toml")
+    /// Maps schema filename to `SchemaId` for raw view lookup.
+    /// Key: filename with extension (e.g., "note.toml", "task.json")
     /// Value: rkyv-serialized `SchemaId`.
-    pub(crate) const RAW_SCHEMA_VIEW_BY_PATH: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_schema_view_by_path");
+    pub(crate) const SCHEMA_ID_BY_PATH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_id_by_path");
 
     // ========================================================================
     // Inheritance Tracking Tables

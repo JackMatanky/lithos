@@ -7,7 +7,7 @@
 //! ## Module Structure
 //!
 //! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`,
-//!   `FilePath`)
+//!   `Filename`)
 //! - `inheritance` - Inheritance relationship views (`ChildSchemaView`,
 //!   `ParentSchemaView`)
 //! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
@@ -43,5 +43,5 @@ pub use inheritance::{
     ChildSchemaView, ParentSchemaView, SchemaInheritanceView,
 };
 pub use metadata::{FileTimesMetadata, HashMetadata};
-pub use raw::{FilePath, RawPropertyBankView, RawSchemaView};
+pub use raw::{Filename, RawPropertyBankView, RawSchemaView};
 pub use version::{PropertyBankVersion, SchemaVersion};

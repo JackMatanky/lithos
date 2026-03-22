@@ -25,17 +25,17 @@ const MAX_VERSIONS: usize = 5;
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::views::{RawSchemaView, FilePath, SchemaVersion};
+/// use lithos_core::schema::views::{RawSchemaView, Filename, SchemaVersion};
 ///
-/// let file_path = FilePath::new("schemas/note.toml".into());
+/// let filename = Filename::new("note.toml".into());
 /// let version = SchemaVersion::new(/* ... */)?;
-/// let view = RawSchemaView::new(file_path, version);
+/// let view = RawSchemaView::new(filename, version);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
-    /// File path relative to vault root.
-    file_path: FilePath,
+    /// Filename with extension (e.g., "note.toml").
+    filename: Filename,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     ///
@@ -48,29 +48,29 @@ impl RawSchemaView {
     /// Creates a new schema view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(file_path: FilePath, version: SchemaVersion) -> Self {
+    pub fn new(filename: Filename, version: SchemaVersion) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
-            file_path,
+            filename,
             versions,
         }
     }
 
-    /// Returns the file path.
+    /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &FilePath {
-        &self.file_path
+    pub fn file_path(&self) -> &Filename {
+        &self.filename
     }
 
-    /// Returns the schema name (derived from file basename).
+    /// Returns the schema name (derived from filename without extension).
     ///
     /// # Examples
     /// ```ignore
     /// let view = RawSchemaView::new(
-    ///     FilePath::new("schemas/note.toml".into()),
+    ///     Filename::new("note.toml".into()),
     ///     version,
     /// );
     /// assert_eq!(view.name(), "note");
@@ -78,7 +78,7 @@ impl RawSchemaView {
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
-        self.file_path.basename()
+        self.filename.basename()
     }
 
     /// Returns the parent schema name (`extends`) from current version, if any.
@@ -182,7 +182,7 @@ impl RawSchemaView {
     ///
     /// # Parameters
     /// - `raw`: The parsed raw schema
-    /// - `file_path`: The relative path to the schema file (for view indexing)
+    /// - `filename`: The filename with extension (e.g., "note.toml")
     /// - `content`: The uncompressed file content (unused - for API
     ///   compatibility)
     ///
@@ -191,7 +191,7 @@ impl RawSchemaView {
     #[inline]
     pub fn try_from_with_content(
         raw: &super::super::raw::RawSchema,
-        file_path: &str,
+        filename: &str,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
@@ -212,7 +212,7 @@ impl RawSchemaView {
 
         let version = SchemaVersion::new(file_times, hashes, raw)?;
 
-        Ok(Self::new(FilePath::new(file_path.into()), version))
+        Ok(Self::new(Filename::new(filename.into()), version))
     }
 }
 
@@ -368,38 +368,43 @@ impl RawPropertyBankView {
     }
 }
 
-/// File path for schema/property bank files, relative to vault root.
+/// Filename for schema/property bank files with extension.
 ///
-/// Provides methods to extract basename and extension without repeatedly
-/// parsing the path.
+/// Stores only the filename (e.g., "note.toml"). The schema directory
+/// is always determined by configuration and is assumed to be flat.
+/// Provides methods to extract stem and extension without repeatedly
+/// parsing the filename.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
-pub struct FilePath(Box<str>);
+pub struct Filename(Box<str>);
 
-impl FilePath {
-    /// Create a new file path.
+impl Filename {
+    /// Create a new filename.
     #[inline]
     #[must_use]
-    pub fn new(path: Box<str>) -> Self {
-        Self(path)
+    pub fn new(filename: Box<str>) -> Self {
+        Self(filename)
     }
 
-    /// Get the full path as a string.
+    /// Get the filename as a string.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Get the file basename (filename without extension).
+    /// Get the basename (filename without extension).
+    ///
+    /// Uses Obsidian terminology where "basename" means filename without
+    /// extension.
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::views::FilePath;
+    /// use lithos_core::schema::views::Filename;
     ///
-    /// let path = FilePath::new("schemas/note.toml".into());
-    /// assert_eq!(path.basename(), "note");
+    /// let filename = Filename::new("note.toml".into());
+    /// assert_eq!(filename.basename(), "note");
     /// ```
     #[inline]
     #[must_use]
@@ -414,10 +419,10 @@ impl FilePath {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::views::FilePath;
+    /// use lithos_core::schema::views::Filename;
     ///
-    /// let path = FilePath::new("schemas/note.toml".into());
-    /// assert_eq!(path.extension(), Some("toml"));
+    /// let filename = Filename::new("note.toml".into());
+    /// assert_eq!(filename.extension(), Some("toml"));
     /// ```
     #[inline]
     #[must_use]
@@ -425,7 +430,7 @@ impl FilePath {
         Path::new(self.as_str()).extension().and_then(|s| s.to_str())
     }
 
-    /// Get the underlying path as a `Path`.
+    /// Get the underlying filename as a `Path`.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
@@ -433,28 +438,28 @@ impl FilePath {
     }
 }
 
-impl From<Box<str>> for FilePath {
+impl From<Box<str>> for Filename {
     #[inline]
-    fn from(path: Box<str>) -> Self {
-        Self::new(path)
+    fn from(filename: Box<str>) -> Self {
+        Self::new(filename)
     }
 }
 
-impl From<String> for FilePath {
+impl From<String> for Filename {
     #[inline]
-    fn from(path: String) -> Self {
-        Self::new(path.into_boxed_str())
+    fn from(filename: String) -> Self {
+        Self::new(filename.into_boxed_str())
     }
 }
 
-impl AsRef<str> for FilePath {
+impl AsRef<str> for Filename {
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl AsRef<Path> for FilePath {
+impl AsRef<Path> for Filename {
     #[inline]
     fn as_ref(&self) -> &Path {
         self.as_path()
@@ -463,44 +468,44 @@ impl AsRef<Path> for FilePath {
 
 #[cfg(test)]
 mod tests {
-    mod file_path {
-        use super::super::FilePath;
+    mod filename {
+        use super::super::Filename;
 
         #[test]
         fn basename_extracts_filename_without_extension() {
-            let path = FilePath::new("schemas/note.toml".into());
-            assert_eq!(path.basename(), "note");
+            let filename = Filename::new("note.toml".into());
+            assert_eq!(filename.basename(), "note");
         }
 
         #[test]
-        fn basename_handles_nested_paths() {
-            let path = FilePath::new("vault/schemas/base-note.toml".into());
-            assert_eq!(path.basename(), "base-note");
+        fn basename_handles_hyphens() {
+            let filename = Filename::new("base-note.toml".into());
+            assert_eq!(filename.basename(), "base-note");
         }
 
         #[test]
         fn extension_returns_file_extension() {
-            let path = FilePath::new("schemas/note.toml".into());
-            assert_eq!(path.extension(), Some("toml"));
+            let filename = Filename::new("note.toml".into());
+            assert_eq!(filename.extension(), Some("toml"));
         }
 
         #[test]
         fn extension_returns_none_for_no_extension() {
-            let path = FilePath::new("schemas/note".into());
-            assert_eq!(path.extension(), None);
+            let filename = Filename::new("note".into());
+            assert_eq!(filename.extension(), None);
         }
 
         #[test]
-        fn as_str_returns_full_path() {
-            let path = FilePath::new("schemas/note.toml".into());
-            assert_eq!(path.as_str(), "schemas/note.toml");
+        fn as_str_returns_full_filename() {
+            let filename = Filename::new("note.toml".into());
+            assert_eq!(filename.as_str(), "note.toml");
         }
     }
 
     mod schema {
         use std::collections::HashMap;
 
-        use super::super::{FilePath, RawSchemaView, SchemaVersion};
+        use super::super::{Filename, RawSchemaView, SchemaVersion};
         use crate::schema::{
             raw::RawSchema,
             views::{FileTimesMetadata, HashMetadata},
@@ -521,8 +526,8 @@ mod tests {
             let hashes = HashMetadata::new([0; 32], HashMap::new());
             let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
-            let file_path = FilePath::new("schemas/test.toml".into());
-            let view = RawSchemaView::new(file_path, version);
+            let filename = Filename::new("test.toml".into());
+            let view = RawSchemaView::new(filename, version);
 
             let reconstructed = view
                 .to_raw()
