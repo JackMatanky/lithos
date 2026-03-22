@@ -221,11 +221,28 @@ impl From<TimeDelta> for DurationValue {
         #[expect(
             clippy::as_conversions,
             clippy::cast_sign_loss,
-            reason = "Nanoseconds are positive"
+            reason = "Sign is handled manually"
         )]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "Manual math for negative durations"
+        )]
+        let (secs, nanos) = if delta.subsec_nanos() < 0i32 {
+            // Adjust negative subsecond nanoseconds to positive by borrowing a
+            // second. e.g. -0.5s -> num_seconds=0,
+            // subsec_nanos=-500ms Result: secs=-1, nanos=500ms
+            // delta = -1s + 0.5s = -0.5s (correct)
+            (
+                delta.num_seconds() - 1i64,
+                (1_000_000_000i32 + delta.subsec_nanos()) as u32,
+            )
+        } else {
+            (delta.num_seconds(), delta.subsec_nanos() as u32)
+        };
+
         Self {
-            secs: delta.num_seconds(),
-            nanos: delta.subsec_nanos() as u32,
+            secs,
+            nanos,
         }
     }
 }
@@ -844,145 +861,513 @@ impl<'value> TryFromFieldValueRef<'value> for &'value [FieldValue] {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
     use super::*;
+    mod fixtures {
+        use std::collections::HashMap;
 
-    #[test]
-    fn serialization_round_trip() {
-        let mut obj = HashMap::new();
-        obj.insert("key".into(), FieldValue::String("val".into()));
-        let val = FieldValue::Array(
-            vec![
-                FieldValue::Number(1.0),
-                FieldValue::Boolean(true),
-                FieldValue::Object(Box::new(obj)),
-                FieldValue::Null,
-            ]
-            .into_boxed_slice(),
-        );
+        use super::*;
 
-        let json = serde_json::to_string(&val).unwrap();
-        let back: FieldValue = serde_json::from_str(&json).unwrap();
-        assert_eq!(val, back);
+        pub fn complex_value() -> FieldValue {
+            let mut obj = HashMap::new();
+            obj.insert("key".into(), FieldValue::String("val".into()));
+            FieldValue::Array(
+                vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::Boolean(true),
+                    FieldValue::Object(Box::new(obj)),
+                    FieldValue::Null,
+                ]
+                .into_boxed_slice(),
+            )
+        }
     }
 
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Assertions are used to fail tests"
-    )]
-    fn rkyv_serialization() -> Result<(), Box<dyn std::error::Error>> {
-        let val = FieldValue::Array(
-            vec![
-                FieldValue::String("test".into()),
-                FieldValue::Number(123.0f64),
-            ]
-            .into_boxed_slice(),
-        );
+    mod accessors {
+        use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta};
+        use rstest::rstest;
 
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&val)?;
-        let deserialized: FieldValue =
-            rkyv::from_bytes::<_, rkyv::rancor::Error>(&bytes)?;
+        use super::*;
 
-        assert_eq!(val, deserialized);
-        Ok(())
-    }
-
-    #[test]
-    fn type_name_detection() {
-        assert_eq!(FieldValue::String("".into()).type_name(), "string");
-        assert_eq!(FieldValue::Number(0.0f64).type_name(), "number");
-        assert_eq!(FieldValue::Boolean(true).type_name(), "boolean");
-        assert_eq!(
+        #[rstest]
+        #[case::string(FieldValue::String("".into()), "string")]
+        #[case::number(FieldValue::Number(0.0), "number")]
+        #[case::boolean(FieldValue::Boolean(true), "boolean")]
+        #[case::date(
             FieldValue::Date(
                 NaiveDate::from_ymd_opt(2024, 1, 1).unwrap().into()
-            )
-            .type_name(),
+            ),
             "date"
-        );
-        assert_eq!(
+        )]
+        #[case::datetime(
             FieldValue::DateTime(
                 DateTime::parse_from_rfc3339("2024-03-20T14:30:00Z")
                     .unwrap()
                     .into()
-            )
-            .type_name(),
+            ),
             "datetime"
-        );
-        assert_eq!(
+        )]
+        #[case::time(
             FieldValue::Time(
                 NaiveTime::from_hms_opt(14, 30, 0).unwrap().into()
-            )
-            .type_name(),
+            ),
             "time"
-        );
-        assert_eq!(
-            FieldValue::Duration(TimeDelta::hours(2).into()).type_name(),
+        )]
+        #[case::duration(
+            FieldValue::Duration(TimeDelta::hours(2).into()),
             "duration"
-        );
-        assert_eq!(
-            FieldValue::Array(vec![].into_boxed_slice()).type_name(),
-            "array"
-        );
-        assert_eq!(FieldValue::Object(Box::default()).type_name(), "object");
-        assert_eq!(FieldValue::Null.type_name(), "null");
+        )]
+        #[case::array(FieldValue::Array(vec![].into_boxed_slice()), "array")]
+        #[case::object(FieldValue::Object(Box::default()), "object")]
+        #[case::null(FieldValue::Null, "null")]
+        fn type_name_should_reflect_variant(
+            #[case] val: FieldValue,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(
+                val.type_name(),
+                expected,
+                "Type name mismatch for {expected}",
+            );
+        }
+
+        #[test]
+        fn is_temporal_should_detect_date_time_variants() {
+            assert!(
+                FieldValue::Date(
+                    NaiveDate::from_ymd_opt(2024, 1, 1).unwrap().into()
+                )
+                .is_temporal(),
+                "Date should be temporal"
+            );
+            assert!(
+                FieldValue::DateTime(
+                    DateTime::parse_from_rfc3339("2024-03-20T14:30:00Z")
+                        .unwrap()
+                        .into()
+                )
+                .is_temporal(),
+                "DateTime should be temporal"
+            );
+            assert!(
+                FieldValue::Time(
+                    NaiveTime::from_hms_opt(14, 30, 0).unwrap().into()
+                )
+                .is_temporal(),
+                "Time should be temporal"
+            );
+            assert!(
+                !FieldValue::String("".into()).is_temporal(),
+                "String should NOT be temporal"
+            );
+        }
+
+        #[test]
+        fn is_null_should_return_true_for_null_variant() {
+            assert!(
+                FieldValue::Null.is_null(),
+                "Null.is_null() should be true"
+            );
+            assert!(
+                !FieldValue::Boolean(false).is_null(),
+                "Boolean.is_null() should be false"
+            );
+        }
+
+        #[test]
+        fn as_methods_should_return_some_for_correct_variant() {
+            assert_eq!(FieldValue::Boolean(true).as_bool(), Some(true));
+            assert_eq!(
+                FieldValue::Number(1.0).as_number(),
+                Some(1.0f64),
+                "Number mismatch"
+            );
+            assert_eq!(FieldValue::String("hi".into()).as_str(), Some("hi"));
+
+            let date = NaiveDate::from_ymd_opt(2024, 3, 22).unwrap();
+            assert_eq!(
+                FieldValue::Date(date.into()).as_naive_date(),
+                Some(date)
+            );
+
+            let dt =
+                DateTime::parse_from_rfc3339("2024-03-22T14:30:00Z").unwrap();
+            assert_eq!(FieldValue::DateTime(dt.into()).as_datetime(), Some(dt));
+
+            let time = NaiveTime::from_hms_opt(14, 30, 0).unwrap();
+            assert_eq!(
+                FieldValue::Time(time.into()).as_naive_time(),
+                Some(time)
+            );
+
+            let dur = TimeDelta::seconds(10);
+            assert_eq!(
+                FieldValue::Duration(dur.into()).as_duration(),
+                Some(dur)
+            );
+        }
+
+        #[test]
+        fn collection_accessors_should_return_correct_types() {
+            let val = fixtures::complex_value();
+            assert!(val.as_array().is_some(), "Array accessor failed");
+            assert!(val.array_items().is_some(), "Array items iterator failed");
+
+            let obj_val = val
+                .as_array()
+                .and_then(|a| a.get(2))
+                .cloned()
+                .expect("Object variant expected at index 2");
+            assert!(obj_val.as_object().is_some(), "Object accessor failed");
+            assert!(
+                obj_val.object_fields().is_some(),
+                "Object fields iterator failed"
+            );
+        }
+
+        #[test]
+        fn as_methods_should_return_none_for_mismatched_variants() {
+            let val = FieldValue::Null;
+            assert!(val.as_bool().is_none());
+            assert!(val.as_number().is_none());
+            assert!(val.as_str().is_none());
+            assert!(val.as_naive_date().is_none());
+            assert!(val.as_datetime().is_none());
+            assert!(val.as_naive_time().is_none());
+            assert!(val.as_duration().is_none());
+            assert!(val.as_array().is_none());
+            assert!(val.as_object().is_none());
+        }
     }
 
-    #[test]
-    fn temporal_parsing() {
-        let json_date = "\"2024-03-20\"";
-        let val_date: FieldValue = serde_json::from_str(json_date).unwrap();
-        assert!(matches!(val_date, FieldValue::Date(_)));
+    mod conversions {
 
-        let json_dt = "\"2024-03-20T14:30:00Z\"";
-        let val_dt: FieldValue = serde_json::from_str(json_dt).unwrap();
-        assert!(matches!(val_dt, FieldValue::DateTime(_)));
+        use super::*;
 
-        let json_time = "\"14:30:00\"";
-        let val_time: FieldValue = serde_json::from_str(json_time).unwrap();
-        assert!(matches!(val_time, FieldValue::Time(_)));
+        mod owned {
+            use super::*;
 
-        let json_null = "null";
-        let val_null: FieldValue = serde_json::from_str(json_null).unwrap();
-        assert!(matches!(val_null, FieldValue::Null));
+            #[test]
+            fn should_convert_to_bool() {
+                let val = FieldValue::Boolean(true);
+                assert!(
+                    bool::try_from_value(&val).unwrap(),
+                    "Failed to convert Boolean to bool"
+                );
+            }
+
+            #[test]
+            fn should_convert_to_number() {
+                let val = FieldValue::Number(42.5);
+                #[expect(clippy::float_cmp, reason = "Exact value expected")]
+                {
+                    assert_eq!(
+                        f64::try_from_value(&val).unwrap(),
+                        42.5f64,
+                        "Failed to convert Number to f64"
+                    );
+                }
+            }
+
+            #[test]
+            fn should_convert_to_box_str() {
+                let val = FieldValue::String("hello".into());
+                assert_eq!(
+                    Box::<str>::try_from_value(&val).unwrap().as_ref(),
+                    "hello",
+                    "Failed to convert String to Box<str>"
+                );
+            }
+
+            #[test]
+            fn should_convert_date_to_datetime_utc() {
+                let date = NaiveDate::from_ymd_opt(2024, 3, 22).unwrap();
+                let val = FieldValue::Date(date.into());
+                let expected =
+                    Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap());
+                assert_eq!(
+                    DateTime::<Utc>::try_from_value(&val).unwrap(),
+                    expected,
+                    "Failed to convert Date to DateTime<Utc>"
+                );
+            }
+
+            #[test]
+            fn should_convert_temporal_variants_to_native_types() {
+                let date = NaiveDate::from_ymd_opt(2024, 3, 22).unwrap();
+                let val_date = FieldValue::Date(date.into());
+                assert_eq!(NaiveDate::try_from_value(&val_date).unwrap(), date);
+
+                let dt = DateTime::parse_from_rfc3339("2024-03-22T14:30:00Z")
+                    .unwrap();
+                let val_datetime = FieldValue::DateTime(dt.into());
+                assert_eq!(
+                    DateTime::<FixedOffset>::try_from_value(&val_datetime)
+                        .unwrap(),
+                    dt
+                );
+                // Crossing types: DateTime to NaiveDate
+                assert_eq!(
+                    NaiveDate::try_from_value(&val_datetime).unwrap(),
+                    dt.date_naive()
+                );
+                // Crossing types: DateTime to NaiveTime
+                assert_eq!(
+                    NaiveTime::try_from_value(&val_datetime).unwrap(),
+                    dt.time()
+                );
+
+                let time = NaiveTime::from_hms_opt(14, 30, 0).unwrap();
+                let val_time = FieldValue::Time(time.into());
+                assert_eq!(NaiveTime::try_from_value(&val_time).unwrap(), time);
+
+                let dur = TimeDelta::seconds(10);
+                let val_dur = FieldValue::Duration(dur.into());
+                assert_eq!(TimeDelta::try_from_value(&val_dur).unwrap(), dur);
+            }
+
+            #[test]
+            fn should_convert_string_or_array_to_vec_box_str() {
+                // Single string case
+                let val_s = FieldValue::String("tag1".into());
+                let res_s = Vec::<Box<str>>::try_from_value(&val_s).unwrap();
+                assert_eq!(
+                    res_s,
+                    vec!["tag1".into()],
+                    "Failed to convert single String to Vec<Box<str>>"
+                );
+
+                // Array case
+                let val_a = FieldValue::Array(
+                    vec![
+                        FieldValue::String("t1".into()),
+                        FieldValue::String("t2".into()),
+                    ]
+                    .into_boxed_slice(),
+                );
+                let res_a = Vec::<Box<str>>::try_from_value(&val_a).unwrap();
+                assert_eq!(
+                    res_a,
+                    vec!["t1".into(), "t2".into()],
+                    "Failed to convert Array of Strings to Vec<Box<str>>"
+                );
+            }
+
+            #[test]
+            fn should_fail_on_type_mismatch() {
+                let val = FieldValue::Null;
+                let res = bool::try_from_value(&val);
+                assert!(
+                    matches!(res, Err(FrontmatterError::TypeMismatch { .. })),
+                    "Expected TypeMismatch error, got {res:?}"
+                );
+            }
+        }
+
+        mod borrowed {
+            use super::*;
+
+            #[test]
+            fn should_convert_to_str_slice() {
+                let val = FieldValue::String("borrowed".into());
+                assert_eq!(
+                    <&str>::try_from_value_ref(&val).unwrap(),
+                    "borrowed",
+                    "Failed to borrow &str from String variant"
+                );
+            }
+
+            #[test]
+            fn should_convert_to_field_slice() {
+                let val = FieldValue::Array(
+                    vec![FieldValue::Boolean(true), FieldValue::Number(1.0)]
+                        .into_boxed_slice(),
+                );
+                let slice = <&[FieldValue]>::try_from_value_ref(&val).unwrap();
+                assert_eq!(slice.len(), 2, "Borrowed slice length mismatch");
+                assert_eq!(
+                    slice.first().and_then(FieldValue::as_bool),
+                    Some(true),
+                    "Borrowed slice content mismatch"
+                );
+            }
+
+            #[test]
+            fn should_fail_on_borrow_type_mismatch() {
+                let val = FieldValue::Boolean(true);
+                let res = <&str>::try_from_value_ref(&val);
+                assert!(
+                    matches!(res, Err(FrontmatterError::TypeMismatch { .. })),
+                    "Expected TypeMismatch error when borrowing &str from \
+                     bool, got {res:?}"
+                );
+            }
+        }
+        use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, Utc};
+
+        use crate::note::error::FrontmatterError;
     }
 
-    #[test]
-    fn conversion_traits() {
-        let date = NaiveDate::from_ymd_opt(2024, 3, 20).unwrap();
-        let val_date = FieldValue::Date(date.into());
-        assert_eq!(val_date.as_naive_date(), Some(date));
+    mod parsing {
+        use rstest::rstest;
 
-        let dt =
-            DateTime::parse_from_rfc3339("2024-03-20T14:30:00+01:00").unwrap();
-        let val_dt = FieldValue::DateTime(dt.into());
-        assert_eq!(val_dt.as_datetime(), Some(dt));
+        use super::*;
 
-        let time = NaiveTime::from_hms_opt(14, 30, 0).unwrap();
-        let val_time = FieldValue::Time(time.into());
-        assert_eq!(val_time.as_naive_time(), Some(time));
-
-        let duration = TimeDelta::hours(2);
-        let val_dur = FieldValue::Duration(duration.into());
-        assert_eq!(val_dur.as_duration(), Some(duration));
+        #[rstest]
+        #[case::date("2024-03-22", "%Y-%m-%d")]
+        #[case::datetime("2024-03-22T14:30:00+00:00", "%Y-%m-%dT%H:%M:%S%z")]
+        #[case::time("14:30", "%H:%M")]
+        fn should_manually_parse_temporal_strings(
+            #[case] input: &str,
+            #[case] format: &str,
+        ) {
+            let val = FieldValue::String(input.into());
+            if format.contains('T') || format.contains('z') {
+                assert!(
+                    val.parse_as_datetime(format).is_some(),
+                    "Failed to parse datetime: {input}"
+                );
+            } else if format.contains(':') {
+                assert!(
+                    val.parse_as_time(format).is_some(),
+                    "Failed to parse time: {input}"
+                );
+            } else {
+                assert!(
+                    val.parse_as_date(format).is_some(),
+                    "Failed to parse date: {input}"
+                );
+            }
+        }
     }
 
-    #[test]
-    fn manual_temporal_parsing() {
-        let val_date = FieldValue::String("21-03-2024".into());
-        let date = val_date.parse_as_date("%d-%m-%Y").unwrap();
-        assert_eq!(date, NaiveDate::from_ymd_opt(2024, 3, 21).unwrap());
+    mod integrity {
+        use super::*;
 
-        let val_dt = FieldValue::String("2024-03-21T14:30:00+00:00".into());
-        let dt = val_dt.parse_as_datetime("%Y-%m-%dT%H:%M:%S%z").unwrap();
-        assert_eq!(dt.timestamp(), 1_711_031_400);
+        mod serde_heuristics {
+            use rstest::rstest;
 
-        let val_time = FieldValue::String("14:30".into());
-        let time = val_time.parse_as_time("%H:%M").unwrap();
-        assert_eq!(time, NaiveTime::from_hms_opt(14, 30, 0).unwrap());
+            use super::*;
 
-        let val_invalid = FieldValue::String("not a date".into());
-        assert!(val_invalid.parse_as_date("%Y-%m-%d").is_none());
+            #[rstest]
+            #[case::date("\"2024-03-22\"", "date")]
+            #[case::datetime("\"2024-03-22T14:30:00Z\"", "datetime")]
+            #[case::time_full("\"14:30:00\"", "time")]
+            #[case::time_short("\"14:30\"", "time")]
+            #[case::plain_string("\"not-a-date\"", "string")]
+            fn should_auto_detect_temporal_strings(
+                #[case] json: &str,
+                #[case] expected_type: &str,
+            ) {
+                let val: FieldValue = serde_json::from_str(json).unwrap();
+                assert_eq!(
+                    val.type_name(),
+                    expected_type,
+                    "Heuristic mismatch for {json}"
+                );
+            }
+        }
+        #[test]
+        fn json_serialization_should_roundtrip() {
+            let val = fixtures::complex_value();
+            let json = val.to_json_string();
+            let back: FieldValue = serde_json::from_str(&json).unwrap();
+            assert_eq!(val, back, "JSON roundtrip failed");
+        }
+
+        #[test]
+        fn rkyv_serialization_should_roundtrip() {
+            let val = fixtures::complex_value();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&val)
+                .expect("rkyv serialize");
+            let back: FieldValue =
+                rkyv::from_bytes::<_, rkyv::rancor::Error>(&bytes)
+                    .expect("rkyv deserialize");
+            assert_eq!(val, back, "rkyv roundtrip failed");
+        }
+    }
+
+    mod temporal {
+        use chrono::{DateTime, FixedOffset, NaiveDate, TimeDelta};
+
+        use super::*;
+
+        #[test]
+        fn naive_date_value_should_handle_extremes() {
+            let d_min = NaiveDate::MIN;
+            let val_min = NaiveDateValue::from(d_min);
+            assert_eq!(
+                NaiveDate::from(val_min),
+                d_min,
+                "Failed roundtrip for NaiveDate::MIN"
+            );
+
+            let d_max = NaiveDate::MAX;
+            let val_max = NaiveDateValue::from(d_max);
+            assert_eq!(
+                NaiveDate::from(val_max),
+                d_max,
+                "Failed roundtrip for NaiveDate::MAX"
+            );
+        }
+
+        #[test]
+        fn date_time_value_should_handle_offset_extremes() {
+            // chrono FixedOffset supports up to 24 hours
+            let offset_east = FixedOffset::east_opt(86399).unwrap();
+            let dt_east =
+                offset_east.timestamp_opt(123_456_789, 0).single().unwrap();
+            let val_east = DateTimeValue::from(dt_east);
+            assert_eq!(
+                DateTime::<FixedOffset>::from(val_east),
+                dt_east,
+                "Failed roundtrip for extreme positive offset"
+            );
+
+            let offset_west = FixedOffset::west_opt(86399).unwrap();
+            let dt_west =
+                offset_west.timestamp_opt(123_456_789, 0).single().unwrap();
+            let val_west = DateTimeValue::from(dt_west);
+            assert_eq!(
+                DateTime::<FixedOffset>::from(val_west),
+                dt_west,
+                "Failed roundtrip for extreme negative offset"
+            );
+        }
+
+        #[test]
+        fn duration_value_should_handle_large_deltas() {
+            let d = TimeDelta::weeks(1000);
+            let val = DurationValue::from(d);
+            assert_eq!(
+                TimeDelta::from(val),
+                d,
+                "Failed roundtrip for large Duration"
+            );
+        }
+    }
+
+    mod proptests {
+        use chrono::{NaiveDate, TimeDelta};
+        use proptest::prelude::*;
+
+        use super::*;
+        proptest! {
+            #[test]
+            fn proptest_naive_date_roundtrip(days in -1_000_000i32..1_000_000i32) {
+                if let Some(date) = NaiveDate::from_num_days_from_ce_opt(days) {
+                    let val = NaiveDateValue::from(date);
+                    prop_assert_eq!(NaiveDate::from(val), date);
+                }
+            }
+
+            #[test]
+            fn proptest_duration_roundtrip(secs in -1_000_000_000..1_000_000_000i64, nanos in 0..1_000_000_000u32) {
+                if let Some(delta) = TimeDelta::new(secs, nanos) {
+                    let val = DurationValue::from(delta);
+                    prop_assert_eq!(TimeDelta::from(val), delta);
+                }
+            }
+        }
     }
 }
