@@ -105,7 +105,21 @@ pub enum SchemaError {
     Resolution(#[from] SchemaResolutionError),
 }
 
-/// Errors produced while reading schema files and building raw/domain models.
+/// Schema ingestion error with file context.
+///
+/// This error type preserves context throughout the ingestion pipeline:
+/// - **Parse errors**: Contain line/column from serde
+/// - **Validation errors**: Contain file path from ingestor
+/// - **Filename errors**: Contain full path for user feedback
+///
+/// # Error Chain Example
+///
+/// ```text
+/// SchemaIngestionError::Parse {
+///     path: "schemas/note.toml",
+///     source: "invalid schema name in extends field at line 5, column 10"
+/// }
+/// ```
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
