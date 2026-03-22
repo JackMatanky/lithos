@@ -234,58 +234,6 @@ impl Link {
         &self.target
     }
 
-    /// Convert from a raw link.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
-    #[inline]
-    pub fn try_from_raw(raw: RawLink<'_>) -> Result<Self, NoteError> {
-        let target = raw.target;
-        let target_text = target.as_ref();
-        let is_external = Target::is_external_target(target_text);
-        let anchor = if is_external {
-            None
-        } else {
-            raw.anchor.as_deref().map(Anchor::from_raw).transpose()?
-        };
-        let embed_type = EmbedType::from_extension(target_text);
-        let target = if is_external {
-            Target::External {
-                url: target.into_owned().into_boxed_str(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target.into_owned().into_boxed_str(),
-            }
-        };
-        let alias = raw.alias.as_deref();
-
-        match (raw.is_embed, raw.style) {
-            (true, RawLinkStyle::Wiki) => Ok(Link::try_new_embed(
-                target,
-                embed_type,
-                alias,
-                anchor,
-                raw.position,
-            )?),
-            (true, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_embed(
-                target,
-                embed_type,
-                alias,
-                raw.position,
-            )?),
-            (false, RawLinkStyle::Wiki) => {
-                Ok(Link::try_new_wikilink(target, alias, anchor, raw.position)?)
-            }
-            (false, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_link(
-                target,
-                alias,
-                anchor,
-                raw.position,
-            )?),
-        }
-    }
-
     /// Validates the link's internal consistency.
     ///
     /// # Errors
@@ -335,6 +283,58 @@ impl Link {
             return Err(LinkError::EmptyTarget);
         }
         Ok(())
+    }
+}
+
+impl TryFrom<RawLink<'_>> for Link {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawLink<'_>) -> Result<Self, Self::Error> {
+        let target = raw.target;
+        let target_text = target.as_ref();
+        let is_external = Target::is_external_target(target_text);
+        let anchor = if is_external {
+            None
+        } else {
+            raw.anchor.as_deref().map(Anchor::from_raw).transpose()?
+        };
+        let embed_type = EmbedType::from_extension(target_text);
+        let target = if is_external {
+            Target::External {
+                url: target.into_owned().into_boxed_str(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target.into_owned().into_boxed_str(),
+            }
+        };
+        let alias = raw.alias.as_deref();
+
+        match (raw.is_embed, raw.style) {
+            (true, RawLinkStyle::Wiki) => Ok(Link::try_new_embed(
+                target,
+                embed_type,
+                alias,
+                anchor,
+                raw.position,
+            )?),
+            (true, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_embed(
+                target,
+                embed_type,
+                alias,
+                raw.position,
+            )?),
+            (false, RawLinkStyle::Wiki) => {
+                Ok(Link::try_new_wikilink(target, alias, anchor, raw.position)?)
+            }
+            (false, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_link(
+                target,
+                alias,
+                anchor,
+                raw.position,
+            )?),
+        }
     }
 }
 
@@ -498,25 +498,6 @@ impl ReferenceLink {
         }
     }
 
-    /// Convert from a raw reference link.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
-    #[inline]
-    pub fn try_from_raw(raw: RawReferenceLink<'_>) -> Result<Self, NoteError> {
-        let target_text = raw.target.as_ref();
-        let target = if Target::is_external_target(target_text) {
-            Target::External {
-                url: raw.target.into_owned().into_boxed_str(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: raw.target.into_owned().into_boxed_str(),
-            }
-        };
-        Ok(ReferenceLink::new(raw.id.as_ref().into(), target, raw.position))
-    }
-
     /// Returns the definition id.
     #[inline]
     #[must_use]
@@ -536,6 +517,25 @@ impl ReferenceLink {
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
         self.position
+    }
+}
+
+impl TryFrom<RawReferenceLink<'_>> for ReferenceLink {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: RawReferenceLink<'_>) -> Result<Self, Self::Error> {
+        let target_text = raw.target.as_ref();
+        let target = if Target::is_external_target(target_text) {
+            Target::External {
+                url: raw.target.into_owned().into_boxed_str(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: raw.target.into_owned().into_boxed_str(),
+            }
+        };
+        Ok(ReferenceLink::new(raw.id.as_ref().into(), target, raw.position))
     }
 }
 

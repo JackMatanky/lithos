@@ -78,13 +78,25 @@ impl Tag {
         })
     }
 
-    /// Creates a new `Tag` from a token with or without a leading `#`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TagError`] if validation fails.
+    /// Returns the full tag path (without leading `#`).
     #[inline]
-    pub fn try_from_token(token: &str) -> Result<Self, TagError> {
+    #[must_use]
+    pub fn full_path(&self) -> &str {
+        self.path.as_str()
+    }
+
+    /// Returns the individual segments of the tag.
+    #[inline]
+    pub fn segments(&self) -> impl Iterator<Item = &str> + '_ {
+        self.path.as_str().split('/')
+    }
+}
+
+impl TryFrom<&str> for Tag {
+    type Error = TagError;
+
+    #[inline]
+    fn try_from(token: &str) -> Result<Self, Self::Error> {
         let token = token.trim();
         if token.is_empty() {
             return Err(TagError::EmptyTag);
@@ -99,19 +111,6 @@ impl Tag {
         Ok(Self {
             path,
         })
-    }
-
-    /// Returns the full tag path (without leading `#`).
-    #[inline]
-    #[must_use]
-    pub fn full_path(&self) -> &str {
-        self.path.as_str()
-    }
-
-    /// Returns the individual segments of the tag.
-    #[inline]
-    pub fn segments(&self) -> impl Iterator<Item = &str> + '_ {
-        self.path.as_str().split('/')
     }
 }
 

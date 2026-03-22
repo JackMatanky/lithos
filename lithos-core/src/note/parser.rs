@@ -17,7 +17,7 @@ use pulldown_cmark::{
 use crate::{
     config::frontmatter::FrontmatterConfigSpec,
     note::{
-        error::{NoteIngestError, NoteParseError},
+        error::{NoteIngestError, NoteParseError, StructureError},
         paths::NotePath,
         position::{SourceByteOffset, SourceByteRange},
         raw::{
@@ -107,8 +107,8 @@ impl MarkdownParser {
         let iter = TextMergeWithOffset::new(events);
 
         for (event, range) in iter {
-            let start_pos = SourceByteOffset::try_from_usize(range.start)
-                .map_err(|_err| {
+            let start_pos =
+                SourceByteOffset::try_from(range.start).map_err(|_err| {
                     #[expect(
                         clippy::as_conversions,
                         reason = "u32::MAX fits in usize"
@@ -449,8 +449,20 @@ impl MarkdownParser {
                         *depth = depth.saturating_sub(1);
                     }
 
-                    let end_pos = SourceByteOffset::try_from_usize(range.end)
-                        .map_err(NoteIngestError::Domain)?;
+                    let end_pos = SourceByteOffset::try_from(range.end)
+                        .map_err(|_err| {
+                            #[expect(
+                                clippy::as_conversions,
+                                reason = "u32::MAX fits in usize"
+                            )]
+                            NoteIngestError::Domain(
+                                StructureError::OutOfBounds {
+                                    offset: range.end,
+                                    source_len: u32::MAX as usize,
+                                }
+                                .into(),
+                            )
+                        })?;
                     let block_range =
                         SourceByteRange::new(block.start_offset, end_pos)
                             .map_err(NoteIngestError::Domain)?;
@@ -620,8 +632,20 @@ impl MarkdownParser {
             Event::SoftBreak | Event::HardBreak => metadata_text.push('\n'),
             Event::End(TagEnd::MetadataBlock(_)) => {
                 in_metadata.take();
-                let end_pos = SourceByteOffset::try_from_usize(range.end)
-                    .map_err(NoteIngestError::Domain)?;
+                let end_pos =
+                    SourceByteOffset::try_from(range.end).map_err(|_err| {
+                        #[expect(
+                            clippy::as_conversions,
+                            reason = "u32::MAX fits in usize"
+                        )]
+                        NoteIngestError::Domain(
+                            StructureError::OutOfBounds {
+                                offset: range.end,
+                                source_len: u32::MAX as usize,
+                            }
+                            .into(),
+                        )
+                    })?;
                 let block_range = SourceByteRange::new(start_offset, end_pos)
                     .map_err(NoteIngestError::Domain)?;
                 sections.push(RawSection::new(

@@ -51,7 +51,7 @@ impl Heading {
         text: T,
         position: SourceByteOffset,
     ) -> Result<Self, HeadingError> {
-        let text = HeadingText::try_from_boxed(text.into())?;
+        let text = HeadingText::try_from(text.into())?;
 
         Ok(Self {
             level,
@@ -80,13 +80,13 @@ impl Heading {
     pub fn text(&self) -> &str {
         self.text.as_str()
     }
+}
 
-    /// Convert from a raw heading.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
+impl TryFrom<&RawHeading<'_>> for Heading {
+    type Error = NoteError;
+
     #[inline]
-    pub fn try_from_raw(raw: &RawHeading<'_>) -> Result<Self, NoteError> {
+    fn try_from(raw: &RawHeading<'_>) -> Result<Self, Self::Error> {
         let level = HeadingLevel::try_new(raw.level)?;
         Heading::try_new(level, raw.text.as_ref(), raw.position)
             .map_err(Into::into)
@@ -168,7 +168,7 @@ impl HeadingText {
     /// Returns [`HeadingError::EmptyContent`] if the text is empty.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, HeadingError> {
-        Self::try_from_boxed(value.into())
+        Self::try_from(value)
     }
 
     /// Creates a validated heading text value for link anchors.
@@ -185,24 +185,32 @@ impl HeadingText {
         Ok(Self(text.into()))
     }
 
-    /// Creates a validated heading text value from a boxed string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`HeadingError::EmptyContent`] if the text is empty.
-    #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, HeadingError> {
-        if value.trim().is_empty() {
-            return Err(HeadingError::EmptyContent);
-        }
-        Ok(Self(value))
-    }
-
     /// Returns the underlying text as a string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<Box<str>> for HeadingText {
+    type Error = HeadingError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() {
+            return Err(HeadingError::EmptyContent);
+        }
+        Ok(Self(value))
+    }
+}
+
+impl TryFrom<&str> for HeadingText {
+    type Error = HeadingError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(Box::<str>::from(value))
     }
 }
 

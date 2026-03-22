@@ -117,13 +117,13 @@ impl Section {
     pub const fn range(&self) -> SourceByteRange {
         self.range
     }
+}
 
-    /// Convert from a raw section.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
+impl TryFrom<&RawSection> for Section {
+    type Error = NoteError;
+
     #[inline]
-    pub fn try_from_raw(raw: &RawSection) -> Result<Self, NoteError> {
+    fn try_from(raw: &RawSection) -> Result<Self, Self::Error> {
         let kind = match raw.kind {
             RawSectionKind::Heading => SectionKind::Heading,
             RawSectionKind::Paragraph => SectionKind::Paragraph,
@@ -213,13 +213,13 @@ impl BlockRef {
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
+}
 
-    /// Convert from a raw block reference.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
+impl TryFrom<&RawBlockRef<'_>> for BlockRef {
+    type Error = NoteError;
+
     #[inline]
-    pub fn try_from_raw(raw: &RawBlockRef<'_>) -> Result<Self, NoteError> {
+    fn try_from(raw: &RawBlockRef<'_>) -> Result<Self, Self::Error> {
         let id = BlockRefId::try_new(raw.id.as_ref())?;
         Ok(BlockRef::new(id, raw.position))
     }

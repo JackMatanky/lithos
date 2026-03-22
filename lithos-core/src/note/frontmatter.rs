@@ -141,16 +141,6 @@ impl Frontmatter {
         Ok(Self::from_fields(fields, fm_spec))
     }
 
-    /// Converts a raw frontmatter block into validated frontmatter.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if parsing or validation fails.
-    #[inline]
-    pub fn try_from_raw(raw: &RawFrontmatter<'_>) -> Result<Self, NoteError> {
-        Self::parse(raw.kind, raw.text.as_ref(), raw.spec.as_ref())
-            .map_err(Into::into)
-    }
-
     /// Creates a new [`Frontmatter`] instance from a field map, extracting
     /// explicit attributes using the provided configuration spec.
     #[inline]
@@ -229,7 +219,7 @@ impl Frontmatter {
         for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
             let token = token.trim();
             if !token.is_empty()
-                && let Ok(tag) = Tag::try_from_token(token)
+                && let Ok(tag) = Tag::try_from(token)
             {
                 out.push(tag);
             }
@@ -518,12 +508,22 @@ impl Frontmatter {
     }
 }
 
+impl TryFrom<&RawFrontmatter<'_>> for Frontmatter {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(raw: &RawFrontmatter<'_>) -> Result<Self, Self::Error> {
+        Self::parse(raw.kind, raw.text.as_ref(), raw.spec.as_ref())
+            .map_err(Into::into)
+    }
+}
+
 impl<'source> TryFrom<RawFrontmatter<'source>> for Frontmatter {
     type Error = NoteError;
 
     #[inline]
     fn try_from(raw: RawFrontmatter<'source>) -> Result<Self, Self::Error> {
-        Self::try_from_raw(&raw)
+        Self::try_from(&raw)
     }
 }
 

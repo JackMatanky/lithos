@@ -368,13 +368,13 @@ impl ListItem {
             *slot = None;
         }
     }
+}
 
-    /// Convert from a raw list item.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
+impl TryFrom<&RawListItem<'_>> for ListItem {
+    type Error = NoteError;
+
     #[inline]
-    pub fn try_from_raw(raw: &RawListItem<'_>) -> Result<Self, NoteError> {
+    fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
         let status = raw
             .task_marker
             .map(|marker| StatusSymbol::try_new(marker.marker()))
@@ -471,13 +471,13 @@ impl ListItemEntry {
     pub const fn task_id(&self) -> Option<TaskId> {
         self.task_id
     }
+}
 
-    /// Convert from a raw list item.
-    ///
-    /// # Errors
-    /// Returns [`NoteError`] if validation fails.
+impl TryFrom<&RawListItem<'_>> for ListItemEntry {
+    type Error = NoteError;
+
     #[inline]
-    pub fn try_from_raw(raw: &RawListItem<'_>) -> Result<Self, NoteError> {
+    fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
         let depth = match raw.depth {
             RawListDepth::Root => ListDepth::root(),
             RawListDepth::Nested(value) => {

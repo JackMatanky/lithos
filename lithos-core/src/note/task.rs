@@ -79,7 +79,7 @@ impl Task {
         range: SourceByteRange,
         attributes: TaskAttributes,
     ) -> Result<Self, TaskError> {
-        let text = TaskText::try_from_boxed(text.into())?;
+        let text = TaskText::try_from(text.into())?;
 
         Ok(Self {
             id: TaskId::new(),
@@ -381,20 +381,7 @@ impl TaskText {
         if value.trim().is_empty() {
             return Err(TaskError::EmptyText);
         }
-        Self::try_from_boxed(value.into())
-    }
-
-    /// Creates a validated task text value from a boxed string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TaskError::EmptyText`] if the text is empty.
-    #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, TaskError> {
-        if value.trim().is_empty() {
-            return Err(TaskError::EmptyText);
-        }
-        Ok(Self(value))
+        Self::try_from(value)
     }
 
     /// Returns the underlying text as a string slice.
@@ -402,6 +389,27 @@ impl TaskText {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<Box<str>> for TaskText {
+    type Error = TaskError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() {
+            return Err(TaskError::EmptyText);
+        }
+        Ok(Self(value))
+    }
+}
+
+impl TryFrom<&str> for TaskText {
+    type Error = TaskError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(Box::<str>::from(value))
     }
 }
 
@@ -821,7 +829,7 @@ impl<'spec> TaskBuilder<'spec> {
 
         let mut tags = Vec::with_capacity(raw.tags.len());
         for raw_tag in &raw.tags {
-            if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
+            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
                 tags.push(tag);
             }
         }
@@ -1569,8 +1577,7 @@ mod tests {
     ) -> RawTask<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
-        let end =
-            SourceByteOffset::try_from_usize(raw_text.len()).unwrap_or(start);
+        let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
 
         let artifacts = scanner

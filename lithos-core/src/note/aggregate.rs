@@ -472,13 +472,13 @@ impl Note {
     ) -> Vec<Tag> {
         let mut tags = Vec::new();
         for raw_tag in raw_tags {
-            if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
+            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
                 Note::add_tag(&mut tags, tag);
             }
         }
         for raw_task in raw_tasks {
             for raw_tag in &raw_task.tags {
-                if let Ok(tag) = Tag::try_from_token(raw_tag.value.as_ref()) {
+                if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
                     Note::add_tag(&mut tags, tag);
                 }
             }
@@ -509,31 +509,31 @@ impl Note {
     fn collect_reference_links_from(
         reference_links: Vec<RawReferenceLink<'_>>,
     ) -> Result<Vec<ReferenceLink>, NoteError> {
-        reference_links.into_iter().map(ReferenceLink::try_from_raw).collect()
+        reference_links.into_iter().map(ReferenceLink::try_from).collect()
     }
 
     fn collect_headings_from(
         headings: Vec<RawHeading<'_>>,
     ) -> Result<Vec<Heading>, NoteError> {
-        headings.into_iter().map(|raw| Heading::try_from_raw(&raw)).collect()
+        headings.into_iter().map(|raw| Heading::try_from(&raw)).collect()
     }
 
     fn collect_sections_from(
         sections: Vec<RawSection>,
     ) -> Result<Vec<Section>, NoteError> {
-        sections.into_iter().map(|raw| Section::try_from_raw(&raw)).collect()
+        sections.into_iter().map(|raw| Section::try_from(&raw)).collect()
     }
 
     fn collect_links_from(
         links: Vec<RawLink<'_>>,
     ) -> Result<Vec<Link>, NoteError> {
-        links.into_iter().map(Link::try_from_raw).collect()
+        links.into_iter().map(Link::try_from).collect()
     }
 
     fn collect_block_refs_from(
         block_refs: Vec<RawBlockRef<'_>>,
     ) -> Result<Vec<BlockRef>, NoteError> {
-        block_refs.into_iter().map(|raw| BlockRef::try_from_raw(&raw)).collect()
+        block_refs.into_iter().map(|raw| BlockRef::try_from(&raw)).collect()
     }
 
     fn collect_list_items_from(
@@ -541,7 +541,7 @@ impl Note {
     ) -> Result<Vec<ListItemEntry>, NoteError> {
         let mut list_items = list_items
             .into_iter()
-            .map(|raw| ListItemEntry::try_from_raw(&raw))
+            .map(|raw| ListItemEntry::try_from(&raw))
             .collect::<Result<Vec<_>, _>>()?;
         list_items.sort_by_key(ListItemEntry::position);
         Ok(list_items)
@@ -807,8 +807,7 @@ mod tests {
     ) -> RawTask<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
-        let end =
-            SourceByteOffset::try_from_usize(raw_text.len()).unwrap_or(start);
+        let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
 
         let artifacts = scanner
