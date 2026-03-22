@@ -262,13 +262,15 @@ impl RawPropertyBank {
     /// # Examples
     /// ```ignore
     /// # use lithos_core::schema::raw::{RawPropertyBank, RawSchemaMetadata};
-    /// # let mut bank: RawPropertyBank = unimplemented!();
+    /// # let bank: RawPropertyBank = unimplemented!();
     /// # let metadata: RawSchemaMetadata = unimplemented!();
-    /// bank.set_metadata(metadata);
+    /// let bank = bank.with_metadata(metadata);
     /// ```
     #[inline]
-    pub fn set_metadata(&mut self, metadata: RawSchemaMetadata) {
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: RawSchemaMetadata) -> Self {
         self.metadata = metadata;
+        self
     }
 }
 

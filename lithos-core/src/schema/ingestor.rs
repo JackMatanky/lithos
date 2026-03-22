@@ -512,14 +512,18 @@ where
     fn ingest_new_property_bank(
         &self,
         path: &Path,
-        _created_at: Option<SystemTime>,
-        _modified_at: Option<SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> Result<PropertyBankResult, SchemaIngestionError> {
         self.source.read_with(path, |path, content| {
             let _content_hash = blake3::hash(content.as_bytes());
 
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
+            let raw = raw.with_metadata(RawSchemaMetadata {
+                created_at,
+                modified_at,
+            });
 
             // Create view with content for caching
             let view =
@@ -548,8 +552,8 @@ where
     fn ingest_stale_property_bank(
         &self,
         path: &Path,
-        _created_at: Option<SystemTime>,
-        _modified_at: Option<SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
         cached_view: &RawPropertyBankView,
     ) -> Result<PropertyBankResult, SchemaIngestionError> {
         self.source.read_with(path, |path, content| {
@@ -574,6 +578,10 @@ where
             // Parse new version
             let raw: RawPropertyBank =
                 FsReader::parse_structured_from_str(path, content)?;
+            let raw = raw.with_metadata(RawSchemaMetadata {
+                created_at,
+                modified_at,
+            });
 
             // Compute new hashes and find changed properties
             let new_hashes = crate::schema::views::metadata::HashMetadata::compute_property_hashes_for_bank(raw.properties());
