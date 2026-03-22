@@ -112,12 +112,13 @@ impl From<NodeDepth> for usize {
 /// A single node in the inheritance tree, ready for property merging.
 #[derive(Debug)]
 pub(crate) struct SchemaNode {
-    /// Schema name string.
-    pub name: Box<str>,
+    /// Validated schema name.
+    pub name: SchemaName,
     /// Properties defined by this schema (`HashMap` for O(1) lookup).
     pub properties: HashMap<PropertyName, Property>,
-    /// Property names inherited from the parent that this schema excludes.
-    pub excludes: Vec<Box<str>>,
+    /// Validated property names inherited from the parent that this schema
+    /// excludes.
+    pub excludes: Vec<PropertyName>,
     /// Parent schema identifier, if any.
     pub parent_id: Option<SchemaId>,
     /// Children of this node (populated during `build`).
@@ -185,7 +186,8 @@ impl SchemaTree {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Type alias for the pair of name indexes produced by Phase 1.
-type NameIndexes = (HashMap<Box<str>, SchemaId>, HashMap<SchemaId, Box<str>>);
+type NameIndexes =
+    (HashMap<SchemaName, SchemaId>, HashMap<SchemaId, SchemaName>);
 
 /// Type alias for the `(order, roots)` pair returned by Kahn's algorithm.
 type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
@@ -258,9 +260,9 @@ impl Extender {
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<NameIndexes, SchemaError> {
         let cap = expanded.len();
-        let mut name_to_id: HashMap<Box<str>, SchemaId> =
+        let mut name_to_id: HashMap<SchemaName, SchemaId> =
             HashMap::with_capacity(cap.saturating_add(known_parents.len()));
-        let mut id_to_name: HashMap<SchemaId, Box<str>> =
+        let mut id_to_name: HashMap<SchemaId, SchemaName> =
             HashMap::with_capacity(cap);
 
         // Iterating over a HashMap; order doesn't matter here (all entries
@@ -271,7 +273,7 @@ impl Extender {
                       entries are written to name_to_id unconditionally"
         )]
         for (id, schema) in known_parents {
-            name_to_id.insert(schema.name().to_string().into_boxed_str(), *id);
+            name_to_id.insert(schema.name().clone(), *id);
         }
         #[expect(
             clippy::pattern_type_mismatch,
@@ -282,11 +284,11 @@ impl Extender {
             if name_to_id.insert(expanded_schema.name.clone(), *id).is_some()
                 && !known_parents
                     .values()
-                    .any(|s| s.name().as_ref() == expanded_schema.name.as_ref())
+                    .any(|s| s.name() == &expanded_schema.name)
             {
                 return Err(SchemaError::Resolution(
                     super::error::SchemaResolutionError::DuplicateSchemaName {
-                        name: expanded_schema.name.to_string().into(),
+                        name: expanded_schema.name.as_ref().into(),
                     },
                 ));
             }
@@ -299,7 +301,7 @@ impl Extender {
     /// `SchemaId`.
     fn build_nodes(
         expanded: Vec<(SchemaId, RefExpandedSchema)>,
-        name_to_id: &HashMap<Box<str>, SchemaId>,
+        name_to_id: &HashMap<SchemaName, SchemaId>,
     ) -> Result<HashMap<SchemaId, SchemaNode>, SchemaError> {
         let mut nodes = HashMap::with_capacity(expanded.len());
         for (id, expanded_schema) in expanded {
@@ -320,18 +322,19 @@ impl Extender {
     /// Resolve the optional `extends` string to a `SchemaId`.
     fn resolve_parent(
         expanded_schema: &RefExpandedSchema,
-        name_to_id: &HashMap<Box<str>, SchemaId>,
+        name_to_id: &HashMap<SchemaName, SchemaId>,
     ) -> Result<Option<SchemaId>, SchemaError> {
         let Some(parent_name) = expanded_schema.extends.as_ref() else {
             return Ok(None);
         };
-        SchemaName::try_from(parent_name.as_ref())?;
-        // `Box<str>: Borrow<str>` so `.get(&str)` works here.
+        // SchemaName already validated - no need to re-validate
+        // SchemaName: Borrow<str> so `.get(parent_name.as_ref())` works with
+        // HashMap<SchemaName, _>
         name_to_id.get(parent_name.as_ref()).copied().map(Some).ok_or_else(
             || {
                 SchemaError::Inheritance(
                     super::error::SchemaInheritanceError::ParentNotFound {
-                        name: parent_name.to_string().into(),
+                        name: parent_name.as_ref().into(),
                     },
                 )
             },
@@ -342,7 +345,7 @@ impl Extender {
     fn detect_cycles(
         nodes: &HashMap<SchemaId, SchemaNode>,
         known_parents: &HashMap<SchemaId, Schema>,
-        id_to_name: &HashMap<SchemaId, Box<str>>,
+        id_to_name: &HashMap<SchemaId, SchemaName>,
     ) -> Result<(), SchemaError> {
         let mut checker = CycleChecker {
             nodes,
@@ -463,8 +466,8 @@ impl Extender {
         initial.sort_by(|a, b| {
             nodes
                 .get(a)
-                .map_or("", |n| &n.name)
-                .cmp(nodes.get(b).map_or("", |n| &n.name))
+                .map_or("", |n| n.name.as_ref())
+                .cmp(nodes.get(b).map_or("", |n| n.name.as_ref()))
         });
 
         let mut queue: VecDeque<SchemaId> = initial.into();
@@ -527,8 +530,8 @@ impl Extender {
         children.sort_by(|a, b| {
             nodes
                 .get(a)
-                .map_or("", |n| &n.name)
-                .cmp(nodes.get(b).map_or("", |n| &n.name))
+                .map_or("", |n| n.name.as_ref())
+                .cmp(nodes.get(b).map_or("", |n| n.name.as_ref()))
         });
         children
     }
@@ -542,7 +545,7 @@ impl Extender {
 struct CycleChecker<'graph> {
     nodes: &'graph HashMap<SchemaId, SchemaNode>,
     known_parents: &'graph HashMap<SchemaId, Schema>,
-    id_to_name: &'graph HashMap<SchemaId, Box<str>>,
+    id_to_name: &'graph HashMap<SchemaId, SchemaName>,
     visited: HashSet<SchemaId>,
     in_progress: HashSet<SchemaId>,
 }
@@ -610,8 +613,10 @@ mod tests {
             extends: Option<&str>,
         ) -> (SchemaId, RefExpandedSchema) {
             (id, RefExpandedSchema {
-                name: name.into(),
-                extends: extends.map(Into::into),
+                name: SchemaName::try_new(name).expect("valid test name"),
+                extends: extends.map(|s| {
+                    SchemaName::try_new(s).expect("valid parent name")
+                }),
                 excludes: Vec::new(),
                 properties: HashMap::new(),
             })
@@ -727,8 +732,10 @@ mod tests {
             let id = SchemaId::from_uuid(ORPHAN_ID);
             // Schema "self" extends "self" — a self-loop.
             let expanded = vec![(id, RefExpandedSchema {
-                name: "self".into(),
-                extends: Some("self".into()),
+                name: SchemaName::try_new("self").expect("valid name"),
+                extends: Some(
+                    SchemaName::try_new("self").expect("valid parent"),
+                ),
                 excludes: Vec::new(),
                 properties: HashMap::new(),
             })];
@@ -764,20 +771,26 @@ mod tests {
             // A extends C, B extends A, C extends B → cycle!
             let expanded = vec![
                 (id_a, RefExpandedSchema {
-                    name: "a".into(),
-                    extends: Some("c".into()),
+                    name: SchemaName::try_new("a").expect("valid name"),
+                    extends: Some(
+                        SchemaName::try_new("c").expect("valid parent"),
+                    ),
                     excludes: Vec::new(),
                     properties: HashMap::new(),
                 }),
                 (id_b, RefExpandedSchema {
-                    name: "b".into(),
-                    extends: Some("a".into()),
+                    name: SchemaName::try_new("b").expect("valid name"),
+                    extends: Some(
+                        SchemaName::try_new("a").expect("valid parent"),
+                    ),
                     excludes: Vec::new(),
                     properties: HashMap::new(),
                 }),
                 (id_c, RefExpandedSchema {
-                    name: "c".into(),
-                    extends: Some("b".into()),
+                    name: SchemaName::try_new("c").expect("valid name"),
+                    extends: Some(
+                        SchemaName::try_new("b").expect("valid parent"),
+                    ),
                     excludes: Vec::new(),
                     properties: HashMap::new(),
                 }),

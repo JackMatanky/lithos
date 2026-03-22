@@ -30,11 +30,11 @@ fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
 pub type NameIdPair = (SchemaName, SchemaId);
 
 /// Inheritance relationship: (`child_id`, `parent_id`, `excludes`).
-pub type InheritanceRelation = (SchemaId, Option<SchemaId>, Vec<Box<str>>);
+pub type InheritanceRelation = (SchemaId, Option<SchemaId>, Vec<PropertyName>);
 
 /// Inheritance children map: `parent_id` → Vec<(`child_id`, `excludes`)>.
 pub type InheritanceChildren =
-    HashMap<SchemaId, Vec<(SchemaId, Vec<Box<str>>)>>;
+    HashMap<SchemaId, Vec<(SchemaId, Vec<PropertyName>)>>;
 
 /// Schema-to-properties usage map: `schema_id` → Vec<`property_name`>.
 ///

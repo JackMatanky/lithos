@@ -17,7 +17,10 @@ use rkyv::{
     with::AsUnixTime,
 };
 
-use crate::{db::DbError, schema::aggregate::SchemaId};
+use crate::{
+    db::DbError,
+    schema::{aggregate::SchemaId, property::PropertyName},
+};
 
 /// Child schema reference, stored in `schema_children` multimap.
 ///
@@ -44,8 +47,8 @@ use crate::{db::DbError, schema::aggregate::SchemaId};
 pub struct ChildSchemaView {
     /// Child schema ID.
     pub child_id: SchemaId,
-    /// Property names this child excludes from parent's properties.
-    pub excludes: Vec<Box<str>>,
+    /// Validated property names this child excludes from parent's properties.
+    pub excludes: Vec<PropertyName>,
     /// Timestamp when this inheritance relationship was last resolved.
     #[rkyv(with = AsUnixTime)]
     pub resolved_at: SystemTime,
@@ -125,11 +128,11 @@ pub struct SchemaInheritanceView {
     /// `parent` when `parent.is_some()`.
     pub ancestors: Vec<SchemaId>,
 
-    /// Property names to exclude from inherited properties.
+    /// Validated property names to exclude from inherited properties.
     ///
     /// This is the raw `excludes` field from the schema file, applied
     /// during property resolution.
-    pub excludes: Vec<Box<str>>,
+    pub excludes: Vec<PropertyName>,
 
     /// Recursive hash of the parent chain for staleness detection.
     ///
@@ -296,7 +299,12 @@ mod tests {
         let view = SchemaInheritanceView {
             parent: Some(course_id),
             ancestors: vec![course_id, base_id],
-            excludes: vec!["created_at".into(), "internal_ref".into()],
+            excludes: vec![
+                PropertyName::try_new("created_at")
+                    .expect("valid test property name"),
+                PropertyName::try_new("internal_ref")
+                    .expect("valid test property name"),
+            ],
             ancestors_hash: 12345,
             resolved_at: SystemTime::UNIX_EPOCH,
         };
@@ -404,8 +412,9 @@ mod tests {
 pub struct ParentSchemaView {
     /// Parent schema ID, or None for root schemas.
     pub parent_id: Option<SchemaId>,
-    /// Property names excluded from parent (cached for multimap removal).
-    pub excludes: Vec<Box<str>>,
+    /// Validated property names excluded from parent (cached for multimap
+    /// removal).
+    pub excludes: Vec<PropertyName>,
     /// Timestamp when relationship was resolved (cached for multimap removal).
     #[rkyv(with = AsUnixTime)]
     pub resolved_at: SystemTime,

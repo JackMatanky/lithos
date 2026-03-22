@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{Schema, SchemaId},
     error::SchemaError,
     extender::SchemaTree,
     property::{Property, PropertyName},
@@ -131,14 +131,10 @@ impl Merger {
                 &node.excludes,
             );
 
-            // Validate name (should always succeed since it passed earlier
-            // validation)
-            let schema_name = SchemaName::try_new(&node.name)?;
-
-            // Build Schema directly
+            // Name already validated — node.name is SchemaName
             let schema = Schema::new(
                 id,
-                schema_name,
+                node.name.clone(),
                 node.parent_id,
                 node.children.clone(),
                 merged,
@@ -161,13 +157,11 @@ impl Merger {
     fn inherit_properties(
         parent: &HashMap<PropertyName, Property>,
         child: &HashMap<PropertyName, Property>,
-        excludes: &[Box<str>],
+        excludes: &[PropertyName],
     ) -> HashMap<PropertyName, Property> {
         // Build set of excluded property names for O(1) lookup
-        let excluded_names: HashSet<PropertyName> = excludes
-            .iter()
-            .filter_map(|e| PropertyName::try_new(e).ok())
-            .collect();
+        let excluded_names: HashSet<PropertyName> =
+            excludes.iter().cloned().collect();
 
         // Start with child's own properties (child overrides parent)
         let mut result = child.clone();
@@ -314,8 +308,9 @@ mod tests {
             let properties: HashMap<PropertyName, Property> =
                 props.into_iter().map(|p| (p.name().clone(), p)).collect();
             (id, RefExpandedSchema {
-                name: name.into(),
-                extends: extends.map(Into::into),
+                name: SchemaName::try_new(name).expect("valid test name"),
+                extends: extends
+                    .map(|s| SchemaName::try_new(s).expect("valid parent")),
                 excludes: Vec::new(),
                 properties,
             })
@@ -325,11 +320,12 @@ mod tests {
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
-            excludes: Vec<Box<str>>,
+            excludes: Vec<PropertyName>,
         ) -> (SchemaId, RefExpandedSchema) {
             (id, RefExpandedSchema {
-                name: name.into(),
-                extends: extends.map(Into::into),
+                name: SchemaName::try_new(name).expect("valid test name"),
+                extends: extends
+                    .map(|s| SchemaName::try_new(s).expect("valid parent")),
                 excludes,
                 properties: HashMap::new(),
             })
@@ -476,6 +472,10 @@ mod tests {
         }
 
         #[test]
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "Test fixtures use known-valid constants"
+        )]
         fn child_excludes_parent_property() -> Result<(), SchemaError> {
             let parent_id = SchemaId::from_uuid(PARENT_ID);
             let child_id = SchemaId::from_uuid(CHILD_ID);
@@ -490,7 +490,10 @@ mod tests {
                     child_id,
                     "child",
                     Some("parent"),
-                    vec!["excluded".into()],
+                    vec![
+                        PropertyName::try_new("excluded")
+                            .expect("valid test property name"),
+                    ],
                 ),
             ];
             let tree = Extender::build(expanded, &HashMap::new())?;
@@ -601,7 +604,7 @@ mod tests {
 
             // Root (depth 1)
             expanded.push((ids[0], RefExpandedSchema {
-                name: "root".into(),
+                name: SchemaName::try_new("root").expect("valid name"),
                 extends: None,
                 excludes: Vec::new(),
                 properties: HashMap::new(),
@@ -610,11 +613,13 @@ mod tests {
             // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
             for (i, &id) in ids.iter().enumerate().skip(1) {
                 expanded.push((id, RefExpandedSchema {
-                    name: format!("s{i}").into(),
+                    name: SchemaName::try_new(&format!("s{i}"))
+                        .expect("valid name"),
                     extends: Some(if i == 1 {
-                        "root".into()
+                        SchemaName::try_new("root").expect("valid parent")
                     } else {
-                        format!("s{}", i - 1).into()
+                        SchemaName::try_new(&format!("s{}", i - 1))
+                            .expect("valid parent")
                     }),
                     excludes: Vec::new(),
                     properties: HashMap::new(),
@@ -658,6 +663,10 @@ mod tests {
         ///
         /// Expected: physics should NOT have `internal_ref` (from grandparent).
         #[test]
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "Test fixtures use known-valid constants"
+        )]
         fn exclude_grandparent_property() -> Result<(), SchemaError> {
             use uuid::Uuid;
 
@@ -696,7 +705,10 @@ mod tests {
                     physics_id,
                     "physics",
                     Some("course"),
-                    vec!["internal_ref".into()],
+                    vec![
+                        PropertyName::try_new("internal_ref")
+                            .expect("valid test property name"),
+                    ],
                 ),
             ];
 
@@ -742,6 +754,10 @@ mod tests {
 
         /// Test that excludes work across 4 levels (great-grandparent).
         #[test]
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "Test fixtures use known-valid constants"
+        )]
         fn exclude_great_grandparent_property() -> Result<(), SchemaError> {
             use uuid::Uuid;
 
@@ -781,7 +797,10 @@ mod tests {
                     level3_id,
                     "level3",
                     Some("level2"),
-                    vec!["deep_field".into()],
+                    vec![
+                        PropertyName::try_new("deep_field")
+                            .expect("valid test property name"),
+                    ],
                 ),
             ];
 
@@ -807,6 +826,10 @@ mod tests {
 
         /// Test mixed excludes at different levels.
         #[test]
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "Test fixtures use known-valid constants"
+        )]
         fn mixed_excludes_at_multiple_levels() -> Result<(), SchemaError> {
             use uuid::Uuid;
 
@@ -834,7 +857,10 @@ mod tests {
                     middle_id,
                     "middle",
                     Some("base"),
-                    vec!["prop_a".into()],
+                    vec![
+                        PropertyName::try_new("prop_a")
+                            .expect("valid test property name"),
+                    ],
                 ),
                 fixtures::simple_expanded(
                     child_id,

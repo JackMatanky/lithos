@@ -24,6 +24,7 @@
 use std::collections::HashMap;
 
 use super::{
+    aggregate::SchemaName,
     bank::PropertyBank,
     error::SchemaError,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
@@ -46,12 +47,12 @@ use crate::schema::aggregate::SchemaId;
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct RefExpandedSchema {
-    /// Schema name string (carried forward from `RawSchema`).
-    pub name: Box<str>,
+    /// Validated schema name (carried forward from `RawSchema`).
+    pub name: SchemaName,
     /// Optional parent schema name (carried forward from `RawSchema.extends`).
-    pub extends: Option<Box<str>>,
-    /// Property names to exclude from the parent schema.
-    pub excludes: Vec<Box<str>>,
+    pub extends: Option<SchemaName>,
+    /// Validated property names to exclude from the parent schema.
+    pub excludes: Vec<PropertyName>,
     /// Fully resolved own properties (`HashMap` for O(1) lookup).
     pub properties: HashMap<PropertyName, Property>,
 }
@@ -125,13 +126,9 @@ impl<'bank> RefExpander<'bank> {
         }
 
         Ok(RefExpandedSchema {
-            name: raw.name().into(),
-            extends: raw.extends().map(|s| s.as_str().into()),
-            excludes: raw
-                .excludes()
-                .iter()
-                .map(|p| p.as_str().into())
-                .collect(),
+            name: SchemaName::try_new(raw.name())?,
+            extends: raw.extends().cloned(),
+            excludes: raw.excludes().to_vec(),
             properties,
         })
     }
@@ -428,7 +425,13 @@ mod tests {
             let id = SchemaId::new();
             let result = ref_expander.expand_all(vec![(id, raw)])?;
             let expanded_schemas = &result[0].1;
-            assert_eq!(expanded_schemas.extends.as_deref(), Some("parent"));
+            assert_eq!(
+                expanded_schemas
+                    .extends
+                    .as_ref()
+                    .map(std::convert::AsRef::as_ref),
+                Some("parent")
+            );
             assert_eq!(expanded_schemas.excludes.len(), 1);
             assert_eq!(expanded_schemas.excludes[0].as_ref(), "old-prop");
             Ok(())

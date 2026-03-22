@@ -298,13 +298,9 @@ where
 
             // Construct RefExpandedSchema directly from cached properties
             let exp_schema = RefExpandedSchema {
-                name: raw.name().into(),
-                extends: raw.extends().map(|s| s.as_str().into()),
-                excludes: raw
-                    .excludes()
-                    .iter()
-                    .map(|p| p.as_str().into())
-                    .collect(),
+                name: SchemaName::try_new(raw.name())?,
+                extends: raw.extends().cloned(),
+                excludes: raw.excludes().to_vec(),
                 properties: cached_props,
             };
 
@@ -461,11 +457,7 @@ where
             let metadata = SchemaInheritanceView {
                 parent,
                 ancestors,
-                excludes: raw
-                    .excludes()
-                    .iter()
-                    .map(|p| p.as_str().into())
-                    .collect(),
+                excludes: raw.excludes().to_vec(),
                 ancestors_hash,
                 resolved_at: SystemTime::now(),
             };
