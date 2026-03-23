@@ -7,7 +7,7 @@ use std::{collections::VecDeque, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::{PropertyBankVersion, SchemaVersion};
+use super::{FileTimesMetadata, PropertyBankVersion, SchemaVersion};
 use crate::schema::{
     aggregate::SchemaName,
     property::PropertyName,
@@ -276,6 +276,17 @@ impl RawPropertyBankView {
         }
 
         self.versions.push_front(version);
+    }
+
+    /// Update file timestamps of the current version.
+    ///
+    /// Takes a `FileTimesMetadata` to automatically get a fresh `recorded_at`
+    /// timestamp.
+    #[inline]
+    pub fn update_timestamps(&mut self, file_times: FileTimesMetadata) {
+        if let Some(current) = self.versions.front_mut() {
+            current.set_file_times(file_times);
+        }
     }
 
     /// Reconstructs `RawPropertyBank` from cached compressed content.

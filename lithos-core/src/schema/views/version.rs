@@ -299,6 +299,12 @@ impl PropertyBankVersion {
         &self.file_times
     }
 
+    /// Set file times metadata.
+    #[inline]
+    pub fn set_file_times(&mut self, file_times: FileTimesMetadata) {
+        self.file_times = file_times;
+    }
+
     /// Get hash metadata.
     #[inline]
     #[must_use]

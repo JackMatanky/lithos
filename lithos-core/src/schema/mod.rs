@@ -39,6 +39,8 @@ pub mod bank;
 /// documentation.
 #[doc(hidden)]
 pub mod expander;
+/// PropertyBank state machine for incremental loading and staleness detection.
+pub mod property_bank_pipeline;
 
 /// Schema errors.
 pub mod error;
@@ -60,6 +62,8 @@ pub mod ingestor;
 #[doc(hidden)]
 pub mod extender;
 
+/// Facade for schema orchestration.
+pub mod builder;
 /// Schema loader — orchestrates file ingestion and resolution.
 pub mod loader;
 /// Property domain entities.
