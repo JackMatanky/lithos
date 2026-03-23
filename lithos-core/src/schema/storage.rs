@@ -207,18 +207,6 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the save fails.
     fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 
-    /// Saves inheritance relationships atomically.
-    ///
-    /// Each relationship is a tuple of (`child_id`, `parent_id`, `excludes`).
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the save fails.
-    fn save_inheritance_relations(
-        &self,
-        relations: &[InheritanceRelation],
-    ) -> Result<(), Self::Error>;
-
     /// Saves the property bank singleton.
     ///
     /// # Errors
@@ -662,65 +650,6 @@ impl Repository for RedbRepository {
                         schema.id(),
                     )?;
                 }
-                Ok(())
-            })
-            .map_err(map_db_error)?;
-
-        Ok(())
-    }
-
-    #[inline]
-    fn save_inheritance_relations(
-        &self,
-        relations: &[InheritanceRelation],
-    ) -> Result<(), Self::Error> {
-        use std::time::SystemTime;
-
-        use crate::schema::{
-            db_table::{SCHEMA_CHILDREN, SCHEMA_PARENT},
-            views::inheritance::{ChildSchemaView, ParentSchemaView},
-        };
-
-        #[expect(
-            clippy::ref_patterns,
-            reason = "Destructuring with &(a, b, ref c) is clearest for mixed \
-                      Copy/non-Copy fields"
-        )]
-        self.db
-            .batch_write(|batch| {
-                for &(child_id, parent_id, ref excludes) in relations {
-                    let timestamp = SystemTime::now();
-                    let child_key = child_id.to_string();
-
-                    // Save parent → child mapping in multimap (if not root)
-                    if let Some(parent) = parent_id {
-                        let child_view = ChildSchemaView {
-                            child_id,
-                            excludes: excludes.clone(),
-                            resolved_at: timestamp,
-                        };
-
-                        let bytes = child_view.to_bytes()?;
-                        batch.multimap_insert_bytes(
-                            SCHEMA_CHILDREN,
-                            parent.to_string().as_str(),
-                            bytes.as_slice(),
-                        )?;
-                    }
-
-                    // Save child → parent reference table
-                    let parent_view = ParentSchemaView {
-                        parent_id,
-                        excludes: excludes.clone(),
-                        resolved_at: timestamp,
-                    };
-                    batch.put(
-                        SCHEMA_PARENT,
-                        child_key.as_str(),
-                        &parent_view,
-                    )?;
-                }
-
                 Ok(())
             })
             .map_err(map_db_error)?;

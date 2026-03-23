@@ -139,22 +139,30 @@ pub(crate) mod db_table {
     // Inheritance Tracking Tables
     // ========================================================================
 
-    /// Multimap: parent `SchemaId` → multiple child schema records.
-    /// Enables O(1) cascade staleness queries: "find all children of parent P".
-    pub(crate) const SCHEMA_CHILDREN: MultimapTableDefinition<&str, &[u8]> =
-        MultimapTableDefinition::new("schema_children");
-
-    /// Regular table: child `SchemaId` → parent schema reference.
-    /// Enables O(1) updates (know old parent to remove from multimap).
-    /// Also tracks all schemas including roots (`parent_id` = None).
-    pub(crate) const SCHEMA_PARENT: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_parent");
+    /// Multimap: parent `SchemaId` → list of child `SchemaId`s.
+    ///
+    /// Enables efficient queries:
+    /// - O(log N + C) children lookup: "find all children of parent P"
+    /// - O(D×log N) descendant traversal: BFS through inheritance tree
+    ///
+    /// Key: Parent `SchemaId` as UUID string
+    /// Value: `Vec<SchemaId>` (rkyv-serialized).
+    #[expect(
+        dead_code,
+        reason = "To be used by upcoming state machine refactor"
+    )]
+    pub(crate) const SCHEMA_CHILDREN_BY_PARENT: MultimapTableDefinition<
+        &str,
+        &[u8],
+    > = MultimapTableDefinition::new("schema_children_by_parent");
 
     /// Schema inheritance metadata cache (key: `SchemaId` as UUID string,
     /// value: rkyv-serialized `SchemaInheritanceView`).
     ///
-    /// Stores precomputed inheritance metadata (ancestors, excludes, hash)
-    /// to enable fast-path resolution when inheritance chains are unchanged.
+    /// Stores precomputed inheritance metadata (parent, ancestors, depth,
+    /// `ancestors_hash`) to enable fast-path resolution when inheritance chains
+    /// are unchanged.
+    ///
     /// Read-heavy workload (every resolution) vs rare writes (schema
     /// restructuring).
     pub(crate) const SCHEMA_INHERITANCE: TableDefinition<&str, &[u8]> =

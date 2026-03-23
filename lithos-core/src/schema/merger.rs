@@ -11,7 +11,7 @@
 //! # Pipeline position
 //!
 //! ```text
-//! Extender → SchemaTree
+//! Extender → InheritanceGraph
 //! Merger        ← here
 //! → Vec<Schema>
 //! ```
@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use super::{
     aggregate::{Schema, SchemaId},
     error::SchemaError,
-    extender::SchemaTree,
+    extender::InheritanceGraph,
     property::{Property, PropertyName},
 };
 
@@ -34,7 +34,7 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 //  Merger
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
+/// Assembles fully-resolved [`Schema`] entities from a [`InheritanceGraph`].
 ///
 /// Stateless: all resolution state is threaded through the arguments.
 ///
@@ -67,7 +67,7 @@ impl Merger {
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
     pub fn resolve(
-        tree: &SchemaTree,
+        tree: &InheritanceGraph,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<Vec<Schema>, SchemaError> {
         let order = tree.nodes();

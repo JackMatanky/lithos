@@ -1,14 +1,12 @@
-//! `Extender` — builds a topologically-ordered [`SchemaTree`] from
-//! ref-expanded schemas and previously-resolved (DB-fresh) parents.
+//! `Extender` — builds a topologically-ordered [`InheritanceGraph`] from
+//! ref-expanded schemas.
 //!
-//! # Pipeline position
+//! This module resolves inheritance relationships between schemas and produces
+//! a sorted execution plan for property merging.
 //!
-//! ```text
-//! RefExpander → Vec<(SchemaId, RefExpandedSchema)>
-//! Extender          ← here
-//! → SchemaTree
-//! Merger
-//! ```
+//! # Pipeline Context
+//!
+//! RefExpander → Extender → InheritanceGraph → Merger
 //!
 //! # Design
 //!
@@ -18,7 +16,7 @@
 //! - A map of fresh (non-stale) schemas loaded from the DB — these may act as
 //!   parents.
 //!
-//! It produces a [`SchemaTree`] whose nodes are in **topological order**
+//! It produces a [`InheritanceGraph`] whose nodes are in **topological order**
 //! (parents before children) so the downstream [`Merger`] can walk the tree
 //! once without back-tracking.
 //!
@@ -129,7 +127,7 @@ pub(crate) struct SchemaNode {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SchemaTree
+//  InheritanceGraph
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A topologically-ordered inheritance tree of schemas.
@@ -143,7 +141,7 @@ pub(crate) struct SchemaNode {
 /// **Internal API**: This type is public solely for benchmarking purposes.
 /// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
-pub struct SchemaTree {
+pub struct InheritanceGraph {
     /// IDs of root schemas (no in-batch parent).
     roots: Vec<SchemaId>,
     /// All nodes indexed by `SchemaId`.
@@ -152,7 +150,7 @@ pub struct SchemaTree {
     order: Vec<SchemaId>,
 }
 
-impl SchemaTree {
+impl InheritanceGraph {
     /// Returns schema IDs in topological order (parents first).
     ///
     /// Suitable for a single linear walk by [`Resolver`].
@@ -192,7 +190,7 @@ type NameIndexes =
 /// Type alias for the `(order, roots)` pair returned by Kahn's algorithm.
 type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 
-/// Builds a [`SchemaTree`] from ref-expanded schemas.
+/// Builds a [`InheritanceGraph`] from ref-expanded schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
 /// Do not depend on it in production code - use `Loader` instead.
@@ -201,7 +199,7 @@ type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 pub struct Extender;
 
 impl Extender {
-    /// Build a [`SchemaTree`] from stale, ref-expanded schemas.
+    /// Build a [`InheritanceGraph`] from stale, ref-expanded schemas.
     ///
     /// `expanded` — schemas processed by the [`RefExpander`].
     /// `known_parents` — fresh schemas pre-loaded from the DB; their IDs are
@@ -224,7 +222,7 @@ impl Extender {
     pub fn build(
         expanded: Vec<(SchemaId, RefExpandedSchema)>,
         known_parents: &HashMap<SchemaId, Schema>,
-    ) -> Result<SchemaTree, SchemaError> {
+    ) -> Result<InheritanceGraph, SchemaError> {
         // Phase 1: build name ↔ id indexes.
         let (name_to_id, id_to_name) =
             Self::build_name_indexes(&expanded, known_parents)?;
@@ -244,7 +242,7 @@ impl Extender {
         // Phase 6: Kahn's topological ordering.
         let (order, roots) = Self::kahn_order(&nodes)?;
 
-        Ok(SchemaTree {
+        Ok(InheritanceGraph {
             roots,
             nodes,
             order,

@@ -196,7 +196,7 @@ impl RawSchemaView {
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
 
-        // Compute content hash from raw file content
+        // Compute content hash from raw file content (truncated to 128 bits)
         let content_hash = blake3::hash(content.as_bytes());
 
         // Compute per-property hashes
@@ -348,7 +348,7 @@ impl RawPropertyBankView {
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
 
-        // Compute content hash from raw file content
+        // Compute content hash from raw file content (truncated to 128 bits)
         let content_hash = blake3::hash(content.as_bytes());
 
         // Compute per-property hashes

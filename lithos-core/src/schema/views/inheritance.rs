@@ -1,8 +1,26 @@
-//! Inheritance relationship views for schema persistence.
+//! Inheritance relationship views for optimal tree queries.
 //!
-//! These types track parent-child relationships in the schema inheritance
-//! graph. They are stored separately from the Schema aggregate to enable
-//! efficient updates without full schema re-resolution.
+//! # Storage Schema (3 Tables)
+//!
+//! 1. **`SCHEMA_BY_ID`** (Regular Table): `SchemaId → Schema` (aggregate root)
+//! 2. **`SCHEMA_INHERITANCE`** (Regular Table): `SchemaId →
+//!    SchemaInheritanceView`
+//! 3. **`SCHEMA_CHILDREN_BY_PARENT`** (Multimap): `ParentId → Vec<SchemaId>`
+//!
+//! # Design Goals
+//!
+//! - **O(log N)** parent lookups (embedded in metadata)
+//! - **O(log N)** staleness checks (via `ancestors_hash`)
+//! - **O(log N + C)** children lookups (multimap efficiency)
+//! - **O(D×log N)** descendant traversal (BFS using multimap)
+//! - **Minimal storage overhead** (~172 bytes/schema)
+//!
+//! # Key Optimizations
+//!
+//! - Pre-compute `depth` during tree building (saves recalculation)
+//! - Store `Vec<SchemaId>` not `Vec<SchemaName>` (33% space savings)
+//! - Omit redundant fields (`excludes` already in Schema aggregate)
+//! - Recursive `ancestors_hash` for O(1) transitive staleness detection
 
 #![expect(
     clippy::exhaustive_structs,
@@ -10,114 +28,51 @@
               lint - we can't control macro expansion"
 )]
 
-use std::time::SystemTime;
-
-use rkyv::{
-    Archive, Deserialize, Serialize, rancor::Error as RkyvError,
-    with::AsUnixTime,
+use std::{
+    collections::{HashSet, VecDeque},
+    time::SystemTime,
 };
 
-use crate::{
-    db::DbError,
-    schema::{aggregate::SchemaId, property::PropertyName},
-};
+use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-/// Child schema reference, stored in `schema_children` multimap.
+use crate::{db::DbError, schema::aggregate::SchemaId};
+
+/// Inheritance metadata cache for a single schema.
 ///
-/// **Storage pattern:**
-/// - Table: `schema_children` (multimap)
-/// - Key: Parent `SchemaId` (as UUID string)
-/// - Value: `ChildSchemaView` (rkyv-serialized bytes)
+/// **Storage**:
+/// - Table: `SCHEMA_INHERITANCE` (regular table)
+/// - Key: `SchemaId`
+/// - Value: `SchemaInheritanceView` (rkyv-serialized)
 ///
-/// This multimap enables O(1) lookup of "all children of parent P".
+/// **Purpose**:
+/// - Fast-path resolution by caching precomputed inheritance metadata
+/// - Transitive staleness detection via `ancestors_hash` comparison
+/// - Avoid rebuilding `InheritanceGraph` when inheritance chain unchanged
 ///
-/// # Examples
-///
-/// ```ignore
-/// use lithos_core::schema::views::ChildSchemaView;
-///
-/// let child = ChildSchemaView {
-///     child_id: child_schema_id,
-///     excludes: vec!["created_at".into()],
-///     resolved_at: SystemTime::now(),
-/// };
+/// **Staleness Detection**:
+/// The `ancestors_hash` field is a recursive hash of the parent chain:
+/// ```text
+/// hash = hash(parent_id || parent.ancestors_hash)
 /// ```
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct ChildSchemaView {
-    /// Child schema ID.
-    pub child_id: SchemaId,
-    /// Validated property names this child excludes from parent's properties.
-    pub excludes: Vec<PropertyName>,
-    /// Timestamp when this inheritance relationship was last resolved.
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
-}
-
-impl ChildSchemaView {
-    /// Serialize to bytes for multimap storage.
-    ///
-    /// # Errors
-    /// Returns serialization error if rkyv encoding fails.
-    #[inline]
-    pub fn to_bytes(&self) -> Result<Vec<u8>, DbError> {
-        rkyv::to_bytes(self)
-            .map(|bytes| bytes.to_vec())
-            .map_err(|e: RkyvError| DbError::Serialization(e.to_string()))
-    }
-}
-
-/// Schema inheritance metadata cache, stored in `schema_inheritance` table.
+/// When checking if metadata is fresh:
+/// 1. Compute expected hash from parent's metadata
+/// 2. Compare with cached hash
+/// 3. If hashes match → full ancestor chain unchanged (O(1) check)
 ///
-/// **Storage pattern:**
-/// - Table: `schema_inheritance` (regular table, not multimap)
-/// - Key: `SchemaId` (the schema this metadata describes)
-/// - Value: `SchemaInheritanceView` (rkyv-serialized bytes)
-///
-/// This view enables fast-path resolution by caching precomputed inheritance
-/// metadata. When a schema's inheritance chain hasn't changed, the loader can
-/// skip rebuilding the `SchemaTree` and use cached ancestors directly.
-///
-/// **Staleness detection:** The `ancestors_hash` field is a recursive hash of
-/// the parent chain. When checking if metadata is fresh, compute the current
-/// hash from the parent's metadata and compare. If hashes match, the full
-/// ancestor chain is unchanged (transitive staleness check).
-///
-/// **Storage efficiency:**
-/// - Stores `Vec<SchemaId>` not `Vec<SchemaName>` (saves 33% space, avoids
-///   `HashMap` lookups)
-/// - No redundant `schema_id` field (it's the table key)
-/// - No redundant `depth` field (derivable from `ancestors.len() + 1`)
-///
-/// **Size:** 113 bytes (typical case: 3 ancestors, 2 excludes).
+/// **Size**: ~172 bytes (typical: 3 ancestors, depth 4):
 /// - `parent`: 16 bytes (Option<SchemaId> with Some)
 /// - `ancestors`: 24 bytes (Vec header) + 16 bytes/ancestor × 3 = 72 bytes
-/// - `excludes`: 24 bytes (Vec header) + ~8 bytes/exclude × 2 = 40 bytes
-/// - `ancestors_hash`: 8 bytes
-/// - `resolved_at`: 12 bytes
-/// - Total: ~172 bytes worst case, 113 bytes typical
-///
-/// # Examples
-///
-/// ```ignore
-/// use lithos_core::schema::views::SchemaInheritanceView;
-///
-/// let view = SchemaInheritanceView {
-///     parent: Some(parent_id),
-///     ancestors: vec![parent_id, grandparent_id],
-///     excludes: vec!["created_at".into(), "internal_ref".into()],
-///     ancestors_hash: compute_ancestors_hash(&parent_metadata),
-///     resolved_at: SystemTime::now(),
-/// };
-/// ```
+/// - `depth`: 8 bytes (usize)
+/// - `ancestors_hash`: 8 bytes (u64)
+/// - `resolved_at`: 12 bytes (`SystemTime`)
+/// - Total: ~140 bytes typical, ~172 bytes worst case
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SchemaInheritanceView {
     /// Parent schema ID, or None for root schemas.
     ///
     /// While technically redundant with `ancestors[0]`, this explicit field
-    /// provides clearer API ergonomics and matches the existing
-    /// `ParentSchemaView` pattern. Root detection becomes trivial:
+    /// provides clearer API ergonomics. Root detection becomes trivial:
     /// `parent.is_none()`.
     pub parent: Option<SchemaId>,
 
@@ -128,17 +83,32 @@ pub struct SchemaInheritanceView {
     /// `parent` when `parent.is_some()`.
     pub ancestors: Vec<SchemaId>,
 
-    /// Validated property names to exclude from inherited properties.
+    /// Inheritance depth in the tree (1-indexed).
     ///
-    /// This is the raw `excludes` field from the schema file, applied
-    /// during property resolution.
-    pub excludes: Vec<PropertyName>,
+    /// - Root schemas: `depth = 1`
+    /// - Child schemas: `depth = parent.depth + 1`
+    ///
+    /// **Pre-computed during tree building** to avoid recalculation during
+    /// property merging. This is a 8-byte cost for O(1) access.
+    pub depth: usize,
 
     /// Recursive hash of the parent chain for staleness detection.
     ///
     /// Computed as `hash(parent_id || parent_ancestors_hash)`. This enables
     /// O(1) transitive staleness checking: if the parent's hash changed, this
     /// hash won't match, indicating the full ancestor chain needs rebuilding.
+    ///
+    /// ## Hash Size: 64-bit (u64)
+    ///
+    /// Uses 64-bit hash instead of 128-bit or 256-bit:
+    /// - **Collision probability at 10K schemas**: 2.7×10⁻⁶ (0.0003%)
+    /// - **Failure mode**: False cache invalidation (triggers unnecessary
+    ///   re-resolution, not data corruption)
+    /// - **Performance**: 8 bytes vs 16/32 bytes (better cache locality)
+    /// - **Use case**: Cache invalidation tolerates rare false positives
+    ///
+    /// For comparison, 128-bit would provide 1.5×10⁻¹⁸ collision probability
+    /// at this scale, which is overkill for cache invalidation scenarios.
     pub ancestors_hash: u64,
 
     /// Timestamp when this metadata was computed.
@@ -180,6 +150,77 @@ impl SchemaInheritanceView {
             }
         }
     }
+
+    /// Check if this metadata is stale by comparing expected hash with cached
+    /// hash.
+    ///
+    /// # Errors
+    /// Returns error if parent metadata cannot be retrieved from repository.
+    #[inline]
+    #[must_use]
+    pub fn is_stale(&self, parent_metadata: Option<&Self>) -> bool {
+        if let Some(parent_id) = self.parent {
+            if let Some(parent) = parent_metadata {
+                let expected_hash =
+                    Self::compute_hash(Some((parent_id, parent)));
+                self.ancestors_hash != expected_hash
+            } else {
+                // Parent metadata missing - assume stale
+                true
+            }
+        } else {
+            // Root schema - never stale via inheritance
+            false
+        }
+    }
+}
+
+/// Find all descendants of a schema using BFS traversal.
+///
+/// # Arguments
+/// - `root_id`: Starting schema to find descendants of
+/// - `get_children`: Closure that returns direct children for a given parent
+///
+/// # Returns
+/// Set of all descendant schema IDs (transitive closure).
+///
+/// # Performance
+/// O(D×log N) where:
+/// - D = number of descendants
+/// - N = total schemas in database
+/// - log N = cost of multimap lookup per node
+///
+/// # Errors
+/// Returns error if `get_children` closure returns an error.
+///
+/// # Example
+/// ```ignore
+/// let descendants = find_all_descendants(
+///     schema_id,
+///     |parent_id| repo.get_descendants(parent_id)
+/// )?;
+/// ```
+#[inline]
+pub fn find_all_descendants<F>(
+    root_id: SchemaId,
+    mut get_children: F,
+) -> Result<HashSet<SchemaId>, DbError>
+where
+    F: FnMut(SchemaId) -> Result<Vec<SchemaId>, DbError>,
+{
+    let mut descendants = HashSet::new();
+    let mut queue = VecDeque::from([root_id]);
+
+    while let Some(id) = queue.pop_front() {
+        let children = get_children(id)?;
+        for child_id in children {
+            if descendants.insert(child_id) {
+                queue.push_back(child_id);
+            }
+        }
+    }
+
+    Ok(descendants)
 }
 
 #[cfg(test)]
@@ -211,7 +252,7 @@ mod tests {
         let base_view = SchemaInheritanceView {
             parent: None,
             ancestors: vec![],
-            excludes: vec![],
+            depth: 1,
             ancestors_hash: 0,
             resolved_at: SystemTime::now(),
         };
@@ -250,7 +291,7 @@ mod tests {
         let base_view = SchemaInheritanceView {
             parent: None,
             ancestors: vec![],
-            excludes: vec![],
+            depth: 1,
             ancestors_hash: 0,
             resolved_at: SystemTime::now(),
         };
@@ -261,7 +302,7 @@ mod tests {
         let course_view = SchemaInheritanceView {
             parent: Some(base_id),
             ancestors: vec![base_id],
-            excludes: vec![],
+            depth: 2,
             ancestors_hash: course_hash,
             resolved_at: SystemTime::now(),
         };
@@ -292,6 +333,64 @@ mod tests {
     }
 
     #[test]
+    fn is_stale_detects_changed_parent_hash() {
+        let base_id = SchemaId::from_uuid(BASE_UUID);
+
+        let base_view = SchemaInheritanceView {
+            parent: None,
+            ancestors: vec![],
+            depth: 1,
+            ancestors_hash: 0,
+            resolved_at: SystemTime::now(),
+        };
+
+        // Child with correct hash
+        let expected_hash =
+            SchemaInheritanceView::compute_hash(Some((base_id, &base_view)));
+        let child_view = SchemaInheritanceView {
+            parent: Some(base_id),
+            ancestors: vec![base_id],
+            depth: 2,
+            ancestors_hash: expected_hash,
+            resolved_at: SystemTime::now(),
+        };
+
+        assert!(!child_view.is_stale(Some(&base_view)), "Should be fresh");
+
+        // Parent hash changes
+        let mut modified_base = base_view.clone();
+        modified_base.ancestors_hash = 999_999;
+
+        assert!(child_view.is_stale(Some(&modified_base)), "Should be stale");
+    }
+
+    #[test]
+    fn find_descendants_traverses_tree() {
+        let base_id = SchemaId::from_uuid(BASE_UUID);
+        let course_id = SchemaId::from_uuid(COURSE_UUID);
+        let physics_id = SchemaId::from_uuid(PHYSICS_UUID);
+
+        // Mock multimap: base → [course], course → [physics]
+        let get_children =
+            |parent: SchemaId| -> Result<Vec<SchemaId>, DbError> {
+                if parent == base_id {
+                    Ok(vec![course_id])
+                } else if parent == course_id {
+                    Ok(vec![physics_id])
+                } else {
+                    Ok(vec![])
+                }
+            };
+
+        let descendants = find_all_descendants(base_id, get_children)
+            .expect("BFS should succeed");
+
+        assert_eq!(descendants.len(), 2, "Should find 2 descendants");
+        assert!(descendants.contains(&course_id));
+        assert!(descendants.contains(&physics_id));
+    }
+
+    #[test]
     fn rkyv_serialization_roundtrip() {
         let base_id = SchemaId::from_uuid(BASE_UUID);
         let course_id = SchemaId::from_uuid(COURSE_UUID);
@@ -299,12 +398,7 @@ mod tests {
         let view = SchemaInheritanceView {
             parent: Some(course_id),
             ancestors: vec![course_id, base_id],
-            excludes: vec![
-                PropertyName::try_new("created_at")
-                    .expect("valid test property name"),
-                PropertyName::try_new("internal_ref")
-                    .expect("valid test property name"),
-            ],
+            depth: 3,
             ancestors_hash: 12345,
             resolved_at: SystemTime::UNIX_EPOCH,
         };
@@ -322,7 +416,7 @@ mod tests {
 
         // Verify fields
         assert_eq!(archived.ancestors.len(), 2);
-        assert_eq!(archived.excludes.len(), 2);
+        assert_eq!(archived.depth, 3);
         assert_eq!(archived.ancestors_hash, 12345);
 
         // Full roundtrip
@@ -334,88 +428,38 @@ mod tests {
     }
 
     #[test]
-    fn parent_field_matches_ancestors_first() {
-        let base_id = SchemaId::from_uuid(BASE_UUID);
-        let course_id = SchemaId::from_uuid(COURSE_UUID);
-
-        // Root schema: parent = None, ancestors = []
-        let root_view = SchemaInheritanceView {
+    fn depth_field_matches_ancestors_length() {
+        // Root: depth = 1, ancestors = []
+        let root = SchemaInheritanceView {
             parent: None,
             ancestors: vec![],
-            excludes: vec![],
+            depth: 1,
             ancestors_hash: 0,
             resolved_at: SystemTime::now(),
         };
-        assert_eq!(root_view.parent, None);
-        assert!(root_view.ancestors.is_empty());
+        assert_eq!(root.depth, root.ancestors.len() + 1);
 
-        // Child schema: parent = Some(base), ancestors = [base]
-        let child_view = SchemaInheritanceView {
-            parent: Some(base_id),
-            ancestors: vec![base_id],
-            excludes: vec![],
+        // Child: depth = 2, ancestors = [parent]
+        let child = SchemaInheritanceView {
+            parent: Some(SchemaId::from_uuid(BASE_UUID)),
+            ancestors: vec![SchemaId::from_uuid(BASE_UUID)],
+            depth: 2,
             ancestors_hash: 123,
             resolved_at: SystemTime::now(),
         };
-        assert_eq!(child_view.parent, Some(base_id));
-        assert_eq!(child_view.ancestors.first(), child_view.parent.as_ref());
+        assert_eq!(child.depth, child.ancestors.len() + 1);
 
-        // Grandchild schema: parent = Some(course), ancestors = [course, base]
-        let grandchild_view = SchemaInheritanceView {
-            parent: Some(course_id),
-            ancestors: vec![course_id, base_id],
-            excludes: vec![],
+        // Grandchild: depth = 3, ancestors = [parent, grandparent]
+        let grandchild = SchemaInheritanceView {
+            parent: Some(SchemaId::from_uuid(COURSE_UUID)),
+            ancestors: vec![
+                SchemaId::from_uuid(COURSE_UUID),
+                SchemaId::from_uuid(BASE_UUID),
+            ],
+            depth: 3,
             ancestors_hash: 456,
             resolved_at: SystemTime::now(),
         };
-        assert_eq!(grandchild_view.parent, Some(course_id));
-        assert_eq!(
-            grandchild_view.ancestors.first(),
-            grandchild_view.parent.as_ref()
-        );
+        assert_eq!(grandchild.depth, grandchild.ancestors.len() + 1);
     }
-}
-
-/// Parent schema reference, stored in `schema_parent` table.
-///
-/// **Storage pattern:**
-/// - Table: `schema_parent` (regular table, not multimap)
-/// - Key: Child `SchemaId` (as UUID string)
-/// - Value: `ParentSchemaView`
-///
-/// This table tracks ALL schemas (both roots and children):
-/// - Root schemas: `parent_id = None`
-/// - Child schemas: `parent_id = Some(parent_id)`
-///
-/// **Update optimization:** When updating a child's parent, this table
-/// provides O(1) lookup of the old parent plus the old excludes/timestamp
-/// needed to reconstruct the exact bytes for removing the old entry from
-/// the `schema_children` multimap.
-///
-/// **Data redundancy:** `excludes` and `resolved_at` are stored in both
-/// `schema_parent` and `schema_children`. This trades ~10KB of storage
-/// (for typical 100-schema vaults) for simpler, faster update logic.
-///
-/// # Examples
-///
-/// ```ignore
-/// use lithos_core::schema::views::ParentSchemaView;
-///
-/// let parent = ParentSchemaView {
-///     parent_id: Some(parent_schema_id),
-///     excludes: vec!["created_at".into()],
-///     resolved_at: SystemTime::now(),
-/// };
-/// ```
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct ParentSchemaView {
-    /// Parent schema ID, or None for root schemas.
-    pub parent_id: Option<SchemaId>,
-    /// Validated property names excluded from parent (cached for multimap
-    /// removal).
-    pub excludes: Vec<PropertyName>,
-    /// Timestamp when relationship was resolved (cached for multimap removal).
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
 }

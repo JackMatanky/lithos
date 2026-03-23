@@ -389,19 +389,6 @@ impl Repository for InMemoryRepository {
         Ok(())
     }
 
-    fn save_inheritance_relations(
-        &self,
-        relations: &[InheritanceRelation],
-    ) -> Result<(), Self::Error> {
-        let mut storage = self.inheritance_relations.write().map_err(|_| {
-            InMemoryError::lock_poisoned("save_inheritance_relations")
-        })?;
-
-        *storage = relations.to_vec();
-
-        Ok(())
-    }
-
     fn save_property_bank(
         &self,
         bank: &PropertyBank,

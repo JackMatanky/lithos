@@ -438,12 +438,16 @@ where
                 None
             };
 
-            // For now, ancestors list is empty - will be computed on-demand
-            // This simplifies the implementation and avoids topological
-            // ordering issues
+            // TODO(refactor): This code will be replaced by the state machine
+            // refactor. For now, create minimal metadata to satisfy the type.
+            // The new pipeline will properly compute depth, ancestors, and hash
+            // during tree construction.
             let ancestors = Vec::new();
-
-            // Compute ancestors hash from parent (or 0 if root)
+            let depth = if parent.is_some() {
+                2
+            } else {
+                1
+            }; // Rough estimate
             let ancestors_hash = if let Some(pid) = parent {
                 use std::hash::{Hash as _, Hasher as _};
                 let mut hasher =
@@ -457,7 +461,7 @@ where
             let metadata = SchemaInheritanceView {
                 parent,
                 ancestors,
-                excludes: raw.excludes().to_vec(),
+                depth,
                 ancestors_hash,
                 resolved_at: SystemTime::now(),
             };
