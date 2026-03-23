@@ -21,16 +21,16 @@ This document provides a **phased implementation plan** for refactoring the `sch
 
 ## Phase Overview
 
-| Phase | Focus | Estimated Effort | Status |
-|-------|-------|-----------------|--------|
-| **0** | Prerequisites | ✅ **COMPLETE** | Done |
-| **1** | InheritanceGraph Simplification | 3-4 hours | Pending |
-| **2** | PropertyBank State Machine | 6-8 hours | Pending |
-| **3** | Schema State Machine (Foundation) | 8-10 hours | Pending |
-| **4** | Schema State Machine (Optimization) | 6-8 hours | Pending |
-| **5** | Builder Facade & Ingestor Removal | 4-6 hours | Pending |
-| **6** | Integration & Testing | 6-8 hours | Pending |
-| **7** | Documentation & Cleanup | 2-3 hours | Pending |
+| Phase | Focus                               | Estimated Effort | Status  |
+| ----- | ----------------------------------- | ---------------- | ------- |
+| **0** | Prerequisites                       | ✅ **COMPLETE**  | Done    |
+| **1** | InheritanceGraph Simplification     | 3-4 hours        | Pending |
+| **2** | PropertyBank State Machine          | 6-8 hours        | Pending |
+| **3** | Schema State Machine (Foundation)   | 8-10 hours       | Pending |
+| **4** | Schema State Machine (Optimization) | 6-8 hours        | Pending |
+| **5** | Builder Facade & Ingestor Removal   | 4-6 hours        | Pending |
+| **6** | Integration & Testing               | 6-8 hours        | Pending |
+| **7** | Documentation & Cleanup             | 2-3 hours        | Pending |
 
 **Total Estimated Effort**: 35-47 hours (approximately 7-10 work sessions at 5 hours each)
 
@@ -78,43 +78,52 @@ mise run test:unit:schema
 ## Phase 1: InheritanceGraph Simplification
 
 ### Goal
+
 Simplify the `Extender` to build a lightweight `InheritanceGraph` with just IDs and metadata (no properties).
 
 ### Tasks
 
 #### 1.1 Rename `SchemaTree` → `InheritanceGraph` ✅ COMPLETE
+
 - ✅ Rename struct in `extender.rs`
 - ✅ Update all references throughout codebase
 - ✅ Update documentation
 
 **Files Modified**:
+
 - ✅ `lithos-core/src/schema/extender.rs`
 - ✅ `lithos-core/src/schema/merger.rs`
 - ✅ `lithos-core/src/schema/views/inheritance.rs`
 - ✅ `lithos-core/src/schema/views/inheritance_redesign.rs`
 
 #### 1.2 Create `InheritanceNode` Type
+
 - [ ] Define lightweight node structure (no properties)
 - [ ] Fields: `id`, `name`, `parent_id`, `children`, `depth`, `excludes`
 - [ ] Remove `properties` field entirely
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/extender.rs` (new type)
 
 #### 1.3 Simplify `Extender::build()`
+
 - [ ] Remove property handling logic
 - [ ] Input: `Vec<(SchemaId, SchemaName, Option<SchemaName>, Vec<PropertyName>)>`
 - [ ] Output: `InheritanceGraph` (topologically ordered IDs)
 - [ ] Keep: cycle detection, depth computation, topological sort
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/extender.rs` (~200 lines)
 
 #### 1.4 Update `Merger` to Accept Graph
+
 - [ ] Update `Merger::resolve()` signature to accept `InheritanceGraph`
 - [ ] Properties will come from state machine data, not nodes
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/merger.rs` (lines ~70-100)
 
 ### Verification
@@ -128,6 +137,7 @@ mise run test:unit:schema -- merger
 ```
 
 ### Definition of Done
+
 - [ ] `InheritanceGraph` contains only IDs and metadata
 - [ ] No property data in graph nodes
 - [ ] All extender tests passing
@@ -138,11 +148,13 @@ mise run test:unit:schema -- merger
 ## Phase 2: PropertyBank State Machine
 
 ### Goal
+
 Implement the 6-state PropertyBank pipeline as a typestate state machine.
 
 ### Tasks
 
 #### 2.1 Define State Types
+
 - [ ] Create `PropertyBankStateMachine<S>` generic struct
 - [ ] Define 6 state marker types (ZSTs):
   - `Discovery`
@@ -153,9 +165,11 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
   - `Completed`
 
 **Files to Create**:
+
 - `lithos-core/src/schema/property_bank_pipeline.rs`
 
 #### 2.2 Define Data Structures
+
 - [ ] Create `PropertyBankData` struct:
   ```rust
   struct PropertyBankData {
@@ -167,6 +181,7 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
   ```
 
 #### 2.3 Implement State Transitions
+
 - [ ] `Discovery::discover()` → `PropertyBankStateMachine<Discovery>`
 - [ ] Branching transitions based on staleness:
   - NEW → `FileParsed`
@@ -176,12 +191,14 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
 - [ ] `into_completed()` → `PropertyBankStateMachine<Completed>`
 
 #### 2.4 Implement Transition Logic
+
 - [ ] File parsing (FsReader integration)
 - [ ] Delta computation (hash comparison)
 - [ ] Delta application (merge old + new properties)
 - [ ] DB persistence
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/mod.rs` (add module)
 - `lithos-core/src/schema/property_bank_pipeline.rs` (new)
 
@@ -196,6 +213,7 @@ mise run test:integration -- property_bank
 ```
 
 ### Definition of Done
+
 - [ ] All 6 states implemented
 - [ ] State transitions type-safe (compile-time enforcement)
 - [ ] Branching logic based on staleness
@@ -207,11 +225,13 @@ mise run test:integration -- property_bank
 ## Phase 3: Schema State Machine (Foundation)
 
 ### Goal
+
 Implement the basic 9-state Schema pipeline structure (without optimization).
 
 ### Tasks
 
 #### 3.1 Define State Types
+
 - [ ] Create `SchemaStateMachine<S>` generic struct
 - [ ] Define 9 state marker types:
   - `Discovery`
@@ -225,9 +245,11 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
   - `Persisted`
 
 **Files to Create**:
+
 - `lithos-core/src/schema/schema_pipeline.rs`
 
 #### 3.2 Define Data Structures
+
 - [ ] Create `SchemaData` struct:
   ```rust
   struct SchemaData {
@@ -242,6 +264,7 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
 - [ ] Create `ExpandedSchemaData` for expansion state
 
 #### 3.3 Implement Discovery → TreeConstructed
+
 - [ ] `Discovery::discover()` - Query DB, determine staleness
 - [ ] `FileParsed::parse()` - Parse TOML/JSON/YAML (only for NEW/STALE)
 - [ ] `SchemaDelta::compute()` - Hash comparison (only for STALE)
@@ -252,6 +275,7 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
   - **FAIL FAST** if structural errors
 
 #### 3.4 Implement TreeConstructed → Persisted (Basic)
+
 - [ ] `RawPropertiesDeserialized::deserialize()` - Only for schemas needing processing
 - [ ] `BankReferenceDelta::compute()` - Intersect with PropertyBank delta
 - [ ] `RefsExpanded::expand()` - Expand $refs (basic, all schemas)
@@ -259,6 +283,7 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
 - [ ] `Persisted::persist()` - Save to DB
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/mod.rs` (add module)
 - `lithos-core/src/schema/schema_pipeline.rs` (new, ~800 lines)
 
@@ -273,6 +298,7 @@ mise run test:integration -- schema_basic
 ```
 
 ### Definition of Done
+
 - [ ] All 9 states implemented
 - [ ] Basic transition logic working
 - [ ] Early tree construction functioning
@@ -285,11 +311,13 @@ mise run test:integration -- schema_basic
 ## Phase 4: Schema State Machine (Optimization)
 
 ### Goal
+
 Add incremental update optimizations (level-by-level processing, staleness skipping).
 
 ### Tasks
 
 #### 4.1 Implement Level-by-Level Expansion
+
 - [ ] Modify `RefsExpanded::expand()` to process schemas by topological level
 - [ ] For each level:
   - FRESH schemas: Skip expansion (retrieve from DB)
@@ -297,6 +325,7 @@ Add incremental update optimizations (level-by-level processing, staleness skipp
 - [ ] Update `expanded_properties` cache in `SchemaVersion`
 
 #### 4.2 Implement Level-by-Level Merging
+
 - [ ] Modify `PropertiesMerged::merge()` to process by level
 - [ ] For each level:
   - FRESH schemas (with FRESH parents): Skip merging (retrieve from DB)
@@ -305,16 +334,19 @@ Add incremental update optimizations (level-by-level processing, staleness skipp
 - [ ] Cache merged results for child levels
 
 #### 4.3 Implement Staleness Propagation
+
 - [ ] Track which schemas are fresh/stale
 - [ ] Propagate staleness down the tree (if parent stale, children need re-merge)
 - [ ] Use `ancestors_hash` for transitive staleness detection
 
 #### 4.4 Add Performance Optimizations
+
 - [ ] Early exit when all schemas fresh
 - [ ] Skip deserialization for fresh schemas
 - [ ] Batch DB queries for fresh schema retrieval
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/schema_pipeline.rs` (lines ~400-600)
 
 ### Verification
@@ -331,6 +363,7 @@ mise run test:bench:core -- schema_load
 ```
 
 ### Definition of Done
+
 - [ ] Level-by-level processing working
 - [ ] Fresh schemas skip expansion/merging
 - [ ] Staleness propagates correctly
@@ -343,13 +376,16 @@ mise run test:bench:core -- schema_load
 ## Phase 5: Builder Facade & Ingestor Removal
 
 ### Goal
+
 Refactor `Loader` into a thin `Builder` facade and remove `Ingestor` entirely.
 
 ### Tasks
 
 #### 5.1 Create Builder Facade
+
 - [ ] Create `lithos-core/src/schema/builder.rs`
 - [ ] Thin facade (~50 lines):
+
   ```rust
   pub struct Builder<'config, R> {
       config: &'config Config,
@@ -372,27 +408,33 @@ Refactor `Loader` into a thin `Builder` facade and remove `Ingestor` entirely.
   ```
 
 #### 5.2 Remove Ingestor
+
 - [ ] Delete `lithos-core/src/schema/ingestor.rs`
 - [ ] Move filesystem logic into state machine transitions
 - [ ] Move DB queries into state machine transitions
 
 #### 5.3 Update Public API
+
 - [ ] Update `lithos-core/src/schema/mod.rs` exports
 - [ ] Remove `Loader` struct
 - [ ] Export `Builder` as primary API
 
 #### 5.4 Update Callsites
+
 - [ ] Update `lithos-cli` to use `Builder`
 - [ ] Update tests to use `Builder`
 
 **Files to Create**:
+
 - `lithos-core/src/schema/builder.rs`
 
 **Files to Delete**:
+
 - `lithos-core/src/schema/ingestor.rs`
 - `lithos-core/src/schema/loader.rs` (most of it)
 
 **Files to Modify**:
+
 - `lithos-core/src/schema/mod.rs`
 - `lithos-cli/src/commands/*.rs`
 
@@ -410,6 +452,7 @@ mise run verify
 ```
 
 ### Definition of Done
+
 - [ ] `Builder` facade implemented and working
 - [ ] `Ingestor` deleted
 - [ ] All CLI commands working
@@ -421,11 +464,13 @@ mise run verify
 ## Phase 6: Integration & Testing
 
 ### Goal
+
 Comprehensive testing of the refactored pipelines.
 
 ### Tasks
 
 #### 6.1 Unit Test Coverage
+
 - [ ] PropertyBank pipeline: all 6 states
 - [ ] Schema pipeline: all 9 states
 - [ ] State transitions
@@ -433,6 +478,7 @@ Comprehensive testing of the refactored pipelines.
 - [ ] Edge cases (empty bank, circular inheritance, missing parents)
 
 #### 6.2 Integration Tests
+
 - [ ] Full pipeline end-to-end
 - [ ] Mixed fresh/stale scenarios
 - [ ] PropertyBank changes triggering schema updates
@@ -440,6 +486,7 @@ Comprehensive testing of the refactored pipelines.
 - [ ] File deletion handling
 
 #### 6.3 Performance Benchmarks
+
 - [ ] Compare against old implementation:
   - Full load (all schemas stale)
   - Incremental load (some fresh, some stale)
@@ -448,6 +495,7 @@ Comprehensive testing of the refactored pipelines.
 - [ ] Target: ≥ 50% improvement for incremental scenarios
 
 #### 6.4 Error Path Testing
+
 - [ ] Cycle detection
 - [ ] Missing parent
 - [ ] Invalid $ref
@@ -455,6 +503,7 @@ Comprehensive testing of the refactored pipelines.
 - [ ] DB errors
 
 **Files to Create**:
+
 - `lithos-core/tests/schema_pipeline_integration.rs`
 - `lithos-core/benches/schema_pipeline.rs`
 
@@ -472,7 +521,8 @@ mise run test:bench
 ```
 
 ### Definition of Done
-- [ ] >90% test coverage for new code
+
+- [ ] > 90% test coverage for new code
 - [ ] All integration tests passing
 - [ ] Benchmarks show performance improvement
 - [ ] Error paths tested
@@ -483,17 +533,20 @@ mise run test:bench
 ## Phase 7: Documentation & Cleanup
 
 ### Goal
+
 Update all documentation and clean up any technical debt.
 
 ### Tasks
 
 #### 7.1 Code Documentation
+
 - [ ] Add module-level docs to all new files
 - [ ] Document all public APIs
 - [ ] Add examples to complex functions
 - [ ] Document state machine design patterns
 
 #### 7.2 Architecture Documentation
+
 - [ ] Update `_bmad-output/ARCHITECTURE_DECISIONS.md`
 - [ ] Update `docs/adr/` with new ADRs:
   - ADR: Typestate Pattern for Pipelines
@@ -502,17 +555,20 @@ Update all documentation and clean up any technical debt.
 - [ ] Update `README.md` with new architecture
 
 #### 7.3 Migration Guide
+
 - [ ] Create migration guide for API changes
 - [ ] Document breaking changes
 - [ ] Provide before/after examples
 
 #### 7.4 Cleanup
+
 - [ ] Remove dead code
 - [ ] Remove TODO comments
 - [ ] Fix all clippy warnings
 - [ ] Format all code
 
 **Files to Create**:
+
 - `docs/adr/0XX-typestate-pattern.md`
 - `docs/adr/0XX-early-tree-construction.md`
 - `docs/adr/0XX-hash-size-selection.md`
@@ -532,6 +588,7 @@ mise run adr:validate
 ```
 
 ### Definition of Done
+
 - [ ] All code documented
 - [ ] ADRs created for major decisions
 - [ ] Migration guide complete
@@ -592,7 +649,7 @@ mise run adr:validate
 
 ### Code Quality
 
-- [ ] >90% test coverage
+- [ ] > 90% test coverage
 - [ ] Zero clippy warnings
 - [ ] All ADRs documented
 - [ ] Clear, readable code
@@ -609,26 +666,31 @@ mise run adr:validate
 ## Rollout Plan
 
 ### 1. Development (This Branch)
+
 - Complete Phases 0-8 on `schema-refactor` branch
 - Continuous integration testing
 - Incremental commits with clear messages
 
 ### 2. Internal Testing
+
 - [ ] Full `mise run verify` passing
 - [ ] Manual testing with real-world schemas
 - [ ] Performance benchmarks meet criteria
 
 ### 3. Code Review
+
 - [ ] Self-review using checklist
 - [ ] Peer review (if applicable)
 - [ ] Address all feedback
 
 ### 4. Merge to Main
+
 - [ ] Squash commits into logical units
 - [ ] Write comprehensive merge commit message
 - [ ] Merge via PR with full CI/CD
 
 ### 5. Monitor
+
 - [ ] Watch for issues post-merge
 - [ ] Collect performance metrics
 - [ ] Gather user feedback
@@ -638,9 +700,11 @@ mise run adr:validate
 ## Dependencies
 
 ### External Dependencies
+
 - None (all Rust std and existing crate dependencies)
 
 ### Internal Dependencies
+
 - ✅ `RawPropertyMap<T>` (Phase 0 - Complete)
 - ✅ `RawPropertyRefPath` (Phase 0 - Complete)
 - Blake3 crate (existing)
@@ -648,6 +712,7 @@ mise run adr:validate
 - rkyv crate (existing)
 
 ### Blockers
+
 - **None** - Ready to start Phase 1
 
 ---
@@ -672,6 +737,7 @@ mise run adr:validate
    - Document any deviations from plan
 
 **Communication**:
+
 - Update user on progress after each phase
 - Raise any blockers immediately
 - Request clarification if design decisions unclear
@@ -681,6 +747,7 @@ mise run adr:validate
 ## Appendix A: File Change Summary
 
 ### Files to Create (New)
+
 - `lithos-core/src/schema/property_bank_pipeline.rs`
 - `lithos-core/src/schema/schema_pipeline.rs`
 - `lithos-core/src/schema/builder.rs`
@@ -692,10 +759,12 @@ mise run adr:validate
 - `docs/migration/schema-refactor.md`
 
 ### Files to Delete
+
 - `lithos-core/src/schema/ingestor.rs` (~1500 lines)
 - `lithos-core/src/schema/loader.rs` (~1000 lines)
 
 ### Files to Modify (Major Changes)
+
 - `lithos-core/src/schema/extender.rs` (~200 lines changed)
 - `lithos-core/src/schema/merger.rs` (~100 lines changed)
 - `lithos-core/src/schema/views/metadata.rs` (✅ Complete)
@@ -703,10 +772,12 @@ mise run adr:validate
 - `lithos-core/src/schema/mod.rs` (~50 lines changed)
 
 ### Files to Modify (Minor Changes)
+
 - `lithos-cli/src/commands/*.rs` (update to use Builder)
 - Various test files (update to use Builder)
 
 ### Net Line Change Estimate
+
 - **Lines Added**: ~2500
 - **Lines Deleted**: ~2500
 - **Net Change**: ~0 (refactor, not expansion)
@@ -716,6 +787,7 @@ mise run adr:validate
 ## Appendix B: Testing Checklist
 
 ### Unit Tests
+
 - [ ] PropertyBank state transitions (all paths)
 - [ ] Schema state transitions (all paths)
 - [ ] InheritanceGraph construction
@@ -724,6 +796,7 @@ mise run adr:validate
 - [ ] Staleness detection logic
 
 ### Integration Tests
+
 - [ ] Full pipeline (PropertyBank + Schema)
 - [ ] Incremental updates (fresh schemas)
 - [ ] PropertyBank-triggered schema updates
@@ -732,6 +805,7 @@ mise run adr:validate
 - [ ] Multiple schema formats (TOML, JSON, YAML)
 
 ### Error Path Tests
+
 - [ ] Cycle detection
 - [ ] Missing parent
 - [ ] Invalid $ref
@@ -741,6 +815,7 @@ mise run adr:validate
 - [ ] Serialization errors
 
 ### Performance Tests
+
 - [ ] Full load (all stale)
 - [ ] Incremental load (mixed)
 - [ ] PropertyBank-only update
@@ -749,6 +824,7 @@ mise run adr:validate
 - [ ] Deep inheritance (10 levels)
 
 ### End-to-End Tests
+
 - [ ] CLI: load schemas from filesystem
 - [ ] CLI: update single schema
 - [ ] CLI: update property bank
