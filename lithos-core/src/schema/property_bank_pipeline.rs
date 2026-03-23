@@ -67,7 +67,7 @@
 //!         │                 │                │           │  (+view)   │
 //!         │                 │                │           └─────┬──────┘
 //!         │                 │                │                 │
-//!         ▼                 ▼                ▼                 ▼
+//!         ▼                 ▼                ▼                ▼
 //! ┌──────────────────────────────────────────────────────────────────────┐
 //! │                              Completed                               │
 //! └──────────────────────────────────────────────────────────────────────┘
@@ -154,7 +154,7 @@ use crate::{
 ///
 /// The state machine enforces that required fields are present at each state
 /// via `expect()` calls, which are safe due to typestate invariants.
-#[derive(Default)]
+#[derive(Default, Debug)]
 #[non_exhaustive]
 pub struct PropertyBankData {
     /// Raw parsed property bank (`FileParsed` state, NEW and STALE paths).
@@ -191,6 +191,7 @@ pub struct PropertyBankData {
 /// Each state has its own `impl PropertyBankPipeline<State>` block defining
 /// valid operations. Invalid operations are prevented by the type system.
 #[non_exhaustive]
+#[derive(Debug)]
 pub struct PropertyBankPipeline<S> {
     /// Carried data payload (boxed to keep state machine type small).
     data: Box<PropertyBankData>,
@@ -219,6 +220,7 @@ impl<S> PropertyBankPipeline<S> {
 /// Each variant contains the state machine at the appropriate starting state
 /// for that path, along with any additional data needed for processing.
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum PropertyBankBranch {
     /// NEW path: No view exists in DB - parse file and build from scratch.
     /// Contains state machine at `FileParsed` state (file already parsed).
@@ -265,13 +267,15 @@ impl PropertyBankBranch {
             PropertyBankBranch::New(pipeline) => pipeline
                 .construct_base_from_scratch()?
                 .into_completed_persist_all(repository),
-            PropertyBankBranch::FreshTimestamp(pipeline) => {
-                Ok(pipeline.into_completed_no_persistence())
-            }
+            PropertyBankBranch::FreshTimestamp(pipeline) => pipeline
+                .fetch_from_db(repository)
+                .map(PropertyBankPipeline::into_completed_no_persistence),
             PropertyBankBranch::FreshContent(pipeline, view, filename) => {
-                pipeline.into_completed_persist_view_only(
-                    repository, &filename, &view,
-                )
+                pipeline
+                    .fetch_from_db(repository)?
+                    .into_completed_persist_view_only(
+                        repository, &filename, &view,
+                    )
             }
             PropertyBankBranch::Stale(pipeline, cached_view, filename) => {
                 pipeline
@@ -296,6 +300,7 @@ impl PropertyBankBranch {
 /// **Valid transitions**: Discovery → `FileParsed` (NEW/STALE) or Discovery →
 /// `BaseConstructed` (`FreshTimestamp`/`FreshContent`).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct Discovery;
 
 impl PropertyBankPipeline<Discovery> {
@@ -444,6 +449,7 @@ impl PropertyBankPipeline<Discovery> {
 /// **Valid transitions**: `FileParsed` → `BaseConstructed` (NEW path) or
 /// `FileParsed` → `PropertyDelta` (STALE path).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct FileParsed;
 
 impl PropertyBankPipeline<FileParsed> {
@@ -514,6 +520,7 @@ impl PropertyBankPipeline<FileParsed> {
 /// **Valid transitions**: `PropertyDelta` → `BaseConstructed` (fetch old bank
 /// from DB before applying delta).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct PropertyDelta;
 
 impl PropertyBankPipeline<PropertyDelta> {
@@ -545,6 +552,7 @@ impl PropertyBankPipeline<PropertyDelta> {
 /// **Valid transitions**: `BaseConstructed` → `DeltaApplied` (STALE path) or
 /// `BaseConstructed` → `Completed` (all other paths).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct BaseConstructed;
 
 impl PropertyBankPipeline<BaseConstructed> {
@@ -673,6 +681,7 @@ impl PropertyBankPipeline<BaseConstructed> {
 /// **Valid transitions**: `DeltaApplied` → `Completed` (persist both bank and
 /// view).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct DeltaApplied;
 
 impl PropertyBankPipeline<DeltaApplied> {
@@ -714,6 +723,7 @@ impl PropertyBankPipeline<DeltaApplied> {
 /// `PropertyBank` is ready for extraction and persistence is complete (if
 /// needed).
 #[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
 pub struct Completed;
 
 impl PropertyBankPipeline<Completed> {
@@ -752,12 +762,750 @@ impl PropertyBankPipeline<Completed> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    mod fixtures {
+        use std::{collections::HashMap, path::Path};
 
-    #[test]
-    fn state_machine_constructs() {
-        let data = PropertyBankData::default();
-        let _sm: PropertyBankPipeline<FileParsed> =
-            PropertyBankPipeline::new(data);
+        use rstest::fixture;
+        use tempfile::TempDir;
+
+        use super::super::*;
+        use crate::schema::{
+            property::{Multiplicity, Optionality, Property, PropertyId},
+            property_spec::{PropertySpec, StringSpec},
+            testing::InMemoryRepository,
+            views::{
+                FileTimesMetadata, PropertyBankVersion, RawPropertyBankView,
+                metadata::HashMetadata,
+            },
+        };
+
+        #[fixture]
+        pub fn repo() -> InMemoryRepository {
+            InMemoryRepository::new()
+        }
+
+        #[fixture]
+        pub fn temp_dir() -> TempDir {
+            TempDir::new().expect("Failed to create temp dir")
+        }
+
+        pub fn write_config(root: &Path, name: &str, content: &str) {
+            let path = root.join(name);
+            std::fs::write(path, content).expect("Failed to write config file");
+        }
+
+        pub fn sample_bank() -> PropertyBank {
+            let mut bank = PropertyBank::new();
+            let prop = Property::new(
+                PropertyId::new(),
+                PropertyName::try_new("title").unwrap(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::String(StringSpec::default()),
+            );
+            bank.register(prop).unwrap();
+            bank
+        }
+
+        pub fn create_test_view(
+            content: &str,
+            created: Option<std::time::SystemTime>,
+            modified: Option<std::time::SystemTime>,
+        ) -> RawPropertyBankView {
+            let times = FileTimesMetadata::new(created, modified);
+            let hashes = HashMetadata::new(
+                *blake3::hash(content.as_bytes()).as_bytes(),
+                HashMap::new(),
+            );
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            let raw: RawPropertyBank =
+                serde_json::from_value(raw_json).unwrap();
+            let version =
+                PropertyBankVersion::new(times, hashes, &raw).unwrap();
+            RawPropertyBankView::new(version)
+        }
     }
+
+    mod base_constructed {
+        use rstest::rstest;
+
+        use super::{fixtures::*, *};
+        use crate::schema::{
+            property::{
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
+            },
+            property_spec::{PropertySpec, StringSpec},
+            testing::InMemoryRepository,
+        };
+
+        #[test]
+        fn should_apply_delta_to_bank() {
+            let mut data = PropertyBankData::default();
+            let bank = PropertyBank::new();
+            let title_name = PropertyName::try_new("title").unwrap();
+
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": { "multi": false, "type": "string" }
+                }
+            });
+            data.raw =
+                Some(serde_json::from_value(raw_json).expect("Invalid JSON"));
+            data.delta = Some(vec![title_name.clone()]);
+            data.bank = Some(bank);
+
+            let pipeline = PropertyBankPipeline::<BaseConstructed>::new(data);
+
+            let next = pipeline.apply_delta().expect("Apply delta failed");
+
+            let updated_bank = next.data.bank.as_ref().expect("Bank missing");
+            assert!(
+                updated_bank.has(&title_name),
+                "Bank should have title property"
+            );
+            assert_eq!(
+                updated_bank.version().as_u64(),
+                1,
+                "Version should be 1"
+            );
+        }
+
+        #[test]
+        fn should_handle_property_removal_in_apply_delta() {
+            let mut data = PropertyBankData::default();
+            let mut bank = PropertyBank::new();
+            let title_name = PropertyName::try_new("title").unwrap();
+
+            // Register it first
+            let prop = Property::new(
+                PropertyId::new(),
+                title_name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::String(StringSpec::default()),
+            );
+            bank.register(prop).unwrap();
+            assert_eq!(bank.version().as_u64(), 1);
+
+            // Raw has NO properties
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            data.raw =
+                Some(serde_json::from_value(raw_json).expect("Invalid JSON"));
+            data.delta = Some(vec![title_name.clone()]);
+            data.bank = Some(bank);
+
+            let pipeline = PropertyBankPipeline::<BaseConstructed>::new(data);
+            let next = pipeline.apply_delta().unwrap();
+
+            let updated_bank = next.data.bank.as_ref().unwrap();
+            assert!(
+                !updated_bank.has(&title_name),
+                "Property should be removed"
+            );
+            assert_eq!(
+                updated_bank.version().as_u64(),
+                2,
+                "Version should increment on removal"
+            );
+        }
+
+        #[rstest]
+        fn should_persist_all_for_new_path(repo: InMemoryRepository) {
+            let mut data = PropertyBankData::default();
+            let bank = sample_bank();
+            data.bank = Some(bank);
+
+            let view = create_test_view("", None, None);
+            data.view = Some(view);
+            data.filename = Some("props.yaml".to_owned());
+            let pipeline = PropertyBankPipeline::<BaseConstructed>::new(data);
+
+            pipeline
+                .into_completed_persist_all(&repo)
+                .expect("Persist all failed");
+
+            assert!(
+                repo.get_property_bank().expect("Read failed").is_some(),
+                "Bank should be persisted"
+            );
+            assert!(
+                repo.get_raw_property_bank_view("props.yaml")
+                    .expect("Read failed")
+                    .is_some(),
+                "View should be persisted"
+            );
+        }
+
+        #[rstest]
+        fn should_fail_if_bank_missing_for_fresh_paths(
+            repo: InMemoryRepository,
+        ) {
+            // No bank in repo
+            let pipeline = PropertyBankPipeline::<BaseConstructed>::new(
+                PropertyBankData::default(),
+            );
+
+            let res = pipeline.fetch_from_db(&repo);
+
+            res.expect_err("Expected error when fetching missing bank");
+        }
+    }
+
+    mod discovery {
+        use std::path::Path;
+
+        use rstest::rstest;
+        use tempfile::TempDir;
+
+        use super::{fixtures::*, *};
+        use crate::schema::testing::InMemoryRepository;
+
+        #[rstest]
+        fn should_return_new_when_no_view_exists(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            let branch =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery should succeed");
+
+            assert!(
+                matches!(branch, PropertyBankBranch::New(_)),
+                "Expected New branch, found {branch:?}"
+            );
+        }
+
+        #[rstest]
+        fn should_return_fresh_timestamp_when_timestamps_match(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            let view = create_test_view(
+                content,
+                source.created_at(config_path),
+                source.modified_at(config_path),
+            );
+            repo.save_raw_property_bank_view(filename, &view).unwrap();
+
+            let branch =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery should succeed");
+
+            assert!(
+                matches!(branch, PropertyBankBranch::FreshTimestamp(_)),
+                "Expected FreshTimestamp branch, found {branch:?}"
+            );
+        }
+
+        #[rstest]
+        fn should_return_fresh_content_when_content_matches_but_timestamps_differ(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            // Use a future time to ensure mismatch (using checked_add for
+            // safety)
+            let future_time = std::time::SystemTime::now()
+                .checked_add(std::time::Duration::from_secs(3600))
+                .expect("Time overflow");
+            let view =
+                create_test_view(content, Some(future_time), Some(future_time));
+            repo.save_raw_property_bank_view(filename, &view).unwrap();
+
+            let branch =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery should succeed");
+
+            assert!(
+                matches!(branch, PropertyBankBranch::FreshContent(_, _, _)),
+                "Expected FreshContent branch, got {branch:?}"
+            );
+
+            if let PropertyBankBranch::FreshContent(_, updated_view, _) = branch
+            {
+                assert!(
+                    updated_view
+                        .current()
+                        .expect("Missing current version in view")
+                        .file_times()
+                        .is_timestamp_match(
+                            source.created_at(config_path),
+                            source.modified_at(config_path)
+                        ),
+                    "Updated view should match current file times"
+                );
+            }
+        }
+
+        #[rstest]
+        fn should_return_stale_when_content_differs(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let old_content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, old_content);
+            let config_path = Path::new(filename);
+
+            // Create and save a view with old content hash
+            let view = create_test_view(old_content, None, None);
+            repo.save_raw_property_bank_view(filename, &view).unwrap();
+
+            let new_content = "properties:\n  title:\n    type: string\n  \
+                               description:\n    type: string";
+            write_config(temp_dir.path(), filename, new_content);
+
+            let branch =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery should succeed");
+
+            assert!(
+                matches!(branch, PropertyBankBranch::Stale(_, _, _)),
+                "Expected Stale branch, found {branch:?}"
+            );
+        }
+
+        #[rstest]
+        fn should_fail_when_filename_invalid(repo: InMemoryRepository) {
+            let source = FsReader::new("/");
+            // An empty path has no filename
+            let config_path = Path::new("");
+
+            let res =
+                PropertyBankPipeline::discover(config_path, &source, &repo);
+
+            res.expect_err("Expected error for missing filename");
+        }
+
+        #[rstest]
+        fn should_fail_when_config_file_missing(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            // Path that definitely doesn't exist
+            let config_path = Path::new("absolutely_missing.yaml");
+
+            let res =
+                PropertyBankPipeline::discover(config_path, &source, &repo);
+
+            res.expect_err("Expected error for missing file");
+        }
+
+        #[rstest]
+        fn should_fail_when_config_is_malformed(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "bad.yaml";
+            // YAML syntax error: unclosed quote
+            let content = "properties:\n  title:\n    type: \"unclosed";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            let res =
+                PropertyBankPipeline::discover(config_path, &source, &repo);
+
+            res.expect_err("Expected error for malformed YAML");
+        }
+    }
+
+    mod file_parsed {
+        use super::{fixtures::*, *};
+
+        #[test]
+        fn should_construct_base_from_scratch() {
+            let mut data = PropertyBankData::default();
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": { "multi": false, "type": "string" }
+                }
+            });
+            data.raw =
+                Some(serde_json::from_value(raw_json).expect("Invalid JSON"));
+            let pipeline = PropertyBankPipeline::<FileParsed>::new(data);
+
+            let next = pipeline
+                .construct_base_from_scratch()
+                .expect("Construction should succeed");
+
+            assert!(
+                next.data.bank.is_some(),
+                "Bank should be populated in next state"
+            );
+            assert_eq!(
+                next.data.bank.as_ref().expect("Bank missing").all().count(),
+                1,
+                "Bank should have 1 property"
+            );
+        }
+
+        #[test]
+        fn should_compute_delta_with_changes() {
+            let mut data = PropertyBankData::default();
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": { "multi": false, "type": "string" }
+                }
+            });
+            let raw: RawPropertyBank =
+                serde_json::from_value(raw_json).expect("Invalid JSON");
+            data.raw = Some(raw);
+            let pipeline = PropertyBankPipeline::<FileParsed>::new(data);
+
+            // Empty view means everything is new
+            let view = create_test_view("", None, None);
+
+            let next = pipeline.compute_delta(&view);
+
+            let delta = next.data.delta.as_ref().expect("Delta missing");
+            assert_eq!(delta.len(), 1);
+            assert_eq!(
+                delta.first().expect("Missing element").as_str(),
+                "title"
+            );
+        }
+
+        #[test]
+        fn should_detect_property_removal_in_delta() {
+            let mut data = PropertyBankData::default();
+            // New raw has NO properties
+            let raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            data.raw =
+                Some(serde_json::from_value(raw_json).expect("Invalid JSON"));
+            let pipeline = PropertyBankPipeline::<FileParsed>::new(data);
+
+            // Cached view HAS "title"
+            let view_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": { "multi": false, "type": "string" }
+                }
+            });
+            let view_raw: RawPropertyBank =
+                serde_json::from_value(view_json).unwrap();
+            let view =
+                RawPropertyBankView::try_from_raw_with_content(&view_raw, "")
+                    .unwrap();
+
+            let next = pipeline.compute_delta(&view);
+
+            let delta = next.data.delta.as_ref().expect("Delta missing");
+            assert_eq!(delta.len(), 1, "Should detect 1 change (removal)");
+            assert_eq!(delta.first().unwrap().as_str(), "title");
+        }
+    }
+
+    mod integration {
+        use std::path::Path;
+
+        use rstest::rstest;
+        use tempfile::TempDir;
+
+        use super::{fixtures::*, *};
+        use crate::schema::{
+            property::PropertyName, testing::InMemoryRepository,
+        };
+
+        #[rstest]
+        fn should_drive_new_path_to_completion(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            let branch =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery failed");
+            let completed =
+                branch.into_completed(&repo).expect("Should complete NEW path");
+            let bank = completed.into_bank();
+
+            assert_eq!(bank.all().count(), 1);
+            assert!(bank.has(&PropertyName::try_new("title").unwrap()));
+            assert!(repo.get_property_bank().unwrap().is_some());
+        }
+
+        #[rstest]
+        fn should_drive_fresh_timestamp_path_to_completion(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            // 1. Setup initial state
+            let branch_init =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .expect("Discovery failed");
+            branch_init.into_completed(&repo).expect("Setup failed");
+
+            // 2. Discover again (should be fresh timestamp)
+            let branch_fresh =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap();
+            assert!(
+                matches!(branch_fresh, PropertyBankBranch::FreshTimestamp(_)),
+                "Expected FreshTimestamp branch"
+            );
+
+            let completed = branch_fresh
+                .into_completed(&repo)
+                .expect("Should complete FreshTimestamp path");
+            assert_eq!(completed.bank().all().count(), 1);
+        }
+
+        #[rstest]
+        fn should_drive_fresh_content_path_to_completion(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            // 1. Setup initial state
+            let branch_init =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap();
+            branch_init.into_completed(&repo).unwrap();
+
+            // Capture initial created_at
+            let initial_created = source.created_at(config_path);
+
+            // 2. Modify timestamps but not content
+            let future_time = std::time::SystemTime::now()
+                .checked_add(std::time::Duration::from_secs(3600))
+                .expect("Time overflow");
+
+            let file = std::fs::File::options()
+                .write(true)
+                .open(temp_dir.path().join(filename))
+                .expect("Failed to open file");
+            file.set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(future_time)
+                    .set_accessed(future_time),
+            )
+            .expect("Failed to set file times");
+            drop(file);
+
+            // 3. Discover again (should be fresh content due to timestamp
+            //    mismatch)
+            let branch_fresh =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap();
+            assert!(
+                matches!(&branch_fresh, PropertyBankBranch::FreshContent(..)),
+                "Expected FreshContent branch, got {branch_fresh:?}"
+            );
+
+            let completed = branch_fresh
+                .into_completed(&repo)
+                .expect("Should complete FreshContent path");
+            assert_eq!(completed.bank().all().count(), 1);
+
+            // Verify view was updated in repo
+            let view =
+                repo.get_raw_property_bank_view(filename).unwrap().unwrap();
+            let current = view.current().unwrap();
+            assert!(
+                current
+                    .file_times()
+                    .is_timestamp_match(initial_created, Some(future_time)),
+                "View should have updated modified_at and original \
+                 created_at. Expected: ({initial_created:?}, \
+                 {future_time:?}), Found: ({:?}, {:?})",
+                current.file_times().created_at(),
+                current.file_times().modified_at()
+            );
+        }
+
+        #[rstest]
+        fn should_drive_stale_path_to_completion(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let old_content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, old_content);
+            let config_path = Path::new(filename);
+
+            let branch_init =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap();
+            branch_init.into_completed(&repo).unwrap();
+
+            let new_content = "properties:\n  title:\n    type: string\n  \
+                               description:\n    type: string";
+            write_config(temp_dir.path(), filename, new_content);
+
+            let branch_stale =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap();
+            assert!(
+                matches!(branch_stale, PropertyBankBranch::Stale(_, _, _)),
+                "Expected Stale branch"
+            );
+
+            let completed = branch_stale
+                .into_completed(&repo)
+                .expect("Should complete Stale path");
+            let bank = completed.into_bank();
+
+            assert_eq!(bank.all().count(), 2, "Bank should have 2 properties");
+            assert!(
+                bank.has(&PropertyName::try_new("description").unwrap()),
+                "Bank should have description property"
+            );
+            assert_eq!(
+                bank.version().as_u64(),
+                2,
+                "Version should increment to 2"
+            );
+        }
+
+        #[rstest]
+        fn should_handle_sequential_stale_updates(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let config_path = Path::new(filename);
+
+            // v1: title
+            write_config(
+                temp_dir.path(),
+                filename,
+                "properties:\n  title: { type: string }",
+            );
+            PropertyBankPipeline::discover(config_path, &source, &repo)
+                .unwrap()
+                .into_completed(&repo)
+                .unwrap();
+
+            // v2: title, desc
+            write_config(
+                temp_dir.path(),
+                filename,
+                "properties:\n  title: { type: string }\n  desc: { type: \
+                 string }",
+            );
+            PropertyBankPipeline::discover(config_path, &source, &repo)
+                .unwrap()
+                .into_completed(&repo)
+                .unwrap();
+
+            // v3: desc (title removed)
+            write_config(
+                temp_dir.path(),
+                filename,
+                "properties:\n  desc: { type: string }",
+            );
+            let completed =
+                PropertyBankPipeline::discover(config_path, &source, &repo)
+                    .unwrap()
+                    .into_completed(&repo)
+                    .unwrap();
+
+            let bank = completed.into_bank();
+            assert_eq!(bank.all().count(), 1, "Should have 1 property");
+            assert!(bank.has(&PropertyName::try_new("desc").unwrap()));
+            assert!(!bank.has(&PropertyName::try_new("title").unwrap()));
+            assert_eq!(bank.version().as_u64(), 3, "Version should be 3");
+        }
+    }
+
+    mod property_delta {
+        use rstest::rstest;
+
+        use super::{fixtures::*, *};
+        use crate::schema::testing::InMemoryRepository;
+
+        #[rstest]
+        fn should_fetch_bank_from_db(repo: InMemoryRepository) {
+            let bank = sample_bank();
+            repo.save_property_bank(&bank).expect("Persist failed");
+            let pipeline = PropertyBankPipeline::<PropertyDelta>::new(
+                PropertyBankData::default(),
+            );
+
+            let next = pipeline
+                .fetch_from_db(&repo)
+                .expect("Fetching from DB should succeed");
+
+            assert_eq!(
+                next.data.bank.as_ref().expect("Bank missing").version(),
+                bank.version(),
+                "Fetched bank version should match"
+            );
+        }
+
+        #[rstest]
+        fn should_use_default_bank_if_missing_during_stale_path(
+            repo: InMemoryRepository,
+        ) {
+            // No bank in repo
+            let pipeline = PropertyBankPipeline::<PropertyDelta>::new(
+                PropertyBankData::default(),
+            );
+
+            let next = pipeline.fetch_from_db(&repo).expect("Fetch failed");
+
+            assert_eq!(
+                next.data
+                    .bank
+                    .as_ref()
+                    .expect("Bank missing")
+                    .version()
+                    .as_u64(),
+                0,
+                "Should use default (v0) bank if missing"
+            );
+        }
+    }
+
+    use super::*;
 }
