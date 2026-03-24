@@ -225,11 +225,14 @@ impl RawSchemaView {
 /// ```ignore
 /// use lithos_core::schema::views::RawPropertyBankView;
 ///
-/// let view = RawPropertyBankView::new(content_hash, property_hashes, created_at, modified_at);
+/// let view = RawPropertyBankView::new(filename, version);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
+    /// Filename with extension (e.g., "properties.yaml").
+    filename: Filename,
+
     /// Version history (ring buffer, max 5 versions, newest first).
     versions: VecDeque<PropertyBankVersion>,
 }
@@ -238,13 +241,21 @@ impl RawPropertyBankView {
     /// Creates a new property bank view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(version: PropertyBankVersion) -> Self {
+    pub fn new(filename: Filename, version: PropertyBankVersion) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
+            filename,
             versions,
         }
+    }
+
+    /// Returns the filename.
+    #[inline]
+    #[must_use]
+    pub fn file_path(&self) -> &Filename {
+        &self.filename
     }
 
     /// Returns the most recent version, if any.
@@ -355,6 +366,7 @@ impl RawPropertyBankView {
     #[inline]
     pub fn try_from_raw_with_content(
         raw: &RawPropertyBank,
+        filename: &str,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
@@ -375,7 +387,7 @@ impl RawPropertyBankView {
 
         let version = PropertyBankVersion::new(file_times, hashes, raw)?;
 
-        Ok(Self::new(version))
+        Ok(Self::new(Filename::new(filename.into()), version))
     }
 }
 
@@ -552,7 +564,9 @@ mod tests {
     mod property_bank {
         use std::collections::HashMap;
 
-        use super::super::{PropertyBankVersion, RawPropertyBankView};
+        use super::super::{
+            Filename, PropertyBankVersion, RawPropertyBankView,
+        };
         use crate::schema::{
             raw::RawPropertyBank,
             views::{FileTimesMetadata, HashMetadata},
@@ -574,7 +588,8 @@ mod tests {
             let version =
                 PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
 
-            let view = RawPropertyBankView::new(version);
+            let filename = Filename::new("properties.yaml".into());
+            let view = RawPropertyBankView::new(filename, version);
 
             let reconstructed = view
                 .to_raw()

@@ -40,7 +40,7 @@ pub mod bank;
 #[doc(hidden)]
 pub mod expander;
 /// PropertyBank state machine for incremental loading and staleness detection.
-pub mod property_bank_pipeline;
+pub mod property_bank_processor;
 
 /// Schema errors.
 pub mod error;

@@ -5,8 +5,13 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     schema::{
-        aggregate::Schema, bank::PropertyBank, error::SchemaLoaderError,
-        property_bank_pipeline::PropertyBankPipeline, storage::Repository,
+        aggregate::Schema,
+        bank::PropertyBank,
+        error::SchemaLoaderError,
+        property_bank_processor::{
+            ContentBranch, Discovery, DiscoveryBranch, PropertyBankProcessor,
+        },
+        storage::Repository,
     },
 };
 
@@ -42,16 +47,54 @@ where
         &self,
     ) -> Result<PropertyBank, SchemaLoaderError> {
         let config_path = self.config.paths().property_bank_path();
+        let filename = self
+            .source
+            .filename(&config_path)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         // 1. Discovery: Determine which path to take
-        let path = PropertyBankPipeline::discover(
-            &config_path,
+        let pipeline = PropertyBankProcessor::<Discovery>::new();
+        let branch = pipeline.has_raw_view(
+            filename,
             &self.source,
+            &config_path,
             &self.repository,
         )?;
 
         // 2. Execute the path to completion
-        let completed = path.into_completed(&self.repository)?;
+        let completed = match branch {
+            DiscoveryBranch::New(p) => {
+                let content = self
+                    .source
+                    .read_to_string(&config_path)
+                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                p.parse(&config_path, &content)?
+                    .build(filename, &self.repository)?
+            }
+            DiscoveryBranch::FreshTimestamp(p) => {
+                if p.is_timestamp_match() {
+                    // Fastest path: fetch from DB
+                    p.build(&self.repository)?
+                } else {
+                    // Tier 3: Content hash check
+                    let content = self
+                        .source
+                        .read_to_string(&config_path)
+                        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                    match p
+                        .to_fresh_content(&content)
+                        .match_content(&config_path)?
+                    {
+                        ContentBranch::Match(p) => {
+                            p.update(&self.repository)?
+                        }
+                        ContentBranch::Mismatch(p) => p
+                            .compute_delta()
+                            .build(filename, &self.repository)?,
+                    }
+                }
+            }
+        };
 
         // 3. Extract the PropertyBank
         Ok(completed.into_bank())
