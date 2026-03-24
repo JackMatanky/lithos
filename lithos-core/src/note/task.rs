@@ -14,14 +14,13 @@
 
 use std::{borrow::Borrow, collections::HashMap, fmt};
 
-use chrono::{FixedOffset, TimeZone as _, Utc};
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
     error::{NoteError, TaskError},
     position::{SourceByteOffset, SourceByteRange},
-    raw::{RawInlineField, RawTask},
+    raw::{RawTaskFields, RawTaskPayload},
     tag::Tag,
     value::FieldValue,
 };
@@ -39,13 +38,14 @@ use crate::config::task::TaskConfigSpec;
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, position::{SourceByteOffset, SourceByteRange}};
-/// # use lithos_core::note::task::TaskAttributes;
+/// # use lithos_core::note::task::{TaskAttributes, TaskText};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let status = "todo";
 /// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10))?;
+/// let text = TaskText::try_new("Urgent work".into(), "Urgent work".into())?;
 /// let task = Task::try_new(
 ///     status.into(),
-///     "Urgent work",
+///     text,
 ///     range,
 ///     TaskAttributes::default(),
 /// )?;
@@ -63,7 +63,7 @@ pub struct Task {
     range: SourceByteRange,
     tags: Box<[Tag]>,
     metadata: TaskMetadata,
-    schedule: TaskSchedule,
+    dates: TaskDates,
 }
 
 impl Task {
@@ -73,14 +73,12 @@ impl Task {
     ///
     /// Returns [`TaskError`] if the task text is empty.
     #[inline]
-    pub fn try_new<T: Into<Box<str>>>(
+    pub fn try_new(
         status: Box<str>,
-        text: T,
+        text: TaskText,
         range: SourceByteRange,
         attributes: TaskAttributes,
     ) -> Result<Self, TaskError> {
-        let text = TaskText::try_from(text.into())?;
-
         Ok(Self {
             id: TaskId::new(),
             status,
@@ -88,7 +86,7 @@ impl Task {
             range,
             tags: attributes.tags,
             metadata: attributes.metadata,
-            schedule: attributes.schedule,
+            dates: attributes.dates,
         })
     }
 
@@ -110,7 +108,14 @@ impl Task {
     #[inline]
     #[must_use]
     pub fn text(&self) -> &str {
-        self.text.as_str()
+        self.text.clean()
+    }
+
+    /// Returns the raw task text (including inline fields/tags).
+    #[inline]
+    #[must_use]
+    pub fn text_full(&self) -> &str {
+        self.text.raw()
     }
 
     /// Returns the byte range of the task in the note source.
@@ -140,28 +145,28 @@ impl Task {
     #[inline]
     #[must_use]
     pub const fn created_at(&self) -> Option<TaskTimestamp> {
-        self.schedule.created
+        self.dates.created
     }
 
     /// Returns the task's due date, if set.
     #[inline]
     #[must_use]
     pub const fn due_at(&self) -> Option<TaskTimestamp> {
-        self.schedule.due
+        self.dates.due
     }
 
     /// Returns the task's reminder date, if set.
     #[inline]
     #[must_use]
     pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
-        self.schedule.reminder
+        self.dates.reminder
     }
 
     /// Returns the timestamp when the task was completed, if applicable.
     #[inline]
     #[must_use]
     pub const fn completed_at(&self) -> Option<TaskTimestamp> {
-        self.schedule.completed
+        self.dates.completed
     }
 
     /// Returns the task's structured metadata fields.
@@ -171,21 +176,11 @@ impl Task {
         &self.metadata
     }
 
-    /// Returns the schedule timestamps for the task.
+    /// Returns the date fields for the task.
     #[inline]
     #[must_use]
-    pub fn schedule(&self) -> &TaskSchedule {
-        &self.schedule
-    }
-}
-
-impl<'source> TryFrom<RawTask<'source>> for Option<Task> {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawTask<'source>) -> Result<Self, Self::Error> {
-        let builder = TaskBuilder::new(raw.spec.as_ref());
-        builder.promote_from_raw(&raw)
+    pub fn dates(&self) -> &TaskDates {
+        &self.dates
     }
 }
 
@@ -236,12 +231,35 @@ impl From<TaskId> for Uuid {
     }
 }
 
+/// Reference to a task derived from its source range.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskRef(SourceByteRange);
+
+impl TaskRef {
+    /// Creates a new task reference from a source range.
+    #[inline]
+    #[must_use]
+    pub const fn new(range: SourceByteRange) -> Self {
+        Self(range)
+    }
+
+    /// Returns the source range for this task reference.
+    #[inline]
+    #[must_use]
+    pub const fn range(self) -> SourceByteRange {
+        self.0
+    }
+}
+
 /// Parsed task attributes captured from checkbox text.
 #[derive(Debug, Clone, Default)]
 pub struct TaskAttributes {
     tags: Box<[Tag]>,
     metadata: TaskMetadata,
-    schedule: TaskSchedule,
+    dates: TaskDates,
 }
 
 impl TaskAttributes {
@@ -251,11 +269,11 @@ impl TaskAttributes {
         TaskAttributesBuilder::default()
     }
 
-    /// Returns the schedule timestamps for the task attributes.
+    /// Returns the date fields for the task attributes.
     #[inline]
     #[must_use]
-    pub fn schedule(&self) -> &TaskSchedule {
-        &self.schedule
+    pub fn dates(&self) -> &TaskDates {
+        &self.dates
     }
 }
 
@@ -264,7 +282,7 @@ impl TaskAttributes {
 pub struct TaskAttributesBuilder {
     tags: Box<[Tag]>,
     metadata: TaskMetadata,
-    schedule: TaskSchedule,
+    dates: TaskDates,
 }
 
 impl TaskAttributesBuilder {
@@ -282,39 +300,53 @@ impl TaskAttributesBuilder {
         self
     }
 
-    /// Sets the task schedule timestamps.
+    /// Sets the task date fields.
     #[inline]
     #[must_use]
-    pub fn schedule(mut self, schedule: TaskSchedule) -> Self {
-        self.schedule = schedule;
+    pub fn dates(mut self, dates: TaskDates) -> Self {
+        self.dates = dates;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.created = created_at;
+        self.dates.created = created_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.due = due_at;
+        self.dates.due = due_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.reminder = reminder_at;
+        self.dates.reminder = reminder_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
-        self.schedule.completed = completed_at;
+        self.dates.completed = completed_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn start_at(mut self, start_at: Option<TaskTimestamp>) -> Self {
+        self.dates.start = start_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn scheduled_at(mut self, scheduled_at: Option<TaskTimestamp>) -> Self {
+        self.dates.scheduled = scheduled_at;
         self
     }
 
@@ -324,22 +356,24 @@ impl TaskAttributesBuilder {
         TaskAttributes {
             tags: self.tags,
             metadata: self.metadata,
-            schedule: self.schedule,
+            dates: self.dates,
         }
     }
 }
 
-/// Task schedule timestamps.
+/// Task date fields.
 #[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct TaskSchedule {
+pub struct TaskDates {
     created: Option<TaskTimestamp>,
     due: Option<TaskTimestamp>,
     reminder: Option<TaskTimestamp>,
     completed: Option<TaskTimestamp>,
+    start: Option<TaskTimestamp>,
+    scheduled: Option<TaskTimestamp>,
 }
 
-impl TaskSchedule {
+impl TaskDates {
     #[inline]
     #[must_use]
     pub const fn created(&self) -> Option<TaskTimestamp> {
@@ -363,53 +397,57 @@ impl TaskSchedule {
     pub const fn completed(&self) -> Option<TaskTimestamp> {
         self.completed
     }
+
+    #[inline]
+    #[must_use]
+    pub const fn start(&self) -> Option<TaskTimestamp> {
+        self.start
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn scheduled(&self) -> Option<TaskTimestamp> {
+        self.scheduled
+    }
 }
 
-/// Validated task text content.
+/// Task text with raw and cleaned variants.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct TaskText(Box<str>);
+pub struct TaskText {
+    raw: Box<str>,
+    clean: Box<str>,
+}
 
 impl TaskText {
     /// Creates a validated task text value.
     ///
     /// # Errors
     ///
-    /// Returns [`TaskError::EmptyText`] if the text is empty.
+    /// Returns [`TaskError::EmptyText`] if the cleaned text is empty.
     #[inline]
-    pub fn try_new(value: &str) -> Result<Self, TaskError> {
-        if value.trim().is_empty() {
+    pub fn try_new(raw: Box<str>, clean: Box<str>) -> Result<Self, TaskError> {
+        if clean.trim().is_empty() {
             return Err(TaskError::EmptyText);
         }
-        Self::try_from(value)
+        Ok(Self {
+            raw,
+            clean,
+        })
     }
 
-    /// Returns the underlying text as a string slice.
+    /// Returns the raw task text.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn raw(&self) -> &str {
+        &self.raw
     }
-}
 
-impl TryFrom<Box<str>> for TaskText {
-    type Error = TaskError;
-
+    /// Returns the cleaned task text.
     #[inline]
-    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
-        if value.trim().is_empty() {
-            return Err(TaskError::EmptyText);
-        }
-        Ok(Self(value))
-    }
-}
-
-impl TryFrom<&str> for TaskText {
-    type Error = TaskError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_from(Box::<str>::from(value))
+    #[must_use]
+    pub fn clean(&self) -> &str {
+        &self.clean
     }
 }
 
@@ -819,14 +857,10 @@ impl<'spec> TaskBuilder<'spec> {
         }
     }
 
-    pub fn promote_from_raw(
+    pub fn promote_from_payload(
         &self,
-        raw: &RawTask<'_>,
-    ) -> Result<Option<Task>, NoteError> {
-        if !self.spec.enabled {
-            return Ok(None);
-        }
-
+        raw: &RawTaskPayload<'_>,
+    ) -> Result<Task, NoteError> {
         let mut tags = Vec::with_capacity(raw.tags.len());
         for raw_tag in &raw.tags {
             if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
@@ -834,10 +868,6 @@ impl<'spec> TaskBuilder<'spec> {
             }
         }
         let tags = tags.into_boxed_slice();
-
-        if !self.should_promote_from_tags(&tags) {
-            return Ok(None);
-        }
 
         let symbol = raw.task_marker.marker();
         let status = self
@@ -849,21 +879,12 @@ impl<'spec> TaskBuilder<'spec> {
             })?
             .clone();
 
-        let text = self.extract_clean_text(raw.text.as_ref())?;
-        let parsed = self.parse_inline_fields(&raw.inline_fields)?;
+        let clean = self.extract_clean_text(raw.text_full.as_ref())?;
+        let parsed = self.parse_task_fields(&raw.fields)?;
         let attributes = parsed.into_attributes(tags);
 
-        Task::try_new(status, text, raw.range, attributes)
-            .map(Some)
-            .map_err(Into::into)
-    }
-
-    fn should_promote_from_tags(&self, tags: &[Tag]) -> bool {
-        self.spec.promotion_tags.iter().any(|config_tag| {
-            let config_tag_path =
-                config_tag.strip_prefix('#').unwrap_or(config_tag);
-            tags.iter().any(|tag| config_tag_path == tag.full_path())
-        })
+        let text = TaskText::try_new(raw.text_full.as_ref().into(), clean)?;
+        Task::try_new(status, text, raw.range, attributes).map_err(Into::into)
     }
 
     fn extract_clean_text(
@@ -903,17 +924,17 @@ impl<'spec> TaskBuilder<'spec> {
         Ok(text.into())
     }
 
-    fn parse_inline_fields(
+    fn parse_task_fields(
         &self,
-        inline_fields: &[RawInlineField<'_>],
+        fields: &RawTaskFields<'_>,
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
-        for pair in inline_fields {
+        for field in &fields.fields {
             state.handle_any_inline_field(
                 self.spec,
-                pair.key.as_ref(),
-                pair.value.as_ref(),
+                field.key.as_ref(),
+                field.value.as_ref(),
             )?;
         }
 
@@ -998,6 +1019,8 @@ struct TemporalSlots {
     due: Option<TaskTimestamp>,
     reminder: Option<TaskTimestamp>,
     completed: Option<TaskTimestamp>,
+    start: Option<TaskTimestamp>,
+    scheduled: Option<TaskTimestamp>,
 }
 
 impl TemporalSlots {
@@ -1014,7 +1037,8 @@ impl TemporalSlots {
             DateSlot::Due => self.due,
             DateSlot::Reminder => self.reminder,
             DateSlot::Completed => self.completed,
-            DateSlot::Start | DateSlot::Scheduled => None, /* Not yet supported in TaskSchedule */
+            DateSlot::Start => self.start,
+            DateSlot::Scheduled => self.scheduled,
         }
     }
 
@@ -1024,8 +1048,8 @@ impl TemporalSlots {
             DateSlot::Due => self.due = Some(value),
             DateSlot::Reminder => self.reminder = Some(value),
             DateSlot::Completed => self.completed = Some(value),
-            DateSlot::Start | DateSlot::Scheduled => {} /* Not yet supported
-                                                         * in TaskSchedule */
+            DateSlot::Start => self.start = Some(value),
+            DateSlot::Scheduled => self.scheduled = Some(value),
         }
     }
 
@@ -1038,6 +1062,8 @@ impl TemporalSlots {
             .due_at(self.due)
             .reminder_at(self.reminder)
             .completed_at(self.completed)
+            .start_at(self.start)
+            .scheduled_at(self.scheduled)
     }
 }
 
@@ -1067,55 +1093,20 @@ impl InlineFieldState {
             return Ok(());
         }
 
-        // 2. Try default emoji mappings
-        if self.handle_default_emoji(key, value)? {
+        // 2. Try configured emoji mappings
+        if spec.use_emoji
+            && let Some((slot, format, keyword)) =
+                Self::match_date_spec_by_emoji(spec, key)
+        {
+            if self.slots.get(slot).is_none() {
+                let parsed = Self::parse_date_str(value, keyword, format)?;
+                self.slots.set(slot, parsed);
+            }
             return Ok(());
         }
 
         // 3. Handle as standard metadata
         Self::insert_metadata(spec, &mut self.metadata, key, value)
-    }
-
-    fn handle_default_emoji(
-        &mut self,
-        emoji: &str,
-        value: &str,
-    ) -> Result<bool, NoteError> {
-        match () {
-            () if Self::emoji_matches(emoji, '\u{2795}') => {
-                self.fill_default_slot_value(
-                    DateSlot::Created,
-                    "created",
-                    value,
-                )?;
-                Ok(true)
-            }
-            () if Self::emoji_matches(emoji, '\u{1f4c5}') => {
-                self.fill_default_slot_value(DateSlot::Due, "due", value)?;
-                Ok(true)
-            }
-            () if Self::emoji_matches(emoji, '\u{2705}') => {
-                self.fill_default_slot_value(
-                    DateSlot::Completed,
-                    "completed",
-                    value,
-                )?;
-                Ok(true)
-            }
-            () if Self::emoji_matches(emoji, '\u{23f3}') => {
-                self.fill_default_metadata_value("scheduled", value)?;
-                Ok(true)
-            }
-            () if Self::emoji_matches(emoji, '\u{1f6eb}') => {
-                self.fill_default_metadata_value("start", value)?;
-                Ok(true)
-            }
-            () if Self::emoji_matches(emoji, '\u{274c}') => {
-                self.fill_default_metadata_value("cancelled", value)?;
-                Ok(true)
-            }
-            () => Ok(false),
-        }
     }
 
     fn finish(self) -> ParsedInlineFields {
@@ -1197,6 +1188,41 @@ impl InlineFieldState {
         Some((slot, format.as_str(), *emoji))
     }
 
+    fn match_date_spec_by_emoji<'spec>(
+        spec: &'spec TaskConfigSpec,
+        emoji: &str,
+    ) -> Option<(DateSlot, &'spec str, &'spec str)> {
+        use crate::config::task::TemporalSlot;
+
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Borrowed tuple destructuring keeps lookups concise"
+        )]
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Order is irrelevant for emoji lookup"
+        )]
+        for (keyword, value) in &spec.temporal_specs {
+            let (slot_enum, format, maybe_emoji) = value;
+            let Some(spec_emoji) = *maybe_emoji else {
+                continue;
+            };
+            if !Self::emoji_matches(emoji, spec_emoji) {
+                continue;
+            }
+            let slot = match *slot_enum {
+                TemporalSlot::Created => DateSlot::Created,
+                TemporalSlot::Due => DateSlot::Due,
+                TemporalSlot::Reminder => DateSlot::Reminder,
+                TemporalSlot::Completed => DateSlot::Completed,
+                TemporalSlot::Start => DateSlot::Start,
+                TemporalSlot::Scheduled => DateSlot::Scheduled,
+            };
+            return Some((slot, format.as_str(), keyword.as_ref()));
+        }
+        None
+    }
+
     fn insert_metadata(
         spec: &TaskConfigSpec,
         metadata: &mut TaskMetadata,
@@ -1254,78 +1280,10 @@ impl InlineFieldState {
         Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
     }
 
-    fn parse_default_date(
-        raw_value: &str,
-        field: &str,
-    ) -> Result<TaskTimestamp, NoteError> {
-        let formats = ["%Y-%m-%d%H:%M", "%Y-%m-%d %H:%M"];
-        for format in formats {
-            if let Ok(naive) =
-                chrono::NaiveDateTime::parse_from_str(raw_value, format)
-            {
-                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-            }
-        }
-
-        let date = chrono::NaiveDate::parse_from_str(raw_value, "%Y-%m-%d")
-            .map_err(|_error| TaskError::InvalidDate {
-                keyword: field.into(),
-                raw: raw_value.into(),
-                reason: "failed to parse date string",
-            })?;
-        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            TaskError::InvalidDate {
-                keyword: field.into(),
-                raw: raw_value.into(),
-                reason: "invalid time",
-            }
-        })?;
-        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-    }
-
     fn emoji_matches(token: &str, emoji: char) -> bool {
         let mut chars = token.chars();
         matches!(chars.next(), Some(first) if first == emoji)
             && chars.next().is_none()
-    }
-
-    fn fill_default_slot_value(
-        &mut self,
-        slot: DateSlot,
-        label: &str,
-        value: &str,
-    ) -> Result<(), NoteError> {
-        if self.slots.get(slot).is_some() {
-            return Ok(());
-        }
-        let parsed = Self::parse_default_date(value, label)?;
-        self.slots.set(slot, parsed);
-        Ok(())
-    }
-
-    fn fill_default_metadata_value(
-        &mut self,
-        key: &str,
-        value: &str,
-    ) -> Result<(), NoteError> {
-        if self.metadata.get(key).is_some() {
-            return Ok(());
-        }
-        let parsed = Self::parse_default_date(value, key)?;
-        let key = TaskFieldKey::try_new(key)?;
-
-        #[expect(
-            clippy::unwrap_used,
-            reason = "Default offsets and timestamps are guaranteed valid"
-        )]
-        let dt = Utc
-            .timestamp_opt(parsed.as_i64(), 0)
-            .single()
-            .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().unwrap())
-            .with_timezone(&FixedOffset::east_opt(0).unwrap());
-
-        self.metadata.insert(key, FieldValue::DateTime(dt.into()));
-        Ok(())
     }
 }
 
@@ -1337,7 +1295,10 @@ mod tests {
     use crate::{
         config::task::{TaskConfigSpec, TemporalSlot},
         note::{
-            raw::{RawInlineField, RawTag, RawTask, RawTaskMarker},
+            raw::{
+                RawInlineField, RawTag, RawTaskFields, RawTaskMarker,
+                RawTaskPayload,
+            },
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -1351,6 +1312,10 @@ mod tests {
         temporal_specs.insert(
             "created".into(),
             (TemporalSlot::Created, "%Y-%m-%d".to_owned(), Some('\u{2795}')),
+        );
+        temporal_specs.insert(
+            "completed".into(),
+            (TemporalSlot::Completed, "%Y-%m-%d".to_owned(), Some('\u{2705}')),
         );
 
         TaskConfigSpec {
@@ -1367,18 +1332,14 @@ mod tests {
     }
 
     #[test]
-    fn promotes_only_when_task_tag_present() {
+    fn promoted_task_strips_promotion_tags() {
         let spec = task_spec_fixture();
 
-        let promoted = promote_task("#task Do work", &spec, &[])
-            .expect("task should be promoted");
+        let promoted = promote_task("#task Do work", &spec, &[]);
         assert_eq!(promoted.text(), "Do work");
 
-        let skipped = promote_task("Do work", &spec, &[]);
-        assert!(skipped.is_none());
-
-        let skipped_partial = promote_task("#tasker Do work", &spec, &[]);
-        assert!(skipped_partial.is_none());
+        let untagged = promote_task("Do work", &spec, &[]);
+        assert_eq!(untagged.text(), "Do work");
     }
 
     #[test]
@@ -1406,8 +1367,7 @@ mod tests {
             "#task Review PR [priority:: 2] [project:: lithos]",
             &spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -1418,8 +1378,7 @@ mod tests {
     fn promoted_checkbox_collects_hierarchical_tags() {
         let spec = task_spec_fixture();
         let task =
-            promote_task("#task Fix #work/project/urgent issue", &spec, &[])
-                .expect("task should be promoted");
+            promote_task("#task Fix #work/project/urgent issue", &spec, &[]);
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert!(
@@ -1431,8 +1390,7 @@ mod tests {
     #[test]
     fn promoted_checkbox_ignores_invalid_tags() {
         let spec = task_spec_fixture();
-        let task = promote_task("#task Review #bad/ tags", &spec, &[])
-            .expect("task should be promoted");
+        let task = promote_task("#task Review #bad/ tags", &spec, &[]);
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert_eq!(task.tags().count(), 1);
@@ -1446,8 +1404,7 @@ mod tests {
              2024-12-31]",
             &spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         if let Some(created_at) = task.created_at() {
             assert_eq!(created_at.as_i64(), 1_704_067_200);
@@ -1489,8 +1446,7 @@ mod tests {
             "#task Review PR (priority:: 2) (project:: lithos)",
             &spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -1506,8 +1462,7 @@ mod tests {
              \u{2705}2025-01-01",
             &spec,
             &emojis,
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(
             task.created_at().map(|ts| ts.as_i64()),
@@ -1524,57 +1479,17 @@ mod tests {
         promoted_text: &str,
         spec: &TaskConfigSpec,
         emoji_markers: &[char],
-    ) -> Option<Task> {
-        let raw = raw_task_from_text(promoted_text, emoji_markers);
-
-        let mut task_tags = Vec::new();
-        let mut task_fields = Vec::new();
-
-        // NoteScanner logic duplicated for test shim
-        let scanner = NoteScanner::new(emoji_markers.to_vec());
-        let artifacts = scanner
-            .scan_block(promoted_text, SourceByteOffset::new(0))
-            .unwrap();
-
-        for artifact in &artifacts {
-            match *artifact {
-                ScannedArtifact::Tag {
-                    text: tag_text,
-                    position,
-                } => task_tags.push(RawTag::new(tag_text.into(), position)),
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    position,
-                } => task_fields.push(RawInlineField::new(
-                    key.into(),
-                    value.into(),
-                    position,
-                )),
-                ScannedArtifact::BlockRef {
-                    ..
-                }
-                | ScannedArtifact::TaskMarker {
-                    ..
-                } => {}
-            }
-        }
-
-        let raw = RawTask::new(
-            std::sync::Arc::new(spec.clone()),
-            raw.task_marker,
-            raw.text,
-            task_tags,
-            task_fields,
-            raw.range,
-        );
-        Option::<Task>::try_from(raw).expect("task conversion")
+    ) -> Task {
+        let raw = raw_task_payload_from_text(promoted_text, emoji_markers);
+        TaskBuilder::new(spec)
+            .promote_from_payload(&raw)
+            .expect("task conversion")
     }
 
-    fn raw_task_from_text<'source>(
+    fn raw_task_payload_from_text<'source>(
         raw_text: &'source str,
         emoji_markers: &[char],
-    ) -> RawTask<'source> {
+    ) -> RawTaskPayload<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -1611,12 +1526,11 @@ mod tests {
             }
         }
 
-        RawTask::new(
-            std::sync::Arc::new(task_spec_fixture()),
-            RawTaskMarker::Unchecked(' '),
+        RawTaskPayload::new(
+            RawTaskFields::new(inline_fields),
             raw_text.into(),
+            RawTaskMarker::Unchecked(' '),
             tags,
-            inline_fields,
             range,
         )
     }

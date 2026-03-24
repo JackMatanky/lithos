@@ -22,9 +22,10 @@ use crate::{
         position::{SourceByteOffset, SourceByteRange},
         raw::{
             RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
-            RawInlineField, RawLink, RawLinkStyle, RawListDepth, RawListItem,
-            RawListType, RawNote, RawReferenceLink, RawSection, RawSectionKind,
-            RawTag, RawTask, RawTaskMarker,
+            RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
+            RawListItem, RawListKind, RawNote, RawReferenceLink, RawSection,
+            RawSectionKind, RawTag, RawTaskFields, RawTaskMarker,
+            RawTaskPayload,
         },
         scanner::{NoteScanner, ScannedArtifact},
     },
@@ -62,8 +63,12 @@ impl MarkdownParser {
         frontmatter_spec: &Arc<FrontmatterConfigSpec>,
         task_spec: &Arc<crate::config::task::TaskConfigSpec>,
     ) -> Result<RawNote<'source>, NoteIngestError> {
-        let scanner =
-            NoteScanner::new(task_spec.as_ref().emoji_markers.as_ref());
+        let emoji_markers = if task_spec.use_emoji {
+            task_spec.emoji_markers.to_vec()
+        } else {
+            Vec::new()
+        };
+        let scanner = NoteScanner::new(emoji_markers);
         let mut pool = StringPool::new();
 
         let _source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
@@ -83,13 +88,14 @@ impl MarkdownParser {
         let mut sections = Vec::with_capacity(32);
         let mut links = Vec::with_capacity(32);
         let mut tags = Vec::with_capacity(16);
+        let mut lists = Vec::with_capacity(8);
         let mut list_items = Vec::with_capacity(32);
-        let mut tasks = Vec::with_capacity(16);
         let mut inline_fields = Vec::with_capacity(16);
         let mut frontmatter = None;
 
         let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
-        let mut list_stack: Vec<RawListType> = Vec::with_capacity(8);
+        let mut list_stack: Vec<RawListKind> = Vec::with_capacity(8);
+        let mut list_contexts: Vec<ListContext> = Vec::with_capacity(8);
         let mut open_item_by_depth: Vec<SourceByteOffset> =
             Vec::with_capacity(16);
 
@@ -143,8 +149,10 @@ impl MarkdownParser {
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
+                        &mut list_contexts,
                         &mut current_link,
                         &mut open_item_by_depth,
+                        task_spec,
                         &mut pool,
                     );
                 }
@@ -155,6 +163,7 @@ impl MarkdownParser {
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
+                        &mut list_contexts,
                         &mut current_link,
                         &mut links,
                         &mut sections,
@@ -164,7 +173,7 @@ impl MarkdownParser {
                         markdown,
                         &mut open_item_by_depth,
                         &mut list_items,
-                        &mut tasks,
+                        &mut lists,
                         &mut block_refs,
                         &scanner,
                         task_spec,
@@ -241,8 +250,8 @@ impl MarkdownParser {
             sections,
             links,
             tags,
+            lists,
             list_items,
-            tasks,
             inline_fields,
             reference_links,
             block_refs,
@@ -286,9 +295,11 @@ impl MarkdownParser {
         start_pos: SourceByteOffset,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
-        list_stack: &mut Vec<RawListType>,
+        list_stack: &mut Vec<RawListKind>,
+        list_contexts: &mut Vec<ListContext>,
         current_link: &mut Option<LinkFrame>,
         open_item_by_depth: &mut Vec<SourceByteOffset>,
+        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) {
         let kind = match tag {
@@ -299,11 +310,13 @@ impl MarkdownParser {
             pulldown_cmark::Tag::Paragraph => Some(BlockKind::Paragraph),
             pulldown_cmark::Tag::Item => Some(BlockKind::ListItem),
             pulldown_cmark::Tag::List(list_start) => {
-                let list_type = match list_start {
-                    Some(start) => RawListType::Ordered(start),
-                    None => RawListType::Unordered,
+                let list_kind = match list_start {
+                    Some(start) => RawListKind::Ordered(start),
+                    None => RawListKind::Unordered,
                 };
-                list_stack.push(list_type);
+                list_stack.push(list_kind);
+                list_contexts
+                    .push(ListContext::new(list_kind, Arc::clone(task_spec)));
                 Some(BlockKind::List)
             }
             pulldown_cmark::Tag::BlockQuote(_) => Some(BlockKind::BlockQuote),
@@ -396,7 +409,8 @@ impl MarkdownParser {
         range: std::ops::Range<usize>,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
-        list_stack: &mut Vec<RawListType>,
+        list_stack: &mut Vec<RawListKind>,
+        list_contexts: &mut Vec<ListContext>,
         current_link: &mut Option<LinkFrame>,
         links: &mut Vec<RawLink<'source>>,
         sections: &mut Vec<RawSection>,
@@ -406,7 +420,7 @@ impl MarkdownParser {
         markdown: &'source str,
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
-        tasks: &mut Vec<RawTask<'source>>,
+        lists: &mut Vec<RawList>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
         scanner: &NoteScanner,
         task_spec: &Arc<crate::config::task::TaskConfigSpec>,
@@ -515,7 +529,7 @@ impl MarkdownParser {
                                 list_stack,
                                 open_item_by_depth,
                                 list_items,
-                                tasks,
+                                list_contexts,
                                 block_refs,
                                 scanner,
                                 task_spec,
@@ -523,6 +537,12 @@ impl MarkdownParser {
                         }
                         BlockKind::List => {
                             list_stack.pop();
+                            Self::finalize_list(
+                                &block,
+                                block_range,
+                                list_contexts,
+                                lists,
+                            );
                         }
                         BlockKind::BlockQuote => {
                             sections.push(RawSection::new(
@@ -753,6 +773,32 @@ impl MarkdownParser {
         Ok(scan_result)
     }
 
+    fn should_promote_task(
+        spec: &crate::config::task::TaskConfigSpec,
+        tags: &[RawTag<'_>],
+    ) -> bool {
+        if !spec.enabled {
+            return false;
+        }
+        if spec.promotion_tags.is_empty() {
+            return true;
+        }
+        spec.promotion_tags.iter().any(|config_tag| {
+            let config_tag = config_tag.strip_prefix('#').unwrap_or(config_tag);
+            tags.iter().any(|tag| {
+                let raw = tag.value.as_ref();
+                let raw = raw.strip_prefix('#').unwrap_or(raw);
+                raw == config_tag
+            })
+        })
+    }
+
+    fn task_fields_from_inline<'source>(
+        inline_fields: &[RawInlineField<'source>],
+    ) -> Vec<RawInlineField<'source>> {
+        inline_fields.to_vec()
+    }
+
     fn is_scannable_position(
         position: SourceByteOffset,
         scannable_ranges: &[std::ops::Range<usize>],
@@ -803,9 +849,38 @@ impl MarkdownParser {
         Ok(())
     }
 
+    fn finalize_list(
+        block: &ActiveBlock,
+        block_range: SourceByteRange,
+        list_contexts: &mut Vec<ListContext>,
+        lists: &mut Vec<RawList>,
+    ) {
+        let Some(context) = list_contexts.pop() else {
+            return;
+        };
+        let list_depth = if block.depth <= 1 {
+            RawListDepth::Root
+        } else {
+            RawListDepth::Nested(
+                u8::try_from(block.depth.saturating_sub(1)).unwrap_or(u8::MAX),
+            )
+        };
+        lists.push(RawList::new(
+            context.kind,
+            list_depth,
+            block_range,
+            context.task_spec,
+            context.item_positions,
+        ));
+    }
+
     #[expect(
         clippy::too_many_arguments,
         reason = "Finalizing a list item requires full state context"
+    )]
+    #[expect(
+        clippy::ptr_arg,
+        reason = "List contexts are a mutable stack in this parser"
     )]
     fn finalize_list_item<'source>(
         block: &ActiveBlock,
@@ -814,10 +889,10 @@ impl MarkdownParser {
         sections: &mut Vec<RawSection>,
         tags: &mut Vec<RawTag<'source>>,
         inline_fields: &mut Vec<RawInlineField<'source>>,
-        list_stack: &[RawListType],
+        list_stack: &[RawListKind],
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
-        tasks: &mut Vec<RawTask<'source>>,
+        list_contexts: &mut Vec<ListContext>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
         scanner: &NoteScanner,
         task_spec: &Arc<crate::config::task::TaskConfigSpec>,
@@ -835,8 +910,8 @@ impl MarkdownParser {
             scanner,
         )?;
 
-        let list_type =
-            list_stack.last().copied().unwrap_or(RawListType::Unordered);
+        let list_kind =
+            list_stack.last().copied().unwrap_or(RawListKind::Unordered);
         let list_depth = if block.depth <= 1 {
             RawListDepth::Root
         } else {
@@ -858,37 +933,43 @@ impl MarkdownParser {
         };
         let raw_text = block.full_text.trim().to_owned();
 
-        if let Some(tk) = task_marker {
-            list_items.push(RawListItem::new(
-                list_type,
-                list_depth,
+        if let Some(context) = list_contexts.last_mut() {
+            context.item_positions.push(block.start_offset);
+        }
+
+        let mut task_payload = None;
+        let mut attach_to_list = true;
+
+        if let Some(tk) = task_marker
+            && Self::should_promote_task(task_spec, &scan_result.tags)
+        {
+            let fields =
+                Self::task_fields_from_inline(&scan_result.inline_fields);
+            task_payload = Some(RawTaskPayload::new(
+                RawTaskFields::new(fields),
                 raw_text.clone().into(),
-                Some(tk),
-                block_range,
-                parent_pos,
-            ));
-            tasks.push(RawTask::new(
-                Arc::clone(task_spec),
                 tk,
-                raw_text.into(),
-                scan_result.tags,
-                scan_result.inline_fields,
+                scan_result.tags.clone(),
                 block_range,
             ));
-            block_refs.extend(scan_result.block_refs);
-        } else {
-            list_items.push(RawListItem::new(
-                list_type,
-                list_depth,
-                raw_text.into(),
-                None,
-                block_range,
-                parent_pos,
-            ));
+            attach_to_list = false;
+        }
+
+        list_items.push(RawListItem::new(
+            list_kind,
+            list_depth,
+            raw_text.into(),
+            task_marker,
+            block_range,
+            parent_pos,
+            task_payload,
+        ));
+
+        if attach_to_list {
             tags.extend(scan_result.tags);
             inline_fields.extend(scan_result.inline_fields);
-            block_refs.extend(scan_result.block_refs);
         }
+        block_refs.extend(scan_result.block_refs);
         Ok(())
     }
 }
@@ -900,6 +981,25 @@ struct ActiveBlock {
     full_text: String,
     scannable_ranges: Vec<std::ops::Range<usize>>,
     task_marker: Option<bool>,
+}
+
+struct ListContext {
+    kind: RawListKind,
+    task_spec: Arc<crate::config::task::TaskConfigSpec>,
+    item_positions: Vec<SourceByteOffset>,
+}
+
+impl ListContext {
+    fn new(
+        kind: RawListKind,
+        task_spec: Arc<crate::config::task::TaskConfigSpec>,
+    ) -> Self {
+        Self {
+            kind,
+            task_spec,
+            item_positions: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]

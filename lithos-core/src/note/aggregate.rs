@@ -23,15 +23,15 @@ use crate::note::{
     heading::Heading,
     inline_fields::InlineField,
     link::{FrontmatterLink, Link, ReferenceLink},
-    list::ListItemEntry,
+    list::ListItem,
     paths::NotePath,
     raw::{
-        RawBlockRef, RawHeading, RawInlineField, RawLink, RawListItem, RawNote,
-        RawReferenceLink, RawSection, RawTag, RawTask,
+        RawBlockRef, RawHeading, RawInlineField, RawLink, RawList, RawListItem,
+        RawNote, RawReferenceLink, RawSection, RawTag,
     },
     structure::{BlockRef, Section},
     tag::Tag,
-    task::Task,
+    task::{Task, TaskBuilder, TaskRef},
     value::FieldValue,
 };
 
@@ -145,10 +145,12 @@ pub struct Note {
     sections: Box<[Section]>,
     links: Box<[Link]>,
     block_refs: Box<[BlockRef]>,
-    list_items: Box<[ListItemEntry]>,
+    list_items: Box<[ListItem]>,
     tasks: Box<[Task]>,
     inline_fields: Box<[InlineField]>,
 }
+
+type ListItemsAndTasks = (Vec<ListItem>, Vec<Task>);
 
 impl Note {
     /// Construct normalized facts from ingestion output.
@@ -197,7 +199,7 @@ impl Note {
         Sections: Into<Box<[Section]>>,
         Links: Into<Box<[Link]>>,
         BlockRefs: Into<Box<[BlockRef]>>,
-        ListItems: Into<Box<[ListItemEntry]>>,
+        ListItems: Into<Box<[ListItem]>>,
         Tasks: Into<Box<[Task]>>,
         IFields: Into<Box<[InlineField]>>,
     {
@@ -360,7 +362,7 @@ impl Note {
     /// relationships.
     #[inline]
     #[must_use]
-    pub fn list_items(&self) -> &[ListItemEntry] {
+    pub fn list_items(&self) -> &[ListItem] {
         &self.list_items
     }
 
@@ -467,7 +469,7 @@ impl Note {
 
     fn collect_tags_from_raw(
         raw_tags: &[RawTag<'_>],
-        raw_tasks: &[RawTask<'_>],
+        tasks: &[Task],
         frontmatter: Option<&Frontmatter>,
     ) -> Vec<Tag> {
         let mut tags = Vec::new();
@@ -476,11 +478,9 @@ impl Note {
                 Note::add_tag(&mut tags, tag);
             }
         }
-        for raw_task in raw_tasks {
-            for raw_tag in &raw_task.tags {
-                if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
-                    Note::add_tag(&mut tags, tag);
-                }
+        for task in tasks {
+            for tag in task.tags() {
+                Note::add_tag(&mut tags, tag.clone());
             }
         }
         if let Some(frontmatter) = frontmatter
@@ -536,45 +536,64 @@ impl Note {
         block_refs.into_iter().map(|raw| BlockRef::try_from(&raw)).collect()
     }
 
-    fn collect_list_items_from(
+    fn collect_list_items_and_tasks_from(
         list_items: Vec<RawListItem<'_>>,
-    ) -> Result<Vec<ListItemEntry>, NoteError> {
-        let mut list_items = list_items
-            .into_iter()
-            .map(|raw| ListItemEntry::try_from(&raw))
-            .collect::<Result<Vec<_>, _>>()?;
-        list_items.sort_by_key(ListItemEntry::position);
-        Ok(list_items)
+        lists: &[RawList],
+    ) -> Result<ListItemsAndTasks, NoteError> {
+        let mut spec_by_position =
+            std::collections::HashMap::with_capacity(list_items.len());
+        for list in lists {
+            for position in &list.item_positions {
+                spec_by_position
+                    .insert(*position, std::sync::Arc::clone(&list.task_spec));
+            }
+        }
+
+        let mut items = Vec::with_capacity(list_items.len());
+        let mut tasks = Vec::new();
+
+        for raw in list_items {
+            let mut item = ListItem::try_from(&raw)?;
+
+            if let Some(payload) = raw.task_payload.as_ref() {
+                let spec = spec_by_position
+                    .get(&raw.range.start())
+                    .or_else(|| spec_by_position.values().next());
+                if let Some(spec) = spec {
+                    let task = TaskBuilder::new(spec.as_ref())
+                        .promote_from_payload(payload)?;
+                    item.set_task_ref(TaskRef::new(task.range()));
+                    tasks.push(task);
+                }
+            }
+
+            items.push(item);
+        }
+
+        items.sort_by_key(ListItem::position);
+        tasks.sort_by_key(Task::position);
+
+        Ok((items, tasks))
     }
 
     fn collect_inline_fields_from(
         raw_inline_fields: Vec<RawInlineField<'_>>,
-        raw_tasks: &[RawTask<'_>],
+        list_items: &[RawListItem<'_>],
     ) -> Vec<InlineField> {
         let mut inline_fields = raw_inline_fields
             .into_iter()
             .map(|raw| InlineField::from_raw(&raw))
             .collect::<Vec<_>>();
 
-        for raw_task in raw_tasks {
-            inline_fields.extend(
-                raw_task.inline_fields.iter().map(InlineField::from_raw),
-            );
+        for item in list_items {
+            if let Some(payload) = item.task_payload.as_ref() {
+                inline_fields.extend(
+                    payload.fields.fields.iter().map(InlineField::from_raw),
+                );
+            }
         }
 
         inline_fields
-    }
-
-    fn collect_tasks_from(
-        raw_tasks: Vec<RawTask<'_>>,
-    ) -> Result<Vec<Task>, NoteError> {
-        let mut tasks = Vec::with_capacity(raw_tasks.len());
-        for raw_task in raw_tasks {
-            if let Some(task) = Option::<Task>::try_from(raw_task)? {
-                tasks.push(task);
-            }
-        }
-        Ok(tasks)
     }
 }
 
@@ -596,17 +615,22 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
             sections,
             links,
             tags: raw_tags,
+            lists,
             list_items,
-            tasks: raw_tasks,
             inline_fields: raw_inline_fields,
             reference_links,
             block_refs,
+            ..
         } = raw;
 
         let frontmatter = frontmatter.map(Frontmatter::try_from).transpose()?;
+        let inline_fields =
+            Note::collect_inline_fields_from(raw_inline_fields, &list_items);
+        let (list_items, tasks) =
+            Note::collect_list_items_and_tasks_from(list_items, &lists)?;
         let tags = Note::collect_tags_from_raw(
             &raw_tags,
-            &raw_tasks,
+            &tasks,
             frontmatter.as_ref(),
         );
         let frontmatter_links =
@@ -617,10 +641,6 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
         let sections = Note::collect_sections_from(sections)?;
         let links = Note::collect_links_from(links)?;
         let block_refs = Note::collect_block_refs_from(block_refs)?;
-        let list_items = Note::collect_list_items_from(list_items)?;
-        let inline_fields =
-            Note::collect_inline_fields_from(raw_inline_fields, &raw_tasks);
-        let tasks = Note::collect_tasks_from(raw_tasks)?;
 
         Ok(Self::from_parts(
             id,
@@ -658,25 +678,24 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawInlineField, RawTag, RawTask, RawTaskMarker},
+            raw::{
+                RawInlineField, RawTag, RawTaskFields, RawTaskMarker,
+                RawTaskPayload,
+            },
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
 
     #[test]
-    fn promotes_only_when_task_tag_present() {
+    fn promoted_task_strips_promotion_tags() {
         let config = test_config_with_task_tag();
         let task_spec = config.to_task_spec();
 
-        let promoted = promote_task("#task Do work", &task_spec, &[])
-            .expect("task should be promoted");
+        let promoted = promote_task("#task Do work", &task_spec, &[]);
         assert_eq!(promoted.text(), "Do work");
 
-        let skipped = promote_task("Do work", &task_spec, &[]);
-        assert!(skipped.is_none());
-
-        let skipped_partial = promote_task("#tasker Do work", &task_spec, &[]);
-        assert!(skipped_partial.is_none());
+        let untagged = promote_task("Do work", &task_spec, &[]);
+        assert_eq!(untagged.text(), "Do work");
     }
 
     #[test]
@@ -687,8 +706,7 @@ mod tests {
             "#task Review PR [priority:: 2] [project:: lithos]",
             &task_spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -703,8 +721,7 @@ mod tests {
             "#task Fix #work/project/urgent issue",
             &task_spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert!(
@@ -717,8 +734,7 @@ mod tests {
     fn promoted_checkbox_ignores_invalid_tags() {
         let config = test_config_with_task_tag();
         let task_spec = config.to_task_spec();
-        let task = promote_task("#task Review #bad/ tags", &task_spec, &[])
-            .expect("task should be promoted");
+        let task = promote_task("#task Review #bad/ tags", &task_spec, &[]);
 
         assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert_eq!(task.tags().count(), 1);
@@ -733,8 +749,7 @@ mod tests {
              2024-12-31]",
             &task_spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         if let Some(created_at) = task.created_at() {
             assert_eq!(created_at.as_i64(), 1_704_067_200);
@@ -759,8 +774,7 @@ mod tests {
             "#task Review PR (priority:: 2) (project:: lithos)",
             &task_spec,
             &[],
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -777,8 +791,7 @@ mod tests {
              \u{2705}2025-01-01",
             &task_spec,
             &emojis,
-        )
-        .expect("task should be promoted");
+        );
 
         assert_eq!(
             task.created_at().map(|ts| ts.as_i64()),
@@ -795,16 +808,17 @@ mod tests {
         promoted_text: &str,
         task_spec: &TaskConfigSpec,
         emoji_markers: &[char],
-    ) -> Option<Task> {
-        let raw = raw_task_from_text(promoted_text, emoji_markers, task_spec);
-        Option::<Task>::try_from(raw).expect("task conversion")
+    ) -> Task {
+        let raw = raw_task_payload_from_text(promoted_text, emoji_markers);
+        TaskBuilder::new(task_spec)
+            .promote_from_payload(&raw)
+            .expect("task conversion")
     }
 
-    fn raw_task_from_text<'source>(
+    fn raw_task_payload_from_text<'source>(
         raw_text: &'source str,
         emoji_markers: &[char],
-        task_spec: &TaskConfigSpec,
-    ) -> RawTask<'source> {
+    ) -> RawTaskPayload<'source> {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -841,12 +855,11 @@ mod tests {
             }
         }
 
-        RawTask::new(
-            std::sync::Arc::new(task_spec.clone()),
-            RawTaskMarker::Unchecked(' '),
+        RawTaskPayload::new(
+            RawTaskFields::new(inline_fields),
             raw_text.into(),
+            RawTaskMarker::Unchecked(' '),
             tags,
-            inline_fields,
             range,
         )
     }
@@ -865,7 +878,26 @@ mod tests {
     fn test_config_with_task_tag() -> Config {
         let raw = RawConfig {
             task: Some(RawTaskConfig {
+                use_emoji: Some(true),
                 task_tags: Some(vec!["#task".into()]),
+                dates: Some(crate::config::raw::RawTaskDates {
+                    created: Some(crate::config::raw::RawDateFieldSpec {
+                        keyword: String::from("created"),
+                        emoji: Some('\u{2795}'),
+                        format: String::from("%Y-%m-%d"),
+                    }),
+                    due: Some(crate::config::raw::RawDateFieldSpec {
+                        keyword: String::from("due"),
+                        emoji: Some('\u{1f4c5}'),
+                        format: String::from("%Y-%m-%d"),
+                    }),
+                    completed: Some(crate::config::raw::RawDateFieldSpec {
+                        keyword: String::from("completed"),
+                        emoji: Some('\u{2705}'),
+                        format: String::from("%Y-%m-%d"),
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
             ..Default::default()

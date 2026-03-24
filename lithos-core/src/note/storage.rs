@@ -1477,8 +1477,9 @@ mod tests {
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
             raw::{
-                RawFrontmatter, RawInlineField, RawNote, RawTag, RawTask,
-                RawTaskMarker,
+                RawFrontmatter, RawInlineField, RawList, RawListDepth,
+                RawListItem, RawListKind, RawNote, RawTag, RawTaskFields,
+                RawTaskMarker, RawTaskPayload,
             },
             scanner::{NoteScanner, ScannedArtifact},
         },
@@ -1633,14 +1634,31 @@ mod tests {
             }
         }
 
-        let tasks = vec![RawTask::new(
-            task_spec,
-            RawTaskMarker::Unchecked(' '),
+        let task_payload = RawTaskPayload::new(
+            RawTaskFields::new(task_fields),
             raw_task_text.into(),
+            RawTaskMarker::Unchecked(' '),
             task_tags,
-            task_fields,
             range,
-        )];
+        );
+        let list_kind = RawListKind::Unordered;
+        let list_depth = RawListDepth::Root;
+        let list_item = RawListItem::new(
+            list_kind,
+            list_depth,
+            raw_task_text.into(),
+            Some(RawTaskMarker::Unchecked(' ')),
+            range,
+            None,
+            Some(task_payload),
+        );
+        let list = RawList::new(
+            list_kind,
+            list_depth,
+            range,
+            std::sync::Arc::clone(&task_spec),
+            vec![range.start()],
+        );
         RawNote::new(
             path,
             "hash".into(),
@@ -1652,8 +1670,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
             tags,
-            Vec::new(),
-            tasks,
+            vec![list],
+            vec![list_item],
             Vec::new(),
             Vec::new(),
             Vec::new(),

@@ -12,11 +12,11 @@ use std::fmt;
 use super::{
     error::{ListError, NoteError},
     position::{SourceByteOffset, SourceByteRange},
-    task::TaskId,
+    task::TaskRef,
 };
 use crate::{
     config::task::StatusSymbol,
-    note::raw::{RawListDepth, RawListItem},
+    note::raw::{RawListDepth, RawListItem, RawListKind},
 };
 
 /// Markdown list structure.
@@ -27,8 +27,8 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::list::{List, ListDepth, ListType};
-/// let list = List::new(ListType::Unordered);
+/// # use lithos_core::note::list::{List, ListDepth, ListKind};
+/// let list = List::new(ListKind::Unordered);
 /// assert_eq!(list.depth(), ListDepth::root());
 /// ```
 #[derive(
@@ -37,7 +37,7 @@ use crate::{
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct List {
-    kind: ListType,
+    kind: ListKind,
     items: Vec<ListItem>,
     depth: ListDepth,
 }
@@ -46,9 +46,9 @@ impl List {
     /// Creates a new empty list with depth 0.
     #[inline]
     #[must_use]
-    pub fn new(list_type: ListType) -> Self {
+    pub fn new(list_kind: ListKind) -> Self {
         Self {
-            kind: list_type,
+            kind: list_kind,
             items: Vec::new(),
             depth: ListDepth::root(),
         }
@@ -57,9 +57,9 @@ impl List {
     /// Creates a new empty list with an explicit depth.
     #[inline]
     #[must_use]
-    pub fn with_depth(list_type: ListType, depth: ListDepth) -> Self {
+    pub fn with_depth(list_kind: ListKind, depth: ListDepth) -> Self {
         Self {
-            kind: list_type,
+            kind: list_kind,
             items: Vec::new(),
             depth,
         }
@@ -69,12 +69,12 @@ impl List {
     #[inline]
     #[must_use]
     pub fn with_capacity(
-        list_type: ListType,
+        list_kind: ListKind,
         depth: ListDepth,
         capacity: usize,
     ) -> Self {
         Self {
-            kind: list_type,
+            kind: list_kind,
             items: Vec::with_capacity(capacity),
             depth,
         }
@@ -89,7 +89,7 @@ impl List {
     /// Returns the list type.
     #[inline]
     #[must_use]
-    pub const fn list_type(&self) -> ListType {
+    pub const fn list_kind(&self) -> ListKind {
         self.kind
     }
 
@@ -202,13 +202,16 @@ impl<'list> Iterator for ListItems<'list> {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{list::ListItem, position::{SourceByteOffset, SourceByteRange}};
+/// # use lithos_core::note::{list::{ListDepth, ListItem, ListKind}, position::{SourceByteOffset, SourceByteRange}};
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(13);
 /// let range = SourceByteRange::new(start, end).expect("valid range");
 /// let item = ListItem::Plain {
 ///     text: "Buy groceries".into(),
 ///     range,
+///     list_kind: ListKind::Unordered,
+///     depth: ListDepth::root(),
+///     parent: None,
 /// };
 /// assert_eq!(item.text(), "Buy groceries");
 /// ```
@@ -224,6 +227,12 @@ pub enum ListItem {
         text: Box<str>,
         /// Source byte range in the note.
         range: SourceByteRange,
+        /// List kind (ordered or unordered).
+        list_kind: ListKind,
+        /// List nesting depth.
+        depth: ListDepth,
+        /// Parent list item position, if any.
+        parent: Option<SourceByteOffset>,
     },
     /// Checkbox list item.
     Checkbox {
@@ -233,8 +242,14 @@ pub enum ListItem {
         status: StatusSymbol,
         /// Source byte range in the note.
         range: SourceByteRange,
-        /// Task id if promoted to a Task.
-        task_id: Option<TaskId>,
+        /// List kind (ordered or unordered).
+        list_kind: ListKind,
+        /// List nesting depth.
+        depth: ListDepth,
+        /// Parent list item position, if any.
+        parent: Option<SourceByteOffset>,
+        /// Task reference if promoted to a Task.
+        task_ref: Option<TaskRef>,
     },
 }
 
@@ -283,6 +298,66 @@ impl ListItem {
         }
     }
 
+    /// Returns the list kind for this item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn list_kind(&self) -> ListKind {
+        match self {
+            Self::Plain {
+                list_kind,
+                ..
+            }
+            | Self::Checkbox {
+                list_kind,
+                ..
+            } => *list_kind,
+        }
+    }
+
+    /// Returns the list depth for this item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn depth(&self) -> ListDepth {
+        match self {
+            Self::Plain {
+                depth,
+                ..
+            }
+            | Self::Checkbox {
+                depth,
+                ..
+            } => *depth,
+        }
+    }
+
+    /// Returns the parent list item position, if any.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    pub const fn parent(&self) -> Option<SourceByteOffset> {
+        match self {
+            Self::Plain {
+                parent,
+                ..
+            }
+            | Self::Checkbox {
+                parent,
+                ..
+            } => *parent,
+        }
+    }
+
     /// Returns the text content of this list item.
     #[inline]
     #[must_use]
@@ -322,46 +397,46 @@ impl ListItem {
         }
     }
 
-    /// Returns the task id if this checkbox was promoted.
+    /// Returns the task reference if this checkbox was promoted.
     #[inline]
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics on &self"
     )]
-    pub const fn task_id(&self) -> Option<TaskId> {
+    pub const fn task_ref(&self) -> Option<TaskRef> {
         match self {
             Self::Checkbox {
-                task_id,
+                task_ref,
                 ..
-            } => *task_id,
+            } => *task_ref,
             Self::Plain {
                 ..
             } => None,
         }
     }
 
-    /// Sets the task id for a promoted checkbox item.
+    /// Sets the task reference for a promoted checkbox item.
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics on &mut self"
     )]
-    pub fn set_task_id(&mut self, task_id: TaskId) {
+    pub fn set_task_ref(&mut self, task_ref: TaskRef) {
         if let Self::Checkbox {
-            task_id: slot,
+            task_ref: slot,
             ..
         } = self
         {
-            *slot = Some(task_id);
+            *slot = Some(task_ref);
         }
     }
 
-    /// Clears the task id for a checkbox item.
+    /// Clears the task reference for a checkbox item.
     #[inline]
-    pub fn clear_task_id(&mut self) {
+    pub fn clear_task_ref(&mut self) {
         if let Self::Checkbox {
-            task_id: slot,
+            task_ref: slot,
             ..
         } = self
         {
@@ -375,6 +450,16 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
 
     #[inline]
     fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
+        let depth = match raw.depth {
+            RawListDepth::Root => ListDepth::root(),
+            RawListDepth::Nested(value) => {
+                ListDepth::try_new(usize::from(value))?
+            }
+        };
+        let list_kind = match raw.list_kind {
+            RawListKind::Ordered(start) => ListKind::Ordered(start),
+            RawListKind::Unordered => ListKind::Unordered,
+        };
         let status = raw
             .task_marker
             .map(|marker| StatusSymbol::try_new(marker.marker()))
@@ -385,111 +470,20 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
                 text: raw.text.as_ref().into(),
                 status,
                 range: raw.range,
-                task_id: None,
+                list_kind,
+                depth,
+                parent: raw.parent,
+                task_ref: None,
             })
         } else {
             Ok(Self::Plain {
                 text: raw.text.as_ref().into(),
                 range: raw.range,
+                list_kind,
+                depth,
+                parent: raw.parent,
             })
         }
-    }
-}
-
-/// List item metadata entry for indexing.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct ListItemEntry {
-    range: SourceByteRange,
-    depth: ListDepth,
-    parent: Option<SourceByteOffset>,
-    status: Option<StatusSymbol>,
-    task_id: Option<TaskId>,
-}
-
-impl ListItemEntry {
-    /// Creates a new list item entry.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        range: SourceByteRange,
-        depth: ListDepth,
-        parent: Option<SourceByteOffset>,
-        status: Option<StatusSymbol>,
-        task_id: Option<TaskId>,
-    ) -> Self {
-        Self {
-            range,
-            depth,
-            parent,
-            status,
-            task_id,
-        }
-    }
-
-    /// Returns the list item byte range.
-    #[inline]
-    #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.range
-    }
-
-    /// Returns the list item start byte position.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.range.start()
-    }
-
-    /// Returns the list item depth.
-    #[inline]
-    #[must_use]
-    pub const fn depth(&self) -> ListDepth {
-        self.depth
-    }
-
-    /// Returns the parent list item position, if any.
-    #[inline]
-    #[must_use]
-    pub const fn parent(&self) -> Option<SourceByteOffset> {
-        self.parent
-    }
-
-    /// Returns the task status symbol, if this is a checkbox item.
-    #[inline]
-    #[must_use]
-    pub const fn status(&self) -> Option<StatusSymbol> {
-        self.status
-    }
-
-    /// Returns the task id, if this is a promoted task item.
-    #[inline]
-    #[must_use]
-    pub const fn task_id(&self) -> Option<TaskId> {
-        self.task_id
-    }
-}
-
-impl TryFrom<&RawListItem<'_>> for ListItemEntry {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
-        let depth = match raw.depth {
-            RawListDepth::Root => ListDepth::root(),
-            RawListDepth::Nested(value) => {
-                ListDepth::try_new(usize::from(value))?
-            }
-        };
-        let status = raw
-            .task_marker
-            .map(|marker| StatusSymbol::try_new(marker.marker()))
-            .transpose()?;
-
-        Ok(ListItemEntry::new(raw.range, depth, raw.parent, status, None))
     }
 }
 
@@ -506,7 +500,7 @@ impl TryFrom<&RawListItem<'_>> for ListItemEntry {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum ListType {
+pub enum ListKind {
     /// Ordered list starting at the given number.
     Ordered(u64),
     /// Unordered list (bullets).
