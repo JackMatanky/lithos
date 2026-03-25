@@ -7,6 +7,7 @@ use crate::{
     note::{
         paths::NotePath,
         position::{SourceByteOffset, SourceByteRange},
+        scanner::ScannedArtifact,
     },
 };
 
@@ -279,7 +280,8 @@ pub struct RawListItem<'source> {
     pub task_marker: Option<RawTaskMarker>,
     pub range: SourceByteRange,
     pub parent: Option<SourceByteOffset>,
-    pub task_payload: Option<RawTaskPayload<'source>>,
+    pub tags: Vec<RawTag<'source>>,
+    pub inline_fields: Vec<RawInlineField<'source>>,
 }
 
 impl<'source> RawListItem<'source> {
@@ -297,7 +299,8 @@ impl<'source> RawListItem<'source> {
         task_marker: Option<RawTaskMarker>,
         range: SourceByteRange,
         parent: Option<SourceByteOffset>,
-        task_payload: Option<RawTaskPayload<'source>>,
+        tags: Vec<RawTag<'source>>,
+        inline_fields: Vec<RawInlineField<'source>>,
     ) -> Self {
         Self {
             list_kind,
@@ -306,57 +309,8 @@ impl<'source> RawListItem<'source> {
             task_marker,
             range,
             parent,
-            task_payload,
-        }
-    }
-}
-
-/// Raw task fields extracted from a list item.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct RawTaskFields<'source> {
-    pub fields: Vec<RawInlineField<'source>>,
-}
-
-impl<'source> RawTaskFields<'source> {
-    /// Create a new raw task fields container.
-    #[inline]
-    #[must_use]
-    pub fn new(fields: Vec<RawInlineField<'source>>) -> Self {
-        Self {
-            fields,
-        }
-    }
-}
-
-/// Raw task payload extracted from a checkbox list item.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct RawTaskPayload<'source> {
-    pub fields: RawTaskFields<'source>,
-    pub text_full: Cow<'source, str>,
-    pub task_marker: RawTaskMarker,
-    pub tags: Vec<RawTag<'source>>,
-    pub range: SourceByteRange,
-}
-
-impl<'source> RawTaskPayload<'source> {
-    /// Create a raw task payload.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        fields: RawTaskFields<'source>,
-        text_full: Cow<'source, str>,
-        task_marker: RawTaskMarker,
-        tags: Vec<RawTag<'source>>,
-        range: SourceByteRange,
-    ) -> Self {
-        Self {
-            fields,
-            text_full,
-            task_marker,
             tags,
-            range,
+            inline_fields,
         }
     }
 }
@@ -473,6 +427,7 @@ pub struct RawNote<'source> {
     pub inline_fields: Vec<RawInlineField<'source>>,
     pub reference_links: Vec<RawReferenceLink<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
+    pub master_artifacts: Vec<ScannedArtifact<'source>>,
 }
 
 impl<'source> RawNote<'source> {
@@ -499,6 +454,7 @@ impl<'source> RawNote<'source> {
         inline_fields: Vec<RawInlineField<'source>>,
         reference_links: Vec<RawReferenceLink<'source>>,
         block_refs: Vec<RawBlockRef<'source>>,
+        master_artifacts: Vec<ScannedArtifact<'source>>,
     ) -> Self {
         Self {
             path,
@@ -516,6 +472,7 @@ impl<'source> RawNote<'source> {
             inline_fields,
             reference_links,
             block_refs,
+            master_artifacts,
         }
     }
 
@@ -559,6 +516,11 @@ impl<'source> RawNote<'source> {
                 .block_refs
                 .into_iter()
                 .map(RawBlockRef::into_owned)
+                .collect(),
+            master_artifacts: self
+                .master_artifacts
+                .into_iter()
+                .map(ScannedArtifact::into_owned)
                 .collect(),
         }
     }
@@ -639,31 +601,12 @@ impl RawListItem<'_> {
             task_marker: self.task_marker,
             range: self.range,
             parent: self.parent,
-            task_payload: self.task_payload.map(RawTaskPayload::into_owned),
-        }
-    }
-}
-
-impl RawTaskFields<'_> {
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> RawTaskFields<'static> {
-        RawTaskFields::new(
-            self.fields.into_iter().map(RawInlineField::into_owned).collect(),
-        )
-    }
-}
-
-impl RawTaskPayload<'_> {
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> RawTaskPayload<'static> {
-        RawTaskPayload {
-            fields: self.fields.into_owned(),
-            text_full: Cow::Owned(self.text_full.into_owned()),
-            task_marker: self.task_marker,
             tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
-            range: self.range,
+            inline_fields: self
+                .inline_fields
+                .into_iter()
+                .map(RawInlineField::into_owned)
+                .collect(),
         }
     }
 }

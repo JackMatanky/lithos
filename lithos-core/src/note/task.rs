@@ -19,8 +19,8 @@ use uuid::Uuid;
 
 use super::{
     error::{NoteError, TaskError},
+    list::ListItem,
     position::{SourceByteOffset, SourceByteRange},
-    raw::{RawTaskFields, RawTaskPayload},
     tag::Tag,
     value::FieldValue,
 };
@@ -857,19 +857,17 @@ impl<'spec> TaskBuilder<'spec> {
         }
     }
 
-    pub fn promote_from_payload(
+    pub fn promote_from_item(
         &self,
-        raw: &RawTaskPayload<'_>,
+        item: &ListItem,
     ) -> Result<Task, NoteError> {
-        let mut tags = Vec::with_capacity(raw.tags.len());
-        for raw_tag in &raw.tags {
-            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
-                tags.push(tag);
-            }
-        }
-        let tags = tags.into_boxed_slice();
+        let symbol = item
+            .task_status()
+            .ok_or(TaskError::UnrecognizedStatus {
+                symbol: ' ',
+            })?
+            .value();
 
-        let symbol = raw.task_marker.marker();
         let status = self
             .spec
             .status_mappings
@@ -879,12 +877,13 @@ impl<'spec> TaskBuilder<'spec> {
             })?
             .clone();
 
-        let clean = self.extract_clean_text(raw.text_full.as_ref())?;
-        let parsed = self.parse_task_fields(&raw.fields)?;
-        let attributes = parsed.into_attributes(tags);
+        let clean = self.extract_clean_text(item.text())?;
+        let parsed = self.parse_task_fields(item.fields())?;
+        let attributes = parsed.into_attributes(item.tags().into());
 
-        let text = TaskText::try_new(raw.text_full.as_ref().into(), clean)?;
-        Task::try_new(status, text, raw.range, attributes).map_err(Into::into)
+        let text = TaskText::try_new(item.text().into(), clean)?;
+        Task::try_new(status, text, item.range(), attributes)
+            .map_err(Into::into)
     }
 
     fn extract_clean_text(
@@ -926,15 +925,15 @@ impl<'spec> TaskBuilder<'spec> {
 
     fn parse_task_fields(
         &self,
-        fields: &RawTaskFields<'_>,
+        fields: &[crate::note::inline_fields::InlineField],
     ) -> Result<ParsedInlineFields, NoteError> {
         let mut state = InlineFieldState::new();
 
-        for field in &fields.fields {
+        for field in fields {
             state.handle_any_inline_field(
                 self.spec,
-                field.key.as_ref(),
-                field.value.as_ref(),
+                field.key().as_str(),
+                field.value().as_str().unwrap_or(""),
             )?;
         }
 
@@ -1295,10 +1294,7 @@ mod tests {
     use crate::{
         config::task::{TaskConfigSpec, TemporalSlot},
         note::{
-            raw::{
-                RawInlineField, RawTag, RawTaskFields, RawTaskMarker,
-                RawTaskPayload,
-            },
+            raw::{RawListItem, RawListKind, RawTag, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -1480,16 +1476,13 @@ mod tests {
         spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Task {
-        let raw = raw_task_payload_from_text(promoted_text, emoji_markers);
+        let item = list_item_from_text(promoted_text, emoji_markers);
         TaskBuilder::new(spec)
-            .promote_from_payload(&raw)
+            .promote_from_item(&item)
             .expect("task conversion")
     }
 
-    fn raw_task_payload_from_text<'source>(
-        raw_text: &'source str,
-        emoji_markers: &[char],
-    ) -> RawTaskPayload<'source> {
+    fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -1501,38 +1494,49 @@ mod tests {
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
+        let mut task_marker = None;
 
-        for artifact in &artifacts {
-            match *artifact {
+        for artifact in artifacts {
+            match artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
                     position,
-                } => tags.push(RawTag::new(tag_text.into(), position)),
+                } => tags.push(RawTag::new(tag_text, position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
-                } => inline_fields.push(RawInlineField::new(
-                    key.into(),
-                    value.into(),
-                    position,
+                } => inline_fields.push(crate::note::raw::RawInlineField::new(
+                    key, value, position,
                 )),
-                ScannedArtifact::BlockRef {
+                ScannedArtifact::TaskMarker {
+                    marker,
                     ..
+                } => {
+                    task_marker = Some(RawTaskMarker::from_char(marker));
                 }
-                | ScannedArtifact::TaskMarker {
+                ScannedArtifact::BlockRef {
                     ..
                 } => {}
             }
         }
 
-        RawTaskPayload::new(
-            RawTaskFields::new(inline_fields),
+        let mut raw = RawListItem::new(
+            RawListKind::Unordered,
+            crate::note::raw::RawListDepth::Root,
             raw_text.into(),
-            RawTaskMarker::Unchecked(' '),
-            tags,
+            task_marker,
             range,
-        )
+            None,
+            tags,
+            inline_fields,
+        );
+
+        if raw.task_marker.is_none() {
+            raw.task_marker = Some(RawTaskMarker::Unchecked(' '));
+        }
+
+        ListItem::try_from(&raw).expect("valid list item")
     }
 
     fn default_emoji_markers() -> Vec<char> {

@@ -1478,8 +1478,7 @@ mod tests {
             position::{SourceByteOffset, SourceByteRange},
             raw::{
                 RawFrontmatter, RawInlineField, RawList, RawListDepth,
-                RawListItem, RawListKind, RawNote, RawTag, RawTaskFields,
-                RawTaskMarker, RawTaskPayload,
+                RawListItem, RawListKind, RawNote, RawTag, RawTaskMarker,
             },
             scanner::{NoteScanner, ScannedArtifact},
         },
@@ -1573,12 +1572,17 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
         )
     }
 
     #[expect(
         dead_code,
         reason = "Legacy test helper maintained for future task query tests"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &ScannedArtifact"
     )]
     fn raw_note_with_indexes(path: NotePath) -> RawNote<'static> {
         let config = crate::config::aggregate::fixtures::test_config();
@@ -1609,48 +1613,47 @@ mod tests {
 
         let mut task_tags = Vec::new();
         let mut task_fields = Vec::new();
+        let mut task_marker = None;
 
         for artifact in &artifacts {
-            match *artifact {
+            let pos = artifact.position();
+            match artifact {
                 ScannedArtifact::Tag {
                     text,
-                    position,
-                } => task_tags.push(RawTag::new(text.into(), position)),
+                    ..
+                } => task_tags.push(RawTag::new(text.clone(), pos)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    position,
-                } => task_fields.push(RawInlineField::new(
-                    key.into(),
-                    value.into(),
-                    position,
-                )),
-                ScannedArtifact::BlockRef {
                     ..
+                } => task_fields.push(RawInlineField::new(
+                    key.clone(),
+                    value.clone(),
+                    pos,
+                )),
+                ScannedArtifact::TaskMarker {
+                    marker,
+                    ..
+                } => {
+                    task_marker = Some(RawTaskMarker::from_char(*marker));
                 }
-                | ScannedArtifact::TaskMarker {
+                ScannedArtifact::BlockRef {
                     ..
                 } => {}
             }
         }
 
-        let task_payload = RawTaskPayload::new(
-            RawTaskFields::new(task_fields),
-            raw_task_text.into(),
-            RawTaskMarker::Unchecked(' '),
-            task_tags,
-            range,
-        );
         let list_kind = RawListKind::Unordered;
         let list_depth = RawListDepth::Root;
         let list_item = RawListItem::new(
             list_kind,
             list_depth,
             raw_task_text.into(),
-            Some(RawTaskMarker::Unchecked(' ')),
+            task_marker,
             range,
             None,
-            Some(task_payload),
+            task_tags,
+            task_fields,
         );
         let list = RawList::new(
             list_kind,
@@ -1675,6 +1678,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            artifacts.into_iter().map(ScannedArtifact::into_owned).collect(),
         )
     }
 

@@ -9,7 +9,7 @@
 //! metadata, structure, and content facts for a single markdown file in
 //! the vault.
 
-use std::{fmt, time::SystemTime};
+use std::{fmt, sync::Arc, time::SystemTime};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
@@ -23,7 +23,7 @@ use crate::note::{
     heading::Heading,
     inline_fields::InlineField,
     link::{FrontmatterLink, Link, ReferenceLink},
-    list::ListItem,
+    list::{ListItem, TaskExt as _},
     paths::NotePath,
     raw::{
         RawBlockRef, RawHeading, RawInlineField, RawLink, RawList, RawListItem,
@@ -149,8 +149,6 @@ pub struct Note {
     tasks: Box<[Task]>,
     inline_fields: Box<[InlineField]>,
 }
-
-type ListItemsAndTasks = (Vec<ListItem>, Vec<Task>);
 
 impl Note {
     /// Construct normalized facts from ingestion output.
@@ -469,6 +467,7 @@ impl Note {
 
     fn collect_tags_from_raw(
         raw_tags: &[RawTag<'_>],
+        list_items: &[ListItem],
         tasks: &[Task],
         frontmatter: Option<&Frontmatter>,
     ) -> Vec<Tag> {
@@ -476,6 +475,11 @@ impl Note {
         for raw_tag in raw_tags {
             if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
                 Note::add_tag(&mut tags, tag);
+            }
+        }
+        for item in list_items {
+            for tag in item.tags() {
+                Note::add_tag(&mut tags, tag.clone());
             }
         }
         for task in tasks {
@@ -491,6 +495,88 @@ impl Note {
             }
         }
         tags
+    }
+
+    fn collect_list_items_from(
+        raw_list_items: Vec<RawListItem<'_>>,
+    ) -> Result<Vec<ListItem>, NoteError> {
+        let mut items = Vec::with_capacity(raw_list_items.len());
+        for raw in raw_list_items {
+            items.push(ListItem::try_from(&raw)?);
+        }
+        items.sort_by_key(ListItem::position);
+        Ok(items)
+    }
+
+    fn collect_tasks_from(
+        list_items: &mut [ListItem],
+        lists: &[RawList],
+    ) -> Result<Vec<Task>, NoteError> {
+        let mut spec_by_position =
+            std::collections::HashMap::with_capacity(list_items.len());
+        for list in lists {
+            for position in &list.item_positions {
+                spec_by_position.insert(*position, Arc::clone(&list.task_spec));
+            }
+        }
+
+        let mut tasks = Vec::new();
+        for item in list_items.iter_mut() {
+            if !item.is_checkbox() {
+                continue;
+            }
+
+            let spec = spec_by_position
+                .get(&item.position())
+                .or_else(|| spec_by_position.values().next());
+
+            if let Some(spec) = spec
+                && Self::should_promote_task(spec, item.tags())
+            {
+                let task =
+                    TaskBuilder::new(spec.as_ref()).promote_from_item(item)?;
+                item.set_task_ref(TaskRef::new(task.range()));
+                tasks.push(task);
+            }
+        }
+
+        tasks.sort_by_key(Task::position);
+        Ok(tasks)
+    }
+
+    fn should_promote_task(
+        spec: &crate::config::task::TaskConfigSpec,
+        tags: &[Tag],
+    ) -> bool {
+        if !spec.enabled {
+            return false;
+        }
+        if spec.promotion_tags.is_empty() {
+            return true;
+        }
+        spec.promotion_tags.iter().any(|config_tag| {
+            let config_tag = config_tag.strip_prefix('#').unwrap_or(config_tag);
+            tags.iter().any(|tag| {
+                let raw = tag.full_path();
+                raw == config_tag
+            })
+        })
+    }
+
+    fn collect_inline_fields_from(
+        raw_inline_fields: Vec<RawInlineField<'_>>,
+        list_items: &[ListItem],
+    ) -> Vec<InlineField> {
+        let mut inline_fields = raw_inline_fields
+            .into_iter()
+            .map(|raw| InlineField::from_raw(&raw))
+            .collect::<Vec<_>>();
+
+        for item in list_items {
+            inline_fields.extend(item.fields().iter().cloned());
+        }
+
+        inline_fields
     }
 
     fn collect_frontmatter_links_from(
@@ -535,66 +621,6 @@ impl Note {
     ) -> Result<Vec<BlockRef>, NoteError> {
         block_refs.into_iter().map(|raw| BlockRef::try_from(&raw)).collect()
     }
-
-    fn collect_list_items_and_tasks_from(
-        list_items: Vec<RawListItem<'_>>,
-        lists: &[RawList],
-    ) -> Result<ListItemsAndTasks, NoteError> {
-        let mut spec_by_position =
-            std::collections::HashMap::with_capacity(list_items.len());
-        for list in lists {
-            for position in &list.item_positions {
-                spec_by_position
-                    .insert(*position, std::sync::Arc::clone(&list.task_spec));
-            }
-        }
-
-        let mut items = Vec::with_capacity(list_items.len());
-        let mut tasks = Vec::new();
-
-        for raw in list_items {
-            let mut item = ListItem::try_from(&raw)?;
-
-            if let Some(payload) = raw.task_payload.as_ref() {
-                let spec = spec_by_position
-                    .get(&raw.range.start())
-                    .or_else(|| spec_by_position.values().next());
-                if let Some(spec) = spec {
-                    let task = TaskBuilder::new(spec.as_ref())
-                        .promote_from_payload(payload)?;
-                    item.set_task_ref(TaskRef::new(task.range()));
-                    tasks.push(task);
-                }
-            }
-
-            items.push(item);
-        }
-
-        items.sort_by_key(ListItem::position);
-        tasks.sort_by_key(Task::position);
-
-        Ok((items, tasks))
-    }
-
-    fn collect_inline_fields_from(
-        raw_inline_fields: Vec<RawInlineField<'_>>,
-        list_items: &[RawListItem<'_>],
-    ) -> Vec<InlineField> {
-        let mut inline_fields = raw_inline_fields
-            .into_iter()
-            .map(|raw| InlineField::from_raw(&raw))
-            .collect::<Vec<_>>();
-
-        for item in list_items {
-            if let Some(payload) = item.task_payload.as_ref() {
-                inline_fields.extend(
-                    payload.fields.fields.iter().map(InlineField::from_raw),
-                );
-            }
-        }
-
-        inline_fields
-    }
 }
 
 impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
@@ -624,12 +650,13 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
         } = raw;
 
         let frontmatter = frontmatter.map(Frontmatter::try_from).transpose()?;
+        let mut list_items = Note::collect_list_items_from(list_items)?;
+        let tasks = Note::collect_tasks_from(&mut list_items, &lists)?;
         let inline_fields =
             Note::collect_inline_fields_from(raw_inline_fields, &list_items);
-        let (list_items, tasks) =
-            Note::collect_list_items_and_tasks_from(list_items, &lists)?;
         let tags = Note::collect_tags_from_raw(
             &raw_tags,
+            &list_items,
             &tasks,
             frontmatter.as_ref(),
         );
@@ -678,10 +705,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{
-                RawInlineField, RawTag, RawTaskFields, RawTaskMarker,
-                RawTaskPayload,
-            },
+            raw::{RawInlineField, RawTag, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -809,16 +833,13 @@ mod tests {
         task_spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Task {
-        let raw = raw_task_payload_from_text(promoted_text, emoji_markers);
+        let item = list_item_from_text(promoted_text, emoji_markers);
         TaskBuilder::new(task_spec)
-            .promote_from_payload(&raw)
+            .promote_from_item(&item)
             .expect("task conversion")
     }
 
-    fn raw_task_payload_from_text<'source>(
-        raw_text: &'source str,
-        emoji_markers: &[char],
-    ) -> RawTaskPayload<'source> {
+    fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -830,38 +851,48 @@ mod tests {
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
+        let mut task_marker = None;
 
-        for artifact in &artifacts {
-            match *artifact {
+        for artifact in artifacts {
+            match artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
                     position,
-                } => tags.push(RawTag::new(tag_text.into(), position)),
+                } => tags.push(RawTag::new(tag_text, position)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     position,
-                } => inline_fields.push(RawInlineField::new(
-                    key.into(),
-                    value.into(),
-                    position,
-                )),
-                ScannedArtifact::BlockRef {
+                } => inline_fields
+                    .push(RawInlineField::new(key, value, position)),
+                ScannedArtifact::TaskMarker {
+                    marker,
                     ..
+                } => {
+                    task_marker = Some(RawTaskMarker::from_char(marker));
                 }
-                | ScannedArtifact::TaskMarker {
+                ScannedArtifact::BlockRef {
                     ..
                 } => {}
             }
         }
 
-        RawTaskPayload::new(
-            RawTaskFields::new(inline_fields),
+        let mut raw = RawListItem::new(
+            crate::note::raw::RawListKind::Unordered,
+            crate::note::raw::RawListDepth::Root,
             raw_text.into(),
-            RawTaskMarker::Unchecked(' '),
-            tags,
+            task_marker,
             range,
-        )
+            None,
+            tags,
+            inline_fields,
+        );
+
+        if raw.task_marker.is_none() {
+            raw.task_marker = Some(RawTaskMarker::Unchecked(' '));
+        }
+
+        ListItem::try_from(&raw).expect("valid list item")
     }
 
     fn default_emoji_markers() -> Vec<char> {

@@ -10,6 +10,8 @@
 //! 3. **Resumable**: Using the [`Cursor`] type, scanning can be paused and
 //!    resumed across disjoint text segments while maintaining context.
 
+use std::borrow::Cow;
+
 use crate::note::{error::NoteError, position::SourceByteOffset};
 
 /// A zero-copy artifact extracted from a text block.
@@ -26,7 +28,7 @@ pub enum ScannedArtifact<'source> {
     /// valid tag characters.
     Tag {
         /// The raw tag text including the leading `#`.
-        text: &'source str,
+        text: Cow<'source, str>,
         /// The absolute source position of the `#` character.
         position: SourceByteOffset,
     },
@@ -36,9 +38,9 @@ pub enum ScannedArtifact<'source> {
     /// bare at line start) and the colon-less emoji field syntax.
     InlineField {
         /// The field key (e.g., "priority" or "📅").
-        key: &'source str,
+        key: Cow<'source, str>,
         /// The field value, trimmed of leading/trailing whitespace.
-        value: &'source str,
+        value: Cow<'source, str>,
         /// The absolute source position where the key starts.
         position: SourceByteOffset,
     },
@@ -48,7 +50,7 @@ pub enum ScannedArtifact<'source> {
     /// by optional whitespace).
     BlockRef {
         /// The unique block identifier, excluding the leading `^`.
-        id: &'source str,
+        id: Cow<'source, str>,
         /// The absolute source position of the `^` character.
         position: SourceByteOffset,
     },
@@ -62,6 +64,77 @@ pub enum ScannedArtifact<'source> {
         /// The absolute source position of the marker character.
         position: SourceByteOffset,
     },
+}
+
+impl ScannedArtifact<'_> {
+    /// Returns the absolute source position of the artifact.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        match *self {
+            Self::Tag {
+                position,
+                ..
+            }
+            | Self::InlineField {
+                position,
+                ..
+            }
+            | Self::BlockRef {
+                position,
+                ..
+            }
+            | Self::TaskMarker {
+                position,
+                ..
+            } => position,
+        }
+    }
+
+    /// Returns `true` if this artifact is a task marker.
+    #[inline]
+    #[must_use]
+    pub const fn is_marker(&self) -> bool {
+        matches!(self, Self::TaskMarker { .. })
+    }
+
+    /// Converts the artifact to an owned variant.
+    #[inline]
+    #[must_use]
+    pub fn into_owned(self) -> ScannedArtifact<'static> {
+        match self {
+            Self::Tag {
+                text,
+                position,
+            } => ScannedArtifact::Tag {
+                text: Cow::Owned(text.into_owned()),
+                position,
+            },
+            Self::InlineField {
+                key,
+                value,
+                position,
+            } => ScannedArtifact::InlineField {
+                key: Cow::Owned(key.into_owned()),
+                value: Cow::Owned(value.into_owned()),
+                position,
+            },
+            Self::BlockRef {
+                id,
+                position,
+            } => ScannedArtifact::BlockRef {
+                id: Cow::Owned(id.into_owned()),
+                position,
+            },
+            Self::TaskMarker {
+                marker,
+                position,
+            } => ScannedArtifact::TaskMarker {
+                marker,
+                position,
+            },
+        }
+    }
 }
 
 /// A cursor-based scanner for extracting metadata artifacts from markdown.
@@ -302,7 +375,7 @@ impl NoteScanner {
             let position = cursor.offset;
             cursor.advance(idx)?;
             Ok(Some(ScannedArtifact::Tag {
-                text,
+                text: text.into(),
                 position,
             }))
         } else {
@@ -332,8 +405,8 @@ impl NoteScanner {
                     let position =
                         cursor.offset.add_offset(key_start_offset)?;
                     let artifact = ScannedArtifact::InlineField {
-                        key: key_trimmed,
-                        value: value_trimmed,
+                        key: key_trimmed.into(),
+                        value: value_trimmed.into(),
                         position,
                     };
                     cursor.advance(close_idx.saturating_add(1))?;
@@ -384,8 +457,8 @@ impl NoteScanner {
             let value = after_emoji.get(..val_len).unwrap_or("");
             cursor.advance(consumed.saturating_add(val_len))?;
             Ok(Some(ScannedArtifact::InlineField {
-                key,
-                value,
+                key: key.into(),
+                value: value.into(),
                 position,
             }))
         } else {
@@ -425,8 +498,8 @@ impl NoteScanner {
             let value = after_colons.get(..val_len).unwrap_or("").trim();
             if !value.is_empty() {
                 let artifact = ScannedArtifact::InlineField {
-                    key,
-                    value,
+                    key: key.into(),
+                    value: value.into(),
                     position: cursor.offset,
                 };
                 cursor.advance(
@@ -470,7 +543,7 @@ impl NoteScanner {
             let position = cursor.offset;
             cursor.advance(len.saturating_add(tail_len))?;
             Ok(Some(ScannedArtifact::BlockRef {
-                id,
+                id: id.into(),
                 position,
             }))
         } else {
@@ -636,7 +709,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::Tag { text: t, position, .. } if t == &"#rust" && u32::from(*position) == 4),
+                matches!(first, ScannedArtifact::Tag { text: t, position, .. } if t == "#rust" && u32::from(*position) == 4),
                 "Expected Tag #rust at position 4, got {first:?}"
             );
         }
@@ -694,7 +767,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if *key == "\u{1f4c5}" && *value == "2024-03-20"),
+                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == "\u{1f4c5}" && value == "2024-03-20"),
                 "Expected InlineField with emoji, got {first:?}"
             );
         }
@@ -708,7 +781,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if *key == "bare_key" && *value == "bare_value"),
+                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == "bare_key" && value == "bare_value"),
                 "Expected bare InlineField, got {first:?}"
             );
         }
@@ -727,6 +800,10 @@ mod tests {
         use super::{super::*, scanner_fixture};
 
         #[test]
+        #[expect(
+            clippy::cognitive_complexity,
+            reason = "Test covers all artifact types in one block"
+        )]
         fn should_extract_all_artifact_types() {
             let scanner = scanner_fixture();
             let text = "- [x] #task [priority:: high] \u{1f4c5} \
@@ -737,40 +814,40 @@ mod tests {
             assert_eq!(artifacts.len(), 5);
             assert!(matches!(
                 artifacts.first(),
-                Some(&ScannedArtifact::TaskMarker {
+                Some(ScannedArtifact::TaskMarker {
                     marker: 'x',
                     ..
                 })
             ));
             assert!(matches!(
                 artifacts.get(1),
-                Some(&ScannedArtifact::Tag {
-                    text: "#task",
+                Some(ScannedArtifact::Tag {
+                    text: tag_text,
                     ..
-                })
+                }) if tag_text == "#task"
             ));
             assert!(matches!(
                 artifacts.get(2),
-                Some(&ScannedArtifact::InlineField {
-                    key: "priority",
-                    value: "high",
+                Some(ScannedArtifact::InlineField {
+                    key: field_key,
+                    value: field_val,
                     ..
-                })
+                }) if field_key == "priority" && field_val == "high"
             ));
             assert!(matches!(
                 artifacts.get(3),
-                Some(&ScannedArtifact::InlineField {
-                    key: "📅",
-                    value: "2024-03-20",
+                Some(ScannedArtifact::InlineField {
+                    key: field_key,
+                    value: field_val,
                     ..
-                })
+                }) if field_key == "\u{1f4c5}" && field_val == "2024-03-20"
             ));
             assert!(matches!(
                 artifacts.get(4),
-                Some(&ScannedArtifact::BlockRef {
-                    id: "ref-id",
+                Some(ScannedArtifact::BlockRef {
+                    id: block_id,
                     ..
-                })
+                }) if block_id == "ref-id"
             ));
         }
 
@@ -797,10 +874,10 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             assert!(matches!(
                 artifacts.first(),
-                Some(&ScannedArtifact::Tag {
-                    text: "#tag1",
+                Some(ScannedArtifact::Tag {
+                    text,
                     ..
-                })
+                }) if text == "#tag1"
             ));
 
             // Resume with a new segment starting immediately after an

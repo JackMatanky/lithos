@@ -24,8 +24,7 @@ use crate::{
             RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
             RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
             RawListItem, RawListKind, RawNote, RawReferenceLink, RawSection,
-            RawSectionKind, RawTag, RawTaskFields, RawTaskMarker,
-            RawTaskPayload,
+            RawSectionKind, RawTag, RawTaskMarker,
         },
         scanner::{NoteScanner, ScannedArtifact},
     },
@@ -69,6 +68,8 @@ impl MarkdownParser {
             Vec::new()
         };
         let scanner = NoteScanner::new(emoji_markers);
+        let master_artifacts =
+            scanner.scan_block(markdown, SourceByteOffset::new(0))?;
         let mut pool = StringPool::new();
 
         let _source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
@@ -175,7 +176,7 @@ impl MarkdownParser {
                         &mut list_items,
                         &mut lists,
                         &mut block_refs,
-                        &scanner,
+                        &master_artifacts,
                         task_spec,
                         &mut pool,
                     )?;
@@ -255,6 +256,7 @@ impl MarkdownParser {
             inline_fields,
             reference_links,
             block_refs,
+            master_artifacts,
         ))
     }
 
@@ -417,13 +419,13 @@ impl MarkdownParser {
         headings: &mut Vec<RawHeading<'source>>,
         tags: &mut Vec<RawTag<'source>>,
         inline_fields: &mut Vec<RawInlineField<'source>>,
-        markdown: &'source str,
+        _markdown: &'source str,
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
         lists: &mut Vec<RawList>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        scanner: &NoteScanner,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
+        master_artifacts: &[ScannedArtifact<'source>],
+        _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
         match end_tag {
@@ -494,12 +496,11 @@ impl MarkdownParser {
                                 block_range,
                                 *depth,
                             ));
-                            let scan_result = Self::scan_block(
+                            let scan_result = Self::filter_artifacts_by_range(
                                 block_range,
                                 &block.scannable_ranges,
-                                markdown,
-                                scanner,
-                            )?;
+                                master_artifacts,
+                            );
                             tags.extend(scan_result.tags);
                             inline_fields.extend(scan_result.inline_fields);
                             block_refs.extend(scan_result.block_refs);
@@ -514,26 +515,21 @@ impl MarkdownParser {
                                 inline_fields,
                                 block_stack,
                                 block_refs,
-                                scanner,
-                                markdown,
-                            )?;
+                                master_artifacts,
+                            );
                         }
                         BlockKind::ListItem => {
                             Self::finalize_list_item(
                                 &block,
-                                markdown,
                                 block_range,
                                 sections,
-                                tags,
-                                inline_fields,
                                 list_stack,
                                 open_item_by_depth,
                                 list_items,
                                 list_contexts,
                                 block_refs,
-                                scanner,
-                                task_spec,
-                            )?;
+                                master_artifacts,
+                            );
                         }
                         BlockKind::List => {
                             list_stack.pop();
@@ -693,110 +689,79 @@ impl MarkdownParser {
         Ok(true)
     }
 
-    fn scan_block<'source>(
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &ScannedArtifact"
+    )]
+    fn filter_artifacts_by_range<'source>(
         block_range: SourceByteRange,
         scannable_ranges: &[std::ops::Range<usize>],
-        markdown: &'source str,
-        scanner: &NoteScanner,
-    ) -> Result<ScannedBlock<'source>, NoteIngestError> {
+        artifacts: &[ScannedArtifact<'source>],
+    ) -> ScannedBlock<'source> {
+        let mut scan_result = ScannedBlock::default();
         if scannable_ranges.is_empty() {
-            return Ok(ScannedBlock::default());
+            return scan_result;
         }
 
-        let start = block_range.start().as_usize();
-        let end = block_range.end().as_usize();
-        let segment = markdown.get(start..end).ok_or_else(|| {
-            NoteIngestError::Domain(
-                NoteParseError::Markdown {
-                    line: 1,
-                    column: 1,
-                    reason: "Invalid scanner range mapping to source markdown"
-                        .into(),
-                }
-                .into(),
-            )
-        })?;
+        let start = block_range.start();
+        let end = block_range.end();
 
-        let mut artifacts = Vec::new();
-        scanner
-            .scan_block(segment, block_range.start())
-            .map_err(NoteIngestError::Domain)?
-            .into_iter()
-            .for_each(|artifact| artifacts.push(artifact));
+        // Find the first artifact that could be in range using binary search.
+        let first_idx = artifacts.partition_point(|a| a.position() < start);
 
-        let mut scan_result = ScannedBlock::default();
-        for artifact in artifacts {
+        let Some(slice) = artifacts.get(first_idx..) else {
+            return scan_result;
+        };
+
+        for artifact in slice {
+            let pos = artifact.position();
+            if pos >= end {
+                break;
+            }
+
+            if !Self::is_scannable_position(pos, scannable_ranges)
+                && !artifact.is_marker()
+            {
+                continue;
+            }
+
             match artifact {
                 ScannedArtifact::Tag {
                     text,
-                    position,
+                    ..
                 } => {
-                    if Self::is_scannable_position(position, scannable_ranges) {
-                        scan_result
-                            .tags
-                            .push(RawTag::new(text.into(), position));
-                    }
+                    scan_result.tags.push(RawTag::new(text.clone(), pos));
                 }
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    position,
+                    ..
                 } => {
-                    if Self::is_scannable_position(position, scannable_ranges) {
-                        scan_result.inline_fields.push(RawInlineField::new(
-                            key.into(),
-                            value.into(),
-                            position,
-                        ));
-                    }
+                    scan_result.inline_fields.push(RawInlineField::new(
+                        key.clone(),
+                        value.clone(),
+                        pos,
+                    ));
                 }
                 ScannedArtifact::BlockRef {
                     id,
-                    position,
+                    ..
                 } => {
-                    if Self::is_scannable_position(position, scannable_ranges) {
-                        scan_result
-                            .block_refs
-                            .push(RawBlockRef::new(id.into(), position));
-                    }
+                    scan_result
+                        .block_refs
+                        .push(RawBlockRef::new(id.clone(), pos));
                 }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
                 } => {
                     scan_result.task_marker =
-                        Some(RawTaskMarker::from_char(marker));
+                        Some(RawTaskMarker::from_char(*marker));
                 }
             }
         }
 
-        Ok(scan_result)
-    }
-
-    fn should_promote_task(
-        spec: &crate::config::task::TaskConfigSpec,
-        tags: &[RawTag<'_>],
-    ) -> bool {
-        if !spec.enabled {
-            return false;
-        }
-        if spec.promotion_tags.is_empty() {
-            return true;
-        }
-        spec.promotion_tags.iter().any(|config_tag| {
-            let config_tag = config_tag.strip_prefix('#').unwrap_or(config_tag);
-            tags.iter().any(|tag| {
-                let raw = tag.value.as_ref();
-                let raw = raw.strip_prefix('#').unwrap_or(raw);
-                raw == config_tag
-            })
-        })
-    }
-
-    fn task_fields_from_inline<'source>(
-        inline_fields: &[RawInlineField<'source>],
-    ) -> Vec<RawInlineField<'source>> {
-        inline_fields.to_vec()
+        scan_result
     }
 
     fn is_scannable_position(
@@ -822,20 +787,18 @@ impl MarkdownParser {
         inline_fields: &mut Vec<RawInlineField<'source>>,
         block_stack: &mut [ActiveBlock],
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        scanner: &NoteScanner,
-        markdown: &'source str,
-    ) -> Result<(), NoteIngestError> {
+        master_artifacts: &[ScannedArtifact<'source>],
+    ) {
         sections.push(RawSection::new(
             RawSectionKind::Paragraph,
             block_range,
             block.depth,
         ));
-        let scan_result = Self::scan_block(
+        let scan_result = Self::filter_artifacts_by_range(
             block_range,
             &block.scannable_ranges,
-            markdown,
-            scanner,
-        )?;
+            master_artifacts,
+        );
         tags.extend(scan_result.tags);
         inline_fields.extend(scan_result.inline_fields);
         block_refs.extend(scan_result.block_refs);
@@ -846,7 +809,6 @@ impl MarkdownParser {
         {
             parent.full_text.push_str(&block.full_text);
         }
-        Ok(())
     }
 
     fn finalize_list(
@@ -884,31 +846,26 @@ impl MarkdownParser {
     )]
     fn finalize_list_item<'source>(
         block: &ActiveBlock,
-        markdown: &'source str,
         block_range: SourceByteRange,
         sections: &mut Vec<RawSection>,
-        tags: &mut Vec<RawTag<'source>>,
-        inline_fields: &mut Vec<RawInlineField<'source>>,
         list_stack: &[RawListKind],
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
         list_contexts: &mut Vec<ListContext>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        scanner: &NoteScanner,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
-    ) -> Result<(), NoteIngestError> {
+        master_artifacts: &[ScannedArtifact<'source>],
+    ) {
         sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
             block.depth,
         ));
 
-        let scan_result = Self::scan_block(
+        let scan_result = Self::filter_artifacts_by_range(
             block_range,
             &block.scannable_ranges,
-            markdown,
-            scanner,
-        )?;
+            master_artifacts,
+        );
 
         let list_kind =
             list_stack.last().copied().unwrap_or(RawListKind::Unordered);
@@ -937,24 +894,6 @@ impl MarkdownParser {
             context.item_positions.push(block.start_offset);
         }
 
-        let mut task_payload = None;
-        let mut attach_to_list = true;
-
-        if let Some(tk) = task_marker
-            && Self::should_promote_task(task_spec, &scan_result.tags)
-        {
-            let fields =
-                Self::task_fields_from_inline(&scan_result.inline_fields);
-            task_payload = Some(RawTaskPayload::new(
-                RawTaskFields::new(fields),
-                raw_text.clone().into(),
-                tk,
-                scan_result.tags.clone(),
-                block_range,
-            ));
-            attach_to_list = false;
-        }
-
         list_items.push(RawListItem::new(
             list_kind,
             list_depth,
@@ -962,15 +901,11 @@ impl MarkdownParser {
             task_marker,
             block_range,
             parent_pos,
-            task_payload,
+            scan_result.tags,
+            scan_result.inline_fields,
         ));
 
-        if attach_to_list {
-            tags.extend(scan_result.tags);
-            inline_fields.extend(scan_result.inline_fields);
-        }
         block_refs.extend(scan_result.block_refs);
-        Ok(())
     }
 }
 

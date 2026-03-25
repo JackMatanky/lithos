@@ -60,7 +60,7 @@ mod tests {
         let checkbox_count = note
             .list_items()
             .iter()
-            .filter(|item| item.status().is_some())
+            .filter(|item| item.task_status().is_some())
             .count();
         assert_eq!(checkbox_count, 2, "expected two checkbox items");
         assert_eq!(note.tasks().len(), 1, "expected one promoted task");

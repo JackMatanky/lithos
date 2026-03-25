@@ -11,7 +11,9 @@ use std::fmt;
 
 use super::{
     error::{ListError, NoteError},
+    inline_fields::InlineField,
     position::{SourceByteOffset, SourceByteRange},
+    tag::Tag,
     task::TaskRef,
 };
 use crate::{
@@ -193,6 +195,18 @@ impl<'list> Iterator for ListItems<'list> {
     }
 }
 
+/// Extension trait for list items providing task-specific capabilities.
+pub trait TaskExt {
+    /// Returns true if this list item has a checkbox.
+    fn is_checkbox(&self) -> bool;
+
+    /// Returns the checkbox status symbol, if any.
+    fn status(&self) -> Option<StatusSymbol>;
+
+    /// Returns the task reference if this item was promoted.
+    fn task_ref(&self) -> Option<TaskRef>;
+}
+
 /// Single item in a markdown list.
 ///
 /// Items can be plain text or checkbox items. Checkbox items may be
@@ -206,13 +220,16 @@ impl<'list> Iterator for ListItems<'list> {
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(13);
 /// let range = SourceByteRange::new(start, end).expect("valid range");
-/// let item = ListItem::Plain {
-///     text: "Buy groceries".into(),
+/// let item = ListItem::new(
+///     "Buy groceries".into(),
 ///     range,
-///     list_kind: ListKind::Unordered,
-///     depth: ListDepth::root(),
-///     parent: None,
-/// };
+///     ListKind::Unordered,
+///     ListDepth::root(),
+///     None,
+///     None,
+///     Box::new([]),
+///     Box::new([]),
+/// );
 /// assert_eq!(item.text(), "Buy groceries");
 /// ```
 #[derive(
@@ -220,228 +237,156 @@ impl<'list> Iterator for ListItems<'list> {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum ListItem {
-    /// Plain list item (no checkbox).
-    Plain {
-        /// Raw text content.
-        text: Box<str>,
-        /// Source byte range in the note.
-        range: SourceByteRange,
-        /// List kind (ordered or unordered).
-        list_kind: ListKind,
-        /// List nesting depth.
-        depth: ListDepth,
-        /// Parent list item position, if any.
-        parent: Option<SourceByteOffset>,
-    },
-    /// Checkbox list item.
-    Checkbox {
-        /// Raw text content.
-        text: Box<str>,
-        /// Checkbox status symbol.
-        status: StatusSymbol,
-        /// Source byte range in the note.
-        range: SourceByteRange,
-        /// List kind (ordered or unordered).
-        list_kind: ListKind,
-        /// List nesting depth.
-        depth: ListDepth,
-        /// Parent list item position, if any.
-        parent: Option<SourceByteOffset>,
-        /// Task reference if promoted to a Task.
-        task_ref: Option<TaskRef>,
-    },
+pub struct ListItem {
+    /// Raw text content.
+    text: Box<str>,
+    /// Source byte range in the note.
+    range: SourceByteRange,
+    /// List kind (ordered or unordered).
+    kind: ListKind,
+    /// List nesting depth.
+    depth: ListDepth,
+    /// Parent list item position, if any.
+    parent: Option<SourceByteOffset>,
+    /// Checkbox status symbol, if this is a checkbox item.
+    status: Option<StatusSymbol>,
+    /// Task reference if promoted to a Task.
+    task_ref: Option<TaskRef>,
+    /// Metadata tags attached to this item.
+    tags: Box<[Tag]>,
+    /// Inline metadata fields attached to this item.
+    fields: Box<[InlineField]>,
 }
 
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on &self keep accessors concise."
-)]
 impl ListItem {
-    /// Returns the source byte range of this list item.
+    /// Create a new list item.
     #[inline]
     #[must_use]
     #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
+        clippy::too_many_arguments,
+        reason = "List items capture full structural context"
     )]
-    pub const fn range(&self) -> SourceByteRange {
-        match self {
-            Self::Plain {
-                range,
-                ..
-            }
-            | Self::Checkbox {
-                range,
-                ..
-            } => *range,
+    pub fn new(
+        text: Box<str>,
+        range: SourceByteRange,
+        kind: ListKind,
+        depth: ListDepth,
+        parent: Option<SourceByteOffset>,
+        status: Option<StatusSymbol>,
+        tags: Box<[Tag]>,
+        fields: Box<[InlineField]>,
+    ) -> Self {
+        Self {
+            text,
+            range,
+            kind,
+            depth,
+            parent,
+            status,
+            task_ref: None,
+            tags,
+            fields,
         }
+    }
+
+    /// Returns the source byte range of this list item.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
     }
 
     /// Returns the start source byte position of this list item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
     pub const fn position(&self) -> SourceByteOffset {
-        match self {
-            Self::Plain {
-                range,
-                ..
-            }
-            | Self::Checkbox {
-                range,
-                ..
-            } => range.start(),
-        }
+        self.range.start()
     }
 
     /// Returns the list kind for this item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
     pub const fn list_kind(&self) -> ListKind {
-        match self {
-            Self::Plain {
-                list_kind,
-                ..
-            }
-            | Self::Checkbox {
-                list_kind,
-                ..
-            } => *list_kind,
-        }
+        self.kind
     }
 
     /// Returns the list depth for this item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
     pub const fn depth(&self) -> ListDepth {
-        match self {
-            Self::Plain {
-                depth,
-                ..
-            }
-            | Self::Checkbox {
-                depth,
-                ..
-            } => *depth,
-        }
+        self.depth
     }
 
     /// Returns the parent list item position, if any.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
     pub const fn parent(&self) -> Option<SourceByteOffset> {
-        match self {
-            Self::Plain {
-                parent,
-                ..
-            }
-            | Self::Checkbox {
-                parent,
-                ..
-            } => *parent,
-        }
+        self.parent
     }
 
     /// Returns the text content of this list item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
     pub fn text(&self) -> &str {
-        match self {
-            Self::Plain {
-                text,
-                ..
-            }
-            | Self::Checkbox {
-                text,
-                ..
-            } => text.as_ref(),
-        }
+        self.text.as_ref()
     }
 
     /// Returns the checkbox status symbol if this is a checkbox item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub const fn status(&self) -> Option<StatusSymbol> {
-        match self {
-            Self::Checkbox {
-                status,
-                ..
-            } => Some(*status),
-            Self::Plain {
-                ..
-            } => None,
-        }
+    pub const fn task_status(&self) -> Option<StatusSymbol> {
+        self.status
+    }
+
+    /// Returns the collection of metadata tags extracted from the list item.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
+    /// Returns the collection of inline metadata fields extracted from the
+    /// list item.
+    #[inline]
+    #[must_use]
+    pub fn fields(&self) -> &[InlineField] {
+        &self.fields
     }
 
     /// Returns the task reference if this checkbox was promoted.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self"
-    )]
-    pub const fn task_ref(&self) -> Option<TaskRef> {
-        match self {
-            Self::Checkbox {
-                task_ref,
-                ..
-            } => *task_ref,
-            Self::Plain {
-                ..
-            } => None,
-        }
+    pub const fn promoted_task_ref(&self) -> Option<TaskRef> {
+        self.task_ref
     }
 
     /// Sets the task reference for a promoted checkbox item.
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &mut self"
-    )]
     pub fn set_task_ref(&mut self, task_ref: TaskRef) {
-        if let Self::Checkbox {
-            task_ref: slot,
-            ..
-        } = self
-        {
-            *slot = Some(task_ref);
-        }
+        self.task_ref = Some(task_ref);
     }
 
     /// Clears the task reference for a checkbox item.
     #[inline]
     pub fn clear_task_ref(&mut self) {
-        if let Self::Checkbox {
-            task_ref: slot,
-            ..
-        } = self
-        {
-            *slot = None;
-        }
+        self.task_ref = None;
+    }
+}
+
+impl TaskExt for ListItem {
+    #[inline]
+    fn is_checkbox(&self) -> bool {
+        self.status.is_some()
+    }
+
+    #[inline]
+    fn status(&self) -> Option<StatusSymbol> {
+        self.task_status()
+    }
+
+    #[inline]
+    fn task_ref(&self) -> Option<TaskRef> {
+        self.promoted_task_ref()
     }
 }
 
@@ -456,7 +401,7 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
                 ListDepth::try_new(usize::from(value))?
             }
         };
-        let list_kind = match raw.list_kind {
+        let kind = match raw.list_kind {
             RawListKind::Ordered(start) => ListKind::Ordered(start),
             RawListKind::Unordered => ListKind::Unordered,
         };
@@ -465,25 +410,29 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
             .map(|marker| StatusSymbol::try_new(marker.marker()))
             .transpose()?;
 
-        if let Some(status) = status {
-            Ok(Self::Checkbox {
-                text: raw.text.as_ref().into(),
-                status,
-                range: raw.range,
-                list_kind,
-                depth,
-                parent: raw.parent,
-                task_ref: None,
-            })
-        } else {
-            Ok(Self::Plain {
-                text: raw.text.as_ref().into(),
-                range: raw.range,
-                list_kind,
-                depth,
-                parent: raw.parent,
-            })
+        let mut tags = Vec::with_capacity(raw.tags.len());
+        for raw_tag in &raw.tags {
+            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
+                tags.push(tag);
+            }
         }
+
+        let fields = raw
+            .inline_fields
+            .iter()
+            .map(InlineField::from_raw)
+            .collect::<Vec<_>>();
+
+        Ok(Self::new(
+            raw.text.as_ref().into(),
+            raw.range,
+            kind,
+            depth,
+            raw.parent,
+            status,
+            tags.into_boxed_slice(),
+            fields.into_boxed_slice(),
+        ))
     }
 }
 
