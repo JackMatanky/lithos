@@ -115,6 +115,14 @@ pub(crate) const TASKS_BY_REMINDER_DATE: redb::MultimapTableDefinition<
     &str,
     &str,
 > = redb::MultimapTableDefinition::new("tasks_by_reminder_date");
+pub(crate) const TASKS_BY_START_DATE: redb::MultimapTableDefinition<
+    &str,
+    &str,
+> = redb::MultimapTableDefinition::new("tasks_by_start_date");
+pub(crate) const TASKS_BY_SCHEDULED_DATE: redb::MultimapTableDefinition<
+    &str,
+    &str,
+> = redb::MultimapTableDefinition::new("tasks_by_scheduled_date");
 pub(crate) const TASKS_BY_STATUS: redb::MultimapTableDefinition<&str, &str> =
     redb::MultimapTableDefinition::new("tasks_by_status");
 #[expect(dead_code, reason = "Reserved for per-note task indexing")]

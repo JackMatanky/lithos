@@ -29,7 +29,7 @@ use crate::{
         NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES,
         TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE, TASKS_BY_DEPENDS_ON,
         TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
-        TASKS_BY_STATUS,
+        TASKS_BY_SCHEDULED_DATE, TASKS_BY_START_DATE, TASKS_BY_STATUS,
         aggregate::{Note, NoteId},
         error::NoteRepositoryError,
         events::{
@@ -122,12 +122,6 @@ pub trait Repository: Send + Sync {
     fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks with a specific priority level.
-    fn list_by_task_priority(
-        &self,
-        priority: f64,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks assigned to a specific project.
@@ -377,6 +371,8 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         let mut due_dates = Vec::new();
         let mut reminder_dates = Vec::new();
         let mut completed_dates = Vec::new();
+        let mut start_dates = Vec::new();
+        let mut scheduled_dates = Vec::new();
         let mut metadata_keys = Vec::new();
         let mut depends_on = Vec::new();
 
@@ -393,6 +389,12 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             }
             if let Some(timestamp) = task.completed_at() {
                 completed_dates.push(Self::format_i64(timestamp.as_i64()));
+            }
+            if let Some(timestamp) = task.dates().start() {
+                start_dates.push(Self::format_i64(timestamp.as_i64()));
+            }
+            if let Some(timestamp) = task.dates().scheduled() {
+                scheduled_dates.push(Self::format_i64(timestamp.as_i64()));
             }
 
             metadata_keys.extend(Self::task_metadata_keys(
@@ -412,6 +414,8 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             due_dates,
             reminder_dates,
             completed_dates,
+            start_dates,
+            scheduled_dates,
             metadata_keys,
             depends_on,
         }
@@ -453,6 +457,20 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         for key in &index_data.completed_dates {
             batch.multimap_insert(
                 TASKS_BY_COMPLETED_DATE,
+                key.as_ref(),
+                note_id_str,
+            )?;
+        }
+        for key in &index_data.start_dates {
+            batch.multimap_insert(
+                TASKS_BY_START_DATE,
+                key.as_ref(),
+                note_id_str,
+            )?;
+        }
+        for key in &index_data.scheduled_dates {
+            batch.multimap_insert(
+                TASKS_BY_SCHEDULED_DATE,
                 key.as_ref(),
                 note_id_str,
             )?;
@@ -510,6 +528,20 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         for key in &index_data.completed_dates {
             batch.multimap_remove(
                 TASKS_BY_COMPLETED_DATE,
+                key.as_ref(),
+                note_id_str,
+            )?;
+        }
+        for key in &index_data.start_dates {
+            batch.multimap_remove(
+                TASKS_BY_START_DATE,
+                key.as_ref(),
+                note_id_str,
+            )?;
+        }
+        for key in &index_data.scheduled_dates {
+            batch.multimap_remove(
+                TASKS_BY_SCHEDULED_DATE,
                 key.as_ref(),
                 note_id_str,
             )?;
@@ -671,6 +703,20 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
             TASKS_BY_COMPLETED_DATE,
             &old.completed_dates,
             &new.completed_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_START_DATE,
+            &old.start_dates,
+            &new.start_dates,
+            id_str,
+        )?;
+        Self::diff_update_multimap_vec(
+            batch,
+            TASKS_BY_SCHEDULED_DATE,
+            &old.scheduled_dates,
+            &new.scheduled_dates,
             id_str,
         )?;
         Self::diff_update_multimap_vec(
@@ -1317,23 +1363,6 @@ impl Repository for RedbRepository<'_, '_> {
     }
 
     #[inline]
-    fn list_by_task_priority(
-        &self,
-        priority: f64,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        if !priority.is_finite() {
-            return Ok(Vec::new());
-        }
-        let value = FieldValue::Number(priority);
-        let mut keys = Self::metadata_index_keys("priority", &value);
-        if let Some(key) = keys.pop() {
-            self.list_notes_by_task_index(TASKS_BY_METADATA, key.as_ref())
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
-    #[inline]
     fn list_by_task_project(
         &self,
         project: &str,
@@ -1377,7 +1406,8 @@ impl Repository for RedbRepository<'_, '_> {
             TaskDateKind::Due => Some(TASKS_BY_DUE_DATE),
             TaskDateKind::Reminder => Some(TASKS_BY_REMINDER_DATE),
             TaskDateKind::Completed => Some(TASKS_BY_COMPLETED_DATE),
-            TaskDateKind::Start | TaskDateKind::Scheduled => None,
+            TaskDateKind::Start => Some(TASKS_BY_START_DATE),
+            TaskDateKind::Scheduled => Some(TASKS_BY_SCHEDULED_DATE),
         };
         let Some(table) = table else {
             return Ok(Vec::new());
@@ -1459,6 +1489,8 @@ struct TaskIndexData {
     due_dates: Vec<Box<str>>,
     reminder_dates: Vec<Box<str>>,
     completed_dates: Vec<Box<str>>,
+    start_dates: Vec<Box<str>>,
+    scheduled_dates: Vec<Box<str>>,
     metadata_keys: Vec<Box<str>>,
     depends_on: Vec<Box<str>>,
 }
