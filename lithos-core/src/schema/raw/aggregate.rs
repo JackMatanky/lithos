@@ -131,17 +131,21 @@ impl RawSchema {
     /// The name is derived from the filename, not the file content.
     #[inline]
     #[must_use]
-    pub fn with_name(mut self, name: Box<str>) -> Self {
-        self.name = name;
-        self
+    pub fn with_name(self, name: Box<str>) -> Self {
+        Self {
+            name,
+            ..self
+        }
     }
 
     /// Set file timestamps (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_file_times(mut self, file_times: RawFileTimes) -> Self {
-        self.file_times = file_times;
-        self
+    pub fn with_file_times(self, file_times: RawFileTimes) -> Self {
+        Self {
+            file_times,
+            ..self
+        }
     }
 
     /// Consuming constructor that validates the schema name.
@@ -268,9 +272,11 @@ impl RawPropertyBank {
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_file_times(mut self, file_times: RawFileTimes) -> Self {
-        self.file_times = file_times;
-        self
+    pub fn with_file_times(self, file_times: RawFileTimes) -> Self {
+        Self {
+            file_times,
+            ..self
+        }
     }
 }
 
