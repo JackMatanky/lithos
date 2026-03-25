@@ -190,6 +190,7 @@ impl PropertyBankProcessor<Discovery> {
     ///
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn has_raw_view<R: Repository>(
         self,
         filename: &str,
@@ -243,6 +244,7 @@ impl PropertyBankProcessor<IsFreshTimestamp> {
 
     /// Transition to content check if timestamps mismatch.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn to_fresh_content(
         self,
         content: &str,
@@ -261,7 +263,8 @@ impl PropertyBankProcessor<IsFreshTimestamp> {
     /// Returns [`SchemaLoaderError`] if the repository access fails or the bank
     /// is missing.
     #[inline]
-    pub fn build<R: Repository>(
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn complete_with_cached<R: Repository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError>
@@ -295,6 +298,7 @@ impl<'source> PropertyBankProcessor<IsFreshContent<'source>> {
     ///
     /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn match_content(
         self,
         config_path: &std::path::Path,
@@ -338,6 +342,7 @@ impl PropertyBankProcessor<RawViewTimeUpdate> {
     ///
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn update<R: Repository>(
         mut self,
         repository: &R,
@@ -383,6 +388,7 @@ impl PropertyBankProcessor<IsNew> {
     ///
     /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn parse(
         self,
         config_path: &std::path::Path,
@@ -396,7 +402,7 @@ impl PropertyBankProcessor<IsNew> {
 
         Ok(Self::transition(NewRawView {
             raw,
-            content: content.to_owned(),
+            content: content.into(),
             delta: None, // NEW path has no delta (full build)
         }))
     }
@@ -412,6 +418,7 @@ impl PropertyBankProcessor<IsStale<'_>> {
     /// The file is already parsed in this state, so we only need to compare
     /// hashes with the cached view.
     #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn compute_delta(self) -> PropertyBankProcessor<NewRawView> {
         let new_hashes =
             HashMetadata::compute_property_hashes(self.state.raw.properties());
@@ -424,7 +431,7 @@ impl PropertyBankProcessor<IsStale<'_>> {
 
         Self::transition(NewRawView {
             raw: self.state.raw,
-            content: self.state.content.to_owned(),
+            content: self.state.content.into(),
             delta: Some(delta),
         })
     }
@@ -442,7 +449,8 @@ impl PropertyBankProcessor<NewRawView> {
     /// Returns [`SchemaLoaderError`] if the repository access fails or
     /// ingestion fails.
     #[inline]
-    pub fn build<R: Repository>(
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn save_and_complete<R: Repository>(
         self,
         filename: &str,
         repository: &R,
@@ -793,7 +801,8 @@ mod tests {
                 DiscoveryBranch::New(p) => {
                     let res = p.parse(config_path, content);
                     assert!(res.is_ok(), "Parse error: {:?}", res.err());
-                    let completed = res.unwrap().build(filename, &repo);
+                    let completed =
+                        res.unwrap().save_and_complete(filename, &repo);
                     assert!(
                         completed.is_ok(),
                         "Build error: {:?}",

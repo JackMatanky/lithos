@@ -69,12 +69,12 @@ where
                     .read_to_string(&config_path)
                     .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
                 p.parse(&config_path, &content)?
-                    .build(filename, &self.repository)?
+                    .save_and_complete(filename, &self.repository)?
             }
             DiscoveryBranch::FreshTimestamp(p) => {
                 if p.is_timestamp_match() {
                     // Fastest path: fetch from DB
-                    p.build(&self.repository)?
+                    p.complete_with_cached(&self.repository)?
                 } else {
                     // Tier 3: Content hash check
                     let content = self
@@ -90,7 +90,7 @@ where
                         }
                         ContentBranch::Mismatch(p) => p
                             .compute_delta()
-                            .build(filename, &self.repository)?,
+                            .save_and_complete(filename, &self.repository)?,
                     }
                 }
             }
