@@ -1019,6 +1019,38 @@ mod tests {
         }
     }
 
+    mod parse_errors {
+        use rstest::rstest;
+
+        use crate::schema::{
+            error::{SchemaIngestionError, SchemaLoaderError},
+            property_bank_processor::{IsNew, PropertyBankProcessor},
+            raw::RawFileTimes,
+        };
+
+        #[rstest]
+        fn parse_returns_error_on_invalid_yaml() {
+            let processor = PropertyBankProcessor {
+                state: IsNew {
+                    times: RawFileTimes {
+                        created_at: None,
+                        modified_at: None,
+                    },
+                },
+            };
+
+            let result = processor
+                .parse(std::path::Path::new("properties.yaml"), "invalid: [");
+
+            assert!(matches!(
+                result,
+                Err(SchemaLoaderError::Ingestion(SchemaIngestionError::Parse(
+                    _
+                )))
+            ));
+        }
+    }
+
     mod match_timestamp {
         use std::path::Path;
 
@@ -1133,6 +1165,153 @@ mod tests {
         }
     }
 
+    mod content_hash {
+        use std::{path::Path, time::SystemTime};
+
+        use rstest::rstest;
+        use tempfile::TempDir;
+
+        use super::fixtures::{create_test_view, repo, temp_dir, write_config};
+        use crate::{
+            fs::FsReader,
+            schema::{
+                error::{
+                    SchemaIngestionError, SchemaLoaderError, SchemaStorageError,
+                },
+                property_bank_processor::{
+                    ContentBranch, Discovery, DiscoveryBranch,
+                    FetchConstruction, PropertyBankProcessor, TimestampBranch,
+                },
+                storage::Repository as _,
+                testing::InMemoryRepository,
+            },
+        };
+
+        #[rstest]
+        fn content_match_updates_view_timestamps(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let content = "properties:\n  title:\n    type: string";
+            write_config(temp_dir.path(), filename, content);
+            let config_path = Path::new(filename);
+
+            let future_time = SystemTime::now()
+                .checked_add(std::time::Duration::from_secs(3600))
+                .expect("Time error");
+            let view =
+                create_test_view(content, Some(future_time), Some(future_time));
+            repo.save_raw_property_bank_view(filename, &view)
+                .expect("Save error");
+
+            let pipeline = PropertyBankProcessor::<Discovery>::new();
+            let branch =
+                pipeline.has_raw_view(filename, &source, config_path, &repo);
+
+            assert!(branch.is_ok(), "Expected success");
+            let branch = branch.unwrap();
+            assert!(matches!(branch, DiscoveryBranch::FreshTimestamp(_)));
+            let DiscoveryBranch::FreshTimestamp(processor) = branch else {
+                return;
+            };
+
+            let timestamp_branch = processor.is_match(content);
+            assert!(matches!(timestamp_branch, TimestampBranch::Content(_)));
+            let TimestampBranch::Content(next) = timestamp_branch else {
+                return;
+            };
+
+            let content_branch = next.is_match(config_path);
+            assert!(content_branch.is_ok(), "Expected success");
+            assert!(matches!(content_branch, Ok(ContentBranch::Match(_))));
+            let ContentBranch::Match(matcher) = content_branch.unwrap() else {
+                return;
+            };
+
+            let _fetch = matcher.update(&repo).expect("Update should succeed");
+            let updated_view = repo
+                .get_raw_property_bank_view(filename)
+                .expect("Fetch error")
+                .expect("Expected view");
+
+            let matches = updated_view.current().is_some_and(|v| {
+                v.file_times().is_timestamp_match(
+                    source.created_at(config_path),
+                    source.modified_at(config_path),
+                )
+            });
+            assert!(matches, "Expected timestamps to match current file");
+        }
+
+        #[rstest]
+        fn content_mismatch_transitions_to_stale(
+            temp_dir: TempDir,
+            repo: InMemoryRepository,
+        ) {
+            let source = FsReader::new(temp_dir.path());
+            let filename = "properties.yaml";
+            let old_content = "properties:\n  title:\n    type: string";
+            let new_content = "properties:\n  title:\n    type: number";
+            write_config(temp_dir.path(), filename, new_content);
+            let config_path = Path::new(filename);
+
+            let future_time = SystemTime::now()
+                .checked_add(std::time::Duration::from_secs(3600))
+                .expect("Time error");
+            let view = create_test_view(
+                old_content,
+                Some(future_time),
+                Some(future_time),
+            );
+            repo.save_raw_property_bank_view(filename, &view)
+                .expect("Save error");
+
+            let pipeline = PropertyBankProcessor::<Discovery>::new();
+            let branch =
+                pipeline.has_raw_view(filename, &source, config_path, &repo);
+
+            assert!(branch.is_ok(), "Expected success");
+            let branch = branch.unwrap();
+            assert!(matches!(branch, DiscoveryBranch::FreshTimestamp(_)));
+            let DiscoveryBranch::FreshTimestamp(processor) = branch else {
+                return;
+            };
+
+            let timestamp_branch = processor.is_match(new_content);
+            assert!(matches!(timestamp_branch, TimestampBranch::Content(_)));
+            let TimestampBranch::Content(next) = timestamp_branch else {
+                return;
+            };
+
+            let content_branch = next.is_match(config_path);
+            assert!(content_branch.is_ok(), "Expected success");
+            assert!(
+                matches!(content_branch.unwrap(), ContentBranch::Mismatch(_)),
+                "Expected Mismatch branch"
+            );
+        }
+
+        #[rstest]
+        fn fetch_returns_error_when_bank_missing(repo: InMemoryRepository) {
+            let processor = PropertyBankProcessor {
+                state: FetchConstruction,
+            };
+
+            let result = processor.fetch(&repo);
+
+            assert!(matches!(
+                result,
+                Err(SchemaLoaderError::Ingestion(
+                    SchemaIngestionError::Storage(
+                        SchemaStorageError::PropertyBankNotFound
+                    )
+                ))
+            ));
+        }
+    }
+
     mod integration {
         use std::path::Path;
 
@@ -1190,6 +1369,67 @@ mod tests {
                     panic!("Expected New branch");
                 }
             }
+        }
+    }
+
+    mod stale_view_update {
+        use rstest::rstest;
+
+        use super::fixtures::repo;
+        use crate::schema::{
+            property_bank_processor::{
+                DeltaBranch, IsStale, PropertyBankProcessor,
+            },
+            raw::RawPropertyBank,
+            storage::Repository as _,
+            testing::InMemoryRepository,
+            views::RawPropertyBankView,
+        };
+
+        #[rstest]
+        fn updates_content_hash_when_delta_empty(repo: InMemoryRepository) {
+            let filename = "properties.yaml";
+            let old_content = "properties:\n  title:\n    type: string";
+            let new_content = "properties:\n  title:\n    type: string\n";
+            let old_raw: RawPropertyBank =
+                serde_yaml::from_str(old_content).expect("Invalid YAML");
+            let new_raw: RawPropertyBank =
+                serde_yaml::from_str(new_content).expect("Invalid YAML");
+
+            let view = RawPropertyBankView::try_from_raw_with_content(
+                &old_raw,
+                filename,
+                old_content,
+            )
+            .expect("View error");
+            repo.save_raw_property_bank_view(filename, &view)
+                .expect("Save error");
+
+            let content_hash = blake3::hash(new_content.as_bytes());
+            let processor = PropertyBankProcessor {
+                state: IsStale {
+                    raw: new_raw,
+                    view,
+                    content: new_content,
+                    content_hash: *content_hash.as_bytes(),
+                },
+            };
+
+            let branch = processor.filter_changed_properties();
+            assert!(matches!(branch, DeltaBranch::ContentOnly(_)));
+            let DeltaBranch::ContentOnly(next) = branch else {
+                return;
+            };
+
+            let _fetch = next.update(&repo).expect("Update should succeed");
+            let updated_view = repo
+                .get_raw_property_bank_view(filename)
+                .expect("Fetch error")
+                .expect("Expected view");
+            let matches = updated_view.current().is_some_and(|v| {
+                v.hashes().is_content_match(content_hash.as_bytes())
+            });
+            assert!(matches, "Expected content hash to be updated");
         }
     }
 
