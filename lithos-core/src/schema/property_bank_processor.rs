@@ -47,7 +47,7 @@
 //!
 //! 11. **Completed**: Terminal state.
 
-use std::{collections::HashMap, time::SystemTime};
+use std::time::SystemTime;
 
 use crate::{
     fs::FsReader,
@@ -168,7 +168,7 @@ pub struct NewConstruction {
 pub struct UpdateConstruction {
     raw: RawPropertyBank,
     content: String,
-    delta: HashMap<PropertyName, RawPropertyBankEntry>,
+    delta: PropertyDelta,
 }
 
 /// Ready to fetch the cached `PropertyBank` from storage.
@@ -181,6 +181,20 @@ pub struct FetchConstruction;
 #[non_exhaustive]
 pub struct Completed {
     bank: PropertyBank,
+}
+
+/// Property delta between cached view and new raw bank.
+#[derive(Debug)]
+struct PropertyDelta {
+    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
+    removals: Vec<PropertyName>,
+}
+
+impl PropertyDelta {
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.upserts.is_empty() && self.removals.is_empty()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -511,22 +525,51 @@ impl PropertyBankProcessor<IsStale<'_>> {
     pub fn filter_changed_properties(self) -> DeltaBranch {
         let new_hashes =
             HashMetadata::compute_property_hashes(self.state.raw.properties());
-        let changed = self.state.view.current().map_or_else(
-            || new_hashes.keys().cloned().collect::<Vec<_>>(),
-            |v| v.hashes().changed_properties(&new_hashes),
-        );
+        let (mut upserts, mut removals) =
+            self.state.view.current().map_or_else(
+                || {
+                    let upserts = self
+                        .state
+                        .raw
+                        .properties()
+                        .iter()
+                        .map(|(name, entry)| (name.clone(), entry.clone()))
+                        .collect::<Vec<_>>();
+                    (upserts, Vec::new())
+                },
+                |version| {
+                    let prev_hashes = version.hashes().properties();
+                    let mut upserts = Vec::new();
 
-        if changed.is_empty() {
+                    for (name, entry) in self.state.raw.properties().iter() {
+                        let Some(new_hash) = new_hashes.get(name) else {
+                            continue;
+                        };
+                        if prev_hashes.get(name) != Some(new_hash) {
+                            upserts.push((name.clone(), entry.clone()));
+                        }
+                    }
+                    let removals = prev_hashes
+                        .keys()
+                        .filter(|name| !new_hashes.contains_key(*name))
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    (upserts, removals)
+                },
+            );
+
+        if upserts.is_empty() && removals.is_empty() {
             return DeltaBranch::ContentOnly(self.into_update_stale_view());
         }
 
-        let raw_map = self.state.raw.properties().as_map();
-        let delta = changed
-            .into_iter()
-            .filter_map(|name| {
-                raw_map.get(&name).map(|entry| (name, entry.clone()))
-            })
-            .collect();
+        upserts.sort_by(|left, right| left.0.cmp(&right.0));
+        removals.sort();
+
+        let delta = PropertyDelta {
+            upserts,
+            removals,
+        };
 
         DeltaBranch::PropertiesChanged(self.into_update_construction(delta))
     }
@@ -545,7 +588,7 @@ impl PropertyBankProcessor<IsStale<'_>> {
     #[inline]
     fn into_update_construction(
         self,
-        delta: HashMap<PropertyName, RawPropertyBankEntry>,
+        delta: PropertyDelta,
     ) -> PropertyBankProcessor<UpdateConstruction> {
         Self::transition(UpdateConstruction {
             raw: self.state.raw,
@@ -658,6 +701,11 @@ impl PropertyBankProcessor<UpdateConstruction> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
+        let UpdateConstruction {
+            raw,
+            content,
+            delta,
+        } = self.state;
         let mut bank = repository
             .get_property_bank()
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?
@@ -666,8 +714,8 @@ impl PropertyBankProcessor<UpdateConstruction> {
                     SchemaStorageError::PropertyBankNotFound,
                 ),
             ))?;
-        self.apply_delta(&mut bank)?;
-        self.persist(filename, repository, &bank)?;
+        Self::apply_delta(delta, &mut bank)?;
+        Self::persist(&raw, &content, filename, repository, &bank)?;
 
         Ok(Self::transition(Completed {
             bank,
@@ -676,46 +724,40 @@ impl PropertyBankProcessor<UpdateConstruction> {
 
     #[inline]
     fn apply_delta(
-        &self,
+        delta: PropertyDelta,
         bank: &mut PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
-        let mut any_changed = false;
+        use std::collections::hash_map::Entry;
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "HashMap iteration is required for delta application"
-        )]
-        for (name, entry) in &self.state.delta {
-            let existing_id = bank.get(name).map(Property::id);
-            let property = Property::try_from((name.clone(), entry.clone()))
-                .map_err(|source| {
+        let any_changed = !delta.is_empty();
+        let PropertyDelta {
+            upserts,
+            removals,
+        } = delta;
+
+        for (name, entry) in upserts {
+            let property = Property::try_from((name.clone(), entry)).map_err(
+                |source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                         path: std::path::PathBuf::from("property_bank"),
                         source,
                     })
-                })?;
-            let property = match existing_id {
-                Some(id) => property.with_id(id),
-                None => property,
-            };
-
-            let replaced =
-                bank.set_properties().insert(name.clone(), property).is_some();
-            any_changed |= replaced || existing_id.is_none();
+                },
+            )?;
+            match bank.set_properties().entry(name) {
+                Entry::Occupied(mut occupied) => {
+                    let existing_id = occupied.get().id();
+                    let property = property.with_id(existing_id);
+                    occupied.insert(property);
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(property);
+                }
+            }
         }
 
-        let raw_map = self.state.raw.properties().as_map();
-        let removed: Vec<PropertyName> = bank
-            .properties()
-            .keys()
-            .filter(|name| !raw_map.contains_key(*name))
-            .cloned()
-            .collect();
-
-        for name in removed {
-            if bank.set_properties().remove(&name).is_some() {
-                any_changed = true;
-            }
+        for name in removals {
+            bank.set_properties().remove(&name);
         }
 
         if any_changed {
@@ -729,7 +771,8 @@ impl PropertyBankProcessor<UpdateConstruction> {
 
     #[inline]
     fn persist<R: Repository>(
-        &self,
+        raw: &RawPropertyBank,
+        content: &str,
         filename: &str,
         repository: &R,
         bank: &PropertyBank,
@@ -742,9 +785,7 @@ impl PropertyBankProcessor<UpdateConstruction> {
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         let view = RawPropertyBankView::try_from_raw_with_content(
-            &self.state.raw,
-            filename,
-            &self.state.content,
+            raw, filename, content,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
@@ -1105,6 +1146,94 @@ mod tests {
                     panic!("Expected New branch");
                 }
             }
+        }
+    }
+
+    mod update_construction {
+        use rstest::rstest;
+
+        use super::fixtures::repo;
+        use crate::schema::{
+            bank::PropertyBank,
+            property::{Property, PropertyName},
+            property_bank_processor::{
+                DeltaBranch, IsStale, PropertyBankProcessor,
+            },
+            raw::RawPropertyBank,
+            storage::Repository as _,
+            testing::InMemoryRepository,
+            views::RawPropertyBankView,
+        };
+
+        #[rstest]
+        fn removes_properties_present_only_in_cached_view(
+            repo: InMemoryRepository,
+        ) {
+            let filename = "properties.yaml";
+            let old_content = "properties:\n  title:\n    type: string";
+            let new_content = "properties: {}";
+
+            let old_raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {
+                    "title": {
+                        "multi": false,
+                        "type": "string"
+                    }
+                }
+            });
+            let new_raw_json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            let old_raw: RawPropertyBank =
+                serde_json::from_value(old_raw_json).unwrap();
+            let new_raw: RawPropertyBank =
+                serde_json::from_value(new_raw_json).unwrap();
+
+            let view = RawPropertyBankView::try_from_raw_with_content(
+                &old_raw,
+                filename,
+                old_content,
+            )
+            .unwrap();
+
+            let content_hash = blake3::hash(new_content.as_bytes());
+            let processor = PropertyBankProcessor {
+                state: IsStale {
+                    raw: new_raw,
+                    view,
+                    content: new_content,
+                    content_hash: *content_hash.as_bytes(),
+                },
+            };
+
+            let branch = processor.filter_changed_properties();
+
+            assert!(
+                matches!(branch, DeltaBranch::PropertiesChanged(_)),
+                "Expected PropertiesChanged branch"
+            );
+            let DeltaBranch::PropertiesChanged(next) = branch else {
+                return;
+            };
+
+            let mut bank = PropertyBank::new();
+            let (existing_name, entry) =
+                old_raw.properties().iter().next().unwrap();
+            let property =
+                Property::try_from((existing_name.clone(), entry.clone()))
+                    .unwrap();
+            bank.register(property).unwrap();
+            repo.save_property_bank(&bank).unwrap();
+
+            let completed = next.update(filename, &repo).unwrap();
+            let updated_bank = completed.into_bank();
+            let title_name = PropertyName::try_new("title").unwrap();
+            assert!(
+                updated_bank.get(&title_name).is_none(),
+                "Expected removal"
+            );
         }
     }
 }

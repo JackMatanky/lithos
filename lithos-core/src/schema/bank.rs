@@ -219,11 +219,6 @@ impl PropertyBank {
     }
 
     #[inline]
-    pub(super) fn properties(&self) -> &HashMap<PropertyName, Property> {
-        &self.properties
-    }
-
-    #[inline]
     pub(super) fn set_properties(
         &mut self,
     ) -> &mut HashMap<PropertyName, Property> {
