@@ -21,12 +21,10 @@
 //! structural items to be queried for task-specific properties without
 //! necessarily being promoted to a full `Task` entity.
 
-#![allow(
-    missing_docs,
-    clippy::exhaustive_structs,
+#![expect(
     clippy::exhaustive_enums,
-    reason = "rkyv derives generate archived/resolver items that are missing \
-              docs"
+    reason = "rkyv generates exhaustive archived variants for enums even if \
+              the base type is non_exhaustive"
 )]
 
 use std::fmt;
