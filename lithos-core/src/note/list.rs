@@ -118,6 +118,26 @@ impl List {
     }
 }
 
+/// Markdown list type.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum ListKind {
+    /// Ordered list starting at the given number.
+    Ordered(u64),
+    /// Unordered list (bullets).
+    Unordered,
+}
+
 /// Validated list nesting depth.
 #[derive(
     Debug,
@@ -193,18 +213,6 @@ impl<'list> Iterator for ListItems<'list> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
-}
-
-/// Extension trait for list items providing task-specific capabilities.
-pub trait TaskExt {
-    /// Returns true if this list item has a checkbox.
-    fn is_checkbox(&self) -> bool;
-
-    /// Returns the checkbox status symbol, if any.
-    fn status(&self) -> Option<StatusSymbol>;
-
-    /// Returns the task reference if this item was promoted.
-    fn task_ref(&self) -> Option<TaskRef>;
 }
 
 /// Single item in a markdown list.
@@ -373,23 +381,6 @@ impl ListItem {
     }
 }
 
-impl TaskExt for ListItem {
-    #[inline]
-    fn is_checkbox(&self) -> bool {
-        self.status.is_some()
-    }
-
-    #[inline]
-    fn status(&self) -> Option<StatusSymbol> {
-        self.task_status()
-    }
-
-    #[inline]
-    fn task_ref(&self) -> Option<TaskRef> {
-        self.promoted_task_ref()
-    }
-}
-
 impl TryFrom<&RawListItem<'_>> for ListItem {
     type Error = NoteError;
 
@@ -436,22 +427,31 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
     }
 }
 
-/// Markdown list type.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum ListKind {
-    /// Ordered list starting at the given number.
-    Ordered(u64),
-    /// Unordered list (bullets).
-    Unordered,
+/// Extension trait for list items providing task-specific capabilities.
+pub trait TaskExt {
+    /// Returns true if this list item has a checkbox.
+    fn is_checkbox(&self) -> bool;
+
+    /// Returns the checkbox status symbol, if any.
+    fn status(&self) -> Option<StatusSymbol>;
+
+    /// Returns the task reference if this item was promoted.
+    fn task_ref(&self) -> Option<TaskRef>;
+}
+
+impl TaskExt for ListItem {
+    #[inline]
+    fn is_checkbox(&self) -> bool {
+        self.status.is_some()
+    }
+
+    #[inline]
+    fn status(&self) -> Option<StatusSymbol> {
+        self.task_status()
+    }
+
+    #[inline]
+    fn task_ref(&self) -> Option<TaskRef> {
+        self.promoted_task_ref()
+    }
 }
