@@ -82,163 +82,7 @@ impl Default for PropertyBankProcessor<Discovery> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  State Definitions
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Entry state for the property bank pipeline.
-///
-/// # Invariants
-/// - No cached view has been loaded yet.
-/// - File timestamps are not read until this state transitions.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Discovery;
-
-/// Branch when no cached view exists.
-///
-/// # Invariants
-/// - No cached view is available in the repository.
-/// - File timestamps are captured and stored in `times`.
-/// - The next step must parse content into a raw bank.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct IsNew {
-    times: RawFileTimes,
-}
-
-/// Branch when a cached view exists and timestamps can be compared.
-///
-/// # Invariants
-/// - A cached view is present in `view`.
-/// - File timestamps are captured in `times`.
-/// - Content has not been hashed yet.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct IsFreshTimestamp {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-}
-
-/// State for content hashing when timestamps do not match.
-///
-/// # Invariants
-/// - A cached view is present in `view`.
-/// - File timestamps are captured in `times`.
-/// - Full file content is available in `content` for hashing.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct IsFreshContent<'source> {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-    content: &'source str,
-}
-
-/// State for updating view timestamps after a content hash match.
-///
-/// # Invariants
-/// - Content hash matches the cached view.
-/// - The bank does not need to be rebuilt.
-/// - Only view timestamps must be updated.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct UpdateRawViewTime {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-}
-
-/// State for updating view hashes/timestamps when content changed but
-/// properties did not.
-///
-/// # Invariants
-/// - Content hash differs from the cached view.
-/// - Property delta is empty (no property changes).
-/// - Only view metadata must be updated.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct UpdateStaleRawView {
-    times: RawFileTimes,
-    content_hash: [u8; 32],
-    view: RawPropertyBankView,
-}
-
-/// State for computing a property delta from parsed raw content.
-///
-/// # Invariants
-/// - Content hash differs from the cached view.
-/// - Raw content is parsed and stored in `raw`.
-/// - `content_hash` corresponds to `content`.
-/// - `raw` includes file times captured for this run.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct IsStale<'source> {
-    raw: RawPropertyBank,
-    view: RawPropertyBankView,
-    content: &'source str,
-    content_hash: [u8; 32],
-}
-
-/// State for building a new `PropertyBank` from raw content.
-///
-/// # Invariants
-/// - `raw` is parsed from current content.
-/// - `content` matches the raw bank.
-/// - The bank does not exist in storage for this run.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct NewConstruction {
-    raw: RawPropertyBank,
-    content: String,
-}
-
-/// State for applying a property delta to an existing `PropertyBank`.
-///
-/// # Invariants
-/// - `raw` is parsed from current content.
-/// - `delta` captures all property upserts/removals.
-/// - Existing property IDs must be preserved on updates.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct UpdateConstruction {
-    raw: RawPropertyBank,
-    content: String,
-    delta: PropertyDelta,
-}
-
-/// State for fetching the cached `PropertyBank` without rebuilding.
-///
-/// # Invariants
-/// - Cached view metadata is up to date for this run.
-/// - The bank is expected to exist in storage.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct FetchConstruction;
-
-/// Terminal state containing the ready `PropertyBank`.
-///
-/// # Invariants
-/// - The bank is fully constructed and owned by this state.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Completed {
-    bank: PropertyBank,
-}
-
-/// Property delta between cached view and new raw bank.
-#[derive(Debug)]
-struct PropertyDelta {
-    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
-    removals: Vec<PropertyName>,
-}
-
-impl PropertyDelta {
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.upserts.is_empty() && self.removals.is_empty()
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Branching Enums
+//  Discovery
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Result of checking if a raw view exists.
@@ -251,39 +95,14 @@ pub enum DiscoveryBranch {
     FreshTimestamp(PropertyBankProcessor<IsFreshTimestamp>),
 }
 
-/// Result of checking if content matches.
+/// Entry state for the property bank pipeline.
+///
+/// # Invariants
+/// - No cached view has been loaded yet.
+/// - File timestamps are not read until this state transitions.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum ContentBranch<'source> {
-    /// Hash matches - just update timestamps.
-    Match(PropertyBankProcessor<UpdateRawViewTime>),
-    /// Hash mismatches - compute delta.
-    Mismatch(PropertyBankProcessor<IsStale<'source>>),
-}
-
-/// Result of matching timestamps.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum TimestampBranch<'source> {
-    /// Timestamps match - fetch cached bank.
-    Fetch(PropertyBankProcessor<FetchConstruction>),
-    /// Timestamps mismatch - check content hash.
-    Content(PropertyBankProcessor<IsFreshContent<'source>>),
-}
-
-/// Result of filtering changed properties.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum DeltaBranch {
-    /// Content changed but properties did not.
-    ContentOnly(PropertyBankProcessor<UpdateStaleRawView>),
-    /// Properties changed - proceed with delta update.
-    PropertiesChanged(PropertyBankProcessor<UpdateConstruction>),
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: Discovery
-// ─────────────────────────────────────────────────────────────────────────────
+pub struct Discovery;
 
 impl PropertyBankProcessor<Discovery> {
     /// Start a new processor.
@@ -336,8 +155,73 @@ impl PropertyBankProcessor<Discovery> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: IsFreshTimestamp
+//  IsNew
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Branch when no cached view exists.
+///
+/// # Invariants
+/// - No cached view is available in the repository.
+/// - File timestamps are captured and stored in `times`.
+/// - The next step must parse content into a raw bank.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct IsNew {
+    times: RawFileTimes,
+}
+
+impl PropertyBankProcessor<IsNew> {
+    /// Parse the file content into a raw property bank.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn parse(
+        self,
+        config_path: &std::path::Path,
+        content: &str,
+    ) -> Result<PropertyBankProcessor<NewConstruction>, SchemaLoaderError> {
+        let raw: RawPropertyBank =
+            FsReader::parse_structured_from_str(config_path, content)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        let raw = raw.with_file_times(self.state.times);
+
+        Ok(Self::transition(NewConstruction {
+            raw,
+            content: content.into(),
+        }))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  IsFreshTimestamp
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of matching timestamps.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum TimestampBranch<'source> {
+    /// Timestamps match - fetch cached bank.
+    Fetch(PropertyBankProcessor<FetchConstruction>),
+    /// Timestamps mismatch - check content hash.
+    Content(PropertyBankProcessor<IsFreshContent<'source>>),
+}
+
+/// Branch when a cached view exists and timestamps can be compared.
+///
+/// # Invariants
+/// - A cached view is present in `view`.
+/// - File timestamps are captured in `times`.
+/// - Content has not been hashed yet.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct IsFreshTimestamp {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+}
 
 impl PropertyBankProcessor<IsFreshTimestamp> {
     /// Match timestamps and branch to the next state.
@@ -383,8 +267,32 @@ impl PropertyBankProcessor<IsFreshTimestamp> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: IsFreshContent
+//  IsFreshContent
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of checking if content matches.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ContentBranch<'source> {
+    /// Hash matches - just update timestamps.
+    Match(PropertyBankProcessor<UpdateRawViewTime>),
+    /// Hash mismatches - compute delta.
+    Mismatch(PropertyBankProcessor<IsStale<'source>>),
+}
+
+/// State for content hashing when timestamps do not match.
+///
+/// # Invariants
+/// - A cached view is present in `view`.
+/// - File timestamps are captured in `times`.
+/// - Full file content is available in `content` for hashing.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct IsFreshContent<'source> {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+    content: &'source str,
+}
 
 impl<'source> PropertyBankProcessor<IsFreshContent<'source>> {
     /// Check if the content hash matches the cached view.
@@ -445,8 +353,21 @@ impl<'source> PropertyBankProcessor<IsFreshContent<'source>> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: UpdateRawViewTime
+//  UpdateRawViewTime
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// State for updating view timestamps after a content hash match.
+///
+/// # Invariants
+/// - Content hash matches the cached view.
+/// - The bank does not need to be rebuilt.
+/// - Only view timestamps must be updated.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UpdateRawViewTime {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+}
 
 impl PropertyBankProcessor<UpdateRawViewTime> {
     /// Update timestamps in the cached view.
@@ -481,79 +402,48 @@ impl PropertyBankProcessor<UpdateRawViewTime> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: UpdateStaleRawView
+//  IsStale
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl PropertyBankProcessor<UpdateStaleRawView> {
-    /// Update timestamps and content hash in the cached view.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails or the
-    /// cached view cannot be reconstructed.
+/// Result of filtering changed properties.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum DeltaBranch {
+    /// Content changed but properties did not.
+    ContentOnly(PropertyBankProcessor<UpdateStaleRawView>),
+    /// Properties changed - proceed with delta update.
+    PropertiesChanged(PropertyBankProcessor<UpdateConstruction>),
+}
+
+/// Property delta between cached view and new raw bank.
+#[derive(Debug)]
+struct PropertyDelta {
+    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
+    removals: Vec<PropertyName>,
+}
+
+impl PropertyDelta {
     #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn update<R: Repository>(
-        mut self,
-        repository: &R,
-    ) -> Result<PropertyBankProcessor<FetchConstruction>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let new_file_times = FileTimesMetadata::new(
-            self.state.times.created_at,
-            self.state.times.modified_at,
-        );
-        self.state.view.update_timestamps(new_file_times);
-        self.state
-            .view
-            .update_content_hash(self.state.content_hash)
-            .map_err(SchemaLoaderError::Ingestion)?;
-
-        repository
-            .save_raw_property_bank_view(
-                self.state.view.file_path().as_str(),
-                &self.state.view,
-            )
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        Ok(Self::transition(FetchConstruction))
+    fn is_empty(&self) -> bool {
+        self.upserts.is_empty() && self.removals.is_empty()
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: IsNew
-// ─────────────────────────────────────────────────────────────────────────────
-
-impl PropertyBankProcessor<IsNew> {
-    /// Parse the file content into a raw property bank.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
-    #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn parse(
-        self,
-        config_path: &std::path::Path,
-        content: &str,
-    ) -> Result<PropertyBankProcessor<NewConstruction>, SchemaLoaderError> {
-        let raw: RawPropertyBank =
-            FsReader::parse_structured_from_str(config_path, content)
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        let raw = raw.with_file_times(self.state.times);
-
-        Ok(Self::transition(NewConstruction {
-            raw,
-            content: content.into(),
-        }))
-    }
+/// State for computing a property delta from parsed raw content.
+///
+/// # Invariants
+/// - Content hash differs from the cached view.
+/// - Raw content is parsed and stored in `raw`.
+/// - `content_hash` corresponds to `content`.
+/// - `raw` includes file times captured for this run.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct IsStale<'source> {
+    raw: RawPropertyBank,
+    view: RawPropertyBankView,
+    content: &'source str,
+    content_hash: [u8; 32],
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: IsStale
-// ─────────────────────────────────────────────────────────────────────────────
 
 impl PropertyBankProcessor<IsStale<'_>> {
     /// Filter changed properties and transition to the appropriate state.
@@ -651,8 +541,77 @@ impl PropertyBankProcessor<IsStale<'_>> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: NewConstruction
+//  UpdateStaleRawView
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// State for updating view hashes/timestamps when content changed but
+/// properties did not.
+///
+/// # Invariants
+/// - Content hash differs from the cached view.
+/// - Property delta is empty (no property changes).
+/// - Only view metadata must be updated.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UpdateStaleRawView {
+    times: RawFileTimes,
+    content_hash: [u8; 32],
+    view: RawPropertyBankView,
+}
+
+impl PropertyBankProcessor<UpdateStaleRawView> {
+    /// Update timestamps and content hash in the cached view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the repository access fails or the
+    /// cached view cannot be reconstructed.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn update<R: Repository>(
+        mut self,
+        repository: &R,
+    ) -> Result<PropertyBankProcessor<FetchConstruction>, SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        let new_file_times = FileTimesMetadata::new(
+            self.state.times.created_at,
+            self.state.times.modified_at,
+        );
+        self.state.view.update_timestamps(new_file_times);
+        self.state
+            .view
+            .update_content_hash(self.state.content_hash)
+            .map_err(SchemaLoaderError::Ingestion)?;
+
+        repository
+            .save_raw_property_bank_view(
+                self.state.view.file_path().as_str(),
+                &self.state.view,
+            )
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        Ok(Self::transition(FetchConstruction))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  NewConstruction
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// State for building a new `PropertyBank` from raw content.
+///
+/// # Invariants
+/// - `raw` is parsed from current content.
+/// - `content` matches the raw bank.
+/// - The bank does not exist in storage for this run.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct NewConstruction {
+    raw: RawPropertyBank,
+    content: String,
+}
 
 impl PropertyBankProcessor<NewConstruction> {
     /// Build a new `PropertyBank`, persist it, then save the raw view.
@@ -733,8 +692,22 @@ impl PropertyBankProcessor<NewConstruction> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: UpdateConstruction
+//  UpdateConstruction
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// State for applying a property delta to an existing `PropertyBank`.
+///
+/// # Invariants
+/// - `raw` is parsed from current content.
+/// - `delta` captures all property upserts/removals.
+/// - Existing property IDs must be preserved on updates.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UpdateConstruction {
+    raw: RawPropertyBank,
+    content: String,
+    delta: PropertyDelta,
+}
 
 impl PropertyBankProcessor<UpdateConstruction> {
     /// Update the cached `PropertyBank`, persist it, then save the raw view.
@@ -848,8 +821,17 @@ impl PropertyBankProcessor<UpdateConstruction> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: FetchConstruction
+//  FetchConstruction
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// State for fetching the cached `PropertyBank` without rebuilding.
+///
+/// # Invariants
+/// - Cached view metadata is up to date for this run.
+/// - The bank is expected to exist in storage.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct FetchConstruction;
 
 impl PropertyBankProcessor<FetchConstruction> {
     /// Fetch the cached `PropertyBank` from storage.
@@ -881,8 +863,18 @@ impl PropertyBankProcessor<FetchConstruction> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: Completed
+//  Completed
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Terminal state containing the ready `PropertyBank`.
+///
+/// # Invariants
+/// - The bank is fully constructed and owned by this state.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Completed {
+    bank: PropertyBank,
+}
 
 impl PropertyBankProcessor<Completed> {
     /// Extract the completed `PropertyBank`.
