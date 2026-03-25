@@ -154,7 +154,7 @@ impl HashMetadata {
         properties
             .iter()
             .map(|(name, prop)| {
-                let hash = Self::hash_value(prop);
+                let hash = Self::hash_entry(prop);
                 (name.clone(), hash)
             })
             .collect()
@@ -205,7 +205,9 @@ impl HashMetadata {
     ///
     /// Uses JSON serialization to ensure consistent hashing across all
     /// property types and variants.
-    fn hash_value<T: serde::Serialize + std::fmt::Debug>(
+    pub(in crate::schema) fn hash_entry<
+        T: serde::Serialize + std::fmt::Debug,
+    >(
         value: &T,
     ) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();

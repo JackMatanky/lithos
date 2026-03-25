@@ -47,7 +47,7 @@
 //!
 //! 11. **Completed**: Terminal state.
 
-use std::time::SystemTime;
+use std::{collections::HashSet, time::SystemTime};
 
 use crate::{
     fs::FsReader,
@@ -523,55 +523,67 @@ impl PropertyBankProcessor<IsStale<'_>> {
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub fn filter_changed_properties(self) -> DeltaBranch {
-        let new_hashes =
-            HashMetadata::compute_property_hashes(self.state.raw.properties());
-        let (mut upserts, mut removals) =
-            self.state.view.current().map_or_else(
-                || {
-                    let upserts = self
-                        .state
-                        .raw
-                        .properties()
-                        .iter()
-                        .map(|(name, entry)| (name.clone(), entry.clone()))
-                        .collect::<Vec<_>>();
-                    (upserts, Vec::new())
-                },
-                |version| {
-                    let prev_hashes = version.hashes().properties();
-                    let mut upserts = Vec::new();
+        let delta = self.state.view.current().map_or_else(
+            || self.delta_from_new_file(),
+            |version| {
+                self.delta_from_cached_view(version.hashes().properties())
+            },
+        );
 
-                    for (name, entry) in self.state.raw.properties().iter() {
-                        let Some(new_hash) = new_hashes.get(name) else {
-                            continue;
-                        };
-                        if prev_hashes.get(name) != Some(new_hash) {
-                            upserts.push((name.clone(), entry.clone()));
-                        }
-                    }
-                    let removals = prev_hashes
-                        .keys()
-                        .filter(|name| !new_hashes.contains_key(*name))
-                        .cloned()
-                        .collect::<Vec<_>>();
-
-                    (upserts, removals)
-                },
-            );
-
-        if upserts.is_empty() && removals.is_empty() {
+        if delta.is_empty() {
             return DeltaBranch::ContentOnly(self.into_update_stale_view());
         }
+
+        DeltaBranch::PropertiesChanged(self.into_update_construction(delta))
+    }
+
+    #[inline]
+    fn delta_from_new_file(&self) -> PropertyDelta {
+        let mut upserts = self
+            .state
+            .raw
+            .properties()
+            .iter()
+            .map(|(name, entry)| (name.clone(), entry.clone()))
+            .collect::<Vec<_>>();
+        upserts.sort_by(|left, right| left.0.cmp(&right.0));
+
+        PropertyDelta {
+            upserts,
+            removals: Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn delta_from_cached_view(
+        &self,
+        prev_hashes: &std::collections::HashMap<PropertyName, [u8; 32]>,
+    ) -> PropertyDelta {
+        let mut upserts = Vec::new();
+        let mut seen =
+            HashSet::with_capacity(self.state.raw.properties().len());
+
+        for (name, entry) in self.state.raw.properties().iter() {
+            let new_hash = HashMetadata::hash_entry(entry);
+            if prev_hashes.get(name) != Some(&new_hash) {
+                upserts.push((name.clone(), entry.clone()));
+            }
+            seen.insert(name.clone());
+        }
+
+        let mut removals = prev_hashes
+            .keys()
+            .filter(|name| !seen.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
 
         upserts.sort_by(|left, right| left.0.cmp(&right.0));
         removals.sort();
 
-        let delta = PropertyDelta {
+        PropertyDelta {
             upserts,
             removals,
-        };
-
-        DeltaBranch::PropertiesChanged(self.into_update_construction(delta))
+        }
     }
 
     #[inline]
