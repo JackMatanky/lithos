@@ -54,10 +54,10 @@ use crate::{
     schema::{
         bank::PropertyBank,
         error::{
-            SchemaError, SchemaIngestionError, SchemaLoaderError,
-            SchemaRepositoryError, SchemaStorageError,
+            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
+            SchemaStorageError,
         },
-        property::{Property, PropertyId, PropertyName},
+        property::{Property, PropertyName},
         raw::{RawFileTimes, RawPropertyBank, RawPropertyBankEntry},
         storage::Repository,
         views::{
@@ -592,8 +592,8 @@ impl PropertyBankProcessor<NewConstruction> {
         entries.sort_by(|left, right| left.0.cmp(right.0));
 
         for (name, entry) in entries {
-            let property =
-                build_property(name, entry, None).map_err(|source| {
+            let property = Property::try_from((name.clone(), entry.clone()))
+                .map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                         path: std::path::PathBuf::from("property_bank"),
                         source,
@@ -687,13 +687,17 @@ impl PropertyBankProcessor<UpdateConstruction> {
         )]
         for (name, entry) in &self.state.delta {
             let existing_id = bank.get(name).map(Property::id);
-            let property =
-                build_property(name, entry, existing_id).map_err(|source| {
+            let property = Property::try_from((name.clone(), entry.clone()))
+                .map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                         path: std::path::PathBuf::from("property_bank"),
                         source,
                     })
                 })?;
+            let property = match existing_id {
+                Some(id) => property.with_id(id),
+                None => property,
+            };
 
             let replaced =
                 bank.set_properties().insert(name.clone(), property).is_some();
@@ -794,27 +798,6 @@ impl PropertyBankProcessor<Completed> {
     pub fn into_bank(self) -> PropertyBank {
         self.state.bank
     }
-}
-
-#[inline]
-fn build_property(
-    name: &PropertyName,
-    entry: &RawPropertyBankEntry,
-    existing_id: Option<PropertyId>,
-) -> Result<Property, SchemaError> {
-    let property = Property::try_from((name.clone(), entry.clone()))?;
-
-    if let Some(id) = existing_id {
-        return Ok(Property::new(
-            id,
-            property.name().clone(),
-            property.optionality(),
-            property.multiplicity(),
-            property.spec().clone(),
-        ));
-    }
-
-    Ok(property)
 }
 
 #[cfg(test)]
