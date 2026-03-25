@@ -7,7 +7,9 @@ use std::{collections::VecDeque, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::{FileTimesMetadata, PropertyBankVersion, SchemaVersion};
+use super::{
+    FileTimesMetadata, HashMetadata, PropertyBankVersion, SchemaVersion,
+};
 use crate::schema::{
     aggregate::SchemaName,
     property::PropertyName,
@@ -298,6 +300,39 @@ impl RawPropertyBankView {
         if let Some(current) = self.versions.front_mut() {
             current.set_file_times(file_times);
         }
+    }
+
+    /// Update content hash while preserving property hashes.
+    ///
+    /// Adds a new version with updated content hash and existing file times.
+    ///
+    /// # Errors
+    /// Returns error if the cached raw property bank cannot be reconstructed
+    /// or serialized.
+    #[inline]
+    pub fn update_content_hash(
+        &mut self,
+        content_hash: [u8; 32],
+    ) -> Result<(), crate::schema::error::SchemaIngestionError> {
+        let current =
+            self.current()
+                .ok_or(crate::schema::error::SchemaIngestionError::Storage(
+                crate::schema::error::SchemaStorageError::PropertyBankNotFound,
+            ))?;
+        let file_times = current.file_times().clone();
+        let raw =
+            self.to_raw()?
+                .ok_or(crate::schema::error::SchemaIngestionError::Storage(
+                crate::schema::error::SchemaStorageError::PropertyBankNotFound,
+            ))?;
+
+        let hashes = HashMetadata::new(
+            content_hash,
+            current.hashes().properties().clone(),
+        );
+        let version = PropertyBankVersion::new(file_times, hashes, &raw)?;
+        self.add_version(version);
+        Ok(())
     }
 
     /// Reconstructs `RawPropertyBank` from cached compressed content.

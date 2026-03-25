@@ -9,7 +9,8 @@ use crate::{
         bank::PropertyBank,
         error::SchemaLoaderError,
         property_bank_processor::{
-            ContentBranch, Discovery, DiscoveryBranch, PropertyBankProcessor,
+            Completed, ContentBranch, DeltaBranch, Discovery, DiscoveryBranch,
+            IsFreshContent, PropertyBankProcessor, TimestampBranch,
         },
         storage::Repository,
     },
@@ -69,28 +70,17 @@ where
                     .read_to_string(&config_path)
                     .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
                 p.parse(&config_path, &content)?
-                    .save_and_complete(filename, &self.repository)?
+                    .create(filename, &self.repository)?
             }
             DiscoveryBranch::FreshTimestamp(p) => {
-                if p.is_timestamp_match() {
-                    // Fastest path: fetch from DB
-                    p.complete_with_cached(&self.repository)?
-                } else {
-                    // Tier 3: Content hash check
-                    let content = self
-                        .source
-                        .read_to_string(&config_path)
-                        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-                    match p
-                        .to_fresh_content(&content)
-                        .match_content(&config_path)?
-                    {
-                        ContentBranch::Match(p) => {
-                            p.update(&self.repository)?
-                        }
-                        ContentBranch::Mismatch(p) => p
-                            .compute_delta()
-                            .save_and_complete(filename, &self.repository)?,
+                let content = self
+                    .source
+                    .read_to_string(&config_path)
+                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                match p.is_match(&content) {
+                    TimestampBranch::Fetch(p) => p.fetch(&self.repository)?,
+                    TimestampBranch::Content(p) => {
+                        self.handle_content_branch(p, filename, &config_path)?
                     }
                 }
             }
@@ -113,6 +103,36 @@ where
     pub fn load_all(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
         let pb = self.load_property_bank()?;
         self.load_schemas(&pb)
+    }
+
+    fn handle_content_branch(
+        &self,
+        processor: PropertyBankProcessor<IsFreshContent<'_>>,
+        filename: &str,
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError> {
+        match processor.is_match(config_path)? {
+            ContentBranch::Match(p) => {
+                p.update(&self.repository)?.fetch(&self.repository)
+            }
+            ContentBranch::Mismatch(p) => self
+                .handle_delta_branch(p.filter_changed_properties(), filename),
+        }
+    }
+
+    fn handle_delta_branch(
+        &self,
+        branch: DeltaBranch,
+        filename: &str,
+    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError> {
+        match branch {
+            DeltaBranch::ContentOnly(p) => {
+                p.update(&self.repository)?.fetch(&self.repository)
+            }
+            DeltaBranch::PropertiesChanged(p) => {
+                p.update(filename, &self.repository)
+            }
+        }
     }
 }
 

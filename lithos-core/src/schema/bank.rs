@@ -218,6 +218,28 @@ impl PropertyBank {
         self.properties.values()
     }
 
+    #[inline]
+    pub(super) fn properties(&self) -> &HashMap<PropertyName, Property> {
+        &self.properties
+    }
+
+    #[inline]
+    pub(super) fn set_properties(
+        &mut self,
+    ) -> &mut HashMap<PropertyName, Property> {
+        &mut self.properties
+    }
+
+    #[inline]
+    pub(super) fn set_version(&mut self) -> &mut BankVersion {
+        &mut self.version
+    }
+
+    #[inline]
+    pub(super) fn set_recorded_at(&mut self) -> &mut SystemTime {
+        &mut self.recorded_at
+    }
+
     /// Incrementally update specific properties from raw data based on a list
     /// of changed property names.
     ///

@@ -14,38 +14,53 @@
 //!     - `to_fresh_timestamp` -> `IsFreshTimestamp`
 //!
 //! 2. **IsNew**: Handles completely new files.
-//!     - `parse` -> `NewRawView`
+//!     - `parse` -> `NewConstruction`
 //!
 //! 3. **IsFreshTimestamp**: Tier 2 check (metadata matching).
-//!     - `build` -> `Completed` (Fastest path: fetch from DB)
+//!     - `to_fetch_construction` -> `FetchConstruction` (Fastest path)
 //!     - `to_fresh_content` -> `IsFreshContent`
 //!
 //! 4. **IsFreshContent**: Tier 3 check (hash matching).
-//!     - `to_raw_time_update` -> `RawViewTimeUpdate`
+//!     - `to_update_raw_view_time` -> `UpdateRawViewTime`
 //!     - `to_stale` -> `IsStale`
 //!
-//! 5. **RawViewTimeUpdate**: Syncs metadata when content matches but timestamps
+//! 5. **UpdateRawViewTime**: Syncs metadata when content matches but timestamps
 //!    differ.
+//!     - `update` -> `FetchConstruction`
+//!
+//! 6. **UpdateStaleRawView**: Content changed but properties did not.
+//!     - `update` -> `FetchConstruction`
+//!
+//! 7. **IsStale**: Content changed.
+//!     - `filter_changed_properties` -> `UpdateStaleRawView` or
+//!       `UpdateConstruction`
+//!
+//! 8. **NewConstruction**: Builds a fresh `PropertyBank` and persists view.
+//!     - `create` -> `Completed`
+//!
+//! 9. **UpdateConstruction**: Applies delta to `PropertyBank` and persists
+//!    view.
 //!     - `update` -> `Completed`
 //!
-//! 6. **IsStale**: Content changed.
-//!     - `parse` -> `NewRawView` (with delta)
+//! 10. **FetchConstruction**: Fetches cached `PropertyBank`.
+//!     - `fetch` -> `Completed`
 //!
-//! 7. **NewRawView**: Persists new version and builds domain object.
-//!     - `save` -> `Completed`
-//!
-//! 8. **Completed**: Terminal state.
+//! 11. **Completed**: Terminal state.
+
+use std::{collections::HashMap, time::SystemTime};
 
 use crate::{
     fs::FsReader,
     schema::{
         bank::PropertyBank,
         error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-            SchemaStorageError,
+            SchemaError, SchemaIngestionError, SchemaLoaderError,
+            SchemaRepositoryError, SchemaStorageError,
         },
-        property::PropertyName,
-        raw::{RawFileTimes, RawPropertyBank},
+        property::{
+            Multiplicity, Optionality, Property, PropertyId, PropertyName,
+        },
+        raw::{RawFileTimes, RawPropertyBank, RawPropertyBankEntry},
         storage::Repository,
         views::{
             FileTimesMetadata, RawPropertyBankView, metadata::HashMetadata,
@@ -117,8 +132,17 @@ pub struct IsFreshContent<'source> {
 /// Content hash matched but timestamps differ - update view only.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct RawViewTimeUpdate {
+pub struct UpdateRawViewTime {
     times: RawFileTimes,
+    view: RawPropertyBankView,
+}
+
+/// Content changed but properties did not - update content hash.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UpdateStaleRawView {
+    times: RawFileTimes,
+    content_hash: [u8; 32],
     view: RawPropertyBankView,
 }
 
@@ -129,16 +153,30 @@ pub struct IsStale<'source> {
     raw: RawPropertyBank,
     view: RawPropertyBankView,
     content: &'source str,
+    content_hash: [u8; 32],
 }
 
-/// Ready to create a new version view and build/update the bank.
+/// Ready to build a new `PropertyBank` from scratch.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct NewRawView {
+pub struct NewConstruction {
     raw: RawPropertyBank,
-    content: String, // Kept for view creation (compression)
-    delta: Option<Vec<PropertyName>>,
+    content: String,
 }
+
+/// Ready to update an existing `PropertyBank` with property delta.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UpdateConstruction {
+    raw: RawPropertyBank,
+    content: String,
+    delta: HashMap<PropertyName, RawPropertyBankEntry>,
+}
+
+/// Ready to fetch the cached `PropertyBank` from storage.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct FetchConstruction;
 
 /// Terminal state - `PropertyBank` is ready.
 #[derive(Debug)]
@@ -166,9 +204,29 @@ pub enum DiscoveryBranch {
 #[non_exhaustive]
 pub enum ContentBranch<'source> {
     /// Hash matches - just update timestamps.
-    Match(PropertyBankProcessor<RawViewTimeUpdate>),
+    Match(PropertyBankProcessor<UpdateRawViewTime>),
     /// Hash mismatches - compute delta.
     Mismatch(PropertyBankProcessor<IsStale<'source>>),
+}
+
+/// Result of matching timestamps.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum TimestampBranch<'source> {
+    /// Timestamps match - fetch cached bank.
+    Fetch(PropertyBankProcessor<FetchConstruction>),
+    /// Timestamps mismatch - check content hash.
+    Content(PropertyBankProcessor<IsFreshContent<'source>>),
+}
+
+/// Result of filtering changed properties.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum DeltaBranch {
+    /// Content changed but properties did not.
+    ContentOnly(PropertyBankProcessor<UpdateStaleRawView>),
+    /// Properties changed - proceed with delta update.
+    PropertiesChanged(PropertyBankProcessor<UpdateConstruction>),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,16 +288,22 @@ impl PropertyBankProcessor<Discovery> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 impl PropertyBankProcessor<IsFreshTimestamp> {
-    /// Check if file timestamps match the cached view without reading content.
+    /// Match timestamps and branch to the next state.
     #[inline]
-    #[must_use]
-    pub fn is_timestamp_match(&self) -> bool {
-        self.state.view.current().is_some_and(|v| {
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn is_match(self, content: &str) -> TimestampBranch<'_> {
+        let timestamps_match = self.state.view.current().is_some_and(|v| {
             v.file_times().is_timestamp_match(
                 self.state.times.created_at,
                 self.state.times.modified_at,
             )
-        })
+        });
+
+        if timestamps_match {
+            TimestampBranch::Fetch(self.to_fetch_construction())
+        } else {
+            TimestampBranch::Content(self.to_fresh_content(content))
+        }
     }
 
     /// Transition to content check if timestamps mismatch.
@@ -256,31 +320,13 @@ impl PropertyBankProcessor<IsFreshTimestamp> {
         })
     }
 
-    /// Path 2: Fastest path - fetch bank from DB and complete.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails or the bank
-    /// is missing.
+    /// Transition to fetch the cached bank from storage.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn complete_with_cached<R: Repository>(
+    pub fn to_fetch_construction(
         self,
-        repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let bank = repository
-            .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-            .ok_or(SchemaIngestionError::Storage(
-                SchemaStorageError::PropertyBankNotFound,
-            ))?;
-
-        Ok(Self::transition(Completed {
-            bank,
-        }))
+    ) -> PropertyBankProcessor<FetchConstruction> {
+        Self::transition(FetchConstruction)
     }
 }
 
@@ -299,20 +345,17 @@ impl<'source> PropertyBankProcessor<IsFreshContent<'source>> {
     /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn match_content(
+    pub fn is_match(
         self,
         config_path: &std::path::Path,
     ) -> Result<ContentBranch<'source>, SchemaLoaderError> {
         let content_hash = blake3::hash(self.state.content.as_bytes());
-        let is_match = self.state.view.current().is_some_and(|v| {
+        let content_match = self.state.view.current().is_some_and(|v| {
             v.hashes().is_content_match(content_hash.as_bytes())
         });
 
-        if is_match {
-            Ok(ContentBranch::Match(Self::transition(RawViewTimeUpdate {
-                times: self.state.times,
-                view: self.state.view,
-            })))
+        if content_match {
+            Ok(ContentBranch::Match(self.into_update_view()))
         } else {
             let raw: RawPropertyBank = FsReader::parse_structured_from_str(
                 config_path,
@@ -320,22 +363,40 @@ impl<'source> PropertyBankProcessor<IsFreshContent<'source>> {
             )
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-            let raw = raw.with_file_times(self.state.times);
+            let raw = raw.with_file_times(self.state.times.clone());
 
-            Ok(ContentBranch::Mismatch(Self::transition(IsStale {
-                raw,
-                view: self.state.view,
-                content: self.state.content,
-            })))
+            Ok(ContentBranch::Mismatch(self.into_stale(raw, content_hash)))
         }
+    }
+
+    #[inline]
+    fn into_update_view(self) -> PropertyBankProcessor<UpdateRawViewTime> {
+        Self::transition(UpdateRawViewTime {
+            times: self.state.times,
+            view: self.state.view,
+        })
+    }
+
+    #[inline]
+    fn into_stale(
+        self,
+        raw: RawPropertyBank,
+        content_hash: blake3::Hash,
+    ) -> PropertyBankProcessor<IsStale<'source>> {
+        Self::transition(IsStale {
+            raw,
+            view: self.state.view,
+            content: self.state.content,
+            content_hash: *content_hash.as_bytes(),
+        })
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: RawViewTimeUpdate
+//  Transitions: UpdateRawViewTime
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl PropertyBankProcessor<RawViewTimeUpdate> {
+impl PropertyBankProcessor<UpdateRawViewTime> {
     /// Update timestamps in the cached view.
     ///
     /// # Errors
@@ -346,7 +407,7 @@ impl PropertyBankProcessor<RawViewTimeUpdate> {
     pub fn update<R: Repository>(
         mut self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError>
+    ) -> Result<PropertyBankProcessor<FetchConstruction>, SchemaLoaderError>
     where
         R::Error: Into<SchemaRepositoryError>,
     {
@@ -363,17 +424,48 @@ impl PropertyBankProcessor<RawViewTimeUpdate> {
             )
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        // After updating timestamps, we still need to fetch the bank
-        let bank = repository
-            .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-            .ok_or(SchemaIngestionError::Storage(
-                SchemaStorageError::PropertyBankNotFound,
-            ))?;
+        Ok(Self::transition(FetchConstruction))
+    }
+}
 
-        Ok(Self::transition(Completed {
-            bank,
-        }))
+// ─────────────────────────────────────────────────────────────────────────────
+//  Transitions: UpdateStaleRawView
+// ─────────────────────────────────────────────────────────────────────────────
+
+impl PropertyBankProcessor<UpdateStaleRawView> {
+    /// Update timestamps and content hash in the cached view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the repository access fails or the
+    /// cached view cannot be reconstructed.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn update<R: Repository>(
+        mut self,
+        repository: &R,
+    ) -> Result<PropertyBankProcessor<FetchConstruction>, SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        let new_file_times = FileTimesMetadata::new(
+            self.state.times.created_at,
+            self.state.times.modified_at,
+        );
+        self.state.view.update_timestamps(new_file_times);
+        self.state
+            .view
+            .update_content_hash(self.state.content_hash)
+            .map_err(SchemaLoaderError::Ingestion)?;
+
+        repository
+            .save_raw_property_bank_view(
+                self.state.view.file_path().as_str(),
+                &self.state.view,
+            )
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        Ok(Self::transition(FetchConstruction))
     }
 }
 
@@ -393,17 +485,16 @@ impl PropertyBankProcessor<IsNew> {
         self,
         config_path: &std::path::Path,
         content: &str,
-    ) -> Result<PropertyBankProcessor<NewRawView>, SchemaLoaderError> {
+    ) -> Result<PropertyBankProcessor<NewConstruction>, SchemaLoaderError> {
         let raw: RawPropertyBank =
             FsReader::parse_structured_from_str(config_path, content)
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         let raw = raw.with_file_times(self.state.times);
 
-        Ok(Self::transition(NewRawView {
+        Ok(Self::transition(NewConstruction {
             raw,
             content: content.into(),
-            delta: None, // NEW path has no delta (full build)
         }))
     }
 }
@@ -413,44 +504,73 @@ impl PropertyBankProcessor<IsNew> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 impl PropertyBankProcessor<IsStale<'_>> {
-    /// Compute the property delta and transition to `NewRawView`.
+    /// Filter changed properties and transition to the appropriate state.
     ///
     /// The file is already parsed in this state, so we only need to compare
     /// hashes with the cached view.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn compute_delta(self) -> PropertyBankProcessor<NewRawView> {
+    pub fn filter_changed_properties(self) -> DeltaBranch {
         let new_hashes =
             HashMetadata::compute_property_hashes(self.state.raw.properties());
-        let delta = self.state.view.current().map_or_else(
-            || new_hashes.keys().cloned().collect(),
-            |v| {
-                v.hashes().changed_properties(&new_hashes).into_iter().collect()
-            },
+        let changed = self.state.view.current().map_or_else(
+            || new_hashes.keys().cloned().collect::<Vec<_>>(),
+            |v| v.hashes().changed_properties(&new_hashes),
         );
 
-        Self::transition(NewRawView {
+        if changed.is_empty() {
+            return DeltaBranch::ContentOnly(self.into_update_stale_view());
+        }
+
+        let raw_map = self.state.raw.properties().as_map();
+        let delta = changed
+            .into_iter()
+            .filter_map(|name| {
+                raw_map.get(&name).map(|entry| (name, entry.clone()))
+            })
+            .collect();
+
+        DeltaBranch::PropertiesChanged(self.into_update_construction(delta))
+    }
+
+    #[inline]
+    fn into_update_stale_view(
+        self,
+    ) -> PropertyBankProcessor<UpdateStaleRawView> {
+        Self::transition(UpdateStaleRawView {
+            times: self.state.raw.file_times().clone(),
+            content_hash: self.state.content_hash,
+            view: self.state.view,
+        })
+    }
+
+    #[inline]
+    fn into_update_construction(
+        self,
+        delta: HashMap<PropertyName, RawPropertyBankEntry>,
+    ) -> PropertyBankProcessor<UpdateConstruction> {
+        Self::transition(UpdateConstruction {
             raw: self.state.raw,
             content: self.state.content.into(),
-            delta: Some(delta),
+            delta,
         })
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Transitions: NewRawView
+//  Transitions: NewConstruction
 // ─────────────────────────────────────────────────────────────────────────────
 
-impl PropertyBankProcessor<NewRawView> {
-    /// Save the new raw view and build/update the domain `PropertyBank`.
+impl PropertyBankProcessor<NewConstruction> {
+    /// Build a new `PropertyBank`, persist it, then save the raw view.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails or
-    /// ingestion fails.
+    /// Returns [`SchemaLoaderError`] if construction or repository access
+    /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub fn save_and_complete<R: Repository>(
+    pub fn create<R: Repository>(
         self,
         filename: &str,
         repository: &R,
@@ -458,8 +578,55 @@ impl PropertyBankProcessor<NewRawView> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        // 1. Create and save new view
-        let new_view = RawPropertyBankView::try_from_raw_with_content(
+        let bank = self.build_bank()?;
+        self.persist(filename, repository, &bank)?;
+
+        Ok(Self::transition(Completed {
+            bank,
+        }))
+    }
+
+    #[inline]
+    fn build_bank(&self) -> Result<PropertyBank, SchemaLoaderError> {
+        let mut bank = PropertyBank::new();
+
+        let mut entries: Vec<_> = self.state.raw.properties().iter().collect();
+        entries.sort_by(|left, right| left.0.cmp(right.0));
+
+        for (name, entry) in entries {
+            let property =
+                build_property(name, entry, None).map_err(|source| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                        path: std::path::PathBuf::from("property_bank"),
+                        source,
+                    })
+                })?;
+            bank.register(property).map_err(|source| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                    path: std::path::PathBuf::from("property_bank"),
+                    source,
+                })
+            })?;
+        }
+
+        Ok(bank)
+    }
+
+    #[inline]
+    fn persist<R: Repository>(
+        &self,
+        filename: &str,
+        repository: &R,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        repository
+            .save_property_bank(bank)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        let view = RawPropertyBankView::try_from_raw_with_content(
             &self.state.raw,
             filename,
             &self.state.content,
@@ -467,40 +634,150 @@ impl PropertyBankProcessor<NewRawView> {
         .map_err(SchemaLoaderError::Ingestion)?;
 
         repository
-            .save_raw_property_bank_view(filename, &new_view)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .save_raw_property_bank_view(filename, &view)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+    }
+}
 
-        // 2. Build or update PropertyBank
-        let bank = if let Some(delta) = self.state.delta {
-            // STALE path: fetch old and update
-            let mut bank = repository
-                .get_property_bank()
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-                .unwrap_or_default();
+// ─────────────────────────────────────────────────────────────────────────────
+//  Transitions: UpdateConstruction
+// ─────────────────────────────────────────────────────────────────────────────
 
-            bank.update_from_raw(&self.state.raw, &delta).map_err(
-                |source| {
+impl PropertyBankProcessor<UpdateConstruction> {
+    /// Update the cached `PropertyBank`, persist it, then save the raw view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if construction or repository access
+    /// fails.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn update<R: Repository>(
+        self,
+        filename: &str,
+        repository: &R,
+    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        let mut bank = repository
+            .get_property_bank()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+            .ok_or(SchemaLoaderError::Ingestion(
+                SchemaIngestionError::Storage(
+                    SchemaStorageError::PropertyBankNotFound,
+                ),
+            ))?;
+        self.apply_delta(&mut bank)?;
+        self.persist(filename, repository, &bank)?;
+
+        Ok(Self::transition(Completed {
+            bank,
+        }))
+    }
+
+    #[inline]
+    fn apply_delta(
+        &self,
+        bank: &mut PropertyBank,
+    ) -> Result<(), SchemaLoaderError> {
+        let mut any_changed = false;
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iteration is required for delta application"
+        )]
+        for (name, entry) in &self.state.delta {
+            let existing_id = bank.get(name).map(Property::id);
+            let property =
+                build_property(name, entry, existing_id).map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                         path: std::path::PathBuf::from("property_bank"),
                         source,
                     })
-                },
-            )?;
-            bank
-        } else {
-            // NEW path: build from scratch
-            PropertyBank::try_from(self.state.raw).map_err(|source| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                    path: std::path::PathBuf::from("property_bank"),
-                    source,
-                })
-            })?
-        };
+                })?;
 
-        // 3. Save the bank
+            let replaced =
+                bank.set_properties().insert(name.clone(), property).is_some();
+            any_changed |= replaced || existing_id.is_none();
+        }
+
+        let raw_map = self.state.raw.properties().as_map();
+        let removed: Vec<PropertyName> = bank
+            .properties()
+            .keys()
+            .filter(|name| !raw_map.contains_key(*name))
+            .cloned()
+            .collect();
+
+        for name in removed {
+            if bank.set_properties().remove(&name).is_some() {
+                any_changed = true;
+            }
+        }
+
+        if any_changed {
+            let next = bank.version().increment();
+            *bank.set_version() = next;
+            *bank.set_recorded_at() = SystemTime::now();
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    fn persist<R: Repository>(
+        &self,
+        filename: &str,
+        repository: &R,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
         repository
-            .save_property_bank(&bank)
+            .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        let view = RawPropertyBankView::try_from_raw_with_content(
+            &self.state.raw,
+            filename,
+            &self.state.content,
+        )
+        .map_err(SchemaLoaderError::Ingestion)?;
+
+        repository
+            .save_raw_property_bank_view(filename, &view)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Transitions: FetchConstruction
+// ─────────────────────────────────────────────────────────────────────────────
+
+impl PropertyBankProcessor<FetchConstruction> {
+    /// Fetch the cached `PropertyBank` from storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the repository access fails or the bank
+    /// is missing.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub fn fetch<R: Repository>(
+        self,
+        repository: &R,
+    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        let bank = repository
+            .get_property_bank()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+            .ok_or(SchemaIngestionError::Storage(
+                SchemaStorageError::PropertyBankNotFound,
+            ))?;
 
         Ok(Self::transition(Completed {
             bank,
@@ -519,6 +796,29 @@ impl PropertyBankProcessor<Completed> {
     pub fn into_bank(self) -> PropertyBank {
         self.state.bank
     }
+}
+
+#[inline]
+fn build_property(
+    name: &PropertyName,
+    entry: &RawPropertyBankEntry,
+    existing_id: Option<PropertyId>,
+) -> Result<Property, SchemaError> {
+    let spec = entry.spec.clone().try_into()?;
+    let multiplicity = if entry.multi {
+        Multiplicity::Many
+    } else {
+        Multiplicity::Single
+    };
+    let id = existing_id.unwrap_or_default();
+
+    Ok(Property::new(
+        id,
+        name.clone(),
+        Optionality::Optional,
+        multiplicity,
+        spec,
+    ))
 }
 
 #[cfg(test)]
@@ -655,7 +955,7 @@ mod tests {
         }
     }
 
-    mod is_timestamp_match {
+    mod match_timestamp {
         use std::path::Path;
 
         use rstest::rstest;
@@ -667,7 +967,7 @@ mod tests {
             schema::{
                 property_bank_processor::{
                     ContentBranch, Discovery, DiscoveryBranch,
-                    PropertyBankProcessor,
+                    PropertyBankProcessor, TimestampBranch,
                 },
                 storage::Repository as _,
                 testing::InMemoryRepository,
@@ -705,7 +1005,11 @@ mod tests {
             );
 
             if let DiscoveryBranch::FreshTimestamp(p) = branch {
-                assert!(p.is_timestamp_match(), "Expected timestamp match");
+                let content_branch = p.is_match(content);
+                assert!(
+                    matches!(content_branch, TimestampBranch::Fetch(_)),
+                    "Expected Fetch branch"
+                );
             }
         }
 
@@ -734,25 +1038,33 @@ mod tests {
                 pipeline.has_raw_view(filename, &source, config_path, &repo);
 
             assert!(branch.is_ok(), "Expected success");
-            let branch = branch.unwrap();
+            let discovery_branch = branch.unwrap();
             assert!(
-                matches!(branch, DiscoveryBranch::FreshTimestamp(_)),
-                "Expected FreshTimestamp branch, found: {branch:?}"
+                matches!(discovery_branch, DiscoveryBranch::FreshTimestamp(_)),
+                "Expected FreshTimestamp branch, found: {discovery_branch:?}"
             );
 
-            if let DiscoveryBranch::FreshTimestamp(p) = branch {
-                assert!(!p.is_timestamp_match(), "Expected timestamp mismatch");
-                let next = p.to_fresh_content(content);
-                let content_branch = next.match_content(config_path);
+            if let DiscoveryBranch::FreshTimestamp(p) = discovery_branch {
+                let timestamp_branch = p.is_match(content);
                 assert!(
-                    content_branch.is_ok(),
-                    "Expected success, found: {:?}",
-                    content_branch.err()
+                    matches!(timestamp_branch, TimestampBranch::Content(_)),
+                    "Expected Content branch"
                 );
-                assert!(
-                    matches!(content_branch.unwrap(), ContentBranch::Match(_)),
-                    "Expected Match branch"
-                );
+                if let TimestampBranch::Content(next) = timestamp_branch {
+                    let content_branch = next.is_match(config_path);
+                    assert!(
+                        content_branch.is_ok(),
+                        "Expected success, found: {:?}",
+                        content_branch.err()
+                    );
+                    assert!(
+                        matches!(
+                            content_branch.unwrap(),
+                            ContentBranch::Match(_)
+                        ),
+                        "Expected Match branch"
+                    );
+                }
             }
         }
     }
@@ -801,8 +1113,7 @@ mod tests {
                 DiscoveryBranch::New(p) => {
                     let res = p.parse(config_path, content);
                     assert!(res.is_ok(), "Parse error: {:?}", res.err());
-                    let completed =
-                        res.unwrap().save_and_complete(filename, &repo);
+                    let completed = res.unwrap().create(filename, &repo);
                     assert!(
                         completed.is_ok(),
                         "Build error: {:?}",
