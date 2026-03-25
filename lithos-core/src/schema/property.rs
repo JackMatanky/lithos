@@ -18,7 +18,11 @@ use std::{
 use regex::Regex;
 use uuid::Uuid;
 
-use super::{error::SchemaError, property_spec::PropertySpec};
+use super::{
+    error::SchemaError,
+    property_spec::PropertySpec,
+    raw::property::{RawPropertyBankEntry, RawPropertyInline},
+};
 
 /// Reusable property definition with type-specific validation.
 ///
@@ -158,6 +162,52 @@ impl Property {
         } else {
             self.spec.validate(value)
         }
+    }
+
+    /// Returns a copy of this property with a new id.
+    #[inline]
+    #[must_use]
+    pub fn with_id(self, id: PropertyId) -> Self {
+        Self {
+            id,
+            ..self
+        }
+    }
+}
+
+impl TryFrom<(PropertyName, RawPropertyInline)> for Property {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: (PropertyName, RawPropertyInline),
+    ) -> Result<Self, Self::Error> {
+        let (name, raw) = value;
+        Ok(Self::new(
+            PropertyId::new(),
+            name,
+            Optionality::from(raw.required),
+            Multiplicity::from(raw.multi),
+            raw.spec.try_into()?,
+        ))
+    }
+}
+
+impl TryFrom<(PropertyName, RawPropertyBankEntry)> for Property {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: (PropertyName, RawPropertyBankEntry),
+    ) -> Result<Self, Self::Error> {
+        let (name, raw) = value;
+        Ok(Self::new(
+            PropertyId::new(),
+            name,
+            Optionality::default(),
+            Multiplicity::from(raw.multi),
+            raw.spec.try_into()?,
+        ))
     }
 }
 

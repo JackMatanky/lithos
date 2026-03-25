@@ -57,9 +57,7 @@ use crate::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError, SchemaStorageError,
         },
-        property::{
-            Multiplicity, Optionality, Property, PropertyId, PropertyName,
-        },
+        property::{Property, PropertyId, PropertyName},
         raw::{RawFileTimes, RawPropertyBank, RawPropertyBankEntry},
         storage::Repository,
         views::{
@@ -804,21 +802,19 @@ fn build_property(
     entry: &RawPropertyBankEntry,
     existing_id: Option<PropertyId>,
 ) -> Result<Property, SchemaError> {
-    let spec = entry.spec.clone().try_into()?;
-    let multiplicity = if entry.multi {
-        Multiplicity::Many
-    } else {
-        Multiplicity::Single
-    };
-    let id = existing_id.unwrap_or_default();
+    let property = Property::try_from((name.clone(), entry.clone()))?;
 
-    Ok(Property::new(
-        id,
-        name.clone(),
-        Optionality::Optional,
-        multiplicity,
-        spec,
-    ))
+    if let Some(id) = existing_id {
+        return Ok(Property::new(
+            id,
+            property.name().clone(),
+            property.optionality(),
+            property.multiplicity(),
+            property.spec().clone(),
+        ));
+    }
+
+    Ok(property)
 }
 
 #[cfg(test)]
