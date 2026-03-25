@@ -1,4 +1,26 @@
-//! List value objects for notes.
+//! List value objects and structural management for notes.
+//!
+//! This module defines the core types for representing hierarchical lists in
+//! markdown notes. It follows a unified structural model where every bullet
+//! point is a [`ListItem`], regardless of whether it is a plain text bullet, an
+//! ordered list item, or a checkbox.
+//!
+//! # Lists and Tasks
+//!
+//! In the Lithos domain, there is a clear distinction between **Structural**
+//! list items and **Semantic** tasks:
+//!
+//! 1. **Structural ([`ListItem`]):** Manages the physical presence of a bullet
+//!    in the source file, including its nesting [`ListDepth`], its [`ListKind`]
+//!    (ordered vs unordered), and raw metadata like tags and inline fields.
+//! 2. **Semantic ([`crate::note::task::Task`]):** A "promoted" entity that
+//!    represents a checkbox item with validated domain logic (e.g., due dates,
+//!    priorities).
+//!
+//! The [`TaskExt`] trait provides a bridge between these two worlds, allowing
+//! structural items to be queried for task-specific properties without
+//! necessarily being promoted to a full `Task` entity.
+
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -21,17 +43,33 @@ use crate::{
     note::raw::{RawListDepth, RawListItem, RawListKind},
 };
 
-/// Markdown list structure.
+/// A hierarchical collection of list items.
 ///
-/// Represents a collection of [`ListItem`]s, which can be ordered or unordered.
-/// A `List` tracks its nesting depth within the document.
+/// `List` serves as a container for [`ListItem`]s that share a common
+/// [`ListKind`] and are located at the same logical [`ListDepth`]. It tracks
+/// the source positions of its items to maintain document order.
 ///
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::list::{List, ListDepth, ListKind};
-/// let list = List::new(ListKind::Unordered);
-/// assert_eq!(list.depth(), ListDepth::root());
+/// # use lithos_core::note::list::{List, ListItem, ListKind, ListDepth};
+/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
+/// let mut list = List::new(ListKind::Unordered);
+/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10)).unwrap();
+///
+/// let item = ListItem::new(
+///     "Item 1".into(),
+///     range,
+///     ListKind::Unordered,
+///     ListDepth::root(),
+///     None,
+///     None,
+///     Box::new([]),
+///     Box::new([]),
+/// );
+///
+/// list.add_item(item);
+/// assert_eq!(list.list_kind(), ListKind::Unordered);
 /// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
@@ -88,14 +126,14 @@ impl List {
         self.items.push(item);
     }
 
-    /// Returns the list type.
+    /// Returns the list type (Ordered or Unordered).
     #[inline]
     #[must_use]
     pub const fn list_kind(&self) -> ListKind {
         self.kind
     }
 
-    /// Returns the list items in source order.
+    /// Returns an iterator over the list items in source order.
     #[inline]
     #[must_use]
     pub fn items(&self) -> ListItems<'_> {
@@ -118,7 +156,7 @@ impl List {
     }
 }
 
-/// Markdown list type.
+/// The type of list extracted from markdown.
 #[derive(
     Debug,
     Clone,
@@ -132,13 +170,13 @@ impl List {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum ListKind {
-    /// Ordered list starting at the given number.
+    /// Ordered list starting at the given number (e.g., `1.`).
     Ordered(u64),
-    /// Unordered list (bullets).
+    /// Unordered list (bullets like `-`, `*`, or `+`).
     Unordered,
 }
 
-/// Validated list nesting depth.
+/// The nesting level of a list or item within a document.
 #[derive(
     Debug,
     Clone,
@@ -167,7 +205,8 @@ impl ListDepth {
     ///
     /// # Errors
     ///
-    /// Returns [`ListError::MaxNestingExceeded`] if the depth is out of range.
+    /// Returns [`ListError::MaxNestingExceeded`] if the depth is out of range
+    /// (currently max 255).
     #[inline]
     pub fn try_new(depth: usize) -> Result<Self, ListError> {
         u8::try_from(depth).map(Self).map_err(|_err| {
@@ -178,6 +217,7 @@ impl ListDepth {
         })
     }
 
+    /// Returns the raw depth value as a `u8`.
     #[inline]
     #[must_use]
     pub const fn as_u8(self) -> u8 {
@@ -192,7 +232,7 @@ impl fmt::Display for ListDepth {
     }
 }
 
-/// Borrowed iterator over list items.
+/// A borrowed iterator over [`ListItem`]s.
 pub struct ListItems<'list> {
     inner: std::slice::Iter<'list, ListItem>,
 }
@@ -215,30 +255,42 @@ impl<'list> Iterator for ListItems<'list> {
     }
 }
 
-/// Single item in a markdown list.
+/// A single structural unit within a markdown list.
 ///
-/// Items can be plain text or checkbox items. Checkbox items may be
-/// promoted to [`crate::note::task::Task`] entities while remaining part of
-/// their parent list.
+/// `ListItem` represents every type of bullet point found in a note. It carries
+/// its own metadata (tags and inline fields) and maintains a link to its parent
+/// item to preserve hierarchy.
+///
+/// # Checkboxes and Tasks
+///
+/// If a list item has a checkbox (e.g., `- [ ]`), it will have a
+/// [`StatusSymbol`] assigned to its `status` field. Such items can be
+/// "promoted" to semantic [`crate::note::task::Task`] entities, at which point
+/// a [`TaskRef`] is attached.
 ///
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{list::{ListDepth, ListItem, ListKind}, position::{SourceByteOffset, SourceByteRange}};
+/// # use lithos_core::note::list::{ListItem, ListKind, ListDepth};
+/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
+/// # use lithos_core::config::task::StatusSymbol;
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(13);
 /// let range = SourceByteRange::new(start, end).expect("valid range");
+///
 /// let item = ListItem::new(
 ///     "Buy groceries".into(),
 ///     range,
 ///     ListKind::Unordered,
 ///     ListDepth::root(),
 ///     None,
-///     None,
+///     Some(StatusSymbol::try_new(' ').unwrap()),
 ///     Box::new([]),
 ///     Box::new([]),
 /// );
+///
 /// assert_eq!(item.text(), "Buy groceries");
+/// assert!(item.task_status().is_some());
 /// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
@@ -384,6 +436,15 @@ impl ListItem {
 impl TryFrom<&RawListItem<'_>> for ListItem {
     type Error = NoteError;
 
+    /// Attempts to convert a [`RawListItem`] into a validated domain
+    /// [`ListItem`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if:
+    /// - The raw depth exceeds the maximum representable depth.
+    /// - A status symbol character is invalid (non-ASCII or non-printable).
+    /// - A tag found on the item is malformed.
     #[inline]
     fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
         let depth = match raw.depth {
@@ -428,6 +489,34 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
 }
 
 /// Extension trait for list items providing task-specific capabilities.
+///
+/// This trait allows any [`ListItem`] to be queried for task metadata without
+/// requiring it to be a promoted [`crate::note::task::Task`] entity.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::list::{ListItem, TaskExt, ListKind, ListDepth};
+/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
+/// # use lithos_core::config::task::StatusSymbol;
+/// # let start = SourceByteOffset::new(0);
+/// # let end = SourceByteOffset::new(13);
+/// # let range = SourceByteRange::new(start, end).expect("valid range");
+/// let item = ListItem::new(
+///     "Test".into(),
+///     range,
+///     ListKind::Unordered,
+///     ListDepth::root(),
+///     None,
+///     Some(StatusSymbol::try_new('x').unwrap()),
+///     Box::new([]),
+///     Box::new([]),
+/// );
+///
+/// if item.is_checkbox() {
+///     assert_eq!(item.status().unwrap().value(), 'x');
+/// }
+/// ```
 pub trait TaskExt {
     /// Returns true if this list item has a checkbox.
     fn is_checkbox(&self) -> bool;
