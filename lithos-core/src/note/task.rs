@@ -38,7 +38,7 @@ use crate::config::task::TaskConfigSpec;
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, position::{SourceByteOffset, SourceByteRange}};
-/// # use lithos_core::note::task::{TaskAttributes, TaskText};
+/// # use lithos_core::note::task::{TaskDates, TaskMetadata, TaskText};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let status = "todo";
 /// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10))?;
@@ -47,7 +47,9 @@ use crate::config::task::TaskConfigSpec;
 ///     status.into(),
 ///     text,
 ///     range,
-///     TaskAttributes::default(),
+///     Box::new([]),
+///     TaskMetadata::new(),
+///     TaskDates::default(),
 /// )?;
 ///
 /// assert_eq!(task.text(), "Urgent work");
@@ -73,20 +75,26 @@ impl Task {
     ///
     /// Returns [`TaskError`] if the task text is empty.
     #[inline]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Task construction uses explicit components"
+    )]
     pub fn try_new(
         status: Box<str>,
         text: TaskText,
         range: SourceByteRange,
-        attributes: TaskAttributes,
+        tags: Box<[Tag]>,
+        metadata: TaskMetadata,
+        dates: TaskDates,
     ) -> Result<Self, TaskError> {
         Ok(Self {
             id: TaskId::new(),
             status,
             text,
             range,
-            tags: attributes.tags,
-            metadata: attributes.metadata,
-            dates: attributes.dates,
+            tags,
+            metadata,
+            dates,
         })
     }
 
@@ -134,11 +142,8 @@ impl Task {
 
     /// Returns the collection of tags associated with this task.
     #[inline]
-    #[must_use]
-    pub fn tags(&self) -> TaskTags<'_> {
-        TaskTags {
-            inner: self.tags.iter(),
-        }
+    pub fn tags(&self) -> impl Iterator<Item = &Tag> {
+        self.tags.iter()
     }
 
     /// Returns the task's creation timestamp, if known.
@@ -254,113 +259,6 @@ impl TaskRef {
     }
 }
 
-/// Parsed task attributes captured from checkbox text.
-#[derive(Debug, Clone, Default)]
-pub struct TaskAttributes {
-    tags: Box<[Tag]>,
-    metadata: TaskMetadata,
-    dates: TaskDates,
-}
-
-impl TaskAttributes {
-    #[inline]
-    #[must_use]
-    pub fn builder() -> TaskAttributesBuilder {
-        TaskAttributesBuilder::default()
-    }
-
-    /// Returns the date fields for the task attributes.
-    #[inline]
-    #[must_use]
-    pub fn dates(&self) -> &TaskDates {
-        &self.dates
-    }
-}
-
-/// Builder for [`TaskAttributes`].
-#[derive(Debug, Default)]
-pub struct TaskAttributesBuilder {
-    tags: Box<[Tag]>,
-    metadata: TaskMetadata,
-    dates: TaskDates,
-}
-
-impl TaskAttributesBuilder {
-    #[inline]
-    #[must_use]
-    pub fn tags<T: Into<Box<[Tag]>>>(mut self, tags: T) -> Self {
-        self.tags = tags.into();
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn metadata(mut self, metadata: TaskMetadata) -> Self {
-        self.metadata = metadata;
-        self
-    }
-
-    /// Sets the task date fields.
-    #[inline]
-    #[must_use]
-    pub fn dates(mut self, dates: TaskDates) -> Self {
-        self.dates = dates;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
-        self.dates.created = created_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
-        self.dates.due = due_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
-        self.dates.reminder = reminder_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
-        self.dates.completed = completed_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn start_at(mut self, start_at: Option<TaskTimestamp>) -> Self {
-        self.dates.start = start_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn scheduled_at(mut self, scheduled_at: Option<TaskTimestamp>) -> Self {
-        self.dates.scheduled = scheduled_at;
-        self
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn build(self) -> TaskAttributes {
-        TaskAttributes {
-            tags: self.tags,
-            metadata: self.metadata,
-            dates: self.dates,
-        }
-    }
-}
-
 /// Task date fields.
 #[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
@@ -448,29 +346,6 @@ impl TaskText {
     #[must_use]
     pub fn clean(&self) -> &str {
         &self.clean
-    }
-}
-
-/// Borrowed iterator over task tags.
-pub struct TaskTags<'task> {
-    inner: std::slice::Iter<'task, Tag>,
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Iterator wrapper forwards core methods only."
-)]
-impl<'task> Iterator for TaskTags<'task> {
-    type Item = &'task Tag;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
     }
 }
 
@@ -639,33 +514,10 @@ pub enum TaskDateKind {
     Reminder,
     /// Completed timestamp.
     Completed,
-}
-
-/// Validated task priority.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TaskPriority(f64);
-
-impl TaskPriority {
-    /// Creates a validated task priority.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TaskError::InvalidPriority`] if the value is not finite.
-    #[inline]
-    pub fn try_new(value: f64) -> Result<Self, TaskError> {
-        if !value.is_finite() {
-            return Err(TaskError::InvalidPriority {
-                value,
-            });
-        }
-        Ok(Self(value))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn as_f64(self) -> f64 {
-        self.0
-    }
+    /// Start timestamp.
+    Start,
+    /// Scheduled timestamp.
+    Scheduled,
 }
 
 /// Validated key for task metadata fields.
@@ -807,34 +659,8 @@ impl TaskMetadata {
 
     /// Returns an iterator over all metadata fields.
     #[inline]
-    #[must_use]
-    pub fn fields(&self) -> TaskMetadataFields<'_> {
-        TaskMetadataFields {
-            inner: self.fields.iter(),
-        }
-    }
-}
-
-/// Borrowed iterator over task metadata fields.
-pub struct TaskMetadataFields<'meta> {
-    inner: std::collections::hash_map::Iter<'meta, TaskFieldKey, FieldValue>,
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Iterator wrapper forwards core methods only."
-)]
-impl<'meta> Iterator for TaskMetadataFields<'meta> {
-    type Item = (&'meta TaskFieldKey, &'meta FieldValue);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+    pub fn fields(&self) -> impl Iterator<Item = (&TaskFieldKey, &FieldValue)> {
+        self.fields.iter()
     }
 }
 
@@ -878,11 +704,15 @@ impl<'spec> TaskBuilder<'spec> {
             .clone();
 
         let clean = self.extract_clean_text(item.text())?;
-        let parsed = self.parse_task_fields(item.fields())?;
-        let attributes = parsed.into_attributes(item.tags().into());
+        let (dates, metadata) = self.parse_task_fields(item.fields())?;
+        let tags = if item.tags().is_empty() {
+            Box::new([])
+        } else {
+            item.tags().to_vec().into_boxed_slice()
+        };
 
         let text = TaskText::try_new(item.text().into(), clean)?;
-        Task::try_new(status, text, item.range(), attributes)
+        Task::try_new(status, text, item.range(), tags, metadata, dates)
             .map_err(Into::into)
     }
 
@@ -926,18 +756,24 @@ impl<'spec> TaskBuilder<'spec> {
     fn parse_task_fields(
         &self,
         fields: &[crate::note::inline_fields::InlineField],
-    ) -> Result<ParsedInlineFields, NoteError> {
-        let mut state = InlineFieldState::new();
+    ) -> Result<(TaskDates, TaskMetadata), NoteError> {
+        if fields.is_empty() {
+            return Ok((TaskDates::default(), TaskMetadata::new()));
+        }
+
+        let mut dates = TaskDates::default();
+        let mut metadata = TaskMetadata::new();
 
         for field in fields {
-            state.handle_any_inline_field(
-                self.spec,
+            self.handle_any_inline_field(
+                &mut dates,
+                &mut metadata,
                 field.key().as_str(),
                 field.value().as_str().unwrap_or(""),
             )?;
         }
 
-        Ok(state.finish())
+        Ok((dates, metadata))
     }
 
     fn strip_inline_fields(text: &str) -> Option<&str> {
@@ -985,131 +821,66 @@ impl<'spec> TaskBuilder<'spec> {
         }
         None
     }
-}
-
-#[derive(Debug)]
-struct ParsedInlineFields {
-    slots: TemporalSlots,
-    metadata: TaskMetadata,
-}
-
-impl ParsedInlineFields {
-    fn into_attributes(self, tags: Box<[Tag]>) -> TaskAttributes {
-        self.slots
-            .apply_to_builder(TaskAttributes::builder().tags(tags))
-            .metadata(self.metadata)
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DateSlot {
-    Created,
-    Due,
-    Reminder,
-    Completed,
-    Start,
-    Scheduled,
-}
-
-#[derive(Debug, Default)]
-struct TemporalSlots {
-    created: Option<TaskTimestamp>,
-    due: Option<TaskTimestamp>,
-    reminder: Option<TaskTimestamp>,
-    completed: Option<TaskTimestamp>,
-    start: Option<TaskTimestamp>,
-    scheduled: Option<TaskTimestamp>,
-}
-
-impl TemporalSlots {
-    fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
-        ParsedInlineFields {
-            slots: self,
-            metadata,
-        }
-    }
-
-    fn get(&self, slot: DateSlot) -> Option<TaskTimestamp> {
-        match slot {
-            DateSlot::Created => self.created,
-            DateSlot::Due => self.due,
-            DateSlot::Reminder => self.reminder,
-            DateSlot::Completed => self.completed,
-            DateSlot::Start => self.start,
-            DateSlot::Scheduled => self.scheduled,
-        }
-    }
-
-    fn set(&mut self, slot: DateSlot, value: TaskTimestamp) {
-        match slot {
-            DateSlot::Created => self.created = Some(value),
-            DateSlot::Due => self.due = Some(value),
-            DateSlot::Reminder => self.reminder = Some(value),
-            DateSlot::Completed => self.completed = Some(value),
-            DateSlot::Start => self.start = Some(value),
-            DateSlot::Scheduled => self.scheduled = Some(value),
-        }
-    }
-
-    fn apply_to_builder(
-        self,
-        builder: TaskAttributesBuilder,
-    ) -> TaskAttributesBuilder {
-        builder
-            .created_at(self.created)
-            .due_at(self.due)
-            .reminder_at(self.reminder)
-            .completed_at(self.completed)
-            .start_at(self.start)
-            .scheduled_at(self.scheduled)
-    }
-}
-
-#[derive(Debug, Default)]
-struct InlineFieldState {
-    slots: TemporalSlots,
-    metadata: TaskMetadata,
-}
-
-impl InlineFieldState {
-    fn new() -> Self {
-        Self::default()
-    }
 
     fn handle_any_inline_field(
-        &mut self,
-        spec: &TaskConfigSpec,
+        &self,
+        dates: &mut TaskDates,
+        metadata: &mut TaskMetadata,
         key: &str,
         value: &str,
     ) -> Result<(), NoteError> {
         // 1. Try user-configured mapping
-        if let Some((slot, format, _emoji)) = Self::match_date_spec(spec, key) {
-            if self.slots.get(slot).is_none() {
+        if let Some((slot, format, _emoji)) = self.match_date_spec(key) {
+            if Self::get_date(dates, slot).is_none() {
                 let parsed = Self::parse_date_str(value, key, format)?;
-                self.slots.set(slot, parsed);
+                Self::set_date(dates, slot, parsed);
             }
             return Ok(());
         }
 
         // 2. Try configured emoji mappings
-        if spec.use_emoji
+        if self.spec.use_emoji
             && let Some((slot, format, keyword)) =
-                Self::match_date_spec_by_emoji(spec, key)
+                self.match_date_spec_by_emoji(key)
         {
-            if self.slots.get(slot).is_none() {
+            if Self::get_date(dates, slot).is_none() {
                 let parsed = Self::parse_date_str(value, keyword, format)?;
-                self.slots.set(slot, parsed);
+                Self::set_date(dates, slot, parsed);
             }
             return Ok(());
         }
 
         // 3. Handle as standard metadata
-        Self::insert_metadata(spec, &mut self.metadata, key, value)
+        Self::insert_metadata(self.spec, metadata, key, value)
     }
 
-    fn finish(self) -> ParsedInlineFields {
-        self.slots.finish(self.metadata)
+    fn get_date(
+        dates: &TaskDates,
+        slot: TaskDateKind,
+    ) -> Option<TaskTimestamp> {
+        match slot {
+            TaskDateKind::Created => dates.created,
+            TaskDateKind::Due => dates.due,
+            TaskDateKind::Reminder => dates.reminder,
+            TaskDateKind::Completed => dates.completed,
+            TaskDateKind::Start => dates.start,
+            TaskDateKind::Scheduled => dates.scheduled,
+        }
+    }
+
+    fn set_date(
+        dates: &mut TaskDates,
+        slot: TaskDateKind,
+        value: TaskTimestamp,
+    ) {
+        match slot {
+            TaskDateKind::Created => dates.created = Some(value),
+            TaskDateKind::Due => dates.due = Some(value),
+            TaskDateKind::Reminder => dates.reminder = Some(value),
+            TaskDateKind::Completed => dates.completed = Some(value),
+            TaskDateKind::Start => dates.start = Some(value),
+            TaskDateKind::Scheduled => dates.scheduled = Some(value),
+        }
     }
 
     #[expect(
@@ -1165,32 +936,33 @@ impl InlineFieldState {
         clippy::type_complexity,
         reason = "Match ergonomics are preferred for domain facts"
     )]
-    fn match_date_spec<'spec>(
-        spec: &'spec TaskConfigSpec,
+    fn match_date_spec(
+        &self,
         keyword: &str,
-    ) -> Option<(DateSlot, &'spec str, Option<char>)> {
+    ) -> Option<(TaskDateKind, &str, Option<char>)> {
         use crate::config::task::TemporalSlot;
 
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "Match ergonomics are preferred for mapping lookups"
         )]
-        let (slot_enum, format, emoji) = spec.temporal_specs.get(keyword)?;
+        let (slot_enum, format, emoji) =
+            self.spec.temporal_specs.get(keyword)?;
         let slot = match *slot_enum {
-            TemporalSlot::Created => DateSlot::Created,
-            TemporalSlot::Due => DateSlot::Due,
-            TemporalSlot::Reminder => DateSlot::Reminder,
-            TemporalSlot::Completed => DateSlot::Completed,
-            TemporalSlot::Start => DateSlot::Start,
-            TemporalSlot::Scheduled => DateSlot::Scheduled,
+            TemporalSlot::Created => TaskDateKind::Created,
+            TemporalSlot::Due => TaskDateKind::Due,
+            TemporalSlot::Reminder => TaskDateKind::Reminder,
+            TemporalSlot::Completed => TaskDateKind::Completed,
+            TemporalSlot::Start => TaskDateKind::Start,
+            TemporalSlot::Scheduled => TaskDateKind::Scheduled,
         };
         Some((slot, format.as_str(), *emoji))
     }
 
-    fn match_date_spec_by_emoji<'spec>(
-        spec: &'spec TaskConfigSpec,
+    fn match_date_spec_by_emoji(
+        &self,
         emoji: &str,
-    ) -> Option<(DateSlot, &'spec str, &'spec str)> {
+    ) -> Option<(TaskDateKind, &str, &str)> {
         use crate::config::task::TemporalSlot;
 
         #[expect(
@@ -1201,7 +973,7 @@ impl InlineFieldState {
             clippy::iter_over_hash_type,
             reason = "Order is irrelevant for emoji lookup"
         )]
-        for (keyword, value) in &spec.temporal_specs {
+        for (keyword, value) in &self.spec.temporal_specs {
             let (slot_enum, format, maybe_emoji) = value;
             let Some(spec_emoji) = *maybe_emoji else {
                 continue;
@@ -1210,12 +982,12 @@ impl InlineFieldState {
                 continue;
             }
             let slot = match *slot_enum {
-                TemporalSlot::Created => DateSlot::Created,
-                TemporalSlot::Due => DateSlot::Due,
-                TemporalSlot::Reminder => DateSlot::Reminder,
-                TemporalSlot::Completed => DateSlot::Completed,
-                TemporalSlot::Start => DateSlot::Start,
-                TemporalSlot::Scheduled => DateSlot::Scheduled,
+                TemporalSlot::Created => TaskDateKind::Created,
+                TemporalSlot::Due => TaskDateKind::Due,
+                TemporalSlot::Reminder => TaskDateKind::Reminder,
+                TemporalSlot::Completed => TaskDateKind::Completed,
+                TemporalSlot::Start => TaskDateKind::Start,
+                TemporalSlot::Scheduled => TaskDateKind::Scheduled,
             };
             return Some((slot, format.as_str(), keyword.as_ref()));
         }

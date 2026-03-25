@@ -38,7 +38,7 @@ use crate::{
         },
         frontmatter::{AliasValue, FileClassValue, Frontmatter},
         paths::{FolderPath, NotePath},
-        task::{Task, TaskDateKind, TaskMetadata, TaskPriority, TaskTimestamp},
+        task::{Task, TaskDateKind, TaskMetadata, TaskTimestamp},
         value::FieldValue,
     },
 };
@@ -127,7 +127,7 @@ pub trait Repository: Send + Sync {
     /// Finds all stored notes containing tasks with a specific priority level.
     fn list_by_task_priority(
         &self,
-        priority: TaskPriority,
+        priority: f64,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks assigned to a specific project.
@@ -1319,9 +1319,12 @@ impl Repository for RedbRepository<'_, '_> {
     #[inline]
     fn list_by_task_priority(
         &self,
-        priority: TaskPriority,
+        priority: f64,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let value = FieldValue::Number(priority.as_f64());
+        if !priority.is_finite() {
+            return Ok(Vec::new());
+        }
+        let value = FieldValue::Number(priority);
         let mut keys = Self::metadata_index_keys("priority", &value);
         if let Some(key) = keys.pop() {
             self.list_notes_by_task_index(TASKS_BY_METADATA, key.as_ref())
@@ -1370,10 +1373,14 @@ impl Repository for RedbRepository<'_, '_> {
     ) -> Result<Vec<TaskView>, Self::Error> {
         let date_str = Self::format_i64(date.as_i64());
         let table = match kind {
-            TaskDateKind::Created => TASKS_BY_CREATED_DATE,
-            TaskDateKind::Due => TASKS_BY_DUE_DATE,
-            TaskDateKind::Reminder => TASKS_BY_REMINDER_DATE,
-            TaskDateKind::Completed => TASKS_BY_COMPLETED_DATE,
+            TaskDateKind::Created => Some(TASKS_BY_CREATED_DATE),
+            TaskDateKind::Due => Some(TASKS_BY_DUE_DATE),
+            TaskDateKind::Reminder => Some(TASKS_BY_REMINDER_DATE),
+            TaskDateKind::Completed => Some(TASKS_BY_COMPLETED_DATE),
+            TaskDateKind::Start | TaskDateKind::Scheduled => None,
+        };
+        let Some(table) = table else {
+            return Ok(Vec::new());
         };
         let notes = self.list_notes_by_task_index(table, date_str.as_ref())?;
         Ok(Self::collect_tasks_matching(&notes, |task| match kind {
@@ -1381,6 +1388,8 @@ impl Repository for RedbRepository<'_, '_> {
             TaskDateKind::Due => task.due_at() == Some(date),
             TaskDateKind::Reminder => task.reminder_at() == Some(date),
             TaskDateKind::Completed => task.completed_at() == Some(date),
+            TaskDateKind::Start => task.dates().start() == Some(date),
+            TaskDateKind::Scheduled => task.dates().scheduled() == Some(date),
         }))
     }
 
