@@ -441,61 +441,6 @@ impl<'de> serde::Deserialize<'de> for PropertyName {
     }
 }
 
-/// Typed reference to a property definition in the property bank.
-///
-/// The only valid format is `property_bank#/<name>` where `<name>` is a
-/// valid property name. This format is defined by the vault schema format.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property::BankPropertyRef;
-///
-/// let reference = BankPropertyRef::parse("property_bank#/flag")?;
-/// assert_eq!(reference.name().as_str(), "flag");
-/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct BankPropertyRef(PropertyName);
-
-impl BankPropertyRef {
-    const PREFIX: &'static str = "property_bank#/";
-
-    /// Parse a reference string into a typed property reference.
-    ///
-    /// The only accepted format is `property_bank#/<name>`.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::PropertyRef` if the format is invalid.
-    #[inline]
-    pub fn parse(reference: &str) -> Result<Self, SchemaError> {
-        let name = reference.strip_prefix(Self::PREFIX).ok_or_else(|| {
-            SchemaError::PropertyRef(
-                super::error::PropertyRefError::InvalidFormat {
-                    reference: reference.into(),
-                },
-            )
-        })?;
-        Ok(Self(PropertyName::try_from(name)?))
-    }
-
-    /// Returns the property name being referenced.
-    #[inline]
-    #[must_use]
-    pub const fn name(&self) -> &PropertyName {
-        &self.0
-    }
-}
-
-impl TryFrom<&str> for BankPropertyRef {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::parse(value)
-    }
-}
-
 /// Whether a property is required or optional.
 #[derive(
     Debug,
