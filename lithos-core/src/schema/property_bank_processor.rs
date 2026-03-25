@@ -1,51 +1,38 @@
-//! `PropertyBank` state machine for incremental loading and staleness
-//! detection.
+//! Typed processing pipeline for building or updating a `PropertyBank`.
 //!
-//! This module implements a **strong typestate pattern** to orchestrate the
-//! `PropertyBank` loading pipeline. Unlike the previous implementation, this
-//! version uses distinct structs for each state, ensuring that required data
-//! is present at compile time and eliminating the need for runtime `expect()`
-//! calls.
+//! This module encodes the property bank load/update workflow as a typestate
+//! pipeline. Each state is a compile-time step with the inputs required for the
+//! next transition, so every branch is explicit and no state relies on runtime
+//! `expect()`.
 //!
-//! # States and Transitions
+//! ## What the pipeline does
+//! - Reads file timestamps and cached view metadata.
+//! - Decides whether to reuse the stored bank, update only view metadata, or
+//!   parse and apply a property delta.
+//! - Produces a ready `PropertyBank` and persists any updated view/bank data.
 //!
-//! 1. **Discovery**: Entry point. Checks for existence of a cached view.
-//!     - `to_new` -> `IsNew`
-//!     - `to_fresh_timestamp` -> `IsFreshTimestamp`
+//! ## Pipeline flow
+//! ```text
+//! Discovery
+//!   ├─ New
+//!   │   └─ IsNew -> NewConstruction -> Completed
+//!   └─ FreshTimestamp
+//!       └─ IsFreshTimestamp
+//!           ├─ [timestamps match]
+//!           │   └─ FetchConstruction -> Completed
+//!           └─ [timestamps mismatch]
+//!               └─ IsFreshContent
+//!                   ├─ [content match]
+//!                   │   └─ UpdateRawViewTime -> FetchConstruction -> Completed
+//!                   └─ [content mismatch]
+//!                       └─ IsStale
+//!                           ├─ [delta empty]
+//!                           │   └─ UpdateStaleRawView -> FetchConstruction -> Completed
+//!                           └─ [delta non-empty]
+//!                               └─ UpdateConstruction -> Completed
+//! ```
 //!
-//! 2. **IsNew**: Handles completely new files.
-//!     - `parse` -> `NewConstruction`
-//!
-//! 3. **IsFreshTimestamp**: Tier 2 check (metadata matching).
-//!     - `to_fetch_construction` -> `FetchConstruction` (Fastest path)
-//!     - `to_fresh_content` -> `IsFreshContent`
-//!
-//! 4. **IsFreshContent**: Tier 3 check (hash matching).
-//!     - `to_update_raw_view_time` -> `UpdateRawViewTime`
-//!     - `to_stale` -> `IsStale`
-//!
-//! 5. **UpdateRawViewTime**: Syncs metadata when content matches but timestamps
-//!    differ.
-//!     - `update` -> `FetchConstruction`
-//!
-//! 6. **UpdateStaleRawView**: Content changed but properties did not.
-//!     - `update` -> `FetchConstruction`
-//!
-//! 7. **IsStale**: Content changed.
-//!     - `filter_changed_properties` -> `UpdateStaleRawView` or
-//!       `UpdateConstruction`
-//!
-//! 8. **NewConstruction**: Builds a fresh `PropertyBank` and persists view.
-//!     - `create` -> `Completed`
-//!
-//! 9. **UpdateConstruction**: Applies delta to `PropertyBank` and persists
-//!    view.
-//!     - `update` -> `Completed`
-//!
-//! 10. **FetchConstruction**: Fetches cached `PropertyBank`.
-//!     - `fetch` -> `Completed`
-//!
-//! 11. **Completed**: Terminal state.
+//! The terminal `Completed` state owns the finished `PropertyBank`.
 
 use std::{collections::HashSet, time::SystemTime};
 
@@ -98,19 +85,33 @@ impl Default for PropertyBankProcessor<Discovery> {
 //  State Definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Initial state - preparing to check for cached views.
+/// Entry state for the property bank pipeline.
+///
+/// # Invariants
+/// - No cached view has been loaded yet.
+/// - File timestamps are not read until this state transitions.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Discovery;
 
-/// No cached view exists - must perform full ingestion.
+/// Branch when no cached view exists.
+///
+/// # Invariants
+/// - No cached view is available in the repository.
+/// - File timestamps are captured and stored in `times`.
+/// - The next step must parse content into a raw bank.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct IsNew {
     times: RawFileTimes,
 }
 
-/// Cached view exists - checking if timestamps match.
+/// Branch when a cached view exists and timestamps can be compared.
+///
+/// # Invariants
+/// - A cached view is present in `view`.
+/// - File timestamps are captured in `times`.
+/// - Content has not been hashed yet.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct IsFreshTimestamp {
@@ -118,7 +119,12 @@ pub struct IsFreshTimestamp {
     view: RawPropertyBankView,
 }
 
-/// Timestamps mismatched - checking if content hash matches.
+/// State for content hashing when timestamps do not match.
+///
+/// # Invariants
+/// - A cached view is present in `view`.
+/// - File timestamps are captured in `times`.
+/// - Full file content is available in `content` for hashing.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct IsFreshContent<'source> {
@@ -127,7 +133,12 @@ pub struct IsFreshContent<'source> {
     content: &'source str,
 }
 
-/// Content hash matched but timestamps differ - update view only.
+/// State for updating view timestamps after a content hash match.
+///
+/// # Invariants
+/// - Content hash matches the cached view.
+/// - The bank does not need to be rebuilt.
+/// - Only view timestamps must be updated.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct UpdateRawViewTime {
@@ -135,7 +146,13 @@ pub struct UpdateRawViewTime {
     view: RawPropertyBankView,
 }
 
-/// Content changed but properties did not - update content hash.
+/// State for updating view hashes/timestamps when content changed but
+/// properties did not.
+///
+/// # Invariants
+/// - Content hash differs from the cached view.
+/// - Property delta is empty (no property changes).
+/// - Only view metadata must be updated.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct UpdateStaleRawView {
@@ -144,7 +161,13 @@ pub struct UpdateStaleRawView {
     view: RawPropertyBankView,
 }
 
-/// Content changed - must compute delta and update incrementally.
+/// State for computing a property delta from parsed raw content.
+///
+/// # Invariants
+/// - Content hash differs from the cached view.
+/// - Raw content is parsed and stored in `raw`.
+/// - `content_hash` corresponds to `content`.
+/// - `raw` includes file times captured for this run.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct IsStale<'source> {
@@ -154,7 +177,12 @@ pub struct IsStale<'source> {
     content_hash: [u8; 32],
 }
 
-/// Ready to build a new `PropertyBank` from scratch.
+/// State for building a new `PropertyBank` from raw content.
+///
+/// # Invariants
+/// - `raw` is parsed from current content.
+/// - `content` matches the raw bank.
+/// - The bank does not exist in storage for this run.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct NewConstruction {
@@ -162,7 +190,12 @@ pub struct NewConstruction {
     content: String,
 }
 
-/// Ready to update an existing `PropertyBank` with property delta.
+/// State for applying a property delta to an existing `PropertyBank`.
+///
+/// # Invariants
+/// - `raw` is parsed from current content.
+/// - `delta` captures all property upserts/removals.
+/// - Existing property IDs must be preserved on updates.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct UpdateConstruction {
@@ -171,12 +204,19 @@ pub struct UpdateConstruction {
     delta: PropertyDelta,
 }
 
-/// Ready to fetch the cached `PropertyBank` from storage.
+/// State for fetching the cached `PropertyBank` without rebuilding.
+///
+/// # Invariants
+/// - Cached view metadata is up to date for this run.
+/// - The bank is expected to exist in storage.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct FetchConstruction;
 
-/// Terminal state - `PropertyBank` is ready.
+/// Terminal state containing the ready `PropertyBank`.
+///
+/// # Invariants
+/// - The bank is fully constructed and owned by this state.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Completed {
