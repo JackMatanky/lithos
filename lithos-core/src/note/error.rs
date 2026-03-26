@@ -385,6 +385,13 @@ pub enum TaskError {
     #[error("task text cannot be empty")]
     EmptyText,
 
+    /// The list item is not a checkbox (missing task status marker).
+    #[error("item is not a checkbox task: {text}")]
+    MissingStatus {
+        /// The item's text content.
+        text: Box<str>,
+    },
+
     /// The checkbox status symbol is not recognized by the current
     /// configuration.
     #[error("unrecognized status symbol: '{symbol}'")]

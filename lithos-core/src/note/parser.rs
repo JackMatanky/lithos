@@ -21,10 +21,10 @@ use crate::{
         paths::NotePath,
         position::{SourceByteOffset, SourceByteRange},
         raw::{
-            RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
-            RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
-            RawListItem, RawListKind, RawNote, RawReferenceLink, RawSection,
-            RawSectionKind, RawTag, RawTaskMarker,
+            RawBlockRef, RawFieldValue, RawFrontmatter, RawFrontmatterFormat,
+            RawHeading, RawInlineField, RawLink, RawLinkStyle, RawList,
+            RawListDepth, RawListItem, RawListKind, RawNote, RawReferenceLink,
+            RawSection, RawSectionKind, RawTag, RawTaskMarker,
         },
         scanner::{NoteScanner, ScannedArtifact},
     },
@@ -529,7 +529,7 @@ impl MarkdownParser {
                                 list_contexts,
                                 block_refs,
                                 master_artifacts,
-                            );
+                            )?;
                         }
                         BlockKind::List => {
                             list_stack.pop();
@@ -728,19 +728,27 @@ impl MarkdownParser {
             match artifact {
                 ScannedArtifact::Tag {
                     text,
-                    ..
+                    range,
                 } => {
-                    scan_result.tags.push(RawTag::new(text.clone(), pos));
+                    scan_result.tags.push(RawTag::new(text.clone(), *range));
                 }
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    ..
+                    range,
                 } => {
+                    // Use heuristic parsing to detect types (no spec available
+                    // here)
+                    let typed_value = RawFieldValue::from_str_with_spec(
+                        value.as_ref(),
+                        key.as_ref(),
+                        None, // No spec available at parse time
+                    )
+                    .into_owned();
                     scan_result.inline_fields.push(RawInlineField::new(
                         key.clone(),
-                        value.clone(),
-                        pos,
+                        typed_value,
+                        *range,
                     ));
                 }
                 ScannedArtifact::BlockRef {
@@ -854,7 +862,7 @@ impl MarkdownParser {
         list_contexts: &mut Vec<ListContext>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
         master_artifacts: &[ScannedArtifact<'source>],
-    ) {
+    ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
@@ -889,6 +897,28 @@ impl MarkdownParser {
             None
         };
         let raw_text = block.full_text.trim().to_owned();
+        let text_range = if raw_text.is_empty() {
+            SourceByteRange::new(block_range.start(), block_range.start())
+                .map_err(NoteIngestError::Domain)?
+        } else {
+            let leading_trim = block
+                .full_text
+                .len()
+                .saturating_sub(block.full_text.trim_start().len());
+            let base_start = block
+                .scannable_ranges
+                .first()
+                .and_then(|range| SourceByteOffset::try_from(range.start).ok())
+                .unwrap_or(block_range.start());
+            let text_start = base_start
+                .add_offset(leading_trim)
+                .map_err(NoteIngestError::Domain)?;
+            let text_end = text_start
+                .add_offset(raw_text.len())
+                .map_err(NoteIngestError::Domain)?;
+            SourceByteRange::new(text_start, text_end)
+                .map_err(NoteIngestError::Domain)?
+        };
 
         if let Some(context) = list_contexts.last_mut() {
             context.item_positions.push(block.start_offset);
@@ -900,12 +930,14 @@ impl MarkdownParser {
             raw_text.into(),
             task_marker,
             block_range,
+            text_range,
             parent_pos,
             scan_result.tags,
             scan_result.inline_fields,
         ));
 
         block_refs.extend(scan_result.block_refs);
+        Ok(())
     }
 }
 
@@ -1116,7 +1148,7 @@ mod tests {
         let raw = parse_raw(md);
         let field = raw.inline_fields.first().expect("field exists");
         assert_eq!(field.key, "bare_key");
-        assert_eq!(field.value, "bare_val");
+        assert_eq!(field.value, RawFieldValue::String("bare_val".into()));
     }
 
     #[test]

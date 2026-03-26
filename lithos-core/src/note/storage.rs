@@ -11,6 +11,10 @@
     clippy::missing_errors_doc,
     reason = "Repository methods share error semantics"
 )]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Pattern matching style is clear in context"
+)]
 
 use std::{
     collections::HashSet, fmt::Write as _, path::Path, time::SystemTime,
@@ -37,8 +41,9 @@ use crate::{
             NoteEventPayloadV1,
         },
         frontmatter::{AliasValue, FileClassValue, Frontmatter},
+        inline_fields::InlineFieldKey,
         paths::{FolderPath, NotePath},
-        task::{Task, TaskDateKind, TaskMetadata, TaskTimestamp},
+        task::{Task, TaskDateKind, TaskDateValue},
         value::FieldValue,
     },
 };
@@ -109,19 +114,19 @@ pub trait Repository: Send + Sync {
     /// Finds all stored notes containing tasks completed on a specific date.
     fn list_by_task_completed_date(
         &self,
-        completed_date: TaskTimestamp,
+        completed_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks created on a specific date.
     fn list_by_task_created_date(
         &self,
-        created_date: TaskTimestamp,
+        created_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks due on a specific date.
     fn list_by_task_due_date(
         &self,
-        due_date: TaskTimestamp,
+        due_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks assigned to a specific project.
@@ -133,7 +138,7 @@ pub trait Repository: Send + Sync {
     /// Finds all stored notes containing tasks with a specific reminder date.
     fn list_by_task_reminder_date(
         &self,
-        reminder_date: TaskTimestamp,
+        reminder_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error>;
 
     /// Finds all stored notes containing tasks with a specific status name.
@@ -146,7 +151,7 @@ pub trait Repository: Send + Sync {
     fn list_tasks_by_date(
         &self,
         kind: TaskDateKind,
-        date: TaskTimestamp,
+        date: &TaskDateValue,
     ) -> Result<Vec<TaskView>, Self::Error>;
 
     /// Lists tasks by a metadata field/value pair.
@@ -378,32 +383,32 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
 
         for task in facts.tasks() {
             status_keys.push(task.status().into());
-            if let Some(timestamp) = task.created_at() {
-                created_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().created() {
+                created_dates.extend(Self::task_date_index_keys(value));
             }
-            if let Some(timestamp) = task.due_at() {
-                due_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().due() {
+                due_dates.extend(Self::task_date_index_keys(value));
             }
-            if let Some(timestamp) = task.reminder_at() {
-                reminder_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().reminder() {
+                reminder_dates.extend(Self::task_date_index_keys(value));
             }
-            if let Some(timestamp) = task.completed_at() {
-                completed_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().completed() {
+                completed_dates.extend(Self::task_date_index_keys(value));
             }
-            if let Some(timestamp) = task.dates().start() {
-                start_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().start() {
+                start_dates.extend(Self::task_date_index_keys(value));
             }
-            if let Some(timestamp) = task.dates().scheduled() {
-                scheduled_dates.push(Self::format_i64(timestamp.as_i64()));
+            if let Some(value) = task.dates().scheduled() {
+                scheduled_dates.extend(Self::task_date_index_keys(value));
             }
 
             metadata_keys.extend(Self::task_metadata_keys(
-                task.metadata(),
+                task.fields(),
                 config,
                 index_all_fields,
             ));
             depends_on.extend(Self::task_depends_on(
-                task.metadata(),
+                task.fields(),
                 dependencies_enabled,
             ));
         }
@@ -737,14 +742,14 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     }
 
     fn task_metadata_keys(
-        metadata: &TaskMetadata,
+        fields: &[(InlineFieldKey, FieldValue)],
         config: &Config,
         index_all: bool,
     ) -> Vec<Box<str>> {
         let indexed = config.task().indexed();
         let mut keys = Vec::new();
 
-        for (field, value) in metadata.fields() {
+        for (field, value) in fields {
             let field_name = field.as_str();
             if index_all
                 || indexed.iter().any(|name| name.as_ref() == field_name)
@@ -757,14 +762,16 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
     }
 
     fn task_depends_on(
-        metadata: &TaskMetadata,
+        fields: &[(InlineFieldKey, FieldValue)],
         enabled: bool,
     ) -> Vec<Box<str>> {
         if !enabled {
             return Vec::new();
         }
 
-        let Some(value) = metadata.get("dependsOn") else {
+        let Some((_, value)) =
+            fields.iter().find(|(k, _)| k.as_str() == "dependsOn")
+        else {
             return Vec::new();
         };
 
@@ -959,14 +966,40 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         out
     }
 
-    fn format_i64(value: i64) -> Box<str> {
-        let mut buffer = itoa::Buffer::new();
-        buffer.format(value).into()
-    }
-
     fn format_f64(value: f64) -> Box<str> {
         let mut buffer = ryu::Buffer::new();
         buffer.format(value).into()
+    }
+
+    fn task_date_index_keys(value: &TaskDateValue) -> Vec<Box<str>> {
+        let mut keys = Vec::new();
+        if let Some(date) = value.as_naive_date() {
+            keys.push(date.to_string().into());
+        }
+        if let Some(dt) = value.as_datetime() {
+            keys.push(dt.to_rfc3339().into());
+        }
+        keys
+    }
+
+    fn task_date_query_keys(value: &TaskDateValue) -> Vec<Box<str>> {
+        if let Some(dt) = value.as_datetime() {
+            return vec![dt.to_rfc3339().into()];
+        }
+        if let Some(date) = value.as_naive_date() {
+            return vec![date.to_string().into()];
+        }
+        Vec::new()
+    }
+
+    fn task_date_matches(
+        value: &TaskDateValue,
+        query_keys: &[Box<str>],
+    ) -> bool {
+        let keys = Self::task_date_index_keys(value);
+        keys.iter().any(|key| {
+            query_keys.iter().any(|query| query.as_ref() == key.as_ref())
+        })
     }
 
     fn list_notes_by_task_index(
@@ -983,6 +1016,41 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         let mut note_ids = BTreeSet::<Box<str>>::new();
         for note_id_str in note_refs {
             note_ids.insert(note_id_str.into());
+        }
+
+        let mut notes = Vec::with_capacity(note_ids.len());
+        for note_id_str in note_ids {
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
+                .map_err(NoteRepositoryError::Storage)?
+            {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
+
+    fn list_notes_by_task_indexes(
+        &self,
+        index_table: redb::MultimapTableDefinition<&str, &str>,
+        index_keys: &[Box<str>],
+    ) -> Result<Vec<Note>, NoteRepositoryError> {
+        use std::collections::BTreeSet;
+
+        if index_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut note_ids = BTreeSet::<Box<str>>::new();
+        for key in index_keys {
+            let note_refs = self
+                .db
+                .multimap_get(index_table, key.as_ref())
+                .map_err(NoteRepositoryError::Storage)?;
+            for note_id_str in note_refs {
+                note_ids.insert(note_id_str.into());
+            }
         }
 
         let mut notes = Vec::with_capacity(note_ids.len());
@@ -1335,31 +1403,28 @@ impl Repository for RedbRepository<'_, '_> {
     #[inline]
     fn list_by_task_completed_date(
         &self,
-        completed_date: TaskTimestamp,
+        completed_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(completed_date.as_i64());
-        self.list_notes_by_task_index(TASKS_BY_COMPLETED_DATE, date_str)
+        let keys = Self::task_date_query_keys(completed_date);
+        self.list_notes_by_task_indexes(TASKS_BY_COMPLETED_DATE, &keys)
     }
 
     #[inline]
     fn list_by_task_created_date(
         &self,
-        created_date: TaskTimestamp,
+        created_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(created_date.as_i64());
-        self.list_notes_by_task_index(TASKS_BY_CREATED_DATE, date_str)
+        let keys = Self::task_date_query_keys(created_date);
+        self.list_notes_by_task_indexes(TASKS_BY_CREATED_DATE, &keys)
     }
 
     #[inline]
     fn list_by_task_due_date(
         &self,
-        due_date: TaskTimestamp,
+        due_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(due_date.as_i64());
-        self.list_notes_by_task_index(TASKS_BY_DUE_DATE, date_str)
+        let keys = Self::task_date_query_keys(due_date);
+        self.list_notes_by_task_indexes(TASKS_BY_DUE_DATE, &keys)
     }
 
     #[inline]
@@ -1379,11 +1444,10 @@ impl Repository for RedbRepository<'_, '_> {
     #[inline]
     fn list_by_task_reminder_date(
         &self,
-        reminder_date: TaskTimestamp,
+        reminder_date: &TaskDateValue,
     ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(reminder_date.as_i64());
-        self.list_notes_by_task_index(TASKS_BY_REMINDER_DATE, date_str)
+        let keys = Self::task_date_query_keys(reminder_date);
+        self.list_notes_by_task_indexes(TASKS_BY_REMINDER_DATE, &keys)
     }
 
     #[inline]
@@ -1398,9 +1462,8 @@ impl Repository for RedbRepository<'_, '_> {
     fn list_tasks_by_date(
         &self,
         kind: TaskDateKind,
-        date: TaskTimestamp,
+        date: &TaskDateValue,
     ) -> Result<Vec<TaskView>, Self::Error> {
-        let date_str = Self::format_i64(date.as_i64());
         let table = match kind {
             TaskDateKind::Created => Some(TASKS_BY_CREATED_DATE),
             TaskDateKind::Due => Some(TASKS_BY_DUE_DATE),
@@ -1412,14 +1475,38 @@ impl Repository for RedbRepository<'_, '_> {
         let Some(table) = table else {
             return Ok(Vec::new());
         };
-        let notes = self.list_notes_by_task_index(table, date_str.as_ref())?;
+        let query_keys = Self::task_date_query_keys(date);
+        if query_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let notes = self.list_notes_by_task_indexes(table, &query_keys)?;
         Ok(Self::collect_tasks_matching(&notes, |task| match kind {
-            TaskDateKind::Created => task.created_at() == Some(date),
-            TaskDateKind::Due => task.due_at() == Some(date),
-            TaskDateKind::Reminder => task.reminder_at() == Some(date),
-            TaskDateKind::Completed => task.completed_at() == Some(date),
-            TaskDateKind::Start => task.dates().start() == Some(date),
-            TaskDateKind::Scheduled => task.dates().scheduled() == Some(date),
+            TaskDateKind::Created => {
+                task.dates().created().is_some_and(|value| {
+                    Self::task_date_matches(value, &query_keys)
+                })
+            }
+            TaskDateKind::Due => task.dates().due().is_some_and(|value| {
+                Self::task_date_matches(value, &query_keys)
+            }),
+            TaskDateKind::Reminder => {
+                task.dates().reminder().is_some_and(|value| {
+                    Self::task_date_matches(value, &query_keys)
+                })
+            }
+            TaskDateKind::Completed => {
+                task.dates().completed().is_some_and(|value| {
+                    Self::task_date_matches(value, &query_keys)
+                })
+            }
+            TaskDateKind::Start => task.dates().start().is_some_and(|value| {
+                Self::task_date_matches(value, &query_keys)
+            }),
+            TaskDateKind::Scheduled => {
+                task.dates().scheduled().is_some_and(|value| {
+                    Self::task_date_matches(value, &query_keys)
+                })
+            }
         }))
     }
 
@@ -1430,11 +1517,15 @@ impl Repository for RedbRepository<'_, '_> {
         value: &FieldValue,
     ) -> Result<Vec<TaskView>, Self::Error> {
         let mut tasks = Vec::new();
-        for key in Self::metadata_index_keys(field, value) {
+        let normalized =
+            crate::note::inline_fields::InlineFieldKey::normalize(field);
+        for key in Self::metadata_index_keys(normalized.as_ref(), value) {
             let notes =
                 self.list_notes_by_task_index(TASKS_BY_METADATA, &key)?;
             tasks.extend(Self::collect_tasks_matching(&notes, |task| {
-                task.metadata().get(field) == Some(value)
+                task.fields()
+                    .iter()
+                    .any(|(k, v)| k.as_str() == field && v == value)
             }));
         }
         Ok(tasks)
@@ -1498,7 +1589,10 @@ struct TaskIndexData {
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
-    reason = "Tests use assertions in Result-returning functions."
+    clippy::too_many_lines,
+    clippy::shadow_unrelated,
+    reason = "Tests use assertions in Result-returning functions and \
+              prioritize readability."
 )]
 mod tests {
     use tempfile::tempdir;
@@ -1518,8 +1612,9 @@ mod tests {
             paths::NotePath,
             position::{SourceByteOffset, SourceByteRange},
             raw::{
-                RawFrontmatter, RawInlineField, RawList, RawListDepth,
-                RawListItem, RawListKind, RawNote, RawTag, RawTaskMarker,
+                RawFieldValue, RawFrontmatter, RawInlineField, RawList,
+                RawListDepth, RawListItem, RawListKind, RawNote, RawTag,
+                RawTaskMarker,
             },
             scanner::{NoteScanner, ScannedArtifact},
         },
@@ -1640,7 +1735,14 @@ mod tests {
             )
             .expect("frontmatter range"),
         );
-        let tags = vec![RawTag::new("#tag".into(), SourceByteOffset::new(0))];
+        let tags = vec![RawTag::new(
+            "#tag".into(),
+            SourceByteRange::new(
+                SourceByteOffset::new(0),
+                SourceByteOffset::new(4),
+            )
+            .expect("tag range"),
+        )];
         let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
                              [created:: 2024-01-01] [due:: 2024-01-02] \
                              [reminder:: 2024-01-03] [completed:: 2024-01-04]";
@@ -1657,21 +1759,28 @@ mod tests {
         let mut task_marker = None;
 
         for artifact in &artifacts {
-            let pos = artifact.position();
             match artifact {
                 ScannedArtifact::Tag {
                     text,
-                    ..
-                } => task_tags.push(RawTag::new(text.clone(), pos)),
+                    range,
+                } => task_tags.push(RawTag::new(text.clone(), *range)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    ..
-                } => task_fields.push(RawInlineField::new(
-                    key.clone(),
-                    value.clone(),
-                    pos,
-                )),
+                    range,
+                } => {
+                    let typed_value = RawFieldValue::from_str_with_spec(
+                        value.as_ref(),
+                        key.as_ref(),
+                        None,
+                    )
+                    .into_owned();
+                    task_fields.push(RawInlineField::new(
+                        key.clone(),
+                        typed_value,
+                        *range,
+                    ));
+                }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
@@ -1691,6 +1800,7 @@ mod tests {
             list_depth,
             raw_task_text.into(),
             task_marker,
+            range,
             range,
             None,
             task_tags,

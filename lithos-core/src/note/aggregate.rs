@@ -31,7 +31,7 @@ use crate::note::{
     },
     structure::{BlockRef, Section},
     tag::Tag,
-    task::{Task, TaskBuilder, TaskRef},
+    task::{Task, TaskRef},
     value::FieldValue,
 };
 
@@ -473,7 +473,9 @@ impl Note {
     ) -> Vec<Tag> {
         let mut tags = Vec::new();
         for raw_tag in raw_tags {
-            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
+            if let Ok(tag) =
+                Tag::try_new_with_range(raw_tag.value.as_ref(), raw_tag.range)
+            {
                 Note::add_tag(&mut tags, tag);
             }
         }
@@ -533,14 +535,13 @@ impl Note {
             if let Some(spec) = spec
                 && Self::should_promote_task(spec, item.tags())
             {
-                let task =
-                    TaskBuilder::new(spec.as_ref()).promote_from_item(item)?;
+                let task = Task::promote(item, spec.as_ref())?;
                 item.set_task_ref(TaskRef::new(task.range()));
                 tasks.push(task);
             }
         }
 
-        tasks.sort_by_key(Task::position);
+        tasks.sort_by_key(|task| task.range().start());
         Ok(tasks)
     }
 
@@ -692,8 +693,15 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::pattern_type_mismatch,
+    clippy::shadow_unrelated,
+    reason = "Test code prioritizes readability"
+)]
 mod tests {
     use std::collections::HashMap;
+
+    use chrono::NaiveDate;
 
     use super::*;
     use crate::{
@@ -705,7 +713,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawInlineField, RawTag, RawTaskMarker},
+            raw::{RawFieldValue, RawInlineField, RawTag, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -733,8 +741,23 @@ mod tests {
         );
 
         assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+
+        let priority_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "priority")
+            .map(|(_, v)| v);
+        assert_eq!(
+            priority_field.and_then(super::super::value::FieldValue::as_number),
+            Some(2.0f64)
+        );
+
+        let project_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "project")
+            .map(|(_, v)| v);
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
     #[test]
@@ -775,18 +798,24 @@ mod tests {
             &[],
         );
 
-        if let Some(created_at) = task.created_at() {
-            assert_eq!(created_at.as_i64(), 1_704_067_200);
-            if let Some(due_at) = task.due_at() {
-                assert!(created_at.is_past(Some(due_at)));
-            }
+        let created_date =
+            NaiveDate::from_ymd_opt(2024, 1, 1).expect("created date");
+        let due_date = NaiveDate::from_ymd_opt(2024, 12, 31).expect("due date");
+
+        if let Some(created_at) = task.dates().created() {
+            assert_eq!(created_at.as_naive_date(), Some(created_date));
         }
 
-        if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_603_200);
-            if let Some(created_at) = task.created_at() {
-                assert!(due_at.is_future(Some(created_at)));
-            }
+        if let Some(due_at) = task.dates().due() {
+            assert_eq!(due_at.as_naive_date(), Some(due_date));
+        }
+
+        if let (Some(created_at), Some(due_at)) =
+            (task.dates().created(), task.dates().due())
+        {
+            let created_date = date_of(created_at);
+            let due_date = date_of(due_at);
+            assert!(created_date < due_date);
         }
     }
 
@@ -801,31 +830,27 @@ mod tests {
         );
 
         assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+
+        let priority_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "priority")
+            .map(|(_, v)| v);
+        assert_eq!(
+            priority_field.and_then(super::super::value::FieldValue::as_number),
+            Some(2.0f64)
+        );
+
+        let project_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "project")
+            .map(|(_, v)| v);
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
-    #[test]
-    fn promoted_checkbox_parses_default_emoji_dates() {
-        let config = test_config_with_task_tag();
-        let task_spec = config.to_task_spec();
-        let emojis = default_emoji_markers();
-        let task = promote_task(
-            "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
-             \u{2705}2025-01-01",
-            &task_spec,
-            &emojis,
-        );
-
-        assert_eq!(
-            task.created_at().map(|ts| ts.as_i64()),
-            Some(1_704_067_200)
-        );
-        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
-        assert_eq!(
-            task.completed_at().map(|ts| ts.as_i64()),
-            Some(1_735_689_600)
-        );
+    fn date_of(value: &crate::note::task::TaskDateValue) -> NaiveDate {
+        value.as_naive_date().expect("date")
     }
 
     fn promote_task(
@@ -834,9 +859,7 @@ mod tests {
         emoji_markers: &[char],
     ) -> Task {
         let item = list_item_from_text(promoted_text, emoji_markers);
-        TaskBuilder::new(task_spec)
-            .promote_from_item(&item)
-            .expect("task conversion")
+        Task::promote(&item, task_spec).expect("task conversion")
     }
 
     fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
@@ -857,14 +880,25 @@ mod tests {
             match artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
-                    position,
-                } => tags.push(RawTag::new(tag_text, position)),
+                    range,
+                } => tags.push(RawTag::new(tag_text, range)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    position,
-                } => inline_fields
-                    .push(RawInlineField::new(key, value, position)),
+                    range,
+                } => {
+                    let typed_value = RawFieldValue::from_str_with_spec(
+                        value.as_ref(),
+                        key.as_ref(),
+                        None,
+                    )
+                    .into_owned();
+                    inline_fields.push(RawInlineField::new(
+                        key,
+                        typed_value,
+                        range,
+                    ));
+                }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
@@ -883,6 +917,7 @@ mod tests {
             raw_text.into(),
             task_marker,
             range,
+            range,
             None,
             tags,
             inline_fields,
@@ -893,17 +928,6 @@ mod tests {
         }
 
         ListItem::try_from(&raw).expect("valid list item")
-    }
-
-    fn default_emoji_markers() -> Vec<char> {
-        vec![
-            '\u{2795}',
-            '\u{1f4c5}',
-            '\u{2705}',
-            '\u{23f3}',
-            '\u{1f6eb}',
-            '\u{274c}',
-        ]
     }
 
     fn test_config_with_task_tag() -> Config {

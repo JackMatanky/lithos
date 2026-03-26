@@ -36,6 +36,8 @@ use super::error::{NoteError, StructureError};
     Archive,
     Serialize,
     Deserialize,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct SourceByteOffset(u32);
@@ -116,7 +118,17 @@ impl TryFrom<usize> for SourceByteOffset {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Archive,
+    Serialize,
+    Deserialize,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]

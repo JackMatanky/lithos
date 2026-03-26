@@ -19,7 +19,7 @@ use std::ops::Deref;
 use rkyv::{Archive, Deserialize, Serialize};
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 
-use super::error::TagError;
+use super::{error::TagError, position::SourceByteRange};
 
 /// Represents a hierarchical tag with segments.
 ///
@@ -40,7 +40,6 @@ use super::error::TagError;
 #[derive(
     Debug,
     Clone,
-    PartialEq,
     Eq,
     SerdeSerialize,
     SerdeDeserialize,
@@ -53,6 +52,8 @@ use super::error::TagError;
 pub struct Tag {
     /// Full tag path (without leading `#`).
     path: TagPath,
+    /// Source range for the tag, when available.
+    range: Option<SourceByteRange>,
 }
 
 impl Tag {
@@ -75,6 +76,28 @@ impl Tag {
 
         Ok(Self {
             path,
+            range: None,
+        })
+    }
+
+    /// Creates a new `Tag` from a raw tag string with a source range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TagError`] if validation fails.
+    #[inline]
+    pub fn try_new_with_range(
+        input: &str,
+        range: SourceByteRange,
+    ) -> Result<Self, TagError> {
+        let tag_path_str =
+            input.strip_prefix('#').ok_or(TagError::MissingHash)?;
+
+        let path = TagPath::try_new(tag_path_str)?;
+
+        Ok(Self {
+            path,
+            range: Some(range),
         })
     }
 
@@ -83,6 +106,13 @@ impl Tag {
     #[must_use]
     pub fn full_path(&self) -> &str {
         self.path.as_str()
+    }
+
+    /// Returns the source range for the tag, if known.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> Option<SourceByteRange> {
+        self.range
     }
 
     /// Returns the individual segments of the tag.
@@ -110,7 +140,19 @@ impl TryFrom<&str> for Tag {
         let path = TagPath::try_new(tag_path_str)?;
         Ok(Self {
             path,
+            range: None,
         })
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default ne implementation is correct"
+)]
+impl PartialEq for Tag {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
     }
 }
 

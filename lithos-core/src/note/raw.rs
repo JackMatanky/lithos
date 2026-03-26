@@ -1,9 +1,23 @@
 //! Raw note types and helpers for zero-copy ingestion.
 
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Pattern matching style is clear in context"
+)]
+#![expect(
+    clippy::iter_over_hash_type,
+    reason = "Hash iteration order doesn't affect correctness here"
+)]
+
 use std::{borrow::Cow, sync::Arc, time::SystemTime};
 
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+
 use crate::{
-    config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
+    config::{
+        frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec,
+        value::DateSpec,
+    },
     note::{
         paths::NotePath,
         position::{SourceByteOffset, SourceByteRange},
@@ -106,8 +120,8 @@ impl<'source> RawHeading<'source> {
 #[non_exhaustive]
 pub struct RawInlineField<'source> {
     pub key: Cow<'source, str>,
-    pub value: Cow<'source, str>,
-    pub position: SourceByteOffset,
+    pub value: RawFieldValue<'source>,
+    pub range: SourceByteRange,
 }
 
 impl<'source> RawInlineField<'source> {
@@ -116,13 +130,151 @@ impl<'source> RawInlineField<'source> {
     #[must_use]
     pub const fn new(
         key: Cow<'source, str>,
-        value: Cow<'source, str>,
-        position: SourceByteOffset,
+        value: RawFieldValue<'source>,
+        range: SourceByteRange,
     ) -> Self {
         Self {
             key,
             value,
-            position,
+            range,
+        }
+    }
+
+    /// Map emoji key to keyword if the key is a recognized emoji in the task
+    /// spec.
+    ///
+    /// Returns the mapped keyword if the key is a single emoji character
+    /// that matches a temporal slot emoji in the spec, otherwise returns None.
+    pub fn map_emoji_key(
+        key: &str,
+        task_spec: &TaskConfigSpec,
+    ) -> Option<Box<str>> {
+        // Check if key is single emoji character
+        let mut chars = key.chars();
+        let first = chars.next()?;
+        if chars.next().is_some() {
+            return None; // More than one char, not a single emoji
+        }
+
+        // Look up emoji in task spec temporal mappings
+        for (keyword, (_slot, _date_spec, emoji_opt)) in
+            &task_spec.temporal_specs
+        {
+            if let Some(emoji) = emoji_opt
+                && *emoji == first
+            {
+                return Some(keyword.clone());
+            }
+        }
+
+        None
+    }
+}
+
+/// Typed value extracted from inline field during parsing.
+///
+/// This enum supports heuristic type detection during ingestion, allowing
+/// the parser to type field values once instead of forcing every consumer
+/// to re-parse strings.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum RawFieldValue<'source> {
+    /// String value (fallback for unrecognized types).
+    String(Cow<'source, str>),
+    /// Numeric value (float).
+    Number(f64),
+    /// Date value (YYYY-MM-DD).
+    Date(NaiveDate),
+    /// Date/time value with offset.
+    DateTime(DateTime<FixedOffset>),
+    /// Wall clock time.
+    Time(NaiveTime),
+    /// Boolean value.
+    Boolean(bool),
+}
+
+impl<'source> RawFieldValue<'source> {
+    /// Attempt to parse a string into a typed value.
+    ///
+    /// Uses `DateSpec` format if provided for spec-aware parsing, otherwise
+    /// falls back to heuristic parsing for common formats.
+    ///
+    /// # Type Detection Order
+    /// 1. If `spec` provided: Try spec format first
+    /// 2. Heuristic parsing:
+    ///    - RFC3339 datetime
+    ///    - Common date formats (YYYY-MM-DD, YYYY/MM/DD, etc.)
+    ///    - Boolean (true/false, yes/no)
+    ///    - Number (f64)
+    /// 3. Fallback: String
+    pub fn from_str_with_spec(
+        text: &'source str,
+        _key: &str,
+        spec: Option<&DateSpec>,
+    ) -> Self {
+        // 1. Try spec format if provided
+        if let Some(date_spec) = spec {
+            if let Ok(d) = NaiveDate::parse_from_str(text, date_spec.format()) {
+                return Self::Date(d);
+            }
+            if let Ok(dt) = DateTime::parse_from_str(text, date_spec.format()) {
+                return Self::DateTime(dt);
+            }
+        }
+
+        // 2. Heuristic parsing
+
+        // Try RFC3339 datetime
+        if let Ok(dt) = DateTime::parse_from_rfc3339(text) {
+            return Self::DateTime(dt);
+        }
+
+        // Try common date formats
+        let date_formats =
+            ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%d-%m-%Y", "%d/%m/%Y"];
+        for fmt in date_formats {
+            if let Ok(d) = NaiveDate::parse_from_str(text, fmt) {
+                return Self::Date(d);
+            }
+        }
+
+        // Try time formats
+        let time_formats = ["%H:%M:%S", "%H:%M"];
+        for fmt in time_formats {
+            if let Ok(t) = NaiveTime::parse_from_str(text, fmt) {
+                return Self::Time(t);
+            }
+        }
+
+        // Try boolean
+        match text.trim().to_lowercase().as_str() {
+            "true" | "yes" => return Self::Boolean(true),
+            "false" | "no" => return Self::Boolean(false),
+            _ => {}
+        }
+
+        // Try number
+        if let Ok(n) = text.trim().parse::<f64>() {
+            return Self::Number(n);
+        }
+
+        // 3. Fallback to string
+        Self::String(Cow::Borrowed(text))
+    }
+
+    /// Convert to owned variant for crossing lifetime boundaries.
+    #[inline]
+    #[must_use]
+    pub fn into_owned(self) -> RawFieldValue<'static> {
+        match self {
+            Self::String(s) => {
+                RawFieldValue::String(Cow::Owned(s.into_owned()))
+            }
+            Self::Number(n) => RawFieldValue::Number(n),
+            Self::Date(d) => RawFieldValue::Date(d),
+            Self::DateTime(dt) => RawFieldValue::DateTime(dt),
+            Self::Time(t) => RawFieldValue::Time(t),
+            Self::Boolean(b) => RawFieldValue::Boolean(b),
         }
     }
 }
@@ -279,6 +431,7 @@ pub struct RawListItem<'source> {
     pub text: Cow<'source, str>,
     pub task_marker: Option<RawTaskMarker>,
     pub range: SourceByteRange,
+    pub text_range: SourceByteRange,
     pub parent: Option<SourceByteOffset>,
     pub tags: Vec<RawTag<'source>>,
     pub inline_fields: Vec<RawInlineField<'source>>,
@@ -298,6 +451,7 @@ impl<'source> RawListItem<'source> {
         text: Cow<'source, str>,
         task_marker: Option<RawTaskMarker>,
         range: SourceByteRange,
+        text_range: SourceByteRange,
         parent: Option<SourceByteOffset>,
         tags: Vec<RawTag<'source>>,
         inline_fields: Vec<RawInlineField<'source>>,
@@ -308,6 +462,7 @@ impl<'source> RawListItem<'source> {
             text,
             task_marker,
             range,
+            text_range,
             parent,
             tags,
             inline_fields,
@@ -390,20 +545,17 @@ impl RawSection {
 #[non_exhaustive]
 pub struct RawTag<'source> {
     pub value: Cow<'source, str>,
-    pub position: SourceByteOffset,
+    pub range: SourceByteRange,
 }
 
 impl<'source> RawTag<'source> {
     /// Create a raw tag token.
     #[inline]
     #[must_use]
-    pub const fn new(
-        value: Cow<'source, str>,
-        position: SourceByteOffset,
-    ) -> Self {
+    pub const fn new(value: Cow<'source, str>, range: SourceByteRange) -> Self {
         Self {
             value,
-            position,
+            range,
         }
     }
 }
@@ -569,8 +721,8 @@ impl RawInlineField<'_> {
     pub fn into_owned(self) -> RawInlineField<'static> {
         RawInlineField {
             key: Cow::Owned(self.key.into_owned()),
-            value: Cow::Owned(self.value.into_owned()),
-            position: self.position,
+            value: self.value.into_owned(),
+            range: self.range,
         }
     }
 }
@@ -600,6 +752,7 @@ impl RawListItem<'_> {
             text: Cow::Owned(self.text.into_owned()),
             task_marker: self.task_marker,
             range: self.range,
+            text_range: self.text_range,
             parent: self.parent,
             tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
             inline_fields: self
@@ -629,7 +782,7 @@ impl RawTag<'_> {
     pub fn into_owned(self) -> RawTag<'static> {
         RawTag {
             value: Cow::Owned(self.value.into_owned()),
-            position: self.position,
+            range: self.range,
         }
     }
 }

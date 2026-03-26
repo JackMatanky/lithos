@@ -1,7 +1,12 @@
 //! Inline field value objects and domain conversions.
 
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Pattern matching style is clear in context"
+)]
+
 use super::{raw::RawInlineField, value::FieldValue};
-use crate::note::position::SourceByteOffset;
+use crate::note::position::{SourceByteOffset, SourceByteRange};
 
 /// A normalized identifier for an inline field key.
 ///
@@ -105,7 +110,7 @@ impl core::fmt::Display for InlineFieldKey {
 pub struct InlineField {
     key: InlineFieldKey,
     value: FieldValue,
-    position: SourceByteOffset,
+    range: SourceByteRange,
 }
 
 impl InlineField {
@@ -115,12 +120,12 @@ impl InlineField {
     pub fn new(
         key: InlineFieldKey,
         value: FieldValue,
-        position: SourceByteOffset,
+        range: SourceByteRange,
     ) -> Self {
         Self {
             key,
             value,
-            position,
+            range,
         }
     }
 
@@ -142,17 +147,31 @@ impl InlineField {
     #[inline]
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
-        self.position
+        self.range.start()
+    }
+
+    /// Return the source byte range of the field.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
     }
 
     /// Convert from a raw inline field.
     #[inline]
     #[must_use]
     pub fn from_raw(raw: &RawInlineField<'_>) -> Self {
-        InlineField::new(
-            raw.key.as_ref().into(),
-            FieldValue::String(raw.value.as_ref().into()),
-            raw.position,
-        )
+        use crate::note::raw::RawFieldValue;
+
+        let value = match &raw.value {
+            RawFieldValue::String(s) => FieldValue::String(s.as_ref().into()),
+            RawFieldValue::Number(n) => FieldValue::Number(*n),
+            RawFieldValue::Date(d) => FieldValue::Date((*d).into()),
+            RawFieldValue::DateTime(dt) => FieldValue::DateTime((*dt).into()),
+            RawFieldValue::Time(t) => FieldValue::Time((*t).into()),
+            RawFieldValue::Boolean(b) => FieldValue::Boolean(*b),
+        };
+
+        InlineField::new(raw.key.as_ref().into(), value, raw.range)
     }
 }

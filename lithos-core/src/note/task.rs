@@ -8,17 +8,26 @@
     missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
-    reason = "rkyv derives generate archived/resolver items that are missing \
-              docs"
+    reason = "Task module uses generated and value types"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Pattern matching style is clear in context"
+)]
+#![expect(
+    clippy::iter_over_hash_type,
+    reason = "Hash iteration order doesn't affect correctness here"
 )]
 
-use std::{borrow::Borrow, collections::HashMap, fmt};
+use std::{collections::HashMap, sync::Arc};
 
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone as _};
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
     error::{NoteError, TaskError},
+    inline_fields::InlineFieldKey,
     list::ListItem,
     position::{SourceByteOffset, SourceByteRange},
     tag::Tag,
@@ -38,7 +47,8 @@ use crate::config::task::TaskConfigSpec;
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, position::{SourceByteOffset, SourceByteRange}};
-/// # use lithos_core::note::task::{TaskDates, TaskMetadata, TaskText};
+/// # use lithos_core::note::task::{TaskText, TaskDates};
+/// # use std::collections::HashMap;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let status = "todo";
 /// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10))?;
@@ -48,7 +58,7 @@ use crate::config::task::TaskConfigSpec;
 ///     text,
 ///     range,
 ///     Box::new([]),
-///     TaskMetadata::new(),
+///     HashMap::new(),
 ///     TaskDates::default(),
 /// )?;
 ///
@@ -64,7 +74,7 @@ pub struct Task {
     text: TaskText,
     range: SourceByteRange,
     tags: Box<[Tag]>,
-    metadata: TaskMetadata,
+    fields: Box<[(InlineFieldKey, FieldValue)]>,
     dates: TaskDates,
 }
 
@@ -84,7 +94,7 @@ impl Task {
         text: TaskText,
         range: SourceByteRange,
         tags: Box<[Tag]>,
-        metadata: TaskMetadata,
+        fields: HashMap<InlineFieldKey, FieldValue>,
         dates: TaskDates,
     ) -> Result<Self, TaskError> {
         Ok(Self {
@@ -93,7 +103,7 @@ impl Task {
             text,
             range,
             tags,
-            metadata,
+            fields: fields.into_iter().collect(),
             dates,
         })
     }
@@ -119,25 +129,11 @@ impl Task {
         self.text.clean()
     }
 
-    /// Returns the raw task text (including inline fields/tags).
-    #[inline]
-    #[must_use]
-    pub fn text_full(&self) -> &str {
-        self.text.raw()
-    }
-
     /// Returns the byte range of the task in the note source.
     #[inline]
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
         self.range
-    }
-
-    /// Returns the start byte position of the task in the note source.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.range.start()
     }
 
     /// Returns the collection of tags associated with this task.
@@ -146,45 +142,17 @@ impl Task {
         self.tags.iter()
     }
 
-    /// Returns the task's creation timestamp, if known.
+    /// Returns the task's inline field metadata.
     #[inline]
     #[must_use]
-    pub const fn created_at(&self) -> Option<TaskTimestamp> {
-        self.dates.created
+    pub fn fields(&self) -> &[(InlineFieldKey, FieldValue)] {
+        &self.fields
     }
 
-    /// Returns the task's due date, if set.
+    /// Returns the task's date slots.
     #[inline]
     #[must_use]
-    pub const fn due_at(&self) -> Option<TaskTimestamp> {
-        self.dates.due
-    }
-
-    /// Returns the task's reminder date, if set.
-    #[inline]
-    #[must_use]
-    pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
-        self.dates.reminder
-    }
-
-    /// Returns the timestamp when the task was completed, if applicable.
-    #[inline]
-    #[must_use]
-    pub const fn completed_at(&self) -> Option<TaskTimestamp> {
-        self.dates.completed
-    }
-
-    /// Returns the task's structured metadata fields.
-    #[inline]
-    #[must_use]
-    pub const fn metadata(&self) -> &TaskMetadata {
-        &self.metadata
-    }
-
-    /// Returns the date fields for the task.
-    #[inline]
-    #[must_use]
-    pub fn dates(&self) -> &TaskDates {
+    pub const fn dates(&self) -> &TaskDates {
         &self.dates
     }
 }
@@ -259,56 +227,6 @@ impl TaskRef {
     }
 }
 
-/// Task date fields.
-#[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-pub struct TaskDates {
-    created: Option<TaskTimestamp>,
-    due: Option<TaskTimestamp>,
-    reminder: Option<TaskTimestamp>,
-    completed: Option<TaskTimestamp>,
-    start: Option<TaskTimestamp>,
-    scheduled: Option<TaskTimestamp>,
-}
-
-impl TaskDates {
-    #[inline]
-    #[must_use]
-    pub const fn created(&self) -> Option<TaskTimestamp> {
-        self.created
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn due(&self) -> Option<TaskTimestamp> {
-        self.due
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn reminder(&self) -> Option<TaskTimestamp> {
-        self.reminder
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn completed(&self) -> Option<TaskTimestamp> {
-        self.completed
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn start(&self) -> Option<TaskTimestamp> {
-        self.start
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn scheduled(&self) -> Option<TaskTimestamp> {
-        self.scheduled
-    }
-}
-
 /// Task text with raw and cleaned variants.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
@@ -334,6 +252,63 @@ impl TaskText {
         })
     }
 
+    /// Creates task text by removing exclusion ranges from raw text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TaskError::EmptyText`] if the cleaned text is empty.
+    #[inline]
+    pub fn try_new_with_ranges(
+        raw: &str,
+        base: SourceByteOffset,
+        ranges: &[SourceByteRange],
+    ) -> Result<Self, TaskError> {
+        let mut relative = Vec::new();
+        let base_offset = base.as_usize();
+        let raw_len = raw.len();
+
+        for range in ranges {
+            let start = range.start().as_usize();
+            let end = range.end().as_usize();
+            if start < base_offset || end <= start {
+                continue;
+            }
+            let rel_start = start.saturating_sub(base_offset);
+            let rel_end = end.saturating_sub(base_offset);
+            if rel_start >= raw_len || rel_end > raw_len {
+                continue;
+            }
+            relative.push(rel_start..rel_end);
+        }
+
+        relative.sort_by_key(|range| range.start);
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for range in relative {
+            if let Some(last) = merged.last_mut()
+                && range.start <= last.1
+            {
+                last.1 = last.1.max(range.end);
+                continue;
+            }
+            merged.push((range.start, range.end));
+        }
+
+        let mut cleaned = String::with_capacity(raw_len);
+        let mut cursor = 0usize;
+        for range in &merged {
+            if let Some(slice) = raw.get(cursor..range.0) {
+                cleaned.push_str(slice);
+            }
+            cursor = range.1;
+        }
+        if let Some(slice) = raw.get(cursor..raw_len) {
+            cleaned.push_str(slice);
+        }
+
+        let clean = cleaned.trim();
+        TaskText::try_new(raw.into(), clean.into())
+    }
+
     /// Returns the raw task text.
     #[inline]
     #[must_use]
@@ -349,157 +324,263 @@ impl TaskText {
     }
 }
 
-/// A timestamp representing task temporal data.
+/// Semantic date slots extracted from task metadata.
 ///
-/// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
-/// zero-copy compatibility with `rkyv` serialization.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::task::TaskTimestamp;
-/// let now = TaskTimestamp::now();
-/// assert!(!now.is_future(None));
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+/// This component stores date values for the six standard temporal slots
+/// used in task management systems (created, due, reminder, completed, start,
+/// scheduled).
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct TaskTimestamp(i64);
+pub struct TaskDates {
+    created: Option<TaskDateValue>,
+    due: Option<TaskDateValue>,
+    reminder: Option<TaskDateValue>,
+    completed: Option<TaskDateValue>,
+    start: Option<TaskDateValue>,
+    scheduled: Option<TaskDateValue>,
+}
 
-impl TaskTimestamp {
-    /// Creates a new [`TaskTimestamp`] from a Unix timestamp.
+impl TaskDates {
+    /// Create a new empty `TaskDates` with no date slots set.
+    #[inline]
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            created: None,
+            due: None,
+            reminder: None,
+            completed: None,
+            start: None,
+            scheduled: None,
+        }
+    }
+
+    /// Return the created date if set.
+    #[inline]
+    #[must_use]
+    pub const fn created(&self) -> Option<&TaskDateValue> {
+        self.created.as_ref()
+    }
+
+    /// Return the due date if set.
+    #[inline]
+    #[must_use]
+    pub const fn due(&self) -> Option<&TaskDateValue> {
+        self.due.as_ref()
+    }
+
+    /// Return the reminder date if set.
+    #[inline]
+    #[must_use]
+    pub const fn reminder(&self) -> Option<&TaskDateValue> {
+        self.reminder.as_ref()
+    }
+
+    /// Return the completed date if set.
+    #[inline]
+    #[must_use]
+    pub const fn completed(&self) -> Option<&TaskDateValue> {
+        self.completed.as_ref()
+    }
+
+    /// Return the start date if set.
+    #[inline]
+    #[must_use]
+    pub const fn start(&self) -> Option<&TaskDateValue> {
+        self.start.as_ref()
+    }
+
+    /// Return the scheduled date if set.
+    #[inline]
+    #[must_use]
+    pub const fn scheduled(&self) -> Option<&TaskDateValue> {
+        self.scheduled.as_ref()
+    }
+
+    /// Set a date slot value (private helper for `Task::promote`).
+    fn set(&mut self, kind: TaskDateKind, value: TaskDateValue) {
+        match kind {
+            TaskDateKind::Created => self.created = Some(value),
+            TaskDateKind::Due => self.due = Some(value),
+            TaskDateKind::Reminder => self.reminder = Some(value),
+            TaskDateKind::Completed => self.completed = Some(value),
+            TaskDateKind::Start => self.start = Some(value),
+            TaskDateKind::Scheduled => self.scheduled = Some(value),
+        }
+    }
+
+    /// Map keyword to date slot using task config spec.
     ///
-    /// # Arguments
-    /// * `timestamp` - Unix timestamp in seconds since epoch.
-    #[inline]
-    #[must_use]
-    pub const fn new(timestamp: i64) -> Self {
-        Self(timestamp)
-    }
+    /// Returns the slot kind and the `DateSpec` if the keyword maps to a
+    /// temporal slot.
+    fn match_date_spec(
+        spec: &TaskConfigSpec,
+        keyword: &str,
+    ) -> Option<(TaskDateKind, Arc<crate::config::value::DateSpec>)> {
+        use crate::config::task::TemporalSlot;
 
-    /// Creates a new [`TaskTimestamp`] representing the current system time.
-    #[inline]
-    #[must_use]
-    pub fn now() -> Self {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        Self(i64::try_from(secs).unwrap_or(i64::MAX))
-    }
-
-    /// Returns the raw Unix timestamp value.
-    #[inline]
-    #[must_use]
-    pub const fn as_i64(&self) -> i64 {
-        self.0
-    }
-
-    /// Returns `true` if this timestamp represents a time in the future.
-    ///
-    /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to system 'now'.
-    #[inline]
-    #[must_use]
-    pub fn is_future(&self, relative_to: Option<Self>) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        self.0 > reference.0
-    }
-
-    /// Returns `true` if this timestamp represents a time in the past.
-    ///
-    /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to system 'now'.
-    #[inline]
-    #[must_use]
-    pub fn is_past(&self, relative_to: Option<Self>) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        self.0 < reference.0
-    }
-
-    /// Returns the duration from now in seconds (positive for future, negative
-    /// for past).
-    #[inline]
-    #[must_use]
-    pub fn seconds_from_now(&self) -> i64 {
-        self.0.saturating_sub(Self::now().0)
-    }
-
-    /// Returns the duration in seconds between this timestamp and another.
-    #[inline]
-    #[must_use]
-    pub const fn duration_from(&self, other: Self) -> i64 {
-        self.0.saturating_sub(other.0)
-    }
-
-    /// Returns `true` if this timestamp is within the specified duration
-    /// window.
-    ///
-    /// # Arguments
-    /// * `duration_seconds` - Duration window in seconds.
-    /// * `relative_to` - Optional reference time; defaults to system 'now'.
-    #[inline]
-    #[must_use]
-    pub fn is_within(
-        &self,
-        duration_seconds: i64,
-        relative_to: Option<Self>,
-    ) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        let diff = self.0.saturating_sub(reference.0).unsigned_abs();
-        diff <= duration_seconds.unsigned_abs()
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics are preferred for mapping lookups"
+        )]
+        let (slot_enum, date_spec, _emoji) =
+            spec.temporal_specs.get(keyword)?;
+        let kind = match *slot_enum {
+            TemporalSlot::Created => TaskDateKind::Created,
+            TemporalSlot::Due => TaskDateKind::Due,
+            TemporalSlot::Reminder => TaskDateKind::Reminder,
+            TemporalSlot::Completed => TaskDateKind::Completed,
+            TemporalSlot::Start => TaskDateKind::Start,
+            TemporalSlot::Scheduled => TaskDateKind::Scheduled,
+        };
+        Some((kind, Arc::clone(date_spec)))
     }
 }
 
-impl Default for TaskTimestamp {
+impl Default for TaskDates {
     #[inline]
     fn default() -> Self {
-        Self::now()
+        Self::new()
     }
 }
 
-impl From<i64> for TaskTimestamp {
-    #[inline]
-    fn from(timestamp: i64) -> Self {
-        Self(timestamp)
-    }
+/// Specialized task field for handling date and time metadata.
+///
+/// Mirrors `FrontmatterDateValue` pattern but includes `Arc<DateSpec>`
+/// reference to track configured format for this temporal slot.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+pub struct TaskDateValue {
+    value: FieldValue,
+    spec: Option<Arc<crate::config::value::DateSpec>>,
 }
 
-impl From<TaskTimestamp> for i64 {
+impl TaskDateValue {
+    /// Create from a typed `FieldValue` with optional spec.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TaskError::InvalidDate`] if the value is not temporal.
     #[inline]
-    fn from(timestamp: TaskTimestamp) -> i64 {
-        timestamp.0
+    pub fn new(
+        value: FieldValue,
+        spec: Option<Arc<crate::config::value::DateSpec>>,
+    ) -> Result<Self, TaskError> {
+        if !value.is_temporal() {
+            return Err(TaskError::InvalidDate {
+                keyword: "".into(),
+                raw: value.to_json_string().into(),
+                reason: "expected date or datetime value",
+            });
+        }
+        Ok(Self {
+            value,
+            spec,
+        })
     }
-}
 
-impl From<std::time::SystemTime> for TaskTimestamp {
+    /// Returns the inner `FieldValue`.
     #[inline]
-    fn from(time: std::time::SystemTime) -> Self {
-        let secs = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        Self(i64::try_from(secs).unwrap_or(i64::MAX))
+    #[must_use]
+    pub const fn as_field_value(&self) -> &FieldValue {
+        &self.value
     }
-}
 
-impl From<TaskTimestamp> for std::time::SystemTime {
+    /// Returns the configured format spec if available.
     #[inline]
-    fn from(timestamp: TaskTimestamp) -> Self {
-        let secs = u64::try_from(timestamp.0).unwrap_or_default();
-        std::time::UNIX_EPOCH
-            .checked_add(std::time::Duration::from_secs(secs))
-            .unwrap_or(std::time::UNIX_EPOCH)
+    #[must_use]
+    pub fn spec(&self) -> Option<&crate::config::value::DateSpec> {
+        self.spec.as_deref()
+    }
+
+    /// Returns as `NaiveDate` (extracts date from `DateTime` if needed).
+    #[inline]
+    #[must_use]
+    pub fn as_naive_date(&self) -> Option<NaiveDate> {
+        self.value
+            .as_naive_date()
+            .or_else(|| self.value.as_datetime().map(|dt| dt.date_naive()))
+    }
+
+    /// Returns as `DateTime` (promotes Date to `DateTime` at 00:00:00 if
+    /// needed).
+    #[inline]
+    #[must_use]
+    pub fn as_datetime(&self) -> Option<DateTime<FixedOffset>> {
+        // Try as DateTime first
+        if let Some(dt) = self.value.as_datetime() {
+            return Some(dt);
+        }
+
+        // Promote Date → DateTime with 00:00:00 time
+        if let Some(d) = self.value.as_naive_date() {
+            let naive_dt = d.and_hms_opt(0, 0, 0)?;
+            let utc = chrono::Utc.from_local_datetime(&naive_dt).single()?;
+            return Some(utc.fixed_offset());
+        }
+
+        None
+    }
+
+    /// Create from pre-typed `FieldValue` (from `ListItem`).
+    fn from_field_value(
+        value: &FieldValue,
+        key: &str,
+        spec: Option<Arc<crate::config::value::DateSpec>>,
+    ) -> Result<Self, TaskError> {
+        match value {
+            FieldValue::Date(_) | FieldValue::DateTime(_) => {
+                Self::new(value.clone(), spec)
+            }
+            FieldValue::String(s) => {
+                // Rare fallback: value wasn't typed during parsing
+                Self::parse_heuristic(s, key, spec)
+            }
+            FieldValue::Number(_)
+            | FieldValue::Boolean(_)
+            | FieldValue::Time(_)
+            | FieldValue::Duration(_)
+            | FieldValue::Array(_)
+            | FieldValue::Object(_)
+            | FieldValue::Null => Err(TaskError::InvalidDate {
+                keyword: key.into(),
+                raw: value.to_json_string().into(),
+                reason: "expected date or datetime value",
+            }),
+        }
+    }
+
+    /// Heuristic parsing fallback for string values.
+    fn parse_heuristic(
+        s: &str,
+        key: &str,
+        spec: Option<Arc<crate::config::value::DateSpec>>,
+    ) -> Result<Self, TaskError> {
+        // Try spec format first
+        if let Some(date_spec) = &spec {
+            if let Ok(d) = NaiveDate::parse_from_str(s, date_spec.format()) {
+                return Self::new(FieldValue::Date(d.into()), spec);
+            }
+            if let Ok(dt) = DateTime::parse_from_str(s, date_spec.format()) {
+                return Self::new(FieldValue::DateTime(dt.into()), spec);
+            }
+        }
+
+        // Try RFC3339 datetime
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Self::new(FieldValue::DateTime(dt.into()), spec);
+        }
+
+        // Try YYYY-MM-DD date
+        if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            return Self::new(FieldValue::Date(d.into()), spec);
+        }
+
+        Err(TaskError::InvalidDate {
+            keyword: key.into(),
+            raw: s.into(),
+            reason: "unrecognized date format",
+        })
     }
 }
 
@@ -520,547 +601,97 @@ pub enum TaskDateKind {
     Scheduled,
 }
 
-/// Validated key for task metadata fields.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
-pub struct TaskFieldKey(Box<str>);
-
-impl TaskFieldKey {
-    /// Creates a validated task field key.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TaskError`] if the key is empty or contains
-    /// non-ASCII alphanumeric characters outside `_` and `-`.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, TaskError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(TaskError::EmptyText);
-        }
-        if !text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(TaskError::InvalidMetadataField {
-                key: text.into(),
-                reason: "must be ASCII alphanumeric, '_' or '-'",
-            });
-        }
-        Ok(Self(text.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for TaskFieldKey {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Borrow<str> for TaskFieldKey {
-    #[inline]
-    fn borrow(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl fmt::Display for TaskFieldKey {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Task metadata fields.
 ///
 /// Stores dynamic key-value pairs extracted from task text using the
 /// `[key:: value]` syntax.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::{task::TaskMetadata, value::FieldValue};
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let mut meta = TaskMetadata::new();
-/// meta.insert_raw("priority", FieldValue::Number(1.0))?;
-/// assert_eq!(meta.get_number("priority"), Some(1.0));
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-pub struct TaskMetadata {
-    fields: HashMap<TaskFieldKey, FieldValue>,
-}
-
-impl TaskMetadata {
-    /// Creates a new, empty [`TaskMetadata`] map.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            fields: HashMap::new(),
-        }
-    }
-
-    /// Inserts a new metadata field into the collection.
-    #[inline]
-    pub fn insert(&mut self, field: TaskFieldKey, value: FieldValue) {
-        self.fields.insert(field, value);
-    }
-
-    /// Inserts a new metadata field by raw key string.
+#[expect(
+    clippy::multiple_inherent_impl,
+    reason = "Separate promotion logic from constructors"
+)]
+impl Task {
+    /// Promotes a list item into a fully validated [`Task`].
     ///
     /// # Errors
     ///
-    /// Returns [`TaskError`] if the key is invalid.
+    /// Returns [`NoteError`] if:
+    /// - The item is not a checkbox (missing task status marker)
+    /// - Status mappings or metadata parsing fail
     #[inline]
-    pub fn insert_raw(
-        &mut self,
-        field: &str,
-        value: FieldValue,
-    ) -> Result<(), TaskError> {
-        let key = TaskFieldKey::try_new(field)?;
-        self.fields.insert(key, value);
-        Ok(())
-    }
-
-    /// Returns a reference to the value for the given metadata field.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, field: &str) -> Option<&FieldValue> {
-        self.fields.get(field)
-    }
-
-    /// Returns the string value for the given field, if it exists and is a
-    /// string.
-    #[inline]
-    #[must_use]
-    pub fn get_string(&self, field: &str) -> Option<&str> {
-        self.get(field)?.as_str()
-    }
-
-    /// Returns the numeric value for the given field, if it exists and is a
-    /// number.
-    #[inline]
-    #[must_use]
-    pub fn get_number(&self, field: &str) -> Option<f64> {
-        self.get(field)?.as_number()
-    }
-
-    /// Returns an iterator over all metadata fields.
-    #[inline]
-    pub fn fields(&self) -> impl Iterator<Item = (&TaskFieldKey, &FieldValue)> {
-        self.fields.iter()
-    }
-}
-
-impl Default for TaskMetadata {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub(crate) struct TaskBuilder<'spec> {
-    spec: &'spec TaskConfigSpec,
-}
-
-impl<'spec> TaskBuilder<'spec> {
-    #[inline]
-    pub(crate) const fn new(spec: &'spec TaskConfigSpec) -> Self {
-        Self {
-            spec,
-        }
-    }
-
-    pub fn promote_from_item(
-        &self,
+    pub fn promote(
         item: &ListItem,
-    ) -> Result<Task, NoteError> {
-        let symbol = item
-            .task_status()
-            .ok_or(TaskError::UnrecognizedStatus {
-                symbol: ' ',
-            })?
-            .value();
+        spec: &TaskConfigSpec,
+    ) -> Result<Self, NoteError> {
+        // 1. Get status (caller should ensure item is a checkbox)
+        let status_symbol =
+            item.task_status().ok_or_else(|| TaskError::MissingStatus {
+                text: item.text().to_owned().into(),
+            })?;
 
-        let status = self
-            .spec
-            .status_mappings
-            .get(&symbol)
-            .ok_or(TaskError::UnrecognizedStatus {
-                symbol,
-            })?
-            .clone();
+        // TODO: Look up status name from symbol via CheckboxStatus
+        // For now, use symbol char as fallback
+        let status: Box<str> = format!("{}", status_symbol.value()).into();
 
-        let clean = self.extract_clean_text(item.text())?;
-        let (dates, metadata) = self.parse_task_fields(item.fields())?;
+        // 2. Copy all fields from ListItem
+        let fields: HashMap<_, _> = item
+            .fields()
+            .iter()
+            .map(|f| (f.key().clone(), f.value().clone()))
+            .collect();
+
+        // 3. Extract date slots from fields using spec
+        let mut dates = TaskDates::new();
+        for (key, value) in &fields {
+            if let Some((kind, date_spec)) =
+                TaskDates::match_date_spec(spec, key.as_kebab())
+            {
+                let date_value = TaskDateValue::from_field_value(
+                    value,
+                    key.as_str(),
+                    Some(date_spec),
+                )?;
+                dates.set(kind, date_value);
+            }
+        }
+
+        // 4. Compute clean text (range-based, no re-parsing)
+        let mut exclusion_ranges = Vec::new();
+        for tag in item.tags() {
+            if let Some(range) = tag.range() {
+                exclusion_ranges.push(range);
+            }
+        }
+        for field in item.fields() {
+            exclusion_ranges.push(field.range());
+        }
+
+        let text = TaskText::try_new_with_ranges(
+            item.text(),
+            item.text_range().start(),
+            &exclusion_ranges,
+        )?;
+
+        // 5. Construct Task
         let tags = if item.tags().is_empty() {
             Box::new([])
         } else {
             item.tags().to_vec().into_boxed_slice()
         };
 
-        let text = TaskText::try_new(item.text().into(), clean)?;
-        Task::try_new(status, text, item.range(), tags, metadata, dates)
+        Task::try_new(status, text, item.range(), tags, fields, dates)
             .map_err(Into::into)
-    }
-
-    fn extract_clean_text(
-        &self,
-        raw_text: &str,
-    ) -> Result<Box<str>, NoteError> {
-        let mut text = raw_text.trim();
-
-        let mut stripped = true;
-        while stripped {
-            stripped = false;
-            for tag in self.spec.promotion_tags.as_ref() {
-                if let Some(rest) = text.strip_prefix(tag.as_ref()) {
-                    text = rest.trim_start();
-                    stripped = true;
-                }
-                // Also check with # prefix for fidelity if needed, but spec
-                // contains raw tag names.
-                if let Some(rest) = text
-                    .strip_prefix('#')
-                    .and_then(|s| s.strip_prefix(tag.as_ref()))
-                {
-                    text = rest.trim_start();
-                    stripped = true;
-                }
-            }
-        }
-
-        if let Some(prefix) = Self::strip_inline_fields(text) {
-            text = prefix.trim_end();
-        }
-
-        if text.trim().is_empty() {
-            return Err(TaskError::EmptyText.into());
-        }
-
-        Ok(text.into())
-    }
-
-    fn parse_task_fields(
-        &self,
-        fields: &[crate::note::inline_fields::InlineField],
-    ) -> Result<(TaskDates, TaskMetadata), NoteError> {
-        if fields.is_empty() {
-            return Ok((TaskDates::default(), TaskMetadata::new()));
-        }
-
-        let mut dates = TaskDates::default();
-        let mut metadata = TaskMetadata::new();
-
-        for field in fields {
-            self.handle_any_inline_field(
-                &mut dates,
-                &mut metadata,
-                field.key().as_str(),
-                field.value().as_str().unwrap_or(""),
-            )?;
-        }
-
-        Ok((dates, metadata))
-    }
-
-    fn strip_inline_fields(text: &str) -> Option<&str> {
-        let bracket = Self::inline_field_start(text, b'[', b']');
-        let paren = Self::inline_field_start(text, b'(', b')');
-        let start = match (bracket, paren) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (None, None) => None,
-        }?;
-        text.get(..start)
-    }
-
-    fn inline_field_start(
-        text: &str,
-        open_delim: u8,
-        close_delim: u8,
-    ) -> Option<usize> {
-        let bytes = text.as_bytes();
-        let mut cursor = 0;
-        while let Some(open_rel) = bytes
-            .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
-        {
-            let open = cursor.saturating_add(open_rel);
-            let after_open = open.saturating_add(1);
-            let Some(close_rel) = bytes
-                .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == close_delim))
-            else {
-                break;
-            };
-            let close = after_open.saturating_add(close_rel);
-            let Some(inner) = text.get(after_open..close) else {
-                break;
-            };
-            if let Some((key, value)) = inner.split_once("::")
-                && !key.trim().is_empty()
-                && !value.trim().is_empty()
-            {
-                return Some(open);
-            }
-            cursor = close.saturating_add(1);
-        }
-        None
-    }
-
-    fn handle_any_inline_field(
-        &self,
-        dates: &mut TaskDates,
-        metadata: &mut TaskMetadata,
-        key: &str,
-        value: &str,
-    ) -> Result<(), NoteError> {
-        // 1. Try user-configured mapping
-        if let Some((slot, format, _emoji)) = self.match_date_spec(key) {
-            if Self::get_date(dates, slot).is_none() {
-                let parsed = Self::parse_date_str(value, key, format)?;
-                Self::set_date(dates, slot, parsed);
-            }
-            return Ok(());
-        }
-
-        // 2. Try configured emoji mappings
-        if self.spec.use_emoji
-            && let Some((slot, format, keyword)) =
-                self.match_date_spec_by_emoji(key)
-        {
-            if Self::get_date(dates, slot).is_none() {
-                let parsed = Self::parse_date_str(value, keyword, format)?;
-                Self::set_date(dates, slot, parsed);
-            }
-            return Ok(());
-        }
-
-        // 3. Handle as standard metadata
-        Self::insert_metadata(self.spec, metadata, key, value)
-    }
-
-    fn get_date(
-        dates: &TaskDates,
-        slot: TaskDateKind,
-    ) -> Option<TaskTimestamp> {
-        match slot {
-            TaskDateKind::Created => dates.created,
-            TaskDateKind::Due => dates.due,
-            TaskDateKind::Reminder => dates.reminder,
-            TaskDateKind::Completed => dates.completed,
-            TaskDateKind::Start => dates.start,
-            TaskDateKind::Scheduled => dates.scheduled,
-        }
-    }
-
-    fn set_date(
-        dates: &mut TaskDates,
-        slot: TaskDateKind,
-        value: TaskTimestamp,
-    ) {
-        match slot {
-            TaskDateKind::Created => dates.created = Some(value),
-            TaskDateKind::Due => dates.due = Some(value),
-            TaskDateKind::Reminder => dates.reminder = Some(value),
-            TaskDateKind::Completed => dates.completed = Some(value),
-            TaskDateKind::Start => dates.start = Some(value),
-            TaskDateKind::Scheduled => dates.scheduled = Some(value),
-        }
-    }
-
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics keep spec parsing concise."
-    )]
-    fn parse_metadata_value(
-        raw_value: &str,
-        spec: &crate::config::value::FieldSpec,
-    ) -> Result<serde_json::Value, NoteError> {
-        match spec {
-            crate::config::value::FieldSpec::Integer {
-                ..
-            } => {
-                let value = raw_value.parse::<i64>().map_err(|_error| {
-                    TaskError::InvalidDate {
-                        keyword: "integer".into(),
-                        raw: raw_value.into(),
-                        reason: "failed to parse integer",
-                    }
-                })?;
-                Ok(serde_json::Value::Number(value.into()))
-            }
-            crate::config::value::FieldSpec::Float {
-                ..
-            } => {
-                let value = raw_value.parse::<f64>().map_err(|_error| {
-                    TaskError::InvalidPriority {
-                        value: f64::NAN,
-                    }
-                })?;
-                let number = serde_json::Number::from_f64(value).ok_or(
-                    TaskError::InvalidPriority {
-                        value,
-                    },
-                )?;
-
-                Ok(serde_json::Value::Number(number))
-            }
-            crate::config::value::FieldSpec::Enum {
-                ..
-            }
-            | crate::config::value::FieldSpec::String {
-                ..
-            }
-            | crate::config::value::FieldSpec::DateTime {
-                ..
-            } => Ok(serde_json::Value::String(raw_value.into())),
-        }
-    }
-
-    #[expect(
-        clippy::type_complexity,
-        reason = "Match ergonomics are preferred for domain facts"
-    )]
-    fn match_date_spec(
-        &self,
-        keyword: &str,
-    ) -> Option<(TaskDateKind, &str, Option<char>)> {
-        use crate::config::task::TemporalSlot;
-
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Match ergonomics are preferred for mapping lookups"
-        )]
-        let (slot_enum, format, emoji) =
-            self.spec.temporal_specs.get(keyword)?;
-        let slot = match *slot_enum {
-            TemporalSlot::Created => TaskDateKind::Created,
-            TemporalSlot::Due => TaskDateKind::Due,
-            TemporalSlot::Reminder => TaskDateKind::Reminder,
-            TemporalSlot::Completed => TaskDateKind::Completed,
-            TemporalSlot::Start => TaskDateKind::Start,
-            TemporalSlot::Scheduled => TaskDateKind::Scheduled,
-        };
-        Some((slot, format.as_str(), *emoji))
-    }
-
-    fn match_date_spec_by_emoji(
-        &self,
-        emoji: &str,
-    ) -> Option<(TaskDateKind, &str, &str)> {
-        use crate::config::task::TemporalSlot;
-
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Borrowed tuple destructuring keeps lookups concise"
-        )]
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Order is irrelevant for emoji lookup"
-        )]
-        for (keyword, value) in &self.spec.temporal_specs {
-            let (slot_enum, format, maybe_emoji) = value;
-            let Some(spec_emoji) = *maybe_emoji else {
-                continue;
-            };
-            if !Self::emoji_matches(emoji, spec_emoji) {
-                continue;
-            }
-            let slot = match *slot_enum {
-                TemporalSlot::Created => TaskDateKind::Created,
-                TemporalSlot::Due => TaskDateKind::Due,
-                TemporalSlot::Reminder => TaskDateKind::Reminder,
-                TemporalSlot::Completed => TaskDateKind::Completed,
-                TemporalSlot::Start => TaskDateKind::Start,
-                TemporalSlot::Scheduled => TaskDateKind::Scheduled,
-            };
-            return Some((slot, format.as_str(), keyword.as_ref()));
-        }
-        None
-    }
-
-    fn insert_metadata(
-        spec: &TaskConfigSpec,
-        metadata: &mut TaskMetadata,
-        keyword: &str,
-        raw_value: &str,
-    ) -> Result<(), NoteError> {
-        if let Some(field_spec) = spec.field_specs.get(keyword) {
-            let json_value = Self::parse_metadata_value(raw_value, field_spec)?;
-            field_spec.validate_raw_value(&json_value).map_err(|_error| {
-                TaskError::InvalidMetadataField {
-                    key: keyword.into(),
-                    reason: "failed validation",
-                }
-            })?;
-            let field_value = serde_json::from_value::<FieldValue>(json_value)
-                .map_err(|_error| TaskError::InvalidMetadataField {
-                    key: keyword.into(),
-                    reason: "failed conversion",
-                })?;
-            let key = TaskFieldKey::try_new(keyword)?;
-            metadata.insert(key, field_value);
-        } else {
-            let key = TaskFieldKey::try_new(keyword)?;
-            metadata.insert(key, FieldValue::String(raw_value.into()));
-        }
-
-        Ok(())
-    }
-
-    fn parse_date_str(
-        raw_value: &str,
-        keyword: &str,
-        format: &str,
-    ) -> Result<TaskTimestamp, NoteError> {
-        if let Ok(naive) =
-            chrono::NaiveDateTime::parse_from_str(raw_value, format)
-        {
-            return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-        }
-
-        let date = chrono::NaiveDate::parse_from_str(raw_value, format)
-            .map_err(|_error| TaskError::InvalidDate {
-                keyword: keyword.into(),
-                raw: raw_value.into(),
-                reason: "failed to parse date string",
-            })?;
-        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            TaskError::InvalidDate {
-                keyword: keyword.into(),
-                raw: raw_value.into(),
-                reason: "invalid time",
-            }
-        })?;
-
-        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-    }
-
-    fn emoji_matches(token: &str, emoji: char) -> bool {
-        let mut chars = token.chars();
-        matches!(chars.next(), Some(first) if first == emoji)
-            && chars.next().is_none()
     }
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::shadow_unrelated,
+    reason = "Test code prioritizes readability"
+)]
 mod tests {
     use std::collections::HashMap;
+
+    use chrono::NaiveDate;
 
     use super::*;
     use crate::{
@@ -1072,18 +703,45 @@ mod tests {
     };
 
     fn task_spec_fixture() -> TaskConfigSpec {
+        use crate::config::{raw::RawDateFieldSpec, value::DateSpec};
+
         let mut temporal_specs = HashMap::new();
+
+        let due_spec = DateSpec::try_from_raw(RawDateFieldSpec {
+            keyword: "due".to_owned(),
+            emoji: Some('\u{1f4c5}'),
+            format: "%Y-%m-%d".to_owned(),
+        })
+        .expect("valid due spec");
         temporal_specs.insert(
             "due".into(),
-            (TemporalSlot::Due, "%Y-%m-%d".to_owned(), Some('\u{1f4c5}')),
+            (TemporalSlot::Due, Arc::new(due_spec), Some('\u{1f4c5}')),
         );
+
+        let created_spec = DateSpec::try_from_raw(RawDateFieldSpec {
+            keyword: "created".to_owned(),
+            emoji: Some('\u{2795}'),
+            format: "%Y-%m-%d".to_owned(),
+        })
+        .expect("valid created spec");
         temporal_specs.insert(
             "created".into(),
-            (TemporalSlot::Created, "%Y-%m-%d".to_owned(), Some('\u{2795}')),
+            (TemporalSlot::Created, Arc::new(created_spec), Some('\u{2795}')),
         );
+
+        let completed_spec = DateSpec::try_from_raw(RawDateFieldSpec {
+            keyword: "completed".to_owned(),
+            emoji: Some('\u{2705}'),
+            format: "%Y-%m-%d".to_owned(),
+        })
+        .expect("valid completed spec");
         temporal_specs.insert(
             "completed".into(),
-            (TemporalSlot::Completed, "%Y-%m-%d".to_owned(), Some('\u{2705}')),
+            (
+                TemporalSlot::Completed,
+                Arc::new(completed_spec),
+                Some('\u{2705}'),
+            ),
         );
 
         TaskConfigSpec {
@@ -1138,8 +796,23 @@ mod tests {
         );
 
         assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+
+        let priority_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "priority")
+            .map(|(_, v)| v);
+        assert_eq!(
+            priority_field.and_then(super::super::value::FieldValue::as_number),
+            Some(2.0f64)
+        );
+
+        let project_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "project")
+            .map(|(_, v)| v);
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
     #[test]
@@ -1174,18 +847,24 @@ mod tests {
             &[],
         );
 
-        if let Some(created_at) = task.created_at() {
-            assert_eq!(created_at.as_i64(), 1_704_067_200);
-            if let Some(due_at) = task.due_at() {
-                assert!(created_at.is_past(Some(due_at)));
-            }
+        let created_date =
+            NaiveDate::from_ymd_opt(2024, 1, 1).expect("created date");
+        let due_date = NaiveDate::from_ymd_opt(2024, 12, 31).expect("due date");
+
+        if let Some(created_at) = task.dates().created() {
+            assert_eq!(created_at.as_naive_date(), Some(created_date));
         }
 
-        if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_603_200);
-            if let Some(created_at) = task.created_at() {
-                assert!(due_at.is_future(Some(created_at)));
-            }
+        if let Some(due_at) = task.dates().due() {
+            assert_eq!(due_at.as_naive_date(), Some(due_date));
+        }
+
+        if let (Some(created_at), Some(due_at)) =
+            (task.dates().created(), task.dates().due())
+        {
+            let created_date = date_of(created_at);
+            let due_date = date_of(due_at);
+            assert!(created_date < due_date);
         }
     }
 
@@ -1217,30 +896,27 @@ mod tests {
         );
 
         assert_eq!(task.text(), "Review PR");
-        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
-        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+
+        let priority_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "priority")
+            .map(|(_, v)| v);
+        assert_eq!(
+            priority_field.and_then(super::super::value::FieldValue::as_number),
+            Some(2.0f64)
+        );
+
+        let project_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "project")
+            .map(|(_, v)| v);
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
-    #[test]
-    fn promoted_checkbox_parses_default_emoji_dates() {
-        let spec = task_spec_fixture();
-        let emojis = default_emoji_markers();
-        let task = promote_task(
-            "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
-             \u{2705}2025-01-01",
-            &spec,
-            &emojis,
-        );
-
-        assert_eq!(
-            task.created_at().map(|ts| ts.as_i64()),
-            Some(1_704_067_200)
-        );
-        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
-        assert_eq!(
-            task.completed_at().map(|ts| ts.as_i64()),
-            Some(1_735_689_600)
-        );
+    fn date_of(value: &TaskDateValue) -> NaiveDate {
+        value.as_naive_date().expect("date")
     }
 
     fn promote_task(
@@ -1249,9 +925,7 @@ mod tests {
         emoji_markers: &[char],
     ) -> Task {
         let item = list_item_from_text(promoted_text, emoji_markers);
-        TaskBuilder::new(spec)
-            .promote_from_item(&item)
-            .expect("task conversion")
+        Task::promote(&item, spec).expect("task conversion")
     }
 
     fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
@@ -1272,15 +946,26 @@ mod tests {
             match artifact {
                 ScannedArtifact::Tag {
                     text: tag_text,
-                    position,
-                } => tags.push(RawTag::new(tag_text, position)),
+                    range,
+                } => tags.push(RawTag::new(tag_text, range)),
                 ScannedArtifact::InlineField {
                     key,
                     value,
-                    position,
-                } => inline_fields.push(crate::note::raw::RawInlineField::new(
-                    key, value, position,
-                )),
+                    range,
+                } => {
+                    let typed_value =
+                        crate::note::raw::RawFieldValue::from_str_with_spec(
+                            value.as_ref(),
+                            key.as_ref(),
+                            None,
+                        )
+                        .into_owned();
+                    inline_fields.push(crate::note::raw::RawInlineField::new(
+                        key,
+                        typed_value,
+                        range,
+                    ));
+                }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
@@ -1299,6 +984,7 @@ mod tests {
             raw_text.into(),
             task_marker,
             range,
+            range,
             None,
             tags,
             inline_fields,
@@ -1309,16 +995,5 @@ mod tests {
         }
 
         ListItem::try_from(&raw).expect("valid list item")
-    }
-
-    fn default_emoji_markers() -> Vec<char> {
-        vec![
-            '\u{2795}',
-            '\u{1f4c5}',
-            '\u{2705}',
-            '\u{23f3}',
-            '\u{1f6eb}',
-            '\u{274c}',
-        ]
     }
 }

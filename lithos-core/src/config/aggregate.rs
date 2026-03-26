@@ -4,7 +4,7 @@
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use rkyv::with::Skip;
 use tracing::instrument;
@@ -122,12 +122,12 @@ impl Config {
         for (opt_spec, slot) in date_slots {
             if let Some(spec) = opt_spec {
                 let keyword = spec.keyword().as_str().into();
-                let format = spec.format().to_owned();
                 let emoji = spec.emoji();
                 if let Some(e) = emoji {
                     emoji_markers.push(e);
                 }
-                temporal_specs.insert(keyword, (slot, format, emoji));
+                temporal_specs
+                    .insert(keyword, (slot, Arc::new(spec.clone()), emoji));
             }
         }
 

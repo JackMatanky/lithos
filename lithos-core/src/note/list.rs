@@ -58,6 +58,7 @@ use crate::{
 /// let item = ListItem::new(
 ///     "Item 1".into(),
 ///     range,
+///     range,
 ///     ListKind::Unordered,
 ///     ListDepth::root(),
 ///     None,
@@ -279,6 +280,7 @@ impl<'list> Iterator for ListItems<'list> {
 /// let item = ListItem::new(
 ///     "Buy groceries".into(),
 ///     range,
+///     range,
 ///     ListKind::Unordered,
 ///     ListDepth::root(),
 ///     None,
@@ -300,6 +302,8 @@ pub struct ListItem {
     text: Box<str>,
     /// Source byte range in the note.
     range: SourceByteRange,
+    /// Source byte range for the text content.
+    text_range: SourceByteRange,
     /// List kind (ordered or unordered).
     kind: ListKind,
     /// List nesting depth.
@@ -327,6 +331,7 @@ impl ListItem {
     pub fn new(
         text: Box<str>,
         range: SourceByteRange,
+        text_range: SourceByteRange,
         kind: ListKind,
         depth: ListDepth,
         parent: Option<SourceByteOffset>,
@@ -337,6 +342,7 @@ impl ListItem {
         Self {
             text,
             range,
+            text_range,
             kind,
             depth,
             parent,
@@ -352,6 +358,13 @@ impl ListItem {
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
         self.range
+    }
+
+    /// Returns the source byte range for the text content.
+    #[inline]
+    #[must_use]
+    pub const fn text_range(&self) -> SourceByteRange {
+        self.text_range
     }
 
     /// Returns the start source byte position of this list item.
@@ -462,7 +475,9 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
 
         let mut tags = Vec::with_capacity(raw.tags.len());
         for raw_tag in &raw.tags {
-            if let Ok(tag) = Tag::try_from(raw_tag.value.as_ref()) {
+            if let Ok(tag) =
+                Tag::try_new_with_range(raw_tag.value.as_ref(), raw_tag.range)
+            {
                 tags.push(tag);
             }
         }
@@ -476,6 +491,7 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
         Ok(Self::new(
             raw.text.as_ref().into(),
             raw.range,
+            raw.text_range,
             kind,
             depth,
             raw.parent,
@@ -502,6 +518,7 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
 /// # let range = SourceByteRange::new(start, end).expect("valid range");
 /// let item = ListItem::new(
 ///     "Test".into(),
+///     range,
 ///     range,
 ///     ListKind::Unordered,
 ///     ListDepth::root(),

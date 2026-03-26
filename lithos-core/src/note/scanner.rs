@@ -12,7 +12,10 @@
 
 use std::borrow::Cow;
 
-use crate::note::{error::NoteError, position::SourceByteOffset};
+use crate::note::{
+    error::NoteError,
+    position::{SourceByteOffset, SourceByteRange},
+};
 
 /// A zero-copy artifact extracted from a text block.
 ///
@@ -29,8 +32,8 @@ pub enum ScannedArtifact<'source> {
     Tag {
         /// The raw tag text including the leading `#`.
         text: Cow<'source, str>,
-        /// The absolute source position of the `#` character.
-        position: SourceByteOffset,
+        /// The absolute source range for the tag.
+        range: SourceByteRange,
     },
     /// An inline field (e.g., `[key:: value]` or `📅 2024-03-19`).
     ///
@@ -41,8 +44,8 @@ pub enum ScannedArtifact<'source> {
         key: Cow<'source, str>,
         /// The field value, trimmed of leading/trailing whitespace.
         value: Cow<'source, str>,
-        /// The absolute source position where the key starts.
-        position: SourceByteOffset,
+        /// The absolute source range for the field.
+        range: SourceByteRange,
     },
     /// A block reference (e.g., `^block-id`).
     ///
@@ -73,14 +76,14 @@ impl ScannedArtifact<'_> {
     pub const fn position(&self) -> SourceByteOffset {
         match *self {
             Self::Tag {
-                position,
+                range,
                 ..
             }
             | Self::InlineField {
-                position,
+                range,
                 ..
-            }
-            | Self::BlockRef {
+            } => range.start(),
+            Self::BlockRef {
                 position,
                 ..
             }
@@ -105,19 +108,19 @@ impl ScannedArtifact<'_> {
         match self {
             Self::Tag {
                 text,
-                position,
+                range,
             } => ScannedArtifact::Tag {
                 text: Cow::Owned(text.into_owned()),
-                position,
+                range,
             },
             Self::InlineField {
                 key,
                 value,
-                position,
+                range,
             } => ScannedArtifact::InlineField {
                 key: Cow::Owned(key.into_owned()),
                 value: Cow::Owned(value.into_owned()),
-                position,
+                range,
             },
             Self::BlockRef {
                 id,
@@ -372,11 +375,13 @@ impl NoteScanner {
 
         if idx > 1 {
             let text = cursor.rest.get(..idx).unwrap_or("");
-            let position = cursor.offset;
+            let start = cursor.offset;
+            let end = cursor.offset.add_offset(idx)?;
+            let range = SourceByteRange::new(start, end)?;
             cursor.advance(idx)?;
             Ok(Some(ScannedArtifact::Tag {
                 text: text.into(),
-                position,
+                range,
             }))
         } else {
             Ok(None)
@@ -400,14 +405,15 @@ impl NoteScanner {
                 let key_trimmed = key.trim();
                 let value_trimmed = value.trim();
                 if !key_trimmed.is_empty() && !value_trimmed.is_empty() {
-                    let key_start_offset =
-                        inner.find(key_trimmed).unwrap_or(0).saturating_add(1);
-                    let position =
-                        cursor.offset.add_offset(key_start_offset)?;
+                    let start = cursor.offset;
+                    let end = cursor
+                        .offset
+                        .add_offset(close_idx.saturating_add(1))?;
+                    let range = SourceByteRange::new(start, end)?;
                     let artifact = ScannedArtifact::InlineField {
                         key: key_trimmed.into(),
                         value: value_trimmed.into(),
-                        position,
+                        range,
                     };
                     cursor.advance(close_idx.saturating_add(1))?;
                     return Ok(Some(artifact));
@@ -425,7 +431,7 @@ impl NoteScanner {
             return Ok(None);
         };
         let emoji_len = emoji_ch.len_utf8();
-        let position = cursor.offset;
+        let start = cursor.offset;
 
         let Some(mut after_emoji) = cursor.rest.get(emoji_len..) else {
             return Ok(None);
@@ -455,11 +461,14 @@ impl NoteScanner {
         if val_len > 0 {
             let key = cursor.rest.get(..emoji_len).unwrap_or("");
             let value = after_emoji.get(..val_len).unwrap_or("");
+            let end =
+                cursor.offset.add_offset(consumed.saturating_add(val_len))?;
+            let range = SourceByteRange::new(start, end)?;
             cursor.advance(consumed.saturating_add(val_len))?;
             Ok(Some(ScannedArtifact::InlineField {
                 key: key.into(),
                 value: value.into(),
-                position,
+                range,
             }))
         } else {
             Ok(None)
@@ -497,10 +506,15 @@ impl NoteScanner {
 
             let value = after_colons.get(..val_len).unwrap_or("").trim();
             if !value.is_empty() {
+                let start = cursor.offset;
+                let end = cursor.offset.add_offset(
+                    key_len.saturating_add(2).saturating_add(val_len),
+                )?;
+                let range = SourceByteRange::new(start, end)?;
                 let artifact = ScannedArtifact::InlineField {
                     key: key.into(),
                     value: value.into(),
-                    position: cursor.offset,
+                    range,
                 };
                 cursor.advance(
                     key_len.saturating_add(2).saturating_add(val_len),
@@ -709,7 +723,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::Tag { text: t, position, .. } if t == "#rust" && u32::from(*position) == 4),
+                matches!(first, ScannedArtifact::Tag { text: t, range, .. } if t == "#rust" && u32::from(range.start()) == 4),
                 "Expected Tag #rust at position 4, got {first:?}"
             );
         }
@@ -935,7 +949,7 @@ mod tests {
                 .unwrap();
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::Tag { position, .. } if u32::from(*position) == 12),
+                matches!(first, ScannedArtifact::Tag { range, .. } if u32::from(range.start()) == 12),
                 "Expected Tag at position 12, got {first:?}"
             );
         }

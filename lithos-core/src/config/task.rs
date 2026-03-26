@@ -15,7 +15,7 @@
               despite #[non_exhaustive]"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -316,9 +316,9 @@ pub enum TemporalSlot {
     Scheduled,
 }
 
-/// Mapping from keyword to temporal slot, format, and optional emoji.
+/// Mapping from keyword to temporal slot, date spec, and optional emoji.
 pub type TemporalMapping =
-    HashMap<Box<str>, (TemporalSlot, String, Option<char>)>;
+    HashMap<Box<str>, (TemporalSlot, Arc<DateSpec>, Option<char>)>;
 
 /// Lightweight contract for task scanning and promotion.
 ///
