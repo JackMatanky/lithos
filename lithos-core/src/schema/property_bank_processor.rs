@@ -37,11 +37,11 @@
 //!   └─ [mismatch] → check_content()
 //!
 //! Content Check
-//!   ├─ [match]    → sync_metadata() → Done
+//!   ├─ [match]    → sync_metadata() → fetch() → Done
 //!   └─ [mismatch] → analyze()
 //!
 //! Property Analysis
-//!   ├─ [no changes] → sync_metadata() → Done
+//!   ├─ [no changes] → sync_metadata() → fetch() → Done
 //!   └─ [changes]    → update() → Done
 //! ```
 //!
@@ -50,14 +50,15 @@
 //! - `Present` guarantees a loaded `RawPropertyBankView`.
 //! - `Suspect` guarantees file content for hashing/parsing.
 //! - `StaleTimestamps` means content is identical; only timestamps changed.
-//! - `StaleContent` means semantic content is identical; content hash differs.
+//! - `StaleContent` means property hashes match; content hash differs.
 //! - `Fresh` means the stored bank can be fetched without rebuilding.
 //!
 //! # Usage
 //!
 //! ```ignore
 //! use lithos_core::schema::property_bank_processor::{
-//!     ComparisonBranch, Discovery, PropertyBankProcessor, Unknown,
+//!     AnalysisBranch, ComparisonBranch, ContentBranch, Discovery,
+//!     PropertyBankProcessor, TimestampBranch, Unknown,
 //! };
 //!
 //! let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
@@ -69,7 +70,17 @@
 //!         p.parse(&config_path, &content)?.create(filename, &repo)?
 //!     }
 //!     ComparisonBranch::Present(p) => {
-//!         // timestamp/content checks, then fetch/update
+//!         let content = source.read_to_string(&config_path)?;
+//!         match p.check_timestamps(&content) {
+//!             TimestampBranch::Match(p) => p.fetch(&repo)?,
+//!             TimestampBranch::Mismatch(p) => match p.check_content(&config_path) {
+//!                 ContentBranch::Match(p) => p.sync_metadata(&repo)?,
+//!                 ContentBranch::Mismatch(p) => match p.analyze(&config_path)? {
+//!                     AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
+//!                     AnalysisBranch::Delta(p) => p.update(filename, &repo)?,
+//!                 },
+//!             },
+//!         }
 //!     }
 //! }
 //! ```
@@ -108,7 +119,7 @@ use crate::{
 /// via compile-time types.
 ///
 /// This struct uses a dimensional typestate pattern with two generic
-/// parameters:
+/// parameters, where stages are markers and statuses carry data:
 ///
 /// - `P` (Stage): the current phase of the pipeline.
 /// - `S` (Status): the knowledge state carrying data and invariants.
@@ -146,6 +157,8 @@ pub(crate) struct Discovery;
 pub(crate) struct Unknown;
 
 /// Result of the Discovery stage, determining the next branch in the pipeline.
+///
+/// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 pub(crate) enum ComparisonBranch {
     /// No cached view exists; the file is new.
@@ -236,20 +249,20 @@ impl Default for PropertyBankProcessor<Discovery, Unknown> {
 #[derive(Debug)]
 pub(crate) struct Comparison;
 
-/// Proven: View does not exist in repository.
+/// Proven: View does not exist in repository; carries file timestamps.
 #[derive(Debug)]
 pub(crate) struct Missing {
     times: RawFileTimes,
 }
 
-/// Proven: View exists in repository.
+/// Proven: View exists in repository; carries timestamps and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
     times: RawFileTimes,
     view: RawPropertyBankView,
 }
 
-/// Proven: binary identity has diverged and content is needed for analysis.
+/// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
     times: RawFileTimes,
@@ -258,6 +271,8 @@ pub(crate) struct Suspect {
 }
 
 /// Result of timestamp comparison in the Comparison stage.
+///
+/// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 pub(crate) enum TimestampBranch {
     /// Timestamps match; the cached bank is fresh.
@@ -267,6 +282,8 @@ pub(crate) enum TimestampBranch {
 }
 
 /// Result of content hash comparison in the Comparison stage.
+///
+/// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 pub(crate) enum ContentBranch {
     /// Content hash matches; only timestamps need updating.
@@ -304,6 +321,8 @@ impl PropertyBankProcessor<Comparison, Missing> {
 
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
+    ///
+    /// The `content` is only retained on mismatch to avoid re-reading the file.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_timestamps(self, content: &str) -> TimestampBranch {
@@ -328,6 +347,9 @@ impl PropertyBankProcessor<Comparison, Present> {
 
 impl PropertyBankProcessor<Comparison, Suspect> {
     /// Checks if the content hash matches the cached view.
+    ///
+    /// The `config_path` is unused today but kept for transition parity with
+    /// other methods that require it.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_content(
@@ -359,6 +381,8 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 pub(crate) struct Analysis;
 
 /// Result of property delta analysis in the Analysis stage.
+///
+/// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 pub(crate) enum AnalysisBranch {
     /// Content changed but properties did not.
@@ -386,6 +410,9 @@ impl PropertyDelta {
 
 impl PropertyBankProcessor<Analysis, Suspect> {
     /// Parses the file and compares property-level hashes.
+    ///
+    /// An empty delta transitions to `StaleContent`; a non-empty delta
+    /// transitions to `Changed`.
     ///
     /// # Errors
     ///
@@ -486,14 +513,14 @@ impl PropertyBankProcessor<Analysis, Suspect> {
 #[derive(Debug)]
 pub(crate) struct Refresh;
 
-/// Proven: `ContentHash(File) == ContentHash(View)`.
+/// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
     times: RawFileTimes,
     view: RawPropertyBankView,
 }
 
-/// Proven: `Properties(File) == Properties(View)`.
+/// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
     times: RawFileTimes,
@@ -577,14 +604,14 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
 #[derive(Debug)]
 pub(crate) struct Construction;
 
-/// Proven: Initial ingestion path selected.
+/// Proven: initial ingestion path selected; carries raw bank and content.
 #[derive(Debug)]
 pub(crate) struct New {
     raw: RawPropertyBank,
     content: String,
 }
 
-/// Proven: Partial divergence in property values.
+/// Proven: property divergence detected; carries raw bank, delta, content.
 #[derive(Debug)]
 pub(crate) struct Changed {
     raw: RawPropertyBank,
@@ -592,12 +619,14 @@ pub(crate) struct Changed {
     content: String,
 }
 
-/// Proven: Identity is fully synchronized.
+/// Proven: identity is fully synchronized; bank can be fetched without rebuild.
 #[derive(Debug)]
 pub(crate) struct Fresh;
 
 impl PropertyBankProcessor<Construction, New> {
     /// Performs the initial full bank construction.
+    ///
+    /// Returns the terminal `Completed` state on success.
     ///
     /// # Errors
     ///
@@ -676,6 +705,8 @@ impl PropertyBankProcessor<Construction, New> {
 
 impl PropertyBankProcessor<Construction, Changed> {
     /// Applies incremental bank updates via property deltas.
+    ///
+    /// Returns the terminal `Completed` state on success.
     ///
     /// # Errors
     ///
@@ -782,6 +813,8 @@ impl PropertyBankProcessor<Construction, Changed> {
 impl PropertyBankProcessor<Construction, Fresh> {
     /// Retrieves the already-current bank from the repository.
     ///
+    /// Returns the terminal `Completed` state on success.
+    ///
     /// # Errors
     ///
     /// Returns [`SchemaLoaderError`] if the repository access fails or the bank
@@ -817,7 +850,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
 #[derive(Debug)]
 pub(crate) struct Completed;
 
-/// Proven: terminal ingestion goal reached.
+/// Proven: terminal ingestion goal reached; owns the final bank.
 #[derive(Debug)]
 pub(crate) struct Ready {
     bank: PropertyBank,
