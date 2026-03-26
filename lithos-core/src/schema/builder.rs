@@ -9,8 +9,9 @@ use crate::{
         bank::PropertyBank,
         error::SchemaLoaderError,
         property_bank_processor::{
-            Completed, ContentBranch, DeltaBranch, Discovery, DiscoveryBranch,
-            IsFreshContent, PropertyBankProcessor, TimestampBranch,
+            Analysis, AnalysisBranch, Comparison, ComparisonBranch, Completed,
+            ContentBranch, Discovery, PropertyBankProcessor, Ready, Suspect,
+            TimestampBranch, Unknown,
         },
         storage::Repository,
     },
@@ -54,8 +55,8 @@ where
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         // 1. Discovery: Determine which path to take
-        let pipeline = PropertyBankProcessor::<Discovery>::new();
-        let branch = pipeline.has_raw_view(
+        let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
+        let branch = pipeline.discover(
             filename,
             &self.source,
             &config_path,
@@ -64,7 +65,7 @@ where
 
         // 2. Execute the path to completion
         let completed = match branch {
-            DiscoveryBranch::New(p) => {
+            ComparisonBranch::Missing(p) => {
                 let content = self
                     .source
                     .read_to_string(&config_path)
@@ -72,15 +73,16 @@ where
                 p.parse(&config_path, &content)?
                     .create(filename, &self.repository)?
             }
-            DiscoveryBranch::FreshTimestamp(p) => {
+            ComparisonBranch::Present(p) => {
                 let content = self
                     .source
                     .read_to_string(&config_path)
                     .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-                match p.is_match(&content) {
-                    TimestampBranch::Fetch(p) => p.fetch(&self.repository)?,
-                    TimestampBranch::Content(p) => {
-                        self.handle_content_branch(p, filename, &config_path)?
+
+                match p.check_timestamps(&content) {
+                    TimestampBranch::Match(p) => p.fetch(&self.repository)?,
+                    TimestampBranch::Mismatch(p) => {
+                        self.handle_content_mismatch(p, filename, &config_path)?
                     }
                 }
             }
@@ -92,46 +94,47 @@ where
 
     /// Load and construct all schemas, resolving inheritance and property
     /// references.
-    pub fn load_schemas(
-        &self,
-        _pb: &PropertyBank,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
-        Ok(Vec::new()) // Stub
+    #[expect(clippy::unused_self, reason = "stubbed schema loading")]
+    pub(crate) fn load_schemas(&self, _pb: &PropertyBank) -> Vec<Schema> {
+        Vec::new() // Stub
     }
 
     /// Run the full ingestion pipeline.
-    pub fn load_all(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
+    #[expect(dead_code, reason = "reserved for schema loading")]
+    pub(crate) fn load_all(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
         let pb = self.load_property_bank()?;
-        self.load_schemas(&pb)
+        Ok(self.load_schemas(&pb))
     }
 
-    fn handle_content_branch(
+    fn handle_content_mismatch(
         &self,
-        processor: PropertyBankProcessor<IsFreshContent<'_>>,
+        processor: PropertyBankProcessor<Comparison, Suspect>,
         filename: &str,
         config_path: &std::path::Path,
-    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError> {
-        match processor.is_match(config_path)? {
+    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
+    {
+        match processor.check_content(config_path) {
             ContentBranch::Match(p) => {
-                p.update(&self.repository)?.fetch(&self.repository)
+                p.sync_metadata(&self.repository)?.fetch(&self.repository)
             }
-            ContentBranch::Mismatch(p) => self
-                .handle_delta_branch(p.filter_changed_properties(), filename),
+            ContentBranch::Mismatch(p) => {
+                self.handle_analysis(p, filename, config_path)
+            }
         }
     }
 
-    fn handle_delta_branch(
+    fn handle_analysis(
         &self,
-        branch: DeltaBranch,
+        processor: PropertyBankProcessor<Analysis, Suspect>,
         filename: &str,
-    ) -> Result<PropertyBankProcessor<Completed>, SchemaLoaderError> {
-        match branch {
-            DeltaBranch::ContentOnly(p) => {
-                p.update(&self.repository)?.fetch(&self.repository)
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
+    {
+        match processor.analyze(config_path)? {
+            AnalysisBranch::Empty(p) => {
+                p.sync_metadata(&self.repository)?.fetch(&self.repository)
             }
-            DeltaBranch::PropertiesChanged(p) => {
-                p.update(filename, &self.repository)
-            }
+            AnalysisBranch::Delta(p) => p.update(filename, &self.repository),
         }
     }
 }
