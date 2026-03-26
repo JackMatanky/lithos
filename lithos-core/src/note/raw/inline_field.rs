@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::field_value::RawFieldValue;
+use super::value::RawFieldValue;
 use crate::{config::task::TaskConfigSpec, note::position::SourceByteRange};
 
 /// Raw inline field extracted from markdown.

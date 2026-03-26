@@ -8,30 +8,33 @@
     clippy::iter_over_hash_type,
     reason = "Hash iteration order doesn't affect correctness here"
 )]
-#![expect(clippy::pub_use, reason = "Re-export raw DTOs for note::raw API")]
-
+pub(crate) mod aggregate;
 pub(crate) mod block_ref;
-pub(crate) mod field_value;
 pub(crate) mod frontmatter;
 pub(crate) mod heading;
 pub(crate) mod inline_field;
 pub(crate) mod link;
 pub(crate) mod list;
-pub(crate) mod note;
 pub(crate) mod reference_link;
 pub(crate) mod section;
 pub(crate) mod tag;
+pub(crate) mod value;
 
-pub use block_ref::RawBlockRef;
-pub use field_value::RawFieldValue;
-pub use frontmatter::{RawFrontmatter, RawFrontmatterFormat};
-pub use heading::RawHeading;
-pub use inline_field::RawInlineField;
-pub use link::{RawLink, RawLinkStyle};
-pub use list::{
-    RawList, RawListDepth, RawListItem, RawListKind, RawTaskMarker,
-};
-pub use note::RawNote;
-pub use reference_link::RawReferenceLink;
-pub use section::{RawSection, RawSectionKind};
-pub use tag::RawTag;
+pub type RawBlockRef<'source> = block_ref::RawBlockRef<'source>;
+pub type RawFieldValue<'source> = value::RawFieldValue<'source>;
+pub type RawFrontmatter<'source> = frontmatter::RawFrontmatter<'source>;
+pub type RawFrontmatterFormat = frontmatter::RawFrontmatterFormat;
+pub type RawHeading<'source> = heading::RawHeading<'source>;
+pub type RawInlineField<'source> = inline_field::RawInlineField<'source>;
+pub type RawLink<'source> = link::RawLink<'source>;
+pub type RawLinkStyle = link::RawLinkStyle;
+pub type RawList = list::RawList;
+pub type RawListDepth = list::RawListDepth;
+pub type RawListItem<'source> = list::RawListItem<'source>;
+pub type RawListKind = list::RawListKind;
+pub type RawTaskMarker = list::RawTaskMarker;
+pub type RawNote<'source> = aggregate::RawNote<'source>;
+pub type RawReferenceLink<'source> = reference_link::RawReferenceLink<'source>;
+pub type RawSection = section::RawSection;
+pub type RawSectionKind = section::RawSectionKind;
+pub type RawTag<'source> = tag::RawTag<'source>;
