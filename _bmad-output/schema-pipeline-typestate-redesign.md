@@ -20,11 +20,12 @@
 
 1. **Discovery**: find schema files, load cached views, track deletions, initialize indexes.
 2. **Comparison**: compare timestamps, then content hashes; retain content when needed.
-3. **Graphed**: build or update `InheritanceGraph` with fail-fast structural validation.
-4. **Analysis**: compute schema deltas and bank reference deltas.
-5. **Refresh**: update view metadata only (timestamps/content hash updates).
-6. **Construction**: expand refs + merge properties level-by-level; fetch cached results where fresh.
-7. **Completed**: persist updated views and deliver resolved schemas.
+3. **Inheritance Analysis**: compute `ExtendsDelta` and `ExcludesDelta` to plan graph work.
+4. **Graphed**: build or update `InheritanceGraph` with fail-fast structural validation.
+5. **Analysis**: compute schema deltas and bank reference deltas.
+6. **Refresh**: update view metadata only (timestamps/content hash updates).
+7. **Construction**: expand refs + merge properties level-by-level; fetch cached results where fresh.
+8. **Completed**: persist updated views and deliver resolved schemas.
 
 ---
 
@@ -43,6 +44,11 @@ Use status types to carry invariants and data, mirroring the PropertyBank model.
 - `StaleTimestamps` (content hash matches; timestamps differ)
 - `StaleContent` (content hash differs)
 
+### Inheritance Analysis
+- `Unchanged` (no extends changes; no new schemas)
+- `Changed` (extends changes or new schemas)
+- `ExtendsDelta` (old/new extends per schema)
+
 ### Graphed
 - `GraphFresh` (reuse graph from DB)
 - `GraphPatched` (graph updated incrementally)
@@ -50,15 +56,16 @@ Use status types to carry invariants and data, mirroring the PropertyBank model.
 ### Analysis
 - `Unchanged` (no schema delta and no PB ref delta)
 - `Changed` (carries schema delta + bank reference delta + affected ids)
+- `ExcludesDelta` (old/new excludes per schema)
 
 ### Refresh
 - `StaleTimestamps` (timestamps updated; content hash unchanged)
 - `StaleContent` (timestamps + content hash updated)
-- `ViewUpdated` (view metadata updated in DB)
 
 ### Construction
-- `Fetched` (schema result fetched from DB)
-- `ExpandedMerged` (expanded/merged in this run)
+- `Fresh` (schema result fetched from DB)
+- `Full` (expanded/merged in this run)
+- `Merge` (merge-only path using cached expanded properties)
 
 ### Completed
 - `Ready` (final resolved schemas)
@@ -75,11 +82,22 @@ Proposed enums (names placeholder):
 - `DiscoveryBranch::Missing | Present`
 - `ComparisonBranch::Fresh | Suspect`
 - `ContentBranch::StaleTimestamps | StaleContent`
+- `InheritanceBranch::Unchanged | Changed`
 - `GraphBranch::GraphFresh | GraphPatched`
 - `AnalysisBranch::Unchanged | Changed`
-- `ConstructionBranch::Fetched | ExpandedMerged`
+- `ConstructionBranch::Fresh | Full | Merge`
 
 All branch enums should be `#[must_use = "branch outcomes must be handled"]`.
+
+---
+
+## Inheritance Analysis Stage (Global)
+
+The inheritance analysis stage computes deltas needed to plan graph work and later merges.
+
+### Outputs
+- `ExtendsDelta` (drives graph reuse/patch/insert)
+- `InheritanceBranch::Unchanged | Changed`
 
 ---
 
@@ -88,15 +106,13 @@ All branch enums should be `#[must_use = "branch outcomes must be handled"]`.
 The graph is built once per run, but the strategy depends on `extends` freshness per schema.
 
 ### Inputs
-- `extends` key for each schema (from view or parsed file)
+- `ExtendsDelta` (defines graph reuse/patch/insert strategy)
 - detection of new schemas (no cached view)
-- `ExtendsDelta` (defines graph patch vs rebuild strategy)
-- `ExcludesDelta` (affects merge inputs, not graph shape)
 
 ### Cases
 
 1. **Graph reuse (fastest)**
-   - Condition: no new schemas AND `ExtendsDelta` is empty.
+   - Condition: `InheritanceBranch::Unchanged`.
    - Action: load `InheritanceGraph` from DB.
 
 2. **Graph insertion (new schema)**
@@ -105,7 +121,7 @@ The graph is built once per run, but the strategy depends on `extends` freshness
    - Must revalidate only the affected subtree where a new schema is added.
 
 3. **Graph patch (extends changed)**
-   - Condition: `ExtendsDelta` reports changes.
+   - Condition: `InheritanceBranch::Changed` and no new schemas.
    - Action: rewire edges for the schema and update only affected branches:
      - detach from old parent branch
      - attach to new parent branch
@@ -114,7 +130,6 @@ The graph is built once per run, but the strategy depends on `extends` freshness
 
 ### Output
 - `InheritanceGraph` plus metadata describing which subtrees are affected.
-- `ExcludesDelta` carried forward for merge decisions (not graph construction).
 
 ---
 
