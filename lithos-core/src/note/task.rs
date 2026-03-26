@@ -1278,10 +1278,18 @@ mod tests {
             }
         }
 
-        let mut raw = RawListItem::new(
+        let mut is_checked = task_marker
+            .map(|marker| matches!(marker, RawTaskMarker::Checked(_)));
+        if task_marker.is_none() {
+            task_marker = Some(RawTaskMarker::Unchecked(' '));
+            is_checked = Some(false);
+        }
+
+        let raw = RawListItem::new(
             RawListKind::Unordered,
             crate::note::raw::RawListDepth::Root,
             raw_text.into(),
+            is_checked,
             task_marker,
             range,
             range,
@@ -1289,10 +1297,6 @@ mod tests {
             tags,
             inline_fields,
         );
-
-        if raw.task_marker.is_none() {
-            raw.task_marker = Some(RawTaskMarker::Unchecked(' '));
-        }
 
         ListItem::try_from(&raw).expect("valid list item")
     }

@@ -11,7 +11,7 @@
 use std::{sync::Arc, time::SystemTime};
 
 use pulldown_cmark::{
-    Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
+    CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
 };
 
 use crate::{
@@ -29,6 +29,13 @@ use crate::{
         scanner::{NoteScanner, ScannedArtifact},
     },
 };
+
+type ScannedArtifacts<'source> = (
+    Vec<RawTag<'source>>,
+    Vec<RawInlineField<'source>>,
+    Vec<RawBlockRef<'source>>,
+    Option<RawTaskMarker>,
+);
 
 /// Markdown parser for extracting note facts and structure.
 #[non_exhaustive]
@@ -68,8 +75,6 @@ impl MarkdownParser {
             Vec::new()
         };
         let scanner = NoteScanner::new(emoji_markers);
-        let master_artifacts =
-            scanner.scan_block(markdown, SourceByteOffset::new(0))?;
         let mut pool = StringPool::new();
 
         let _source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
@@ -110,7 +115,24 @@ impl MarkdownParser {
         let mut metadata_text = pool.take();
 
         let parser = Parser::new_ext(markdown, Self::obsidian_options());
-        let events = parser.into_offset_iter();
+        let events = parser.into_offset_iter().map(|(event, range)| {
+            let normalized = match event {
+                Event::SoftBreak => Event::Text(CowStr::Borrowed(" ")),
+                Event::HardBreak => Event::Text(CowStr::Borrowed("\n")),
+                Event::Start(_)
+                | Event::End(_)
+                | Event::Text(_)
+                | Event::Code(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::FootnoteReference(_)
+                | Event::Rule
+                | Event::TaskListMarker(_) => event,
+            };
+            (normalized, range)
+        });
         let iter = TextMergeWithOffset::new(events);
 
         for (event, range) in iter {
@@ -161,6 +183,8 @@ impl MarkdownParser {
                     Self::handle_end_tag(
                         end_tag,
                         range,
+                        markdown,
+                        &scanner,
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
@@ -171,36 +195,29 @@ impl MarkdownParser {
                         &mut headings,
                         &mut tags,
                         &mut inline_fields,
-                        markdown,
                         &mut open_item_by_depth,
                         &mut list_items,
                         &mut lists,
                         &mut block_refs,
-                        &master_artifacts,
                         task_spec,
                         &mut pool,
                     )?;
                 }
                 Event::Text(text) => {
-                    Self::handle_text(
+                    Self::handle_scannable_text(
                         &text,
                         &range,
                         &mut block_stack,
                         &mut current_link,
-                        true,
                     );
                 }
                 Event::Code(text) => {
-                    Self::handle_text(
+                    Self::handle_unscannable_text(
                         &text,
                         &range,
                         &mut block_stack,
                         &mut current_link,
-                        false,
                     );
-                }
-                Event::SoftBreak | Event::HardBreak => {
-                    Self::handle_break(&mut block_stack, &mut current_link);
                 }
                 Event::TaskListMarker(checked) => {
                     if let Some(block) = block_stack.last_mut() {
@@ -212,7 +229,9 @@ impl MarkdownParser {
                 | Event::Html(_)
                 | Event::InlineHtml(_)
                 | Event::FootnoteReference(_)
-                | Event::Rule => {}
+                | Event::Rule
+                | Event::SoftBreak
+                | Event::HardBreak => {}
             }
         }
 
@@ -256,7 +275,6 @@ impl MarkdownParser {
             inline_fields,
             reference_links,
             block_refs,
-            master_artifacts,
         ))
     }
 
@@ -409,6 +427,8 @@ impl MarkdownParser {
     fn handle_end_tag<'source>(
         end_tag: pulldown_cmark::TagEnd,
         range: std::ops::Range<usize>,
+        markdown: &'source str,
+        scanner: &NoteScanner,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
@@ -419,12 +439,10 @@ impl MarkdownParser {
         headings: &mut Vec<RawHeading<'source>>,
         tags: &mut Vec<RawTag<'source>>,
         inline_fields: &mut Vec<RawInlineField<'source>>,
-        _markdown: &'source str,
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
         lists: &mut Vec<RawList>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        master_artifacts: &[ScannedArtifact<'source>],
         _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
@@ -496,14 +514,16 @@ impl MarkdownParser {
                                 block_range,
                                 *depth,
                             ));
-                            let scan_result = Self::filter_artifacts_by_range(
-                                block_range,
-                                &block.scannable_ranges,
-                                master_artifacts,
-                            );
-                            tags.extend(scan_result.tags);
-                            inline_fields.extend(scan_result.inline_fields);
-                            block_refs.extend(scan_result.block_refs);
+                            let (scan_tags, scan_fields, scan_refs, _marker) =
+                                Self::scan_block_artifacts(
+                                    scanner,
+                                    markdown,
+                                    &block.scannable_ranges,
+                                    false,
+                                )?;
+                            tags.extend(scan_tags);
+                            inline_fields.extend(scan_fields);
+                            block_refs.extend(scan_refs);
                         }
 
                         BlockKind::Paragraph => {
@@ -515,8 +535,9 @@ impl MarkdownParser {
                                 inline_fields,
                                 block_stack,
                                 block_refs,
-                                master_artifacts,
-                            );
+                                markdown,
+                                scanner,
+                            )?;
                         }
                         BlockKind::ListItem => {
                             Self::finalize_list_item(
@@ -528,7 +549,8 @@ impl MarkdownParser {
                                 list_items,
                                 list_contexts,
                                 block_refs,
-                                master_artifacts,
+                                markdown,
+                                scanner,
                             )?;
                         }
                         BlockKind::List => {
@@ -577,17 +599,16 @@ impl MarkdownParser {
         Ok(())
     }
 
-    fn handle_text(
+    fn handle_scannable_text(
         text: &pulldown_cmark::CowStr<'_>,
         range: &std::ops::Range<usize>,
         block_stack: &mut [ActiveBlock],
         current_link: &mut Option<LinkFrame>,
-        is_scannable: bool,
     ) {
         let text_str = text.as_ref();
         if let Some(block) = block_stack.last_mut() {
             block.full_text.push_str(text_str);
-            if current_link.is_none() && is_scannable {
+            if current_link.is_none() {
                 block.scannable_ranges.push(range.clone());
             }
         }
@@ -596,31 +617,18 @@ impl MarkdownParser {
         }
     }
 
-    fn handle_break(
+    fn handle_unscannable_text(
+        text: &pulldown_cmark::CowStr<'_>,
+        _range: &std::ops::Range<usize>,
         block_stack: &mut [ActiveBlock],
         current_link: &mut Option<LinkFrame>,
     ) {
-        let brk = if let Some(block) = block_stack.last() {
-            if matches!(block.kind, BlockKind::CodeBlock) {
-                "\n"
-            } else {
-                " "
-            }
-        } else {
-            " "
-        };
-
-        if let Some(block) = block_stack.last_mut()
-            && !block.full_text.ends_with(' ')
-            && !block.full_text.ends_with('\n')
-        {
-            block.full_text.push_str(brk);
+        let text_str = text.as_ref();
+        if let Some(block) = block_stack.last_mut() {
+            block.full_text.push_str(text_str);
         }
-        if let Some(link) = current_link.as_mut()
-            && !link.alias.ends_with(' ')
-            && !link.alias.ends_with('\n')
-        {
-            link.alias.push_str(brk);
+        if let Some(link) = current_link.as_mut() {
+            link.alias.push_str(text_str);
         }
     }
 
@@ -645,7 +653,6 @@ impl MarkdownParser {
         };
         match event {
             Event::Text(t) | Event::Code(t) => metadata_text.push_str(&t),
-            Event::SoftBreak | Event::HardBreak => metadata_text.push('\n'),
             Event::End(TagEnd::MetadataBlock(_)) => {
                 in_metadata.take();
                 let end_pos =
@@ -684,102 +691,107 @@ impl MarkdownParser {
             | Event::InlineHtml(_)
             | Event::FootnoteReference(_)
             | Event::Rule
-            | Event::TaskListMarker(_) => {}
+            | Event::TaskListMarker(_)
+            | Event::SoftBreak
+            | Event::HardBreak => {}
         }
         Ok(true)
     }
 
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &ScannedArtifact"
-    )]
-    fn filter_artifacts_by_range<'source>(
-        block_range: SourceByteRange,
+    fn scan_block_artifacts<'source>(
+        scanner: &NoteScanner,
+        source: &'source str,
         scannable_ranges: &[std::ops::Range<usize>],
-        artifacts: &[ScannedArtifact<'source>],
-    ) -> ScannedBlock<'source> {
-        let mut scan_result = ScannedBlock::default();
-        if scannable_ranges.is_empty() {
-            return scan_result;
-        }
+        include_task_marker: bool,
+    ) -> Result<ScannedArtifacts<'source>, NoteIngestError> {
+        let mut artifacts = Vec::new();
+        scanner
+            .scan_ranges(source, scannable_ranges, &mut artifacts)
+            .map_err(NoteIngestError::Domain)?;
 
-        let start = block_range.start();
-        let end = block_range.end();
+        let mut tags = Vec::new();
+        let mut inline_fields = Vec::new();
+        let mut block_refs = Vec::new();
+        let mut task_marker = None;
 
-        // Find the first artifact that could be in range using binary search.
-        let first_idx = artifacts.partition_point(|a| a.position() < start);
-
-        let Some(slice) = artifacts.get(first_idx..) else {
-            return scan_result;
-        };
-
-        for artifact in slice {
-            let pos = artifact.position();
-            if pos >= end {
-                break;
-            }
-
-            if !Self::is_scannable_position(pos, scannable_ranges)
-                && !artifact.is_marker()
-            {
-                continue;
-            }
-
+        for artifact in artifacts {
             match artifact {
                 ScannedArtifact::Tag {
                     text,
                     range,
                 } => {
-                    scan_result.tags.push(RawTag::new(text.clone(), *range));
+                    tags.push(RawTag::new(text, range));
                 }
                 ScannedArtifact::InlineField {
                     key,
                     value,
                     range,
                 } => {
-                    // Use heuristic parsing to detect types (no spec available
-                    // here)
                     let typed_value = RawFieldValue::from_str_with_spec(
                         value.as_ref(),
                         key.as_ref(),
-                        None, // No spec available at parse time
+                        None,
                     )
                     .into_owned();
-                    scan_result.inline_fields.push(RawInlineField::new(
-                        key.clone(),
+                    inline_fields.push(RawInlineField::new(
+                        key,
                         typed_value,
-                        *range,
+                        range,
                     ));
                 }
                 ScannedArtifact::BlockRef {
                     id,
-                    ..
+                    position,
                 } => {
-                    scan_result
-                        .block_refs
-                        .push(RawBlockRef::new(id.clone(), pos));
+                    block_refs.push(RawBlockRef::new(id, position));
                 }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
                 } => {
-                    scan_result.task_marker =
-                        Some(RawTaskMarker::from_char(*marker));
+                    if include_task_marker {
+                        task_marker = Some(RawTaskMarker::from_char(marker));
+                    }
                 }
             }
         }
 
-        scan_result
+        Ok((tags, inline_fields, block_refs, task_marker))
     }
 
-    fn is_scannable_position(
-        position: SourceByteOffset,
-        scannable_ranges: &[std::ops::Range<usize>],
-    ) -> bool {
-        let pos = position.as_usize();
-        scannable_ranges
-            .iter()
-            .any(|range| pos >= range.start && pos < range.end)
+    fn scan_task_marker(
+        scanner: &NoteScanner,
+        source: &str,
+        block_range: SourceByteRange,
+    ) -> Result<Option<RawTaskMarker>, NoteIngestError> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32 always fits in usize on this platform"
+        )]
+        let start = u32::from(block_range.start()) as usize;
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32 always fits in usize on this platform"
+        )]
+        let end = u32::from(block_range.end()) as usize;
+        let range = start..end;
+        let ranges = std::slice::from_ref(&range);
+        let mut artifacts = Vec::new();
+        scanner
+            .scan_ranges(source, ranges, &mut artifacts)
+            .map_err(NoteIngestError::Domain)?;
+
+        let mut task_marker = None;
+        for artifact in artifacts {
+            if let ScannedArtifact::TaskMarker {
+                marker,
+                ..
+            } = artifact
+            {
+                task_marker = Some(RawTaskMarker::from_char(marker));
+            }
+        }
+        Ok(task_marker)
     }
 
     #[inline]
@@ -795,21 +807,24 @@ impl MarkdownParser {
         inline_fields: &mut Vec<RawInlineField<'source>>,
         block_stack: &mut [ActiveBlock],
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        master_artifacts: &[ScannedArtifact<'source>],
-    ) {
+        markdown: &'source str,
+        scanner: &NoteScanner,
+    ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::Paragraph,
             block_range,
             block.depth,
         ));
-        let scan_result = Self::filter_artifacts_by_range(
-            block_range,
-            &block.scannable_ranges,
-            master_artifacts,
-        );
-        tags.extend(scan_result.tags);
-        inline_fields.extend(scan_result.inline_fields);
-        block_refs.extend(scan_result.block_refs);
+        let (scan_tags, scan_fields, scan_refs, _marker) =
+            Self::scan_block_artifacts(
+                scanner,
+                markdown,
+                &block.scannable_ranges,
+                false,
+            )?;
+        tags.extend(scan_tags);
+        inline_fields.extend(scan_fields);
+        block_refs.extend(scan_refs);
 
         if let Some(parent) = block_stack.last_mut()
             && matches!(parent.kind, BlockKind::ListItem)
@@ -817,6 +832,7 @@ impl MarkdownParser {
         {
             parent.full_text.push_str(&block.full_text);
         }
+        Ok(())
     }
 
     fn finalize_list(
@@ -861,19 +877,27 @@ impl MarkdownParser {
         list_items: &mut Vec<RawListItem<'source>>,
         list_contexts: &mut Vec<ListContext>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        master_artifacts: &[ScannedArtifact<'source>],
+        markdown: &'source str,
+        scanner: &NoteScanner,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
             block.depth,
         ));
-
-        let scan_result = Self::filter_artifacts_by_range(
-            block_range,
-            &block.scannable_ranges,
-            master_artifacts,
-        );
+        let is_checked = block.task_marker;
+        let (scan_tags, scan_fields, scan_refs, _) =
+            Self::scan_block_artifacts(
+                scanner,
+                markdown,
+                &block.scannable_ranges,
+                false,
+            )?;
+        let task_marker = if is_checked.is_some() {
+            Self::scan_task_marker(scanner, markdown, block_range)?
+        } else {
+            None
+        };
 
         let list_kind =
             list_stack.last().copied().unwrap_or(RawListKind::Unordered);
@@ -891,11 +915,15 @@ impl MarkdownParser {
             open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
         };
 
-        let task_marker = if block.task_marker.is_some() {
-            scan_result.task_marker
-        } else {
-            None
-        };
+        if is_checked.is_some() && task_marker.is_none() {
+            tracing::warn!(
+                range_start = u32::from(block_range.start()),
+                range_end = u32::from(block_range.end()),
+                checked = is_checked,
+                "Checkbox detected without task marker; treating as scan \
+                 failure"
+            );
+        }
         let raw_text = block.full_text.trim().to_owned();
         let text_range = if raw_text.is_empty() {
             SourceByteRange::new(block_range.start(), block_range.start())
@@ -928,15 +956,16 @@ impl MarkdownParser {
             list_kind,
             list_depth,
             raw_text.into(),
+            is_checked,
             task_marker,
             block_range,
             text_range,
             parent_pos,
-            scan_result.tags,
-            scan_result.inline_fields,
+            scan_tags,
+            scan_fields,
         ));
 
-        block_refs.extend(scan_result.block_refs);
+        block_refs.extend(scan_refs);
         Ok(())
     }
 }
@@ -967,14 +996,6 @@ impl ListContext {
             item_positions: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Default)]
-struct ScannedBlock<'source> {
-    tags: Vec<RawTag<'source>>,
-    inline_fields: Vec<RawInlineField<'source>>,
-    block_refs: Vec<RawBlockRef<'source>>,
-    task_marker: Option<RawTaskMarker>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1168,5 +1189,14 @@ mod tests {
         sorted.sort_by_key(|i| i.range.start().as_usize());
         let child = sorted.get(1).expect("Child list item must exist");
         assert!(matches!(child.depth, RawListDepth::Nested(1)));
+    }
+
+    #[test]
+    fn should_capture_checkbox_state_and_marker() {
+        let md = "- [x] Done";
+        let raw = parse_raw(md);
+        let item = raw.list_items.first().expect("list item exists");
+        assert_eq!(item.is_checked, Some(true));
+        assert!(matches!(item.task_marker, Some(RawTaskMarker::Checked('x'))));
     }
 }

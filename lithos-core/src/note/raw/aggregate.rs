@@ -4,7 +4,7 @@ use super::{
     RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink, RawList,
     RawListItem, RawReferenceLink, RawSection, RawTag,
 };
-use crate::note::{paths::NotePath, scanner::ScannedArtifact};
+use crate::note::paths::NotePath;
 
 /// Raw note container with extracted, unvalidated data.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +25,6 @@ pub struct RawNote<'source> {
     pub inline_fields: Vec<RawInlineField<'source>>,
     pub reference_links: Vec<RawReferenceLink<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
-    pub master_artifacts: Vec<ScannedArtifact<'source>>,
 }
 
 impl<'source> RawNote<'source> {
@@ -52,7 +51,6 @@ impl<'source> RawNote<'source> {
         inline_fields: Vec<RawInlineField<'source>>,
         reference_links: Vec<RawReferenceLink<'source>>,
         block_refs: Vec<RawBlockRef<'source>>,
-        master_artifacts: Vec<ScannedArtifact<'source>>,
     ) -> Self {
         Self {
             path,
@@ -70,7 +68,6 @@ impl<'source> RawNote<'source> {
             inline_fields,
             reference_links,
             block_refs,
-            master_artifacts,
         }
     }
 
@@ -114,11 +111,6 @@ impl<'source> RawNote<'source> {
                 .block_refs
                 .into_iter()
                 .map(RawBlockRef::into_owned)
-                .collect(),
-            master_artifacts: self
-                .master_artifacts
-                .into_iter()
-                .map(ScannedArtifact::into_owned)
                 .collect(),
         }
     }

@@ -1708,7 +1708,6 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            Vec::new(),
         )
     }
 
@@ -1799,6 +1798,7 @@ mod tests {
             list_kind,
             list_depth,
             raw_task_text.into(),
+            None,
             task_marker,
             range,
             range,
@@ -1829,7 +1829,6 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            artifacts.into_iter().map(ScannedArtifact::into_owned).collect(),
         )
     }
 

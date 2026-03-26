@@ -194,6 +194,42 @@ impl NoteScanner {
         Ok(artifacts)
     }
 
+    /// Scans multiple disjoint ranges within the same source text.
+    ///
+    /// This preserves cursor state across ranges to maintain word-boundary
+    /// semantics and line-start detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    #[inline]
+    pub fn scan_ranges<'source>(
+        &self,
+        text: &'source str,
+        ranges: &[std::ops::Range<usize>],
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
+        for range in ranges {
+            if range.is_empty() {
+                continue;
+            }
+            let Some(segment) = text.get(range.clone()) else {
+                continue;
+            };
+            let base_offset =
+                SourceByteOffset::try_from(range.start).map_err(|_err| {
+                    crate::note::error::StructureError::OutOfBounds {
+                        offset: range.start,
+                        source_len: text.len(),
+                    }
+                })?;
+            cursor.reset(segment, base_offset);
+            self.scan_cursor(&mut cursor, artifacts)?;
+        }
+        Ok(())
+    }
+
     /// Continues scanning from a provided [`Cursor`] state.
     ///
     /// This method allows the scanner to process disjoint segments of text
