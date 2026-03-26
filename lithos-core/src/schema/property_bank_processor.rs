@@ -29,20 +29,31 @@
 //!
 //! ```text
 //! Discovery
-//!   ├─ No view    → parse() → create() → Done
-//!   └─ View found → check_timestamps()
+//!   ├─ No view
+//!   │   → [Comparison] parse raw file
+//!   │   → [Construction] construct domain from raw → Completed
+//!   └─ View found
+//!       → [Comparison] check timestamps (content retained)
 //!
 //! Timestamp Check
-//!   ├─ [match]    → fetch() → Done
-//!   └─ [mismatch] → check_content()
+//!   ├─ [match]
+//!   │   → [Construction] fetch cached domain → Completed
+//!   └─ [mismatch]
+//!       → [Comparison] check content hash
 //!
 //! Content Check
-//!   ├─ [match]    → sync_metadata() → fetch() → Done
-//!   └─ [mismatch] → analyze()
+//!   ├─ [match]
+//!   │   → [Refresh] sync timestamps
+//!   │   → [Construction] fetch cached domain → Completed
+//!   └─ [mismatch]
+//!       → [Analysis] analyze property hashes
 //!
 //! Property Analysis
-//!   ├─ [no changes] → sync_metadata() → fetch() → Done
-//!   └─ [changes]    → update() → Done
+//!   ├─ [no changes]
+//!   │   → [Refresh] sync timestamps + content hash
+//!   │   → [Construction] fetch cached domain → Completed
+//!   └─ [changes]
+//!       → [Construction] update domain from delta → Completed
 //! ```
 //!
 //! # Invariants
