@@ -628,9 +628,12 @@ impl Task {
                 text: item.text().to_owned().into(),
             })?;
 
-        // TODO: Look up status name from symbol via CheckboxStatus
-        // For now, use symbol char as fallback
-        let status: Box<str> = format!("{}", status_symbol.value()).into();
+        // Look up status name from symbol using config
+        let status: Box<str> = spec
+            .status_mappings
+            .get(&status_symbol.value())
+            .cloned()
+            .unwrap_or_else(|| format!("{}", status_symbol.value()).into());
 
         // 2. Copy all fields from ListItem
         let fields: HashMap<_, _> = item
