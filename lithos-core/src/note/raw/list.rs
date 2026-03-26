@@ -1,0 +1,173 @@
+use std::{borrow::Cow, sync::Arc};
+
+use super::{inline_field::RawInlineField, tag::RawTag};
+use crate::{
+    config::task::TaskConfigSpec,
+    note::position::{SourceByteOffset, SourceByteRange},
+};
+
+/// Raw task marker kind extracted from a list item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawTaskMarker {
+    /// Unchecked task marker (typically `[ ]`).
+    Unchecked(char),
+    /// Checked task marker (typically `[x]`).
+    Checked(char),
+    /// Task marker with a non-standard symbol.
+    Other(char),
+}
+
+impl RawTaskMarker {
+    /// Create a raw task marker from a character.
+    #[inline]
+    #[must_use]
+    pub fn from_char(marker: char) -> Self {
+        match marker {
+            ' ' => Self::Unchecked(marker),
+            'x' | 'X' => Self::Checked(marker),
+            _ => Self::Other(marker),
+        }
+    }
+
+    /// Returns the raw marker character.
+    #[inline]
+    #[must_use]
+    pub const fn marker(self) -> char {
+        match self {
+            Self::Unchecked(marker)
+            | Self::Checked(marker)
+            | Self::Other(marker) => marker,
+        }
+    }
+}
+
+/// Raw list type extracted from markdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawListKind {
+    Ordered(u64),
+    Unordered,
+}
+
+/// Raw list nesting depth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawListDepth {
+    Root,
+    Nested(u8),
+}
+
+/// Raw list container extracted from markdown.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct RawList {
+    pub kind: RawListKind,
+    pub depth: RawListDepth,
+    pub range: SourceByteRange,
+    pub task_spec: Arc<TaskConfigSpec>,
+    pub item_positions: Vec<SourceByteOffset>,
+}
+
+impl RawList {
+    /// Create a new raw list container.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        kind: RawListKind,
+        depth: RawListDepth,
+        range: SourceByteRange,
+        task_spec: Arc<TaskConfigSpec>,
+        item_positions: Vec<SourceByteOffset>,
+    ) -> Self {
+        Self {
+            kind,
+            depth,
+            range,
+            task_spec,
+            item_positions,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn into_owned(self) -> RawList {
+        RawList {
+            kind: self.kind,
+            depth: self.depth,
+            range: self.range,
+            task_spec: self.task_spec,
+            item_positions: self.item_positions,
+        }
+    }
+}
+
+/// Raw list item extracted from markdown.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct RawListItem<'source> {
+    pub list_kind: RawListKind,
+    pub depth: RawListDepth,
+    pub text: Cow<'source, str>,
+    pub task_marker: Option<RawTaskMarker>,
+    pub range: SourceByteRange,
+    pub text_range: SourceByteRange,
+    pub parent: Option<SourceByteOffset>,
+    pub tags: Vec<RawTag<'source>>,
+    pub inline_fields: Vec<RawInlineField<'source>>,
+}
+
+impl<'source> RawListItem<'source> {
+    /// Create a new raw list item.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Raw list items capture full source metadata"
+    )]
+    pub fn new(
+        list_kind: RawListKind,
+        depth: RawListDepth,
+        text: Cow<'source, str>,
+        task_marker: Option<RawTaskMarker>,
+        range: SourceByteRange,
+        text_range: SourceByteRange,
+        parent: Option<SourceByteOffset>,
+        tags: Vec<RawTag<'source>>,
+        inline_fields: Vec<RawInlineField<'source>>,
+    ) -> Self {
+        Self {
+            list_kind,
+            depth,
+            text,
+            task_marker,
+            range,
+            text_range,
+            parent,
+            tags,
+            inline_fields,
+        }
+    }
+}
+
+impl RawListItem<'_> {
+    #[inline]
+    #[must_use]
+    pub fn into_owned(self) -> RawListItem<'static> {
+        RawListItem {
+            list_kind: self.list_kind,
+            depth: self.depth,
+            text: Cow::Owned(self.text.into_owned()),
+            task_marker: self.task_marker,
+            range: self.range,
+            text_range: self.text_range,
+            parent: self.parent,
+            tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
+            inline_fields: self
+                .inline_fields
+                .into_iter()
+                .map(RawInlineField::into_owned)
+                .collect(),
+        }
+    }
+}
