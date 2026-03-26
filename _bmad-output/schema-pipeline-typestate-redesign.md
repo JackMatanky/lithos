@@ -47,7 +47,6 @@ Use status types to carry invariants and data, mirroring the PropertyBank model.
 ### Inheritance Analysis
 - `Unchanged` (no extends changes; no new schemas)
 - `Changed` (extends changes or new schemas)
-- `ExtendsDelta` (old/new extends per schema)
 
 ### Graphed
 - `GraphFresh` (reuse graph from DB)
@@ -56,7 +55,6 @@ Use status types to carry invariants and data, mirroring the PropertyBank model.
 ### Analysis
 - `Unchanged` (no schema delta and no PB ref delta)
 - `Changed` (carries schema delta + bank reference delta + affected ids)
-- `ExcludesDelta` (old/new excludes per schema)
 
 ### Refresh
 - `StaleTimestamps` (timestamps updated; content hash unchanged)
@@ -130,6 +128,17 @@ The graph is built once per run, but the strategy depends on `extends` freshness
 
 ### Output
 - `InheritanceGraph` plus metadata describing which subtrees are affected.
+
+---
+
+## Analysis Stage (Schema + Excludes)
+
+The analysis stage computes schema/property deltas and excludes changes once the graph is stable.
+
+### Outputs
+- `SchemaDelta` (property-level changes)
+- `BankReferenceDelta` (affected refs based on PropertyBank delta)
+- `ExcludesDelta` (old/new excludes per schema, used during merge)
 
 ---
 
