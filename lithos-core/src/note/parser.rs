@@ -672,7 +672,7 @@ impl MarkdownParser {
                 *frontmatter = Some(RawFrontmatter::new(
                     Arc::clone(frontmatter_spec),
                     kind.into(),
-                    metadata_text.clone().into(),
+                    std::mem::take(metadata_text).into(),
                     block_range,
                 ));
             }

@@ -18,16 +18,14 @@
 use std::{collections::HashMap, fmt};
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
-use regex::Regex;
 
 use super::{
-    error::{FrontmatterError, NoteError, NoteParseError},
+    error::{FrontmatterError, NoteError},
     tag::Tag,
     value::{FieldValue, TryFromFieldValue, TryFromFieldValueRef},
 };
 use crate::{
-    config::frontmatter::FrontmatterConfigSpec,
-    note::raw::{RawFrontmatter, RawFrontmatterFormat},
+    config::frontmatter::FrontmatterConfigSpec, note::raw::RawFrontmatter,
 };
 
 // ----------------------------------------------------------- //
@@ -99,47 +97,6 @@ impl Frontmatter {
     frontmatter_get_ops!(find_str, Box<str>);
 
     frontmatter_get_ops!(find_number, f64);
-
-    /// Parses a frontmatter block into structured fields.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteParseError`] if the content cannot be parsed or
-    /// converted into supported field values.
-    pub(crate) fn parse(
-        format: RawFrontmatterFormat,
-        text: &str,
-        fm_spec: &FrontmatterConfigSpec,
-    ) -> Result<Self, NoteParseError> {
-        let fields: HashMap<Box<str>, FieldValue> = match format {
-            RawFrontmatterFormat::Yaml => {
-                let sanitized = Self::sanitize_yaml_obsidian_links(text);
-                serde_yaml::from_str(&sanitized).map_err(|e| {
-                    let location = e.location();
-                    NoteParseError::Frontmatter {
-                        format: "YAML",
-                        line: location.as_ref().map(serde_yaml::Location::line),
-                        column: location
-                            .as_ref()
-                            .map(serde_yaml::Location::column),
-                        reason: e.to_string().into(),
-                    }
-                })?
-            }
-            RawFrontmatterFormat::Toml => {
-                toml::from_str(text).map_err(|e| {
-                    NoteParseError::Frontmatter {
-                        format: "TOML",
-                        line: None,
-                        column: None,
-                        reason: e.to_string().into(),
-                    }
-                })?
-            }
-        };
-
-        Ok(Self::from_fields(fields, fm_spec))
-    }
 
     /// Creates a new [`Frontmatter`] instance from a field map, extracting
     /// explicit attributes using the provided configuration spec.
@@ -488,24 +445,6 @@ impl Frontmatter {
     pub const fn date_modified(&self) -> Option<&FrontmatterDateValue> {
         self.date_modified.as_ref()
     }
-
-    fn sanitize_yaml_obsidian_links(text: &str) -> std::borrow::Cow<'_, str> {
-        let step1 = YAML_MAP_LINK_RE.replace_all(text, r#"$1"$2""#);
-        match step1 {
-            std::borrow::Cow::Borrowed(_) => {
-                YAML_LIST_LINK_RE.replace_all(text, r#"$1"$2""#)
-            }
-            std::borrow::Cow::Owned(s1) => {
-                let step2 = YAML_LIST_LINK_RE.replace_all(&s1, r#"$1"$2""#);
-                match step2 {
-                    std::borrow::Cow::Borrowed(_) => {
-                        std::borrow::Cow::Owned(s1)
-                    }
-                    std::borrow::Cow::Owned(s2) => std::borrow::Cow::Owned(s2),
-                }
-            }
-        }
-    }
 }
 
 impl TryFrom<&RawFrontmatter<'_>> for Frontmatter {
@@ -513,8 +452,8 @@ impl TryFrom<&RawFrontmatter<'_>> for Frontmatter {
 
     #[inline]
     fn try_from(raw: &RawFrontmatter<'_>) -> Result<Self, Self::Error> {
-        Self::parse(raw.kind, raw.text.as_ref(), raw.spec.as_ref())
-            .map_err(Into::into)
+        let fields = raw.parse_fields().map_err(NoteError::from)?;
+        Ok(Self::from_fields(fields, raw.spec.as_ref()))
     }
 }
 
@@ -811,37 +750,6 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
 }
 
 // ----------------------------------------------------------- //
-//                      Internal Helpers                       //
-// ----------------------------------------------------------- //
-
-/// Regex for identifying unquoted Obsidian wikilinks in YAML mapping entries.
-///
-/// Pattern breakdown:
-/// 1. `^(\s*[\w_-]+\s*:\s*)`: Matches the key and colon, including indentation.
-/// 2. `([^"'\s|>].*?\[\[.*\]\].*|\[\[.*\]\].*)`: Matches values starting with a
-///    non-quote/special char that contain a wikilink, or start with one.
-#[expect(clippy::expect_used, reason = "Static regex compilation")]
-static YAML_MAP_LINK_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(
-    || {
-        Regex::new(r#"(?m)^(\s*[\w_-]+\s*:\s*)([^"'\s|>].*?\[\[.*\]\].*|\[\[.*\]\].*)$"#)
-            .expect("valid regex")
-    },
-);
-
-/// Regex for identifying unquoted Obsidian wikilinks in YAML list items.
-///
-/// Pattern breakdown:
-/// 1. `^(\s*-\s*)`: Matches the list dash and indentation.
-/// 2. `([^"'\s].*?\[\[.*\]\].*|\[\[.*\]\].*)`: Matches values starting with a
-///    non-quote/space that contain a wikilink, or start with one.
-#[expect(clippy::expect_used, reason = "Static regex compilation")]
-static YAML_LIST_LINK_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?m)^(\s*-\s*)([^"'\s].*?\[\[.*\]\].*|\[\[.*\]\].*)$"#)
-            .expect("valid regex")
-    });
-
-// ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
 
@@ -945,150 +853,6 @@ mod tests {
                 fm.aliases().collect::<Vec<_>>(),
                 vec!["Alias1"],
                 "Alias mismatch (single string)"
-            );
-        }
-    }
-
-    mod parsing {
-        use super::*;
-        use crate::note::raw::RawFrontmatterFormat;
-
-        #[rstest]
-        #[case::yaml_simple(
-            RawFrontmatterFormat::Yaml,
-            "key: value\nnum: 42",
-            "key",
-            FieldValue::String("value".into())
-        )]
-        #[case::toml_simple(
-            RawFrontmatterFormat::Toml,
-            "key = \"value\"\nnum = 42",
-            "key",
-            FieldValue::String("value".into())
-        )]
-        #[case::yaml_nested(
-            RawFrontmatterFormat::Yaml,
-            "outer:\n  inner: true",
-            "outer",
-            FieldValue::Object(Box::new(HashMap::from([("inner".into(), FieldValue::Boolean(true))])))
-        )]
-        fn should_parse_valid_formats(
-            #[case] format: RawFrontmatterFormat,
-            #[case] text: &str,
-            #[case] key: &str,
-            #[case] expected: FieldValue,
-            default_spec: FrontmatterConfigSpec,
-        ) {
-            let fm = Frontmatter::parse(format, text, &default_spec);
-            assert!(fm.is_ok(), "Failed to parse {:?}: {:?}", format, fm.err());
-            let fm = fm.unwrap();
-            assert_eq!(
-                fm.find_field(key),
-                Some(&expected),
-                "Field mismatch for key: {key}"
-            );
-        }
-
-        #[rstest]
-        fn should_report_yaml_syntax_error_with_location(
-            default_spec: FrontmatterConfigSpec,
-        ) {
-            let text = "key: : invalid";
-            let result = Frontmatter::parse(
-                RawFrontmatterFormat::Yaml,
-                text,
-                &default_spec,
-            );
-
-            assert!(
-                matches!(
-                    result,
-                    Err(NoteParseError::Frontmatter {
-                        format: "YAML",
-                        ..
-                    })
-                ),
-                "Expected YAML parse error, got: {result:?}"
-            );
-
-            if let Err(NoteParseError::Frontmatter {
-                line,
-                ..
-            }) = result
-            {
-                assert!(line.is_some(), "Expected line number in YAML error");
-            }
-        }
-
-        #[rstest]
-        fn should_report_toml_syntax_error(
-            default_spec: FrontmatterConfigSpec,
-        ) {
-            let text = "key = invalid_no_quotes";
-            let result = Frontmatter::parse(
-                RawFrontmatterFormat::Toml,
-                text,
-                &default_spec,
-            );
-
-            assert!(
-                matches!(
-                    result,
-                    Err(NoteParseError::Frontmatter {
-                        format: "TOML",
-                        ..
-                    })
-                ),
-                "Expected TOML parse error, got: {result:?}"
-            );
-        }
-    }
-
-    mod sanitization {
-        use super::*;
-        use crate::note::raw::RawFrontmatterFormat;
-
-        #[rstest]
-        #[case::yaml_map_link("link: [[My Page]]", "link: \"[[My Page]]\"")]
-        #[case::yaml_list_link("- [[Another Page]]", "- \"[[Another Page]]\"")]
-        #[case::yaml_map_link_with_display(
-            "link: [[My Page|Display]]",
-            "link: \"[[My Page|Display]]\""
-        )]
-        #[case::yaml_mixed(
-            "title: Hello\nlink: [[Page]]\n- [[Item]]",
-            "title: Hello\nlink: \"[[Page]]\"\n- \"[[Item]]\""
-        )]
-        #[case::yaml_already_quoted(
-            "link: \"[[Already Quoted]]\"",
-            "link: \"[[Already Quoted]]\""
-        )]
-        fn should_sanitize_obsidian_links_in_yaml(
-            #[case] input: &str,
-            #[case] expected: &str,
-        ) {
-            let result = Frontmatter::sanitize_yaml_obsidian_links(input);
-            assert_eq!(
-                result.as_ref(),
-                expected,
-                "Sanitization failed for input: {input}"
-            );
-        }
-
-        #[rstest]
-        fn should_parse_yaml_with_unquoted_links(
-            default_spec: FrontmatterConfigSpec,
-        ) {
-            let text = "link: [[Obsidian Link]]";
-            let fm = Frontmatter::parse(
-                RawFrontmatterFormat::Yaml,
-                text,
-                &default_spec,
-            )
-            .unwrap();
-            assert_eq!(
-                fm.find_str("link").unwrap().unwrap().as_ref(),
-                "[[Obsidian Link]]"
             );
         }
     }
@@ -1247,13 +1011,6 @@ mod tests {
         use super::*;
 
         proptest! {
-            #[test]
-            fn sanitize_is_idempotent(s in ".*") {
-                let s1 = Frontmatter::sanitize_yaml_obsidian_links(&s);
-                let s2 = Frontmatter::sanitize_yaml_obsidian_links(&s1);
-                prop_assert_eq!(s1.as_ref(), s2.as_ref());
-            }
-
             #[test]
             fn alias_name_accepts_valid_strings(s in "[a-zA-Z0-9_-]+") {
                 let res = AliasValue::try_new(&s);
