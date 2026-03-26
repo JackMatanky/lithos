@@ -1,50 +1,31 @@
 //! Typed processing pipeline for building or updating a `PropertyBank`.
 //!
-//! This module provides a dimensional typestate pattern for the property bank
-//! load/update workflow. The processor uses two generic parameters:
+//! # Purpose
 //!
-//! - **[Stage](Self::Stage)**: The current phase of the pipeline
-//!   ([`Discovery`], [`Comparison`], [`Analysis`], [`Refresh`],
-//!   [`Construction`], [`Completed`]).
-//! - **[Status](Self::Status)**: The knowledge state carrying data and proven
-//!   invariants ([`Unknown`], [`Missing`], [`Present`], [`Suspect`],
-//!   [`StaleTimestamps`], [`StaleContent`], [`New`], [`Changed`], [`Fresh`],
-//!   [`Ready`]).
+//! This module implements a typestate pipeline that chooses the cheapest valid
+//! path to a final `PropertyBank`. It uses two compile-time dimensions:
 //!
-//! This separation eliminates redundant state definitions and reduces
-//! orchestration complexity in the [`Builder`](crate::schema::Builder).
+//! - **Stage**: the current pipeline phase (`Discovery`, `Comparison`,
+//!   `Analysis`, `Refresh`, `Construction`, `Completed`).
+//! - **Status**: the knowledge state carrying data and invariants (`Unknown`,
+//!   `Missing`, `Present`, `Suspect`, `StaleTimestamps`, `StaleContent`, `New`,
+//!   `Changed`, `Fresh`, `Ready`).
 //!
-//! ## Design
+//! The dual-typestate design prevents invalid transitions at compile time and
+//! keeps orchestration in the [`Builder`](crate::schema::Builder).
 //!
-//! The pipeline follows a "cheap to expensive" check hierarchy:
+//! # Design
 //!
-//! 1. **Discovery**: Check if a cached view exists.
-//! 2. **Comparison**: Compare timestamps, then content hashes.
-//! 3. **Analysis**: Compute property deltas (expensive parse only when needed).
-//! 4. **Refresh**: Sync metadata without rebuilding the bank.
-//! 5. **Construction**: Create, update, or fetch the final bank.
-//! 6. **Completed**: Extract the finished `PropertyBank`.
+//! The pipeline follows a "cheap to expensive" hierarchy:
 //!
-//! ## Usage
+//! 1. **Discovery**: determine if a cached view exists.
+//! 2. **Comparison**: compare timestamps, then content hash.
+//! 3. **Analysis**: parse and compare per-property hashes.
+//! 4. **Refresh**: early-commit metadata when only timestamps/content changed.
+//! 5. **Construction**: create, update, or fetch the domain bank.
+//! 6. **Completed**: produce the final `PropertyBank`.
 //!
-//! ```ignore
-//! use property_bank_processor::{PropertyBankProcessor, Discovery, Unknown};
-//!
-//! let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
-//! let branch = pipeline.discover(filename, &source, &config_path, &repo)?;
-//!
-//! match branch {
-//!     ComparisonBranch::Missing(p) => {
-//!         let content = source.read_to_string(&config_path)?;
-//!         p.parse(&config_path, &content)?.create(filename, &repo)?
-//!     }
-//!     ComparisonBranch::Present(p) => {
-//!         // ... handle existing view
-//!     }
-//! }
-//! ```
-//!
-//! ## Pipeline Flow
+//! # Flow
 //!
 //! ```text
 //! Discovery
@@ -64,11 +45,41 @@
 //!   └─ [changes]    → update() → Done
 //! ```
 //!
-//! The pipeline optimizes for minimal work:
-//! - Timestamps match → skip all parsing, just fetch
-//! - Content hash matches → skip parsing, just update metadata
-//! - Property hashes match → skip bank rebuild, just update metadata
-//! - Property hashes differ → apply delta to existing bank
+//! # Invariants
+//!
+//! - `Present` guarantees a loaded `RawPropertyBankView`.
+//! - `Suspect` guarantees file content for hashing/parsing.
+//! - `StaleTimestamps` means content is identical; only timestamps changed.
+//! - `StaleContent` means semantic content is identical; content hash differs.
+//! - `Fresh` means the stored bank can be fetched without rebuilding.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use lithos_core::schema::property_bank_processor::{
+//!     ComparisonBranch, Discovery, PropertyBankProcessor, Unknown,
+//! };
+//!
+//! let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
+//! let branch = pipeline.discover(filename, &source, &config_path, &repo)?;
+//!
+//! match branch {
+//!     ComparisonBranch::Missing(p) => {
+//!         let content = source.read_to_string(&config_path)?;
+//!         p.parse(&config_path, &content)?.create(filename, &repo)?
+//!     }
+//!     ComparisonBranch::Present(p) => {
+//!         // timestamp/content checks, then fetch/update
+//!     }
+//! }
+//! ```
+//!
+//! # Maintenance Notes
+//!
+//! - Add new stages/statuses only when they introduce a new invariant or reduce
+//!   work; each state must carry the data needed to satisfy its invariant.
+//! - `sync_metadata` is an early-commit checkpoint and intentionally
+//!   side-effecting to avoid repeated parsing on retries.
 
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
@@ -90,164 +101,7 @@ use crate::{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Property Delta
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Property delta between the cached view and the new raw bank.
-///
-/// This struct captures the differences between the current file content
-/// and the cached view. It tracks both new/changed properties (upserts)
-/// and removed properties.
-#[derive(Debug)]
-struct PropertyDelta {
-    /// New or changed properties.
-    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
-    /// Removed properties.
-    removals: Vec<PropertyName>,
-}
-
-impl PropertyDelta {
-    /// Returns `true` if there are no changes.
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.upserts.is_empty() && self.removals.is_empty()
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stage Markers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Entry phase: checking the repository for a cached view.
-///
-/// Logically valid actions:
-/// - `discover`: Query the repository for existing metadata.
-#[derive(Debug)]
-pub(crate) struct Discovery;
-
-/// Identity phase: comparing file attributes with cached metadata.
-///
-/// Logically valid actions:
-/// - `parse`: When no view exists (initial ingestion).
-/// - `check_timestamps`: Verify if binary identity is preserved via file times.
-/// - `check_content`: Verify if semantic identity is preserved via hash.
-#[derive(Debug)]
-pub(crate) struct Comparison;
-
-/// Semantic phase: computing the property delta between the file and view.
-///
-/// This stage is reached when binary/content identity checks fail.
-/// Logically valid actions:
-/// - `analyze`: Perform full parse and compare property-level hashes.
-#[derive(Debug)]
-pub(crate) struct Analysis;
-
-/// Maintenance phase: early commitment of proven metadata.
-///
-/// This stage updates the cached view metadata without rebuilding the
-/// domain model. It represents a "recovery checkpoint".
-/// Logically valid actions:
-/// - `sync_metadata`: Commit proven file/content metadata to the repository.
-#[derive(Debug)]
-pub(crate) struct Refresh;
-
-/// Building phase: terminal domain construction.
-///
-/// Logically valid actions:
-/// - `create`: Full construction from new file.
-/// - `update`: Incremental construction via property delta.
-/// - `fetch`: Retrieval from database when identity is proven.
-#[derive(Debug)]
-pub(crate) struct Construction;
-
-/// Terminal phase: the `PropertyBank` is ready and owned.
-#[derive(Debug)]
-pub(crate) struct Completed;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Status Markers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Initial state before any knowledge has been gathered.
-#[derive(Debug)]
-pub(crate) struct Unknown;
-
-/// Proven: View does not exist in repository.
-/// Invariant: A local file exists but has no associated metadata cache.
-#[derive(Debug)]
-pub(crate) struct Missing {
-    times: RawFileTimes,
-}
-
-/// Proven: View exists in repository.
-/// Invariant: `RawPropertyBankView` is loaded and available for comparison.
-#[derive(Debug)]
-pub(crate) struct Present {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-}
-
-/// Proven: Binary identity (timestamps) or content identity (hash) has
-/// diverged. Invariant: Carrying local file content for deeper analysis or
-/// re-parsing.
-#[derive(Debug)]
-pub(crate) struct Suspect {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-    content: String,
-}
-
-/// Proven: `ContentHash(File) == ContentHash(View)`.
-/// Invariant: Only file metadata (ctime/mtime) has changed. The domain
-/// model in the database is guaranteed to be up-to-date.
-#[derive(Debug)]
-pub(crate) struct StaleTimestamps {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-}
-
-/// Proven: `Properties(File) == Properties(View)`.
-/// Invariant: File content has changed (e.g., whitespace) but the semantic
-/// data is identical. Both content hash and timestamps need syncing.
-#[derive(Debug)]
-pub(crate) struct StaleContent {
-    times: RawFileTimes,
-    view: RawPropertyBankView,
-    content_hash: [u8; 32],
-}
-
-/// Proven: Initial ingestion path selected.
-/// Invariant: No previous version exists; `RawPropertyBank` is freshly parsed.
-#[derive(Debug)]
-pub(crate) struct New {
-    raw: RawPropertyBank,
-    content: String,
-}
-
-/// Proven: Partial divergence in property values.
-/// Invariant: Divergence is non-zero but manageable via delta update.
-#[derive(Debug)]
-pub(crate) struct Changed {
-    raw: RawPropertyBank,
-    delta: PropertyDelta,
-    content: String,
-}
-
-/// Proven: Identity is fully synchronized.
-/// Invariant: The `RawPropertyBankView` in the repository correctly represents
-/// the local file state. The domain bank can be safely retrieved.
-#[derive(Debug)]
-pub(crate) struct Fresh;
-
-/// Proven: Terminal ingestion goal reached.
-/// Invariant: `PropertyBank` is valid, registered, and owned.
-#[derive(Debug)]
-pub(crate) struct Ready {
-    bank: PropertyBank,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Processor Wrapper
+//  Processor Core
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Core state machine tracking the current pipeline stage and knowledge status
@@ -256,17 +110,8 @@ pub(crate) struct Ready {
 /// This struct uses a dimensional typestate pattern with two generic
 /// parameters:
 ///
-/// - `P` (Stage): The current phase of the pipeline (Discovery, Comparison,
-///   Analysis, Refresh, Construction, Completed).
-/// - `S` (Status): The knowledge state carrying data and proven invariants
-///   (Unknown, Missing, Present, Suspect, `StaleTimestamps`, `StaleContent`,
-///   New, Changed, Fresh, Ready).
-/// # Type Safety
-///
-/// The dual-generic approach ensures that invalid state transitions are
-/// impossible at compile time. Each method is only available on specific
-/// Stage/Status combinations, making the API self-documenting and impossible
-/// to misuse.
+/// - `P` (Stage): the current phase of the pipeline.
+/// - `S` (Status): the knowledge state carrying data and invariants.
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct PropertyBankProcessor<P, S> {
@@ -288,10 +133,29 @@ impl<P, S> PropertyBankProcessor<P, S> {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Discovery Stage
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Entry phase: checking the repository for a cached view.
+#[derive(Debug)]
+pub(crate) struct Discovery;
+
+/// Initial state before any knowledge has been gathered.
+#[derive(Debug)]
+pub(crate) struct Unknown;
+
+/// Result of the Discovery stage, determining the next branch in the pipeline.
+#[derive(Debug)]
+pub(crate) enum ComparisonBranch {
+    /// No cached view exists; the file is new.
+    Missing(PropertyBankProcessor<Comparison, Missing>),
+    /// A cached view exists; proceed to comparison checks.
+    Present(PropertyBankProcessor<Comparison, Present>),
+}
+
 impl PropertyBankProcessor<Discovery, Unknown> {
     /// Creates a new processor in the initial state.
-    ///
-    /// # Examples
     ///
     /// ```ignore
     /// # use lithos_core::schema::property_bank_processor::{
@@ -309,10 +173,9 @@ impl PropertyBankProcessor<Discovery, Unknown> {
 
     /// Initial entry point: checks the repository for an existing view.
     ///
-    /// This method is purely an orchestration helper that gathers initial
-    /// metadata (file times) and queries the repository. It determines
-    /// whether the pipeline starts as a "New Ingestion" (`Missing`) or an
-    /// "Incremental Update" (`Present`).
+    /// This method gathers file times and queries the repository to decide
+    /// whether the pipeline starts as a `Missing` (new ingestion) or a
+    /// `Present` (incremental update) branch.
     ///
     /// # Errors
     ///
@@ -366,27 +229,54 @@ impl Default for PropertyBankProcessor<Discovery, Unknown> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Discovery Stage
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Result of the Discovery stage, determining the next branch in the pipeline.
-#[derive(Debug)]
-pub(crate) enum ComparisonBranch {
-    /// No cached view exists; the file is new.
-    Missing(PropertyBankProcessor<Comparison, Missing>),
-    /// A cached view exists; proceed to comparison checks.
-    Present(PropertyBankProcessor<Comparison, Present>),
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  Comparison Stage
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Identity phase: comparing file attributes with cached metadata.
+#[derive(Debug)]
+pub(crate) struct Comparison;
+
+/// Proven: View does not exist in repository.
+#[derive(Debug)]
+pub(crate) struct Missing {
+    times: RawFileTimes,
+}
+
+/// Proven: View exists in repository.
+#[derive(Debug)]
+pub(crate) struct Present {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+}
+
+/// Proven: binary identity has diverged and content is needed for analysis.
+#[derive(Debug)]
+pub(crate) struct Suspect {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+    content: String,
+}
+
+/// Result of timestamp comparison in the Comparison stage.
+#[derive(Debug)]
+pub(crate) enum TimestampBranch {
+    /// Timestamps match; the cached bank is fresh.
+    Match(PropertyBankProcessor<Construction, Fresh>),
+    /// Timestamps mismatch; proceed to content hash check.
+    Mismatch(PropertyBankProcessor<Comparison, Suspect>),
+}
+
+/// Result of content hash comparison in the Comparison stage.
+#[derive(Debug)]
+pub(crate) enum ContentBranch {
+    /// Content hash matches; only timestamps need updating.
+    Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
+    /// Content hash mismatches; proceed to delta analysis.
+    Mismatch(PropertyBankProcessor<Analysis, Suspect>),
+}
+
 impl PropertyBankProcessor<Comparison, Missing> {
-    /// Initial Ingestion Path: parses new file content into a domain bank.
-    ///
-    /// This method is only available when no cached view exists. It performs
-    /// a full parse and prepares the processor for terminal construction.
+    /// Parses new file content into a raw bank.
     ///
     /// # Errors
     ///
@@ -412,39 +302,8 @@ impl PropertyBankProcessor<Comparison, Missing> {
     }
 }
 
-/// Result of timestamp comparison in the Comparison stage.
-#[derive(Debug)]
-pub(crate) enum TimestampBranch {
-    /// Timestamps match; the cached bank is fresh.
-    Match(PropertyBankProcessor<Construction, Fresh>),
-    /// Timestamps mismatch; proceed to content hash check.
-    Mismatch(PropertyBankProcessor<Comparison, Suspect>),
-}
-
-/// Result of content hash comparison in the Comparison stage.
-#[derive(Debug)]
-pub(crate) enum ContentBranch {
-    /// Content hash matches; only timestamps need updating.
-    Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
-    /// Content hash mismatches; proceed to delta analysis.
-    Mismatch(PropertyBankProcessor<Analysis, Suspect>),
-}
-
-/// Result of property delta analysis in the Analysis stage.
-#[derive(Debug)]
-pub(crate) enum AnalysisBranch {
-    /// Content changed but properties did not.
-    Empty(PropertyBankProcessor<Refresh, StaleContent>),
-    /// Properties changed; proceed with delta update.
-    Delta(PropertyBankProcessor<Construction, Changed>),
-}
-
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
-    ///
-    /// This is the first "cheap" check for a binary identity match. If the
-    /// file's ctime/mtime has not changed, we can safely skip all parsing,
-    /// hashing, and analysis steps.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_timestamps(self, content: &str) -> TimestampBranch {
@@ -469,9 +328,6 @@ impl PropertyBankProcessor<Comparison, Present> {
 
 impl PropertyBankProcessor<Comparison, Suspect> {
     /// Checks if the content hash matches the cached view.
-    ///
-    /// This is the second check when timestamps mismatch. If content hash
-    /// matches, we only need to update timestamps (not re-parse).
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_content(
@@ -498,13 +354,38 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 //  Analysis Stage
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Semantic phase: computing the property delta between the file and view.
+#[derive(Debug)]
+pub(crate) struct Analysis;
+
+/// Result of property delta analysis in the Analysis stage.
+#[derive(Debug)]
+pub(crate) enum AnalysisBranch {
+    /// Content changed but properties did not.
+    Empty(PropertyBankProcessor<Refresh, StaleContent>),
+    /// Properties changed; proceed with delta update.
+    Delta(PropertyBankProcessor<Construction, Changed>),
+}
+
+/// Property delta between the cached view and the new raw bank.
+#[derive(Debug)]
+struct PropertyDelta {
+    /// New or changed properties.
+    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
+    /// Removed properties.
+    removals: Vec<PropertyName>,
+}
+
+impl PropertyDelta {
+    /// Returns `true` if there are no changes.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.upserts.is_empty() && self.removals.is_empty()
+    }
+}
+
 impl PropertyBankProcessor<Analysis, Suspect> {
-    /// Deep Semantic Check: analyzes property deltas against the cached view.
-    ///
-    /// This is the most expensive check. It parses the file and compares
-    /// the hash of every property with the cached version. If the properties
-    /// are identical (despite whitespace or comment changes), it returns
-    /// `StaleContent` for early commitment in the `Refresh` stage.
+    /// Parses the file and compares property-level hashes.
     ///
     /// # Errors
     ///
@@ -601,13 +482,27 @@ impl PropertyBankProcessor<Analysis, Suspect> {
 //  Refresh Stage
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Maintenance phase: early commitment of proven metadata.
+#[derive(Debug)]
+pub(crate) struct Refresh;
+
+/// Proven: `ContentHash(File) == ContentHash(View)`.
+#[derive(Debug)]
+pub(crate) struct StaleTimestamps {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+}
+
+/// Proven: `Properties(File) == Properties(View)`.
+#[derive(Debug)]
+pub(crate) struct StaleContent {
+    times: RawFileTimes,
+    view: RawPropertyBankView,
+    content_hash: [u8; 32],
+}
+
 impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     /// Syncs file timestamps to the cached view.
-    ///
-    /// This method performs an "Early Commitment" of metadata. By saving the
-    /// view *before* returning, we ensure that even if the subsequent
-    /// `fetch()` fails, the next pipeline execution will find matching
-    /// timestamps and skip re-parsing entirely.
     ///
     /// # Errors
     ///
@@ -639,12 +534,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
 }
 
 impl PropertyBankProcessor<Refresh, StaleContent> {
-    /// Syncs metadata (timestamps and content hash) to the cached view.
-    ///
-    /// This method performs an "Early Commitment" of metadata. By saving the
-    /// view *before* returning, we ensure that even if the subsequent
-    /// `fetch()` fails, the next pipeline execution will find matching
-    /// timestamps and skip both re-parsing and delta analysis entirely.
+    /// Syncs timestamps and content hash to the cached view.
     ///
     /// # Errors
     ///
@@ -683,11 +573,31 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
 //  Construction Stage
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Building phase: terminal domain construction.
+#[derive(Debug)]
+pub(crate) struct Construction;
+
+/// Proven: Initial ingestion path selected.
+#[derive(Debug)]
+pub(crate) struct New {
+    raw: RawPropertyBank,
+    content: String,
+}
+
+/// Proven: Partial divergence in property values.
+#[derive(Debug)]
+pub(crate) struct Changed {
+    raw: RawPropertyBank,
+    delta: PropertyDelta,
+    content: String,
+}
+
+/// Proven: Identity is fully synchronized.
+#[derive(Debug)]
+pub(crate) struct Fresh;
+
 impl PropertyBankProcessor<Construction, New> {
-    /// Terminal Action: performs the initial full bank construction.
-    ///
-    /// This method builds the domain model from a fresh parse, saves it to
-    /// the database, and creates the initial view in the repository.
+    /// Performs the initial full bank construction.
     ///
     /// # Errors
     ///
@@ -765,11 +675,7 @@ impl PropertyBankProcessor<Construction, New> {
 }
 
 impl PropertyBankProcessor<Construction, Changed> {
-    /// Terminal Action: performs incremental bank updates via property deltas.
-    ///
-    /// This method applies only the changed properties (upserts and removals)
-    /// to the existing bank, preserving property IDs. It then persists the
-    /// bank and updates the view in the repository.
+    /// Applies incremental bank updates via property deltas.
     ///
     /// # Errors
     ///
@@ -874,11 +780,7 @@ impl PropertyBankProcessor<Construction, Changed> {
 }
 
 impl PropertyBankProcessor<Construction, Fresh> {
-    /// Terminal Action: retrieves the already-current bank from the repository.
-    ///
-    /// This is the fastest terminal path. It assumes the repository view
-    /// is already synchronized with the local file and simply fetches
-    /// the domain bank from the database.
+    /// Retrieves the already-current bank from the repository.
     ///
     /// # Errors
     ///
@@ -911,11 +813,18 @@ impl PropertyBankProcessor<Construction, Fresh> {
 //  Completed Stage
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Terminal phase: the `PropertyBank` is ready and owned.
+#[derive(Debug)]
+pub(crate) struct Completed;
+
+/// Proven: terminal ingestion goal reached.
+#[derive(Debug)]
+pub(crate) struct Ready {
+    bank: PropertyBank,
+}
+
 impl PropertyBankProcessor<Completed, Ready> {
     /// Extracts the completed `PropertyBank`.
-    ///
-    /// This is the terminal method - it consumes the processor and returns
-    /// the finished bank.
     #[inline]
     #[must_use]
     pub(crate) fn into_bank(self) -> PropertyBank {
