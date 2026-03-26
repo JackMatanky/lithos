@@ -160,6 +160,7 @@ pub(crate) struct Unknown;
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
+#[must_use = "branch outcomes must be handled"]
 pub(crate) enum ComparisonBranch {
     /// No cached view exists; the file is new.
     Missing(PropertyBankProcessor<Comparison, Missing>),
@@ -167,6 +168,7 @@ pub(crate) enum ComparisonBranch {
     Present(PropertyBankProcessor<Comparison, Present>),
 }
 
+/// Entry-state operations that decide whether a cached view exists.
 impl PropertyBankProcessor<Discovery, Unknown> {
     /// Creates a new processor in the initial state.
     ///
@@ -274,6 +276,7 @@ pub(crate) struct Suspect {
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
+#[must_use = "branch outcomes must be handled"]
 pub(crate) enum TimestampBranch {
     /// Timestamps match; the cached bank is fresh.
     Match(PropertyBankProcessor<Construction, Fresh>),
@@ -285,6 +288,7 @@ pub(crate) enum TimestampBranch {
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
+#[must_use = "branch outcomes must be handled"]
 pub(crate) enum ContentBranch {
     /// Content hash matches; only timestamps need updating.
     Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
@@ -292,6 +296,7 @@ pub(crate) enum ContentBranch {
     Mismatch(PropertyBankProcessor<Analysis, Suspect>),
 }
 
+/// Missing-view operations that parse a new file into a raw bank.
 impl PropertyBankProcessor<Comparison, Missing> {
     /// Parses new file content into a raw bank.
     ///
@@ -319,6 +324,7 @@ impl PropertyBankProcessor<Comparison, Missing> {
     }
 }
 
+/// Present-view operations that compare timestamps against the cache.
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
     ///
@@ -345,6 +351,7 @@ impl PropertyBankProcessor<Comparison, Present> {
     }
 }
 
+/// Suspect operations that compare content hashes after timestamp drift.
 impl PropertyBankProcessor<Comparison, Suspect> {
     /// Checks if the content hash matches the cached view.
     ///
@@ -384,6 +391,7 @@ pub(crate) struct Analysis;
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
+#[must_use = "branch outcomes must be handled"]
 pub(crate) enum AnalysisBranch {
     /// Content changed but properties did not.
     Empty(PropertyBankProcessor<Refresh, StaleContent>),
@@ -408,6 +416,7 @@ impl PropertyDelta {
     }
 }
 
+/// Analysis operations that compute property-level deltas.
 impl PropertyBankProcessor<Analysis, Suspect> {
     /// Parses the file and compares property-level hashes.
     ///
@@ -528,6 +537,7 @@ pub(crate) struct StaleContent {
     content_hash: [u8; 32],
 }
 
+/// Refresh operations that sync only file timestamps.
 impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     /// Syncs file timestamps to the cached view.
     ///
@@ -560,6 +570,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     }
 }
 
+/// Refresh operations that sync timestamps plus content hash.
 impl PropertyBankProcessor<Refresh, StaleContent> {
     /// Syncs timestamps and content hash to the cached view.
     ///
@@ -623,6 +634,7 @@ pub(crate) struct Changed {
 #[derive(Debug)]
 pub(crate) struct Fresh;
 
+/// Construction operations that build the initial property bank.
 impl PropertyBankProcessor<Construction, New> {
     /// Performs the initial full bank construction.
     ///
@@ -703,6 +715,7 @@ impl PropertyBankProcessor<Construction, New> {
     }
 }
 
+/// Construction operations that apply property deltas.
 impl PropertyBankProcessor<Construction, Changed> {
     /// Applies incremental bank updates via property deltas.
     ///
@@ -810,6 +823,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     }
 }
 
+/// Construction operations that fetch the cached bank as-is.
 impl PropertyBankProcessor<Construction, Fresh> {
     /// Retrieves the already-current bank from the repository.
     ///
@@ -856,6 +870,7 @@ pub(crate) struct Ready {
     bank: PropertyBank,
 }
 
+/// Completed operations that expose the final property bank.
 impl PropertyBankProcessor<Completed, Ready> {
     /// Extracts the completed `PropertyBank`.
     #[inline]
