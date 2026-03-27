@@ -103,7 +103,11 @@
 //! - `sync_metadata` is an early-commit checkpoint and intentionally
 //!   side-effecting to avoid repeated parsing on retries.
 
-use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+    time::SystemTime,
+};
 
 use crate::{
     fs::FsReader,
@@ -414,7 +418,7 @@ pub(crate) enum AnalysisBranch {
 #[derive(Debug)]
 struct PropertyDelta {
     /// New or changed properties.
-    upserts: Vec<(PropertyName, RawPropertyBankEntry)>,
+    upserts: HashMap<PropertyName, RawPropertyBankEntry>,
     /// Removed properties.
     removals: Vec<PropertyName>,
 }
@@ -480,12 +484,7 @@ impl PropertyBankProcessor<Analysis, Suspect> {
 
     #[inline]
     fn delta_from_new_file(raw: &RawPropertyBank) -> PropertyDelta {
-        let mut upserts = raw
-            .properties()
-            .iter()
-            .map(|(name, entry)| (name.clone(), entry.clone()))
-            .collect::<Vec<_>>();
-        upserts.sort_by(|left, right| left.0.cmp(&right.0));
+        let upserts = raw.properties().as_map().clone();
 
         PropertyDelta {
             upserts,
@@ -496,15 +495,15 @@ impl PropertyBankProcessor<Analysis, Suspect> {
     #[inline]
     fn delta_from_cached_view(
         raw: &RawPropertyBank,
-        prev_hashes: &std::collections::HashMap<PropertyName, [u8; 32]>,
+        prev_hashes: &HashMap<PropertyName, [u8; 32]>,
     ) -> PropertyDelta {
-        let mut upserts = Vec::new();
+        let mut upserts = HashMap::new();
         let mut seen = HashSet::with_capacity(raw.properties().len());
 
         for (name, entry) in raw.properties().iter() {
             let new_hash = HashMetadata::hash_entry(entry);
             if prev_hashes.get(name) != Some(&new_hash) {
-                upserts.push((name.clone(), entry.clone()));
+                upserts.insert(name.clone(), entry.clone());
             }
             seen.insert(name.clone());
         }
@@ -515,7 +514,6 @@ impl PropertyBankProcessor<Analysis, Suspect> {
             .cloned()
             .collect::<Vec<_>>();
 
-        upserts.sort_by(|left, right| left.0.cmp(&right.0));
         removals.sort();
 
         PropertyDelta {
@@ -677,10 +675,7 @@ impl PropertyBankProcessor<Construction, New> {
     fn build_bank(&self) -> Result<PropertyBank, SchemaLoaderError> {
         let mut bank = PropertyBank::new();
 
-        let mut entries: Vec<_> = self.status.raw.properties().iter().collect();
-        entries.sort_by(|left, right| left.0.cmp(right.0));
-
-        for (name, entry) in entries {
+        for (name, entry) in self.status.raw.properties().iter() {
             let property = Property::try_from((name.clone(), entry.clone()))
                 .map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
@@ -772,9 +767,11 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         let any_changed = !self.status.delta.is_empty();
 
-        for pair in &self.status.delta.upserts {
-            let name = &pair.0;
-            let entry = &pair.1;
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property registration order in the bank is irrelevant"
+        )]
+        for (name, entry) in &self.status.delta.upserts {
             let property = Property::try_from((name.clone(), entry.clone()))
                 .map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
