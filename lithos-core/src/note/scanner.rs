@@ -10,11 +10,10 @@
 //! 3. **Resumable**: Using the [`Cursor`] type, scanning can be paused and
 //!    resumed across disjoint text segments while maintaining context.
 
-use std::borrow::Cow;
-
 use crate::note::{
     error::NoteError,
     position::{SourceByteOffset, SourceByteRange},
+    raw::{RawBlockRef, RawInlineFieldToken, RawTag},
 };
 
 /// A zero-copy artifact extracted from a text block.
@@ -29,34 +28,17 @@ pub enum ScannedArtifact<'source> {
     ///
     /// Extracted when a `#` is encountered at a word boundary, followed by
     /// valid tag characters.
-    Tag {
-        /// The raw tag text including the leading `#`.
-        text: Cow<'source, str>,
-        /// The absolute source range for the tag.
-        range: SourceByteRange,
-    },
-    /// An inline field (e.g., `[key:: value]` or `📅 2024-03-19`).
+    Tag(RawTag<'source>),
+    /// An inline field token (e.g., `[key:: value]` or `📅 2024-03-19`).
     ///
     /// Supports both the standard Obsidian `key:: value` syntax (bracketed or
     /// bare at line start) and the colon-less emoji field syntax.
-    InlineField {
-        /// The field key (e.g., "priority" or "📅").
-        key: Cow<'source, str>,
-        /// The field value, trimmed of leading/trailing whitespace.
-        value: Cow<'source, str>,
-        /// The absolute source range for the field.
-        range: SourceByteRange,
-    },
+    InlineField(RawInlineFieldToken<'source>),
     /// A block reference (e.g., `^block-id`).
     ///
     /// Extracted when a `^` is found at the very end of a block (followed only
     /// by optional whitespace).
-    BlockRef {
-        /// The unique block identifier, excluding the leading `^`.
-        id: Cow<'source, str>,
-        /// The absolute source position of the `^` character.
-        position: SourceByteOffset,
-    },
+    BlockRef(RawBlockRef<'source>),
     /// A task marker (e.g., the `x` in `- [x]`).
     ///
     /// Extracted from list items identifying the precise character used within
@@ -73,24 +55,19 @@ impl ScannedArtifact<'_> {
     /// Returns the absolute source position of the artifact.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self are clearer here"
+    )]
     pub const fn position(&self) -> SourceByteOffset {
-        match *self {
-            Self::Tag {
-                range,
-                ..
-            }
-            | Self::InlineField {
-                range,
-                ..
-            } => range.start(),
-            Self::BlockRef {
+        match self {
+            Self::Tag(tag) => tag.range.start(),
+            Self::InlineField(field) => field.range.start(),
+            Self::BlockRef(block_ref) => block_ref.position,
+            Self::TaskMarker {
                 position,
                 ..
-            }
-            | Self::TaskMarker {
-                position,
-                ..
-            } => position,
+            } => *position,
         }
     }
 
@@ -106,29 +83,13 @@ impl ScannedArtifact<'_> {
     #[must_use]
     pub fn into_owned(self) -> ScannedArtifact<'static> {
         match self {
-            Self::Tag {
-                text,
-                range,
-            } => ScannedArtifact::Tag {
-                text: Cow::Owned(text.into_owned()),
-                range,
-            },
-            Self::InlineField {
-                key,
-                value,
-                range,
-            } => ScannedArtifact::InlineField {
-                key: Cow::Owned(key.into_owned()),
-                value: Cow::Owned(value.into_owned()),
-                range,
-            },
-            Self::BlockRef {
-                id,
-                position,
-            } => ScannedArtifact::BlockRef {
-                id: Cow::Owned(id.into_owned()),
-                position,
-            },
+            Self::Tag(tag) => ScannedArtifact::Tag(tag.into_owned()),
+            Self::InlineField(field) => {
+                ScannedArtifact::InlineField(field.into_owned())
+            }
+            Self::BlockRef(block_ref) => {
+                ScannedArtifact::BlockRef(block_ref.into_owned())
+            }
             Self::TaskMarker {
                 marker,
                 position,
@@ -415,10 +376,7 @@ impl NoteScanner {
             let end = cursor.offset.add_offset(idx)?;
             let range = SourceByteRange::new(start, end)?;
             cursor.advance(idx)?;
-            Ok(Some(ScannedArtifact::Tag {
-                text: text.into(),
-                range,
-            }))
+            Ok(Some(ScannedArtifact::Tag(RawTag::new(text.into(), range))))
         } else {
             Ok(None)
         }
@@ -446,11 +404,12 @@ impl NoteScanner {
                         .offset
                         .add_offset(close_idx.saturating_add(1))?;
                     let range = SourceByteRange::new(start, end)?;
-                    let artifact = ScannedArtifact::InlineField {
-                        key: key_trimmed.into(),
-                        value: value_trimmed.into(),
-                        range,
-                    };
+                    let artifact =
+                        ScannedArtifact::InlineField(RawInlineFieldToken::new(
+                            key_trimmed.into(),
+                            value_trimmed.into(),
+                            range,
+                        ));
                     cursor.advance(close_idx.saturating_add(1))?;
                     return Ok(Some(artifact));
                 }
@@ -501,11 +460,11 @@ impl NoteScanner {
                 cursor.offset.add_offset(consumed.saturating_add(val_len))?;
             let range = SourceByteRange::new(start, end)?;
             cursor.advance(consumed.saturating_add(val_len))?;
-            Ok(Some(ScannedArtifact::InlineField {
-                key: key.into(),
-                value: value.into(),
+            Ok(Some(ScannedArtifact::InlineField(RawInlineFieldToken::new(
+                key.into(),
+                value.into(),
                 range,
-            }))
+            ))))
         } else {
             Ok(None)
         }
@@ -547,11 +506,9 @@ impl NoteScanner {
                     key_len.saturating_add(2).saturating_add(val_len),
                 )?;
                 let range = SourceByteRange::new(start, end)?;
-                let artifact = ScannedArtifact::InlineField {
-                    key: key.into(),
-                    value: value.into(),
-                    range,
-                };
+                let artifact = ScannedArtifact::InlineField(
+                    RawInlineFieldToken::new(key.into(), value.into(), range),
+                );
                 cursor.advance(
                     key_len.saturating_add(2).saturating_add(val_len),
                 )?;
@@ -592,10 +549,10 @@ impl NoteScanner {
             let id = cursor.rest.get(1..len).unwrap_or("");
             let position = cursor.offset;
             cursor.advance(len.saturating_add(tail_len))?;
-            Ok(Some(ScannedArtifact::BlockRef {
-                id: id.into(),
+            Ok(Some(ScannedArtifact::BlockRef(RawBlockRef::new(
+                id.into(),
                 position,
-            }))
+            ))))
         } else {
             Ok(None)
         }
@@ -717,7 +674,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::BlockRef { id, .. } if *id == expected_id),
+                matches!(first, ScannedArtifact::BlockRef(block_ref) if block_ref.id == expected_id),
                 "Expected BlockRef with id '{expected_id}', got {first:?}"
             );
         }
@@ -759,7 +716,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::Tag { text: t, range, .. } if t == "#rust" && u32::from(range.start()) == 4),
+                matches!(first, ScannedArtifact::Tag(tag) if tag.value == "#rust" && u32::from(tag.range.start()) == 4),
                 "Expected Tag #rust at position 4, got {first:?}"
             );
         }
@@ -775,10 +732,7 @@ mod tests {
             scanner.scan_cursor(&mut cursor, &mut artifacts).unwrap();
 
             assert_eq!(artifacts.len(), 1);
-            assert!(matches!(
-                artifacts.first(),
-                Some(ScannedArtifact::Tag { .. })
-            ));
+            assert!(matches!(artifacts.first(), Some(ScannedArtifact::Tag(_))));
         }
     }
 
@@ -803,7 +757,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key: k, value: v, .. } if *k == key && *v == val),
+                matches!(first, ScannedArtifact::InlineField(field) if field.key == key && field.value == val),
                 "Expected InlineField '{key}: {val}', got {first:?}"
             );
         }
@@ -817,7 +771,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == "\u{1f4c5}" && value == "2024-03-20"),
+                matches!(first, ScannedArtifact::InlineField(field) if field.key == "\u{1f4c5}" && field.value == "2024-03-20"),
                 "Expected InlineField with emoji, got {first:?}"
             );
         }
@@ -831,7 +785,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::InlineField { key, value, .. } if key == "bare_key" && value == "bare_value"),
+                matches!(first, ScannedArtifact::InlineField(field) if field.key == "bare_key" && field.value == "bare_value"),
                 "Expected bare InlineField, got {first:?}"
             );
         }
@@ -871,33 +825,19 @@ mod tests {
             ));
             assert!(matches!(
                 artifacts.get(1),
-                Some(ScannedArtifact::Tag {
-                    text: tag_text,
-                    ..
-                }) if tag_text == "#task"
+                Some(ScannedArtifact::Tag(tag)) if tag.value == "#task"
             ));
             assert!(matches!(
                 artifacts.get(2),
-                Some(ScannedArtifact::InlineField {
-                    key: field_key,
-                    value: field_val,
-                    ..
-                }) if field_key == "priority" && field_val == "high"
+                Some(ScannedArtifact::InlineField(field)) if field.key == "priority" && field.value == "high"
             ));
             assert!(matches!(
                 artifacts.get(3),
-                Some(ScannedArtifact::InlineField {
-                    key: field_key,
-                    value: field_val,
-                    ..
-                }) if field_key == "\u{1f4c5}" && field_val == "2024-03-20"
+                Some(ScannedArtifact::InlineField(field)) if field.key == "\u{1f4c5}" && field.value == "2024-03-20"
             ));
             assert!(matches!(
                 artifacts.get(4),
-                Some(ScannedArtifact::BlockRef {
-                    id: block_id,
-                    ..
-                }) if block_id == "ref-id"
+                Some(ScannedArtifact::BlockRef(block_ref)) if block_ref.id == "ref-id"
             ));
         }
 
@@ -924,10 +864,7 @@ mod tests {
             assert_eq!(artifacts.len(), 1);
             assert!(matches!(
                 artifacts.first(),
-                Some(ScannedArtifact::Tag {
-                    text,
-                    ..
-                }) if text == "#tag1"
+                Some(ScannedArtifact::Tag(tag)) if tag.value == "#tag1"
             ));
 
             // Resume with a new segment starting immediately after an
@@ -962,7 +899,7 @@ mod tests {
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert_eq!(artifacts.len(), count);
             for a in artifacts {
-                assert!(matches!(a, ScannedArtifact::Tag { .. }));
+                assert!(matches!(a, ScannedArtifact::Tag(_)));
             }
         }
 
@@ -985,7 +922,7 @@ mod tests {
                 .unwrap();
             let first = artifacts.first().expect("Should have one artifact");
             assert!(
-                matches!(first, ScannedArtifact::Tag { range, .. } if u32::from(range.start()) == 12),
+                matches!(first, ScannedArtifact::Tag(tag) if u32::from(tag.range.start()) == 12),
                 "Expected Tag at position 12, got {first:?}"
             );
         }

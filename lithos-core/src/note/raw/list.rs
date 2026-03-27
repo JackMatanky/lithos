@@ -1,10 +1,7 @@
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use super::{inline_field::RawInlineField, tag::RawTag};
-use crate::{
-    config::task::TaskConfigSpec,
-    note::position::{SourceByteOffset, SourceByteRange},
-};
+use crate::note::position::{SourceByteOffset, SourceByteRange};
 
 /// Raw task marker kind extracted from a list item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +62,6 @@ pub struct RawList {
     pub kind: RawListKind,
     pub depth: RawListDepth,
     pub range: SourceByteRange,
-    pub task_spec: Arc<TaskConfigSpec>,
     pub item_positions: Vec<SourceByteOffset>,
 }
 
@@ -77,14 +73,12 @@ impl RawList {
         kind: RawListKind,
         depth: RawListDepth,
         range: SourceByteRange,
-        task_spec: Arc<TaskConfigSpec>,
         item_positions: Vec<SourceByteOffset>,
     ) -> Self {
         Self {
             kind,
             depth,
             range,
-            task_spec,
             item_positions,
         }
     }
@@ -96,7 +90,6 @@ impl RawList {
             kind: self.kind,
             depth: self.depth,
             range: self.range,
-            task_spec: self.task_spec,
             item_positions: self.item_positions,
         }
     }

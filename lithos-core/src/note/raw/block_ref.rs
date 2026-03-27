@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::note::position::SourceByteOffset;
 
 /// Raw block reference token extracted from note text.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct RawBlockRef<'source> {
     pub id: Cow<'source, str>,

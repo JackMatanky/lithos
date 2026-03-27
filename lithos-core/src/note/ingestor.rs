@@ -82,18 +82,15 @@ impl<'config> Ingestor<'config> {
         let relative = Path::new(path.as_str());
         let created_at = self.source.created_at(relative);
         let modified_at = self.source.modified_at(relative);
-        let frontmatter_spec = Arc::new(self.config.to_frontmatter_spec());
         let task_spec = Arc::new(self.config.to_task_spec());
         self.source
             .read_with(relative, |_path, markdown| {
-                let frontmatter_spec = Arc::clone(&frontmatter_spec);
                 let task_spec = Arc::clone(&task_spec);
                 super::parser::MarkdownParser::parse(
                     markdown,
                     path.clone(),
                     created_at,
                     modified_at,
-                    &frontmatter_spec,
                     &task_spec,
                 )
                 .map(RawNote::into_owned)
@@ -124,14 +121,12 @@ impl<'config> Ingestor<'config> {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<RawNote<'markdown>, NoteIngestError> {
-        let frontmatter_spec = Arc::new(self.config.to_frontmatter_spec());
         let task_spec = Arc::new(self.config.to_task_spec());
         super::parser::MarkdownParser::parse(
             markdown,
             path.clone(),
             created_at,
             modified_at,
-            &frontmatter_spec,
             &task_spec,
         )
     }

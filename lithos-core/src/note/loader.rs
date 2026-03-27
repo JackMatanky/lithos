@@ -67,15 +67,12 @@ where
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> Result<NoteId, NoteLoadError> {
-        let frontmatter_spec =
-            std::sync::Arc::new(self.config.to_frontmatter_spec());
         let task_spec = std::sync::Arc::new(self.config.to_task_spec());
         let raw_note = parser::MarkdownParser::parse(
             markdown,
             path.clone(),
             created_at,
             modified_at,
-            &frontmatter_spec,
             &task_spec,
         )?;
         self.load_raw(raw_note)
@@ -98,7 +95,10 @@ where
             .repository
             .find_by_path(&raw_note.path)?
             .map_or_else(NoteId::new, |note| note.id());
-        let facts = Note::try_from((raw_note, note_id))?;
+        let frontmatter_spec = self.config.to_frontmatter_spec();
+        let task_spec = self.config.to_task_spec();
+        let facts =
+            Note::try_from((raw_note, note_id, &frontmatter_spec, &task_spec))?;
         let saved_id = self.repository.save(&facts)?;
         Ok(saved_id)
     }

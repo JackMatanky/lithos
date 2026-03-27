@@ -1,13 +1,5 @@
 //! Raw note types and helpers for zero-copy ingestion.
 
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "Pattern matching style is clear in context"
-)]
-#![expect(
-    clippy::iter_over_hash_type,
-    reason = "Hash iteration order doesn't affect correctness here"
-)]
 pub(crate) mod aggregate;
 pub(crate) mod block_ref;
 pub(crate) mod frontmatter;
@@ -26,6 +18,8 @@ pub type RawFrontmatter<'source> = frontmatter::RawFrontmatter<'source>;
 pub type RawFrontmatterFormat = frontmatter::RawFrontmatterFormat;
 pub type RawHeading<'source> = heading::RawHeading<'source>;
 pub type RawInlineField<'source> = inline_field::RawInlineField<'source>;
+pub type RawInlineFieldToken<'source> =
+    inline_field::RawInlineFieldToken<'source>;
 pub type RawLink<'source> = link::RawLink<'source>;
 pub type RawLinkStyle = link::RawLinkStyle;
 pub type RawList = list::RawList;

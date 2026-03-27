@@ -447,22 +447,30 @@ impl Frontmatter {
     }
 }
 
-impl TryFrom<&RawFrontmatter<'_>> for Frontmatter {
+impl<'source> TryFrom<(&RawFrontmatter<'source>, &FrontmatterConfigSpec)>
+    for Frontmatter
+{
     type Error = NoteError;
 
     #[inline]
-    fn try_from(raw: &RawFrontmatter<'_>) -> Result<Self, Self::Error> {
+    fn try_from(
+        (raw, spec): (&RawFrontmatter<'source>, &FrontmatterConfigSpec),
+    ) -> Result<Self, Self::Error> {
         let fields = raw.parse_fields().map_err(NoteError::from)?;
-        Ok(Self::from_fields(fields, raw.spec.as_ref()))
+        Ok(Self::from_fields(fields, spec))
     }
 }
 
-impl<'source> TryFrom<RawFrontmatter<'source>> for Frontmatter {
+impl<'source> TryFrom<(RawFrontmatter<'source>, &FrontmatterConfigSpec)>
+    for Frontmatter
+{
     type Error = NoteError;
 
     #[inline]
-    fn try_from(raw: RawFrontmatter<'source>) -> Result<Self, Self::Error> {
-        Self::try_from(&raw)
+    fn try_from(
+        (raw, spec): (RawFrontmatter<'source>, &FrontmatterConfigSpec),
+    ) -> Result<Self, Self::Error> {
+        Self::try_from((&raw, spec))
     }
 }
 

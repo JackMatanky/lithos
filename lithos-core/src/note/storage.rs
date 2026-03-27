@@ -1589,7 +1589,6 @@ struct TaskIndexData {
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
-    clippy::too_many_lines,
     clippy::shadow_unrelated,
     reason = "Tests use assertions in Result-returning functions and \
               prioritize readability."
@@ -1715,17 +1714,10 @@ mod tests {
         dead_code,
         reason = "Legacy test helper maintained for future task query tests"
     )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &ScannedArtifact"
-    )]
     fn raw_note_with_indexes(path: NotePath) -> RawNote<'static> {
         let config = crate::config::aggregate::fixtures::test_config();
-        let frontmatter_spec =
-            std::sync::Arc::new(config.to_frontmatter_spec());
         let task_spec = std::sync::Arc::new(config.to_task_spec());
         let frontmatter = RawFrontmatter::new(
-            frontmatter_spec,
             crate::note::raw::RawFrontmatterFormat::Yaml,
             "aliases:\n  - Alias\nfile_class: Class\ncategory: docs\n".into(),
             SourceByteRange::new(
@@ -1757,17 +1749,15 @@ mod tests {
         let mut task_fields = Vec::new();
         let mut task_marker = None;
 
-        for artifact in &artifacts {
+        for artifact in artifacts {
             match artifact {
-                ScannedArtifact::Tag {
-                    text,
-                    range,
-                } => task_tags.push(RawTag::new(text.clone(), *range)),
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    range,
-                } => {
+                ScannedArtifact::Tag(tag) => task_tags.push(tag),
+                ScannedArtifact::InlineField(field) => {
+                    let crate::note::raw::RawInlineFieldToken {
+                        key,
+                        value,
+                        range,
+                    } = field;
                     let typed_value = RawFieldValue::from_str_with_spec(
                         value.as_ref(),
                         key.as_ref(),
@@ -1775,20 +1765,18 @@ mod tests {
                     )
                     .into_owned();
                     task_fields.push(RawInlineField::new(
-                        key.clone(),
+                        key,
                         typed_value,
-                        *range,
+                        range,
                     ));
                 }
                 ScannedArtifact::TaskMarker {
                     marker,
                     ..
                 } => {
-                    task_marker = Some(RawTaskMarker::from_char(*marker));
+                    task_marker = Some(RawTaskMarker::from_char(marker));
                 }
-                ScannedArtifact::BlockRef {
-                    ..
-                } => {}
+                ScannedArtifact::BlockRef(_) => {}
             }
         }
 
@@ -1806,13 +1794,8 @@ mod tests {
             task_tags,
             task_fields,
         );
-        let list = RawList::new(
-            list_kind,
-            list_depth,
-            range,
-            std::sync::Arc::clone(&task_spec),
-            vec![range.start()],
-        );
+        let list =
+            RawList::new(list_kind, list_depth, range, vec![range.start()]);
         RawNote::new(
             path,
             "hash".into(),
@@ -1853,11 +1836,13 @@ mod tests {
             }
         })?;
         let raw = raw_note(path.clone());
-        let facts = Note::try_from((raw, NoteId::new())).map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.to_string().into(),
-            }
-        })?;
+        let frontmatter_spec = config.to_frontmatter_spec();
+        let task_spec = config.to_task_spec();
+        let facts =
+            Note::try_from((raw, NoteId::new(), &frontmatter_spec, &task_spec))
+                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+                    message: err.to_string().into(),
+                })?;
 
         let note_id = repo.save(&facts)?;
         let stored =
@@ -1888,11 +1873,13 @@ mod tests {
             }
         })?;
         let raw = raw_note(path.clone());
-        let facts = Note::try_from((raw, NoteId::new())).map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.to_string().into(),
-            }
-        })?;
+        let frontmatter_spec = config.to_frontmatter_spec();
+        let task_spec = config.to_task_spec();
+        let facts =
+            Note::try_from((raw, NoteId::new(), &frontmatter_spec, &task_spec))
+                .map_err(|err| NoteRepositoryError::ConstraintViolation {
+                    message: err.to_string().into(),
+                })?;
         let note_id = repo.save(&facts)?;
 
         repo.delete_note(note_id)?;

@@ -1,12 +1,9 @@
-use std::{borrow::Cow, collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap};
 
 use regex::Regex;
 
-use crate::{
-    config::frontmatter::FrontmatterConfigSpec,
-    note::{
-        error::NoteParseError, position::SourceByteRange, value::FieldValue,
-    },
+use crate::note::{
+    error::NoteParseError, position::SourceByteRange, value::FieldValue,
 };
 
 /// Input format for frontmatter parsing.
@@ -22,7 +19,6 @@ pub enum RawFrontmatterFormat {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawFrontmatter<'source> {
-    pub spec: Arc<FrontmatterConfigSpec>,
     pub kind: RawFrontmatterFormat,
     pub text: Cow<'source, str>,
     pub range: SourceByteRange,
@@ -33,13 +29,11 @@ impl<'source> RawFrontmatter<'source> {
     #[inline]
     #[must_use]
     pub const fn new(
-        spec: Arc<FrontmatterConfigSpec>,
         kind: RawFrontmatterFormat,
         text: Cow<'source, str>,
         range: SourceByteRange,
     ) -> Self {
         Self {
-            spec,
             kind,
             text,
             range,
@@ -86,7 +80,6 @@ impl RawFrontmatter<'_> {
     #[must_use]
     pub fn into_owned(self) -> RawFrontmatter<'static> {
         RawFrontmatter {
-            spec: self.spec,
             kind: self.kind,
             text: Cow::Owned(self.text.into_owned()),
             range: self.range,
@@ -143,18 +136,6 @@ mod tests {
     use super::*;
     use crate::note::position::SourceByteOffset;
 
-    #[fixture]
-    fn default_spec() -> FrontmatterConfigSpec {
-        FrontmatterConfigSpec::new(
-            "title".into(),
-            "aliases".into(),
-            "tags".into(),
-            "file_class".into(),
-            "date_created".into(),
-            "date_modified".into(),
-        )
-    }
-
     #[rstest]
     #[case::yaml_simple(
         RawFrontmatterFormat::Yaml,
@@ -182,10 +163,8 @@ mod tests {
         #[case] text: &str,
         #[case] key: &str,
         #[case] expected: FieldValue,
-        default_spec: FrontmatterConfigSpec,
     ) {
         let raw = RawFrontmatter::new(
-            std::sync::Arc::new(default_spec),
             format,
             text.into(),
             SourceByteRange::new(
@@ -210,11 +189,8 @@ mod tests {
     }
 
     #[rstest]
-    fn should_report_yaml_syntax_error_with_location(
-        default_spec: FrontmatterConfigSpec,
-    ) {
+    fn should_report_yaml_syntax_error_with_location() {
         let raw = RawFrontmatter::new(
-            std::sync::Arc::new(default_spec),
             RawFrontmatterFormat::Yaml,
             "key: : invalid".into(),
             SourceByteRange::new(
@@ -246,9 +222,8 @@ mod tests {
     }
 
     #[rstest]
-    fn should_report_toml_syntax_error(default_spec: FrontmatterConfigSpec) {
+    fn should_report_toml_syntax_error() {
         let raw = RawFrontmatter::new(
-            std::sync::Arc::new(default_spec),
             RawFrontmatterFormat::Toml,
             "key = invalid_no_quotes".into(),
             SourceByteRange::new(
@@ -274,12 +249,8 @@ mod tests {
     #[rstest]
     #[case::yaml_map_link("link: [[My Page]]")]
     #[case::yaml_map_link_with_display("link: [[My Page|Display]]")]
-    fn should_parse_yaml_with_unquoted_links(
-        #[case] input: &str,
-        default_spec: FrontmatterConfigSpec,
-    ) {
+    fn should_parse_yaml_with_unquoted_links(#[case] input: &str) {
         let raw = RawFrontmatter::new(
-            std::sync::Arc::new(default_spec),
             RawFrontmatterFormat::Yaml,
             input.into(),
             SourceByteRange::new(

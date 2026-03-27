@@ -997,7 +997,7 @@ mod tests {
     use crate::{
         config::task::{TaskConfigSpec, TemporalSlot},
         note::{
-            raw::{RawListItem, RawListKind, RawTag, RawTaskMarker},
+            raw::{RawListItem, RawListKind, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -1244,15 +1244,13 @@ mod tests {
 
         for artifact in artifacts {
             match artifact {
-                ScannedArtifact::Tag {
-                    text: tag_text,
-                    range,
-                } => tags.push(RawTag::new(tag_text, range)),
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    range,
-                } => {
+                ScannedArtifact::Tag(tag) => tags.push(tag),
+                ScannedArtifact::InlineField(field) => {
+                    let crate::note::raw::RawInlineFieldToken {
+                        key,
+                        value,
+                        range,
+                    } = field;
                     let typed_value =
                         crate::note::raw::RawFieldValue::from_str_with_spec(
                             value.as_ref(),
@@ -1272,9 +1270,7 @@ mod tests {
                 } => {
                     task_marker = Some(RawTaskMarker::from_char(marker));
                 }
-                ScannedArtifact::BlockRef {
-                    ..
-                } => {}
+                ScannedArtifact::BlockRef(_) => {}
             }
         }
 

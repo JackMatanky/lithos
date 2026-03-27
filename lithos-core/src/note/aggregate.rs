@@ -9,7 +9,7 @@
 //! metadata, structure, and content facts for a single markdown file in
 //! the vault.
 
-use std::{fmt, sync::Arc, time::SystemTime};
+use std::{fmt, time::SystemTime};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
@@ -17,22 +17,25 @@ use rkyv::{
 };
 use uuid::Uuid;
 
-use crate::note::{
-    error::NoteError,
-    frontmatter::Frontmatter,
-    heading::Heading,
-    inline_fields::InlineField,
-    link::{FrontmatterLink, Link, ReferenceLink},
-    list::{ListItem, TaskExt as _},
-    paths::NotePath,
-    raw::{
-        RawBlockRef, RawHeading, RawInlineField, RawLink, RawList, RawListItem,
-        RawNote, RawReferenceLink, RawSection, RawTag,
+use crate::{
+    config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
+    note::{
+        error::NoteError,
+        frontmatter::Frontmatter,
+        heading::Heading,
+        inline_fields::InlineField,
+        link::{FrontmatterLink, Link, ReferenceLink},
+        list::{ListItem, TaskExt as _},
+        paths::NotePath,
+        raw::{
+            RawBlockRef, RawHeading, RawInlineField, RawLink, RawListItem,
+            RawNote, RawReferenceLink, RawSection, RawTag,
+        },
+        structure::{BlockRef, Section},
+        tag::Tag,
+        task::{Task, TaskRef},
+        value::FieldValue,
     },
-    structure::{BlockRef, Section},
-    tag::Tag,
-    task::{Task, TaskRef},
-    value::FieldValue,
 };
 
 /// Stable identifier for a note.
@@ -512,30 +515,16 @@ impl Note {
 
     fn collect_tasks_from(
         list_items: &mut [ListItem],
-        lists: &[RawList],
+        task_spec: &TaskConfigSpec,
     ) -> Result<Vec<Task>, NoteError> {
-        let mut spec_by_position =
-            std::collections::HashMap::with_capacity(list_items.len());
-        for list in lists {
-            for position in &list.item_positions {
-                spec_by_position.insert(*position, Arc::clone(&list.task_spec));
-            }
-        }
-
         let mut tasks = Vec::new();
         for item in list_items.iter_mut() {
             if !item.is_checkbox() {
                 continue;
             }
 
-            let spec = spec_by_position
-                .get(&item.position())
-                .or_else(|| spec_by_position.values().next());
-
-            if let Some(spec) = spec
-                && Self::should_promote_task(spec, item.tags())
-            {
-                let task = Task::promote(item, spec.as_ref())?;
+            if Self::should_promote_task(task_spec, item.tags()) {
+                let task = Task::promote(item, task_spec)?;
                 item.set_task_ref(TaskRef::new(task.range()));
                 tasks.push(task);
             }
@@ -624,12 +613,20 @@ impl Note {
     }
 }
 
-impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
+impl<'source>
+    TryFrom<(RawNote<'source>, NoteId, &FrontmatterConfigSpec, &TaskConfigSpec)>
+    for Note
+{
     type Error = NoteError;
 
     #[inline]
     fn try_from(
-        (raw, id): (RawNote<'source>, NoteId),
+        (raw, id, frontmatter_spec, task_spec): (
+            RawNote<'source>,
+            NoteId,
+            &FrontmatterConfigSpec,
+            &TaskConfigSpec,
+        ),
     ) -> Result<Self, Self::Error> {
         let RawNote {
             path,
@@ -642,7 +639,7 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
             sections,
             links,
             tags: raw_tags,
-            lists,
+            lists: _lists,
             list_items,
             inline_fields: raw_inline_fields,
             reference_links,
@@ -650,9 +647,13 @@ impl<'source> TryFrom<(RawNote<'source>, NoteId)> for Note {
             ..
         } = raw;
 
-        let frontmatter = frontmatter.map(Frontmatter::try_from).transpose()?;
+        let frontmatter = frontmatter
+            .map(|raw_frontmatter| {
+                Frontmatter::try_from((raw_frontmatter, frontmatter_spec))
+            })
+            .transpose()?;
         let mut list_items = Note::collect_list_items_from(list_items)?;
-        let tasks = Note::collect_tasks_from(&mut list_items, &lists)?;
+        let tasks = Note::collect_tasks_from(&mut list_items, task_spec)?;
         let inline_fields =
             Note::collect_inline_fields_from(raw_inline_fields, &list_items);
         let tags = Note::collect_tags_from_raw(
@@ -713,7 +714,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawFieldValue, RawInlineField, RawTag, RawTaskMarker},
+            raw::{RawFieldValue, RawInlineField, RawTaskMarker},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -878,15 +879,13 @@ mod tests {
 
         for artifact in artifacts {
             match artifact {
-                ScannedArtifact::Tag {
-                    text: tag_text,
-                    range,
-                } => tags.push(RawTag::new(tag_text, range)),
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    range,
-                } => {
+                ScannedArtifact::Tag(tag) => tags.push(tag),
+                ScannedArtifact::InlineField(field) => {
+                    let crate::note::raw::RawInlineFieldToken {
+                        key,
+                        value,
+                        range,
+                    } = field;
                     let typed_value = RawFieldValue::from_str_with_spec(
                         value.as_ref(),
                         key.as_ref(),
@@ -905,9 +904,7 @@ mod tests {
                 } => {
                     task_marker = Some(RawTaskMarker::from_char(marker));
                 }
-                ScannedArtifact::BlockRef {
-                    ..
-                } => {}
+                ScannedArtifact::BlockRef(_) => {}
             }
         }
 

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::note::position::SourceByteRange;
 
 /// Raw tag token extracted from text.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct RawTag<'source> {
     pub value: Cow<'source, str>,

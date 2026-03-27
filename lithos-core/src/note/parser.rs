@@ -14,20 +14,17 @@ use pulldown_cmark::{
     CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
 };
 
-use crate::{
-    config::frontmatter::FrontmatterConfigSpec,
-    note::{
-        error::{NoteIngestError, NoteParseError, StructureError},
-        paths::NotePath,
-        position::{SourceByteOffset, SourceByteRange},
-        raw::{
-            RawBlockRef, RawFieldValue, RawFrontmatter, RawFrontmatterFormat,
-            RawHeading, RawInlineField, RawLink, RawLinkStyle, RawList,
-            RawListDepth, RawListItem, RawListKind, RawNote, RawReferenceLink,
-            RawSection, RawSectionKind, RawTag, RawTaskMarker,
-        },
-        scanner::{NoteScanner, ScannedArtifact},
+use crate::note::{
+    error::{NoteIngestError, NoteParseError, StructureError},
+    paths::NotePath,
+    position::{SourceByteOffset, SourceByteRange},
+    raw::{
+        RawBlockRef, RawFieldValue, RawFrontmatter, RawFrontmatterFormat,
+        RawHeading, RawInlineField, RawLink, RawLinkStyle, RawList,
+        RawListDepth, RawListItem, RawListKind, RawNote, RawReferenceLink,
+        RawSection, RawSectionKind, RawTag, RawTaskMarker,
     },
+    scanner::{NoteScanner, ScannedArtifact},
 };
 
 type ScannedArtifacts<'source> = (
@@ -54,10 +51,6 @@ impl MarkdownParser {
     ///   mapping.
     #[inline]
     #[expect(
-        clippy::too_many_arguments,
-        reason = "Parser entrypoint carries required extraction context"
-    )]
-    #[expect(
         clippy::too_many_lines,
         reason = "Event sink matches comprehensive logic"
     )]
@@ -66,7 +59,6 @@ impl MarkdownParser {
         path: NotePath,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        frontmatter_spec: &Arc<FrontmatterConfigSpec>,
         task_spec: &Arc<crate::config::task::TaskConfigSpec>,
     ) -> Result<RawNote<'source>, NoteIngestError> {
         let emoji_markers = if task_spec.use_emoji {
@@ -154,7 +146,6 @@ impl MarkdownParser {
                 &mut in_metadata,
                 &mut metadata_text,
                 &mut sections,
-                frontmatter_spec,
                 &mut frontmatter,
             )? {
                 continue;
@@ -319,7 +310,7 @@ impl MarkdownParser {
         list_contexts: &mut Vec<ListContext>,
         current_link: &mut Option<LinkFrame>,
         open_item_by_depth: &mut Vec<SourceByteOffset>,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
+        _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) {
         let kind = match tag {
@@ -335,8 +326,7 @@ impl MarkdownParser {
                     None => RawListKind::Unordered,
                 };
                 list_stack.push(list_kind);
-                list_contexts
-                    .push(ListContext::new(list_kind, Arc::clone(task_spec)));
+                list_contexts.push(ListContext::new(list_kind));
                 Some(BlockKind::List)
             }
             pulldown_cmark::Tag::BlockQuote(_) => Some(BlockKind::BlockQuote),
@@ -645,7 +635,6 @@ impl MarkdownParser {
         )>,
         metadata_text: &mut String,
         sections: &mut Vec<RawSection>,
-        frontmatter_spec: &Arc<FrontmatterConfigSpec>,
         frontmatter: &mut Option<RawFrontmatter<'_>>,
     ) -> Result<bool, NoteIngestError> {
         let Some((kind, start_offset)) = *in_metadata else {
@@ -677,7 +666,6 @@ impl MarkdownParser {
                     0,
                 ));
                 *frontmatter = Some(RawFrontmatter::new(
-                    Arc::clone(frontmatter_spec),
                     kind.into(),
                     std::mem::take(metadata_text).into(),
                     block_range,
@@ -716,17 +704,15 @@ impl MarkdownParser {
 
         for artifact in artifacts {
             match artifact {
-                ScannedArtifact::Tag {
-                    text,
-                    range,
-                } => {
-                    tags.push(RawTag::new(text, range));
+                ScannedArtifact::Tag(tag) => {
+                    tags.push(tag);
                 }
-                ScannedArtifact::InlineField {
-                    key,
-                    value,
-                    range,
-                } => {
+                ScannedArtifact::InlineField(field) => {
+                    let crate::note::raw::RawInlineFieldToken {
+                        key,
+                        value,
+                        range,
+                    } = field;
                     let typed_value = RawFieldValue::from_str_with_spec(
                         value.as_ref(),
                         key.as_ref(),
@@ -739,11 +725,8 @@ impl MarkdownParser {
                         range,
                     ));
                 }
-                ScannedArtifact::BlockRef {
-                    id,
-                    position,
-                } => {
-                    block_refs.push(RawBlockRef::new(id, position));
+                ScannedArtifact::BlockRef(block_ref) => {
+                    block_refs.push(block_ref);
                 }
                 ScannedArtifact::TaskMarker {
                     marker,
@@ -855,7 +838,6 @@ impl MarkdownParser {
             context.kind,
             list_depth,
             block_range,
-            context.task_spec,
             context.item_positions,
         ));
     }
@@ -981,18 +963,13 @@ struct ActiveBlock {
 
 struct ListContext {
     kind: RawListKind,
-    task_spec: Arc<crate::config::task::TaskConfigSpec>,
     item_positions: Vec<SourceByteOffset>,
 }
 
 impl ListContext {
-    fn new(
-        kind: RawListKind,
-        task_spec: Arc<crate::config::task::TaskConfigSpec>,
-    ) -> Self {
+    fn new(kind: RawListKind) -> Self {
         Self {
             kind,
-            task_spec,
             item_positions: Vec::new(),
         }
     }
@@ -1090,9 +1067,7 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec,
-    };
+    use crate::config::task::TaskConfigSpec;
 
     fn task_spec_fixture() -> TaskConfigSpec {
         TaskConfigSpec {
@@ -1113,31 +1088,12 @@ mod tests {
         }
     }
 
-    fn frontmatter_spec_fixture() -> FrontmatterConfigSpec {
-        FrontmatterConfigSpec::new(
-            "title".into(),
-            "aliases".into(),
-            "tags".into(),
-            "file_class".into(),
-            "date_created".into(),
-            "date_modified".into(),
-        )
-    }
-
     fn parse_raw(markdown: &str) -> RawNote<'_> {
         let path = crate::note::paths::NotePath::try_new("test.md")
             .expect("valid test path");
-        let frontmatter_spec = Arc::new(frontmatter_spec_fixture());
         let task_spec = Arc::new(task_spec_fixture());
-        MarkdownParser::parse(
-            markdown,
-            path,
-            None,
-            None,
-            &frontmatter_spec,
-            &task_spec,
-        )
-        .expect("parsing failed")
+        MarkdownParser::parse(markdown, path, None, None, &task_spec)
+            .expect("parsing failed")
     }
 
     #[test]
