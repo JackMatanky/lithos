@@ -2006,4 +2006,59 @@ impl InheritanceGraphBuilder {
 
 ---
 
+## Visual State Machine Diagram
+
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    %% Main Stages
+    state "1. Discovery (Batch Start)" as Stage1
+
+    state "Per-Schema Processing Pipeline" as PerSchema {
+        state "2. Comparison" as Stage2
+        state "3. InheritanceAnalysis" as Stage3
+        state "4. PropertyAnalysis" as Stage4
+        state "5. Refresh" as Stage5
+
+        %% Internal states
+        state "Missing (New)" as Missing
+        state "Present (Cached)" as Present
+        state "Fresh (Timestamps Match)" as FreshComp
+        state "Suspect (Timestamps Differ)" as Suspect
+        state "StaleTimestamps (Content Match)" as StaleTS
+        state "StaleContent (Content Differ)" as StaleContent
+
+        Stage2 --> FreshComp: Timestamps Match
+        Stage2 --> Suspect: Timestamps Mismatch
+
+        Suspect --> StaleTS: Content Hash Match
+        Suspect --> StaleContent: Content Hash Mismatch
+
+        StaleTS --> Stage5: Update view timestamps
+
+        StaleContent --> Stage3: Parse & compare extends
+        Missing --> Stage3: Parse & compare extends
+
+        Stage3 --> Stage4: Compute Schema/Bank Deltas
+    }
+
+    state "6. Graphed (Batch)" as Stage6
+    state "7. Construction (Batch)" as Stage7
+    state "8. Completed (Batch)" as Stage8
+
+    Stage1 --> Missing: View Not Found
+    Stage1 --> Present: View Found
+    Present --> Stage2
+
+    FreshComp --> Stage7: Skip to merge
+    Stage5 --> Stage7: Skip to merge
+    Stage4 --> Stage6: Ready for graph
+
+    Stage6 --> Stage7: Build/Patch InheritanceGraph
+    Stage7 --> Stage8: Expand & Merge Level-by-Level
+```
+
+---
+
 **END OF DEFINITIVE SCHEMA PIPELINE TYPESTATE REDESIGN**
