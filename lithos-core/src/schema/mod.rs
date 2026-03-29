@@ -143,22 +143,58 @@ pub(crate) mod db_table {
     // Inheritance Tracking Tables
     // ========================================================================
 
-    /// Multimap: parent `SchemaId` → list of child `SchemaId`s.
+    /// Topologically sorted inheritance graph singleton.
+    ///
+    /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
+    /// Value: rkyv-serialized `TopologicalGraph`.
+    ///
+    /// Contains lightweight graph structure with SchemaId/SchemaName only,
+    /// topological order, and depth information. Rebuilt/patched when
+    /// inheritance relationships change.
+    #[expect(
+        dead_code,
+        reason = "database table will be used in TreeGraphed stage"
+    )]
+    pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_topological_graph");
+
+    /// Key for `TopologicalGraph` singleton table.
+    #[expect(dead_code, reason = "constant will be used in TreeGraphed stage")]
+    pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
+
+    /// Multimap: parent `SchemaId` → child `SchemaId`s (source of truth for
+    /// edges).
+    ///
+    /// This is the authoritative source for parent-child relationships.
+    /// Renamed from `SCHEMA_CHILDREN_BY_PARENT` for clarity.
     ///
     /// Enables efficient queries:
     /// - O(log N + C) children lookup: "find all children of parent P"
     /// - O(D×log N) descendant traversal: BFS through inheritance tree
     ///
     /// Key: Parent `SchemaId` as UUID string
-    /// Value: `Vec<SchemaId>` (rkyv-serialized).
+    /// Value: Child `SchemaId` (rkyv-serialized).
     #[expect(
         dead_code,
-        reason = "To be used by upcoming state machine refactor"
+        reason = "database table will be used in TreeGraphed stage"
     )]
-    pub(crate) const SCHEMA_CHILDREN_BY_PARENT: MultimapTableDefinition<
+    pub(crate) const SCHEMA_PARENT_TO_CHILDREN: MultimapTableDefinition<
         &str,
         &[u8],
-    > = MultimapTableDefinition::new("schema_children_by_parent");
+    > = MultimapTableDefinition::new("schema_parent_to_children");
+
+    /// Inheritance edge metadata (per parent-child pair).
+    ///
+    /// Stores edge-specific metadata like excludes lists.
+    ///
+    /// Key: Composite "{`parent_uuid}:{child_uuid`}"
+    /// Value: rkyv-serialized `InheritanceEdgeMetadata`.
+    #[expect(
+        dead_code,
+        reason = "database table will be used in TreeGraphed stage"
+    )]
+    pub(crate) const SCHEMA_INHERITANCE_EDGES: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_inheritance_edges");
 
     /// Schema inheritance metadata cache (key: `SchemaId` as UUID string,
     /// value: rkyv-serialized `SchemaInheritanceView`).

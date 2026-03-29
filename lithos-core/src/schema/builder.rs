@@ -1,6 +1,9 @@
 #![expect(clippy::missing_errors_doc, reason = "Facade methods")]
 #![expect(clippy::missing_inline_in_public_items, reason = "Facade methods")]
 
+#[path = "schema_pipeline.rs"]
+mod schema_pipeline;
+
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
@@ -97,6 +100,20 @@ where
     #[expect(clippy::unused_self, reason = "stubbed schema loading")]
     pub(crate) fn load_schemas(&self, _pb: &PropertyBank) -> Vec<Schema> {
         Vec::new() // Stub
+    }
+
+    #[expect(dead_code, reason = "schema pipeline scaffold")]
+    #[expect(
+        clippy::todo,
+        reason = "scaffold code with incomplete implementation"
+    )]
+    pub(crate) fn load_schemas_v2(
+        &self,
+        _pb: &PropertyBank,
+    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+        // TODO: Implement full schema pipeline orchestration
+        // This is scaffold code - will be implemented in later phases
+        todo!("schema pipeline v2 orchestration")
     }
 
     /// Run the full ingestion pipeline.
