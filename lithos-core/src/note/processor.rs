@@ -3,7 +3,7 @@
 //! Provides a typestate-driven pipeline for processing markdown notes using
 //! file metadata and the note repository.
 
-use std::{marker::PhantomData, sync::Arc, time::SystemTime};
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
     config::aggregate::Config,
@@ -80,8 +80,6 @@ pub struct Missing {
 pub struct Present {
     info: NoteFileInfo,
     note_id: NoteId,
-    stored_bytes: u64,
-    stored_modified_at: Option<SystemTime>,
 }
 
 /// Status for suspected changes with loaded content.
@@ -114,26 +112,18 @@ pub struct Ready {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteFileInfo {
     path: NotePath,
-    source_bytes: u64,
-    created_at: Option<SystemTime>,
-    modified_at: Option<SystemTime>,
+    /// Indicates whether the vault detected this note as stale.
+    is_stale: bool,
 }
 
 impl NoteFileInfo {
     /// Creates a new note file info record.
     #[inline]
     #[must_use]
-    pub const fn new(
-        path: NotePath,
-        source_bytes: u64,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
+    pub const fn new(path: NotePath, is_stale: bool) -> Self {
         Self {
             path,
-            source_bytes,
-            created_at,
-            modified_at,
+            is_stale,
         }
     }
 
@@ -145,12 +135,10 @@ impl NoteFileInfo {
     #[inline]
     pub fn try_from_path(
         path: &str,
-        source_bytes: u64,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
+        is_stale: bool,
     ) -> Result<Self, NoteError> {
         let note_path = NotePath::try_new(path)?;
-        Ok(Self::new(note_path, source_bytes, created_at, modified_at))
+        Ok(Self::new(note_path, is_stale))
     }
 
     /// Returns the note path.
@@ -160,25 +148,11 @@ impl NoteFileInfo {
         &self.path
     }
 
-    /// Returns the source byte size.
+    /// Returns whether the vault marked this note as stale.
     #[inline]
     #[must_use]
-    pub const fn source_bytes(&self) -> u64 {
-        self.source_bytes
-    }
-
-    /// Returns the file creation timestamp.
-    #[inline]
-    #[must_use]
-    pub const fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Returns the file modification timestamp.
-    #[inline]
-    #[must_use]
-    pub const fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
+    pub const fn is_stale(&self) -> bool {
+        self.is_stale
     }
 }
 
@@ -365,8 +339,6 @@ impl NoteProcessor<Discovery, Unknown> {
                 Present {
                     info,
                     note_id: note.id(),
-                    stored_bytes: note.source_bytes(),
-                    stored_modified_at: note.modified_at(),
                 },
             )))
         } else {
@@ -390,18 +362,14 @@ impl Default for NoteProcessor<Discovery, Unknown> {
 impl NoteProcessor<Comparison, Present> {
     #[inline]
     fn check_metadata(self) -> MetadataBranch {
-        let size_match =
-            self.status.info.source_bytes() == self.status.stored_bytes;
-        let mtime_match = match (
-            self.status.stored_modified_at,
-            self.status.info.modified_at(),
-        ) {
-            (Some(stored), Some(current)) => stored == current,
-            (None, None) => true,
-            _ => false,
-        };
-
-        if size_match && mtime_match {
+        if self.status.info.is_stale() {
+            let info = self.status.info;
+            MetadataBranch::Stale(Self::transition(Analysis, Suspect {
+                info,
+                content: String::new(),
+                is_new: false,
+            }))
+        } else {
             MetadataBranch::Fresh(Self::transition(Completed, Ready {
                 report: NoteProcessReport {
                     note_id: Some(self.status.note_id),
@@ -409,13 +377,6 @@ impl NoteProcessor<Comparison, Present> {
                     action: NoteProcessAction::Unchanged,
                     reason: NoteProcessReason::Fresh,
                 },
-            }))
-        } else {
-            let info = self.status.info;
-            MetadataBranch::Stale(Self::transition(Analysis, Suspect {
-                info,
-                content: String::new(),
-                is_new: false,
             }))
         }
     }
@@ -491,8 +452,6 @@ impl NoteProcessor<Analysis, Suspect> {
         let raw = MarkdownParser::parse(
             &self.status.content,
             self.status.info.path.clone(),
-            self.status.info.created_at(),
-            self.status.info.modified_at(),
             &task_spec,
         )
         .map(RawNote::into_owned)?;

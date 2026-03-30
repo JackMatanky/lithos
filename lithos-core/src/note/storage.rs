@@ -557,10 +557,6 @@ mod tests {
     fn raw_note(path: NotePath) -> RawNote<'static> {
         RawNote::new(
             path,
-            "hash".into(),
-            4,
-            None,
-            None,
             None,
             Vec::new(),
             Vec::new(),

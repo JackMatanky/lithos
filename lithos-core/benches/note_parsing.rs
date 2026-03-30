@@ -422,10 +422,9 @@ fn bench_ingest_group(
                 .read_to_string(std::path::Path::new("notes/simple.md"))
                 .expect("read markdown");
             let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
-            )
-            .expect("ingest markdown");
+            let raw_note =
+                parser::MarkdownParser::parse(&markdown, path, &task_spec)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -440,10 +439,9 @@ fn bench_ingest_group(
                 .read_to_string(std::path::Path::new("notes/medium.md"))
                 .expect("read markdown");
             let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
-            )
-            .expect("ingest markdown");
+            let raw_note =
+                parser::MarkdownParser::parse(&markdown, path, &task_spec)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -459,10 +457,9 @@ fn bench_ingest_group(
                 .expect("read markdown");
             let path =
                 NotePath::try_new("notes/complex.md").expect("note path");
-            let raw_note = parser::MarkdownParser::parse(
-                &markdown, path, None, None, &task_spec,
-            )
-            .expect("ingest markdown");
+            let raw_note =
+                parser::MarkdownParser::parse(&markdown, path, &task_spec)
+                    .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -480,14 +477,9 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
             let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.simple,
-                path,
-                None,
-                None,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.simple, path, &task_spec)
+                    .expect("extract markdown");
             black_box(outcome);
         });
     });
@@ -497,14 +489,9 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
             let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.medium,
-                path,
-                None,
-                None,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.medium, path, &task_spec)
+                    .expect("extract markdown");
             black_box(outcome);
         });
     });
@@ -518,8 +505,6 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
             let outcome = parser::MarkdownParser::parse(
                 samples.complex,
                 path,
-                None,
-                None,
                 &task_spec,
             )
             .expect("extract markdown");

@@ -9,12 +9,9 @@
 //! metadata, structure, and content facts for a single markdown file in
 //! the vault.
 
-use std::{fmt, time::SystemTime};
+use std::fmt;
 
-use rkyv::{
-    Archive, Deserialize, Serialize,
-    with::{AsUnixTime, Map},
-};
+use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -134,12 +131,6 @@ impl From<NoteId> for Uuid {
 pub struct Note {
     id: NoteId,
     path: NotePath,
-    source_hash: Box<str>,
-    source_bytes: u64,
-    #[rkyv(with = Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-    #[rkyv(with = Map<AsUnixTime>)]
-    modified_at: Option<SystemTime>,
     frontmatter: Option<Frontmatter>,
     frontmatter_links: Box<[FrontmatterLink]>,
     reference_links: Box<[ReferenceLink]>,
@@ -176,10 +167,6 @@ impl Note {
     >(
         id: NoteId,
         path: NotePath,
-        source_hash: Box<str>,
-        source_bytes: u64,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
         frontmatter: Option<Frontmatter>,
         frontmatter_links: FLinks,
         reference_links: RLinks,
@@ -207,10 +194,6 @@ impl Note {
         Self {
             id,
             path,
-            source_hash,
-            source_bytes,
-            created_at,
-            modified_at,
             frontmatter,
             frontmatter_links: frontmatter_links.into(),
             reference_links: reference_links.into(),
@@ -235,10 +218,6 @@ impl Note {
         Self {
             id,
             path,
-            source_hash: "".into(),
-            source_bytes: 0,
-            created_at: None,
-            modified_at: None,
             frontmatter: None,
             frontmatter_links: Box::new([]),
             reference_links: Box::new([]),
@@ -273,34 +252,6 @@ impl Note {
     #[must_use]
     pub fn path(&self) -> &NotePath {
         &self.path
-    }
-
-    /// Returns the BLAKE3 hash of the note's source content.
-    #[inline]
-    #[must_use]
-    pub fn source_hash(&self) -> &str {
-        &self.source_hash
-    }
-
-    /// Returns the size of the note's source content in bytes.
-    #[inline]
-    #[must_use]
-    pub const fn source_bytes(&self) -> u64 {
-        self.source_bytes
-    }
-
-    /// Returns the filesystem creation time of the note, if available.
-    #[inline]
-    #[must_use]
-    pub const fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Returns the filesystem last modification time of the note, if available.
-    #[inline]
-    #[must_use]
-    pub const fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
     }
 
     /// Returns the parsed frontmatter of the note, if present.
@@ -630,10 +581,6 @@ impl<'source>
     ) -> Result<Self, Self::Error> {
         let RawNote {
             path,
-            source_hash,
-            source_bytes,
-            created_at,
-            modified_at,
             frontmatter,
             headings,
             sections,
@@ -674,10 +621,6 @@ impl<'source>
         Ok(Self::from_parts(
             id,
             path,
-            source_hash,
-            source_bytes,
-            created_at,
-            modified_at,
             frontmatter,
             frontmatter_links,
             reference_links,

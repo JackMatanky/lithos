@@ -48,15 +48,7 @@ mod tests {
         let note_path =
             lithos_core::note::paths::NotePath::try_new("notes/ingest.md")
                 .expect("note path");
-        let metadata = source
-            .metadata(std::path::Path::new(note_path.as_str()))
-            .expect("metadata");
-        let info = NoteFileInfo::new(
-            note_path.clone(),
-            metadata.len(),
-            metadata.created().ok(),
-            metadata.modified().ok(),
-        );
+        let info = NoteFileInfo::new(note_path.clone(), true);
         let report = NoteProcessor::new()
             .process_file(&repository, &config, &source, info)
             .expect("load markdown");

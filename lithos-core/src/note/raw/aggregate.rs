@@ -1,5 +1,3 @@
-use std::time::SystemTime;
-
 use super::{
     RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink, RawList,
     RawListItem, RawReferenceLink, RawSection, RawTag,
@@ -11,10 +9,6 @@ use crate::note::paths::NotePath;
 #[non_exhaustive]
 pub struct RawNote<'source> {
     pub path: NotePath,
-    pub source_hash: Box<str>,
-    pub source_bytes: u64,
-    pub created_at: Option<SystemTime>,
-    pub modified_at: Option<SystemTime>,
     pub frontmatter: Option<RawFrontmatter<'source>>,
     pub headings: Vec<RawHeading<'source>>,
     pub sections: Vec<RawSection>,
@@ -37,10 +31,6 @@ impl<'source> RawNote<'source> {
     )]
     pub fn new(
         path: NotePath,
-        source_hash: Box<str>,
-        source_bytes: u64,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
         frontmatter: Option<RawFrontmatter<'source>>,
         headings: Vec<RawHeading<'source>>,
         sections: Vec<RawSection>,
@@ -54,10 +44,6 @@ impl<'source> RawNote<'source> {
     ) -> Self {
         Self {
             path,
-            source_hash,
-            source_bytes,
-            created_at,
-            modified_at,
             frontmatter,
             headings,
             sections,
@@ -78,10 +64,6 @@ impl<'source> RawNote<'source> {
     pub fn into_owned(self) -> RawNote<'static> {
         RawNote {
             path: self.path,
-            source_hash: self.source_hash,
-            source_bytes: self.source_bytes,
-            created_at: self.created_at,
-            modified_at: self.modified_at,
             frontmatter: self.frontmatter.map(RawFrontmatter::into_owned),
             headings: self
                 .headings

@@ -5,10 +5,7 @@
 )]
 use std::time::SystemTime;
 
-use rkyv::{
-    Archive, Deserialize, Serialize,
-    with::{AsUnixTime, Map},
-};
+use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 use uuid::Uuid;
 
 use super::{aggregate::NoteId, paths::NotePath};
@@ -62,62 +59,38 @@ pub struct NoteEventPayloadV1 {
     change: Option<NoteChangeKind>,
     task_count: u32,
     tag_count: u32,
-    source_hash: Option<Box<str>>,
-    source_bytes: Option<u64>,
-    #[rkyv(with = Map<AsUnixTime>)]
-    source_modified_at: Option<SystemTime>,
     error_code: Option<Box<str>>,
 }
 
 impl NoteEventPayloadV1 {
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Payload captures indexing metadata explicitly"
-    )]
     /// Creates a payload for an indexed note event.
     pub fn indexed(
         change: NoteChangeKind,
         task_count: u32,
         tag_count: u32,
-        source_hash: Option<Box<str>>,
-        source_bytes: Option<u64>,
-        source_modified_at: Option<SystemTime>,
     ) -> Self {
         Self {
             change: Some(change),
             task_count,
             tag_count,
-            source_hash,
-            source_bytes,
-            source_modified_at,
             error_code: None,
         }
     }
 
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Payload captures indexing metadata explicitly"
-    )]
     /// Creates a payload for a change-detected note event.
     pub fn changed(
         change: NoteChangeKind,
         task_count: u32,
         tag_count: u32,
-        source_hash: Option<Box<str>>,
-        source_bytes: Option<u64>,
-        source_modified_at: Option<SystemTime>,
     ) -> Self {
         Self {
             change: Some(change),
             task_count,
             tag_count,
-            source_hash,
-            source_bytes,
-            source_modified_at,
             error_code: None,
         }
     }
@@ -130,9 +103,6 @@ impl NoteEventPayloadV1 {
             change: None,
             task_count: 0,
             tag_count: 0,
-            source_hash: None,
-            source_bytes: None,
-            source_modified_at: None,
             error_code: Some(error_code),
         }
     }
@@ -156,27 +126,6 @@ impl NoteEventPayloadV1 {
     /// Returns the tag count recorded in the payload.
     pub const fn tag_count(&self) -> u32 {
         self.tag_count
-    }
-
-    #[inline]
-    #[must_use]
-    /// Returns the source hash, if recorded.
-    pub fn source_hash(&self) -> Option<&str> {
-        self.source_hash.as_deref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Returns the source byte size, if recorded.
-    pub const fn source_bytes(&self) -> Option<u64> {
-        self.source_bytes
-    }
-
-    #[inline]
-    #[must_use]
-    /// Returns the source modification time, if recorded.
-    pub fn source_modified_at(&self) -> Option<SystemTime> {
-        self.source_modified_at
     }
 
     #[inline]

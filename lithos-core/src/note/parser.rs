@@ -8,7 +8,7 @@
 //!
 //! The main entry point is [`MarkdownParser`].
 
-use std::{borrow::Cow, sync::Arc, time::SystemTime};
+use std::{borrow::Cow, sync::Arc};
 
 use pulldown_cmark::{
     CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
@@ -57,8 +57,6 @@ impl MarkdownParser {
     pub fn parse<'source>(
         markdown: &'source str,
         path: NotePath,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
         task_spec: &Arc<crate::config::task::TaskConfigSpec>,
     ) -> Result<RawNote<'source>, NoteIngestError> {
         let emoji_markers = if task_spec.use_emoji {
@@ -69,15 +67,17 @@ impl MarkdownParser {
         let scanner = NoteScanner::new(emoji_markers);
         let mut pool = StringPool::new();
 
-        let _source_bytes = u64::try_from(markdown.len()).map_err(|_err| {
-            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
-            NoteParseError::SourceTooLarge {
-                size: markdown.len(),
-                limit: u32::MAX as usize,
-            }
-        })?;
-        let source_hash =
-            blake3::hash(markdown.as_bytes()).to_hex().to_string();
+        let _source_bytes: u64 =
+            u64::try_from(markdown.len()).map_err(|_err| {
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "u32::MAX fits in usize"
+                )]
+                NoteParseError::SourceTooLarge {
+                    size: markdown.len(),
+                    limit: u32::MAX as usize,
+                }
+            })?;
 
         let mut reference_links = Vec::new();
         let mut block_refs = Vec::new();
@@ -252,10 +252,6 @@ impl MarkdownParser {
 
         Ok(RawNote::new(
             path,
-            source_hash.into_boxed_str(),
-            u64::try_from(markdown.len()).unwrap_or(0),
-            created_at,
-            modified_at,
             frontmatter,
             headings,
             sections,
@@ -1083,7 +1079,7 @@ mod tests {
         let path = crate::note::paths::NotePath::try_new("test.md")
             .expect("valid test path");
         let task_spec = Arc::new(task_spec_fixture());
-        MarkdownParser::parse(markdown, path, None, None, &task_spec)
+        MarkdownParser::parse(markdown, path, &task_spec)
             .expect("parsing failed")
     }
 

@@ -13,6 +13,7 @@ use crate::{
     fs::FsReader,
     note::{
         error::NoteProcessError,
+        paths::NotePath,
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
         storage::RedbRepository as NoteRepository,
     },
@@ -571,13 +572,8 @@ impl VaultProcessor<Routing, Compared> {
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
         let mut report = self.status.report;
         for file in &self.status.markdown_candidates {
-            let info = NoteFileInfo::try_from_path(
-                file.path().as_str(),
-                file.size(),
-                file.created_at(),
-                file.modified_at(),
-            )
-            .map_err(NoteProcessError::from)?;
+            let info = NoteFileInfo::try_from_path(file.path().as_str(), true)
+                .map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new().process_file(
                 note_repository,
                 config,
@@ -628,15 +624,10 @@ impl VaultProcessor<Prune, Routed> {
             if !is_markdown_path(file.path().as_path()) {
                 continue;
             }
-            let info = NoteFileInfo::try_from_path(
-                file.path().as_str(),
-                file.size(),
-                file.created_at(),
-                file.modified_at(),
-            )
-            .map_err(NoteProcessError::from)?;
+            let note_path = NotePath::try_new(file.path().as_str())
+                .map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new()
-                .record_deleted(note_repository, info.path())?;
+                .record_deleted(note_repository, &note_path)?;
             if note_report.action() == NoteProcessAction::Deleted {
                 bump(&mut report.notes_deleted);
             }
