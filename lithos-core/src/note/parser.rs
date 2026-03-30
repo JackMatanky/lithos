@@ -8,7 +8,7 @@
 //!
 //! The main entry point is [`MarkdownParser`].
 
-use std::{sync::Arc, time::SystemTime};
+use std::{borrow::Cow, sync::Arc, time::SystemTime};
 
 use pulldown_cmark::{
     CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
@@ -19,12 +19,12 @@ use crate::note::{
     paths::NotePath,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
-        RawBlockRef, RawFieldValue, RawFrontmatter, RawFrontmatterFormat,
-        RawHeading, RawInlineField, RawLink, RawLinkStyle, RawList,
-        RawListDepth, RawListItem, RawListKind, RawNote, RawReferenceLink,
-        RawSection, RawSectionKind, RawTag, RawTaskMarker,
+        RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
+        RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
+        RawListItem, RawListKind, RawNote, RawReferenceLink, RawSection,
+        RawSectionKind, RawTag, RawTaskMarker,
     },
-    scanner::{NoteScanner, ScannedArtifact},
+    scanner::NoteScanner,
 };
 
 type ScannedArtifacts<'source> = (
@@ -99,7 +99,7 @@ impl MarkdownParser {
 
         let mut depth: u32 = 0;
 
-        let mut current_link: Option<LinkFrame> = None;
+        let mut current_link: Option<LinkFrame<'source>> = None;
         let mut in_metadata: Option<(
             pulldown_cmark::MetadataBlockKind,
             SourceByteOffset,
@@ -301,14 +301,14 @@ impl MarkdownParser {
         clippy::too_many_arguments,
         reason = "Parser orchestration requires full state context"
     )]
-    fn handle_start_tag(
-        tag: pulldown_cmark::Tag<'_>,
+    fn handle_start_tag<'source>(
+        tag: pulldown_cmark::Tag<'source>,
         start_pos: SourceByteOffset,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
         list_contexts: &mut Vec<ListContext>,
-        current_link: &mut Option<LinkFrame>,
+        current_link: &mut Option<LinkFrame<'source>>,
         open_item_by_depth: &mut Vec<SourceByteOffset>,
         _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
@@ -339,7 +339,7 @@ impl MarkdownParser {
                 *current_link = Some(LinkFrame {
                     style: link_type.into(),
                     is_embed: false,
-                    target: dest_url.to_string(),
+                    target: cow_str_to_cow(dest_url),
                     start: start_pos,
                     alias: pool.take(),
                 });
@@ -357,7 +357,7 @@ impl MarkdownParser {
                 *current_link = Some(LinkFrame {
                     style: link_type.into(),
                     is_embed,
-                    target: dest_url.to_string(),
+                    target: cow_str_to_cow(dest_url),
                     start: start_pos,
                     alias: pool.take(),
                 });
@@ -423,7 +423,7 @@ impl MarkdownParser {
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
         list_contexts: &mut Vec<ListContext>,
-        current_link: &mut Option<LinkFrame>,
+        current_link: &mut Option<LinkFrame<'source>>,
         links: &mut Vec<RawLink<'source>>,
         sections: &mut Vec<RawSection>,
         headings: &mut Vec<RawHeading<'source>>,
@@ -440,7 +440,7 @@ impl MarkdownParser {
             pulldown_cmark::TagEnd::Link | pulldown_cmark::TagEnd::Image => {
                 if let Some(mut link) = current_link.take() {
                     let (target_raw, anchor_raw) =
-                        LinkTarget::new(&link.target).split();
+                        LinkTarget::new(link.target).split();
                     let alias_raw = if link.alias.is_empty() {
                         None
                     } else {
@@ -450,12 +450,11 @@ impl MarkdownParser {
                     links.push(RawLink::new(
                         link.style,
                         link.is_embed,
-                        target_raw.to_owned().into(),
+                        target_raw,
                         alias_raw.map(Into::into),
-                        anchor_raw.map(|s| s.to_owned().into()),
+                        anchor_raw,
                         link.start,
                     ));
-                    pool.put(std::mem::take(&mut link.target));
                     pool.put(std::mem::take(&mut link.alias));
                 }
             }
@@ -510,6 +509,7 @@ impl MarkdownParser {
                                     markdown,
                                     &block.scannable_ranges,
                                     false,
+                                    block_range,
                                 )?;
                             tags.extend(scan_tags);
                             inline_fields.extend(scan_fields);
@@ -593,7 +593,7 @@ impl MarkdownParser {
         text: &pulldown_cmark::CowStr<'_>,
         range: &std::ops::Range<usize>,
         block_stack: &mut [ActiveBlock],
-        current_link: &mut Option<LinkFrame>,
+        current_link: &mut Option<LinkFrame<'_>>,
     ) {
         let text_str = text.as_ref();
         if let Some(block) = block_stack.last_mut() {
@@ -611,7 +611,7 @@ impl MarkdownParser {
         text: &pulldown_cmark::CowStr<'_>,
         _range: &std::ops::Range<usize>,
         block_stack: &mut [ActiveBlock],
-        current_link: &mut Option<LinkFrame>,
+        current_link: &mut Option<LinkFrame<'_>>,
     ) {
         let text_str = text.as_ref();
         if let Some(block) = block_stack.last_mut() {
@@ -691,90 +691,54 @@ impl MarkdownParser {
         source: &'source str,
         scannable_ranges: &[std::ops::Range<usize>],
         include_task_marker: bool,
+        block_range: SourceByteRange,
     ) -> Result<ScannedArtifacts<'source>, NoteIngestError> {
-        let mut artifacts = Vec::new();
-        scanner
-            .scan_ranges(source, scannable_ranges, &mut artifacts)
+        let raw_tokens = scanner
+            .scan_ranges_raw(source, scannable_ranges, include_task_marker)
             .map_err(NoteIngestError::Domain)?;
-
-        let mut tags = Vec::new();
-        let mut inline_fields = Vec::new();
-        let mut block_refs = Vec::new();
-        let mut task_marker = None;
-
-        for artifact in artifacts {
-            match artifact {
-                ScannedArtifact::Tag(tag) => {
-                    tags.push(tag);
-                }
-                ScannedArtifact::InlineField(field) => {
-                    let crate::note::raw::RawInlineFieldToken {
-                        key,
-                        value,
-                        range,
-                    } = field;
-                    let typed_value = RawFieldValue::from_str_with_spec(
-                        value.as_ref(),
-                        key.as_ref(),
-                        None,
-                    )
-                    .into_owned();
-                    inline_fields.push(RawInlineField::new(
-                        key,
-                        typed_value,
-                        range,
-                    ));
-                }
-                ScannedArtifact::BlockRef(block_ref) => {
-                    block_refs.push(block_ref);
-                }
-                ScannedArtifact::TaskMarker {
-                    marker,
-                    ..
-                } => {
-                    if include_task_marker {
-                        task_marker = Some(RawTaskMarker::from_char(marker));
-                    }
-                }
-            }
+        let tags = raw_tokens.tags;
+        let inline_fields =
+            raw_tokens.inline_fields.into_iter().map(Into::into).collect();
+        let mut block_refs = raw_tokens.block_refs;
+        if block_refs.is_empty()
+            && let Some(tail_range) =
+                Self::block_ref_tail_range(source, block_range)
+        {
+            let tail_tokens = scanner
+                .scan_ranges_raw(
+                    source,
+                    std::slice::from_ref(&tail_range),
+                    false,
+                )
+                .map_err(NoteIngestError::Domain)?;
+            block_refs.extend(tail_tokens.block_refs);
         }
-
-        Ok((tags, inline_fields, block_refs, task_marker))
+        Ok((tags, inline_fields, block_refs, raw_tokens.task_marker))
     }
 
-    fn scan_task_marker(
-        scanner: &NoteScanner,
+    #[inline]
+    fn block_ref_tail_range(
         source: &str,
         block_range: SourceByteRange,
-    ) -> Result<Option<RawTaskMarker>, NoteIngestError> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32 always fits in usize on this platform"
-        )]
-        let start = u32::from(block_range.start()) as usize;
-        #[expect(
-            clippy::as_conversions,
-            reason = "u32 always fits in usize on this platform"
-        )]
-        let end = u32::from(block_range.end()) as usize;
-        let range = start..end;
-        let ranges = std::slice::from_ref(&range);
-        let mut artifacts = Vec::new();
-        scanner
-            .scan_ranges(source, ranges, &mut artifacts)
-            .map_err(NoteIngestError::Domain)?;
-
-        let mut task_marker = None;
-        for artifact in artifacts {
-            if let ScannedArtifact::TaskMarker {
-                marker,
-                ..
-            } = artifact
-            {
-                task_marker = Some(RawTaskMarker::from_char(marker));
-            }
+    ) -> Option<std::ops::Range<usize>> {
+        let start = block_range.start().as_usize();
+        let end = block_range.end().as_usize();
+        if end <= start {
+            return None;
         }
-        Ok(task_marker)
+        let tail_len = 128usize;
+        let mut tail_start = end.saturating_sub(tail_len);
+        if tail_start < start {
+            tail_start = start;
+        }
+        while tail_start < end && !source.is_char_boundary(tail_start) {
+            tail_start = tail_start.saturating_add(1);
+        }
+        let slice = source.get(tail_start..end)?;
+        if !slice.contains('^') {
+            return None;
+        }
+        Some(tail_start..end)
     }
 
     #[inline]
@@ -804,6 +768,7 @@ impl MarkdownParser {
                 markdown,
                 &block.scannable_ranges,
                 false,
+                block_range,
             )?;
         tags.extend(scan_tags);
         inline_fields.extend(scan_fields);
@@ -874,9 +839,12 @@ impl MarkdownParser {
                 markdown,
                 &block.scannable_ranges,
                 false,
+                block_range,
             )?;
         let task_marker = if is_checked.is_some() {
-            Self::scan_task_marker(scanner, markdown, block_range)?
+            scanner
+                .scan_task_marker(markdown, block_range)
+                .map_err(NoteIngestError::Domain)?
         } else {
             None
         };
@@ -985,25 +953,47 @@ enum BlockKind {
     CodeBlock,
 }
 
-struct LinkFrame {
+#[inline]
+fn cow_str_to_cow(value: CowStr<'_>) -> Cow<'_, str> {
+    match value {
+        CowStr::Borrowed(text) => Cow::Borrowed(text),
+        CowStr::Boxed(text) => Cow::Owned(text.into()),
+        CowStr::Inlined(text) => Cow::Owned(text.as_ref().to_owned()),
+    }
+}
+
+struct LinkFrame<'source> {
     style: RawLinkStyle,
     is_embed: bool,
-    target: String,
+    target: Cow<'source, str>,
     start: SourceByteOffset,
     alias: String,
 }
 
-struct LinkTarget<'source>(&'source str);
+struct LinkTarget<'source>(Cow<'source, str>);
 impl<'source> LinkTarget<'source> {
-    fn new(target: &'source str) -> Self {
+    fn new(target: Cow<'source, str>) -> Self {
         Self(target)
     }
 
-    fn split(self) -> (&'source str, Option<&'source str>) {
+    fn split(self) -> (Cow<'source, str>, Option<Cow<'source, str>>) {
         if self.is_external() {
             return (self.0, None);
         }
-        self.0.split_once('#').map_or((self.0, None), |(p, a)| (p, Some(a)))
+        match self.0 {
+            Cow::Borrowed(text) => text
+                .split_once('#')
+                .map_or((Cow::Borrowed(text), None), |(p, a)| {
+                    (Cow::Borrowed(p), Some(Cow::Borrowed(a)))
+                }),
+            Cow::Owned(text) => {
+                if let Some((p, a)) = text.split_once('#') {
+                    (Cow::Owned(p.to_owned()), Some(Cow::Owned(a.to_owned())))
+                } else {
+                    (Cow::Owned(text), None)
+                }
+            }
+        }
     }
 
     fn is_external(&self) -> bool {
@@ -1067,7 +1057,7 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::task::TaskConfigSpec;
+    use crate::{config::task::TaskConfigSpec, note::raw::RawFieldValue};
 
     fn task_spec_fixture() -> TaskConfigSpec {
         TaskConfigSpec {

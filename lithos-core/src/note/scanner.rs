@@ -13,7 +13,7 @@
 use crate::note::{
     error::NoteError,
     position::{SourceByteOffset, SourceByteRange},
-    raw::{RawBlockRef, RawInlineFieldToken, RawTag},
+    raw::{RawBlockRef, RawInlineFieldToken, RawTag, RawTaskMarker},
 };
 
 /// A zero-copy artifact extracted from a text block.
@@ -49,6 +49,15 @@ pub enum ScannedArtifact<'source> {
         /// The absolute source position of the marker character.
         position: SourceByteOffset,
     },
+}
+
+/// Raw tokens extracted from a scan pass.
+#[derive(Debug, Default)]
+pub(crate) struct ScannedRawArtifacts<'source> {
+    pub tags: Vec<RawTag<'source>>,
+    pub inline_fields: Vec<RawInlineFieldToken<'source>>,
+    pub block_refs: Vec<RawBlockRef<'source>>,
+    pub task_marker: Option<RawTaskMarker>,
 }
 
 impl ScannedArtifact<'_> {
@@ -189,6 +198,43 @@ impl NoteScanner {
             self.scan_cursor(&mut cursor, artifacts)?;
         }
         Ok(())
+    }
+
+    /// Scans ranges and returns raw tokens grouped by type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    #[inline]
+    pub(crate) fn scan_ranges_raw<'source>(
+        &self,
+        text: &'source str,
+        ranges: &[std::ops::Range<usize>],
+        include_task_marker: bool,
+    ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
+        let mut artifacts = Vec::new();
+        self.scan_ranges(text, ranges, &mut artifacts)?;
+        Ok(split_artifacts(artifacts, include_task_marker))
+    }
+
+    /// Scans a block range for a task marker.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    #[inline]
+    pub(crate) fn scan_task_marker(
+        &self,
+        text: &str,
+        range: SourceByteRange,
+    ) -> Result<Option<RawTaskMarker>, NoteError> {
+        let start = range.start().as_usize();
+        let end = range.end().as_usize();
+        let slice = start..end;
+        let mut artifacts = Vec::new();
+        self.scan_ranges(text, std::slice::from_ref(&slice), &mut artifacts)?;
+        let scanned = split_artifacts(artifacts, true);
+        Ok(scanned.task_marker)
     }
 
     /// Continues scanning from a provided [`Cursor`] state.
@@ -559,6 +605,33 @@ impl NoteScanner {
     }
 }
 
+fn split_artifacts(
+    artifacts: Vec<ScannedArtifact<'_>>,
+    include_task_marker: bool,
+) -> ScannedRawArtifacts<'_> {
+    let mut raw = ScannedRawArtifacts::default();
+    for artifact in artifacts {
+        match artifact {
+            ScannedArtifact::Tag(tag) => raw.tags.push(tag),
+            ScannedArtifact::InlineField(field) => {
+                raw.inline_fields.push(field);
+            }
+            ScannedArtifact::BlockRef(block_ref) => {
+                raw.block_refs.push(block_ref);
+            }
+            ScannedArtifact::TaskMarker {
+                marker,
+                ..
+            } => {
+                if include_task_marker {
+                    raw.task_marker = Some(RawTaskMarker::from_char(marker));
+                }
+            }
+        }
+    }
+    raw
+}
+
 /// Internal state for the metadata scanner.
 ///
 /// `Cursor` tracks the remaining text segment being scanned, the current
@@ -881,6 +954,30 @@ mod tests {
         }
     }
 
+    mod scan_ranges_raw {
+        use super::{super::*, scanner_fixture};
+
+        #[test]
+        fn should_split_raw_artifacts() {
+            let scanner = scanner_fixture();
+            let text = "- [x] #tag [key:: val] ^ref";
+            let range = 0..text.len();
+            let ranges = std::slice::from_ref(&range);
+
+            let raw_tokens = scanner
+                .scan_ranges_raw(text, ranges, true)
+                .expect("scan ranges raw");
+
+            assert_eq!(raw_tokens.tags.len(), 1);
+            assert_eq!(raw_tokens.inline_fields.len(), 1);
+            assert_eq!(raw_tokens.block_refs.len(), 1);
+            assert!(matches!(
+                raw_tokens.task_marker,
+                Some(RawTaskMarker::Checked('x'))
+            ));
+        }
+    }
+
     mod tag {
         use rstest::rstest;
 
@@ -968,6 +1065,20 @@ mod tests {
                 .iter()
                 .any(|a| matches!(a, ScannedArtifact::TaskMarker { .. }));
             assert!(!has_task, "Should not have task for: {text}");
+        }
+
+        #[test]
+        fn should_scan_task_marker_from_range() {
+            let scanner = scanner_fixture();
+            let text = "- [x] Done";
+            let end = SourceByteOffset::try_from(text.len())
+                .expect("valid end offset");
+            let range = SourceByteRange::new(SourceByteOffset::new(0), end)
+                .expect("valid range");
+            let marker = scanner
+                .scan_task_marker(text, range)
+                .expect("scan task marker");
+            assert!(matches!(marker, Some(RawTaskMarker::Checked('x'))));
         }
     }
 

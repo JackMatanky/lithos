@@ -29,6 +29,27 @@ impl<'source> RawInlineFieldToken<'source> {
     }
 }
 
+impl<'source> From<RawInlineFieldToken<'source>> for RawInlineField<'source> {
+    #[inline]
+    fn from(token: RawInlineFieldToken<'source>) -> Self {
+        let RawInlineFieldToken {
+            key,
+            value,
+            range,
+        } = token;
+        let typed_value = match value {
+            Cow::Borrowed(text) => {
+                RawFieldValue::from_str_with_spec(text, key.as_ref(), None)
+            }
+            Cow::Owned(text) => {
+                RawFieldValue::from_str_with_spec(&text, key.as_ref(), None)
+                    .into_owned()
+            }
+        };
+        Self::new(key, typed_value, range)
+    }
+}
+
 /// Raw inline field extracted from markdown.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
