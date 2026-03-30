@@ -5,7 +5,11 @@
     reason = "Vault processor naming is explicit and scoped"
 )]
 
-use std::{collections::HashSet, marker::PhantomData, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+    path::Path,
+};
 
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
@@ -109,6 +113,12 @@ pub struct Routed {
 #[derive(Debug)]
 pub struct Ready {
     report: VaultProcessReport,
+}
+
+struct CompareOutcome {
+    markdown_candidates: Vec<VaultFile>,
+    file_updates: Vec<VaultFile>,
+    folder_updates: Vec<VaultFolder>,
 }
 
 /// Scan mode indicating whether pruning should run.
@@ -336,7 +346,7 @@ impl VaultProcessor<Discovery, Unknown> {
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
         let files = Self::scan_files(source)?;
-        let folders = Self::collect_folders(source, &files)?;
+        let folders = Self::scan_folders(source)?;
         let mut path_set =
             HashSet::with_capacity(files.len().saturating_add(folders.len()));
         for file in &files {
@@ -455,44 +465,49 @@ impl VaultProcessor<Discovery, Unknown> {
         Ok(files)
     }
 
-    fn collect_folders(
+    fn scan_folders(
         source: &FsReader,
-        files: &[VaultFile],
     ) -> Result<Vec<VaultFolder>, VaultFileError> {
-        let mut seen = HashSet::new();
-        let mut folders = Vec::new();
-        for file in files {
-            let mut current = file.path().as_path();
-            while let Some(parent) = current.parent() {
-                if parent.as_os_str().is_empty() {
-                    break;
+        let pattern = "**/*";
+        let paths = source.list_dirs(pattern).map_err(|error| {
+            VaultFileError::ReadFailed {
+                path: "<vault>".into(),
+                message: error.to_string().into(),
+            }
+        })?;
+
+        let mut folders = Vec::with_capacity(paths.len());
+        for relative in paths {
+            source.validate_path(relative.as_path()).map_err(|error| {
+                VaultFileError::InvalidPath {
+                    path: relative.to_str().unwrap_or("<invalid>").into(),
+                    reason: error.to_string().into(),
                 }
-                let parent_path =
-                    VaultPath::try_from_path(parent).map_err(|error| {
-                        VaultFileError::InvalidPath {
-                            path: parent.to_string_lossy().into_owned().into(),
-                            reason: error.to_string().into(),
-                        }
-                    })?;
-                if !seen.insert(parent_path.clone()) {
-                    current = parent;
-                    continue;
-                }
-                let metadata = source.metadata(parent).map_err(|error| {
-                    VaultFileError::MetadataFailed {
-                        path: parent_path.as_str().into(),
-                        message: error.to_string().into(),
+            })?;
+
+            let vault_path =
+                VaultPath::try_from_path(&relative).map_err(|error| {
+                    VaultFileError::InvalidPath {
+                        path: relative.to_str().unwrap_or("<invalid>").into(),
+                        reason: error.to_string().into(),
                     }
                 })?;
-                let folder = VaultFolder::try_new(parent_path, &metadata)
-                    .map_err(|error| VaultFileError::InvalidPath {
-                        path: parent.to_string_lossy().into_owned().into(),
-                        reason: error.to_string().into(),
-                    })?;
-                folders.push(folder);
-                current = parent;
-            }
+
+            let metadata = source
+                .metadata(Path::new(vault_path.as_str()))
+                .map_err(|error| VaultFileError::MetadataFailed {
+                    path: vault_path.as_str().into(),
+                    message: error.to_string().into(),
+                })?;
+            let folder = VaultFolder::try_new(vault_path, &metadata).map_err(
+                |error| VaultFileError::InvalidPath {
+                    path: relative.to_str().unwrap_or("<invalid>").into(),
+                    reason: error.to_string().into(),
+                },
+            )?;
+            folders.push(folder);
         }
+
         Ok(folders)
     }
 }
@@ -509,56 +524,113 @@ impl VaultProcessor<Comparison, Scanned> {
             ..VaultProcessReport::default()
         };
 
-        let mut markdown_candidates = Vec::new();
-
-        for file in &self.status.files {
-            let stored = repository.get_file(file.path())?;
-            let is_markdown = is_markdown_path(file.path().as_path());
-            let mut should_route = false;
-
-            if let Some(existing) = stored {
-                if metadata_match(&existing, file) {
-                    bump(&mut report.files_fresh);
-                } else {
-                    repository.save_file(file)?;
-                    bump(&mut report.files_updated);
-                    should_route = true;
-                }
-            } else {
-                repository.save_file(file)?;
-                bump(&mut report.files_added);
-                should_route = true;
+        let outcome = match self.status.mode {
+            ScanMode::Full => self.compare_full(repository, &mut report)?,
+            ScanMode::Partial => {
+                self.compare_partial(repository, &mut report)?
             }
+        };
 
-            if should_route && is_markdown {
-                markdown_candidates.push(file.clone());
-            }
-        }
-
-        for folder in &self.status.folders {
-            let stored = repository.get_folder(folder.path())?;
-            match stored {
-                None => {
-                    repository.save_folder(folder)?;
-                    bump(&mut report.folders_added);
+        if !outcome.file_updates.is_empty()
+            || !outcome.folder_updates.is_empty()
+        {
+            repository.with_batch_write(|batch| {
+                for file in &outcome.file_updates {
+                    batch.put_file(file)?;
                 }
-                Some(existing) => {
-                    if folder_metadata_match(&existing, folder) {
-                        // no report count for fresh folders
-                    } else {
-                        repository.save_folder(folder)?;
-                        bump(&mut report.folders_updated);
-                    }
+                for folder in &outcome.folder_updates {
+                    batch.put_folder(folder)?;
                 }
-            }
+                Ok(())
+            })?;
         }
 
         Ok(Self::transition(Routing, Compared {
             mode: self.status.mode,
             path_set: self.status.path_set,
-            markdown_candidates,
+            markdown_candidates: outcome.markdown_candidates,
             report,
         }))
+    }
+
+    fn compare_full(
+        &self,
+        repository: &VaultRepository<'_>,
+        report: &mut VaultProcessReport,
+    ) -> Result<CompareOutcome, VaultProcessError> {
+        let existing_files = repository.list_files()?;
+        let existing_folders = repository.list_folders()?;
+
+        let file_map = existing_files
+            .into_iter()
+            .map(|file| (file.path().clone(), file))
+            .collect::<HashMap<_, _>>();
+        let folder_map = existing_folders
+            .into_iter()
+            .map(|folder| (folder.path().clone(), folder))
+            .collect::<HashMap<_, _>>();
+
+        let mut file_updates = Vec::new();
+        let mut markdown_candidates = Vec::new();
+        for file in &self.status.files {
+            let existing = file_map.get(file.path());
+            let (should_update, should_route) =
+                evaluate_file(existing, file, report);
+            if should_update {
+                file_updates.push(file.clone());
+            }
+            if should_route {
+                markdown_candidates.push(file.clone());
+            }
+        }
+
+        let mut folder_updates = Vec::new();
+        for folder in &self.status.folders {
+            let existing = folder_map.get(folder.path());
+            if evaluate_folder(existing, folder, report) {
+                folder_updates.push(folder.clone());
+            }
+        }
+
+        Ok(CompareOutcome {
+            markdown_candidates,
+            file_updates,
+            folder_updates,
+        })
+    }
+
+    fn compare_partial(
+        &self,
+        repository: &VaultRepository<'_>,
+        report: &mut VaultProcessReport,
+    ) -> Result<CompareOutcome, VaultProcessError> {
+        let mut file_updates = Vec::new();
+        let mut markdown_candidates = Vec::new();
+        for file in &self.status.files {
+            let existing = repository.get_file(file.path())?;
+            let (should_update, should_route) =
+                evaluate_file(existing.as_ref(), file, report);
+            if should_update {
+                file_updates.push(file.clone());
+            }
+            if should_route {
+                markdown_candidates.push(file.clone());
+            }
+        }
+
+        let mut folder_updates = Vec::new();
+        for folder in &self.status.folders {
+            let existing = repository.get_folder(folder.path())?;
+            if evaluate_folder(existing.as_ref(), folder, report) {
+                folder_updates.push(folder.clone());
+            }
+        }
+
+        Ok(CompareOutcome {
+            markdown_candidates,
+            file_updates,
+            folder_updates,
+        })
     }
 }
 
@@ -693,5 +765,47 @@ fn folder_metadata_match(stored: &VaultFolder, current: &VaultFolder) -> bool {
         (Some(stored), Some(current)) => stored == current,
         (None, None) => true,
         _ => false,
+    }
+}
+
+fn evaluate_file(
+    existing: Option<&VaultFile>,
+    file: &VaultFile,
+    report: &mut VaultProcessReport,
+) -> (bool, bool) {
+    let is_markdown = is_markdown_path(file.path().as_path());
+    let should_update = match existing {
+        Some(existing) if metadata_match(existing, file) => {
+            bump(&mut report.files_fresh);
+            false
+        }
+        Some(_) => {
+            bump(&mut report.files_updated);
+            true
+        }
+        None => {
+            bump(&mut report.files_added);
+            true
+        }
+    };
+
+    (should_update, should_update && is_markdown)
+}
+
+fn evaluate_folder(
+    existing: Option<&VaultFolder>,
+    folder: &VaultFolder,
+    report: &mut VaultProcessReport,
+) -> bool {
+    match existing {
+        Some(existing) if folder_metadata_match(existing, folder) => false,
+        Some(_) => {
+            bump(&mut report.folders_updated);
+            true
+        }
+        None => {
+            bump(&mut report.folders_added);
+            true
+        }
     }
 }

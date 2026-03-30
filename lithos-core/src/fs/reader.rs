@@ -176,6 +176,55 @@ impl Reader {
         Ok(paths)
     }
 
+    /// Lists directories matching a glob pattern within the vault.
+    ///
+    /// The pattern is relative to the vault root. Only directories are
+    /// returned; files and non-directory symlinks are excluded. Results are
+    /// sorted alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pattern is invalid or if I/O operations fail.
+    #[inline]
+    pub fn list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, ParseError> {
+        let full_pattern = self.root.join(pattern);
+        let pattern_str =
+            full_pattern.to_str().ok_or_else(|| ParseError::Io {
+                path: full_pattern.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid UTF-8 in pattern",
+                ),
+            })?;
+
+        let mut paths = Vec::new();
+        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
+            path: full_pattern.clone(),
+            source: std::io::Error::other(e),
+        })? {
+            let path = entry.map_err(|e| ParseError::Io {
+                path: e.path().to_path_buf(),
+                source: e.into_error(),
+            })?;
+
+            if !path.is_dir() {
+                continue;
+            }
+
+            let relative = path.strip_prefix(&self.root).map_err(|_err| {
+                ParseError::Io {
+                    path: path.clone(),
+                    source: std::io::Error::other("Path outside root"),
+                }
+            })?;
+
+            paths.push(relative.to_path_buf());
+        }
+
+        paths.sort();
+        Ok(paths)
+    }
+
     /// Reads and parses a structured file (JSON, TOML, or YAML).
     ///
     /// The format is detected based on the file extension.

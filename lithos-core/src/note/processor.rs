@@ -280,16 +280,16 @@ impl NoteProcessor<Discovery, Unknown> {
         source: &FsReader,
         info: NoteFileInfo,
     ) -> Result<NoteProcessReport, NoteProcessError> {
+        let task_spec = Arc::new(config.to_task_spec());
         let branch = self.discover(repository, info)?;
         let metadata = match branch {
             ComparisonBranch::Missing(state) => {
-                state.load_content(repository, source, config)?
+                state.load_content(repository, source, &task_spec, config)?
             }
             ComparisonBranch::Present(state) => match state.check_metadata() {
                 MetadataBranch::Fresh(state) => state.report(),
-                MetadataBranch::Stale(state) => {
-                    state.load_content(repository, source, config)?
-                }
+                MetadataBranch::Stale(state) => state
+                    .load_content(repository, source, &task_spec, config)?,
             },
         };
         Ok(metadata)
@@ -388,6 +388,7 @@ impl NoteProcessor<Comparison, Missing> {
         self,
         repository: &impl Repository<Error = NoteRepositoryError>,
         source: &FsReader,
+        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         config: &Config,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let content = source
@@ -405,7 +406,7 @@ impl NoteProcessor<Comparison, Missing> {
             content,
             is_new: true,
         });
-        let analysis = suspect.parse(config)?;
+        let analysis = suspect.parse(task_spec)?;
         match analysis {
             AnalysisBranch::New(state) => state.persist(repository, config),
             AnalysisBranch::Changed(state) => state.persist(repository, config),
@@ -419,6 +420,7 @@ impl NoteProcessor<Analysis, Suspect> {
         self,
         repository: &impl Repository<Error = NoteRepositoryError>,
         source: &FsReader,
+        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         config: &Config,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let content = source
@@ -436,7 +438,7 @@ impl NoteProcessor<Analysis, Suspect> {
             content,
             is_new: self.status.is_new,
         });
-        let analysis = suspect.parse(config)?;
+        let analysis = suspect.parse(task_spec)?;
         match analysis {
             AnalysisBranch::New(state) => state.persist(repository, config),
             AnalysisBranch::Changed(state) => state.persist(repository, config),
@@ -446,13 +448,12 @@ impl NoteProcessor<Analysis, Suspect> {
     #[inline]
     fn parse(
         self,
-        config: &Config,
+        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
     ) -> Result<AnalysisBranch, NoteProcessError> {
-        let task_spec = Arc::new(config.to_task_spec());
         let raw = MarkdownParser::parse(
             &self.status.content,
             self.status.info.path.clone(),
-            &task_spec,
+            task_spec,
         )
         .map(RawNote::into_owned)?;
 
