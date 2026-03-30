@@ -215,7 +215,7 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
@@ -410,7 +410,7 @@ fn bench_ingest_group(
 ) {
     let mut ingest_group = c.benchmark_group("note_parsing");
 
-    let task_spec = Arc::new(task_spec_fixture());
+    let task_spec = task_spec_fixture();
 
     // Simple benchmark
     std::fs::write(root.join("notes/simple.md"), samples.simple)
@@ -470,7 +470,7 @@ fn bench_ingest_group(
 fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     let mut parse_group = c.benchmark_group("note_parsing_ingest_only");
 
-    let task_spec = Arc::new(task_spec_fixture());
+    let task_spec = task_spec_fixture();
 
     // Ingest-only simple benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));

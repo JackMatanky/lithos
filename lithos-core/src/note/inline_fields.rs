@@ -67,16 +67,33 @@ impl InlineFieldKey {
     #[inline]
     #[must_use]
     pub fn normalize(key: &str) -> Box<str> {
-        let stripped = key
-            .chars()
-            .filter(|ch| !matches!(ch, '*' | '_' | '~' | '`'))
-            .collect::<String>();
-        stripped
-            .split_whitespace()
-            .map(str::to_ascii_lowercase)
-            .collect::<Vec<_>>()
-            .join("-")
-            .into_boxed_str()
+        let mut normalized = String::with_capacity(key.len());
+        let mut needs_dash = false;
+
+        for ch in key.chars() {
+            if matches!(ch, '*' | '_' | '~' | '`') {
+                continue;
+            }
+            if ch.is_whitespace() {
+                if !normalized.is_empty() {
+                    needs_dash = true;
+                }
+                continue;
+            }
+            if needs_dash {
+                normalized.push('-');
+                needs_dash = false;
+            }
+            normalized.push(ch.to_ascii_lowercase());
+        }
+
+        if normalized.ends_with('-') {
+            while normalized.ends_with('-') {
+                normalized.pop();
+            }
+        }
+
+        normalized.into_boxed_str()
     }
 }
 

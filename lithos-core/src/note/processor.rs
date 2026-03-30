@@ -3,7 +3,7 @@
 //! Provides a typestate-driven pipeline for processing markdown notes using
 //! file metadata and the note repository.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use crate::{
     config::aggregate::Config,
@@ -280,16 +280,24 @@ impl NoteProcessor<Discovery, Unknown> {
         source: &FsReader,
         info: NoteFileInfo,
     ) -> Result<NoteProcessReport, NoteProcessError> {
-        let task_spec = Arc::new(config.to_task_spec());
-        let branch = self.discover(repository, info)?;
+        let frontmatter_spec = config.to_frontmatter_spec();
+        let task_spec = config.to_task_spec();
+        let branch = Self::discover(repository, info)?;
         let metadata = match branch {
-            ComparisonBranch::Missing(state) => {
-                state.load_content(repository, source, &task_spec, config)?
-            }
+            ComparisonBranch::Missing(state) => state.load_content(
+                repository,
+                source,
+                &task_spec,
+                &frontmatter_spec,
+            )?,
             ComparisonBranch::Present(state) => match state.check_metadata() {
                 MetadataBranch::Fresh(state) => state.report(),
-                MetadataBranch::Stale(state) => state
-                    .load_content(repository, source, &task_spec, config)?,
+                MetadataBranch::Stale(state) => state.load_content(
+                    repository,
+                    source,
+                    &task_spec,
+                    &frontmatter_spec,
+                )?,
             },
         };
         Ok(metadata)
@@ -327,11 +335,9 @@ impl NoteProcessor<Discovery, Unknown> {
 
     #[inline]
     fn discover<R: Repository<Error = NoteRepositoryError>>(
-        self,
         repository: &R,
         info: NoteFileInfo,
     ) -> Result<ComparisonBranch, NoteProcessError> {
-        drop(self);
         let stored = repository.find_by_path(info.path())?;
         if let Some(note) = stored {
             Ok(ComparisonBranch::Present(Self::transition(
@@ -388,8 +394,8 @@ impl NoteProcessor<Comparison, Missing> {
         self,
         repository: &impl Repository<Error = NoteRepositoryError>,
         source: &FsReader,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
-        config: &Config,
+        task_spec: &crate::config::task::TaskConfigSpec,
+        frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let content = source
             .read_to_string(std::path::Path::new(
@@ -408,8 +414,12 @@ impl NoteProcessor<Comparison, Missing> {
         });
         let analysis = suspect.parse(task_spec)?;
         match analysis {
-            AnalysisBranch::New(state) => state.persist(repository, config),
-            AnalysisBranch::Changed(state) => state.persist(repository, config),
+            AnalysisBranch::New(state) => {
+                state.persist(repository, frontmatter_spec, task_spec)
+            }
+            AnalysisBranch::Changed(state) => {
+                state.persist(repository, frontmatter_spec, task_spec)
+            }
         }
     }
 }
@@ -420,8 +430,8 @@ impl NoteProcessor<Analysis, Suspect> {
         self,
         repository: &impl Repository<Error = NoteRepositoryError>,
         source: &FsReader,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
-        config: &Config,
+        task_spec: &crate::config::task::TaskConfigSpec,
+        frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let content = source
             .read_to_string(std::path::Path::new(
@@ -440,15 +450,19 @@ impl NoteProcessor<Analysis, Suspect> {
         });
         let analysis = suspect.parse(task_spec)?;
         match analysis {
-            AnalysisBranch::New(state) => state.persist(repository, config),
-            AnalysisBranch::Changed(state) => state.persist(repository, config),
+            AnalysisBranch::New(state) => {
+                state.persist(repository, frontmatter_spec, task_spec)
+            }
+            AnalysisBranch::Changed(state) => {
+                state.persist(repository, frontmatter_spec, task_spec)
+            }
         }
     }
 
     #[inline]
     fn parse(
         self,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
+        task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<AnalysisBranch, NoteProcessError> {
         let raw = MarkdownParser::parse(
             &self.status.content,
@@ -477,19 +491,18 @@ impl NoteProcessor<Construction, New> {
     fn persist<R: Repository<Error = NoteRepositoryError>>(
         self,
         repository: &R,
-        config: &Config,
+        frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
+        task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let path = self.status.raw.path.clone();
-        let frontmatter_spec = config.to_frontmatter_spec();
-        let task_spec = config.to_task_spec();
         let note_id = repository
             .find_by_path(&path)?
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
             note_id,
-            &frontmatter_spec,
-            &task_spec,
+            frontmatter_spec,
+            task_spec,
         ))?;
         let saved_id = repository.save(&facts)?;
         Ok(NoteProcessReport {
@@ -506,19 +519,18 @@ impl NoteProcessor<Construction, Changed> {
     fn persist<R: Repository<Error = NoteRepositoryError>>(
         self,
         repository: &R,
-        config: &Config,
+        frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
+        task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let path = self.status.raw.path.clone();
-        let frontmatter_spec = config.to_frontmatter_spec();
-        let task_spec = config.to_task_spec();
         let note_id = repository
             .find_by_path(&path)?
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
             note_id,
-            &frontmatter_spec,
-            &task_spec,
+            frontmatter_spec,
+            task_spec,
         ))?;
         let saved_id = repository.save(&facts)?;
         Ok(NoteProcessReport {

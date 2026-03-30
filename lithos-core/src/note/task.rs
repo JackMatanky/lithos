@@ -297,7 +297,7 @@ impl Task {
             .status_mappings
             .get(&status_symbol.value())
             .cloned()
-            .unwrap_or_else(|| format!("{}", status_symbol.value()).into());
+            .unwrap_or_else(|| status_symbol.value().to_string().into());
 
         // 2. Copy all fields from ListItem
         let fields: HashMap<_, _> = item

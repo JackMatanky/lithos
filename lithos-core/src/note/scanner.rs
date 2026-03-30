@@ -274,7 +274,7 @@ impl NoteScanner {
         cursor: &mut Cursor<'source>,
         artifacts: &mut Vec<ScannedArtifact<'source>>,
     ) -> Result<(), NoteError> {
-        cursor.skip_whitespace_on_line();
+        cursor.skip_whitespace_on_line()?;
 
         let Some(first) = cursor.peek_byte() else {
             cursor.mode = ScanMode::InBody;
@@ -289,7 +289,7 @@ impl NoteScanner {
         // Try to match list prefix: -, *, +, or 1.
         if let Some(prefix_len) = Self::match_list_prefix(cursor) {
             cursor.advance(prefix_len)?;
-            cursor.skip_whitespace_on_line();
+            cursor.skip_whitespace_on_line()?;
 
             // Try to match checkbox: [x]
             if cursor.rest.starts_with('[')
@@ -699,7 +699,7 @@ impl<'source> Cursor<'source> {
     }
 
     /// Consumes whitespace characters from the current line.
-    fn skip_whitespace_on_line(&mut self) {
+    fn skip_whitespace_on_line(&mut self) -> Result<(), NoteError> {
         let bytes = self.rest.as_bytes();
         let mut idx = 0usize;
         while let Some(&b) = bytes.get(idx) {
@@ -710,8 +710,9 @@ impl<'source> Cursor<'source> {
             }
         }
         if idx > 0 {
-            let _result = self.advance(idx);
+            self.advance(idx)?;
         }
+        Ok(())
     }
 }
 

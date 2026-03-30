@@ -8,7 +8,7 @@
 //!
 //! The main entry point is [`MarkdownParser`].
 
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use pulldown_cmark::{
     CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
@@ -57,12 +57,12 @@ impl MarkdownParser {
     pub fn parse<'source>(
         markdown: &'source str,
         path: NotePath,
-        task_spec: &Arc<crate::config::task::TaskConfigSpec>,
+        task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<RawNote<'source>, NoteIngestError> {
         let emoji_markers = if task_spec.use_emoji {
-            task_spec.emoji_markers.to_vec()
+            task_spec.emoji_markers.clone()
         } else {
-            Vec::new()
+            Box::new([])
         };
         let scanner = NoteScanner::new(emoji_markers);
         let mut pool = StringPool::new();
@@ -141,8 +141,8 @@ impl MarkdownParser {
                 })?;
 
             if Self::handle_metadata(
-                event.clone(),
-                range.clone(),
+                &event,
+                &range,
                 &mut in_metadata,
                 &mut metadata_text,
                 &mut sections,
@@ -166,7 +166,6 @@ impl MarkdownParser {
                         &mut list_contexts,
                         &mut current_link,
                         &mut open_item_by_depth,
-                        task_spec,
                         &mut pool,
                     );
                 }
@@ -190,7 +189,6 @@ impl MarkdownParser {
                         &mut list_items,
                         &mut lists,
                         &mut block_refs,
-                        task_spec,
                         &mut pool,
                     )?;
                 }
@@ -228,22 +226,11 @@ impl MarkdownParser {
 
         pool.put(metadata_text);
 
-        let reference_defs: Vec<(String, String)> = {
-            let parser_for_refs =
-                Parser::new_ext(markdown, Self::obsidian_options());
-            parser_for_refs
-                .reference_definitions()
-                .iter()
-                .map(|(label, link_def)| {
-                    let dest: String = link_def.dest.as_ref().to_owned();
-                    (label.to_owned(), dest)
-                })
-                .collect()
-        };
+        let reference_defs = scan_reference_definitions(markdown);
         for (label, dest) in reference_defs {
             reference_links.push(RawReferenceLink::new(
-                label.into(),
-                dest.into(),
+                Cow::Owned(label.into()),
+                Cow::Owned(dest.into()),
                 SourceByteOffset::new(0),
             ));
         }
@@ -306,7 +293,6 @@ impl MarkdownParser {
         list_contexts: &mut Vec<ListContext>,
         current_link: &mut Option<LinkFrame<'source>>,
         open_item_by_depth: &mut Vec<SourceByteOffset>,
-        _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) {
         let kind = match tag {
@@ -429,7 +415,6 @@ impl MarkdownParser {
         list_items: &mut Vec<RawListItem<'source>>,
         lists: &mut Vec<RawList>,
         block_refs: &mut Vec<RawBlockRef<'source>>,
-        _task_spec: &Arc<crate::config::task::TaskConfigSpec>,
         pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
         match end_tag {
@@ -623,8 +608,8 @@ impl MarkdownParser {
         reason = "Metadata blocks require full state context"
     )]
     fn handle_metadata(
-        event: Event<'_>,
-        range: std::ops::Range<usize>,
+        event: &Event<'_>,
+        range: &std::ops::Range<usize>,
         in_metadata: &mut Option<(
             pulldown_cmark::MetadataBlockKind,
             SourceByteOffset,
@@ -636,8 +621,13 @@ impl MarkdownParser {
         let Some((kind, start_offset)) = *in_metadata else {
             return Ok(false);
         };
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics on &Event keep metadata handling \
+                      concise"
+        )]
         match event {
-            Event::Text(t) | Event::Code(t) => metadata_text.push_str(&t),
+            Event::Text(t) | Event::Code(t) => metadata_text.push_str(t),
             Event::End(TagEnd::MetadataBlock(_)) => {
                 in_metadata.take();
                 let end_pos =
@@ -1051,6 +1041,118 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
     }
 }
 
+type ReferenceDef = (Box<str>, Box<str>);
+
+#[derive(Debug, Clone, Copy)]
+struct FenceState {
+    marker: char,
+    count: usize,
+}
+
+fn scan_reference_definitions(markdown: &str) -> Vec<ReferenceDef> {
+    let mut defs = Vec::new();
+    let mut fence: Option<FenceState> = None;
+
+    for line in markdown.lines() {
+        if let Some(state) = fence {
+            if let Some((marker, count)) = line_fence_marker(line)
+                && marker == state.marker
+                && count >= state.count
+            {
+                fence = None;
+            }
+            continue;
+        }
+
+        if is_indented_code_line(line) {
+            continue;
+        }
+
+        if let Some((marker, count)) = line_fence_marker(line) {
+            fence = Some(FenceState {
+                marker,
+                count,
+            });
+            continue;
+        }
+
+        let (leading_spaces, rest) = split_leading_spaces(line);
+        if leading_spaces > 3 || !rest.starts_with('[') {
+            continue;
+        }
+
+        let Some(label_end) = rest.find("]:") else {
+            continue;
+        };
+        let label = rest.get(1..label_end).unwrap_or("").trim();
+        if label.is_empty() {
+            continue;
+        }
+
+        let dest_start = label_end.saturating_add(2);
+        let dest_part = rest.get(dest_start..).unwrap_or("").trim_start();
+        if dest_part.is_empty() {
+            continue;
+        }
+
+        let dest = if let Some(stripped) = dest_part.strip_prefix('<') {
+            let Some(close_idx) = stripped.find('>') else {
+                continue;
+            };
+            stripped.get(..close_idx).unwrap_or("")
+        } else {
+            dest_part.split_whitespace().next().unwrap_or("")
+        };
+
+        let dest = dest.trim();
+        if dest.is_empty() {
+            continue;
+        }
+
+        defs.push((label.into(), dest.into()));
+    }
+
+    defs
+}
+
+fn is_indented_code_line(line: &str) -> bool {
+    line.starts_with("    ") || line.starts_with('\t')
+}
+
+fn split_leading_spaces(line: &str) -> (usize, &str) {
+    let mut count = 0usize;
+    for ch in line.chars() {
+        if ch == ' ' {
+            count = count.saturating_add(1);
+        } else if ch == '\t' {
+            count = 4;
+            break;
+        } else {
+            break;
+        }
+    }
+    let rest = line.get(count..).unwrap_or("");
+    (count, rest)
+}
+
+fn line_fence_marker(line: &str) -> Option<(char, usize)> {
+    let trimmed = line.trim_start_matches([' ', '\t']);
+    let mut chars = trimmed.chars();
+    let marker = chars.next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let mut count = 1usize;
+    for ch in chars {
+        if ch == marker {
+            count = count.saturating_add(1);
+        } else {
+            break;
+        }
+    }
+    (count >= 3).then_some((marker, count))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1078,7 +1180,7 @@ mod tests {
     fn parse_raw(markdown: &str) -> RawNote<'_> {
         let path = crate::note::paths::NotePath::try_new("test.md")
             .expect("valid test path");
-        let task_spec = Arc::new(task_spec_fixture());
+        let task_spec = task_spec_fixture();
         MarkdownParser::parse(markdown, path, &task_spec)
             .expect("parsing failed")
     }
