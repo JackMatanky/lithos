@@ -80,10 +80,16 @@ impl<'source> RawFieldValue<'source> {
         }
 
         // Try boolean
-        match text.trim().to_lowercase().as_str() {
-            "true" | "yes" => return Self::Boolean(true),
-            "false" | "no" => return Self::Boolean(false),
-            _ => {}
+        let trimmed = text.trim();
+        if trimmed.eq_ignore_ascii_case("true")
+            || trimmed.eq_ignore_ascii_case("yes")
+        {
+            return Self::Boolean(true);
+        }
+        if trimmed.eq_ignore_ascii_case("false")
+            || trimmed.eq_ignore_ascii_case("no")
+        {
+            return Self::Boolean(false);
         }
 
         // Try number

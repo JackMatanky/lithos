@@ -726,7 +726,8 @@ impl MarkdownParser {
         if end <= start {
             return None;
         }
-        let tail_len = 128usize;
+        let block_len = end.saturating_sub(start);
+        let tail_len = block_len.min(512usize);
         let mut tail_start = end.saturating_sub(tail_len);
         if tail_start < start {
             tail_start = start;
