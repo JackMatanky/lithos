@@ -8,7 +8,7 @@ use lithos_core::{
     },
     db::Database,
     note::{
-        loader::Loader as NoteLoader,
+        processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
         storage::{RedbRepository, Repository as _},
     },
 };
@@ -43,14 +43,29 @@ mod tests {
         let db_path = root.join("notes.redb");
         let db = Database::open(&db_path).expect("open db");
         let repository = RedbRepository::new(&db);
-        let loader = NoteLoader::new(&repository, &config);
+        let source = lithos_core::fs::FsReader::new(root.as_path());
 
         let note_path =
             lithos_core::note::paths::NotePath::try_new("notes/ingest.md")
                 .expect("note path");
-        let note_id = loader
-            .load_content(&note_path, markdown, None, None)
+        let metadata = source
+            .metadata(std::path::Path::new(note_path.as_str()))
+            .expect("metadata");
+        let info = NoteFileInfo::new(
+            note_path.clone(),
+            metadata.len(),
+            metadata.created().ok(),
+            metadata.modified().ok(),
+        );
+        let report = NoteProcessor::new()
+            .process_file(&repository, &config, &source, info)
             .expect("load markdown");
+        assert_eq!(
+            report.action(),
+            NoteProcessAction::Created,
+            "expected note creation"
+        );
+        let note_id = report.note_id().expect("note id");
         let note = repository
             .find_by_id(note_id)
             .expect("query note")

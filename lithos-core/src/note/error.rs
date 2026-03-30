@@ -148,8 +148,7 @@ impl From<crate::fs::error::ParseError> for NoteIngestError {
     }
 }
 
-/// Orchestration error returned by the Note
-/// [Loader][crate::note::loader::Loader].
+/// Orchestration error returned by the Note processor pipeline.
 ///
 /// Distinguishes between failures in the ingestion, domain validation,
 /// and persistence phases of the note lifecycle.
@@ -167,6 +166,23 @@ pub enum NoteLoadError {
     /// The note could not be saved to or retrieved from the repository.
     #[error("persistence failed: {0}")]
     Persistence(#[from] NoteRepositoryError),
+}
+
+/// Errors surfaced during note processing.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum NoteProcessError {
+    /// Markdown ingestion failed.
+    #[error("ingestion failed: {0}")]
+    Ingest(#[from] NoteIngestError),
+
+    /// Repository access failed.
+    #[error("repository failed: {0}")]
+    Repository(#[from] NoteRepositoryError),
+
+    /// Note validation failed.
+    #[error("validation failed: {0}")]
+    Validation(#[from] NoteError),
 }
 
 impl From<crate::db::DbError> for NoteLoadError {
@@ -885,6 +901,7 @@ mod tests {
             is_send_sync::<NoteError>();
             is_send_sync::<NoteIngestError>();
             is_send_sync::<NoteLoadError>();
+            is_send_sync::<NoteProcessError>();
             is_send_sync::<NoteRepositoryError>();
         }
     }

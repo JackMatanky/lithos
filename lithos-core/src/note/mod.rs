@@ -31,7 +31,8 @@
 //! - [`aggregate`] - Stable note identifiers and normalized facts.
 //! - [`parser`] - Markdown parsing boundary (SAX event sink + metadata
 //!   capture).
-//! - [`ingestor`] - File ingestion orchestration (File → Raw*).
+//! - `processor` - File ingestion and persistence pipeline (File → Raw →
+//!   Domain).
 //! - [`raw`] - Raw note types.
 //! - [`storage`] - Unified repository + redb adapter.
 //! - [`task`], [`tag`], [`link`], [`list`] - Domain entities derived during
@@ -44,12 +45,10 @@
 
 /// Note aggregate and identity types.
 pub mod aggregate;
-/// Note file ingestion adapter.
-pub mod ingestor;
-/// Note loader orchestration.
-pub mod loader;
 /// Markdown parser boundary.
 pub mod parser;
+/// Note processing pipeline.
+pub mod processor;
 /// Raw note types and helpers.
 pub(crate) mod raw;
 /// Unified repository storage.

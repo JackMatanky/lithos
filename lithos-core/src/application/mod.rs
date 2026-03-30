@@ -40,12 +40,3 @@
 // NOTE: Schema loader moved to schema module (schema::loader) as part of Phase
 // 6.
 // NOTE: Config service removed - use config::loader::Loader directly.
-
-pub mod vault;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Public Type Aliases
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Vault service type alias.
-pub type VaultService<'db, 'config> = vault::Service<'db, 'config>;

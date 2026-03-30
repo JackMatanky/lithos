@@ -30,7 +30,6 @@ mod tests {
     };
 
     use lithos_core::{
-        application::VaultService,
         config::{
             aggregate::Config,
             raw::RawConfig,
@@ -43,6 +42,7 @@ mod tests {
             storage::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
+        vault::VaultProcessor,
     };
     use tempfile::TempDir;
 
@@ -80,8 +80,14 @@ mod tests {
         let config = test_config(dir.path().to_path_buf())?;
         let db_path = dir.path().join("notes.redb");
         let db = Arc::new(Database::open(&db_path)?);
-        let service = VaultService::new(db.as_ref(), &config);
-        let _note_ids = service.load()?;
+        let report =
+            VaultProcessor::new().process_full(db.as_ref(), &config)?;
+        if report.markdown_routed() == 0 {
+            return Err(std::io::Error::other(
+                "expected markdown routing to occur",
+            )
+            .into());
+        }
 
         let repository = RedbRepository::new(db.as_ref());
         let notes = repository.list()?;
@@ -294,16 +300,27 @@ mod tests {
         let (dir, config, db) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
-        let service = VaultService::new(db.as_ref(), &config);
+        let processor = VaultProcessor::new();
         let repository = RedbRepository::new(db.as_ref());
 
-        let first = service.load().expect("first load");
-        assert_eq!(first.len(), 1, "first load should index one note");
+        let first =
+            processor.process_full(db.as_ref(), &config).expect("first load");
+        assert_eq!(
+            first.markdown_routed(),
+            1,
+            "first load should index one note"
+        );
         let mut first_notes = repository.list().expect("first notes");
         let _first_note = first_notes.pop().expect("expected stored note");
 
-        let second = service.load().expect("second load");
-        assert!(second.is_empty(), "second load should skip unchanged note");
+        let second = VaultProcessor::new()
+            .process_full(db.as_ref(), &config)
+            .expect("second load");
+        assert_eq!(
+            second.notes_created_or_updated(),
+            0,
+            "second load should skip unchanged note"
+        );
         let mut second_notes = repository.list().expect("second notes");
         let _second_note = second_notes.pop().expect("expected stored note");
         drop(dir);
@@ -314,14 +331,17 @@ mod tests {
         let (dir, config, db) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
-        let service = VaultService::new(db.as_ref(), &config);
+        let processor = VaultProcessor::new();
         let repository = RedbRepository::new(db.as_ref());
 
-        let _second_note_ids = service.load().expect("first load");
+        let _report =
+            processor.process_full(db.as_ref(), &config).expect("first load");
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
-        let _note_ids = service.load().expect("second load");
+        let _second_report = VaultProcessor::new()
+            .process_full(db.as_ref(), &config)
+            .expect("second load");
         let notes = repository.list().expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
     }
