@@ -14,8 +14,8 @@
 //!   rebuildable caches.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
-//! - **Rich Task Modeling**: Integrated task management with 7 specialized
-//!   indexes for efficient querying.
+//! - **Rich Task Modeling**: Tasks are captured during ingestion and stored
+//!   alongside note projections.
 //!
 //! ## Notes
 //!
@@ -86,56 +86,14 @@ pub mod scanner;
 pub mod value;
 
 /// Database table definitions for note storage.
-pub(crate) const STORED_NOTES: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("stored_notes");
-pub(crate) const NOTE_EVENTS: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("note_events");
+///
+/// `NOTES_BY_ID` stores serialized [`Note`][crate::note::aggregate::Note]
+/// values keyed by UUID v7 strings.
+pub(crate) const NOTES_BY_ID: redb::TableDefinition<&str, &[u8]> =
+    redb::TableDefinition::new("notes_by_id");
 
-pub(crate) const PATH_TO_ID: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("path_to_id");
-pub(crate) const TAGS_TO_NOTES: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("tags_to_notes");
-pub(crate) const ALIAS_TO_ID: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("alias_to_id");
-pub(crate) const FILE_CLASS_TO_ID: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("file_class_to_id");
-pub(crate) const FOLDER_TO_ID: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("folder_to_id");
-pub(crate) const TASKS_BY_COMPLETED_DATE: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_completed_date");
-pub(crate) const TASKS_BY_CREATED_DATE: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_created_date");
-pub(crate) const TASKS_BY_DUE_DATE: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("tasks_by_due_date");
-pub(crate) const TASKS_BY_REMINDER_DATE: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_reminder_date");
-pub(crate) const TASKS_BY_START_DATE: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_start_date");
-pub(crate) const TASKS_BY_SCHEDULED_DATE: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_scheduled_date");
-pub(crate) const TASKS_BY_STATUS: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("tasks_by_status");
-#[expect(dead_code, reason = "Reserved for per-note task indexing")]
-pub(crate) const TASKS_BY_NOTE: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("tasks_by_note");
-#[expect(dead_code, reason = "Reserved for future task table usage")]
-pub(crate) const TASKS: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("tasks");
-pub(crate) const TASKS_BY_METADATA: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("tasks_by_metadata");
-pub(crate) const TASKS_BY_DEPENDS_ON: redb::MultimapTableDefinition<
-    &str,
-    &str,
-> = redb::MultimapTableDefinition::new("tasks_by_depends_on");
-pub(crate) const FRONTMATTER_KV: redb::MultimapTableDefinition<&str, &str> =
-    redb::MultimapTableDefinition::new("frontmatter_kv");
+/// `NOTE_ID_BY_PATH` stores serialized
+/// [`NoteId`][crate::note::aggregate::NoteId] values keyed by vault-relative
+/// note paths.
+pub(crate) const NOTE_ID_BY_PATH: redb::TableDefinition<&str, &[u8]> =
+    redb::TableDefinition::new("note_id_by_path");

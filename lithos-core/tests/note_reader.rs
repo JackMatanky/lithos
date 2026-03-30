@@ -83,7 +83,7 @@ mod tests {
         let service = VaultService::new(db.as_ref(), &config);
         let _note_ids = service.load()?;
 
-        let repository = RedbRepository::new(db.as_ref(), &config);
+        let repository = RedbRepository::new(db.as_ref());
         let notes = repository.list()?;
         let note = notes
             .first()
@@ -138,11 +138,18 @@ mod tests {
             .name_for_symbol(StatusSymbol::try_new('x')?)
             .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
-        let repository =
-            RedbRepository::new(fixture.db.as_ref(), &fixture.config);
+        let repository = RedbRepository::new(fixture.db.as_ref());
         let mut tasks = Vec::new();
-        tasks.extend(repository.list_tasks_by_status(todo)?);
-        tasks.extend(repository.list_tasks_by_status(done)?);
+        let notes = repository.list()?;
+        for note in notes {
+            for task in note.tasks() {
+                if task.status() == todo.as_str()
+                    || task.status() == done.as_str()
+                {
+                    tasks.push(task.clone());
+                }
+            }
+        }
         Ok(tasks)
     }
 
@@ -288,7 +295,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let service = VaultService::new(db.as_ref(), &config);
-        let repository = RedbRepository::new(db.as_ref(), &config);
+        let repository = RedbRepository::new(db.as_ref());
 
         let first = service.load().expect("first load");
         assert_eq!(first.len(), 1, "first load should index one note");
@@ -308,7 +315,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let service = VaultService::new(db.as_ref(), &config);
-        let repository = RedbRepository::new(db.as_ref(), &config);
+        let repository = RedbRepository::new(db.as_ref());
 
         let _second_note_ids = service.load().expect("first load");
         let note_path = dir.path().join("notes/note.md");

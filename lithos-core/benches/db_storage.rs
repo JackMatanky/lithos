@@ -226,8 +226,8 @@ use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-const STORED_NOTES_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("stored_notes");
+const NOTES_BY_ID_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("notes_by_id");
 
 /// Creates a stored note value for benchmark fixtures.
 fn create_test_note(index: usize) -> Note {
@@ -252,7 +252,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
             let id_str = Uuid::from(note.id()).to_string();
             note_ids.push(note.id());
             batch_db
-                .put(STORED_NOTES_TABLE, &id_str, &note)
+                .put(NOTES_BY_ID_TABLE, &id_str, &note)
                 .expect("insert note");
         }
         Ok(())
@@ -321,7 +321,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>(STORED_NOTES_TABLE, &test_key, |archived| {
+            db.get::<Note, _, _>(NOTES_BY_ID_TABLE, &test_key, |archived| {
                 black_box(archived);
             })
             .expect("get note")
@@ -392,7 +392,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
     group.bench_function("get_owned", |b| {
         b.iter(|| {
             let note: Option<Note> = db
-                .get_owned(STORED_NOTES_TABLE, &test_key)
+                .get_owned(NOTES_BY_ID_TABLE, &test_key)
                 .expect("get owned note");
             black_box(note.expect("note exists"));
         });
@@ -436,7 +436,7 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid(STORED_NOTES_TABLE, Uuid::from(note.id()), &note)
+            db.put_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(note.id()), &note)
                 .expect("put note");
         });
     });
@@ -497,7 +497,7 @@ fn bench_batch_write(c: &mut Criterion) {
                             let note = create_test_note(i as usize);
                             let id_str = Uuid::from(note.id()).to_string();
                             batch_db
-                                .put(STORED_NOTES_TABLE, &id_str, &note)
+                                .put(NOTES_BY_ID_TABLE, &id_str, &note)
                                 .expect("put note");
                         }
                         Ok(())
@@ -544,7 +544,7 @@ fn bench_delete(c: &mut Criterion) {
             index = index.wrapping_add(1);
 
             let existed = db
-                .delete_by_uuid(STORED_NOTES_TABLE, Uuid::from(id))
+                .delete_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(id))
                 .expect("delete note");
             black_box(existed);
         });
@@ -588,7 +588,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     group.bench_function("hot_read", |b| {
         b.iter(|| {
             db.get::<Note, _, _>(
-                STORED_NOTES_TABLE,
+                NOTES_BY_ID_TABLE,
                 hot_key.as_str(),
                 |archived| {
                     black_box(archived);
@@ -604,7 +604,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<Note, _, _>(STORED_NOTES_TABLE, cold_id, |archived| {
+            db.get::<Note, _, _>(NOTES_BY_ID_TABLE, cold_id, |archived| {
                 black_box(archived);
             })
             .expect("get note")
@@ -662,12 +662,8 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid(
-                    STORED_NOTES_TABLE,
-                    Uuid::from(note.id()),
-                    &note,
-                )
-                .expect("put note");
+                db.put_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(note.id()), &note)
+                    .expect("put note");
             }
         });
     });
@@ -686,7 +682,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                     let note = create_test_note(i as usize);
                     let id_str = Uuid::from(note.id()).to_string();
                     batch_db
-                        .put(STORED_NOTES_TABLE, &id_str, &note)
+                        .put(NOTES_BY_ID_TABLE, &id_str, &note)
                         .expect("put note");
                 }
                 Ok(())
@@ -750,7 +746,7 @@ fn bench_scan_range(c: &mut Criterion) {
     db.batch_write(|writer| {
         for (i, note) in notes.iter().enumerate() {
             let key = format!("notes/test-{i:04}");
-            writer.put(STORED_NOTES_TABLE, &key, note)?;
+            writer.put(NOTES_BY_ID_TABLE, &key, note)?;
         }
         Ok(())
     })
@@ -765,8 +761,8 @@ fn bench_scan_range(c: &mut Criterion) {
             let prefix = "notes/test-01";
             let count = db
                 .batch_read(|reader| {
-                    let results = reader
-                        .scan_range::<Note>(STORED_NOTES_TABLE, prefix)?;
+                    let results =
+                        reader.scan_range::<Note>(NOTES_BY_ID_TABLE, prefix)?;
                     Ok(results.len())
                 })
                 .expect("batch_read");
@@ -781,7 +777,7 @@ fn bench_scan_range(c: &mut Criterion) {
             let count = db
                 .batch_read(|reader| {
                     let all_pairs = reader
-                        .list_key_value_pairs::<Note>(STORED_NOTES_TABLE)?;
+                        .list_key_value_pairs::<Note>(NOTES_BY_ID_TABLE)?;
                     let filtered = all_pairs
                         .into_iter()
                         .filter(|(key, _)| key.starts_with(prefix))

@@ -3,171 +3,69 @@
 //! Combines read and write operations for the note context in a single
 //! repository interface, following the File → Raw → Domain → Storage pipeline.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Repository methods grouped by behavior"
-)]
-#![expect(
-    clippy::missing_errors_doc,
-    reason = "Repository methods share error semantics"
-)]
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "Pattern matching style is clear in context"
-)]
-
-use std::{
-    collections::HashSet, fmt::Write as _, path::Path, time::SystemTime,
-};
-
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeDelta};
 use uuid::Uuid;
 
 use crate::{
-    config::{
-        aggregate::Config, frontmatter::FrontmatterKey, task::StatusName,
-    },
-    db::{BatchWriter, Database, DbError},
+    db::{BatchReader, BatchWriter, Database, DbError},
     note::{
-        ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
-        NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES,
-        TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE, TASKS_BY_DEPENDS_ON,
-        TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
-        TASKS_BY_SCHEDULED_DATE, TASKS_BY_START_DATE, TASKS_BY_STATUS,
+        NOTE_ID_BY_PATH, NOTES_BY_ID,
         aggregate::{Note, NoteId},
         error::NoteRepositoryError,
-        events::{
-            NoteChangeKind, NoteEvent, NoteEventKind, NoteEventPayload,
-            NoteEventPayloadV1,
-        },
-        frontmatter::{AliasValue, FileClassValue, Frontmatter},
-        inline_fields::InlineFieldKey,
-        paths::{FolderPath, NotePath},
-        task::{Task, TaskDateKind, TaskDateValue},
-        value::FieldValue,
+        paths::NotePath,
     },
 };
 
-/// Note view type returned by repository queries.
-pub type NoteView = Note;
-/// Task view type returned by repository queries.
-pub type TaskView = Task;
-
 /// Unified repository trait for note storage and queries.
 pub trait Repository: Send + Sync {
+    /// Batch reader type for grouped read operations.
+    type BatchReader<'reader>;
+
+    /// Batch writer type for grouped write operations.
+    type BatchWriter<'writer>;
+
     /// Storage error type for repository operations.
     type Error: From<NoteRepositoryError> + std::error::Error;
 
     /// Archived note type for zero-copy reads.
     type NoteArchived<'archived>;
 
-    /// Rebuilds all note indexes from stored projections.
-    fn rebuild_note_indexes(&self) -> Result<usize, Self::Error>;
-
-    /// Rebuilds all task indexes from stored notes.
-    fn rebuild_task_indexes(&self) -> Result<usize, Self::Error>;
-
     /// Deletes a note projection by id.
+    ///
+    /// # Errors
+    /// Returns a repository error if deletion fails.
     fn delete_note(&self, id: NoteId) -> Result<(), Self::Error>;
 
-    /// Persists a note.
-    fn save(&self, note: &Note) -> Result<NoteId, Self::Error>;
-
-    /// Finds a stored note projection by its configured alias.
-    fn find_by_alias(
-        &self,
-        alias: &AliasValue,
-    ) -> Result<Option<NoteView>, Self::Error>;
-
     /// Finds a stored note projection by its unique UUID v7 identifier.
-    fn find_by_id(&self, id: NoteId) -> Result<Option<NoteView>, Self::Error>;
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
+    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error>;
 
     /// Finds a stored note projection by its vault-relative path.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
     fn find_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<NoteView>, Self::Error>;
+    ) -> Result<Option<Note>, Self::Error>;
 
     /// Lists all stored note projections currently managed in the vault.
-    fn list(&self) -> Result<Vec<NoteView>, Self::Error>;
+    ///
+    /// # Errors
+    /// Returns a repository error if the scan fails.
+    fn list(&self) -> Result<Vec<Note>, Self::Error>;
 
-    /// Finds all stored note projections belonging to a specific file class.
-    fn list_by_file_class(
-        &self,
-        class: &FileClassValue,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored note projections located within a specific vault
-    /// folder.
-    fn list_by_folder(
-        &self,
-        folder: &FolderPath,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Queries stored notes by a generic frontmatter key-value pair.
-    fn list_by_frontmatter_kv(
-        &self,
-        key: &FrontmatterKey,
-        value: &str,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks completed on a specific date.
-    fn list_by_task_completed_date(
-        &self,
-        completed_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks created on a specific date.
-    fn list_by_task_created_date(
-        &self,
-        created_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks due on a specific date.
-    fn list_by_task_due_date(
-        &self,
-        due_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks assigned to a specific project.
-    fn list_by_task_project(
-        &self,
-        project: &str,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks with a specific reminder date.
-    fn list_by_task_reminder_date(
-        &self,
-        reminder_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Finds all stored notes containing tasks with a specific status name.
-    fn list_by_task_status(
-        &self,
-        status: &StatusName,
-    ) -> Result<Vec<NoteView>, Self::Error>;
-
-    /// Lists tasks by a specific task date field.
-    fn list_tasks_by_date(
-        &self,
-        kind: TaskDateKind,
-        date: &TaskDateValue,
-    ) -> Result<Vec<TaskView>, Self::Error>;
-
-    /// Lists tasks by a metadata field/value pair.
-    fn list_tasks_by_metadata(
-        &self,
-        field: &str,
-        value: &FieldValue,
-    ) -> Result<Vec<TaskView>, Self::Error>;
-
-    /// Lists tasks with a specific status name.
-    fn list_tasks_by_status(
-        &self,
-        status: &StatusName,
-    ) -> Result<Vec<TaskView>, Self::Error>;
+    /// Persists a note.
+    ///
+    /// # Errors
+    /// Returns a repository error if persistence fails.
+    fn save(&self, note: &Note) -> Result<NoteId, Self::Error>;
 
     /// Accesses a note by ID as archived data, enabling zero-copy reads.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
     fn with_archived_by_id<F, R>(
         &self,
         id: NoteId,
@@ -175,39 +73,213 @@ pub trait Repository: Send + Sync {
     ) -> Result<Option<R>, Self::Error>
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    /// Accesses a note by path as archived data, enabling zero-copy reads.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
+    fn with_archived_by_path<F, R>(
+        &self,
+        path: &NotePath,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    /// Executes many read operations within a single transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if the transaction fails.
+    fn with_batch_read<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: for<'reader> FnOnce(
+            Self::BatchReader<'reader>,
+        ) -> Result<R, Self::Error>;
+
+    /// Executes many write operations within a single transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if the transaction fails.
+    fn with_batch_write<F>(&self, f: F) -> Result<(), Self::Error>
+    where
+        F: for<'writer> FnOnce(
+            &mut Self::BatchWriter<'writer>,
+        ) -> Result<(), Self::Error>;
 }
 
-/// Redb-backed note repository adapter.
-pub struct RedbRepository<'db, 'config> {
-    db: &'db Database,
-    config: &'config Config,
+/// Read-only batch adapter for note storage.
+pub struct RedbBatchNoteReader<'reader> {
+    reader: &'reader BatchReader,
 }
 
-impl<'db, 'config> RedbRepository<'db, 'config> {
-    /// Create a new repository with a database reference.
+impl<'reader> RedbBatchNoteReader<'reader> {
     #[inline]
-    #[must_use]
-    pub const fn new(db: &'db Database, config: &'config Config) -> Self {
+    const fn new(reader: &'reader BatchReader) -> Self {
         Self {
-            db,
-            config,
+            reader,
         }
     }
 
-    /// Access the configuration used by this repository.
+    /// Returns the note ID for a vault-relative path.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
+    #[inline]
+    pub fn get_note_id_by_path(
+        &self,
+        path: &NotePath,
+    ) -> Result<Option<NoteId>, NoteRepositoryError> {
+        self.reader
+            .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
+            .map_err(NoteRepositoryError::Storage)
+    }
+
+    /// Accesses an archived note by its ID.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
+    #[inline]
+    pub fn with_note_by_id<F, R>(
+        &self,
+        id: NoteId,
+        f: F,
+    ) -> Result<Option<R>, NoteRepositoryError>
+    where
+        F: for<'archived> FnOnce(&'archived rkyv::Archived<Note>) -> R,
+    {
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.reader
+            .get::<Note, _, R>(NOTES_BY_ID, id_str, f)
+            .map_err(NoteRepositoryError::Storage)
+    }
+
+    /// Accesses an archived note by its vault-relative path.
+    ///
+    /// # Errors
+    /// Returns a repository error if the lookup fails.
+    #[inline]
+    pub fn with_note_by_path<F, R>(
+        &self,
+        path: &NotePath,
+        f: F,
+    ) -> Result<Option<R>, NoteRepositoryError>
+    where
+        F: for<'archived> FnOnce(&'archived rkyv::Archived<Note>) -> R,
+    {
+        let id = self.get_note_id_by_path(path)?;
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        self.with_note_by_id(id, f)
+    }
+}
+
+/// Write-capable batch adapter for note storage.
+pub struct RedbBatchNoteWriter<'writer> {
+    writer: &'writer mut BatchWriter,
+}
+
+impl<'writer> RedbBatchNoteWriter<'writer> {
+    #[inline]
+    fn new(writer: &'writer mut BatchWriter) -> Self {
+        Self {
+            writer,
+        }
+    }
+
+    /// Persists a note by ID in the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if persistence fails.
+    #[inline]
+    pub fn put_note(&mut self, note: &Note) -> Result<(), NoteRepositoryError> {
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str =
+            Uuid::from(note.id()).as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.writer
+            .put(NOTES_BY_ID, id_str, note)
+            .map_err(NoteRepositoryError::Storage)
+    }
+
+    /// Deletes a note by ID in the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if deletion fails.
+    #[inline]
+    pub fn delete_note_by_id(
+        &mut self,
+        id: NoteId,
+    ) -> Result<(), NoteRepositoryError> {
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.writer
+            .delete(NOTES_BY_ID, id_str)
+            .map_err(NoteRepositoryError::Storage)?;
+        Ok(())
+    }
+
+    /// Persists the note ID index for a path in the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if persistence fails.
+    #[inline]
+    pub fn put_note_id_by_path(
+        &mut self,
+        path: &NotePath,
+        id: NoteId,
+    ) -> Result<(), NoteRepositoryError> {
+        self.writer
+            .put(NOTE_ID_BY_PATH, path.as_str(), &id)
+            .map_err(NoteRepositoryError::Storage)
+    }
+
+    /// Deletes the note ID index for a path in the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if deletion fails.
+    #[inline]
+    pub fn delete_note_id_by_path(
+        &mut self,
+        path: &NotePath,
+    ) -> Result<(), NoteRepositoryError> {
+        self.writer
+            .delete(NOTE_ID_BY_PATH, path.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
+        Ok(())
+    }
+}
+
+/// Redb-backed note repository adapter.
+pub struct RedbRepository<'db> {
+    db: &'db Database,
+}
+
+impl<'db> RedbRepository<'db> {
+    /// Create a new repository with a database reference.
     #[inline]
     #[must_use]
-    pub const fn config(&self) -> &'config Config {
-        self.config
+    pub const fn new(db: &'db Database) -> Self {
+        Self {
+            db,
+        }
     }
 
     fn ensure_unique_path(
         &self,
         path: &NotePath,
-        current_id: Option<&str>,
+        current_id: Option<NoteId>,
     ) -> Result<(), NoteRepositoryError> {
-        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
-        if ids.iter().any(|id| Some(id.as_str()) != current_id) {
+        let existing = self
+            .db
+            .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
+            .map_err(NoteRepositoryError::Storage)?;
+        if existing.is_some_and(|id| Some(id) != current_id) {
             return Err(NoteRepositoryError::AlreadyExists {
                 path: path.clone(),
             });
@@ -215,970 +287,55 @@ impl<'db, 'config> RedbRepository<'db, 'config> {
         Ok(())
     }
 
-    fn collect_index_data_from_facts(&self, facts: &Note) -> IndexData {
-        let frontmatter = facts.frontmatter();
-        let aliases = frontmatter
-            .map(|fm| fm.aliases().map(Into::into).collect())
-            .unwrap_or_default();
-        let file_class =
-            frontmatter.and_then(|fm| fm.file_class()).map(Into::into);
-        let frontmatter_entries =
-            frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
-
-        IndexData {
-            path: facts.path().as_str().into(),
-            folder: Self::note_folder(facts.path().as_str()),
-            tags: facts
-                .tags()
-                .iter()
-                .map(|tag| tag.full_path().into())
-                .collect(),
-            aliases,
-            file_class,
-            task_indexes: Self::task_indexes_from_facts(facts, self.config),
-            frontmatter_entries,
-        }
-    }
-
     fn find_note_id_by_path(
         &self,
         path: &NotePath,
     ) -> Result<Option<NoteId>, NoteRepositoryError> {
-        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
-        if let Some(id_str) = ids.first() {
-            let uuid = Uuid::parse_str(id_str).map_err(|error| {
-                NoteRepositoryError::Corruption {
-                    id: NoteId::new(), // dummy
-                    reason: format!("invalid UUID in index: {error}").into(),
-                }
-            })?;
-            Ok(Some(NoteId::from(uuid)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn build_note_event_from_facts(
-        note_id: NoteId,
-        path: &NotePath,
-        facts: &Note,
-        change: NoteChangeKind,
-    ) -> Result<NoteEvent, NoteRepositoryError> {
-        let task_count =
-            u32::try_from(facts.tasks().len()).map_err(|_err| {
-                NoteRepositoryError::ConstraintViolation {
-                    message: "task count out of range".into(),
-                }
-            })?;
-        let tag_count = u32::try_from(facts.tags().len()).map_err(|_err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: "tag count out of range".into(),
-            }
-        })?;
-        let source_hash = facts.source_hash().into();
-        let source_bytes = facts.source_bytes();
-
-        let payload = NoteEventPayload::V1(NoteEventPayloadV1::indexed(
-            change,
-            task_count,
-            tag_count,
-            Some(source_hash),
-            Some(source_bytes),
-            facts.modified_at(),
-        ));
-
-        Ok(NoteEvent::new(
-            Uuid::now_v7(),
-            note_id,
-            path.clone(),
-            NoteEventKind::Indexed,
-            SystemTime::now(),
-            payload,
-        ))
-    }
-
-    fn insert_note_event(
-        batch: &mut BatchWriter,
-        event: &NoteEvent,
-    ) -> Result<(), NoteRepositoryError> {
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str = event.id().as_hyphenated().encode_lower(&mut id_buffer);
-        batch.put(NOTE_EVENTS, id_str, event)?;
-        Ok(())
+        self.db
+            .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
+            .map_err(NoteRepositoryError::Storage)
     }
 
     fn insert_indexes(
-        batch: &mut BatchWriter,
-        index_data: &IndexData,
-        id_str: &str,
+        writer: &mut RedbBatchNoteWriter<'_>,
+        path: &NotePath,
+        note_id: NoteId,
     ) -> Result<(), NoteRepositoryError> {
-        batch.multimap_insert(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
-
-        if let Some(folder) = index_data.folder.as_deref() {
-            batch.multimap_insert(FOLDER_TO_ID, folder, id_str)?;
-        }
-
-        for tag in &index_data.tags {
-            batch.multimap_insert(TAGS_TO_NOTES, tag.as_ref(), id_str)?;
-        }
-
-        for alias in &index_data.aliases {
-            batch.multimap_insert(ALIAS_TO_ID, alias.as_ref(), id_str)?;
-        }
-
-        if let Some(file_class) = index_data.file_class.as_deref() {
-            batch.multimap_insert(FILE_CLASS_TO_ID, file_class, id_str)?;
-        }
-
-        for entry in &index_data.frontmatter_entries {
-            batch.multimap_insert(FRONTMATTER_KV, entry.as_ref(), id_str)?;
-        }
-
-        Self::insert_task_indexes(batch, &index_data.task_indexes, id_str)
-    }
-
-    fn remove_indexes(
-        batch: &mut BatchWriter,
-        index_data: &IndexData,
-        id_str: &str,
-    ) -> Result<(), NoteRepositoryError> {
-        batch.multimap_remove(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
-
-        if let Some(folder) = index_data.folder.as_deref() {
-            batch.multimap_remove(FOLDER_TO_ID, folder, id_str)?;
-        }
-
-        for tag in &index_data.tags {
-            batch.multimap_remove(TAGS_TO_NOTES, tag.as_ref(), id_str)?;
-        }
-
-        for alias in &index_data.aliases {
-            batch.multimap_remove(ALIAS_TO_ID, alias.as_ref(), id_str)?;
-        }
-
-        if let Some(file_class) = index_data.file_class.as_deref() {
-            batch.multimap_remove(FILE_CLASS_TO_ID, file_class, id_str)?;
-        }
-
-        for entry in &index_data.frontmatter_entries {
-            batch.multimap_remove(FRONTMATTER_KV, entry.as_ref(), id_str)?;
-        }
-
-        Self::remove_task_indexes(batch, &index_data.task_indexes, id_str)
-    }
-
-    fn task_indexes_from_facts(facts: &Note, config: &Config) -> TaskIndexData {
-        let index_all_fields = config.task().indexed().is_empty();
-        let dependencies_enabled = config.task().dependencies_enabled();
-
-        let mut status_keys = Vec::new();
-        let mut created_dates = Vec::new();
-        let mut due_dates = Vec::new();
-        let mut reminder_dates = Vec::new();
-        let mut completed_dates = Vec::new();
-        let mut start_dates = Vec::new();
-        let mut scheduled_dates = Vec::new();
-        let mut metadata_keys = Vec::new();
-        let mut depends_on = Vec::new();
-
-        for task in facts.tasks() {
-            status_keys.push(task.status().into());
-            if let Some(value) = task.dates().created() {
-                created_dates.extend(Self::task_date_index_keys(value));
-            }
-            if let Some(value) = task.dates().due() {
-                due_dates.extend(Self::task_date_index_keys(value));
-            }
-            if let Some(value) = task.dates().reminder() {
-                reminder_dates.extend(Self::task_date_index_keys(value));
-            }
-            if let Some(value) = task.dates().completed() {
-                completed_dates.extend(Self::task_date_index_keys(value));
-            }
-            if let Some(value) = task.dates().start() {
-                start_dates.extend(Self::task_date_index_keys(value));
-            }
-            if let Some(value) = task.dates().scheduled() {
-                scheduled_dates.extend(Self::task_date_index_keys(value));
-            }
-
-            metadata_keys.extend(Self::task_metadata_keys(
-                task.fields(),
-                config,
-                index_all_fields,
-            ));
-            depends_on.extend(Self::task_depends_on(
-                task.fields(),
-                dependencies_enabled,
-            ));
-        }
-
-        TaskIndexData {
-            status_keys,
-            created_dates,
-            due_dates,
-            reminder_dates,
-            completed_dates,
-            start_dates,
-            scheduled_dates,
-            metadata_keys,
-            depends_on,
-        }
-    }
-
-    fn insert_task_indexes(
-        batch: &mut BatchWriter,
-        index_data: &TaskIndexData,
-        note_id_str: &str,
-    ) -> Result<(), NoteRepositoryError> {
-        for key in &index_data.status_keys {
-            batch.multimap_insert(
-                TASKS_BY_STATUS,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.created_dates {
-            batch.multimap_insert(
-                TASKS_BY_CREATED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.due_dates {
-            batch.multimap_insert(
-                TASKS_BY_DUE_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.reminder_dates {
-            batch.multimap_insert(
-                TASKS_BY_REMINDER_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.completed_dates {
-            batch.multimap_insert(
-                TASKS_BY_COMPLETED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.start_dates {
-            batch.multimap_insert(
-                TASKS_BY_START_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.scheduled_dates {
-            batch.multimap_insert(
-                TASKS_BY_SCHEDULED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.metadata_keys {
-            batch.multimap_insert(
-                TASKS_BY_METADATA,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.depends_on {
-            batch.multimap_insert(
-                TASKS_BY_DEPENDS_ON,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
+        writer.put_note_id_by_path(path, note_id)?;
         Ok(())
     }
 
-    fn remove_task_indexes(
-        batch: &mut BatchWriter,
-        index_data: &TaskIndexData,
-        note_id_str: &str,
+    fn remove_indexes(
+        writer: &mut RedbBatchNoteWriter<'_>,
+        path: &NotePath,
     ) -> Result<(), NoteRepositoryError> {
-        for key in &index_data.status_keys {
-            batch.multimap_remove(
-                TASKS_BY_STATUS,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.created_dates {
-            batch.multimap_remove(
-                TASKS_BY_CREATED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.due_dates {
-            batch.multimap_remove(
-                TASKS_BY_DUE_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.reminder_dates {
-            batch.multimap_remove(
-                TASKS_BY_REMINDER_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.completed_dates {
-            batch.multimap_remove(
-                TASKS_BY_COMPLETED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.start_dates {
-            batch.multimap_remove(
-                TASKS_BY_START_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.scheduled_dates {
-            batch.multimap_remove(
-                TASKS_BY_SCHEDULED_DATE,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.metadata_keys {
-            batch.multimap_remove(
-                TASKS_BY_METADATA,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
-        for key in &index_data.depends_on {
-            batch.multimap_remove(
-                TASKS_BY_DEPENDS_ON,
-                key.as_ref(),
-                note_id_str,
-            )?;
-        }
+        writer.delete_note_id_by_path(path)?;
         Ok(())
     }
 
     fn update_indexes(
-        batch: &mut BatchWriter,
-        old_index: Option<&IndexData>,
-        new_index: &IndexData,
-        id_str: &str,
+        writer: &mut RedbBatchNoteWriter<'_>,
+        old_path: Option<&NotePath>,
+        new_path: &NotePath,
+        note_id: NoteId,
     ) -> Result<(), NoteRepositoryError> {
-        if let Some(old) = old_index {
-            Self::diff_update_multimap(
-                batch,
-                PATH_TO_ID,
-                Some(old.path.as_ref()),
-                Some(new_index.path.as_ref()),
-                id_str,
-            )?;
-            Self::diff_update_multimap(
-                batch,
-                FOLDER_TO_ID,
-                old.folder.as_deref(),
-                new_index.folder.as_deref(),
-                id_str,
-            )?;
-            Self::diff_update_multimap_vec(
-                batch,
-                TAGS_TO_NOTES,
-                &old.tags,
-                &new_index.tags,
-                id_str,
-            )?;
-            Self::diff_update_multimap_vec(
-                batch,
-                ALIAS_TO_ID,
-                &old.aliases,
-                &new_index.aliases,
-                id_str,
-            )?;
-            Self::diff_update_multimap(
-                batch,
-                FILE_CLASS_TO_ID,
-                old.file_class.as_deref(),
-                new_index.file_class.as_deref(),
-                id_str,
-            )?;
-            Self::diff_update_multimap_vec(
-                batch,
-                FRONTMATTER_KV,
-                &old.frontmatter_entries,
-                &new_index.frontmatter_entries,
-                id_str,
-            )?;
-
-            Self::update_task_indexes_diff(
-                batch,
-                &old.task_indexes,
-                &new_index.task_indexes,
-                id_str,
-            )
+        if let Some(old) = old_path {
+            if old.as_str() != new_path.as_str() {
+                writer.delete_note_id_by_path(old)?;
+                writer.put_note_id_by_path(new_path, note_id)?;
+            }
+            Ok(())
         } else {
-            Self::insert_indexes(batch, new_index, id_str)
+            Self::insert_indexes(writer, new_path, note_id)
         }
-    }
-
-    fn diff_update_multimap(
-        batch: &mut BatchWriter,
-        table: redb::MultimapTableDefinition<&str, &str>,
-        old_val: Option<&str>,
-        new_val: Option<&str>,
-        id_str: &str,
-    ) -> Result<(), NoteRepositoryError> {
-        if old_val == new_val {
-            return Ok(());
-        }
-        if let Some(old) = old_val {
-            batch.multimap_remove(table, old, id_str)?;
-        }
-        if let Some(new) = new_val {
-            batch.multimap_insert(table, new, id_str)?;
-        }
-        Ok(())
-    }
-
-    fn diff_update_multimap_vec(
-        batch: &mut BatchWriter,
-        table: redb::MultimapTableDefinition<&str, &str>,
-        old_items: &[Box<str>],
-        new_items: &[Box<str>],
-        id_str: &str,
-    ) -> Result<(), NoteRepositoryError> {
-        let old_set: HashSet<&str> =
-            old_items.iter().map(std::convert::AsRef::as_ref).collect();
-        let new_set: HashSet<&str> =
-            new_items.iter().map(std::convert::AsRef::as_ref).collect();
-
-        for removed in old_set.difference(&new_set) {
-            batch.multimap_remove(table, removed, id_str)?;
-        }
-        for added in new_set.difference(&old_set) {
-            batch.multimap_insert(table, added, id_str)?;
-        }
-        Ok(())
-    }
-
-    fn update_task_indexes_diff(
-        batch: &mut BatchWriter,
-        old: &TaskIndexData,
-        new: &TaskIndexData,
-        id_str: &str,
-    ) -> Result<(), NoteRepositoryError> {
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_STATUS,
-            &old.status_keys,
-            &new.status_keys,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_CREATED_DATE,
-            &old.created_dates,
-            &new.created_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_DUE_DATE,
-            &old.due_dates,
-            &new.due_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_REMINDER_DATE,
-            &old.reminder_dates,
-            &new.reminder_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_COMPLETED_DATE,
-            &old.completed_dates,
-            &new.completed_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_START_DATE,
-            &old.start_dates,
-            &new.start_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_SCHEDULED_DATE,
-            &old.scheduled_dates,
-            &new.scheduled_dates,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_METADATA,
-            &old.metadata_keys,
-            &new.metadata_keys,
-            id_str,
-        )?;
-        Self::diff_update_multimap_vec(
-            batch,
-            TASKS_BY_DEPENDS_ON,
-            &old.depends_on,
-            &new.depends_on,
-            id_str,
-        )?;
-        Ok(())
-    }
-
-    fn task_metadata_keys(
-        fields: &[(InlineFieldKey, FieldValue)],
-        config: &Config,
-        index_all: bool,
-    ) -> Vec<Box<str>> {
-        let indexed = config.task().indexed();
-        let mut keys = Vec::new();
-
-        for (field, value) in fields {
-            let field_name = field.as_str();
-            if index_all
-                || indexed.iter().any(|name| name.as_ref() == field_name)
-            {
-                keys.extend(Self::metadata_index_keys(field_name, value));
-            }
-        }
-
-        keys
-    }
-
-    fn task_depends_on(
-        fields: &[(InlineFieldKey, FieldValue)],
-        enabled: bool,
-    ) -> Vec<Box<str>> {
-        if !enabled {
-            return Vec::new();
-        }
-
-        let Some((_, value)) =
-            fields.iter().find(|(k, _)| k.as_str() == "dependsOn")
-        else {
-            return Vec::new();
-        };
-
-        if let Some(text) = value.as_str() {
-            return text
-                .split(',')
-                .map(str::trim)
-                .filter(|item| !item.is_empty())
-                .map(Into::into)
-                .collect();
-        }
-
-        if let Some(arr) = value.as_array() {
-            return arr
-                .iter()
-                .filter_map(|item| item.as_str())
-                .map(str::trim)
-                .filter(|item| !item.is_empty())
-                .map(Into::into)
-                .collect();
-        }
-
-        Vec::new()
-    }
-
-    fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
-        let mut entries = Vec::new();
-        let mut fields: Vec<(&str, &FieldValue)> =
-            frontmatter.list_fields().collect();
-        fields.sort_by(|left, right| left.0.cmp(right.0));
-
-        for (key, value) in fields {
-            let values = Self::field_value_index_values(value);
-            for value_str in values {
-                let capacity =
-                    key.len().saturating_add(value_str.len()).saturating_add(1);
-                let mut combined = String::with_capacity(capacity);
-                combined.push_str(key);
-                combined.push(':');
-                combined.push_str(value_str.as_ref());
-                entries.push(combined.into_boxed_str());
-            }
-        }
-        entries
-    }
-
-    fn note_folder(path: &str) -> Option<Box<str>> {
-        Path::new(path)
-            .parent()
-            .and_then(|parent| parent.to_str())
-            .filter(|folder| !folder.is_empty())
-            .map(Into::into)
-    }
-
-    fn field_value_index_values(value: &FieldValue) -> Vec<Box<str>> {
-        if let Some(text) = value.as_str() {
-            return vec![text.into()];
-        }
-        if let Some(flag) = value.as_bool() {
-            return if flag {
-                vec!["true".into()]
-            } else {
-                vec!["false".into()]
-            };
-        }
-        if let Some(dt) = value.as_naive_date() {
-            return vec![dt.to_string().into()];
-        }
-        if let Some(dt) = value.as_datetime() {
-            return vec![dt.to_rfc3339().into()];
-        }
-        if let Some(t) = value.as_naive_time() {
-            return vec![t.to_string().into()];
-        }
-        if let Some(d) = value.as_duration() {
-            return vec![d.to_string().into()];
-        }
-        if let Some(number) = value.as_number() {
-            return vec![Self::format_f64(number)];
-        }
-        if let Some(values) = value.as_array() {
-            let mut out = Vec::new();
-            for item in values {
-                out.extend(Self::field_value_index_values(item));
-            }
-            return out;
-        }
-        if value.is_null() {
-            return vec!["null".into()];
-        }
-
-        vec![value.to_json_string().into()]
-    }
-
-    /// Build typed metadata index keys for the provided field/value pair.
-    #[inline]
-    #[must_use]
-    fn metadata_index_keys(field: &str, value: &FieldValue) -> Vec<Box<str>> {
-        let mut keys = Vec::new();
-        Self::push_metadata_keys(field, value, &mut keys);
-        keys
-    }
-
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &FieldValue are intentional"
-    )]
-    fn push_metadata_keys(
-        field: &str,
-        value: &FieldValue,
-        out: &mut Vec<Box<str>>,
-    ) {
-        match value {
-            FieldValue::String(value) => {
-                out.push(Self::encode_metadata_key(field, "s:", value).into());
-            }
-            FieldValue::Number(value) => {
-                let mut buffer = ryu::Buffer::new();
-                let encoded = buffer.format(*value);
-                out.push(
-                    Self::encode_metadata_key(field, "n:", encoded).into(),
-                );
-            }
-            FieldValue::Boolean(value) => {
-                let encoded = if *value {
-                    "true"
-                } else {
-                    "false"
-                };
-                out.push(
-                    Self::encode_metadata_key(field, "b:", encoded).into(),
-                );
-            }
-            FieldValue::Date(value) => {
-                let dt: NaiveDate = (*value).into();
-                let encoded = dt.to_string();
-                out.push(
-                    Self::encode_metadata_key(field, "d:", &encoded).into(),
-                );
-            }
-            FieldValue::DateTime(value) => {
-                let dt: DateTime<FixedOffset> = (*value).into();
-                let encoded = dt.to_rfc3339();
-                out.push(
-                    Self::encode_metadata_key(field, "dt:", &encoded).into(),
-                );
-            }
-            FieldValue::Time(value) => {
-                let t: NaiveTime = (*value).into();
-                let encoded = t.to_string();
-                out.push(
-                    Self::encode_metadata_key(field, "t:", &encoded).into(),
-                );
-            }
-            FieldValue::Duration(value) => {
-                let d: TimeDelta = (*value).into();
-                let encoded = d.to_string();
-                out.push(
-                    Self::encode_metadata_key(field, "dur:", &encoded).into(),
-                );
-            }
-            FieldValue::Array(values) => {
-                for item in values {
-                    Self::push_metadata_keys(field, item, out);
-                }
-            }
-            FieldValue::Object(_) => {
-                let encoded = value.to_json_string();
-                out.push(
-                    Self::encode_metadata_key(field, "o:", encoded.as_str())
-                        .into(),
-                );
-            }
-            FieldValue::Null => {
-                out.push(Self::encode_metadata_key(field, "null:", "").into());
-            }
-        }
-    }
-
-    fn encode_metadata_key(field: &str, prefix: &str, value: &str) -> String {
-        let capacity = field
-            .len()
-            .saturating_add(prefix.len())
-            .saturating_add(value.len())
-            .saturating_add(1);
-        let mut out = String::with_capacity(capacity);
-        #[expect(
-            clippy::let_underscore_must_use,
-            reason = "Writing to String is infallible"
-        )]
-        let _ = write!(&mut out, "{field}\0{prefix}{value}");
-        out
-    }
-
-    fn format_f64(value: f64) -> Box<str> {
-        let mut buffer = ryu::Buffer::new();
-        buffer.format(value).into()
-    }
-
-    fn task_date_index_keys(value: &TaskDateValue) -> Vec<Box<str>> {
-        let mut keys = Vec::new();
-        if let Some(date) = value.as_naive_date() {
-            keys.push(date.to_string().into());
-        }
-        if let Some(dt) = value.as_datetime() {
-            keys.push(dt.to_rfc3339().into());
-        }
-        keys
-    }
-
-    fn task_date_query_keys(value: &TaskDateValue) -> Vec<Box<str>> {
-        if let Some(dt) = value.as_datetime() {
-            return vec![dt.to_rfc3339().into()];
-        }
-        if let Some(date) = value.as_naive_date() {
-            return vec![date.to_string().into()];
-        }
-        Vec::new()
-    }
-
-    fn task_date_matches(
-        value: &TaskDateValue,
-        query_keys: &[Box<str>],
-    ) -> bool {
-        let keys = Self::task_date_index_keys(value);
-        keys.iter().any(|key| {
-            query_keys.iter().any(|query| query.as_ref() == key.as_ref())
-        })
-    }
-
-    fn list_notes_by_task_index(
-        &self,
-        index_table: redb::MultimapTableDefinition<&str, &str>,
-        index_key: &str,
-    ) -> Result<Vec<Note>, NoteRepositoryError> {
-        use std::collections::BTreeSet;
-
-        let note_refs = self
-            .db
-            .multimap_get(index_table, index_key)
-            .map_err(NoteRepositoryError::Storage)?;
-        let mut note_ids = BTreeSet::<Box<str>>::new();
-        for note_id_str in note_refs {
-            note_ids.insert(note_id_str.into());
-        }
-
-        let mut notes = Vec::with_capacity(note_ids.len());
-        for note_id_str in note_ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
-                .map_err(NoteRepositoryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
-    }
-
-    fn list_notes_by_task_indexes(
-        &self,
-        index_table: redb::MultimapTableDefinition<&str, &str>,
-        index_keys: &[Box<str>],
-    ) -> Result<Vec<Note>, NoteRepositoryError> {
-        use std::collections::BTreeSet;
-
-        if index_keys.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut note_ids = BTreeSet::<Box<str>>::new();
-        for key in index_keys {
-            let note_refs = self
-                .db
-                .multimap_get(index_table, key.as_ref())
-                .map_err(NoteRepositoryError::Storage)?;
-            for note_id_str in note_refs {
-                note_ids.insert(note_id_str.into());
-            }
-        }
-
-        let mut notes = Vec::with_capacity(note_ids.len());
-        for note_id_str in note_ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
-                .map_err(NoteRepositoryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
-    }
-
-    fn list_notes_by_index(
-        &self,
-        index_table: redb::MultimapTableDefinition<&str, &str>,
-        index_key: &str,
-    ) -> Result<Vec<Note>, NoteRepositoryError> {
-        let note_refs = self
-            .db
-            .multimap_get(index_table, index_key)
-            .map_err(NoteRepositoryError::Storage)?;
-        let mut notes = Vec::with_capacity(note_refs.len());
-        for note_id_str in note_refs {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(STORED_NOTES, note_id_str.as_ref())
-                .map_err(NoteRepositoryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
-    }
-
-    fn collect_tasks_matching<F>(notes: &[Note], predicate: F) -> Vec<Task>
-    where
-        F: Fn(&Task) -> bool,
-    {
-        use std::collections::HashSet;
-
-        let mut seen = HashSet::new();
-        let mut tasks = Vec::new();
-        for note in notes {
-            for task in note.tasks() {
-                if predicate(task) && seen.insert(task.id()) {
-                    tasks.push(task.clone());
-                }
-            }
-        }
-        tasks
     }
 }
 
-impl Repository for RedbRepository<'_, '_> {
+impl Repository for RedbRepository<'_> {
+    type BatchReader<'reader> = RedbBatchNoteReader<'reader>;
+    type BatchWriter<'writer> = RedbBatchNoteWriter<'writer>;
     type Error = NoteRepositoryError;
-    type NoteArchived<'archived> = &'archived rkyv::Archived<NoteView>;
-
-    #[inline]
-    fn rebuild_note_indexes(&self) -> Result<usize, Self::Error> {
-        let stored_notes = self
-            .db
-            .list_owned::<Note>(STORED_NOTES)
-            .map_err(NoteRepositoryError::Storage)?;
-        let mut rebuilds = Vec::with_capacity(stored_notes.len());
-
-        for stored in &stored_notes {
-            let note_id = stored.id();
-            let index_data = self.collect_index_data_from_facts(stored);
-            let id = Uuid::from(note_id);
-            let mut id_buffer = Uuid::encode_buffer();
-            let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
-            rebuilds.push((id_str.to_owned(), index_data));
-        }
-
-        self.db
-            .batch_write(|batch| {
-                for (id_str, index_data) in
-                    rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
-                {
-                    Self::remove_indexes(batch, index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                    Self::insert_indexes(batch, index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                }
-                Ok(())
-            })
-            .map_err(NoteRepositoryError::Storage)?;
-
-        Ok(stored_notes.len())
-    }
-
-    #[inline]
-    fn rebuild_task_indexes(&self) -> Result<usize, Self::Error> {
-        let stored_notes = self
-            .db
-            .list_owned::<Note>(STORED_NOTES)
-            .map_err(NoteRepositoryError::Storage)?;
-        let mut rebuilds = Vec::with_capacity(stored_notes.len());
-        let mut total_tasks = 0usize;
-
-        for note in &stored_notes {
-            let task_indexes = Self::task_indexes_from_facts(note, self.config);
-            total_tasks = total_tasks.saturating_add(note.tasks().len());
-            let id = Uuid::from(note.id());
-            let mut id_buffer = Uuid::encode_buffer();
-            let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
-            rebuilds.push((id_str.to_owned(), task_indexes));
-        }
-
-        self.db
-            .batch_write(|batch| {
-                for (id_str, index_data) in
-                    rebuilds.iter().map(|entry| (entry.0.as_str(), &entry.1))
-                {
-                    Self::remove_task_indexes(batch, index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                    Self::insert_task_indexes(batch, index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                }
-                Ok(())
-            })
-            .map_err(NoteRepositoryError::Storage)?;
-
-        Ok(total_tasks)
-    }
+    type NoteArchived<'archived> = &'archived rkyv::Archived<Note>;
 
     #[inline]
     fn delete_note(&self, id: NoteId) -> Result<(), Self::Error> {
@@ -1188,28 +345,16 @@ impl Repository for RedbRepository<'_, '_> {
         let id_str: &str = id_str;
         let stored = self
             .db
-            .get_owned::<Note>(STORED_NOTES, id_str)
+            .get_owned::<Note>(NOTES_BY_ID, id_str)
             .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(stored) = stored {
-            let index_data = self.collect_index_data_from_facts(&stored);
-            let event = Self::build_note_event_from_facts(
-                stored.id(),
-                stored.path(),
-                &stored,
-                NoteChangeKind::Deleted,
-            )?;
-
-            self.db
-                .batch_write(|batch| {
-                    Self::remove_indexes(batch, &index_data, id_str)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                    batch.delete(STORED_NOTES, id_str)?;
-                    Self::insert_note_event(batch, &event)
-                        .map_err(|err| DbError::Table(err.to_string()))?;
-                    Ok(())
-                })
-                .map_err(NoteRepositoryError::Storage)?;
+            let stored_path = stored.path().clone();
+            self.with_batch_write(|writer| {
+                Self::remove_indexes(writer, &stored_path)?;
+                writer.delete_note_by_id(id)?;
+                Ok(())
+            })?;
         }
 
         Ok(())
@@ -1230,29 +375,16 @@ impl Repository for RedbRepository<'_, '_> {
         } else {
             note.clone().with_id(note_id)
         };
-        let index_data = self.collect_index_data_from_facts(&stored_note);
-        let change_kind = if existing_id.is_some() {
-            NoteChangeKind::Updated
-        } else {
-            NoteChangeKind::Created
-        };
-        let event = Self::build_note_event_from_facts(
-            note_id,
-            path,
-            note,
-            change_kind,
-        )?;
-
         let old_index_data = if existing_id.is_some() {
             let stored = self
                 .db
-                .get_owned::<Note>(STORED_NOTES, id_str)
+                .get_owned::<Note>(NOTES_BY_ID, id_str)
                 .map_err(NoteRepositoryError::Storage)?;
             if let Some(stored) = stored {
                 if stored.path() != path {
-                    self.ensure_unique_path(path, Some(id_str))?;
+                    self.ensure_unique_path(path, Some(note_id))?;
                 }
-                Some(self.collect_index_data_from_facts(&stored))
+                Some(stored.path().clone())
             } else {
                 None
             }
@@ -1261,53 +393,28 @@ impl Repository for RedbRepository<'_, '_> {
             None
         };
 
-        self.db
-            .batch_write(|batch| {
-                Self::update_indexes(
-                    batch,
-                    old_index_data.as_ref(),
-                    &index_data,
-                    id_str,
-                )
-                .map_err(|err| DbError::Table(err.to_string()))?;
-
-                batch.put(STORED_NOTES, id_str, &stored_note)?;
-                Self::insert_note_event(batch, &event)
-                    .map_err(|err| DbError::Table(err.to_string()))?;
-                Ok(())
-            })
-            .map_err(NoteRepositoryError::Storage)?;
+        self.with_batch_write(|writer| {
+            Self::update_indexes(
+                writer,
+                old_index_data.as_ref(),
+                path,
+                note_id,
+            )?;
+            writer.put_note(&stored_note)?;
+            Ok(())
+        })?;
 
         Ok(note_id)
     }
 
     #[inline]
-    fn find_by_alias(
-        &self,
-        alias: &AliasValue,
-    ) -> Result<Option<NoteView>, Self::Error> {
-        let ids = self
-            .db
-            .multimap_get(ALIAS_TO_ID, alias.as_str())
-            .map_err(NoteRepositoryError::Storage)?;
-
-        if let Some(id_str) = ids.first() {
-            self.db
-                .get_owned::<Note>(STORED_NOTES, id_str)
-                .map_err(NoteRepositoryError::Storage)
-        } else {
-            Ok(None)
-        }
-    }
-
-    #[inline]
-    fn find_by_id(&self, id: NoteId) -> Result<Option<NoteView>, Self::Error> {
+    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str =
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
         self.db
-            .get_owned::<Note>(STORED_NOTES, id_str)
+            .get_owned::<Note>(NOTES_BY_ID, id_str)
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -1315,232 +422,53 @@ impl Repository for RedbRepository<'_, '_> {
     fn find_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<NoteView>, Self::Error> {
-        let ids = self
+    ) -> Result<Option<Note>, Self::Error> {
+        let id = self
             .db
-            .multimap_get(PATH_TO_ID, path.as_str())
+            .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
             .map_err(NoteRepositoryError::Storage)?;
-
-        if let Some(id_str) = ids.first() {
-            self.db
-                .get_owned::<Note>(STORED_NOTES, id_str)
-                .map_err(NoteRepositoryError::Storage)
-        } else {
-            Ok(None)
-        }
-    }
-
-    #[inline]
-    fn list(&self) -> Result<Vec<NoteView>, Self::Error> {
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
         self.db
-            .list_owned::<Note>(STORED_NOTES)
+            .get_owned::<Note>(NOTES_BY_ID, id_str)
             .map_err(NoteRepositoryError::Storage)
     }
 
     #[inline]
-    fn list_by_file_class(
+    fn with_archived_by_path<F, R>(
         &self,
-        class: &FileClassValue,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let ids = self
+        path: &NotePath,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
+    {
+        let id = self
             .db
-            .multimap_get(FILE_CLASS_TO_ID, class.as_str())
+            .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
             .map_err(NoteRepositoryError::Storage)?;
-
-        let mut notes = Vec::with_capacity(ids.len());
-        for id_str in ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(STORED_NOTES, &id_str)
-                .map_err(NoteRepositoryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
-    }
-
-    #[inline]
-    fn list_by_folder(
-        &self,
-        folder: &FolderPath,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let ids = self
-            .db
-            .multimap_get(FOLDER_TO_ID, folder.as_str())
-            .map_err(NoteRepositoryError::Storage)?;
-
-        let mut notes = Vec::with_capacity(ids.len());
-        for id_str in ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(STORED_NOTES, &id_str)
-                .map_err(NoteRepositoryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
-    }
-
-    #[inline]
-    fn list_by_frontmatter_kv(
-        &self,
-        key: &FrontmatterKey,
-        value: &str,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let mut combined_key = String::with_capacity(
-            key.as_str().len().saturating_add(value.len()).saturating_add(1),
-        );
-        #[expect(
-            clippy::let_underscore_must_use,
-            reason = "Writing to String is infallible"
-        )]
-        let _ = write!(&mut combined_key, "{}:{value}", key.as_str());
-        self.list_notes_by_index(FRONTMATTER_KV, &combined_key)
-    }
-
-    #[inline]
-    fn list_by_task_completed_date(
-        &self,
-        completed_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let keys = Self::task_date_query_keys(completed_date);
-        self.list_notes_by_task_indexes(TASKS_BY_COMPLETED_DATE, &keys)
-    }
-
-    #[inline]
-    fn list_by_task_created_date(
-        &self,
-        created_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let keys = Self::task_date_query_keys(created_date);
-        self.list_notes_by_task_indexes(TASKS_BY_CREATED_DATE, &keys)
-    }
-
-    #[inline]
-    fn list_by_task_due_date(
-        &self,
-        due_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let keys = Self::task_date_query_keys(due_date);
-        self.list_notes_by_task_indexes(TASKS_BY_DUE_DATE, &keys)
-    }
-
-    #[inline]
-    fn list_by_task_project(
-        &self,
-        project: &str,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let value = FieldValue::String(project.into());
-        let mut keys = Self::metadata_index_keys("project", &value);
-        if let Some(key) = keys.pop() {
-            self.list_notes_by_task_index(TASKS_BY_METADATA, key.as_ref())
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
-    #[inline]
-    fn list_by_task_reminder_date(
-        &self,
-        reminder_date: &TaskDateValue,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        let keys = Self::task_date_query_keys(reminder_date);
-        self.list_notes_by_task_indexes(TASKS_BY_REMINDER_DATE, &keys)
-    }
-
-    #[inline]
-    fn list_by_task_status(
-        &self,
-        status: &StatusName,
-    ) -> Result<Vec<NoteView>, Self::Error> {
-        self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())
-    }
-
-    #[inline]
-    fn list_tasks_by_date(
-        &self,
-        kind: TaskDateKind,
-        date: &TaskDateValue,
-    ) -> Result<Vec<TaskView>, Self::Error> {
-        let table = match kind {
-            TaskDateKind::Created => Some(TASKS_BY_CREATED_DATE),
-            TaskDateKind::Due => Some(TASKS_BY_DUE_DATE),
-            TaskDateKind::Reminder => Some(TASKS_BY_REMINDER_DATE),
-            TaskDateKind::Completed => Some(TASKS_BY_COMPLETED_DATE),
-            TaskDateKind::Start => Some(TASKS_BY_START_DATE),
-            TaskDateKind::Scheduled => Some(TASKS_BY_SCHEDULED_DATE),
+        let Some(id) = id else {
+            return Ok(None);
         };
-        let Some(table) = table else {
-            return Ok(Vec::new());
-        };
-        let query_keys = Self::task_date_query_keys(date);
-        if query_keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        let notes = self.list_notes_by_task_indexes(table, &query_keys)?;
-        Ok(Self::collect_tasks_matching(&notes, |task| match kind {
-            TaskDateKind::Created => {
-                task.dates().created().is_some_and(|value| {
-                    Self::task_date_matches(value, &query_keys)
-                })
-            }
-            TaskDateKind::Due => task.dates().due().is_some_and(|value| {
-                Self::task_date_matches(value, &query_keys)
-            }),
-            TaskDateKind::Reminder => {
-                task.dates().reminder().is_some_and(|value| {
-                    Self::task_date_matches(value, &query_keys)
-                })
-            }
-            TaskDateKind::Completed => {
-                task.dates().completed().is_some_and(|value| {
-                    Self::task_date_matches(value, &query_keys)
-                })
-            }
-            TaskDateKind::Start => task.dates().start().is_some_and(|value| {
-                Self::task_date_matches(value, &query_keys)
-            }),
-            TaskDateKind::Scheduled => {
-                task.dates().scheduled().is_some_and(|value| {
-                    Self::task_date_matches(value, &query_keys)
-                })
-            }
-        }))
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.db
+            .get::<Note, _, R>(NOTES_BY_ID, id_str, f)
+            .map_err(NoteRepositoryError::Storage)
     }
 
     #[inline]
-    fn list_tasks_by_metadata(
-        &self,
-        field: &str,
-        value: &FieldValue,
-    ) -> Result<Vec<TaskView>, Self::Error> {
-        let mut tasks = Vec::new();
-        let normalized =
-            crate::note::inline_fields::InlineFieldKey::normalize(field);
-        for key in Self::metadata_index_keys(normalized.as_ref(), value) {
-            let notes =
-                self.list_notes_by_task_index(TASKS_BY_METADATA, &key)?;
-            tasks.extend(Self::collect_tasks_matching(&notes, |task| {
-                task.fields()
-                    .iter()
-                    .any(|(k, v)| k.as_str() == field && v == value)
-            }));
-        }
-        Ok(tasks)
-    }
-
-    #[inline]
-    fn list_tasks_by_status(
-        &self,
-        status: &StatusName,
-    ) -> Result<Vec<TaskView>, Self::Error> {
-        let notes =
-            self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())?;
-        Ok(Self::collect_tasks_matching(&notes, |task| {
-            task.status() == status.as_str()
-        }))
+    fn list(&self) -> Result<Vec<Note>, Self::Error> {
+        self.db
+            .list_owned::<Note>(NOTES_BY_ID)
+            .map_err(NoteRepositoryError::Storage)
     }
 
     #[inline]
@@ -1557,39 +485,44 @@ impl Repository for RedbRepository<'_, '_> {
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
         self.db
-            .get::<Note, _, R>(STORED_NOTES, id_str, f)
+            .get::<Note, _, R>(NOTES_BY_ID, id_str, f)
             .map_err(NoteRepositoryError::Storage)
     }
-}
 
-/// Index data extracted from a note for cleanup operations.
-struct IndexData {
-    path: Box<str>,
-    folder: Option<Box<str>>,
-    tags: Vec<Box<str>>,
-    aliases: Vec<Box<str>>,
-    file_class: Option<Box<str>>,
-    task_indexes: TaskIndexData,
-    frontmatter_entries: Vec<Box<str>>,
-}
+    #[inline]
+    fn with_batch_read<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: for<'reader> FnOnce(
+            Self::BatchReader<'reader>,
+        ) -> Result<R, Self::Error>,
+    {
+        self.db
+            .batch_read(|reader| {
+                let batch = RedbBatchNoteReader::new(reader);
+                f(batch).map_err(|err| DbError::Table(err.to_string()))
+            })
+            .map_err(NoteRepositoryError::Storage)
+    }
 
-#[derive(Debug, Default)]
-struct TaskIndexData {
-    status_keys: Vec<Box<str>>,
-    created_dates: Vec<Box<str>>,
-    due_dates: Vec<Box<str>>,
-    reminder_dates: Vec<Box<str>>,
-    completed_dates: Vec<Box<str>>,
-    start_dates: Vec<Box<str>>,
-    scheduled_dates: Vec<Box<str>>,
-    metadata_keys: Vec<Box<str>>,
-    depends_on: Vec<Box<str>>,
+    #[inline]
+    fn with_batch_write<F>(&self, f: F) -> Result<(), Self::Error>
+    where
+        F: for<'writer> FnOnce(
+            &mut Self::BatchWriter<'writer>,
+        ) -> Result<(), Self::Error>,
+    {
+        self.db
+            .batch_write(|writer| {
+                let mut batch = RedbBatchNoteWriter::new(writer);
+                f(&mut batch).map_err(|err| DbError::Table(err.to_string()))
+            })
+            .map_err(NoteRepositoryError::Storage)
+    }
 }
 
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
-    clippy::shadow_unrelated,
     reason = "Tests use assertions in Result-returning functions and \
               prioritize readability."
 )]
@@ -1600,88 +533,19 @@ mod tests {
     use crate::{
         config::{
             aggregate::Config,
-            raw::{
-                RawConfig, RawDateFieldSpec, RawFieldSpec, RawIndexingConfig,
-                RawTaskConfig, RawTaskDates,
-            },
+            raw::RawConfig,
             vault::{VaultId, VaultRoot},
         },
         note::{
             aggregate::{Note, NoteId},
             paths::NotePath,
-            position::{SourceByteOffset, SourceByteRange},
-            raw::{
-                RawFieldValue, RawFrontmatter, RawInlineField, RawList,
-                RawListDepth, RawListItem, RawListKind, RawNote, RawTag,
-                RawTaskMarker,
-            },
-            scanner::{NoteScanner, ScannedArtifact},
+            raw::RawNote,
         },
     };
 
     fn test_config() -> Result<Config, String> {
         Config::build(
             &RawConfig::default(),
-            VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .map_err(|e| e.to_string())?,
-            crate::config::aggregate::Version::initial(),
-        )
-        .map_err(|e| e.to_string())
-    }
-
-    #[expect(
-        dead_code,
-        reason = "Legacy test helper maintained for future task query tests"
-    )]
-    fn test_config_with_tasks() -> Result<Config, String> {
-        let raw = RawConfig {
-            task: Some(RawTaskConfig {
-                dates: Some(RawTaskDates {
-                    created: Some(RawDateFieldSpec {
-                        keyword: String::from("created"),
-                        emoji: None,
-                        format: String::from("%Y-%m-%d"),
-                    }),
-                    due: Some(RawDateFieldSpec {
-                        keyword: String::from("due"),
-                        emoji: None,
-                        format: String::from("%Y-%m-%d"),
-                    }),
-                    reminder: Some(RawDateFieldSpec {
-                        keyword: String::from("reminder"),
-                        emoji: None,
-                        format: String::from("%Y-%m-%d"),
-                    }),
-                    completed: Some(RawDateFieldSpec {
-                        keyword: String::from("completed"),
-                        emoji: None,
-                        format: String::from("%Y-%m-%d"),
-                    }),
-                    ..RawTaskDates::default()
-                }),
-                fields: Some(std::collections::HashMap::from([
-                    (String::from("priority"), RawFieldSpec::Float {
-                        min: None,
-                        max: None,
-                    }),
-                    (String::from("project"), RawFieldSpec::String {
-                        pattern: None,
-                    }),
-                ])),
-                indexing: Some(RawIndexingConfig {
-                    indexed_fields: Some(vec![
-                        String::from("priority"),
-                        String::from("project"),
-                    ]),
-                }),
-                ..RawTaskConfig::default()
-            }),
-            ..RawConfig::default()
-        };
-
-        Config::build(
-            &raw,
             VaultId::new(),
             VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                 .map_err(|e| e.to_string())?,
@@ -1710,111 +574,6 @@ mod tests {
         )
     }
 
-    #[expect(
-        dead_code,
-        reason = "Legacy test helper maintained for future task query tests"
-    )]
-    fn raw_note_with_indexes(path: NotePath) -> RawNote<'static> {
-        let config = crate::config::aggregate::fixtures::test_config();
-        let task_spec = std::sync::Arc::new(config.to_task_spec());
-        let frontmatter = RawFrontmatter::new(
-            crate::note::raw::RawFrontmatterFormat::Yaml,
-            "aliases:\n  - Alias\nfile_class: Class\ncategory: docs\n".into(),
-            SourceByteRange::new(
-                SourceByteOffset::new(0),
-                SourceByteOffset::new(0),
-            )
-            .expect("frontmatter range"),
-        );
-        let tags = vec![RawTag::new(
-            "#tag".into(),
-            SourceByteRange::new(
-                SourceByteOffset::new(0),
-                SourceByteOffset::new(4),
-            )
-            .expect("tag range"),
-        )];
-        let raw_task_text = "#task Do work [priority:: 2] [project:: lithos] \
-                             [created:: 2024-01-01] [due:: 2024-01-02] \
-                             [reminder:: 2024-01-03] [completed:: 2024-01-04]";
-        let base = SourceByteOffset::new(0);
-        let range = SourceByteRange::new(base, base).expect("valid range");
-
-        let scanner = NoteScanner::new(task_spec.emoji_markers.as_ref());
-        let artifacts = scanner
-            .scan_block(raw_task_text, SourceByteOffset::new(0))
-            .expect("scan artifacts");
-
-        let mut task_tags = Vec::new();
-        let mut task_fields = Vec::new();
-        let mut task_marker = None;
-
-        for artifact in artifacts {
-            match artifact {
-                ScannedArtifact::Tag(tag) => task_tags.push(tag),
-                ScannedArtifact::InlineField(field) => {
-                    let crate::note::raw::RawInlineFieldToken {
-                        key,
-                        value,
-                        range,
-                    } = field;
-                    let typed_value = RawFieldValue::from_str_with_spec(
-                        value.as_ref(),
-                        key.as_ref(),
-                        None,
-                    )
-                    .into_owned();
-                    task_fields.push(RawInlineField::new(
-                        key,
-                        typed_value,
-                        range,
-                    ));
-                }
-                ScannedArtifact::TaskMarker {
-                    marker,
-                    ..
-                } => {
-                    task_marker = Some(RawTaskMarker::from_char(marker));
-                }
-                ScannedArtifact::BlockRef(_) => {}
-            }
-        }
-
-        let list_kind = RawListKind::Unordered;
-        let list_depth = RawListDepth::Root;
-        let list_item = RawListItem::new(
-            list_kind,
-            list_depth,
-            raw_task_text.into(),
-            None,
-            task_marker,
-            range,
-            range,
-            None,
-            task_tags,
-            task_fields,
-        );
-        let list =
-            RawList::new(list_kind, list_depth, range, vec![range.start()]);
-        RawNote::new(
-            path,
-            "hash".into(),
-            100,
-            None,
-            None,
-            Some(frontmatter),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            tags,
-            vec![list],
-            vec![list_item],
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        )
-    }
-
     #[test]
     fn save_persists_path() -> Result<(), NoteRepositoryError> {
         let dir = tempdir().map_err(|err| {
@@ -1828,7 +587,7 @@ mod tests {
                 message: err.into(),
             }
         })?;
-        let repo = RedbRepository::new(&db, &config);
+        let repo = RedbRepository::new(&db);
 
         let path = NotePath::try_new("notes/a.md").map_err(|err| {
             NoteRepositoryError::ConstraintViolation {
@@ -1865,7 +624,7 @@ mod tests {
                 message: err.into(),
             }
         })?;
-        let repo = RedbRepository::new(&db, &config);
+        let repo = RedbRepository::new(&db);
 
         let path = NotePath::try_new("notes/a.md").map_err(|err| {
             NoteRepositoryError::ConstraintViolation {

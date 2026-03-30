@@ -84,7 +84,7 @@ impl<'db, 'config> Service<'db, 'config> {
         let ingestor = Ingestor::new(source, self.config);
         let paths = Self::scan_note_paths(ingestor.source())?;
 
-        let repository = RedbRepository::new(self.db, self.config);
+        let repository = RedbRepository::new(self.db);
         let loader = NoteLoader::new(&repository, self.config);
         let policy = StalenessPolicy::new();
 

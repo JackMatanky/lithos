@@ -42,7 +42,7 @@ mod tests {
 
         let db_path = root.join("notes.redb");
         let db = Database::open(&db_path).expect("open db");
-        let repository = RedbRepository::new(&db, &config);
+        let repository = RedbRepository::new(&db);
         let loader = NoteLoader::new(&repository, &config);
 
         let note_path =
