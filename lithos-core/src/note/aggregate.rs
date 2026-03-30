@@ -9,7 +9,7 @@
 //! metadata, structure, and content facts for a single markdown file in
 //! the vault.
 
-use std::fmt;
+use std::{fmt, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
@@ -144,6 +144,15 @@ pub struct Note {
     inline_fields: Box<[InlineField]>,
 }
 
+/// Note wrapper that includes vault file timestamps.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct NoteWithFileTimes {
+    note: Note,
+    created_at: Option<SystemTime>,
+    modified_at: Option<SystemTime>,
+}
+
 impl Note {
     /// Construct normalized facts from ingestion output.
     ///
@@ -252,6 +261,21 @@ impl Note {
     #[must_use]
     pub fn path(&self) -> &NotePath {
         &self.path
+    }
+
+    /// Returns this note paired with vault file timestamps.
+    #[inline]
+    #[must_use]
+    pub fn with_file_times(
+        self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> NoteWithFileTimes {
+        NoteWithFileTimes {
+            note: self,
+            created_at,
+            modified_at,
+        }
     }
 
     /// Returns the parsed frontmatter of the note, if present.
@@ -561,6 +585,36 @@ impl Note {
         block_refs: Vec<RawBlockRef<'_>>,
     ) -> Result<Vec<BlockRef>, NoteError> {
         block_refs.into_iter().map(|raw| BlockRef::try_from(&raw)).collect()
+    }
+}
+
+impl NoteWithFileTimes {
+    /// Returns the wrapped note.
+    #[inline]
+    #[must_use]
+    pub fn note(&self) -> &Note {
+        &self.note
+    }
+
+    /// Returns the wrapped note by value.
+    #[inline]
+    #[must_use]
+    pub fn into_note(self) -> Note {
+        self.note
+    }
+
+    /// Returns the file creation timestamp, if available.
+    #[inline]
+    #[must_use]
+    pub const fn created_at(&self) -> Option<SystemTime> {
+        self.created_at
+    }
+
+    /// Returns the file modification timestamp, if available.
+    #[inline]
+    #[must_use]
+    pub const fn modified_at(&self) -> Option<SystemTime> {
+        self.modified_at
     }
 }
 
