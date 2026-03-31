@@ -42,6 +42,16 @@ pub mod expander;
 /// PropertyBank state machine for incremental loading and staleness detection.
 pub mod property_bank_processor;
 
+/// Two-level typestate schema ingestion pipeline.
+///
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// storage and builder modules to use the pipeline types.
+#[doc(hidden)]
+pub mod schema_pipeline;
+
+/// DAG structures and algorithms for schema inheritance.
+pub mod graph;
+
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
@@ -90,7 +100,7 @@ pub mod merger;
 pub mod resolver;
 
 pub(crate) mod db_table {
-    use redb::{MultimapTableDefinition, TableDefinition};
+    use redb::TableDefinition;
 
     // ========================================================================
     // Schema Storage Tables
@@ -146,67 +156,15 @@ pub(crate) mod db_table {
     /// Topologically sorted inheritance graph singleton.
     ///
     /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
-    /// Value: rkyv-serialized `TopologicalGraph`.
+    /// Value: rkyv-serialized `TopologicalGraph<InheritanceNode>`.
     ///
-    /// Contains lightweight graph structure with SchemaId/SchemaName only,
-    /// topological order, and depth information. Rebuilt/patched when
-    /// inheritance relationships change.
-    #[expect(
-        dead_code,
-        reason = "database table will be used in TreeGraphed stage"
-    )]
+    /// Contains DAG structure with `SchemaId` links, child lists, and depth
+    /// information. Rebuilt/patched when inheritance relationships change.
     pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_topological_graph");
 
     /// Key for `TopologicalGraph` singleton table.
-    #[expect(dead_code, reason = "constant will be used in TreeGraphed stage")]
     pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
-
-    /// Multimap: parent `SchemaId` → child `SchemaId`s (source of truth for
-    /// edges).
-    ///
-    /// This is the authoritative source for parent-child relationships.
-    /// Renamed from `SCHEMA_CHILDREN_BY_PARENT` for clarity.
-    ///
-    /// Enables efficient queries:
-    /// - O(log N + C) children lookup: "find all children of parent P"
-    /// - O(D×log N) descendant traversal: BFS through inheritance tree
-    ///
-    /// Key: Parent `SchemaId` as UUID string
-    /// Value: Child `SchemaId` (rkyv-serialized).
-    #[expect(
-        dead_code,
-        reason = "database table will be used in TreeGraphed stage"
-    )]
-    pub(crate) const SCHEMA_PARENT_TO_CHILDREN: MultimapTableDefinition<
-        &str,
-        &[u8],
-    > = MultimapTableDefinition::new("schema_parent_to_children");
-
-    /// Inheritance edge metadata (per parent-child pair).
-    ///
-    /// Stores edge-specific metadata like excludes lists.
-    ///
-    /// Key: Composite "{`parent_uuid}:{child_uuid`}"
-    /// Value: rkyv-serialized `InheritanceEdgeMetadata`.
-    #[expect(
-        dead_code,
-        reason = "database table will be used in TreeGraphed stage"
-    )]
-    pub(crate) const SCHEMA_INHERITANCE_EDGES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_inheritance_edges");
-
-    /// Schema inheritance metadata cache (key: `SchemaId` as UUID string,
-    /// value: rkyv-serialized `SchemaInheritanceView`).
-    ///
-    /// Stores precomputed inheritance metadata (parent, ancestors, depth,
-    /// `ancestors_hash`) to enable fast-path resolution when inheritance chains
-    /// are unchanged.
-    ///
-    /// Read-heavy workload (every resolution) vs rare writes (schema
-    /// restructuring).
-    pub(crate) const SCHEMA_INHERITANCE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_inheritance");
 }
 
 // --- Public API ---

@@ -67,7 +67,7 @@ fn loads_and_persists_property_bank() -> TestResult {
 
     let repository = setup_repository(test_db.db());
     let source = FsReader::new(vault_dir.path());
-    let builder = Builder::new(repository, source, &config);
+    let mut builder = Builder::new(repository, source, &config);
 
     let bank = builder.load_property_bank()?;
     assert!(bank.has(&"title".try_into()?), "Expected title property");

@@ -199,9 +199,19 @@ impl Schema {
 /// let uuid = id.into_uuid();
 /// ```
 #[derive(
-    Debug, Copy, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
 pub struct SchemaId(Uuid);
 
 impl SchemaId {

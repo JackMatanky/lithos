@@ -8,8 +8,6 @@
 //!
 //! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`,
 //!   `Filename`)
-//! - `inheritance` - Inheritance relationship views (`SchemaInheritanceView`,
-//!   `find_all_descendants()`)
 //! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
 //! - `version` - Versioned content (`SchemaVersion`, `PropertyBankVersion`)
 //!
@@ -33,13 +31,11 @@
               submodules"
 )]
 
-pub mod inheritance;
 pub mod metadata;
 pub mod raw;
 pub mod version;
 
 // Re-export commonly used types for ergonomic access
-pub use inheritance::{SchemaInheritanceView, find_all_descendants};
 pub use metadata::{FileTimesMetadata, HashMetadata};
 pub use raw::{Filename, RawPropertyBankView, RawSchemaView};
 pub use version::{PropertyBankVersion, SchemaVersion};

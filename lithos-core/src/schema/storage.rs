@@ -11,12 +11,13 @@
 //! - Zero-copy access via closure-based methods
 //! - Concrete `RedbRepository` using redb for persistence
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     error::{SchemaRepositoryError, SchemaStorageError},
+    graph::{InheritanceNode, TopologicalGraph},
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
@@ -29,18 +30,76 @@ fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
 /// A schema name-to-ID pair.
 pub type NameIdPair = (SchemaName, SchemaId);
 
-/// Inheritance relationship: (`child_id`, `parent_id`, `excludes`).
-pub type InheritanceRelation = (SchemaId, Option<SchemaId>, Vec<PropertyName>);
-
-/// Inheritance children map: `parent_id` → Vec<(`child_id`, `excludes`)>.
-pub type InheritanceChildren =
-    HashMap<SchemaId, Vec<(SchemaId, Vec<PropertyName>)>>;
+/// Schema path-to-ID pairs.
+pub type SchemaPathIdPairs = Vec<(PathBuf, SchemaId)>;
 
 /// Schema-to-properties usage map: `schema_id` → Vec<`property_name`>.
 ///
 /// Used by `find_schemas_using_properties()` to return which schemas use which
 /// properties.
 pub type SchemaPropertyUsage = HashMap<SchemaId, Vec<PropertyName>>;
+
+/// Batch reader adapter for schema tables.
+pub trait BatchSchemaReader {
+    /// Storage-specific error type for batch reads.
+    type Error;
+
+    /// Gets the raw schema view for a given schema ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error>;
+
+    /// Gets the topological graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error>;
+}
+
+struct RedbBatchSchemaReader<'reader> {
+    reader: &'reader BatchReader,
+}
+
+impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
+    type Error = SchemaRepositoryError;
+
+    #[inline]
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEWS;
+
+        let key = id.to_string();
+        self.reader
+            .get_owned::<RawSchemaView>(RAW_SCHEMA_VIEWS, key.as_str())
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error> {
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
+
+        self.reader
+            .get_owned::<TopologicalGraph<InheritanceNode>>(
+                SCHEMA_TOPOLOGICAL_GRAPH,
+                TOPOLOGICAL_GRAPH_KEY,
+            )
+            .map_err(map_db_error)
+    }
+}
 
 /// Unified repository trait for schema domain persistence.
 ///
@@ -147,28 +206,17 @@ pub trait Repository: Send + Sync {
     fn list_schema_name_id_pairs(&self)
     -> Result<Vec<NameIdPair>, Self::Error>;
 
-    /// Lists inheritance children for all parent schemas.
+    /// Lists schema path-to-ID pairs.
     ///
-    /// Returns a map of `parent_id` → Vec<(`child_id`, `excludes`)>.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    fn list_inheritance_children(
-        &self,
-    ) -> Result<InheritanceChildren, Self::Error>;
-
-    /// Lists all descendant schema IDs for a given parent.
-    ///
-    /// Returns transitive children (children, grandchildren, etc.).
+    /// Useful for discovery stage to detect deleted schemas without loading
+    /// full schema data.
     ///
     /// # Errors
     ///
     /// Returns storage-specific error if the query fails.
-    fn list_descendant_ids(
+    fn list_schema_path_id_pairs(
         &self,
-        parent_id: SchemaId,
-    ) -> Result<Vec<SchemaId>, Self::Error>;
+    ) -> Result<SchemaPathIdPairs, Self::Error>;
 
     // ========================================================================
     // Property Bank Read Operations
@@ -328,75 +376,24 @@ pub trait Repository: Send + Sync {
         file_paths: &[std::path::PathBuf],
     ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error>;
 
-    // ========================================================================
-    // Inheritance Metadata Cache Operations
-    // ========================================================================
-
-    /// Gets the inheritance metadata for a given schema ID.
-    ///
-    /// Returns `None` if no metadata exists (schema never resolved or cache
-    /// stale).
+    /// Gets the topological graph singleton.
     ///
     /// # Errors
     ///
     /// Returns storage-specific error if the query fails.
-    fn get_inheritance_metadata(
+    fn get_topological_graph(
         &self,
-        id: SchemaId,
-    ) -> Result<Option<super::views::SchemaInheritanceView>, Self::Error>;
+    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error>;
 
-    /// Saves inheritance metadata for a schema.
+    /// Saves the topological graph singleton.
     ///
     /// # Errors
     ///
     /// Returns storage-specific error if the save fails.
-    fn save_inheritance_metadata(
+    fn save_topological_graph(
         &self,
-        id: SchemaId,
-        metadata: &super::views::SchemaInheritanceView,
+        graph: &TopologicalGraph<InheritanceNode>,
     ) -> Result<(), Self::Error>;
-
-    /// Deletes inheritance metadata for a schema.
-    ///
-    /// Used when a schema's inheritance chain changes and the cached metadata
-    /// becomes stale.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the deletion fails.
-    fn delete_inheritance_metadata(
-        &self,
-        id: SchemaId,
-    ) -> Result<(), Self::Error>;
-
-    /// Provides zero-copy access to archived inheritance metadata.
-    ///
-    /// The closure receives a reference to the archived metadata without
-    /// deserialization. This is the most efficient way to read cached metadata.
-    ///
-    /// Returns `None` if no metadata exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the query fails.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// // Check if metadata is fresh without full deserialization
-    /// let is_fresh = repo.with_inheritance_metadata(id, |archived| {
-    ///     archived.ancestors_hash == expected_hash
-    /// })?.unwrap_or(false);
-    /// ```
-    fn with_inheritance_metadata<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<super::views::SchemaInheritanceView>,
-        ) -> R;
 
     // ========================================================================
     // Batch Operations (for complex multi-table queries)
@@ -413,6 +410,20 @@ pub trait Repository: Send + Sync {
     fn with_batch_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
+
+    /// Provides access to a batch reader scoped to schema tables.
+    ///
+    /// This is a convenience wrapper that keeps schema pipelines from
+    /// depending on raw table names.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        for<'reader> F: FnOnce(
+            &'reader dyn BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>;
 }
 
 // ========================================================================
@@ -526,55 +537,19 @@ impl Repository for RedbRepository {
     }
 
     #[inline]
-    fn list_inheritance_children(
+    fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<InheritanceChildren, Self::Error> {
-        use std::collections::HashMap;
+    ) -> Result<SchemaPathIdPairs, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
-        // Build children map by scanning all schemas
-        // This is simpler than iterating the multimap and since Schema now has
-        // parent_id, we can just scan schemas directly
-        let mut result = HashMap::new();
-        let schemas = self.list_schemas()?;
-
-        for schema in schemas {
-            if let Some(parent_id) = schema.parent_id() {
-                result
-                    .entry(*parent_id)
-                    .or_insert_with(Vec::new)
-                    .push((*schema.id(), vec![])); // TODO: get excludes from somewhere
-            }
-        }
-
-        Ok(result)
-    }
-
-    #[inline]
-    fn list_descendant_ids(
-        &self,
-        parent_id: SchemaId,
-    ) -> Result<Vec<SchemaId>, Self::Error> {
-        use std::collections::{HashSet, VecDeque};
-
-        // BFS traversal using Schema.children field
-        let mut descendants = HashSet::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(parent_id);
-
-        while let Some(current_id) = queue.pop_front() {
-            let Some(schema) = self.find_schema_by_id(current_id)? else {
-                continue;
-            };
-
-            for &child_id in schema.children() {
-                // First time seeing this child - add to queue
-                if descendants.insert(child_id) {
-                    queue.push_back(child_id);
-                }
-            }
-        }
-
-        Ok(descendants.into_iter().collect())
+        self.db
+            .list_key_value_pairs(SCHEMA_ID_BY_PATH)
+            .map_err(map_db_error)?
+            .into_iter()
+            .map(|(path_str, id): (String, SchemaId)| {
+                Ok((PathBuf::from(path_str), id))
+            })
+            .collect()
     }
 
     // ========================================================================
@@ -674,23 +649,33 @@ impl Repository for RedbRepository {
         Ok(())
     }
 
-    #[expect(
-        clippy::unimplemented,
-        reason = "Schema deletion is complex and not yet needed"
-    )]
     #[inline]
-    fn delete_schema(&self, _id: SchemaId) -> Result<(), Self::Error> {
-        // Schema deletion requires API updates for multimap operations.
-        // The SCHEMA_CHILDREN multimap uses `&[u8]` values, but the batch API
-        // multimap_remove() expects `&str` values, causing a type mismatch.
-        //
-        // Implementation blocked pending:
-        // 1. Add multimap_remove variant for `&[u8]` values, OR
-        // 2. Change SCHEMA_CHILDREN table to use `&str` values, OR
-        // 3. Use direct database API instead of batch API
-        //
-        // For now, deletion is not critical for Phase 6.3.
-        unimplemented!("Schema deletion blocked by multimap API type mismatch")
+    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{
+            RAW_SCHEMA_VIEWS, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_ID_BY_PATH,
+        };
+
+        let schema = self.find_schema_by_id(id)?;
+        let view = self.get_raw_schema_view(id)?;
+        let key = id.to_string();
+
+        self.db
+            .batch_write(|batch| {
+                batch.delete(SCHEMA_BY_ID, &key)?;
+                batch.delete(RAW_SCHEMA_VIEWS, &key)?;
+                if let Some(schema) = schema.as_ref() {
+                    batch.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
+                }
+                if let Some(view) = view.as_ref() {
+                    batch
+                        .delete(SCHEMA_ID_BY_PATH, view.file_path().as_str())?;
+                }
+                Ok(())
+            })
+            .map_err(map_db_error)?;
+
+        Ok(())
     }
 
     // ========================================================================
@@ -728,6 +713,21 @@ impl Repository for RedbRepository {
         });
 
         result.map_err(map_db_error)
+    }
+
+    #[inline]
+    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        for<'reader> F: FnOnce(
+            &'reader dyn BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>,
+    {
+        self.with_batch_reader(|reader| {
+            let schema_reader = RedbBatchSchemaReader {
+                reader,
+            };
+            f(&schema_reader)
+        })
     }
 
     // ========================================================================
@@ -890,82 +890,42 @@ impl Repository for RedbRepository {
             .map_err(map_db_error)
     }
 
-    // ========================================================================
-    // Inheritance Metadata Cache Operations
-    // ========================================================================
-
     #[inline]
-    fn get_inheritance_metadata(
+    fn get_topological_graph(
         &self,
-        id: SchemaId,
-    ) -> Result<Option<super::views::SchemaInheritanceView>, Self::Error> {
-        use crate::schema::db_table::SCHEMA_INHERITANCE;
+    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error> {
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
 
-        let key = id.to_string();
         self.db
-            .get_owned(SCHEMA_INHERITANCE, key.as_str())
+            .get_owned(SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY)
             .map_err(map_db_error)
     }
 
     #[inline]
-    fn save_inheritance_metadata(
+    fn save_topological_graph(
         &self,
-        id: SchemaId,
-        metadata: &super::views::SchemaInheritanceView,
+        graph: &TopologicalGraph<InheritanceNode>,
     ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::SCHEMA_INHERITANCE;
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
 
-        let key = id.to_string();
         self.db
-            .put(SCHEMA_INHERITANCE, key.as_str(), metadata)
-            .map_err(map_db_error)
-    }
-
-    #[inline]
-    fn delete_inheritance_metadata(
-        &self,
-        id: SchemaId,
-    ) -> Result<(), Self::Error> {
-        use crate::schema::db_table::SCHEMA_INHERITANCE;
-
-        let key = id.to_string();
-        self.db
-            .delete(SCHEMA_INHERITANCE, key.as_str())
-            .map(|_deleted| ()) // Discard bool return value
-            .map_err(map_db_error)
-    }
-
-    #[inline]
-    fn with_inheritance_metadata<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<super::views::SchemaInheritanceView>,
-        ) -> R,
-    {
-        use crate::schema::db_table::SCHEMA_INHERITANCE;
-
-        let key = id.to_string();
-        self.db
-            .get::<super::views::SchemaInheritanceView, _, R>(
-                SCHEMA_INHERITANCE,
-                key.as_str(),
-                f,
-            )
+            .put(SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY, graph)
             .map_err(map_db_error)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{collections::HashMap, path::PathBuf};
 
     use tempfile::TempDir;
 
     use super::*;
+    use crate::schema::raw::RawSchema;
 
     /// Helper to create test repository.
     fn setup_test_repo() -> (TempDir, RedbRepository) {
@@ -1010,5 +970,54 @@ mod tests {
             .expect("bulk query should succeed");
 
         assert!(results.is_empty(), "should return empty map for no matches");
+    }
+
+    #[test]
+    fn list_schema_path_id_pairs_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
+
+        let results = repo
+            .list_schema_path_id_pairs()
+            .expect("list schema path/id pairs should succeed");
+
+        assert!(results.is_empty(), "should return empty list for no matches");
+    }
+
+    #[test]
+    fn list_schema_path_id_pairs_includes_saved_view() {
+        use crate::schema::views::{
+            FileTimesMetadata, Filename, HashMetadata, SchemaVersion,
+        };
+
+        let (_tmp, repo) = setup_test_repo();
+
+        let raw_json = r#"{
+            "$version": "1.0",
+            "properties": {}
+        }"#;
+        let raw: RawSchema = serde_json::from_str::<RawSchema>(raw_json)
+            .expect("valid schema should deserialize")
+            .with_name("test".into());
+
+        let file_times_meta = FileTimesMetadata::new(None, None);
+        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let version =
+            SchemaVersion::new(file_times_meta, hashes, &raw).unwrap();
+
+        let filename = Filename::new("schemas/test.json".into());
+        let view = RawSchemaView::new(filename, version);
+        let schema_id = SchemaId::new();
+        repo.save_raw_schema_view(schema_id, &view)
+            .expect("save view should succeed");
+
+        let results = repo
+            .list_schema_path_id_pairs()
+            .expect("list schema path/id pairs should succeed");
+
+        assert_eq!(results.len(), 1);
+        let (path, id) =
+            results.first().cloned().expect("should have one entry");
+        assert_eq!(id, schema_id);
+        assert_eq!(path, PathBuf::from("schemas/test.json"));
     }
 }

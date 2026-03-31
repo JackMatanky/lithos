@@ -63,7 +63,7 @@ use crate::{
     fs::FsReader,
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
-        error::{SchemaError, SchemaLoaderError, SchemaRepositoryError},
+        error::{SchemaLoaderError, SchemaRepositoryError},
         expander::{RefExpandedSchema, RefExpander},
         extender::Extender,
         ingestor::{Ingestor, SchemaResult},
@@ -259,12 +259,6 @@ where
 
             // Note: RawSchemaView already persisted by Ingestor during
             // ingest_all() call
-
-            // Build name_to_id map for inheritance metadata
-            let name_to_id = Self::build_name_to_id_map(&needs_expansion)?;
-
-            // Persist inheritance metadata for caching
-            self.persist_inheritance_metadata(&needs_expansion, &name_to_id)?;
         }
 
         Ok(resolved)
@@ -374,23 +368,6 @@ where
         Ok(())
     }
 
-    /// Build name-to-ID map from schema list.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching tuple references requires explicit destructuring"
-    )]
-    fn build_name_to_id_map(
-        schemas: &[(SchemaId, RawSchema)],
-    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaLoaderError> {
-        schemas
-            .iter()
-            .map(|(id, raw)| {
-                SchemaName::try_new(raw.name()).map(|name| (name, *id))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()
-            .map_err(SchemaLoaderError::Resolution)
-    }
-
     /// Persist resolved schemas to the database.
     fn persist_resolved_schemas(
         &self,
@@ -400,80 +377,6 @@ where
             .repository()
             .save_schemas(schemas)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
-    }
-
-    /// Persist inheritance metadata for caching.
-    ///
-    /// Computes and saves `SchemaInheritanceView` for each schema, enabling
-    /// future optimizations like skipping tree rebuilds when inheritance is
-    /// unchanged.
-    ///
-    /// Note: This first implementation saves immediate parent only. Ancestors
-    /// list will be computed on-demand during staleness checks.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Reference pattern needed for iteration over slice"
-    )]
-    fn persist_inheritance_metadata(
-        &self,
-        schemas: &[(SchemaId, RawSchema)],
-        name_to_id: &HashMap<SchemaName, SchemaId>,
-    ) -> Result<(), SchemaLoaderError> {
-        use std::time::SystemTime;
-
-        use super::views::SchemaInheritanceView;
-
-        for (schema_id, raw) in schemas {
-            // Resolve parent name to ID
-            let parent = if let Some(parent_name) = raw.extends() {
-                let pid = *name_to_id.get(parent_name).ok_or_else(|| {
-                    SchemaLoaderError::Resolution(SchemaError::Inheritance(
-                        super::error::SchemaInheritanceError::ParentNotFound {
-                            name: parent_name.as_str().into(),
-                        },
-                    ))
-                })?;
-                Some(pid)
-            } else {
-                None
-            };
-
-            // TODO(refactor): This code will be replaced by the state machine
-            // refactor. For now, create minimal metadata to satisfy the type.
-            // The new pipeline will properly compute depth, ancestors, and hash
-            // during tree construction.
-            let ancestors = Vec::new();
-            let depth = if parent.is_some() {
-                2
-            } else {
-                1
-            }; // Rough estimate
-            let ancestors_hash = if let Some(pid) = parent {
-                use std::hash::{Hash as _, Hasher as _};
-                let mut hasher =
-                    std::collections::hash_map::DefaultHasher::new();
-                pid.hash(&mut hasher);
-                hasher.finish()
-            } else {
-                0
-            };
-
-            let metadata = SchemaInheritanceView {
-                parent,
-                ancestors,
-                depth,
-                ancestors_hash,
-                resolved_at: SystemTime::now(),
-            };
-
-            // Persist to database
-            self.ingestor
-                .repository()
-                .save_inheritance_metadata(*schema_id, &metadata)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-        }
-
-        Ok(())
     }
 }
 

@@ -714,6 +714,22 @@ pub enum SchemaResolutionError {
         /// Schema ID.
         id: crate::schema::aggregate::SchemaId,
     },
+
+    /// Returned when a parent schema is not found.
+    #[error("parent schema '{parent}' not found for schema '{child}'")]
+    ParentNotFound {
+        /// Child schema name.
+        child: crate::schema::aggregate::SchemaName,
+        /// Parent schema name.
+        parent: crate::schema::aggregate::SchemaName,
+    },
+
+    /// Returned when a cycle is detected in the inheritance graph.
+    #[error("cycle detected in schema inheritance: {}", schemas.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", "))]
+    CycleDetected {
+        /// Schemas involved in the cycle.
+        schemas: Vec<crate::schema::aggregate::SchemaName>,
+    },
 }
 
 impl From<SchemaNameError> for SchemaError {

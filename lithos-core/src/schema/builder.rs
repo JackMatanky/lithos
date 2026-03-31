@@ -1,8 +1,7 @@
 #![expect(clippy::missing_errors_doc, reason = "Facade methods")]
 #![expect(clippy::missing_inline_in_public_items, reason = "Facade methods")]
 
-#[path = "schema_pipeline.rs"]
-mod schema_pipeline;
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::{
     config::aggregate::Config,
@@ -11,6 +10,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         error::SchemaLoaderError,
+        property::PropertyName,
         property_bank_processor::{
             Analysis, AnalysisBranch, Comparison, ComparisonBranch, Completed,
             ContentBranch, Discovery, PropertyBankProcessor, Ready, Suspect,
@@ -22,10 +22,18 @@ use crate::{
 
 /// Schema loader — orchestrates the full schema ingestion pipeline.
 pub struct Builder<'config, R> {
+    #[expect(dead_code, reason = "Builder retains config for future stages")]
     config: &'config Config,
     source: FsReader,
     repository: R,
+    schema_dir: PathBuf,
+    property_bank_path: PathBuf,
+    property_bank_filename: Option<Box<str>>,
+    property_bank_delta: Option<HashSet<PropertyName>>,
 }
+
+type PropertyBankCompletion =
+    (PropertyBankProcessor<Completed, Ready>, Option<HashSet<PropertyName>>);
 
 impl<'config, R: Repository> Builder<'config, R>
 where
@@ -39,57 +47,95 @@ where
         source: FsReader,
         config: &'config Config,
     ) -> Self {
+        let property_bank_path = config.paths().property_bank_path();
+        let property_bank_filename = property_bank_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(Into::into);
+        let schema_dir =
+            config.paths().schema.schemas_dir().as_path().to_path_buf();
+
         Self {
             config,
             source,
             repository,
+            schema_dir,
+            property_bank_path,
+            property_bank_filename,
+            property_bank_delta: None,
         }
+    }
+
+    #[inline]
+    #[expect(
+        dead_code,
+        reason = "property bank delta will be wired into later stages"
+    )]
+    pub(crate) fn set_property_bank_delta(
+        &mut self,
+        property_bank_delta: Option<HashSet<PropertyName>>,
+    ) {
+        self.property_bank_delta = property_bank_delta;
     }
 
     /// Load and construct the `PropertyBank`, automatically handling
     /// incremental staleness.
     pub fn load_property_bank(
-        &self,
+        &mut self,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        let config_path = self.config.paths().property_bank_path();
-        let filename = self
-            .source
-            .filename(&config_path)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        let config_path = self.property_bank_path.as_path();
+        let filename = match self.property_bank_filename.as_deref() {
+            Some(name) => name,
+            None => self
+                .source
+                .filename(config_path)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
+        };
 
         // 1. Discovery: Determine which path to take
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
             filename,
             &self.source,
-            &config_path,
+            config_path,
             &self.repository,
         )?;
 
         // 2. Execute the path to completion
-        let completed = match branch {
+        let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => {
                 let content = self
                     .source
-                    .read_to_string(&config_path)
+                    .read_to_string(config_path)
                     .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-                p.parse(&config_path, &content)?
-                    .create(filename, &self.repository)?
+                let parsed = p.parse(config_path, &content)?;
+                let delta = parsed.changed_property_names();
+                let delta = if delta.is_empty() {
+                    None
+                } else {
+                    Some(delta)
+                };
+                let completed = parsed.create(filename, &self.repository)?;
+                (completed, delta)
             }
             ComparisonBranch::Present(p) => {
                 let content = self
                     .source
-                    .read_to_string(&config_path)
+                    .read_to_string(config_path)
                     .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
                 match p.check_timestamps(&content) {
-                    TimestampBranch::Match(p) => p.fetch(&self.repository)?,
+                    TimestampBranch::Match(p) => {
+                        (p.fetch(&self.repository)?, None)
+                    }
                     TimestampBranch::Mismatch(p) => {
-                        self.handle_content_mismatch(p, filename, &config_path)?
+                        self.handle_content_mismatch(p, filename, config_path)?
                     }
                 }
             }
         };
+
+        self.property_bank_delta = delta;
 
         // 3. Extract the PropertyBank
         Ok(completed.into_bank())
@@ -103,22 +149,60 @@ where
     }
 
     #[expect(dead_code, reason = "schema pipeline scaffold")]
-    #[expect(
-        clippy::todo,
-        reason = "scaffold code with incomplete implementation"
-    )]
+    /// Load schemas using the new typestate pipeline (Phase 5+).
+    ///
+    /// This method orchestrates the 7-stage schema pipeline:
+    /// 1. `Discovery` - Scan filesystem, query DB, branch into pipelines
+    /// 2. `Comparison` - Timestamp/content hash checks (per-schema)
+    /// 3. `TreeGraphed` - Batch graph building with cycle detection
+    /// 4. `PropertyAnalysis` - Batch property/excludes delta computation
+    /// 5. `Construction` - Batch level-by-level expand + merge
+    /// 6. `Completed` - Batch persistence
+    /// 7. `Refresh` - Early exit for metadata-only changes
+    ///
+    /// # Arguments
+    /// * `pb` - Property bank for property resolution
+    ///
+    /// # Errors
+    /// Returns `SchemaLoaderError` if any stage fails.
     pub(crate) fn load_schemas_v2(
         &self,
-        _pb: &PropertyBank,
+        pb: &PropertyBank,
     ) -> Result<Vec<Schema>, SchemaLoaderError> {
-        // TODO: Implement full schema pipeline orchestration
-        // This is scaffold code - will be implemented in later phases
-        todo!("schema pipeline v2 orchestration")
+        use super::schema_pipeline::{Discovery, SchemaTreeProcessor, Unknown};
+
+        let property_bank_filename =
+            match self.property_bank_filename.as_deref() {
+                Some(name) => name,
+                None => self
+                    .source
+                    .filename(self.property_bank_path.as_path())
+                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
+            };
+
+        let pipeline = SchemaTreeProcessor::<Discovery, Unknown>::new();
+        let discovered = pipeline.discover_tree(
+            &self.source,
+            &self.repository,
+            self.schema_dir.as_path(),
+            property_bank_filename,
+        )?;
+
+        let compared = discovered.compare_files(&self.source)?;
+        let graphed = compared.graph_structure()?;
+        let analyzed =
+            graphed.analyze_properties(self.property_bank_delta.as_ref())?;
+        let refreshed = analyzed.refresh_metadata(&self.repository)?;
+        let constructed = refreshed.construct_schemas(&self.repository, pb)?;
+
+        constructed.persist(&self.repository)
     }
 
     /// Run the full ingestion pipeline.
     #[expect(dead_code, reason = "reserved for schema loading")]
-    pub(crate) fn load_all(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
+    pub(crate) fn load_all(
+        &mut self,
+    ) -> Result<Vec<Schema>, SchemaLoaderError> {
         let pb = self.load_property_bank()?;
         Ok(self.load_schemas(&pb))
     }
@@ -128,11 +212,13 @@ where
         processor: PropertyBankProcessor<Comparison, Suspect>,
         filename: &str,
         config_path: &std::path::Path,
-    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_content(config_path) {
             ContentBranch::Match(p) => {
-                p.sync_metadata(&self.repository)?.fetch(&self.repository)
+                let completed = p
+                    .sync_metadata(&self.repository)?
+                    .fetch(&self.repository)?;
+                Ok((completed, None))
             }
             ContentBranch::Mismatch(p) => {
                 self.handle_analysis(p, filename, config_path)
@@ -145,13 +231,24 @@ where
         processor: PropertyBankProcessor<Analysis, Suspect>,
         filename: &str,
         config_path: &std::path::Path,
-    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.analyze(config_path)? {
             AnalysisBranch::Empty(p) => {
-                p.sync_metadata(&self.repository)?.fetch(&self.repository)
+                let completed = p
+                    .sync_metadata(&self.repository)?
+                    .fetch(&self.repository)?;
+                Ok((completed, None))
             }
-            AnalysisBranch::Delta(p) => p.update(filename, &self.repository),
+            AnalysisBranch::Delta(p) => {
+                let delta = p.changed_property_names();
+                let delta = if delta.is_empty() {
+                    None
+                } else {
+                    Some(delta)
+                };
+                let completed = p.update(filename, &self.repository)?;
+                Ok((completed, delta))
+            }
         }
     }
 }

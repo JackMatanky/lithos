@@ -415,19 +415,33 @@ pub(crate) enum AnalysisBranch {
 }
 
 /// Property delta between the cached view and the new raw bank.
-#[derive(Debug)]
-struct PropertyDelta {
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct PropertyBankDelta {
     /// New or changed properties.
     upserts: HashMap<PropertyName, RawPropertyBankEntry>,
     /// Removed properties.
     removals: Vec<PropertyName>,
 }
 
-impl PropertyDelta {
+impl PropertyBankDelta {
     /// Returns `true` if there are no changes.
     #[inline]
-    fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.upserts.is_empty() && self.removals.is_empty()
+    }
+
+    /// Returns the upserted properties (new or changed).
+    #[inline]
+    pub(super) fn upserts(
+        &self,
+    ) -> &HashMap<PropertyName, RawPropertyBankEntry> {
+        &self.upserts
+    }
+
+    /// Returns the removed property names.
+    #[inline]
+    pub(super) fn removals(&self) -> &[PropertyName] {
+        &self.removals
     }
 }
 
@@ -483,10 +497,10 @@ impl PropertyBankProcessor<Analysis, Suspect> {
     }
 
     #[inline]
-    fn delta_from_new_file(raw: &RawPropertyBank) -> PropertyDelta {
+    fn delta_from_new_file(raw: &RawPropertyBank) -> PropertyBankDelta {
         let upserts = raw.properties().as_map().clone();
 
-        PropertyDelta {
+        PropertyBankDelta {
             upserts,
             removals: Vec::new(),
         }
@@ -496,7 +510,7 @@ impl PropertyBankProcessor<Analysis, Suspect> {
     fn delta_from_cached_view(
         raw: &RawPropertyBank,
         prev_hashes: &HashMap<PropertyName, [u8; 32]>,
-    ) -> PropertyDelta {
+    ) -> PropertyBankDelta {
         let mut upserts = HashMap::new();
         let mut seen = HashSet::with_capacity(raw.properties().len());
 
@@ -516,7 +530,7 @@ impl PropertyBankProcessor<Analysis, Suspect> {
 
         removals.sort();
 
-        PropertyDelta {
+        PropertyBankDelta {
             upserts,
             removals,
         }
@@ -635,7 +649,7 @@ pub(crate) struct New {
 #[derive(Debug)]
 pub(crate) struct Changed {
     raw: RawPropertyBank,
-    delta: PropertyDelta,
+    delta: PropertyBankDelta,
     content: String,
 }
 
@@ -645,6 +659,12 @@ pub(crate) struct Fresh;
 
 /// Construction operations that build the initial property bank.
 impl PropertyBankProcessor<Construction, New> {
+    /// Returns the property names considered changed for a new bank.
+    #[inline]
+    pub(crate) fn changed_property_names(&self) -> HashSet<PropertyName> {
+        self.status.raw.properties().keys().cloned().collect()
+    }
+
     /// Performs the initial full bank construction.
     ///
     /// Returns the terminal `Completed` state on success.
@@ -723,6 +743,15 @@ impl PropertyBankProcessor<Construction, New> {
 
 /// Construction operations that apply property deltas.
 impl PropertyBankProcessor<Construction, Changed> {
+    /// Returns the property names considered changed for a delta update.
+    #[inline]
+    pub(crate) fn changed_property_names(&self) -> HashSet<PropertyName> {
+        let mut names: HashSet<PropertyName> =
+            self.status.delta.upserts().keys().cloned().collect();
+        names.extend(self.status.delta.removals().iter().cloned());
+        names
+    }
+
     /// Applies incremental bank updates via property deltas.
     ///
     /// Returns the terminal `Completed` state on success.

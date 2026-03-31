@@ -50,12 +50,10 @@ use std::{
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
+    graph::{InheritanceNode, TopologicalGraph},
     property::PropertyName,
-    storage::{
-        InheritanceChildren, InheritanceRelation, NameIdPair, Repository,
-        SchemaPropertyUsage,
-    },
-    views::{RawPropertyBankView, RawSchemaView, SchemaInheritanceView},
+    storage::{NameIdPair, Repository, SchemaPathIdPairs, SchemaPropertyUsage},
+    views::{RawPropertyBankView, RawSchemaView},
 };
 
 // ============================================================================
@@ -98,9 +96,6 @@ pub struct InMemoryRepository {
     /// Property bank singleton
     property_bank: Arc<RwLock<Option<PropertyBank>>>,
 
-    /// Inheritance relations: (`child_id`, `parent_id`, `excludes`)
-    inheritance_relations: Arc<RwLock<Vec<InheritanceRelation>>>,
-
     /// Raw schema views for staleness detection: `SchemaId` → `RawSchemaView`
     raw_schema_views: Arc<RwLock<HashMap<SchemaId, RawSchemaView>>>,
 
@@ -111,8 +106,8 @@ pub struct InMemoryRepository {
     /// `RawPropertyBankView`
     raw_bank_views: Arc<RwLock<HashMap<String, RawPropertyBankView>>>,
 
-    /// Cached inheritance metadata: `SchemaId` → `SchemaInheritanceView`
-    inheritance_metadata: Arc<RwLock<HashMap<SchemaId, SchemaInheritanceView>>>,
+    /// Cached topological graph singleton.
+    topological_graph: Arc<RwLock<Option<TopologicalGraph<InheritanceNode>>>>,
 }
 
 impl InMemoryRepository {
@@ -130,11 +125,10 @@ impl InMemoryRepository {
             schemas: Arc::new(RwLock::new(HashMap::new())),
             name_to_id: Arc::new(RwLock::new(HashMap::new())),
             property_bank: Arc::new(RwLock::new(None)),
-            inheritance_relations: Arc::new(RwLock::new(Vec::new())),
             raw_schema_views: Arc::new(RwLock::new(HashMap::new())),
             path_to_id: Arc::new(RwLock::new(HashMap::new())),
             raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
-            inheritance_metadata: Arc::new(RwLock::new(HashMap::new())),
+            topological_graph: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -149,16 +143,6 @@ impl InMemoryRepository {
         self.schemas.read().expect("Lock poisoned").len()
     }
 
-    /// Returns the number of cached inheritance metadata entries (test helper).
-    ///
-    /// # Panics
-    ///
-    /// Panics if the lock is poisoned.
-    #[must_use]
-    pub fn metadata_count(&self) -> usize {
-        self.inheritance_metadata.read().expect("Lock poisoned").len()
-    }
-
     /// Clears all stored data (test helper).
     ///
     /// Useful for resetting state between test cases.
@@ -170,11 +154,10 @@ impl InMemoryRepository {
         self.schemas.write().expect("Lock poisoned").clear();
         self.name_to_id.write().expect("Lock poisoned").clear();
         *self.property_bank.write().expect("Lock poisoned") = None;
-        self.inheritance_relations.write().expect("Lock poisoned").clear();
         self.raw_schema_views.write().expect("Lock poisoned").clear();
         self.path_to_id.write().expect("Lock poisoned").clear();
         self.raw_bank_views.write().expect("Lock poisoned").clear();
-        self.inheritance_metadata.write().expect("Lock poisoned").clear();
+        *self.topological_graph.write().expect("Lock poisoned") = None;
     }
 }
 
@@ -287,46 +270,14 @@ impl Repository for InMemoryRepository {
         Ok(name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect())
     }
 
-    fn list_inheritance_children(
+    fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<InheritanceChildren, Self::Error> {
-        let relations = self.inheritance_relations.read().map_err(|_| {
-            InMemoryError::lock_poisoned("list_inheritance_children")
+    ) -> Result<SchemaPathIdPairs, Self::Error> {
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("list_schema_path_id_pairs")
         })?;
 
-        let mut children: InheritanceChildren = HashMap::new();
-
-        for (child_id, parent_id, excludes) in relations.iter() {
-            if let Some(parent) = parent_id {
-                children
-                    .entry(*parent)
-                    .or_default()
-                    .push((*child_id, excludes.clone()));
-            }
-        }
-
-        Ok(children)
-    }
-
-    fn list_descendant_ids(
-        &self,
-        parent_id: SchemaId,
-    ) -> Result<Vec<SchemaId>, Self::Error> {
-        let children_map = self.list_inheritance_children()?;
-
-        let mut descendants = Vec::new();
-        let mut queue = vec![parent_id];
-
-        while let Some(current) = queue.pop() {
-            if let Some(children) = children_map.get(&current) {
-                for (child_id, _) in children {
-                    descendants.push(*child_id);
-                    queue.push(*child_id);
-                }
-            }
-        }
-
-        Ok(descendants)
+        Ok(path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect())
     }
 
     // ========================================================================
@@ -416,10 +367,6 @@ impl Repository for InMemoryRepository {
             InMemoryError::lock_poisoned("delete_schema (raw_views)")
         })?;
 
-        let mut metadata = self.inheritance_metadata.write().map_err(|_| {
-            InMemoryError::lock_poisoned("delete_schema (metadata)")
-        })?;
-
         // Remove schema and update name index
         if let Some(schema) = schemas.remove(&id) {
             name_to_id.remove(schema.name());
@@ -427,7 +374,6 @@ impl Repository for InMemoryRepository {
 
         // Remove associated data
         raw_views.remove(&id);
-        metadata.remove(&id);
 
         Ok(())
     }
@@ -575,67 +521,26 @@ impl Repository for InMemoryRepository {
             .collect())
     }
 
-    // ========================================================================
-    // Inheritance Metadata Cache Operations
-    // ========================================================================
-
-    fn get_inheritance_metadata(
+    fn get_topological_graph(
         &self,
-        id: SchemaId,
-    ) -> Result<Option<SchemaInheritanceView>, Self::Error> {
-        let metadata = self.inheritance_metadata.read().map_err(|_| {
-            InMemoryError::lock_poisoned("get_inheritance_metadata")
+    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error> {
+        let graph = self.topological_graph.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_topological_graph")
         })?;
 
-        Ok(metadata.get(&id).cloned())
+        Ok(graph.clone())
     }
 
-    fn save_inheritance_metadata(
+    fn save_topological_graph(
         &self,
-        id: SchemaId,
-        metadata: &SchemaInheritanceView,
+        graph: &TopologicalGraph<InheritanceNode>,
     ) -> Result<(), Self::Error> {
-        let mut storage = self.inheritance_metadata.write().map_err(|_| {
-            InMemoryError::lock_poisoned("save_inheritance_metadata")
+        let mut storage = self.topological_graph.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_topological_graph")
         })?;
 
-        storage.insert(id, metadata.clone());
-
+        *storage = Some(graph.clone());
         Ok(())
-    }
-
-    fn delete_inheritance_metadata(
-        &self,
-        id: SchemaId,
-    ) -> Result<(), Self::Error> {
-        let mut metadata = self.inheritance_metadata.write().map_err(|_| {
-            InMemoryError::lock_poisoned("delete_inheritance_metadata")
-        })?;
-
-        metadata.remove(&id);
-
-        Ok(())
-    }
-
-    fn with_inheritance_metadata<F, R>(
-        &self,
-        _id: SchemaId,
-        _f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<SchemaInheritanceView>,
-        ) -> R,
-    {
-        // For InMemoryRepository, we don't have archived data.
-        // We need to serialize and then access the archived form.
-        // However, this is complex and not needed for unit tests.
-        // Instead, we'll mark this as unimplemented for now.
-        Err(InMemoryError::internal(
-            "with_inheritance_metadata not implemented for \
-             InMemoryRepository. Use get_inheritance_metadata() instead for \
-             unit tests.",
-        ))
     }
 
     // ========================================================================
@@ -652,6 +557,40 @@ impl Repository for InMemoryRepository {
             "with_batch_reader not supported for InMemoryRepository. This \
              method is specific to RedbRepository.",
         ))
+    }
+
+    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        for<'reader> F: FnOnce(
+            &'reader dyn super::storage::BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>,
+    {
+        struct InMemoryBatchSchemaReader<'repo> {
+            repo: &'repo InMemoryRepository,
+        }
+
+        impl super::storage::BatchSchemaReader for InMemoryBatchSchemaReader<'_> {
+            type Error = InMemoryError;
+
+            fn get_raw_schema_view(
+                &self,
+                id: SchemaId,
+            ) -> Result<Option<RawSchemaView>, Self::Error> {
+                self.repo.get_raw_schema_view(id)
+            }
+
+            fn get_topological_graph(
+                &self,
+            ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error>
+            {
+                self.repo.get_topological_graph()
+            }
+        }
+
+        let reader = InMemoryBatchSchemaReader {
+            repo: self,
+        };
+        f(&reader)
     }
 }
 
@@ -685,7 +624,6 @@ mod tests {
     fn new_repository_is_empty() {
         let repo = InMemoryRepository::new();
         assert_eq!(repo.schema_count(), 0);
-        assert_eq!(repo.metadata_count(), 0);
     }
 
     #[test]
