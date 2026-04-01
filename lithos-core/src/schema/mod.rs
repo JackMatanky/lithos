@@ -116,6 +116,12 @@ pub(crate) mod db_table {
     pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_id_by_name");
 
+    /// Maps schema filename to `SchemaId` for raw view lookup.
+    /// Key: filename with extension (e.g., "note.toml", "task.json")
+    /// Value: rkyv-serialized `SchemaId`.
+    pub(crate) const SCHEMA_ID_BY_PATH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_id_by_path");
+
     // ========================================================================
     // PropertyBank Storage
     // ========================================================================
@@ -142,12 +148,6 @@ pub(crate) mod db_table {
     /// Key examples: "property-bank.toml", "property-bank.json".
     pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
         TableDefinition::new("raw_property_bank_view");
-
-    /// Maps schema filename to `SchemaId` for raw view lookup.
-    /// Key: filename with extension (e.g., "note.toml", "task.json")
-    /// Value: rkyv-serialized `SchemaId`.
-    pub(crate) const SCHEMA_ID_BY_PATH: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_id_by_path");
 
     // ========================================================================
     // Inheritance Tracking Tables
