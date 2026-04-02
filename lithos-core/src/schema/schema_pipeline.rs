@@ -33,7 +33,7 @@ use crate::{
             SchemaRepositoryError, SchemaStorageError,
         },
         expander::RefExpander,
-        graph::{DagBuilder, InheritanceNode, TopologicalGraph},
+        graph::{DagBuilder, GraphNode, InheritanceNode, TopologicalGraph},
         property::{Property, PropertyName},
         raw::{
             RawFileTimes, RawProperty, RawPropertyInline, RawPropertyRef,
@@ -47,7 +47,31 @@ use crate::{
     },
 };
 
-const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
+// ═════════════════════════════════════════════════════════════════════════════
+//  DISCOVERY CONTEXT
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Context returned from `Builder::discovery()` containing initial state.
+///
+/// This struct encapsulates the results of initial filesystem scanning and
+/// database queries, providing the foundation for schema pipeline processing.
+#[derive(Debug)]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "Internal struct used only within schema module"
+)]
+pub(crate) struct DiscoveryContext {
+    /// Topological inheritance graph loaded from DB (if exists).
+    ///
+    /// `None` if this is the first run or graph was corrupted/missing.
+    pub(crate) graph: Option<TopologicalGraph<InheritanceNode>>,
+
+    /// All schema files in schema directory (excluding property bank).
+    ///
+    /// Files are filtered to only include valid schema extensions
+    /// (json, toml, yaml, yml).
+    pub(crate) files: Vec<PathBuf>,
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  PROCESSOR TYPE
@@ -106,6 +130,8 @@ pub(crate) struct Unknown;
 
 #[derive(Debug)]
 pub(crate) struct DiscoveryState {
+    /// Persisted graph structure from DB (if exists).
+    graph: Option<TopologicalGraph<InheritanceNode>>,
     files: Vec<PathBuf>,
     id_by_path: HashMap<PathBuf, SchemaId>,
     view_by_id: HashMap<SchemaId, RawSchemaView>,
@@ -114,7 +140,14 @@ pub(crate) struct DiscoveryState {
 
 #[derive(Debug)]
 pub(crate) struct ComparisonState {
-    statuses: HashMap<SchemaId, FileStatus>,
+    /// Graph with `FileStatus` embedded in nodes (structure + status unified).
+    ///
+    /// `None` if this is the first run or no graph was loaded from DB.
+    /// The graph will be built/rebuilt in the `TreeGraphed` stage based on
+    /// extends relationships.
+    graph: Option<TopologicalGraph<GraphNode<FileStatus>>>,
+
+    /// IDs categorized by staleness (for metrics/logging).
     #[expect(dead_code, reason = "retained for future refresh optimizations")]
     fresh_ids: Vec<SchemaId>,
     #[expect(dead_code, reason = "retained for future refresh optimizations")]
@@ -125,18 +158,27 @@ pub(crate) struct ComparisonState {
 
 #[derive(Debug)]
 pub(crate) struct TreeGraphedState {
-    graph: PipelineGraph,
-    statuses: HashMap<SchemaId, FileStatus>,
+    /// Graph with `FileStatus` embedded in nodes (structure + status unified).
+    graph: TopologicalGraph<GraphNode<FileStatus>>,
+
+    /// Parsed `RawSchema` for stale/new schemas.
     raw_by_id: HashMap<SchemaId, RawSchema>,
+
+    /// Extends deltas for detecting graph rewiring needs.
     extends_deltas: HashMap<SchemaId, ExtendsDelta>,
+
+    /// IDs of schemas in affected subtrees (need rebuild).
     affected_subtrees: HashSet<SchemaId>,
+
+    /// IDs of deleted schemas (remove from graph + DB).
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct PropertyAnalysisState {
-    graph: PipelineGraph,
-    statuses: HashMap<SchemaId, FileStatus>,
+    /// Graph with `FileStatus` embedded in nodes (structure + status unified).
+    graph: TopologicalGraph<GraphNode<FileStatus>>,
+
     raw_by_id: HashMap<SchemaId, RawSchema>,
     #[expect(dead_code, reason = "retained for future construction stages")]
     deltas_by_id: HashMap<SchemaId, SchemaPropertyDelta>,
@@ -149,8 +191,9 @@ pub(crate) struct PropertyAnalysisState {
 
 #[derive(Debug)]
 pub(crate) struct ConstructionState {
-    graph: PipelineGraph,
-    statuses: HashMap<SchemaId, FileStatus>,
+    /// Graph with `FileStatus` embedded in nodes (structure + status unified).
+    graph: TopologicalGraph<GraphNode<FileStatus>>,
+
     raw_by_id: HashMap<SchemaId, RawSchema>,
     rebuild_ids: HashSet<SchemaId>,
     #[expect(dead_code, reason = "retained for future persistence stage")]
@@ -161,7 +204,8 @@ pub(crate) struct ConstructionState {
 #[derive(Debug)]
 pub(crate) struct CompletionState {
     schemas: Vec<Arc<Schema>>,
-    graph: PipelineGraph,
+    /// Graph with `FileStatus` embedded in nodes (structure + status unified).
+    graph: TopologicalGraph<GraphNode<FileStatus>>,
     changed_ids: HashSet<SchemaId>,
 }
 
@@ -345,8 +389,6 @@ pub(crate) struct SchemaPropertyUpserts {
     refs: HashMap<PropertyName, RawPropertyRef>,
 }
 
-pub(crate) type PipelineGraph = TopologicalGraph<InheritanceNode>;
-
 // ═════════════════════════════════════════════════════════════════════════════
 //  STAGE: DISCOVERY
 // ═════════════════════════════════════════════════════════════════════════════
@@ -360,17 +402,30 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
         }
     }
 
-    /// Discovers schema files, loads cached graph, and deletes missing schemas.
+    /// Discovers schema files using pre-loaded context from Builder.
+    ///
+    /// This method uses the `DiscoveryContext` from `Builder::discovery()`
+    /// which contains the pre-loaded graph and file list.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - Discovery context from Builder (graph + files)
+    /// * `source` - Filesystem reader for file metadata
+    /// * `repository` - Database for querying views
+    ///
+    /// # Errors
+    ///
+    /// Returns `SchemaLoaderError` if DB queries or file operations fail.
     #[expect(
         clippy::iter_over_hash_type,
         reason = "iteration order irrelevant for view hydration"
     )]
-    pub(crate) fn discover_tree<R: Repository>(
+    #[expect(unused_variables, reason = "source will be used in Phase 2")]
+    pub(crate) fn discover_with_context<R: Repository>(
         self,
+        context: DiscoveryContext,
         source: &FsReader,
         repository: &R,
-        schemas_dir: &Path,
-        property_bank_filename: &str,
     ) -> Result<
         SchemaTreeProcessor<Comparison, DiscoveryState>,
         SchemaLoaderError,
@@ -378,34 +433,12 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        let pattern = format!("{}/**/*", schemas_dir.display());
-        let all_files = source.list_files(&pattern).map_err(|e| {
-            SchemaIngestionError::File(SchemaFileError::Io {
-                path: schemas_dir.to_path_buf(),
-                source: std::io::Error::other(e),
-            })
-        })?;
+        let DiscoveryContext {
+            graph,
+            files,
+        } = context;
 
-        let files: Vec<PathBuf> = all_files
-            .into_iter()
-            .filter(|path| {
-                let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-                else {
-                    return false;
-                };
-                if file_name == property_bank_filename {
-                    return false;
-                }
-                let Some(ext) = path.extension().and_then(|e| e.to_str())
-                else {
-                    return false;
-                };
-                SCHEMA_EXTENSIONS
-                    .iter()
-                    .any(|allowed| ext.eq_ignore_ascii_case(allowed))
-            })
-            .collect();
-
+        // Query DB for views and IDs for discovered files
         let id_by_path = repository
             .find_schema_ids_by_paths(&files)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -422,6 +455,7 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
             }
         }
 
+        // Detect deleted schemas
         let db_pairs = repository
             .list_schema_path_id_pairs()
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -434,6 +468,7 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
             }
         }
 
+        // Delete from DB immediately
         if !deleted_ids.is_empty() {
             for id in &deleted_ids {
                 repository
@@ -443,6 +478,7 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
         }
 
         Ok(self.transition(DiscoveryState {
+            graph,
             files,
             id_by_path,
             view_by_id,
@@ -471,6 +507,7 @@ impl SchemaTreeProcessor<Comparison, DiscoveryState> {
         let SchemaTreeProcessor {
             status:
                 DiscoveryState {
+                    graph: persisted_graph,
                     files,
                     id_by_path,
                     view_by_id,
@@ -558,9 +595,13 @@ impl SchemaTreeProcessor<Comparison, DiscoveryState> {
             statuses.insert(id, status);
         }
 
+        // Hydrate persisted graph with FileStatus payloads (if graph exists)
+        let graph =
+            persisted_graph.map(|g| hydrate_graph_with_status(g, &statuses));
+
         Ok(SchemaTreeProcessor {
             status: ComparisonState {
-                statuses,
+                graph,
                 fresh_ids,
                 stale_ids,
                 new_ids,
@@ -590,13 +631,24 @@ impl SchemaTreeProcessor<TreeGraphed, ComparisonState> {
         let SchemaTreeProcessor {
             status:
                 ComparisonState {
-                    statuses,
+                    graph,
                     new_ids,
                     deleted_ids,
                     ..
                 },
             ..
         } = self;
+
+        // Extract statuses from graph (if exists)
+        let statuses = if let Some(g) = graph.as_ref() {
+            let mut map = HashMap::new();
+            for (id, node) in &g.nodes {
+                map.insert(*id, node.payload.clone());
+            }
+            map
+        } else {
+            HashMap::new()
+        };
 
         let mut raw_by_id = HashMap::new();
         let mut extends_deltas = HashMap::new();
@@ -614,7 +666,12 @@ impl SchemaTreeProcessor<TreeGraphed, ComparisonState> {
             }
         }
 
-        let graph = DagBuilder::new(&statuses).build()?;
+        // Build new graph structure from statuses
+        let inheritance_graph = DagBuilder::new(&statuses).build()?;
+
+        // Hydrate with FileStatus payloads to create unified graph
+        let hydrated_graph =
+            hydrate_graph_with_status(inheritance_graph, &statuses);
 
         let mut changed_extends_ids = HashSet::new();
         for (id, delta) in &extends_deltas {
@@ -629,13 +686,12 @@ impl SchemaTreeProcessor<TreeGraphed, ComparisonState> {
         let affected_subtrees = if seed_ids.is_empty() {
             HashSet::new()
         } else {
-            graph.affected_subtree(&seed_ids)
+            hydrated_graph.affected_subtree(&seed_ids)
         };
 
         Ok(SchemaTreeProcessor {
             status: TreeGraphedState {
-                graph,
-                statuses,
+                graph: hydrated_graph,
                 raw_by_id,
                 extends_deltas,
                 affected_subtrees,
@@ -675,7 +731,6 @@ impl SchemaTreeProcessor<PropertyAnalysis, TreeGraphedState> {
             status:
                 TreeGraphedState {
                     graph,
-                    statuses,
                     raw_by_id,
                     extends_deltas,
                     affected_subtrees,
@@ -683,6 +738,12 @@ impl SchemaTreeProcessor<PropertyAnalysis, TreeGraphedState> {
                 },
             ..
         } = self;
+
+        // Extract statuses from unified graph
+        let mut statuses = HashMap::new();
+        for (id, node) in &graph.nodes {
+            statuses.insert(*id, node.payload.clone());
+        }
 
         let mut deltas_by_id = HashMap::new();
         let mut excludes_by_id = HashMap::new();
@@ -774,7 +835,6 @@ impl SchemaTreeProcessor<PropertyAnalysis, TreeGraphedState> {
         Ok(SchemaTreeProcessor {
             status: PropertyAnalysisState {
                 graph,
-                statuses,
                 raw_by_id,
                 deltas_by_id,
                 excludes_by_id,
@@ -818,13 +878,18 @@ impl SchemaTreeProcessor<Refresh, PropertyAnalysisState> {
             status:
                 PropertyAnalysisState {
                     graph,
-                    statuses,
                     raw_by_id,
                     rebuild_ids,
                     ..
                 },
             ..
         } = self;
+
+        // Extract statuses from graph for refresh
+        let mut statuses = HashMap::new();
+        for (id, node) in &graph.nodes {
+            statuses.insert(*id, node.payload.clone());
+        }
 
         let mut refreshed_statuses = HashMap::new();
 
@@ -920,10 +985,17 @@ impl SchemaTreeProcessor<Refresh, PropertyAnalysisState> {
             refreshed_statuses.insert(id, refreshed);
         }
 
+        // Update graph nodes with refreshed statuses
+        let mut updated_graph = graph.clone();
+        for (id, refreshed_status) in refreshed_statuses {
+            if let Some(node) = updated_graph.nodes.get_mut(&id) {
+                node.payload = refreshed_status;
+            }
+        }
+
         Ok(SchemaTreeProcessor {
             status: ConstructionState {
-                graph,
-                statuses: refreshed_statuses,
+                graph: updated_graph,
                 raw_by_id,
                 rebuild_ids,
                 changed_ids: HashSet::new(),
@@ -1020,12 +1092,8 @@ impl SchemaTreeProcessor<Construction, ConstructionState> {
                 ),
             ))?;
 
-            let status_entry = status.statuses.get(id);
-            let status_name: Box<str> = status_entry.map_or_else(
-                || id.to_string().into(),
-                |s| s.path().to_string_lossy().into(),
-            );
-
+            let status_name: Box<str> =
+                node.payload.path().to_string_lossy().into();
             let children = node.children.clone();
 
             if !rebuild_ids.contains(id) {
@@ -1076,12 +1144,10 @@ impl SchemaTreeProcessor<Construction, ConstructionState> {
                 merged,
             );
 
-            if let Some(file_status) = status_entry
-                && matches!(
-                    file_status,
-                    FileStatus::StaleContent { .. } | FileStatus::New { .. }
-                )
-            {
+            if matches!(
+                &node.payload,
+                FileStatus::StaleContent { .. } | FileStatus::New { .. }
+            ) {
                 let raw = status.raw_by_id.get(id).ok_or_else(|| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Storage(
                         SchemaStorageError::NotFound {
@@ -1090,7 +1156,7 @@ impl SchemaTreeProcessor<Construction, ConstructionState> {
                     ))
                 })?;
                 let content_hash =
-                    file_status.content_hash().ok_or_else(|| {
+                    node.payload.content_hash().ok_or_else(|| {
                         SchemaLoaderError::Ingestion(
                             SchemaIngestionError::Storage(
                                 SchemaStorageError::NotFound {
@@ -1099,8 +1165,11 @@ impl SchemaTreeProcessor<Construction, ConstructionState> {
                             ),
                         )
                     })?;
-                let view =
-                    build_view_from_raw(raw, file_status.path(), content_hash)?;
+                let view = build_view_from_raw(
+                    raw,
+                    node.payload.path(),
+                    content_hash,
+                )?;
                 repository
                     .save_raw_schema_view(*id, &view)
                     .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -1149,8 +1218,11 @@ impl SchemaTreeProcessor<Completion, CompletionState> {
             }
         }
 
+        // Dehydrate graph (strip FileStatus payloads) before persisting
+        let inheritance_graph =
+            dehydrate_graph_to_inheritance(&self.status.graph);
         repository
-            .save_topological_graph(&self.status.graph)
+            .save_topological_graph(&inheritance_graph)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         Ok(self
@@ -1213,6 +1285,111 @@ fn build_view_from_raw(
     let filename = filename_from_path(path)?;
 
     Ok(RawSchemaView::new(Filename::new(filename.into()), version))
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GRAPH HYDRATION HELPERS (PHASE 2)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Convert `TopologicalGraph<InheritanceNode>` to
+/// `TopologicalGraph<GraphNode<FileStatus>>`.
+///
+/// This hydrates existing graph structure with file status payloads, enabling
+/// unified lookups (single graph contains both structure and status).
+///
+/// # Arguments
+///
+/// * `graph` - Persisted graph structure from DB
+/// * `statuses` - File status map built from comparison stage
+///
+/// # Returns
+///
+/// Graph with `FileStatus` payloads embedded in nodes. Only nodes that have
+/// corresponding statuses are included in the result.
+///
+/// # Notes
+///
+/// Nodes without statuses are filtered out - this can happen when schemas
+/// are deleted from disk but the graph hasn't been updated yet. The graph
+/// will be rebuilt in the `TreeGraphed` stage.
+#[expect(
+    clippy::iter_over_hash_type,
+    reason = "iteration order irrelevant for graph hydration"
+)]
+fn hydrate_graph_with_status(
+    graph: TopologicalGraph<InheritanceNode>,
+    statuses: &HashMap<SchemaId, FileStatus>,
+) -> TopologicalGraph<GraphNode<FileStatus>> {
+    let mut new_nodes = HashMap::new();
+    let mut new_order = Vec::new();
+    let mut new_roots = Vec::new();
+
+    for (id, node) in graph.nodes {
+        // Only include nodes that have statuses
+        if let Some(status) = statuses.get(&id).cloned() {
+            let graph_node = node.with_payload(status);
+            new_nodes.insert(id, graph_node);
+        }
+    }
+
+    // Filter order and roots to only include nodes that made it to new_nodes
+    for id in graph.order {
+        if new_nodes.contains_key(&id) {
+            new_order.push(id);
+        }
+    }
+
+    for id in graph.roots {
+        if new_nodes.contains_key(&id) {
+            new_roots.push(id);
+        }
+    }
+
+    TopologicalGraph {
+        order: new_order,
+        nodes: new_nodes,
+        roots: new_roots,
+    }
+}
+
+/// Convert `TopologicalGraph<GraphNode<FileStatus>>` to
+/// `TopologicalGraph<InheritanceNode>`.
+///
+/// This strips status payloads for database persistence, retaining only
+/// the graph structure.
+///
+/// # Arguments
+///
+/// * `graph` - Pipeline graph with embedded `FileStatus` payloads
+///
+/// # Returns
+///
+/// Graph with only structure (no payloads) suitable for DB storage.
+#[expect(
+    clippy::iter_over_hash_type,
+    reason = "iteration order irrelevant for graph dehydration"
+)]
+fn dehydrate_graph_to_inheritance(
+    graph: &TopologicalGraph<GraphNode<FileStatus>>,
+) -> TopologicalGraph<InheritanceNode> {
+    let mut new_nodes = HashMap::new();
+
+    for (id, node) in &graph.nodes {
+        let inheritance_node = InheritanceNode {
+            id: node.id,
+            parents: node.parents.clone(),
+            children: node.children.clone(),
+            depth: node.depth,
+        };
+
+        new_nodes.insert(*id, inheritance_node);
+    }
+
+    TopologicalGraph {
+        order: graph.order.clone(),
+        nodes: new_nodes,
+        roots: graph.roots.clone(),
+    }
 }
 
 fn collect_parent_properties(

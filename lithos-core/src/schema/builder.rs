@@ -78,6 +78,84 @@ where
         self.property_bank_delta = property_bank_delta;
     }
 
+    /// Discover schema files and load inheritance graph from DB.
+    ///
+    /// This method performs initial filesystem scanning and DB queries to
+    /// prepare the context for schema pipeline processing.
+    ///
+    /// # Operations
+    ///
+    /// 1. Scans schema directory for valid schema files (json, toml, yaml, yml)
+    /// 2. Excludes property bank file from schema file list
+    /// 3. Loads persisted topological graph from DB (if exists)
+    /// 4. Returns `DiscoveryContext` containing graph, files, and metadata
+    ///
+    /// # Errors
+    ///
+    /// Returns `SchemaLoaderError` if:
+    /// - File scanning fails (I/O error)
+    /// - DB access fails (repository error)
+    pub(crate) fn discovery(
+        &self,
+    ) -> Result<super::schema_pipeline::DiscoveryContext, SchemaLoaderError>
+    {
+        use super::schema_pipeline::DiscoveryContext;
+        use crate::schema::error::SchemaIngestionError;
+
+        const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
+
+        // 1. Scan schema directory
+        let pattern = format!("{}/**/*", self.schema_dir.display());
+        let all_files = self.source.list_files(&pattern).map_err(|e| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                crate::schema::error::SchemaFileError::Io {
+                    path: self.schema_dir.clone(),
+                    source: std::io::Error::other(e),
+                },
+            ))
+        })?;
+
+        // 2. Filter for schema files (exclude property bank)
+        let property_bank_filename = self.property_bank_filename.as_deref();
+        let files: Vec<PathBuf> = all_files
+            .into_iter()
+            .filter(|path| {
+                let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+                else {
+                    return false;
+                };
+
+                // Exclude property bank file
+                if let Some(pb_name) = property_bank_filename
+                    && file_name == pb_name
+                {
+                    return false;
+                }
+
+                // Only include valid schema extensions
+                let Some(ext) = path.extension().and_then(|e| e.to_str())
+                else {
+                    return false;
+                };
+
+                SCHEMA_EXTENSIONS
+                    .iter()
+                    .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+            })
+            .collect();
+
+        // 4. Load graph from DB (if exists)
+        let graph = self
+            .repository
+            .get_topological_graph()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+
+        Ok(DiscoveryContext {
+            graph,
+            files,
+        })
+    }
+
     /// Load and construct the `PropertyBank`, automatically handling
     /// incremental staleness.
     pub fn load_property_bank(
@@ -171,21 +249,15 @@ where
     ) -> Result<Vec<Schema>, SchemaLoaderError> {
         use super::schema_pipeline::{Discovery, SchemaTreeProcessor, Unknown};
 
-        let property_bank_filename =
-            match self.property_bank_filename.as_deref() {
-                Some(name) => name,
-                None => self
-                    .source
-                    .filename(self.property_bank_path.as_path())
-                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
-            };
+        // Phase 1: Discovery - Load graph + scan files
+        let context = self.discovery()?;
 
+        // Start pipeline with discovery context
         let pipeline = SchemaTreeProcessor::<Discovery, Unknown>::new();
-        let discovered = pipeline.discover_tree(
+        let discovered = pipeline.discover_with_context(
+            context,
             &self.source,
             &self.repository,
-            self.schema_dir.as_path(),
-            property_bank_filename,
         )?;
 
         let compared = discovered.compare_files(&self.source)?;
@@ -255,29 +327,157 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use tempfile::TempDir;
 
     use super::*;
     use crate::{
-        config::aggregate::Config, fs::FsReader,
-        schema::testing::InMemoryRepository,
+        config::aggregate::Config,
+        fs::FsReader,
+        schema::{
+            aggregate::SchemaId,
+            graph::{InheritanceNode, TopologicalGraph},
+            testing::InMemoryRepository,
+        },
     };
 
-    #[test]
-    fn builder_constructs() {
-        let temp = TempDir::new().unwrap();
+    /// Helper to setup test config for a given temp directory.
+    fn setup_test_config(temp: &TempDir) -> Config {
         let raw = crate::config::raw::RawConfig::default();
-        let config = Config::build(
+        Config::build(
             &raw,
             crate::config::vault::VaultId::new(),
             crate::config::vault::VaultRoot::try_new(temp.path().to_path_buf())
                 .unwrap(),
             crate::config::aggregate::Version::initial(),
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// Helper to create schema files in temp directory.
+    fn create_schema_files(temp: &TempDir, filenames: &[&str]) {
+        let schemas_dir = temp.path().join("schemas");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+
+        for filename in filenames {
+            let path = schemas_dir.join(filename);
+            std::fs::write(
+                path,
+                r#"
+name = "test"
+description = "Test schema"
+                "#,
+            )
+            .unwrap();
+        }
+    }
+
+    /// Helper to setup test repository with a persisted graph.
+    fn setup_test_repo_with_graph(_temp: &TempDir) -> InMemoryRepository {
+        let repo = InMemoryRepository::new();
+
+        // Create minimal graph with one root node
+        let id = SchemaId::new();
+        let node = InheritanceNode::new_root(id);
+
+        let mut nodes = HashMap::new();
+        nodes.insert(id, node);
+
+        let graph = TopologicalGraph {
+            nodes,
+            order: vec![id],
+            roots: vec![id],
+        };
+
+        // Save graph to DB
+        repo.save_topological_graph(&graph).unwrap();
+
+        repo
+    }
+
+    #[test]
+    fn builder_constructs() {
+        let temp = TempDir::new().unwrap();
+        let config = setup_test_config(&temp);
         let source = FsReader::new(temp.path().to_path_buf());
         let repo = InMemoryRepository::new();
 
         let _builder = Builder::new(repo, source, &config);
+    }
+
+    #[test]
+    fn builder_discovery_loads_graph_from_db() {
+        let temp = TempDir::new().unwrap();
+        let repo = setup_test_repo_with_graph(&temp);
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let context = builder.discovery().unwrap();
+
+        assert!(
+            context.graph.is_some(),
+            "Should load graph from DB when present"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_excludes_property_bank() {
+        let temp = TempDir::new().unwrap();
+        create_schema_files(&temp, &["schema_a.toml", "property_bank.json"]);
+        let repo = InMemoryRepository::new();
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let context = builder.discovery().unwrap();
+
+        assert_eq!(
+            context.files.len(),
+            1,
+            "Should exclude property_bank from schema files"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_handles_missing_graph() {
+        let temp = TempDir::new().unwrap();
+        let repo = InMemoryRepository::new(); // Empty DB
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let context = builder.discovery().unwrap();
+
+        assert!(
+            context.graph.is_none(),
+            "Should handle missing graph gracefully"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_filters_by_extension() {
+        let temp = TempDir::new().unwrap();
+        create_schema_files(&temp, &[
+            "schema_a.toml",
+            "schema_b.json",
+            "schema_c.yaml",
+            "schema_d.yml",
+            "readme.md",
+            "config.txt",
+        ]);
+        let repo = InMemoryRepository::new();
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let context = builder.discovery().unwrap();
+
+        assert_eq!(
+            context.files.len(),
+            4,
+            "Should only include schema extensions"
+        );
     }
 }
