@@ -187,6 +187,23 @@ impl InlineField {
             RawFieldValue::DateTime(dt) => FieldValue::DateTime((*dt).into()),
             RawFieldValue::Time(t) => FieldValue::Time((*t).into()),
             RawFieldValue::Boolean(b) => FieldValue::Boolean(*b),
+            RawFieldValue::Array(values) => FieldValue::Array(
+                values
+                    .iter()
+                    .cloned()
+                    .map(FieldValue::from)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            RawFieldValue::Object(values) => FieldValue::Object(Box::new(
+                values
+                    .iter()
+                    .map(|(key, value)| {
+                        (key.clone(), FieldValue::from(value.clone()))
+                    })
+                    .collect(),
+            )),
+            RawFieldValue::Null => FieldValue::Null,
         };
 
         InlineField::new(raw.key.as_ref().into(), value, raw.range)

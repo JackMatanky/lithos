@@ -18,7 +18,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _,
 };
 
-use super::error::FrontmatterError;
+use super::{error::FrontmatterError, raw::RawFieldValue};
 
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
@@ -448,6 +448,36 @@ impl FieldValue {
     pub fn parse_as_time(&self, format: &str) -> Option<NaiveTime> {
         let s = self.as_str()?;
         NaiveTime::parse_from_str(s, format).ok()
+    }
+}
+
+impl<'source> From<RawFieldValue<'source>> for FieldValue {
+    #[inline]
+    fn from(value: RawFieldValue<'source>) -> Self {
+        match value {
+            RawFieldValue::String(s) => {
+                FieldValue::String(s.into_owned().into_boxed_str())
+            }
+            RawFieldValue::Number(n) => FieldValue::Number(n),
+            RawFieldValue::Date(d) => FieldValue::Date(d.into()),
+            RawFieldValue::DateTime(dt) => FieldValue::DateTime(dt.into()),
+            RawFieldValue::Time(t) => FieldValue::Time(t.into()),
+            RawFieldValue::Boolean(b) => FieldValue::Boolean(b),
+            RawFieldValue::Array(values) => FieldValue::Array(
+                Vec::from(values)
+                    .into_iter()
+                    .map(FieldValue::from)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            RawFieldValue::Object(values) => FieldValue::Object(Box::new(
+                values
+                    .into_iter()
+                    .map(|(key, raw_value)| (key, FieldValue::from(raw_value)))
+                    .collect(),
+            )),
+            RawFieldValue::Null => FieldValue::Null,
+        }
     }
 }
 

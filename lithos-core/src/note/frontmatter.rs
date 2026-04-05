@@ -456,7 +456,12 @@ impl<'source> TryFrom<(&RawFrontmatter<'source>, &FrontmatterConfigSpec)>
     fn try_from(
         (raw, spec): (&RawFrontmatter<'source>, &FrontmatterConfigSpec),
     ) -> Result<Self, Self::Error> {
-        let fields = raw.parse_fields().map_err(NoteError::from)?;
+        let fields = raw
+            .parse_fields()
+            .map_err(NoteError::from)?
+            .into_iter()
+            .map(|(key, value)| (key, FieldValue::from(value)))
+            .collect();
         Ok(Self::from_fields(fields, spec))
     }
 }

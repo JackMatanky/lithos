@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap};
 use regex::Regex;
 
 use crate::note::{
-    error::NoteParseError, position::SourceByteRange, value::FieldValue,
+    error::NoteParseError, position::SourceByteRange, raw::RawFieldValue,
 };
 
 /// Input format for frontmatter parsing.
@@ -47,7 +47,7 @@ impl<'source> RawFrontmatter<'source> {
     /// Returns [`NoteParseError`] if the content cannot be parsed.
     pub fn parse_fields(
         &self,
-    ) -> Result<HashMap<Box<str>, FieldValue>, NoteParseError> {
+    ) -> Result<HashMap<Box<str>, RawFieldValue<'static>>, NoteParseError> {
         match self.kind {
             RawFrontmatterFormat::Yaml => {
                 let sanitized =
@@ -141,28 +141,28 @@ mod tests {
         RawFrontmatterFormat::Yaml,
         "key: value\nnum: 42",
         "key",
-        FieldValue::String("value".into())
+        RawFieldValue::String("value".into())
     )]
     #[case::toml_simple(
         RawFrontmatterFormat::Toml,
         "key = \"value\"\nnum = 42",
         "key",
-        FieldValue::String("value".into())
+        RawFieldValue::String("value".into())
     )]
     #[case::yaml_nested(
         RawFrontmatterFormat::Yaml,
         "outer:\n  inner: true",
         "outer",
-        FieldValue::Object(Box::new(HashMap::from([(
+        RawFieldValue::Object(HashMap::from([(
             "inner".into(),
-            FieldValue::Boolean(true),
-        )])))
+            RawFieldValue::Boolean(true),
+        )]))
     )]
     fn should_parse_valid_formats(
         #[case] format: RawFrontmatterFormat,
         #[case] text: &str,
         #[case] key: &str,
-        #[case] expected: FieldValue,
+        #[case] expected: RawFieldValue,
     ) {
         let raw = RawFrontmatter::new(
             format,
@@ -261,7 +261,17 @@ mod tests {
         );
         let fields = raw.parse_fields().expect("frontmatter parsed");
         if let Some(value) = fields.get("link") {
-            let parsed = value.as_str().expect("string value");
+            assert!(
+                matches!(value, RawFieldValue::String(_)),
+                "Expected string value, got: {value:?}"
+            );
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "Match ergonomics on &RawFieldValue are clear here"
+            )]
+            let RawFieldValue::String(parsed) = value else {
+                return;
+            };
             assert!(
                 parsed.starts_with("[[") && parsed.ends_with("]]"),
                 "Expected wikilink parsing, got: {parsed}"
