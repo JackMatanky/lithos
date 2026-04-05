@@ -21,12 +21,12 @@ use crate::{
         frontmatter::Frontmatter,
         heading::Heading,
         inline_fields::InlineField,
-        link::{FrontmatterLink, Link, ReferenceLink},
+        link::{FrontmatterLink, Link},
         list::{ListItem, TaskExt as _},
         paths::NotePath,
         raw::{
             RawBlockRef, RawHeading, RawInlineField, RawLink, RawListItem,
-            RawNote, RawReferenceLink, RawSection, RawTag,
+            RawNote, RawSection, RawTag,
         },
         structure::{BlockRef, Section},
         tag::Tag,
@@ -133,7 +133,6 @@ pub struct Note {
     path: NotePath,
     frontmatter: Option<Frontmatter>,
     frontmatter_links: Box<[FrontmatterLink]>,
-    reference_links: Box<[ReferenceLink]>,
     tags: Box<[Tag]>,
     headings: Box<[Heading]>,
     sections: Box<[Section]>,
@@ -164,7 +163,6 @@ impl Note {
     )]
     pub(crate) fn from_parts<
         FLinks,
-        RLinks,
         Tags,
         Headings,
         Sections,
@@ -178,7 +176,6 @@ impl Note {
         path: NotePath,
         frontmatter: Option<Frontmatter>,
         frontmatter_links: FLinks,
-        reference_links: RLinks,
         tags: Tags,
         headings: Headings,
         sections: Sections,
@@ -190,7 +187,6 @@ impl Note {
     ) -> Self
     where
         FLinks: Into<Box<[FrontmatterLink]>>,
-        RLinks: Into<Box<[ReferenceLink]>>,
         Tags: Into<Box<[Tag]>>,
         Headings: Into<Box<[Heading]>>,
         Sections: Into<Box<[Section]>>,
@@ -205,7 +201,6 @@ impl Note {
             path,
             frontmatter,
             frontmatter_links: frontmatter_links.into(),
-            reference_links: reference_links.into(),
             tags: tags.into(),
             headings: headings.into(),
             sections: sections.into(),
@@ -229,7 +224,6 @@ impl Note {
             path,
             frontmatter: None,
             frontmatter_links: Box::new([]),
-            reference_links: Box::new([]),
             tags: Box::new([]),
             headings: Box::new([]),
             sections: Box::new([]),
@@ -290,13 +284,6 @@ impl Note {
     #[must_use]
     pub fn frontmatter_links(&self) -> &[FrontmatterLink] {
         &self.frontmatter_links
-    }
-
-    /// Returns the collection of reference-style link definitions.
-    #[inline]
-    #[must_use]
-    pub fn reference_links(&self) -> &[ReferenceLink] {
-        &self.reference_links
     }
 
     /// Returns the collection of tags extracted from the note.
@@ -557,12 +544,6 @@ impl Note {
         frontmatter_links
     }
 
-    fn collect_reference_links_from(
-        reference_links: Vec<RawReferenceLink<'_>>,
-    ) -> Result<Vec<ReferenceLink>, NoteError> {
-        reference_links.into_iter().map(ReferenceLink::try_from).collect()
-    }
-
     fn collect_headings_from(
         headings: Vec<RawHeading<'_>>,
     ) -> Result<Vec<Heading>, NoteError> {
@@ -643,7 +624,6 @@ impl<'source>
             lists: _lists,
             list_items,
             inline_fields: raw_inline_fields,
-            reference_links,
             block_refs,
             ..
         } = raw;
@@ -665,8 +645,6 @@ impl<'source>
         );
         let frontmatter_links =
             Note::collect_frontmatter_links_from(frontmatter.as_ref());
-        let reference_links =
-            Note::collect_reference_links_from(reference_links)?;
         let headings = Note::collect_headings_from(headings)?;
         let sections = Note::collect_sections_from(sections)?;
         let links = Note::collect_links_from(links)?;
@@ -677,7 +655,6 @@ impl<'source>
             path,
             frontmatter,
             frontmatter_links,
-            reference_links,
             tags,
             headings,
             sections,

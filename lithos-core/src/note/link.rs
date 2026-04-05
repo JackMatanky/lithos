@@ -16,7 +16,7 @@ use super::{
     heading::HeadingText,
     paths::NotePath,
     position::SourceByteOffset,
-    raw::{RawLink, RawLinkStyle, RawReferenceLink},
+    raw::{RawLink, RawLinkStyle},
     structure::BlockRefId,
 };
 
@@ -467,75 +467,6 @@ impl FrontmatterLink {
     #[must_use]
     pub const fn is_embed(&self) -> bool {
         self.embed_type.is_some()
-    }
-}
-
-/// Reference-style link definition.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct ReferenceLink {
-    id: Box<str>,
-    target: Target,
-    position: SourceByteOffset,
-}
-
-impl ReferenceLink {
-    /// Creates a reference-style link definition.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        id: Box<str>,
-        target: Target,
-        position: SourceByteOffset,
-    ) -> Self {
-        Self {
-            id,
-            target,
-            position,
-        }
-    }
-
-    /// Returns the definition id.
-    #[inline]
-    #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    /// Returns the link target.
-    #[inline]
-    #[must_use]
-    pub const fn target(&self) -> &Target {
-        &self.target
-    }
-
-    /// Returns the source byte position.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.position
-    }
-}
-
-impl TryFrom<RawReferenceLink<'_>> for ReferenceLink {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(raw: RawReferenceLink<'_>) -> Result<Self, Self::Error> {
-        let target_text = raw.target.as_ref();
-        let target = if Target::is_external_target(target_text) {
-            Target::External {
-                url: raw.target.into_owned().into_boxed_str(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: raw.target.into_owned().into_boxed_str(),
-            }
-        };
-        Ok(ReferenceLink::new(raw.id.as_ref().into(), target, raw.position))
     }
 }
 

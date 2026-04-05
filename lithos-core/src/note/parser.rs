@@ -21,8 +21,8 @@ use crate::note::{
     raw::{
         RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
         RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
-        RawListItem, RawListKind, RawNote, RawReferenceLink, RawSection,
-        RawSectionKind, RawTag, RawTaskMarker,
+        RawListItem, RawListKind, RawNote, RawSection, RawSectionKind, RawTag,
+        RawTaskMarker,
     },
     scanner::NoteScanner,
 };
@@ -79,7 +79,6 @@ impl MarkdownParser {
                 }
             })?;
 
-        let mut reference_links = Vec::new();
         let mut block_refs = Vec::new();
 
         let mut headings = Vec::with_capacity(16);
@@ -106,6 +105,7 @@ impl MarkdownParser {
         )> = None;
         let mut metadata_text = pool.take();
 
+        let reference_map = reference_definitions_map(markdown);
         let parser = Parser::new_ext(markdown, Self::obsidian_options());
         let events = parser.into_offset_iter().map(|(event, range)| {
             let normalized = match event {
@@ -160,6 +160,7 @@ impl MarkdownParser {
                     Self::handle_start_tag(
                         tag,
                         start_pos,
+                        &reference_map,
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
@@ -226,15 +227,6 @@ impl MarkdownParser {
 
         pool.put(metadata_text);
 
-        let reference_defs = scan_reference_definitions(markdown);
-        for (label, dest) in reference_defs {
-            reference_links.push(RawReferenceLink::new(
-                Cow::Owned(label.into()),
-                Cow::Owned(dest.into()),
-                SourceByteOffset::new(0),
-            ));
-        }
-
         sections.sort_by_key(|section| u32::from(section.range.start()));
 
         Ok(RawNote::new(
@@ -247,7 +239,6 @@ impl MarkdownParser {
             lists,
             list_items,
             inline_fields,
-            reference_links,
             block_refs,
         ))
     }
@@ -282,11 +273,13 @@ impl MarkdownParser {
 
     #[expect(
         clippy::too_many_arguments,
+        clippy::too_many_lines,
         reason = "Parser orchestration requires full state context"
     )]
     fn handle_start_tag<'source>(
         tag: pulldown_cmark::Tag<'source>,
         start_pos: SourceByteOffset,
+        reference_map: &std::collections::HashMap<Box<str>, Box<str>>,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
@@ -318,10 +311,15 @@ impl MarkdownParser {
                 dest_url,
                 ..
             } => {
+                let target = resolve_reference_target(
+                    link_type,
+                    dest_url,
+                    reference_map,
+                );
                 *current_link = Some(LinkFrame {
                     style: link_type.into(),
                     is_embed: false,
-                    target: cow_str_to_cow(dest_url),
+                    target,
                     start: start_pos,
                     alias: pool.take(),
                 });
@@ -336,10 +334,15 @@ impl MarkdownParser {
                     link_type,
                     pulldown_cmark::LinkType::WikiLink { .. }
                 );
+                let target = resolve_reference_target(
+                    link_type,
+                    dest_url,
+                    reference_map,
+                );
                 *current_link = Some(LinkFrame {
                     style: link_type.into(),
                     is_embed,
-                    target: cow_str_to_cow(dest_url),
+                    target,
                     start: start_pos,
                     alias: pool.take(),
                 });
@@ -1039,6 +1042,42 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
             | pulldown_cmark::LinkType::Email => Self::Markdown,
         }
     }
+}
+
+#[inline]
+fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
+    matches!(
+        link_type,
+        pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+    )
+}
+
+fn resolve_reference_target<'source>(
+    link_type: pulldown_cmark::LinkType,
+    dest_url: CowStr<'source>,
+    reference_map: &std::collections::HashMap<Box<str>, Box<str>>,
+) -> Cow<'source, str> {
+    if is_reference_link_type(link_type)
+        && let Some(resolved) = reference_map.get(dest_url.as_ref())
+    {
+        return Cow::Owned(resolved.as_ref().to_owned());
+    }
+    cow_str_to_cow(dest_url)
+}
+
+fn reference_definitions_map(
+    markdown: &str,
+) -> std::collections::HashMap<Box<str>, Box<str>> {
+    let mut map = std::collections::HashMap::new();
+    for (label, dest) in scan_reference_definitions(markdown) {
+        map.insert(label, dest);
+    }
+    map
 }
 
 type ReferenceDef = (Box<str>, Box<str>);

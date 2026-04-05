@@ -1,6 +1,6 @@
 use super::{
     RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink, RawList,
-    RawListItem, RawReferenceLink, RawSection, RawTag,
+    RawListItem, RawSection, RawTag,
 };
 use crate::note::paths::NotePath;
 
@@ -17,7 +17,6 @@ pub struct RawNote<'source> {
     pub lists: Vec<RawList>,
     pub list_items: Vec<RawListItem<'source>>,
     pub inline_fields: Vec<RawInlineField<'source>>,
-    pub reference_links: Vec<RawReferenceLink<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
 }
 
@@ -39,7 +38,6 @@ impl<'source> RawNote<'source> {
         lists: Vec<RawList>,
         list_items: Vec<RawListItem<'source>>,
         inline_fields: Vec<RawInlineField<'source>>,
-        reference_links: Vec<RawReferenceLink<'source>>,
         block_refs: Vec<RawBlockRef<'source>>,
     ) -> Self {
         Self {
@@ -52,7 +50,6 @@ impl<'source> RawNote<'source> {
             lists,
             list_items,
             inline_fields,
-            reference_links,
             block_refs,
         }
     }
@@ -83,11 +80,6 @@ impl<'source> RawNote<'source> {
                 .inline_fields
                 .into_iter()
                 .map(RawInlineField::into_owned)
-                .collect(),
-            reference_links: self
-                .reference_links
-                .into_iter()
-                .map(RawReferenceLink::into_owned)
                 .collect(),
             block_refs: self
                 .block_refs
