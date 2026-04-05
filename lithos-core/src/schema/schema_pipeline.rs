@@ -493,13 +493,21 @@ impl SchemaTreeProcessor<Discovery, Unknown> {
 
 impl SchemaTreeProcessor<Comparison, DiscoveryState> {
     /// Performs timestamp + content hash checks per file.
+    ///
+    /// Optionally accepts `property_bank_delta` to demote Fresh schemas
+    /// that reference changed `PropertyBank` properties to `StaleContent`.
     #[expect(
         clippy::excessive_nesting,
         reason = "state machine branches are explicit for readability"
     )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "PropertyBank delta checking adds necessary complexity"
+    )]
     pub(crate) fn compare_files(
         self,
         source: &FsReader,
+        property_bank_delta: Option<&HashSet<PropertyName>>,
     ) -> Result<
         SchemaTreeProcessor<TreeGraphed, ComparisonState>,
         SchemaLoaderError,
@@ -537,11 +545,65 @@ impl SchemaTreeProcessor<Comparison, DiscoveryState> {
                 });
 
                 if timestamps_match {
-                    fresh_ids.push(id);
-                    FileStatus::Fresh {
-                        id,
-                        path: path.clone(),
-                        view: view.clone(),
+                    // Check if schema references changed PropertyBank
+                    // properties
+                    if let Some(pb_delta) = property_bank_delta {
+                        if let Some(version) = view.current() {
+                            let bank_refs = version.bank_references();
+                            let is_affected = bank_refs
+                                .values()
+                                .any(|bank_prop| pb_delta.contains(bank_prop));
+
+                            if is_affected {
+                                // Demote to StaleContent: need to re-expand
+                                // bank refs
+                                let content = source
+                                    .read_to_string(path)
+                                    .map_err(|e| {
+                                        SchemaLoaderError::Ingestion(e.into())
+                                    })?;
+                                let content_hash =
+                                    *blake3::hash(content.as_bytes())
+                                        .as_bytes();
+                                let raw = parse_raw_schema_from_str(
+                                    path, &content, &times,
+                                )?;
+
+                                stale_ids.push(id);
+                                FileStatus::StaleContent {
+                                    id,
+                                    path: path.clone(),
+                                    view: view.clone(),
+                                    raw,
+                                    content_hash,
+                                    times,
+                                }
+                            } else {
+                                // Fresh: no bank references changed
+                                fresh_ids.push(id);
+                                FileStatus::Fresh {
+                                    id,
+                                    path: path.clone(),
+                                    view: view.clone(),
+                                }
+                            }
+                        } else {
+                            // No version in view, treat as fresh
+                            fresh_ids.push(id);
+                            FileStatus::Fresh {
+                                id,
+                                path: path.clone(),
+                                view: view.clone(),
+                            }
+                        }
+                    } else {
+                        // No PropertyBank delta, treat as fresh
+                        fresh_ids.push(id);
+                        FileStatus::Fresh {
+                            id,
+                            path: path.clone(),
+                            view: view.clone(),
+                        }
                     }
                 } else {
                     let content = source

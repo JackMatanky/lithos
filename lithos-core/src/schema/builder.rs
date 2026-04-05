@@ -260,7 +260,8 @@ where
             &self.repository,
         )?;
 
-        let compared = discovered.compare_files(&self.source)?;
+        let compared = discovered
+            .compare_files(&self.source, self.property_bank_delta.as_ref())?;
         let graphed = compared.graph_structure()?;
         let analyzed =
             graphed.analyze_properties(self.property_bank_delta.as_ref())?;

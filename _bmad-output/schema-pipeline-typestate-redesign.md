@@ -16,6 +16,7 @@ This revision makes significant architectural changes to optimize the pipeline:
 
 **Removed**: InheritanceAnalysis stage (was per-schema)
 **Reason**: Inheritance concerns split into two semantically appropriate locations:
+
 - **Extends delta** → TreeGraphed stage (structural graph concern)
 - **Excludes delta** → PropertyAnalysis stage (property-level concern)
 
@@ -30,6 +31,7 @@ This revision makes significant architectural changes to optimize the pipeline:
 ### 3. Fail-Fast Optimization
 
 **TreeGraphed stage now happens first in batch processing**:
+
 - Parses RawSchemas
 - Computes extends deltas
 - Builds/patches topological graph
@@ -51,6 +53,7 @@ This revision makes significant architectural changes to optimize the pipeline:
 **Previous**: Separate `SchemaDelta` and `BankReferenceDelta`
 
 **New**: Unified `SchemaPropertyDelta` with categorized upserts:
+
 ```rust
 SchemaPropertyDelta {
     upserts: {
@@ -65,17 +68,18 @@ SchemaPropertyDelta {
 
 ### 6. Enhanced Graph Storage
 
-**New tables**:
-- `SCHEMA_TOPOLOGICAL_GRAPH` - Singleton for cached graph
-- `SCHEMA_PARENT_TO_CHILDREN` - Multimap (source of truth for edges)
-- `SCHEMA_INHERITANCE_EDGES` - Edge metadata (excludes per parent:child)
-- `SCHEMA_INHERITANCE` - Enhanced ancestry metadata with staleness hash
+**New tables** (optimized for rebuild + patching):
 
-**Benefit**: O(log N + C) children lookup, incremental graph patching, efficient staleness detection
+- `SCHEMA_CHILDREN_BY_PARENT` - Multimap for parent→children edges (with pre-computed child depth)
+- `SCHEMA_ANCESTORS_BY_ID` - Ancestry metadata (parent_id, full ancestor chain, staleness hash)
+- `SCHEMA_TOPOLOGICAL_GRAPH` - Singleton for cached topological order and roots (no properties/nodes)
+
+**Benefit**: Efficient O(N) graph rebuild from metadata, O(log N) staleness detection, O(log N + C) children lookups, and clear semantic separation between structural and property concerns.
 
 ### 7. Batch Boundary Clarification
 
 **Clear collection point** after Comparison stage:
+
 - Fresh schemas (skip to Construction via Refresh)
 - StaleContent schemas (proceed to TreeGraphed)
 
@@ -152,15 +156,15 @@ The schema pipeline implements a **hybrid typestate state machine** combining pe
 
 ### Comparison to PropertyBank
 
-| Aspect | PropertyBank | Schema Pipeline |
-|--------|-------------|-----------------|
-| **Processing Model** | Single file | Multiple files (hybrid) |
-| **Stage Count** | 6 | 7 (+ Refresh for early exits) |
-| **Branching Paths** | 4 (NEW/FreshTS/FreshContent/STALE) | Same per-schema, then batch |
-| **Refresh Stage** | Yes (timestamps + content hash) | Yes (same pattern) |
-| **Status Names** | Fresh/New/Changed | Fresh/New/Changed (aligned) |
-| **Dependencies** | None | PropertyBank + inter-schema |
-| **Fail-Fast Strategy** | Property hashes first | Graph topology first (cycles/depth) |
+| Aspect                 | PropertyBank                       | Schema Pipeline                     |
+| ---------------------- | ---------------------------------- | ----------------------------------- |
+| **Processing Model**   | Single file                        | Multiple files (hybrid)             |
+| **Stage Count**        | 6                                  | 7 (+ Refresh for early exits)       |
+| **Branching Paths**    | 4 (NEW/FreshTS/FreshContent/STALE) | Same per-schema, then batch         |
+| **Refresh Stage**      | Yes (timestamps + content hash)    | Yes (same pattern)                  |
+| **Status Names**       | Fresh/New/Changed                  | Fresh/New/Changed (aligned)         |
+| **Dependencies**       | None                               | PropertyBank + inter-schema         |
+| **Fail-Fast Strategy** | Property hashes first              | Graph topology first (cycles/depth) |
 
 ---
 
@@ -169,43 +173,49 @@ The schema pipeline implements a **hybrid typestate state machine** combining pe
 ### Stage Sequence
 
 ```
-1. Discovery        (batch start, per-schema branch)
+1. Discovery        (batch start, loads graph)
    ↓
 2. Comparison       (per-schema: timestamp + hash checks)
    ↓
-   [Collect Fresh schemas + StaleContent schemas - BATCH BOUNDARY]
+   [BATCH BOUNDARY - collect Fresh + StaleContent schemas]
    ↓
-3. TreeGraphed      (batch: extends delta + graph build/patch + cycle detection)
-   ↓               (passes RawSchemas forward to avoid re-parsing)
-4. PropertyAnalysis (batch: excludes delta + schema delta + bank ref delta)
+3. TreeGraphed      (batch: patches graph + fail-fast validation)
    ↓
-5. Construction     (batch: level-by-level expand + merge)
+4. PropertyAnalysis (batch: property/excludes deltas)
    ↓
-6. Completed        (batch: persist all schemas)
-
-EARLY EXIT PATH (Refresh):
-   Comparison → Refresh → Construction (when only metadata changed)
+5. Refresh          (early exit path from Comparison/Suspect)
+   ↓
+6. Construction     (batch: level-by-level expand + merge)
+   ↓
+7. Completed        (batch: bulk persist all)
 ```
 
 ### Stage Descriptions
 
 #### Stage 1: Discovery (Batch Start, Per-Schema Branch)
 
-**Purpose**: Initialize batch processing, query DB, detect deletions, branch schemas into pipelines
+**Purpose**: Initialize batch processing, load/rebuild graph structure, query DB, detect deletions, branch schemas into pipelines
 
-**Scope**: Batch operation producing per-schema pipelines
+**Scope**: Batch operation producing per-schema pipelines with co-located graph structure
 
 **Operations**:
+
 1. Scan schema directory (excluding `property_bank` file)
-2. Batch query: Load all `RawSchemaView`s from DB (`find_raw_schema_views_by_paths`)
-3. Build global indexes: `name_to_id`, `id_to_name` from DB data
-4. Detect deleted schemas: Schemas in DB but not on filesystem
-5. Check PropertyBank staleness (from upstream `PropertyBankProcessor`)
-6. For each schema file: timestamp check, determine branch path
-7. Produce: `Vec<SchemaProcessor<Comparison, Status>>` (one per file)
+2. Load/rebuild `TopologicalGraph` from DB:
+   - Try `load_graph_cache()` from `SCHEMA_TOPOLOGICAL_GRAPH` (O(1) singleton)
+   - If invalid/missing: Rebuild from `SCHEMA_ANCESTORS_BY_ID` and `SCHEMA_CHILDREN_BY_PARENT`
+   - Rebuilding is the fallback only if all schemas are new or cache is corrupt
+3. Batch query: Load all `RawSchemaView`s from DB for discovered files
+4. Build global indexes: `name_to_id`, `id_to_name` from DB data
+5. Detect deleted schemas: Schemas in DB/Graph but not on filesystem
+6. Check PropertyBank staleness
+7. Hydrate Graph with `DiscoveryPayload` (file timestamps, etc.)
+8. Produce: `Vec<SchemaProcessor<Comparison, Status>>` and the initial hydrated graph
 
 **Outputs**:
+
 - `Vec<DiscoveryBranch>` (one per schema)
+- `TopologicalGraph<DiscoveryPayload>` (structural graph with discovery metadata)
 - Global context: `name_to_id`, `id_to_name`, deleted schema IDs, PropertyBank delta
 
 **Errors**: `SchemaRepositoryError`, `SchemaFileError`
@@ -219,6 +229,7 @@ EARLY EXIT PATH (Refresh):
 **Scope**: Per-schema operation (independent)
 
 **Operations**:
+
 1. **Timestamp check** (fast path):
    - Compare file timestamps with `RawSchemaView.file_times`
    - If match → `Fresh` status → skip to Construction
@@ -238,74 +249,67 @@ EARLY EXIT PATH (Refresh):
 
 #### Stage 3: TreeGraphed (Batch)
 
-**Purpose**: Build or patch inheritance graph with fail-fast structural validation BEFORE expensive property operations
+**Purpose**: Patch inheritance graph with fail-fast structural validation BEFORE expensive property operations
 
-**Scope**: Batch operation (requires global view of all schema relationships)
+**Scope**: Batch operation (synchronizes graph state with filesystem changes)
 
 **Inputs**:
-- Fresh schema IDs (from Comparison stage)
-- StaleContent schemas (from Comparison stage)
-- Global context: `name_to_id`, `id_to_name` (from Discovery)
+
+- `TopologicalGraph<DiscoveryPayload>` (from Discovery stage)
+- `HashMap<SchemaId, RawSchema>` (parsed schemas)
+- `HashMap<SchemaId, ExtendsDelta>` (extends changes)
 
 **Operations**:
 
-**Step 1: Load or determine graph rebuild strategy**
-1. Attempt to load cached `TopologicalGraph` from DB
-2. If no graph exists → **Build from scratch** (all schemas are structurally new)
-3. If graph exists → proceed to Step 2
+**Step 1: Determine graph strategy based on ExtendsDelta**
 
-**Step 2: Parse StaleContent schemas and compute ExtendsDelta**
-1. For each StaleContent schema:
-   - Parse file into `RawSchema`
-   - Extract `old_extends` from `RawSchemaView.current().extends()`
-   - Extract `new_extends` from `RawSchema.extends()`
-   - Compute `ExtendsDelta { old_parent, new_parent }`
-   - Verify parent exists in `name_to_id` (error if not found)
-2. For NEW schemas (Missing status):
-   - Parse file into `RawSchema`
-   - Extract `new_extends` from `RawSchema.extends()`
-   - Verify parent exists (error if not found)
-   - Create `ExtendsDelta { old_parent: None, new_parent }`
-
-**Step 3: Determine graph strategy based on ExtendsDelta**
 - All extends unchanged + no new schemas → **Reuse** cached graph
-- Some extends changed → **Patch** graph (add/remove/rewire edges)
-- Has new schemas → **Patch** graph (insert new nodes)
+- Some extends changed → **Patch** graph (add/remove/rewire edges in memory)
+- Has new schemas → **Insert** into graph
 
-**Step 4: Build/Patch TopologicalGraph**
+**Step 2: Patch TopologicalGraph**
+
+- Rebuild only happens if the graph was never built (all schemas new).
+- Otherwise, apply `ExtendsDelta` to `GraphNode` parent/child fields.
+- Re-run depth computation and topological sort on patched structure.
+
+**Step 3: Graph Structure**
+
 ```rust
-pub struct TopologicalGraph {
-    order: Vec<SchemaId>,              // Topologically sorted (parents first)
-    nodes: HashMap<SchemaId, GraphNode>,
+pub struct TopologicalGraph<T> {
+    order: Vec<SchemaId>,              // Topologically sorted IDs
+    nodes: HashMap<SchemaId, GraphNode<T>>,
     roots: Vec<SchemaId>,              // Schemas with no parent
-    structure_hash: u64,               // For staleness detection
 }
 
-pub struct GraphNode {
+pub struct GraphNode<T> {
     id: SchemaId,
     name: SchemaName,
+    filename: Box<str>,
     parent_id: Option<SchemaId>,
+    children: Vec<SchemaId>,
     depth: usize,
-    // NO properties, NO excludes here - those belong elsewhere
+    payload: T,                        // Stage-specific payload (e.g. TreeGraphedPayload)
 }
 ```
 
-**Step 5: Structural validation (FAIL FAST)**
+**Step 4: Structural validation (FAIL FAST)**
+
 - Cycle detection via DFS
 - Depth limit enforcement (max 10 levels)
 - Parent existence verification
-- **Errors terminate pipeline immediately** (no expensive property work)
+- **Errors terminate pipeline immediately** (no property work)
 
-**Step 6: Persist graph and pass RawSchemas forward**
-- Persist `TopologicalGraph` to DB
-- Return `RawSchemas` (already parsed) to PropertyAnalysis stage
-- **Optimization**: Avoids re-parsing in PropertyAnalysis
+**Step 5: Persist graph structure (singleton order/roots only)**
+
+- Persist `TopologicalGraphCache` to `SCHEMA_TOPOLOGICAL_GRAPH` singleton table
+- Pass hydrated graph and parsed `RawSchema`s forward to PropertyAnalysis
 
 **Outputs**: `TreeGraphedBranch::GraphFresh | GraphPatched`
 
 **Carried Data**:
-- `TopologicalGraph` (validated, topologically sorted)
-- `HashMap<SchemaId, RawSchema>` (parsed schemas to pass forward)
+
+- `TopologicalGraph<TreeGraphedPayload>` (structural graph with parsed schemas)
 - `HashMap<SchemaId, ExtendsDelta>` (for Construction stage optimization)
 - Affected subtree IDs (for incremental processing)
 
@@ -324,6 +328,7 @@ pub struct GraphNode {
 **Scope**: Batch operation (can parallelize per-schema with shared PropertyBank context)
 
 **Inputs**:
+
 - `HashMap<SchemaId, RawSchema>` (from TreeGraphed - already parsed!)
 - PropertyBank delta (from Discovery)
 - Fresh schema IDs
@@ -331,6 +336,7 @@ pub struct GraphNode {
 **Operations**:
 
 **Step 1: Compute ExcludesDelta** (BEFORE property checks - semantic separation)
+
 1. For each StaleContent schema with RawSchema:
    - Extract `old_excludes` from `RawSchemaView.current().excludes()`
    - Extract `new_excludes` from `RawSchema.excludes()`
@@ -343,6 +349,7 @@ pub struct GraphNode {
      ```
 
 **Step 2: Compute SchemaPropertyDelta**
+
 1. For each RawSchema (leveraging already-parsed data from TreeGraphed):
    - Compute per-property hashes
    - Compare with `RawSchemaView.hashes.properties`
@@ -358,17 +365,20 @@ pub struct GraphNode {
      ```
 
 **Step 3: Compute BankReferenceDelta** (if PropertyBank stale)
+
 1. Load `bank_references` from `RawSchemaView.bank_references`
 2. Intersect with `PropertyBank.PropertyDelta.changed`
 3. Add affected properties to `SchemaPropertyDelta.upserts.refs`
 
 **Step 4: Filter by ExcludesDelta optimization**
+
 - If schema excludes a bank property that changed, remove from affected set
 - Optimization: Schemas excluding changed bank properties don't need re-expansion
 
 **Outputs**: `PropertyAnalysisBranch::Unchanged | Changed`
 
 **Carried Data in Changed**:
+
 ```rust
 pub struct Changed {
     pub property_delta: SchemaPropertyDelta,  // Unified property changes
@@ -389,10 +399,12 @@ pub struct Changed {
 **Scope**: Per-schema operation
 
 **Entry Conditions**:
+
 - **StaleTimestamps**: Content hash matches, timestamps differ
 - **StaleContent**: Property hashes match, content hash differs
 
 **Operations**:
+
 1. **For StaleTimestamps**:
    - Update `RawSchemaView` file times
    - Persist view to DB
@@ -418,6 +430,7 @@ pub struct Changed {
 **Scope**: Batch orchestration with per-schema branching logic
 
 **Inputs**:
+
 - `TopologicalGraph` (from TreeGraphed - provides processing order)
 - `HashMap<SchemaId, SchemaPropertyDelta>` (from PropertyAnalysis)
 - `HashMap<SchemaId, ExcludesDelta>` (from PropertyAnalysis)
@@ -427,15 +440,7 @@ pub struct Changed {
 **Operations** (level-by-level in topological order from graph):
 
 For each level L (from `TopologicalGraph.order`):
-  For each schema S at level L:
-    1. **Determine construction path** (using deltas):
-       - `Fresh` schema (no deltas) + `Fresh` parent → Retrieve from DB (skip all work)
-       - Only `ExcludesDelta` present + extends unchanged → **Incremental merge optimization**:
-         - Fetch cached schema from DB
-         - Remove properties in `ExcludesDelta.added`
-         - Merge only properties in `ExcludesDelta.removed` from parent
-       - `ExtendsDelta` present or `SchemaPropertyDelta` present → **Full processing**
-       - `New` schema → **Full processing**
+For each schema S at level L: 1. **Determine construction path** (using deltas): - `Fresh` schema (no deltas) + `Fresh` parent → Retrieve from DB (skip all work) - Only `ExcludesDelta` present + extends unchanged → **Incremental merge optimization**: - Fetch cached schema from DB - Remove properties in `ExcludesDelta.added` - Merge only properties in `ExcludesDelta.removed` from parent - `ExtendsDelta` present or `SchemaPropertyDelta` present → **Full processing** - `New` schema → **Full processing**
 
     2. **Ref expansion** (for full processing path):
        - Expand properties in `SchemaPropertyDelta.upserts.inline` (inline properties)
@@ -459,6 +464,7 @@ For each level L (from `TopologicalGraph.order`):
 **Outputs**: `ConstructionBranch::Fresh | Changed | New`
 
 **Carried Data**:
+
 - `Vec<Schema>` (fully resolved with inheritance)
 
 **Errors**: `SchemaError::Resolution(PropertyRefError)`, `SchemaError::Inheritance(DepthExceeded)`
@@ -466,6 +472,7 @@ For each level L (from `TopologicalGraph.order`):
 **Why Batch?**: Level-by-level processing requires coordination; parent-child dependencies
 
 **Key Optimizations**:
+
 - ExcludesDelta-only changes: Incremental update (70-90% faster)
 - Fresh schemas with fresh parents: Skip entirely (fetch from DB)
 - Incremental ref expansion: Only expand changed properties
@@ -474,36 +481,28 @@ For each level L (from `TopologicalGraph.order`):
 
 #### Stage 7: Completed (Batch)
 
-**Purpose**: Persist all schemas and metadata to DB
+**Purpose**: Persist all schemas and structural metadata to DB
 
 **Scope**: Batch operation
 
 **Operations**:
+
 1. **Persist schemas**: `repository.save_schemas(&schemas)`
-2. **Persist TopologicalGraph**: `repository.save_topological_graph(&graph)` to `SCHEMA_TOPOLOGICAL_GRAPH` singleton table
-3. **Persist inheritance edges**: Update `SCHEMA_PARENT_TO_CHILDREN` multimap (source of truth for parent→child relationships)
-4. **Persist edge metadata**: Update `SCHEMA_INHERITANCE_EDGES` table with excludes per edge
-5. **Persist inheritance metadata** (for each schema):
-   ```rust
-   pub struct SchemaInheritanceView {
-       parent: Option<SchemaId>,
-       ancestors: Vec<SchemaId>,
-       depth: usize,  // Pre-computed
-       ancestors_hash: u64,  // For staleness detection
-       resolved_at: SystemTime,
-   }
-   ```
-6. **Cleanup deleted schemas**: Remove from all tables
+2. **Persist TopologicalGraphCache**: Update `SCHEMA_TOPOLOGICAL_GRAPH` singleton (order, roots, count)
+3. **Persist inheritance structure**:
+   - Update `SCHEMA_CHILDREN_BY_PARENT` multimap (child IDs + depths)
+   - Update `SCHEMA_ANCESTORS_BY_ID` table (parent ID, ancestors list, `ancestors_hash`)
+4. **Cleanup deleted schemas**: Remove from all tables
 
 **Outputs**: `Vec<Schema>` (final)
 
 **Errors**: `SchemaRepositoryError::Storage`
 
-**New Tables** (from research findings):
-- `SCHEMA_TOPOLOGICAL_GRAPH` - Singleton table for cached graph
-- `SCHEMA_PARENT_TO_CHILDREN` - Multimap for parent→children edges (source of truth)
-- `SCHEMA_INHERITANCE_EDGES` - Edge metadata (excludes per parent:child pair)
-- `SCHEMA_INHERITANCE` - Per-schema ancestry metadata (enhanced for staleness checks)
+**New Tables**:
+
+- `SCHEMA_CHILDREN_BY_PARENT` - Multimap `ParentId → Vec<ChildMetadata>` (with depth)
+- `SCHEMA_ANCESTORS_BY_ID` - Regular table `SchemaId → AncestorMetadata` (ancestry chain + hash)
+- `SCHEMA_TOPOLOGICAL_GRAPH` - Singleton `TopologicalGraphCache` (sorted order/roots)
 
 ---
 
@@ -537,6 +536,7 @@ pub(crate) struct Missing {
 ```
 
 **Invariants**:
+
 - `id` is freshly generated `SchemaId::new()` (UUID v7)
 - File exists on filesystem
 - No corresponding entry in DB
@@ -557,6 +557,7 @@ pub(crate) struct Present {
 ```
 
 **Invariants**:
+
 - `view` loaded from DB via `find_raw_schema_view_by_path`
 - `id` matches view's schema ID
 - File still exists on filesystem
@@ -577,6 +578,7 @@ pub(crate) struct Fresh {
 ```
 
 **Invariants**:
+
 - Timestamps match: `view.current().file_times().is_timestamp_match(times)`
 - No file I/O needed beyond stat check
 - Can skip directly to Construction (retrieve from DB)
@@ -598,6 +600,7 @@ pub(crate) struct Suspect {
 ```
 
 **Invariants**:
+
 - Timestamps differ from cached view
 - File content loaded (needed for hash computation)
 - Not yet determined if content actually changed
@@ -620,6 +623,7 @@ pub(crate) struct StaleTimestamps {
 ```
 
 **Invariants**:
+
 - Content hash matches: `view.current().hashes().is_content_match(hash)`
 - Only timestamps need updating
 - Schema domain object unchanged (can fetch from DB)
@@ -641,6 +645,7 @@ pub(crate) struct StaleContent {
 ```
 
 **Invariants**:
+
 - Content hash differs
 - Property hashes match (no semantic changes)
 - Schema domain object unchanged (can fetch from DB)
@@ -661,6 +666,7 @@ pub(crate) struct Unchanged {
 ```
 
 **Invariants**:
+
 - `extends` unchanged: `old_extends == new_extends`
 - `excludes` unchanged: `old_excludes == new_excludes`
 - No graph rebuild needed
@@ -681,6 +687,7 @@ pub(crate) struct Changed {
 ```
 
 **Invariants**:
+
 - At least one of: `extends_delta.changed()` or `excludes_delta.changed()`
 - Graph rebuild or patch required
 
@@ -701,6 +708,7 @@ pub(crate) struct Unchanged {
 ```
 
 **Invariants**:
+
 - Schema properties unchanged
 - Bank references unchanged OR PropertyBank fresh
 - Can skip ref expansion
@@ -722,6 +730,7 @@ pub(crate) struct Changed {
 ```
 
 **Invariants**:
+
 - At least one non-empty delta
 - Ref expansion required for changed properties
 
@@ -741,6 +750,7 @@ pub(crate) struct GraphFresh {
 ```
 
 **Invariants**:
+
 - All schemas have `extends` unchanged
 - No new schemas
 - Graph loaded from DB (O(1) operation)
@@ -760,6 +770,7 @@ pub(crate) struct GraphPatched {
 ```
 
 **Invariants**:
+
 - Some schemas have `extends` changed OR new schemas added
 - Only affected subtrees revalidated
 - Incremental update (O(S) where S = affected schemas)
@@ -780,6 +791,7 @@ pub(crate) struct Fresh {
 ```
 
 **Invariants**:
+
 - Schema properties unchanged
 - Parent unchanged (or parent also fresh)
 - Domain object fetched via `repository.find_schema_by_id(id)`
@@ -798,6 +810,7 @@ pub(crate) struct Changed {
 ```
 
 **Invariants**:
+
 - Schema properties changed OR parent changed
 - Ref expansion performed
 - Properties merged with parent
@@ -816,6 +829,7 @@ pub(crate) struct New {
 ```
 
 **Invariants**:
+
 - No cached view existed
 - Full ref expansion performed
 - SchemaId newly generated
@@ -836,6 +850,7 @@ pub(crate) struct Ready {
 ```
 
 **Invariants**:
+
 - All schemas fully resolved with inheritance
 - All schemas persisted to DB
 - Inheritance metadata persisted
@@ -860,6 +875,7 @@ pub(crate) enum DiscoveryBranch {
 ```
 
 **Decision Logic**:
+
 - Query DB for `RawSchemaView`
 - If `None` → `Missing`
 - If `Some(view)` → `Present`
@@ -880,6 +896,7 @@ pub(crate) enum ComparisonBranch {
 ```
 
 **Decision Logic**:
+
 - If timestamps match → `Fresh` (skip to Construction)
 - If timestamps differ → `Suspect` (need content hash check)
 
@@ -899,6 +916,7 @@ pub(crate) enum ContentBranch {
 ```
 
 **Decision Logic**:
+
 - Compute `blake3::hash(content)`
 - If hash matches → `StaleTimestamps` (go to Refresh)
 - If hash differs → `StaleContent` (collect for batch processing)
@@ -929,6 +947,7 @@ pub(crate) enum TreeGraphedBranch {
 ```
 
 **Decision Logic**:
+
 - Check extends deltas for all schemas
 - If all unchanged + no new schemas → `GraphFresh` (reuse cached graph)
 - Otherwise → `GraphPatched` (graph rebuilt/patched, RawSchemas passed forward)
@@ -954,6 +973,7 @@ pub(crate) enum PropertyAnalysisBranch {
 ```
 
 **Decision Logic**:
+
 - Compute ExcludesDelta for each schema (BEFORE property checks)
 - Compute SchemaPropertyDelta for each schema
 - If all empty → `AllUnchanged`
@@ -976,6 +996,7 @@ pub(crate) enum ConstructionBranch {
 ```
 
 **Decision Logic** (per schema at each level):
+
 - Schema `Fresh` + parent `Fresh` → `Fresh`
 - Schema properties changed OR parent changed → `Changed`
 - Schema is NEW → `New`
@@ -1023,6 +1044,7 @@ pub(crate) enum ExtendsChangeKind {
 ```
 
 **Example**:
+
 ```rust
 // Schema A previously extended B, now extends C
 ExtendsDelta {
@@ -1064,6 +1086,7 @@ impl ExcludesDelta {
 ```
 
 **Example**:
+
 ```rust
 // Old excludes: ["prop_a", "prop_b"]
 // New excludes: ["prop_b", "prop_c"]
@@ -1131,6 +1154,7 @@ impl SchemaPropertyUpserts {
 ```
 
 **Key Design Points**:
+
 1. **Unified upserts**: Combines `new` + `modified` + `bank-affected` into single HashMap (matches PropertyBank pattern)
 2. **Separated inline vs refs**: Different expansion logic for inline properties vs bank references
 3. **Efficient filtering**: PropertyAnalysis can detect and filter changed properties in single pass
@@ -1413,16 +1437,16 @@ START
 
 ### Detailed Breakdown
 
-| Stage | Model | Rationale | Coordination Needed |
-|-------|-------|-----------|---------------------|
-| **1. Discovery** | **Batch Start** → Per-Schema Branch | Needs global view (deleted schemas, indexes), but produces per-schema pipelines | Global: DB query, index maps, deleted set |
-| **2. Comparison** | **Per-Schema** | Timestamp/hash checks are independent | None |
-| **Refresh** | **Per-Schema** (early exit path) | Metadata updates are independent; early persistence is per-schema checkpoint | None (direct DB write per schema) |
-| **[BATCH BOUNDARY]** | **Collection Point** | Fresh schemas + StaleContent schemas collected for batch processing | - |
-| **3. TreeGraphed** | **Pure Batch** | Extends delta + graph building + cycle detection requires global view; FAIL FAST before property work | Full: All schema metadata, extends relationships, RawSchema parsing |
-| **4. PropertyAnalysis** | **Batch** (parallelizable per-schema) | Excludes delta + property delta computation can parallelize with shared PropertyBank context | Read-only: PropertyBank delta, RawSchemas from TreeGraphed |
-| **5. Construction** | **Batch Orchestrated** (per-schema branching) | Level-by-level requires topological order from graph, but within each level schemas branch independently | Level ordering from graph, parent-child caching |
-| **6. Completed** | **Pure Batch** | Bulk persistence, graph persistence, index updates | Full: All schemas, metadata, graph, indexes |
+| Stage                   | Model                                         | Rationale                                                                                                | Coordination Needed                                                 |
+| ----------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **1. Discovery**        | **Batch Start** → Per-Schema Branch           | Needs global view (deleted schemas, indexes), but produces per-schema pipelines                          | Global: DB query, index maps, deleted set                           |
+| **2. Comparison**       | **Per-Schema**                                | Timestamp/hash checks are independent                                                                    | None                                                                |
+| **Refresh**             | **Per-Schema** (early exit path)              | Metadata updates are independent; early persistence is per-schema checkpoint                             | None (direct DB write per schema)                                   |
+| **[BATCH BOUNDARY]**    | **Collection Point**                          | Fresh schemas + StaleContent schemas collected for batch processing                                      | -                                                                   |
+| **3. TreeGraphed**      | **Pure Batch**                                | Extends delta + graph building + cycle detection requires global view; FAIL FAST before property work    | Full: All schema metadata, extends relationships, RawSchema parsing |
+| **4. PropertyAnalysis** | **Batch** (parallelizable per-schema)         | Excludes delta + property delta computation can parallelize with shared PropertyBank context             | Read-only: PropertyBank delta, RawSchemas from TreeGraphed          |
+| **5. Construction**     | **Batch Orchestrated** (per-schema branching) | Level-by-level requires topological order from graph, but within each level schemas branch independently | Level ordering from graph, parent-child caching                     |
+| **6. Completed**        | **Pure Batch**                                | Bulk persistence, graph persistence, index updates                                                       | Full: All schemas, metadata, graph, indexes                         |
 
 ### Implementation Pattern
 
@@ -2015,65 +2039,61 @@ impl InheritanceGraphBuilder {
 
 ### Stage Quick Reference
 
-| # | Stage | Model | Input | Output | Key Operations |
-|---|-------|-------|-------|--------|----------------|
-| 1 | Discovery | Batch Start | Schema dir + DB | `Vec<DiscoveryBranch>` | Query DB, build indexes, detect deletions |
-| 2 | Comparison | Per-Schema | File path + view | `ComparisonBranch` | Timestamp check, content hash check |
-| 3 | InheritanceAnalysis | Per-Schema | RawSchema + view | `InheritanceBranch` | Compute `ExtendsDelta`, verify parent |
-| 4 | PropertyAnalysis | Per-Schema | RawSchema + PB delta | `PropertyAnalysisBranch` | Compute `SchemaDelta`, `BankRefDelta`, `ExcludesDelta` |
-| 5 | Refresh | Per-Schema | Updated metadata | `SchemaProcessor<Construction, Fresh>` | Persist view, early checkpoint |
-| 6 | Graphed | Batch | All schemas | `InheritanceGraph` | Build graph, cycle detection, topological sort |
-| 7 | Construction | Batch | Graph + schemas | `Vec<Schema>` | Level-by-level ref expansion + merging |
-| 8 | Completed | Batch | Resolved schemas | `Vec<Schema>` | Persist schemas, metadata, indexes |
+| #   | Stage            | Model       | Input                | Output                    | Key Operations                                |
+| --- | ---------------- | ----------- | -------------------- | ------------------------- | --------------------------------------------- |
+| 1   | Discovery        | Batch Start | Schema dir + DB      | `TopologicalGraph`        | Load/Rebuild graph, build indexes             |
+| 2   | Comparison       | Per-Schema  | File path + view     | `ComparisonBranch`        | Timestamp check, content hash check           |
+| 3   | TreeGraphed      | Batch       | Graph + RawSchemas   | `GraphPatched`            | Patch graph nodes, cycle detection            |
+| 4   | PropertyAnalysis | Batch       | Graph + PB delta     | `PropertyAnalysisBranch`  | Compute Property/Excludes Deltas              |
+| 5   | Refresh          | Per-Schema  | Updated metadata     | `Construction<Fresh>`     | Persist view, early exit                      |
+| 6   | Construction     | Batch       | Graph + deltas       | `Vec<Schema>`             | Level-by-level expand + merge                 |
+| 7   | Completed        | Batch       | Resolved schemas     | `Vec<Schema>`             | Persist all, update graph cache               |
 
 ---
 
 ### Status Quick Reference
 
-| Stage | Status | Meaning | Data Carried |
-|-------|--------|---------|--------------|
-| Discovery | `Unknown` | Initial state | None |
-| Discovery | `Missing` | NEW schema | `id`, `times` |
-| Discovery | `Present` | Cached view exists | `id`, `times`, `view` |
-| Comparison | `Fresh` | Timestamps match | `id` |
-| Comparison | `Suspect` | Timestamps differ | `id`, `times`, `view`, `content` |
-| Refresh | `StaleTimestamps` | Hash matches, timestamps differ | `id`, `view`, `times` |
-| Refresh | `StaleContent` | Property hashes match, content differs | `id`, `view`, `times`, `content_hash` |
-| InheritanceAnalysis | `Unchanged` | No inheritance changes | `id` |
-| InheritanceAnalysis | `Changed` | Extends or excludes changed | `id`, `extends_delta`, `excludes_delta` |
-| PropertyAnalysis | `Unchanged` | No property changes | `id`, `view` |
-| PropertyAnalysis | `Changed` | Properties or bank refs changed | `id`, `schema_delta`, `bank_ref_delta`, `excludes_delta` |
-| Graphed | `GraphFresh` | Reuse graph from DB | `graph` |
-| Graphed | `GraphPatched` | Graph rebuilt/patched | `graph`, `affected_subtrees` |
-| Construction | `Fresh` | Retrieve from DB | `id` |
-| Construction | `Changed` | Re-expanded/merged | `schema` |
-| Construction | `New` | Built from scratch | `schema` |
-| Completed | `Ready` | Final resolved | `schemas` |
+| Stage            | Status            | Meaning                                | Data Carried                                    |
+| ---------------- | ----------------- | -------------------------------------- | ----------------------------------------------- |
+| Discovery        | `Unknown`         | Initial state                          | None                                            |
+| Discovery        | `Missing`         | NEW schema                             | `id`, `times`                                   |
+| Discovery        | `Present`         | Cached view exists                     | `id`, `times`, `view`                           |
+| Comparison       | `Fresh`           | Up-to-date                             | `id`                                            |
+| Comparison       | `Suspect`         | Timestamps differ                      | `id`, `times`, `view`, `content`                |
+| TreeGraphed      | `GraphFresh`      | Structural reuse                       | `graph`                                         |
+| TreeGraphed      | `GraphPatched`    | Nodes inserted/moved/removed           | `graph`, `extends_deltas`                       |
+| PropertyAnalysis | `Unchanged`       | No semantic changes                    | `id`                                            |
+| PropertyAnalysis | `Changed`         | Property/excludes changed              | `id`, `property_delta`, `excludes_delta`        |
+| Refresh          | `StaleTimestamps` | Hash match, times differ               | `id`, `view`, `times`                           |
+| Refresh          | `StaleContent`    | Semantic match, content differs        | `id`, `view`, `times`, `content_hash`           |
+| Construction     | `Fresh`           | Load from DB                           | `id`                                            |
+| Construction     | `Changed`         | Re-expanded/merged                     | `schema`                                        |
+| Construction     | `New`             | First build                            | `schema`                                        |
+| Completed        | `Ready`           | Final schemas delivered                | `schemas`                                       |
 
 ---
 
 ### Branching Enum Quick Reference
 
-| Enum | Variants | Condition |
-|------|----------|-----------|
-| `DiscoveryBranch` | `Missing`, `Present` | View exists in DB? |
-| `ComparisonBranch` | `Fresh`, `Suspect` | Timestamps match? |
-| `ContentBranch` | `StaleTimestamps`, `StaleContent` | Content hash match? |
-| `InheritanceBranch` | `Unchanged`, `Changed` | Extends/excludes changed? |
-| `PropertyAnalysisBranch` | `Unchanged`, `Changed` | Properties/bank refs changed? |
-| `GraphBranch` | `GraphFresh`, `GraphPatched` | All inheritance unchanged? |
-| `ConstructionBranch` | `Fresh`, `Changed`, `New` | Schema staleness level |
+| Enum                     | Variants                          | Condition                     |
+| ------------------------ | --------------------------------- | ----------------------------- |
+| `DiscoveryBranch`        | `Missing`, `Present`              | View exists in DB?            |
+| `ComparisonBranch`       | `Fresh`, `Suspect`                | Timestamps match?             |
+| `ContentBranch`          | `StaleTimestamps`, `StaleContent` | Content hash match?           |
+| `InheritanceBranch`      | `Unchanged`, `Changed`            | Extends/excludes changed?     |
+| `PropertyAnalysisBranch` | `Unchanged`, `Changed`            | Properties/bank refs changed? |
+| `GraphBranch`            | `GraphFresh`, `GraphPatched`      | All inheritance unchanged?    |
+| `ConstructionBranch`     | `Fresh`, `Changed`, `New`         | Schema staleness level        |
 
 ---
 
 ### Delta Structure Quick Reference
 
-| Delta | Computed In | Used In | Purpose |
-|-------|-------------|---------|---------|
-| `ExtendsDelta` | InheritanceAnalysis | Graphed | Determines graph rebuild strategy |
-| `ExcludesDelta` | PropertyAnalysis | Construction | Determines which parent properties to skip |
-| `SchemaDelta` | PropertyAnalysis | Construction | Determines which properties need ref expansion |
-| `BankReferenceDelta` | PropertyAnalysis | Construction | Determines which properties need re-expansion (PB changed) |
+| Delta                | Computed In      | Used In      | Purpose                                     |
+| -------------------- | ---------------- | ------------ | ------------------------------------------- |
+| `ExtendsDelta`       | TreeGraphed      | TreeGraphed  | Patching nodes, re-sorting graph            |
+| `ExcludesDelta`      | PropertyAnalysis | Construction | Property-level semantic exclusion           |
+| `SchemaPropertyDelta`| PropertyAnalysis | Construction | Property-level updates and bank refs        |
 
 ---
 
@@ -2083,22 +2103,22 @@ impl InheritanceGraphBuilder {
 
 #### Stage Name Changes
 
-| Old Name | New Name | Notes |
-|----------|----------|-------|
-| `FileParsed` | **Integrated into InheritanceAnalysis** | Parsing happens on-demand |
-| `RawPropertiesDeserialized` | **Removed** | Deserialization happens per stage as needed |
-| `InheritanceEvaluated` | `InheritanceAnalysis` | Renamed for clarity |
-| `TreeConstructed` | `Graphed` | Renamed to emphasize graph nature |
-| `RefsExpanded` | **Integrated into Construction** | Part of level-by-level processing |
-| `PropertiesMerged` | **Integrated into Construction** | Part of level-by-level processing |
-| `Persisted` | `Completed` | Matches PropertyBank terminology |
+| Old Name                    | New Name                                | Notes                                       |
+| --------------------------- | --------------------------------------- | ------------------------------------------- |
+| `FileParsed`                | **Integrated into InheritanceAnalysis** | Parsing happens on-demand                   |
+| `RawPropertiesDeserialized` | **Removed**                             | Deserialization happens per stage as needed |
+| `InheritanceEvaluated`      | `InheritanceAnalysis`                   | Renamed for clarity                         |
+| `TreeConstructed`           | `Graphed`                               | Renamed to emphasize graph nature           |
+| `RefsExpanded`              | **Integrated into Construction**        | Part of level-by-level processing           |
+| `PropertiesMerged`          | **Integrated into Construction**        | Part of level-by-level processing           |
+| `Persisted`                 | `Completed`                             | Matches PropertyBank terminology            |
 
 #### Status Name Changes
 
-| Old Name | New Name | Rationale |
-|----------|----------|-----------|
-| `Full` | `Changed` | Matches PropertyBank pattern |
-| `Merge` | **Removed** (merged into `Changed`) | Simplified; merge-only is internal optimization |
+| Old Name | New Name                            | Rationale                                       |
+| -------- | ----------------------------------- | ----------------------------------------------- |
+| `Full`   | `Changed`                           | Matches PropertyBank pattern                    |
+| `Merge`  | **Removed** (merged into `Changed`) | Simplified; merge-only is internal optimization |
 
 #### Architectural Changes
 
@@ -2165,20 +2185,16 @@ stateDiagram-v2
 
     %% Main Stages
     state "1. Discovery (Batch Start)" as Stage1
+    note right of Stage1: Loads/Rebuilds structural graph
 
     state "Per-Schema Processing Pipeline" as PerSchema {
         state "2. Comparison" as Stage2
-        state "3. InheritanceAnalysis" as Stage3
-        state "4. PropertyAnalysis" as Stage4
-        state "5. Refresh" as Stage5
-
-        %% Internal states
-        state "Missing (New)" as Missing
-        state "Present (Cached)" as Present
         state "Fresh (Timestamps Match)" as FreshComp
         state "Suspect (Timestamps Differ)" as Suspect
         state "StaleTimestamps (Content Match)" as StaleTS
         state "StaleContent (Content Differ)" as StaleContent
+
+        state "5. Refresh (Early Exit)" as Stage5
 
         Stage2 --> FreshComp: Timestamps Match
         Stage2 --> Suspect: Timestamps Mismatch
@@ -2187,27 +2203,24 @@ stateDiagram-v2
         Suspect --> StaleContent: Content Hash Mismatch
 
         StaleTS --> Stage5: Update view timestamps
-
-        StaleContent --> Stage3: Parse & compare extends
-        Missing --> Stage3: Parse & compare extends
-
-        Stage3 --> Stage4: Compute Schema/Bank Deltas
     }
 
-    state "6. Graphed (Batch)" as Stage6
-    state "7. Construction (Batch)" as Stage7
-    state "8. Completed (Batch)" as Stage8
+    state "3. TreeGraphed (Batch)" as Stage3
+    note right of Stage3: Patches structural graph (FAIL FAST)
 
-    Stage1 --> Missing: View Not Found
-    Stage1 --> Present: View Found
-    Present --> Stage2
+    state "4. PropertyAnalysis (Batch)" as Stage4
+    state "6. Construction (Batch)" as Stage6
+    state "7. Completed (Batch)" as Stage7
 
-    FreshComp --> Stage7: Skip to merge
-    Stage5 --> Stage7: Skip to merge
-    Stage4 --> Stage6: Ready for graph
+    Stage1 --> Stage2: Branch per file
 
-    Stage6 --> Stage7: Build/Patch InheritanceGraph
-    Stage7 --> Stage8: Expand & Merge Level-by-Level
+    FreshComp --> Stage6: Skip to merge
+    Stage5 --> Stage6: Skip to merge
+    StaleContent --> Stage3: Ready for patch
+
+    Stage3 --> Stage4: Parsed RawSchemas
+    Stage4 --> Stage6: Property/Excludes Deltas
+    Stage6 --> Stage7: Resolved Schemas
 ```
 
 ---
