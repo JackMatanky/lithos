@@ -8,7 +8,7 @@
               docs, Error trait requires default impls that we don't use"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use chrono::{
     DateTime, Datelike as _, FixedOffset, NaiveDate, NaiveTime, TimeDelta,
@@ -408,16 +408,6 @@ impl FieldValue {
         })
     }
 
-    /// Convert this `FieldValue` to a JSON string for indexing.
-    ///
-    /// This provides a stable string representation for metadata indexes.
-    /// Uses `serde_json` for robust escaping and consistent formatting.
-    #[inline]
-    #[must_use]
-    pub fn to_json_string(&self) -> String {
-        serde_json::to_string(self).unwrap_or_default()
-    }
-
     /// Attempts to parse a string variant as a [`NaiveDate`] with a custom
     /// format.
     #[inline]
@@ -475,6 +465,58 @@ impl<'source> From<RawFieldValue<'source>> for FieldValue {
                     .collect(),
             )),
             RawFieldValue::Null => FieldValue::Null,
+        }
+    }
+}
+
+impl fmt::Display for FieldValue {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics on &FieldValue keeps formatting concise"
+        )]
+        match self {
+            FieldValue::Array(values) => {
+                f.write_str("[")?;
+                for (idx, value) in values.iter().enumerate() {
+                    if idx > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{value}")?;
+                }
+                f.write_str("]")
+            }
+            FieldValue::Boolean(value) => write!(f, "{value}"),
+            FieldValue::Date(value) => {
+                let date: NaiveDate = (*value).into();
+                write!(f, "{date}")
+            }
+            FieldValue::DateTime(value) => {
+                let datetime: DateTime<FixedOffset> = (*value).into();
+                write!(f, "{}", datetime.to_rfc3339())
+            }
+            FieldValue::Time(value) => {
+                let time: NaiveTime = (*value).into();
+                write!(f, "{time}")
+            }
+            FieldValue::Duration(value) => {
+                let duration: TimeDelta = (*value).into();
+                write!(f, "{duration}")
+            }
+            FieldValue::Number(value) => write!(f, "{value}"),
+            FieldValue::Object(values) => {
+                f.write_str("{")?;
+                for (idx, (key, value)) in values.iter().enumerate() {
+                    if idx > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{key}: {value}")?;
+                }
+                f.write_str("}")
+            }
+            FieldValue::String(value) => write!(f, "\"{value}\""),
+            FieldValue::Null => f.write_str("null"),
         }
     }
 }

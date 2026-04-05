@@ -844,7 +844,7 @@ impl TaskDateValue {
         if !value.is_temporal() {
             return Err(TaskError::InvalidDate {
                 keyword: "".into(),
-                raw: value.to_json_string().into(),
+                raw: value.to_string().into(),
                 reason: "expected date or datetime value",
             });
         }
@@ -919,7 +919,7 @@ impl TaskDateValue {
             | FieldValue::Object(_)
             | FieldValue::Null => Err(TaskError::InvalidDate {
                 keyword: key.into(),
-                raw: value.to_json_string().into(),
+                raw: value.to_string().into(),
                 reason: "expected date or datetime value",
             }),
         }
