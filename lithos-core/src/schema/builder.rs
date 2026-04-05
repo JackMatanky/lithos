@@ -13,8 +13,8 @@ use crate::{
         property::PropertyName,
         property_bank_processor::{
             Analysis, AnalysisBranch, Comparison, ComparisonBranch, Completed,
-            ContentBranch, Discovery, PropertyBankProcessor, Ready, Suspect,
-            TimestampBranch, Unknown,
+            ContentBranch, Discovery, Missing, Parsed, Present,
+            PropertyBankProcessor, Ready, Suspect, TimestampBranch, Unknown,
         },
         storage::Repository,
     },
@@ -66,6 +66,223 @@ where
         }
     }
 
+    /// Load and construct all schemas, resolving inheritance and property
+    /// references.
+    pub(crate) fn load_schemas(
+        &self,
+        pb: &PropertyBank,
+    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+        use super::schema_processor::{
+            ContentBranch, Discovery, DiscoveryBranch, DiscoveryState,
+            SchemaProcessor, TimestampBranch,
+        };
+
+        // Phase 1: Discovery - Load graph + scan files
+        let context = self.discovery()?;
+
+        // Start pipeline with discovery context
+        let processor =
+            SchemaProcessor::<Discovery, DiscoveryState>::from_context(context);
+
+        // Run discovery stage
+        let branch = processor.discover(&self.repository, &self.source)?;
+
+        match branch {
+            DiscoveryBranch::AllMissing(missing) => {
+                // All files are new - parse them
+                let parsed = missing.parse_new_schemas(&self.source)?;
+                let graphed = parsed.build_graph(None)?;
+                let analyzed = SchemaProcessor::from_graphed_batch(graphed)
+                    .analyze_properties(None)?;
+                let refreshed = SchemaProcessor::from_analyzed_batch(analyzed)
+                    .refresh_metadata(&self.repository)?;
+                let state =
+                    refreshed.construct_schemas(&self.repository, pb)?;
+                let processor = SchemaProcessor::from_construction_state(state);
+                let schemas = processor.complete(&self.repository)?;
+                Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
+            }
+            DiscoveryBranch::SomePresent {
+                missing,
+                present,
+            } => {
+                // Phase 2: TimeComparison - check timestamps
+                let ts_branch = present.compare_timestamps(&self.source)?;
+
+                match ts_branch {
+                    TimestampBranch::AllFresh(fresh) => {
+                        // All timestamps match - skip to construction
+                        let graphed = fresh.into_graphed_batch();
+                        let analyzed =
+                            SchemaProcessor::from_graphed_batch(graphed)
+                                .analyze_properties(
+                                    self.property_bank_delta.as_ref(),
+                                )?;
+                        let refreshed =
+                            SchemaProcessor::from_analyzed_batch(analyzed)
+                                .refresh_metadata(&self.repository)?;
+                        let state = refreshed
+                            .construct_schemas(&self.repository, pb)?;
+                        let processor =
+                            SchemaProcessor::from_construction_state(state);
+                        let schemas = processor.complete(&self.repository)?;
+                        Ok(schemas
+                            .into_iter()
+                            .map(|arc| (*arc).clone())
+                            .collect())
+                    }
+                    TimestampBranch::SomeSuspect {
+                        fresh,
+                        suspect,
+                    } => {
+                        // Phase 3: ContentComparison - check content hashes
+                        let content_branch =
+                            suspect.compare_content(&self.source)?;
+
+                        match content_branch {
+                            ContentBranch::AllStaleTimestamps(timestamps) => {
+                                // Only timestamps changed - refresh and
+                                // construct
+                                let graphed = timestamps.into_graphed_batch();
+                                let analyzed =
+                                    SchemaProcessor::from_graphed_batch(
+                                        graphed,
+                                    )
+                                    .analyze_properties(
+                                        self.property_bank_delta.as_ref(),
+                                    )?;
+                                let refreshed =
+                                    SchemaProcessor::from_analyzed_batch(
+                                        analyzed,
+                                    )
+                                    .refresh_metadata(&self.repository)?;
+                                let state = refreshed
+                                    .construct_schemas(&self.repository, pb)?;
+                                let processor =
+                                    SchemaProcessor::from_construction_state(
+                                        state,
+                                    );
+                                let schemas =
+                                    processor.complete(&self.repository)?;
+                                Ok(schemas
+                                    .into_iter()
+                                    .map(|arc| (*arc).clone())
+                                    .collect())
+                            }
+                            ContentBranch::SomeStaleContent {
+                                timestamps,
+                                content,
+                            } => {
+                                // Phase 5: FileParsed - parse changed schemas
+                                let parsed_content = content.pass_through();
+
+                                // Parse missing schemas if any
+                                let parsed_new = if let Some(m) = missing {
+                                    Some(m.parse_new_schemas(&self.source)?)
+                                } else {
+                                    None
+                                };
+
+                                // Merge parsed batches
+                                let mut merged = parsed_content;
+                                if let Some(new) = parsed_new {
+                                    merged.new_schemas.extend(new.new_schemas);
+                                }
+
+                                // Get existing graph from fresh/timestamps
+                                let existing_graph = fresh
+                                    .map(|f| f.into_inheritance_graph())
+                                    .or_else(|| {
+                                        timestamps
+                                            .map(|t| t.into_inheritance_graph())
+                                    });
+
+                                // Phase 6: InheritanceGraphed
+                                let graphed =
+                                    merged.build_graph(existing_graph)?;
+
+                                // Phase 7: PropertyAnalysis
+                                let analyzed =
+                                    SchemaProcessor::from_graphed_batch(
+                                        graphed,
+                                    )
+                                    .analyze_properties(
+                                        self.property_bank_delta.as_ref(),
+                                    )?;
+
+                                // Phase 8: Refresh
+                                let refreshed =
+                                    SchemaProcessor::from_analyzed_batch(
+                                        analyzed,
+                                    )
+                                    .refresh_metadata(&self.repository)?;
+
+                                // Phase 9: Construction
+                                let state = refreshed
+                                    .construct_schemas(&self.repository, pb)?;
+
+                                // Phase 10: Completion
+                                let processor =
+                                    SchemaProcessor::from_construction_state(
+                                        state,
+                                    );
+                                let schemas =
+                                    processor.complete(&self.repository)?;
+                                Ok(schemas
+                                    .into_iter()
+                                    .map(|arc| (*arc).clone())
+                                    .collect())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Run the full ingestion pipeline.
+    #[expect(dead_code, reason = "reserved for schema loading")]
+    pub(crate) fn load_all(
+        &mut self,
+    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+        let pb = self.load_property_bank()?;
+        self.load_schemas(&pb)
+    }
+
+    /// Load and construct the `PropertyBank`, automatically handling
+    /// incremental staleness.
+    pub fn load_property_bank(
+        &mut self,
+    ) -> Result<PropertyBank, SchemaLoaderError> {
+        let config_path = self.property_bank_path.as_path();
+        let filename = match self.property_bank_filename.as_deref() {
+            Some(name) => name,
+            None => self
+                .source
+                .filename(config_path)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
+        };
+
+        let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
+        let branch = pipeline.discover(
+            filename,
+            &self.source,
+            config_path,
+            &self.repository,
+        )?;
+
+        let (completed, delta) = match branch {
+            ComparisonBranch::Missing(p) => {
+                self.handle_missing(p, filename, config_path)?
+            }
+            ComparisonBranch::Present(p) => {
+                self.handle_present(p, filename, config_path)?
+            }
+        };
+
+        self.property_bank_delta = delta;
+        Ok(completed.into_bank())
+    }
     #[inline]
     #[expect(
         dead_code,
@@ -86,9 +303,11 @@ where
     /// # Operations
     ///
     /// 1. Scans schema directory for valid schema files (json, toml, yaml, yml)
-    /// 2. Excludes property bank file from schema file list
-    /// 3. Loads persisted topological graph from DB (if exists)
-    /// 4. Returns `DiscoveryContext` containing graph, files, and metadata
+    /// 2. Detects if property bank file exists
+    /// 3. Excludes property bank file from schema file list
+    /// 4. Loads persisted topological graph from DB (if exists)
+    /// 5. Returns `DiscoveryContext` containing graph, files, and
+    ///    has_property_bank flag
     ///
     /// # Errors
     ///
@@ -97,9 +316,9 @@ where
     /// - DB access fails (repository error)
     pub(crate) fn discovery(
         &self,
-    ) -> Result<super::schema_pipeline::DiscoveryContext, SchemaLoaderError>
+    ) -> Result<super::schema_processor::DiscoveryContext, SchemaLoaderError>
     {
-        use super::schema_pipeline::DiscoveryContext;
+        use super::schema_processor::DiscoveryContext;
         use crate::schema::error::SchemaIngestionError;
 
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
@@ -115,8 +334,16 @@ where
             ))
         })?;
 
-        // 2. Filter for schema files (exclude property bank)
+        // 2. Check if property bank exists on disk
         let property_bank_filename = self.property_bank_filename.as_deref();
+        let has_property_bank = all_files.iter().any(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .zip(property_bank_filename)
+                .is_some_and(|(name, pb_name)| name == pb_name)
+        });
+
+        // 3. Filter for schema files (exclude property bank)
         let files: Vec<PathBuf> = all_files
             .into_iter()
             .filter(|path| {
@@ -153,131 +380,35 @@ where
         Ok(DiscoveryContext {
             graph,
             files,
+            has_property_bank,
         })
     }
 
-    /// Load and construct the `PropertyBank`, automatically handling
-    /// incremental staleness.
-    pub fn load_property_bank(
-        &mut self,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        let config_path = self.property_bank_path.as_path();
-        let filename = match self.property_bank_filename.as_deref() {
-            Some(name) => name,
-            None => self
-                .source
-                .filename(config_path)
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
-        };
 
-        // 1. Discovery: Determine which path to take
-        let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
-        let branch = pipeline.discover(
-            filename,
-            &self.source,
-            config_path,
-            &self.repository,
-        )?;
-
-        // 2. Execute the path to completion
-        let (completed, delta) = match branch {
-            ComparisonBranch::Missing(p) => {
-                let content = self
-                    .source
-                    .read_to_string(config_path)
-                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-                let parsed = p.parse(config_path, &content)?;
-                let delta = parsed.changed_property_names();
-                let delta = if delta.is_empty() {
-                    None
-                } else {
-                    Some(delta)
-                };
-                let completed = parsed.create(filename, &self.repository)?;
-                (completed, delta)
-            }
-            ComparisonBranch::Present(p) => {
-                let content = self
-                    .source
-                    .read_to_string(config_path)
-                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-                match p.check_timestamps(&content) {
-                    TimestampBranch::Match(p) => {
-                        (p.fetch(&self.repository)?, None)
-                    }
-                    TimestampBranch::Mismatch(p) => {
-                        self.handle_content_mismatch(p, filename, config_path)?
-                    }
-                }
-            }
-        };
-
-        self.property_bank_delta = delta;
-
-        // 3. Extract the PropertyBank
-        Ok(completed.into_bank())
-    }
-
-    /// Load and construct all schemas, resolving inheritance and property
-    /// references.
-    #[expect(clippy::unused_self, reason = "stubbed schema loading")]
-    pub(crate) fn load_schemas(&self, _pb: &PropertyBank) -> Vec<Schema> {
-        Vec::new() // Stub
-    }
-
-    #[expect(dead_code, reason = "schema pipeline scaffold")]
-    /// Load schemas using the new typestate pipeline (Phase 5+).
-    ///
-    /// This method orchestrates the 7-stage schema pipeline:
-    /// 1. `Discovery` - Scan filesystem, query DB, branch into pipelines
-    /// 2. `Comparison` - Timestamp/content hash checks (per-schema)
-    /// 3. `TreeGraphed` - Batch graph building with cycle detection
-    /// 4. `PropertyAnalysis` - Batch property/excludes delta computation
-    /// 5. `Construction` - Batch level-by-level expand + merge
-    /// 6. `Completed` - Batch persistence
-    /// 7. `Refresh` - Early exit for metadata-only changes
-    ///
-    /// # Arguments
-    /// * `pb` - Property bank for property resolution
-    ///
-    /// # Errors
-    /// Returns `SchemaLoaderError` if any stage fails.
-    pub(crate) fn load_schemas_v2(
+    fn handle_missing(
         &self,
-        pb: &PropertyBank,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
-        use super::schema_pipeline::{Discovery, SchemaTreeProcessor, Unknown};
-
-        // Phase 1: Discovery - Load graph + scan files
-        let context = self.discovery()?;
-
-        // Start pipeline with discovery context
-        let pipeline = SchemaTreeProcessor::<Discovery, Unknown>::new();
-        let discovered = pipeline.discover_with_context(
-            context,
-            &self.source,
-            &self.repository,
-        )?;
-
-        let compared = discovered
-            .compare_files(&self.source, self.property_bank_delta.as_ref())?;
-        let graphed = compared.graph_structure()?;
-        let analyzed =
-            graphed.analyze_properties(self.property_bank_delta.as_ref())?;
-        let refreshed = analyzed.refresh_metadata(&self.repository)?;
-        let constructed = refreshed.construct_schemas(&self.repository, pb)?;
-
-        constructed.persist(&self.repository)
+        processor: PropertyBankProcessor<Parsed, Missing>,
+        filename: &str,
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
+        let constructed = processor.parse(&self.source, config_path)?;
+        let delta = constructed.changed_property_names();
+        let completed = constructed.create(filename, &self.repository)?;
+        Ok((completed, Some(delta)))
     }
 
-    /// Run the full ingestion pipeline.
-    #[expect(dead_code, reason = "reserved for schema loading")]
-    pub(crate) fn load_all(
-        &mut self,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
-        let pb = self.load_property_bank()?;
-        Ok(self.load_schemas(&pb))
+    fn handle_present(
+        &self,
+        processor: PropertyBankProcessor<Comparison, Present>,
+        filename: &str,
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
+        match processor.check_timestamps(&self.source, config_path)? {
+            TimestampBranch::Match(p) => Ok((p.fetch(&self.repository)?, None)),
+            TimestampBranch::Mismatch(p) => {
+                self.handle_content_mismatch(p, filename, config_path)
+            }
+        }
     }
 
     fn handle_content_mismatch(
@@ -286,7 +417,7 @@ where
         filename: &str,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        match processor.check_content(config_path) {
+        match processor.check_content() {
             ContentBranch::Match(p) => {
                 let completed = p
                     .sync_metadata(&self.repository)?
@@ -294,18 +425,18 @@ where
                 Ok((completed, None))
             }
             ContentBranch::Mismatch(p) => {
-                self.handle_analysis(p, filename, config_path)
+                let parsed = p.parse(&self.source, config_path)?;
+                self.handle_analysis_branch(parsed.analyze(), filename)
             }
         }
     }
 
-    fn handle_analysis(
+    fn handle_analysis_branch(
         &self,
-        processor: PropertyBankProcessor<Analysis, Suspect>,
+        branch: AnalysisBranch,
         filename: &str,
-        config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        match processor.analyze(config_path)? {
+        match branch {
             AnalysisBranch::Empty(p) => {
                 let completed = p
                     .sync_metadata(&self.repository)?
@@ -314,17 +445,16 @@ where
             }
             AnalysisBranch::Delta(p) => {
                 let delta = p.changed_property_names();
-                let delta = if delta.is_empty() {
-                    None
-                } else {
-                    Some(delta)
-                };
                 let completed = p.update(filename, &self.repository)?;
-                Ok((completed, delta))
+                Ok((completed, Some(delta)))
+            }
+            AnalysisBranch::Corrupt(p) => {
+                let delta = p.changed_property_names();
+                let completed = p.create(filename, &self.repository)?;
+                Ok((completed, Some(delta)))
             }
         }
     }
-}
 
 #[cfg(test)]
 mod tests {

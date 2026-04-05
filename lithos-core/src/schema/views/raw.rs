@@ -399,28 +399,19 @@ impl RawPropertyBankView {
     /// # Errors
     /// Returns error if metadata is missing or validation fails.
     #[inline]
-    pub fn try_from_raw_with_content(
+    pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
         filename: &str,
-        content: &str,
+        raw_hash: HashMetadata,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        use super::{FileTimesMetadata, HashMetadata};
-
-        // Compute content hash from raw file content (truncated to 128 bits)
-        let content_hash = blake3::hash(content.as_bytes());
-
-        // Compute per-property hashes
-        let property_hashes =
-            HashMetadata::compute_property_hashes(raw.properties());
+        use super::FileTimesMetadata;
 
         let file_times = FileTimesMetadata::new(
             raw.file_times().created_at,
             raw.file_times().modified_at,
         );
-        let hashes =
-            HashMetadata::new(*content_hash.as_bytes(), property_hashes);
 
-        let version = PropertyBankVersion::new(file_times, hashes, raw)?;
+        let version = PropertyBankVersion::new(file_times, raw_hash, raw)?;
 
         Ok(Self::new(Filename::new(filename.into()), version))
     }

@@ -177,9 +177,7 @@ pub(crate) struct Unknown;
 #[derive(Debug)]
 #[must_use = "branch outcomes must be handled"]
 pub(crate) enum ComparisonBranch {
-    /// No cached view exists; the file is new.
-    Missing(PropertyBankProcessor<Comparison, Missing>),
-    /// A cached view exists; proceed to comparison checks.
+    Missing(PropertyBankProcessor<Parsed, Missing>),
     Present(PropertyBankProcessor<Comparison, Present>),
 }
 
@@ -241,12 +239,9 @@ impl PropertyBankProcessor<Discovery, Unknown> {
                 },
             )))
         } else {
-            Ok(ComparisonBranch::Missing(Self::transition(
-                Comparison,
-                Missing {
-                    times,
-                },
-            )))
+            Ok(ComparisonBranch::Missing(Self::transition(Parsed, Missing {
+                times,
+            })))
         }
     }
 }
@@ -287,6 +282,16 @@ pub(crate) struct Suspect {
     content: String,
 }
 
+/// Proven: Content hash mismatch; file content retained for parsing.
+/// Transitions to Analysis.
+#[derive(Debug)]
+pub(crate) struct Stale {
+    times: RawFileTimes,
+    content: String,
+    content_hash: [u8; 32],
+    view: RawPropertyBankView,
+}
+
 /// Result of timestamp comparison in the Comparison stage.
 ///
 /// This enum fans out the next state for orchestration.
@@ -299,54 +304,23 @@ pub(crate) enum TimestampBranch {
     Mismatch(PropertyBankProcessor<Comparison, Suspect>),
 }
 
-/// Result of content hash comparison in the Comparison stage.
-///
-/// This enum fans out the next state for orchestration.
-#[derive(Debug)]
-#[must_use = "branch outcomes must be handled"]
-pub(crate) enum ContentBranch {
-    /// Content hash matches; only timestamps need updating.
-    Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
-    /// Content hash mismatches; proceed to delta analysis.
-    Mismatch(PropertyBankProcessor<Analysis, Suspect>),
-}
-
-/// Missing-view operations that parse a new file into a raw bank.
-impl PropertyBankProcessor<Comparison, Missing> {
-    /// Parses new file content into a raw bank.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
-    #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn parse(
-        self,
-        config_path: &std::path::Path,
-        content: &str,
-    ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
-    {
-        let raw: RawPropertyBank =
-            FsReader::parse_structured_from_str(config_path, content)
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        let raw = raw.with_file_times(self.status.times.clone());
-
-        Ok(Self::transition(Construction, New {
-            raw,
-            content: content.into(),
-        }))
-    }
-}
-
 /// Present-view operations that compare timestamps against the cache.
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
     ///
-    /// The `content` is only retained on mismatch to avoid re-reading the file.
+    /// Reads the file content internally using the provided FsReader and path.
+    /// Content is only retained on mismatch to avoid unnecessary allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the file cannot be read.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn check_timestamps(self, content: &str) -> TimestampBranch {
+    pub(crate) fn check_timestamps(
+        self,
+        source: &FsReader,
+        config_path: &std::path::Path,
+    ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = self.status.view.current().is_some_and(|v| {
             v.file_times().is_timestamp_match(
                 self.status.times.created_at,
@@ -355,42 +329,163 @@ impl PropertyBankProcessor<Comparison, Present> {
         });
 
         if timestamps_match {
-            TimestampBranch::Match(Self::transition(Construction, Fresh))
+            Ok(TimestampBranch::Match(Self::transition(Construction, Fresh)))
         } else {
-            TimestampBranch::Mismatch(Self::transition(Comparison, Suspect {
-                times: self.status.times,
-                view: self.status.view,
-                content: content.into(),
-            }))
+            let content = source
+                .read_to_string(config_path)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+            Ok(TimestampBranch::Mismatch(Self::transition(
+                Comparison,
+                Suspect {
+                    times: self.status.times,
+                    view: self.status.view,
+                    content,
+                },
+            )))
         }
     }
+}
+
+/// Result of content hash comparison in the Comparison stage.
+///
+/// This enum fans out the next state for orchestration.
+#[derive(Debug)]
+#[must_use = "branch outcomes must be handled"]
+pub(crate) enum ContentBranch {
+    /// Content hash matches; only timestamps need updating.
+    Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
+    /// Content hash mismatches; proceed to Parsed stage for parsing.
+    Mismatch(PropertyBankProcessor<Parsed, Stale>),
 }
 
 /// Suspect operations that compare content hashes after timestamp drift.
 impl PropertyBankProcessor<Comparison, Suspect> {
     /// Checks if the content hash matches the cached view.
     ///
-    /// The `config_path` is unused today but kept for transition parity with
-    /// other methods that require it.
+    /// Transitions to Parsed stage with Stale on mismatch.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_content(
         self,
-        _config_path: &std::path::Path,
-    ) -> ContentBranch {
-        let content_hash = blake3::hash(self.status.content.as_bytes());
-        let content_match = self.status.view.current().is_some_and(|v| {
-            v.hashes().is_content_match(content_hash.as_bytes())
-        });
+    ) -> Result<ContentBranch, SchemaLoaderError> {
+        let content_hash =
+            *blake3::hash(self.status.content.as_bytes()).as_bytes();
+
+        let content_match = self
+            .status
+            .view
+            .current()
+            .is_some_and(|v| v.hashes().is_content_match(&content_hash));
 
         if content_match {
-            ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
-                times: self.status.times,
-                view: self.status.view,
-            }))
+            Ok(ContentBranch::Match(Self::transition(
+                Refresh,
+                StaleTimestamps {
+                    times: self.status.times,
+                    view: self.status.view,
+                },
+            )))
         } else {
-            ContentBranch::Mismatch(Self::transition(Analysis, self.status))
+            Ok(ContentBranch::Mismatch(Self::transition(Parsed, Stale {
+                times: self.status.times,
+                content: self.status.content,
+                content_hash,
+                view: self.status.view,
+            })))
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Parsed Stage
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Parsing phase: file content has been parsed into a raw bank.
+/// This stage sits between Comparison and Analysis.
+///
+/// Path A (Missing): Missing → Parsed (Missing) → Construction (New)
+/// Path B (Content mismatch): Suspect → Parsed (Stale) → Analysis
+#[derive(Debug)]
+pub(crate) struct Parsed;
+
+/// Proven: Content has been parsed from Stale status.
+/// Transitions to Analysis for property hash comparison.
+#[derive(Debug)]
+pub(crate) struct ParsedStale {
+    times: RawFileTimes,
+    raw: RawPropertyBank,
+    content_hash: [u8; 32],
+    view: RawPropertyBankView,
+}
+
+/// Missing operations in the Parsed stage: parse new file content.
+impl PropertyBankProcessor<Parsed, Missing> {
+    /// Parses new file content into a raw bank and transitions directly to
+    /// Construction (New).
+    ///
+    /// This is Path A: Missing → Parsed (Missing) → Construction (New)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub(crate) fn parse(
+        self,
+        source: &FsReader,
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
+    {
+        let content = source
+            .read_to_string(config_path)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        let raw: RawPropertyBank =
+            FsReader::parse_structured_from_str(config_path, &content)
+                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        let raw = raw.with_file_times(self.status.times.clone());
+        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
+
+        Ok(Self::transition(Construction, New {
+            raw,
+            content_hash,
+        }))
+    }
+}
+
+/// Stale operations: parse content and transition to ParsedStale.
+impl PropertyBankProcessor<Parsed, Stale> {
+    /// Parses content and transitions to ParsedStale.
+    ///
+    /// This is the entry point for Path B where content was already read
+    /// in the Comparison stage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if parsing fails.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    pub(crate) fn parse(
+        self,
+        config_path: &std::path::Path,
+    ) -> Result<PropertyBankProcessor<Parsed, ParsedStale>, SchemaLoaderError>
+    {
+        let raw: RawPropertyBank = FsReader::parse_structured_from_str(
+            config_path,
+            &self.status.content,
+        )
+        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        let raw = raw.with_file_times(self.status.times.clone());
+
+        Ok(Self::transition(Parsed, ParsedStale {
+            times: self.status.times,
+            raw,
+            content_hash: self.status.content_hash,
+            view: self.status.view,
+        }))
     }
 }
 
@@ -412,6 +507,8 @@ pub(crate) enum AnalysisBranch {
     Empty(PropertyBankProcessor<Refresh, StaleContent>),
     /// Properties changed; proceed with delta update.
     Delta(PropertyBankProcessor<Construction, Changed>),
+    /// View has no current version (corruption); treat as new.
+    Corrupt(PropertyBankProcessor<Construction, New>),
 }
 
 /// Property delta between the cached view and the new raw bank.
@@ -446,63 +543,45 @@ impl PropertyBankDelta {
 }
 
 /// Analysis operations that compute property-level deltas.
-impl PropertyBankProcessor<Analysis, Suspect> {
-    /// Parses the file and compares property-level hashes.
+impl PropertyBankProcessor<Analysis, ParsedStale> {
+    /// Compares property-level hashes and produces the analysis result.
     ///
     /// An empty delta transitions to `StaleContent`; a non-empty delta
-    /// transitions to `Changed`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
+    /// transitions to `Changed`. If view has no current version (corruption),
+    /// transitions to `New`.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn analyze(
-        self,
-        config_path: &std::path::Path,
-    ) -> Result<AnalysisBranch, SchemaLoaderError> {
-        let raw: RawPropertyBank = FsReader::parse_structured_from_str(
-            config_path,
-            &self.status.content,
-        )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+    pub(crate) fn analyze(self) -> AnalysisBranch {
+        let raw = &self.status.raw;
+        let content_hash = self.status.content_hash;
+        let view = self.status.view;
 
-        let raw = raw.with_file_times(self.status.times.clone());
-        let content_hash =
-            *blake3::hash(self.status.content.as_bytes()).as_bytes();
+        let Some(version) = view.current() else {
+            return AnalysisBranch::Corrupt(Self::transition(
+                Construction,
+                New {
+                    raw: raw.clone(),
+                    content_hash,
+                },
+            ));
+        };
 
-        let delta = self.status.view.current().map_or_else(
-            || Self::delta_from_new_file(&raw),
-            |version| {
-                Self::delta_from_cached_view(
-                    &raw,
-                    version.hashes().properties(),
-                )
-            },
-        );
+        let (delta, property_hashes) =
+            Self::delta_from_cached_view(raw, version.hashes().properties());
+        let raw_hash = HashMetadata::new(content_hash, property_hashes);
 
         if delta.is_empty() {
-            Ok(AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
-                times: self.status.times,
-                view: self.status.view,
+            AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
+                times: raw.file_times().clone(),
+                view,
                 content_hash,
-            })))
+            }))
         } else {
-            Ok(AnalysisBranch::Delta(Self::transition(Construction, Changed {
-                raw,
+            AnalysisBranch::Delta(Self::transition(Construction, Changed {
+                raw: raw.clone(),
                 delta,
-                content: self.status.content,
-            })))
-        }
-    }
-
-    #[inline]
-    fn delta_from_new_file(raw: &RawPropertyBank) -> PropertyBankDelta {
-        let upserts = raw.properties().as_map().clone();
-
-        PropertyBankDelta {
-            upserts,
-            removals: Vec::new(),
+                raw_hash,
+            }))
         }
     }
 
@@ -510,12 +589,14 @@ impl PropertyBankProcessor<Analysis, Suspect> {
     fn delta_from_cached_view(
         raw: &RawPropertyBank,
         prev_hashes: &HashMap<PropertyName, [u8; 32]>,
-    ) -> PropertyBankDelta {
+    ) -> (PropertyBankDelta, HashMap<PropertyName, [u8; 32]>) {
+        let mut property_hashes = HashMap::new();
         let mut upserts = HashMap::new();
         let mut seen = HashSet::with_capacity(raw.properties().len());
 
         for (name, entry) in raw.properties().iter() {
             let new_hash = HashMetadata::hash_entry(entry);
+            property_hashes.insert(name.clone(), new_hash);
             if prev_hashes.get(name) != Some(&new_hash) {
                 upserts.insert(name.clone(), entry.clone());
             }
@@ -530,10 +611,13 @@ impl PropertyBankProcessor<Analysis, Suspect> {
 
         removals.sort();
 
-        PropertyBankDelta {
-            upserts,
-            removals,
-        }
+        (
+            PropertyBankDelta {
+                upserts,
+                removals,
+            },
+            property_hashes,
+        )
     }
 }
 
@@ -638,19 +722,20 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
 #[derive(Debug)]
 pub(crate) struct Construction;
 
-/// Proven: initial ingestion path selected; carries raw bank and content.
+/// Proven: initial ingestion path selected; carries raw bank and content hash.
 #[derive(Debug)]
 pub(crate) struct New {
     raw: RawPropertyBank,
-    content: String,
+    content_hash: [u8; 32],
 }
 
-/// Proven: property divergence detected; carries raw bank, delta, content.
+/// Proven: property divergence detected; carries raw bank, delta, and raw
+/// hashes.
 #[derive(Debug)]
 pub(crate) struct Changed {
     raw: RawPropertyBank,
     delta: PropertyBankDelta,
-    content: String,
+    raw_hash: HashMetadata,
 }
 
 /// Proven: identity is fully synchronized; bank can be fetched without rebuild.
@@ -728,10 +813,15 @@ impl PropertyBankProcessor<Construction, New> {
             .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        let view = RawPropertyBankView::try_from_raw_with_content(
+        let property_hashes =
+            HashMetadata::compute_property_hashes(self.status.raw.properties());
+        let raw_hash =
+            HashMetadata::new(self.status.content_hash, property_hashes);
+
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
             filename,
-            &self.status.content,
+            raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
@@ -847,10 +937,10 @@ impl PropertyBankProcessor<Construction, Changed> {
             .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        let view = RawPropertyBankView::try_from_raw_with_content(
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
             filename,
-            &self.status.content,
+            self.status.raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
