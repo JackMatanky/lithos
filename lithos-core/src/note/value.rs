@@ -14,9 +14,7 @@ use chrono::{
     DateTime, Datelike as _, FixedOffset, NaiveDate, NaiveTime, TimeDelta,
     TimeZone as _, Utc,
 };
-use serde::{
-    Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _,
-};
+use serde::{Serialize, Serializer, ser::SerializeMap as _};
 
 use super::{error::FrontmatterError, raw::RawFieldValue};
 
@@ -522,111 +520,6 @@ impl Serialize for FieldValue {
             Self::String(s) => serializer.serialize_str(s),
             Self::Null => serializer.serialize_none(),
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for FieldValue {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::{MapAccess, SeqAccess, Visitor};
-
-        struct FieldValueVisitor;
-
-        impl<'de> Visitor<'de> for FieldValueVisitor {
-            type Value = FieldValue;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter<'_>,
-            ) -> std::fmt::Result {
-                formatter.write_str("any valid metadata value")
-            }
-
-            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
-                Ok(FieldValue::Boolean(v))
-            }
-
-            #[expect(
-                clippy::as_conversions,
-                clippy::cast_precision_loss,
-                reason = "Domain values fit f64"
-            )]
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
-                Ok(FieldValue::Number(v as f64))
-            }
-
-            #[expect(
-                clippy::as_conversions,
-                clippy::cast_precision_loss,
-                reason = "Domain values fit f64"
-            )]
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
-                Ok(FieldValue::Number(v as f64))
-            }
-
-            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> {
-                Ok(FieldValue::Number(v))
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                // Try parsing prioritized temporal types
-                if let Ok(dt) = DateTime::parse_from_rfc3339(v) {
-                    return Ok(FieldValue::DateTime(dt.into()));
-                }
-                if let Ok(d) = NaiveDate::parse_from_str(v, "%Y-%m-%d") {
-                    return Ok(FieldValue::Date(d.into()));
-                }
-                if let Ok(t) = NaiveTime::parse_from_str(v, "%H:%M:%S") {
-                    return Ok(FieldValue::Time(t.into()));
-                }
-                if let Ok(t) = NaiveTime::parse_from_str(v, "%H:%M") {
-                    return Ok(FieldValue::Time(t.into()));
-                }
-                Ok(FieldValue::String(v.into()))
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let mut values =
-                    Vec::with_capacity(seq.size_hint().unwrap_or(0));
-                while let Some(value) = seq.next_element()? {
-                    values.push(value);
-                }
-                Ok(FieldValue::Array(values.into_boxed_slice()))
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut fields =
-                    HashMap::with_capacity(map.size_hint().unwrap_or(0));
-                while let Some((key, value)) =
-                    map.next_entry::<Box<str>, FieldValue>()?
-                {
-                    fields.insert(key, value);
-                }
-                Ok(FieldValue::Object(Box::new(fields)))
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(FieldValue::Null)
-            }
-
-            fn visit_unit<E>(self) -> Result<Self::Value, E> {
-                Ok(FieldValue::Null)
-            }
-        }
-
-        deserializer.deserialize_any(FieldValueVisitor)
     }
 }
 
@@ -1273,37 +1166,6 @@ mod tests {
 
     mod integrity {
         use super::*;
-
-        mod serde_heuristics {
-            use rstest::rstest;
-
-            use super::*;
-
-            #[rstest]
-            #[case::date("\"2024-03-22\"", "date")]
-            #[case::datetime("\"2024-03-22T14:30:00Z\"", "datetime")]
-            #[case::time_full("\"14:30:00\"", "time")]
-            #[case::time_short("\"14:30\"", "time")]
-            #[case::plain_string("\"not-a-date\"", "string")]
-            fn should_auto_detect_temporal_strings(
-                #[case] json: &str,
-                #[case] expected_type: &str,
-            ) {
-                let val: FieldValue = serde_json::from_str(json).unwrap();
-                assert_eq!(
-                    val.type_name(),
-                    expected_type,
-                    "Heuristic mismatch for {json}"
-                );
-            }
-        }
-        #[test]
-        fn json_serialization_should_roundtrip() {
-            let val = fixtures::complex_value();
-            let json = val.to_json_string();
-            let back: FieldValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(val, back, "JSON roundtrip failed");
-        }
 
         #[test]
         fn rkyv_serialization_should_roundtrip() {
