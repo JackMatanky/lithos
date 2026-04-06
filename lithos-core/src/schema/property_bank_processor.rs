@@ -122,7 +122,7 @@ use crate::{
             SchemaStorageError,
         },
         property::{PropertyMap, PropertyName},
-        raw::{RawFileTimes, RawPropertyBank, RawPropertyBankEntry},
+        raw::{RawFileTimes, RawPropertyBank},
         storage::Repository,
         views::{
             FileTimesMetadata, RawPropertyBankView, metadata::HashMetadata,
@@ -499,6 +499,10 @@ pub(crate) struct Analysis;
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "branching stores full state for typestate transitions"
+)]
 #[must_use = "branch outcomes must be handled"]
 pub(crate) enum AnalysisBranch {
     /// Content changed but properties did not.
@@ -509,11 +513,18 @@ pub(crate) enum AnalysisBranch {
     Corrupt(PropertyBankProcessor<Construction, New>),
 }
 
+type DeltaResult = Result<
+    (PropertyBankDelta, HashMap<PropertyName, [u8; 32]>),
+    SchemaLoaderError,
+>;
+
 /// Property delta between the cached view and the new raw bank.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct PropertyBankDelta {
     /// New or changed properties.
-    upserts: HashMap<PropertyName, RawPropertyBankEntry>,
+    upserts: PropertyMap,
+    /// Names of upserted properties.
+    upsert_names: Vec<PropertyName>,
     /// Removed properties.
     removals: Vec<PropertyName>,
 }
@@ -527,16 +538,19 @@ impl PropertyBankDelta {
 
     /// Returns the upserted properties (new or changed).
     #[inline]
-    pub(super) fn upserts(
-        &self,
-    ) -> &HashMap<PropertyName, RawPropertyBankEntry> {
+    pub(super) fn upserts(&self) -> &PropertyMap {
         &self.upserts
     }
 
-    /// Returns the removed property names.
+    /// Returns the names of properties changed by the delta.
     #[inline]
-    pub(super) fn removals(&self) -> &[PropertyName] {
-        &self.removals
+    pub(super) fn changed_names(&self) -> HashSet<PropertyName> {
+        let mut names = HashSet::with_capacity(
+            self.upsert_names.len().saturating_add(self.removals.len()),
+        );
+        names.extend(self.upsert_names.iter().cloned());
+        names.extend(self.removals.iter().cloned());
+        names
     }
 }
 
@@ -564,8 +578,18 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
             ));
         };
 
-        let (delta, property_hashes) =
-            Self::delta_from_cached_view(raw, version.hashes().properties());
+        let Ok((delta, property_hashes)) = Self::compute_delta_from_raw_view(
+            raw,
+            version.hashes().properties(),
+        ) else {
+            return AnalysisBranch::Corrupt(Self::transition(
+                Construction,
+                New {
+                    raw: raw.clone(),
+                    content_hash,
+                },
+            ));
+        };
         let raw_hash = HashMetadata::new(content_hash, property_hashes);
 
         if delta.is_empty() {
@@ -584,12 +608,13 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
     }
 
     #[inline]
-    fn delta_from_cached_view(
+    fn compute_delta_from_raw_view(
         raw: &RawPropertyBank,
         prev_hashes: &HashMap<PropertyName, [u8; 32]>,
-    ) -> (PropertyBankDelta, HashMap<PropertyName, [u8; 32]>) {
+    ) -> DeltaResult {
         let mut property_hashes = HashMap::new();
         let mut upserts = HashMap::new();
+        let mut upsert_names = Vec::new();
         let mut seen = HashSet::with_capacity(raw.properties().len());
 
         for (name, entry) in raw.properties().iter() {
@@ -597,6 +622,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
             property_hashes.insert(name.clone(), new_hash);
             if prev_hashes.get(name) != Some(&new_hash) {
                 upserts.insert(name.clone(), entry.clone());
+                upsert_names.push(name.clone());
             }
             seen.insert(name.clone());
         }
@@ -609,13 +635,21 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
         removals.sort();
 
-        (
+        let upserts = PropertyMap::try_from(upserts).map_err(|error| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                path: std::path::PathBuf::from("property_bank"),
+                source: error,
+            })
+        })?;
+
+        Ok((
             PropertyBankDelta {
                 upserts,
+                upsert_names,
                 removals,
             },
             property_hashes,
-        )
+        ))
     }
 }
 
@@ -766,31 +800,19 @@ impl PropertyBankProcessor<Construction, New> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        let bank = self.build_bank()?;
+        let bank = PropertyBank::try_from(self.status.raw.clone()).map_err(
+            |source| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                    path: std::path::PathBuf::from("property_bank"),
+                    source,
+                })
+            },
+        )?;
         self.persist(filename, repository, &bank)?;
 
         Ok(Self::transition(Completed, Ready {
             bank,
         }))
-    }
-
-    #[inline]
-    fn build_bank(&self) -> Result<PropertyBank, SchemaLoaderError> {
-        let mut bank = PropertyBank::new();
-
-        let properties =
-            PropertyMap::try_from(self.status.raw.properties().clone())
-                .map_err(|source| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                        path: std::path::PathBuf::from("property_bank"),
-                        source,
-                    })
-                })?;
-        for (name, property) in properties {
-            bank.set_properties().insert(name, property);
-        }
-
-        Ok(bank)
     }
 
     #[inline]
@@ -830,10 +852,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     /// Returns the property names considered changed for a delta update.
     #[inline]
     pub(crate) fn changed_property_names(&self) -> HashSet<PropertyName> {
-        let mut names: HashSet<PropertyName> =
-            self.status.delta.upserts().keys().cloned().collect();
-        names.extend(self.status.delta.removals().iter().cloned());
-        names
+        self.status.delta.changed_names()
     }
 
     /// Applies incremental bank updates via property deltas.
@@ -863,7 +882,7 @@ impl PropertyBankProcessor<Construction, Changed> {
                 ),
             ))?;
 
-        self.apply_delta(&mut bank)?;
+        self.apply_delta(&mut bank);
         self.persist(filename, repository, &bank)?;
 
         Ok(Self::transition(Completed, Ready {
@@ -871,22 +890,13 @@ impl PropertyBankProcessor<Construction, Changed> {
         }))
     }
 
-    #[inline]
-    fn apply_delta(
-        &self,
-        bank: &mut PropertyBank,
-    ) -> Result<(), SchemaLoaderError> {
-        let any_changed = !self.status.delta.is_empty();
+    fn apply_delta(&self, bank: &mut PropertyBank) {
+        if self.status.delta.is_empty() {
+            return;
+        }
 
         let existing = bank.set_properties();
-        let upserts = PropertyMap::try_from(self.status.delta.upserts.clone())
-            .map_err(|source| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                    path: std::path::PathBuf::from("property_bank"),
-                    source,
-                })
-            })?
-            .with_ids(existing);
+        let upserts = self.status.delta.upserts().clone().with_ids(existing);
         for (name, property) in upserts {
             existing.insert(name, property);
         }
@@ -895,11 +905,7 @@ impl PropertyBankProcessor<Construction, Changed> {
             existing.remove(name);
         }
 
-        if any_changed {
-            *bank.set_recorded_at() = SystemTime::now();
-        }
-
-        Ok(())
+        *bank.set_recorded_at() = SystemTime::now();
     }
 
     #[inline]
