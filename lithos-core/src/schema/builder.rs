@@ -7,6 +7,8 @@
 
 use std::{collections::HashSet, path::PathBuf};
 
+use tracing::info;
+
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
@@ -55,12 +57,8 @@ where
 
     /// Run the full ingestion pipeline.
     pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
-        use std::collections::HashMap;
-
         use super::schema_processor::{
-            AllMissing, Comparison as SchemaComparison, Discovery,
-            DiscoveryBranch, FileParsed, InheritanceGraphed, NeverSeen, Parsed,
-            Present as SchemaPresent, Review, SchemaProcessor,
+            Discovery, DiscoveryBranch, NeverSeen, Review, SchemaProcessor,
         };
 
         let mut bank_branch = BankContextBranch::Missing;
@@ -104,50 +102,16 @@ where
 
         match branch {
             DiscoveryBranch::AllMissing(missing) => {
-                let parsed_new =
-                    SchemaProcessor::<FileParsed, AllMissing>::transition(
-                        FileParsed,
-                        missing.into_status(),
-                    )
-                    .parse_new_schemas(&self.source)?;
-                let parsed_state: SchemaProcessor<FileParsed, Parsed> =
-                    SchemaProcessor::<FileParsed, Parsed>::transition(
-                        FileParsed,
-                        Parsed::empty(InheritanceGraph {
-                            order: Vec::new(),
-                            nodes: HashMap::new(),
-                            roots: Vec::new(),
-                        }),
-                    );
-                let graphed =
-                    SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
-                        parsed_state,
-                        &parsed_new,
-                    )?;
-                let analyzed = graphed.analyze_properties(
-                    &self.source,
-                    self.property_bank_delta.as_ref(),
-                )?;
-                let refreshed = analyzed.refresh_metadata(&self.repository)?;
-                let constructed = refreshed
-                    .construct_schemas(&self.repository, &property_bank)?;
-                let schemas = constructed.complete(&self.repository)?;
-                Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
+                let parsed_new = missing.parse(&self.source)?;
+                let new_build = parsed_new.build_new_graph()?;
+                new_build
+                    .construct_new_schemas(&self.repository, &property_bank)
             }
             DiscoveryBranch::HasPresent(present) => {
-                let present = SchemaProcessor::<
-                    SchemaComparison,
-                    SchemaPresent,
-                >::transition(SchemaComparison, present.into_status());
                 let compared = present
                     .compare(&self.source, self.property_bank_delta.as_ref())?;
-                let parsed = compared.parse_stale_schemas(&self.source)?;
-                let parsed_new = parsed.new_schemas().clone();
-                let graphed =
-                    SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
-                        parsed,
-                        &parsed_new,
-                    )?;
+                let parsed = compared.parse(&self.source)?;
+                let graphed = parsed.build_graph()?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
                     self.property_bank_delta.as_ref(),
@@ -155,7 +119,8 @@ where
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;
                 let constructed = refreshed
                     .construct_schemas(&self.repository, &property_bank)?;
-                let schemas = constructed.complete(&self.repository)?;
+                let schemas =
+                    constructed.complete(&self.repository)?.into_schemas();
                 Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
         }
@@ -380,6 +345,13 @@ pub(crate) struct FilesContext {
 impl FilesContext {
     #[inline]
     fn new(files: Vec<PathBuf>) -> Self {
+        if files.is_empty() {
+            info!(
+                "No schema files found; schema processing skipped. Add a \
+                 schema file (json, yaml, or toml) to enable schema \
+                 validation."
+            );
+        }
         Self {
             files,
             has_property_bank: false,
@@ -473,11 +445,7 @@ description = "Test schema"
         let mut nodes = HashMap::new();
         nodes.insert(id, node);
 
-        let graph = InheritanceGraph {
-            nodes,
-            order: vec![id],
-            roots: vec![id],
-        };
+        let graph = InheritanceGraph::new(nodes, vec![id], vec![id]);
 
         // Save graph to DB
         repo.save_topological_graph(&graph).unwrap();

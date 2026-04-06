@@ -9,8 +9,6 @@
 //!
 //! - **`InheritanceNode`**: Minimal storage representation with bidirectional
 //!   parent/child links
-//! - **`GraphNode<T>`**: Processing representation with generic payload for
-//!   pipeline stages
 //! - **`InheritanceGraph<T>`**: Container maintaining topological order and
 //!   graph invariants
 //!
@@ -70,18 +68,14 @@
     reason = "rkyv derives emit archived structs without non_exhaustive"
 )]
 
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::schema::{
     aggregate::{SchemaId, SchemaName},
     error::{SchemaError, SchemaLoaderError, SchemaResolutionError},
-    raw::{RawFileTimes, RawSchema},
-    views::RawSchemaView,
+    raw::RawSchema,
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -99,16 +93,72 @@ use crate::schema::{
 ///
 /// **Generic Parameter**:
 /// - `T = InheritanceNode` for storage
-/// - `T = GraphNode<Payload>` for processing
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct InheritanceGraph<T> {
     /// Node ids in topological order (parents before children).
-    pub order: Vec<SchemaId>,
+    order: Vec<SchemaId>,
     /// Node storage keyed by schema id.
-    pub nodes: HashMap<SchemaId, T>,
+    nodes: HashMap<SchemaId, T>,
     /// Root node ids with no parents.
-    pub roots: Vec<SchemaId>,
+    roots: Vec<SchemaId>,
+}
+
+impl<T> InheritanceGraph<T> {
+    #[inline]
+    #[must_use]
+    pub(crate) fn new(
+        nodes: HashMap<SchemaId, T>,
+        order: Vec<SchemaId>,
+        roots: Vec<SchemaId>,
+    ) -> Self {
+        Self {
+            order,
+            nodes,
+            roots,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn nodes(&self) -> &HashMap<SchemaId, T> {
+        &self.nodes
+    }
+
+    #[inline]
+    pub(crate) fn nodes_mut(&mut self) -> &mut HashMap<SchemaId, T> {
+        &mut self.nodes
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn order(&self) -> &[SchemaId] {
+        &self.order
+    }
+
+    #[inline]
+    #[expect(dead_code, reason = "reserved for future graph updates")]
+    pub(crate) fn order_mut(&mut self) -> &mut Vec<SchemaId> {
+        &mut self.order
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn roots(&self) -> &[SchemaId] {
+        &self.roots
+    }
+
+    #[inline]
+    #[expect(dead_code, reason = "reserved for future graph updates")]
+    pub(crate) fn roots_mut(&mut self) -> &mut Vec<SchemaId> {
+        &mut self.roots
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn into_parts(self) -> GraphParts<T> {
+        (self.nodes, self.order, self.roots)
+    }
 }
 
 /// Minimal DAG node for database storage.
@@ -193,54 +243,6 @@ impl InheritanceNode {
     pub fn remove_child(&mut self, child_id: SchemaId) {
         self.children.retain(|id| *id != child_id);
     }
-
-    /// Convert to processing representation with given payload.
-    #[must_use]
-    pub fn with_payload<T>(self, payload: T) -> GraphNode<T> {
-        GraphNode {
-            id: self.id,
-            parents: self.parents,
-            children: self.children,
-            depth: self.depth,
-            payload,
-        }
-    }
-}
-
-/// Processing node with generic payload for pipeline stages.
-///
-/// **Shape matches `InheritanceNode` + payload**:
-/// - Same `id`, `parents`, `children`, `depth` fields
-/// - Additional `payload` for stage-specific data
-///
-/// Used during schema pipeline, then converted to `InheritanceNode` for
-/// storage.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct GraphNode<T> {
-    /// Schema identifier for this node.
-    pub id: SchemaId,
-    /// Parent schema identifiers (sorted, unique).
-    pub parents: Vec<SchemaId>,
-    /// Child schema identifiers (sorted, unique).
-    pub children: Vec<SchemaId>,
-    /// Cached inheritance depth for this node.
-    pub depth: NodeDepth,
-    /// Stage-specific payload attached to this node.
-    pub payload: T,
-}
-
-impl<T> GraphNode<T> {
-    /// Convert to storage representation (discards payload).
-    #[must_use]
-    pub fn to_inheritance_node(self) -> InheritanceNode {
-        InheritanceNode {
-            id: self.id,
-            parents: self.parents,
-            children: self.children,
-            depth: self.depth,
-        }
-    }
 }
 
 /// Inheritance depth in the DAG (0-indexed for roots).
@@ -288,77 +290,25 @@ impl NodeDepth {
     }
 }
 type TopologicalOrder = (Vec<SchemaId>, Vec<SchemaId>);
-
-// ═════════════════════════════════════════════════════════════════════════════
-//  PAYLOAD STRUCTS
-// ═════════════════════════════════════════════════════════════════════════════
-
-/// Payload for fresh nodes (no rebuild needed).
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct Fresh;
-
-/// Payload for nodes with stale timestamps.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StaleTimestamps {
-    /// Current file timestamps from the filesystem.
-    pub times: RawFileTimes,
-    /// Cached raw schema view from storage.
-    pub view: RawSchemaView,
-}
-
-/// Payload for nodes with stale content.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StaleContent {
-    /// Current file timestamps from the filesystem.
-    pub times: RawFileTimes,
-    /// Content hash of the file contents.
-    pub content_hash: [u8; 32],
-    /// Parsed raw schema from the filesystem.
-    pub raw: RawSchema,
-    /// Cached raw schema view from storage.
-    pub view: RawSchemaView,
-}
-
-/// Payload for new nodes.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct New {
-    /// Path to the schema file on disk.
-    pub file_path: PathBuf,
-    /// Current file timestamps from the filesystem.
-    pub times: RawFileTimes,
-    /// Content hash of the file contents.
-    pub content_hash: [u8; 32],
-    /// Parsed raw schema from the filesystem.
-    pub raw: RawSchema,
-}
+type GraphParts<T> = (HashMap<SchemaId, T>, Vec<SchemaId>, Vec<SchemaId>);
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TOPOLOGICAL GRAPH METHODS (Generic over any T)
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Trait for accessing inheritance fields from generic node types.
-pub trait InheritanceAccess {
+pub trait NodeAccessor {
     /// Returns child schema ids.
     fn children(&self) -> &[SchemaId];
-    /// Returns cached depth for this node.
-    fn depth(&self) -> NodeDepth;
     /// Returns the schema id for this node.
     fn id(&self) -> SchemaId;
     /// Returns parent schema ids.
     fn parents(&self) -> &[SchemaId];
 }
 
-impl InheritanceAccess for InheritanceNode {
+impl NodeAccessor for InheritanceNode {
     fn children(&self) -> &[SchemaId] {
         &self.children
-    }
-
-    fn depth(&self) -> NodeDepth {
-        self.depth
     }
 
     fn id(&self) -> SchemaId {
@@ -370,25 +320,7 @@ impl InheritanceAccess for InheritanceNode {
     }
 }
 
-impl<T> InheritanceAccess for GraphNode<T> {
-    fn children(&self) -> &[SchemaId] {
-        &self.children
-    }
-
-    fn depth(&self) -> NodeDepth {
-        self.depth
-    }
-
-    fn id(&self) -> SchemaId {
-        self.id
-    }
-
-    fn parents(&self) -> &[SchemaId] {
-        &self.parents
-    }
-}
-
-impl<T: InheritanceAccess> InheritanceGraph<T> {
+impl<T: NodeAccessor> InheritanceGraph<T> {
     /// Compute topological order using Kahn's algorithm.
     ///
     /// Returns the order (parents before children) and root nodes.
@@ -400,7 +332,7 @@ impl<T: InheritanceAccess> InheritanceGraph<T> {
         clippy::excessive_nesting,
         reason = "graph traversal keeps nesting explicit for clarity"
     )]
-    pub fn topological_sort(
+    pub(crate) fn topological_sort(
         &self,
     ) -> Result<TopologicalOrder, SchemaResolutionError> {
         let mut in_degree: HashMap<SchemaId, usize> = self
@@ -448,11 +380,12 @@ impl<T: InheritanceAccess> InheritanceGraph<T> {
     /// # Errors
     ///
     /// Returns `CycleDetected` if the affected subtree contains a cycle.
+    #[expect(dead_code, reason = "reserved for scoped rebuilds")]
     #[expect(
         clippy::excessive_nesting,
         reason = "scoped traversal keeps nesting explicit for clarity"
     )]
-    pub fn topological_sort_scoped(
+    pub(crate) fn topological_sort_scoped(
         &self,
         affected: &HashSet<SchemaId>,
     ) -> Result<Vec<SchemaId>, SchemaResolutionError> {
@@ -512,7 +445,7 @@ impl<T: InheritanceAccess> InheritanceGraph<T> {
         reason = "traversal keeps nesting explicit for clarity"
     )]
     #[must_use]
-    pub fn affected_subtree(
+    pub(crate) fn affected_subtree(
         &self,
         changed_ids: &HashSet<SchemaId>,
     ) -> HashSet<SchemaId> {
@@ -538,7 +471,8 @@ impl<T: InheritanceAccess> InheritanceGraph<T> {
     }
 
     /// Remove nodes from the graph and update order/roots.
-    pub fn prune(&mut self, deleted_ids: &[SchemaId]) {
+    #[expect(dead_code, reason = "reserved for graph pruning")]
+    pub(crate) fn prune(&mut self, deleted_ids: &[SchemaId]) {
         for id in deleted_ids {
             self.nodes.remove(id);
         }
@@ -556,7 +490,8 @@ impl<T: InheritanceAccess> InheritanceGraph<T> {
     ///
     /// Returns error if the resulting order doesn't match the node count
     /// (indicates a cycle or logic error).
-    pub fn splice_order(
+    #[expect(dead_code, reason = "reserved for graph order splicing")]
+    pub(crate) fn splice_order(
         &mut self,
         affected_order: &[SchemaId],
         affected: &HashSet<SchemaId>,
@@ -631,7 +566,7 @@ impl InheritanceGraph<InheritanceNode> {
         clippy::excessive_nesting,
         reason = "depth computation keeps nesting explicit for clarity"
     )]
-    pub fn compute_depths(&mut self) {
+    pub(crate) fn compute_depths(&mut self) {
         let mut depths: HashMap<SchemaId, usize> = HashMap::new();
         let mut queue: VecDeque<SchemaId> = self
             .nodes
@@ -682,11 +617,15 @@ impl InheritanceGraph<InheritanceNode> {
     }
 
     /// Compute depths only for affected subtree.
+    #[expect(dead_code, reason = "reserved for scoped depth recompute")]
     #[expect(
         clippy::excessive_nesting,
         reason = "depth computation keeps nesting explicit for clarity"
     )]
-    pub fn compute_depths_scoped(&mut self, affected: &HashSet<SchemaId>) {
+    pub(crate) fn compute_depths_scoped(
+        &mut self,
+        affected: &HashSet<SchemaId>,
+    ) {
         let mut depths: HashMap<SchemaId, usize> = HashMap::new();
         let mut queue: VecDeque<SchemaId> = VecDeque::new();
 
@@ -762,7 +701,11 @@ impl InheritanceGraph<InheritanceNode> {
     /// # Errors
     ///
     /// Returns error if node or parent not found.
-    pub fn set_parents(
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "reserved for graph mutations")
+    )]
+    pub(crate) fn set_parents(
         &mut self,
         node_id: SchemaId,
         new_parents: Vec<SchemaId>,
@@ -824,7 +767,11 @@ impl InheritanceGraph<InheritanceNode> {
     ///
     /// Returns error if any inconsistency is found.
     #[cfg(debug_assertions)]
-    pub fn validate_consistency(&self) -> Result<(), SchemaLoaderError> {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "debug-only invariant check")
+    )]
+    pub(crate) fn validate_consistency(&self) -> Result<(), SchemaLoaderError> {
         for (id, node) in &self.nodes {
             // Check parent → child links
             for &parent_id in &node.parents {
@@ -1003,19 +950,27 @@ impl<'graph> DagValidator<'graph> {
 pub(crate) struct DagBuilder {
     nodes: HashMap<SchemaId, InheritanceNode>,
     name_index: HashMap<SchemaName, SchemaId>,
+    pending_parents: Vec<PendingParent>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingParent {
+    child_id: SchemaId,
+    child_name: SchemaName,
+    parent_name: SchemaName,
 }
 
 impl DagBuilder {
     /// Create a new builder from raw schemas.
     ///
     /// Used for building a graph from scratch (first run).
-    #[expect(dead_code, reason = "reserved for future graph bootstrap")]
     pub(crate) fn from_schemas(
         schemas: &HashMap<SchemaId, &RawSchema>,
     ) -> Result<Self, SchemaLoaderError> {
         let mut builder = Self {
             nodes: HashMap::with_capacity(schemas.len()),
             name_index: HashMap::with_capacity(schemas.len()),
+            pending_parents: Vec::new(),
         };
 
         for (&id, raw) in schemas {
@@ -1039,6 +994,7 @@ impl DagBuilder {
         Self {
             nodes: graph.nodes.clone(),
             name_index,
+            pending_parents: Vec::new(),
         }
     }
 
@@ -1075,7 +1031,11 @@ impl DagBuilder {
             if let Some(&parent_id) = self.name_index.get(parent_name) {
                 vec![parent_id]
             } else {
-                // Parent not yet in index - will be resolved in finalize()
+                self.pending_parents.push(PendingParent {
+                    child_id: id,
+                    child_name: name.clone(),
+                    parent_name: parent_name.clone(),
+                });
                 Vec::new()
             }
         } else {
@@ -1132,21 +1092,25 @@ impl DagBuilder {
         Ok(graph)
     }
 
-    #[expect(
-        clippy::unused_self,
-        reason = "kept as a hook for future validation steps"
-    )]
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "placeholder for fallible validation in future"
-    )]
     fn resolve_pending_parents(&mut self) -> Result<(), SchemaLoaderError> {
-        // All parents should have been resolved during add_schema() calls.
-        // Any node with empty parents is either a root or has an unresolved
-        // extends reference - the latter is an error.
-        // Since we don't have raw schema references here, we can't check
-        // extends. The caller must ensure all schemas are added before
-        // finalize.
+        let pending = std::mem::take(&mut self.pending_parents);
+        for entry in pending {
+            let Some(&parent_id) = self.name_index.get(&entry.parent_name)
+            else {
+                return Err(SchemaLoaderError::Resolution(
+                    SchemaError::Resolution(
+                        SchemaResolutionError::ParentNotFound {
+                            child: entry.child_name,
+                            parent: entry.parent_name,
+                        },
+                    ),
+                ));
+            };
+
+            if let Some(node) = self.nodes.get_mut(&entry.child_id) {
+                node.parents = vec![parent_id];
+            }
+        }
         Ok(())
     }
 
