@@ -9,7 +9,7 @@
 //!   `Analysis`, `Refresh`, `Construction`, `Completed`).
 //! - **Status**: the knowledge state carrying data and invariants (`Unknown`,
 //!   `Missing`, `Present`, `Suspect`, `StaleTimestamps`, `StaleContent`, `New`,
-//!   `Changed`, `Fresh`, `Ready`).
+//!   `Changed`, `Fresh`, `FreshReady`, `NewReady`, `StaleReady`).
 //!
 //! The dual-typestate design prevents invalid transitions at compile time and
 //! keeps orchestration in the [`Builder`](crate::schema::Builder).
@@ -775,12 +775,6 @@ pub(crate) struct Fresh;
 
 /// Construction operations that build the initial property bank.
 impl PropertyBankProcessor<Construction, New> {
-    /// Returns the property names considered changed for a new bank.
-    #[inline]
-    pub(crate) fn changed_property_names(&self) -> HashSet<PropertyName> {
-        self.status.raw.properties().keys().cloned().collect()
-    }
-
     /// Performs the initial full bank construction.
     ///
     /// Returns the terminal `Completed` state on success.
@@ -795,7 +789,7 @@ impl PropertyBankProcessor<Construction, New> {
         self,
         filename: &str,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
+    ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     where
         R::Error: Into<SchemaRepositoryError>,
     {
@@ -809,7 +803,7 @@ impl PropertyBankProcessor<Construction, New> {
         )?;
         self.persist(filename, repository, &bank)?;
 
-        Ok(Self::transition(Completed, Ready {
+        Ok(Self::transition(Completed, NewReady {
             bank,
         }))
     }
@@ -848,12 +842,6 @@ impl PropertyBankProcessor<Construction, New> {
 
 /// Construction operations that apply property deltas.
 impl PropertyBankProcessor<Construction, Changed> {
-    /// Returns the property names considered changed for a delta update.
-    #[inline]
-    pub(crate) fn changed_property_names(&self) -> HashSet<PropertyName> {
-        self.status.delta.changed_names()
-    }
-
     /// Applies incremental bank updates via property deltas.
     ///
     /// Returns the terminal `Completed` state on success.
@@ -868,7 +856,7 @@ impl PropertyBankProcessor<Construction, Changed> {
         self,
         filename: &str,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
+    ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     where
         R::Error: Into<SchemaRepositoryError>,
     {
@@ -883,9 +871,9 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         self.apply_delta(&mut bank);
         self.persist(filename, repository, &bank)?;
-
-        Ok(Self::transition(Completed, Ready {
+        Ok(Self::transition(Completed, StaleReady {
             bank,
+            delta: self.status.delta.changed_names(),
         }))
     }
 
@@ -949,7 +937,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
     pub(crate) fn fetch<R: Repository>(
         self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, Ready>, SchemaLoaderError>
+    ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
     where
         R::Error: Into<SchemaRepositoryError>,
     {
@@ -961,7 +949,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
                 SchemaStorageError::PropertyBankNotFound,
             ))?;
 
-        Ok(Self::transition(Completed, Ready {
+        Ok(Self::transition(Completed, FreshReady {
             bank,
         }))
     }
@@ -975,18 +963,51 @@ impl PropertyBankProcessor<Construction, Fresh> {
 #[derive(Debug)]
 pub(crate) struct Completed;
 
-/// Proven: terminal ingestion goal reached; owns the final bank.
+/// Proven: terminal ingestion goal reached with fresh bank.
 #[derive(Debug)]
-pub(crate) struct Ready {
+pub(crate) struct FreshReady {
     bank: PropertyBank,
 }
 
+/// Proven: terminal ingestion goal reached with newly built bank.
+#[derive(Debug)]
+pub(crate) struct NewReady {
+    bank: PropertyBank,
+}
+
+/// Proven: terminal ingestion goal reached with stale updates applied.
+#[derive(Debug)]
+pub(crate) struct StaleReady {
+    bank: PropertyBank,
+    delta: HashSet<PropertyName>,
+}
+
 /// Completed operations that expose the final property bank.
-impl PropertyBankProcessor<Completed, Ready> {
+impl PropertyBankProcessor<Completed, FreshReady> {
     /// Extracts the completed `PropertyBank`.
     #[inline]
     #[must_use]
     pub(crate) fn into_bank(self) -> PropertyBank {
         self.status.bank
+    }
+}
+
+impl PropertyBankProcessor<Completed, NewReady> {
+    /// Extracts the completed `PropertyBank`.
+    #[inline]
+    #[must_use]
+    pub(crate) fn into_bank(self) -> PropertyBank {
+        self.status.bank
+    }
+}
+
+impl PropertyBankProcessor<Completed, StaleReady> {
+    /// Extracts the completed `PropertyBank` and changed property names.
+    #[inline]
+    #[must_use]
+    pub(crate) fn into_bank_with_changes(
+        self,
+    ) -> (PropertyBank, HashSet<PropertyName>) {
+        (self.status.bank, self.status.delta)
     }
 }

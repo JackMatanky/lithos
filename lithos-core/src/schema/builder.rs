@@ -16,9 +16,9 @@ use crate::{
         error::SchemaLoaderError,
         property::PropertyName,
         property_bank_processor::{
-            AnalysisBranch, Comparison, ComparisonBranch, Completed,
-            ContentBranch, Discovery, Missing, Parsed, Present,
-            PropertyBankProcessor, Ready, Suspect, TimestampBranch, Unknown,
+            AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
+            Discovery, Missing, Parsed, Present, PropertyBankProcessor,
+            Suspect, TimestampBranch, Unknown,
         },
         storage::Repository,
     },
@@ -48,8 +48,7 @@ pub(crate) struct DiscoveryContext {
     pub(crate) has_property_bank: bool,
 }
 
-type PropertyBankCompletion =
-    (PropertyBankProcessor<Completed, Ready>, Option<HashSet<PropertyName>>);
+type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
 
 impl<'config, R: Repository> Builder<'config, R>
 where
@@ -222,7 +221,7 @@ where
         };
 
         self.property_bank_delta = delta;
-        Ok(completed.into_bank())
+        Ok(completed)
     }
 
     #[inline]
@@ -331,9 +330,8 @@ where
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         let constructed = processor.parse(&self.source, config_path)?;
-        let delta = constructed.changed_property_names();
         let completed = constructed.create(filename, &self.repository)?;
-        Ok((completed, Some(delta)))
+        Ok((completed.into_bank(), None))
     }
 
     fn handle_present(
@@ -343,7 +341,10 @@ where
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_timestamps(&self.source, config_path)? {
-            TimestampBranch::Match(p) => Ok((p.fetch(&self.repository)?, None)),
+            TimestampBranch::Match(p) => {
+                let completed = p.fetch(&self.repository)?;
+                Ok((completed.into_bank(), None))
+            }
             TimestampBranch::Mismatch(p) => {
                 self.handle_content_mismatch(p, filename, config_path)
             }
@@ -361,7 +362,7 @@ where
                 let completed = p
                     .sync_metadata(&self.repository)?
                     .fetch(&self.repository)?;
-                Ok((completed, None))
+                Ok((completed.into_bank(), None))
             }
             ContentBranch::Mismatch(p) => {
                 let parsed = p.parse(config_path)?;
@@ -380,17 +381,16 @@ where
                 let completed = p
                     .sync_metadata(&self.repository)?
                     .fetch(&self.repository)?;
-                Ok((completed, None))
+                Ok((completed.into_bank(), None))
             }
             AnalysisBranch::Delta(p) => {
-                let delta = p.changed_property_names();
                 let completed = p.update(filename, &self.repository)?;
-                Ok((completed, Some(delta)))
+                let (bank, delta) = completed.into_bank_with_changes();
+                Ok((bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(p) => {
-                let delta = p.changed_property_names();
                 let completed = p.create(filename, &self.repository)?;
-                Ok((completed, Some(delta)))
+                Ok((completed.into_bank(), None))
             }
         }
     }
