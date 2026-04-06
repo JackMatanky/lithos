@@ -190,6 +190,29 @@ impl<T> RawPropertyMap<T> {
     }
 }
 
+impl RawPropertyMap<RawProperty> {
+    /// Returns a `HashMap` containing only `$ref` entries.
+    #[inline]
+    #[must_use]
+    pub fn ref_entries(&self) -> HashMap<PropertyName, RawPropertyRef> {
+        let mut refs = HashMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is irrelevant when filtering ref entries"
+        )]
+        for (name, entry) in &self.inner {
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "Match ergonomics keeps ref extraction concise"
+            )]
+            if let RawProperty::Ref(ref_entry) = entry {
+                refs.insert(name.clone(), ref_entry.clone());
+            }
+        }
+        refs
+    }
+}
+
 impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
     type IntoIter =
         std::collections::hash_map::Iter<'lifetime, PropertyName, T>;

@@ -82,14 +82,6 @@ pub mod raw;
 #[doc(hidden)]
 pub mod merger;
 
-/// Property-level conflict resolution and override logic.
-///
-/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and pipeline stages (Expander, Merger) to use the
-/// Resolver while hiding from public documentation.
-#[doc(hidden)]
-pub mod resolver;
-
 pub(crate) mod db_table {
     use redb::TableDefinition;
 

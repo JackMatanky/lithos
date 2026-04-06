@@ -278,12 +278,12 @@ mod tests {
     use crate::schema::{
         aggregate::{Schema, SchemaId, SchemaName},
         error::SchemaError,
-        expander::RefExpandedSchema,
         extender::Extender,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
+        raw::RawSchema,
     };
 
     mod fixtures {
@@ -304,31 +304,44 @@ mod tests {
             name: &str,
             extends: Option<&str>,
             props: Vec<Property>,
-        ) -> (SchemaId, RefExpandedSchema) {
+        ) -> (SchemaId, RawSchema, HashMap<PropertyName, Property>) {
             let properties: HashMap<PropertyName, Property> =
                 props.into_iter().map(|p| (p.name().clone(), p)).collect();
-            (id, RefExpandedSchema {
-                name: SchemaName::try_new(name).expect("valid test name"),
-                extends: extends
-                    .map(|s| SchemaName::try_new(s).expect("valid parent")),
-                excludes: Vec::new(),
-                properties,
-            })
+            let mut json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            if let Some(parent) = extends
+                && let Some(obj) = json.as_object_mut()
+            {
+                obj.insert("extends".into(), serde_json::json!(parent));
+            }
+            let raw = serde_json::from_value::<RawSchema>(json)
+                .expect("valid schema JSON")
+                .with_name(name.into());
+            (id, raw, properties)
         }
 
         pub fn expanded_with_excludes(
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
-            excludes: Vec<PropertyName>,
-        ) -> (SchemaId, RefExpandedSchema) {
-            (id, RefExpandedSchema {
-                name: SchemaName::try_new(name).expect("valid test name"),
-                extends: extends
-                    .map(|s| SchemaName::try_new(s).expect("valid parent")),
-                excludes,
-                properties: HashMap::new(),
-            })
+            excludes: &[PropertyName],
+        ) -> (SchemaId, RawSchema, HashMap<PropertyName, Property>) {
+            let mut json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {},
+                "excludes": excludes.iter().map(PropertyName::as_str).collect::<Vec<_>>()
+            });
+            if let Some(parent) = extends
+                && let Some(obj) = json.as_object_mut()
+            {
+                obj.insert("extends".into(), serde_json::json!(parent));
+            }
+            let raw = serde_json::from_value::<RawSchema>(json)
+                .expect("valid schema JSON")
+                .with_name(name.into());
+            (id, raw, HashMap::new())
         }
     }
 
@@ -490,10 +503,8 @@ mod tests {
                     child_id,
                     "child",
                     Some("parent"),
-                    vec![
-                        PropertyName::try_new("excluded")
-                            .expect("valid test property name"),
-                    ],
+                    &[PropertyName::try_new("excluded")
+                        .expect("valid test property name")],
                 ),
             ];
             let tree = Extender::build(expanded, &HashMap::new())?;
@@ -602,28 +613,33 @@ mod tests {
                 .map(|i| SchemaId::from_uuid(Uuid::from_u128(BASE + i)))
                 .collect();
 
+            let build_raw = |name: &str, extends: Option<&str>| {
+                let mut json = serde_json::json!({
+                    "$version": "1.0",
+                    "properties": {}
+                });
+                if let Some(parent) = extends
+                    && let Some(obj) = json.as_object_mut()
+                {
+                    obj.insert("extends".into(), serde_json::json!(parent));
+                }
+                serde_json::from_value::<RawSchema>(json)
+                    .expect("valid schema JSON")
+                    .with_name(name.into())
+            };
+
             // Root (depth 1)
-            expanded.push((ids[0], RefExpandedSchema {
-                name: SchemaName::try_new("root").expect("valid name"),
-                extends: None,
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-            }));
+            expanded.push((ids[0], build_raw("root", None), HashMap::new()));
 
             // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
             for (i, &id) in ids.iter().enumerate().skip(1) {
-                expanded.push((id, RefExpandedSchema {
-                    name: SchemaName::try_new(&format!("s{i}"))
-                        .expect("valid name"),
-                    extends: Some(if i == 1 {
-                        SchemaName::try_new("root").expect("valid parent")
-                    } else {
-                        SchemaName::try_new(&format!("s{}", i - 1))
-                            .expect("valid parent")
-                    }),
-                    excludes: Vec::new(),
-                    properties: HashMap::new(),
-                }));
+                let parent = if i == 1 {
+                    "root".to_owned()
+                } else {
+                    format!("s{}", i - 1)
+                };
+                let raw = build_raw(&format!("s{i}"), Some(&parent));
+                expanded.push((id, raw, HashMap::new()));
             }
 
             // Build tree and resolve
@@ -705,10 +721,8 @@ mod tests {
                     physics_id,
                     "physics",
                     Some("course"),
-                    vec![
-                        PropertyName::try_new("internal_ref")
-                            .expect("valid test property name"),
-                    ],
+                    &[PropertyName::try_new("internal_ref")
+                        .expect("valid test property name")],
                 ),
             ];
 
@@ -797,10 +811,8 @@ mod tests {
                     level3_id,
                     "level3",
                     Some("level2"),
-                    vec![
-                        PropertyName::try_new("deep_field")
-                            .expect("valid test property name"),
-                    ],
+                    &[PropertyName::try_new("deep_field")
+                        .expect("valid test property name")],
                 ),
             ];
 
@@ -857,10 +869,8 @@ mod tests {
                     middle_id,
                     "middle",
                     Some("base"),
-                    vec![
-                        PropertyName::try_new("prop_a")
-                            .expect("valid test property name"),
-                    ],
+                    &[PropertyName::try_new("prop_a")
+                        .expect("valid test property name")],
                 ),
                 fixtures::simple_expanded(
                     child_id,

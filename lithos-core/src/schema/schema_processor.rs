@@ -1875,13 +1875,28 @@ impl SchemaProcessor<Refresh, Analyzed> {
             if expand_pairs.is_empty() {
                 HashMap::new()
             } else {
-                let expanded_vec = RefExpander::new(property_bank)
-                    .expand_all(expand_pairs)
-                    .map_err(SchemaLoaderError::Resolution)?;
-                expanded_vec
+                let expander = RefExpander::new(property_bank);
+                expand_pairs
                     .into_iter()
-                    .map(|(id, expanded)| (id, expanded.properties))
-                    .collect()
+                    .map(|(id, raw)| {
+                        let refs = raw.properties().ref_entries();
+                        let mut expanded_props = expander
+                            .expand_properties(&refs)
+                            .map_err(SchemaLoaderError::Resolution)?;
+
+                        for (name, entry) in raw.properties() {
+                            let inline = match entry {
+                                crate::schema::raw::property::RawProperty::Inline(inline) => inline,
+                                crate::schema::raw::property::RawProperty::Ref(_) => continue,
+                            };
+                            let prop = Property::try_from((name.clone(), inline.clone()))
+                                .map_err(SchemaLoaderError::Resolution)?;
+                            expanded_props.insert(name.clone(), prop);
+                        }
+
+                        Ok((id, expanded_props))
+                    })
+                    .collect::<Result<_, SchemaLoaderError>>()?
             };
 
         let mut changed_schemas = Vec::new();

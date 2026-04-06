@@ -27,7 +27,7 @@ use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
     property::{Property, PropertyName},
-    raw::{RawPropertyBank, RawSchema, property::RawProperty},
+    raw::{RawPropertyBank, RawSchema},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,18 +123,13 @@ impl SchemaVersion {
 
         // Extract bank references from properties map
         let mut bank_references = HashMap::new();
-        for (prop_name, entry) in raw.properties() {
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "Match ergonomics is used for cleaner code despite \
-                          reference mismatch"
-            )]
-            if let RawProperty::Ref(ref_entry) = entry {
-                bank_references.insert(
-                    prop_name.clone(),
-                    ref_entry.ref_path.target_name().clone(),
-                );
-            }
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is irrelevant for bank reference extraction"
+        )]
+        for (prop_name, ref_entry) in raw.properties().ref_entries() {
+            bank_references
+                .insert(prop_name, ref_entry.ref_path.target_name().clone());
         }
 
         Ok(Self {

@@ -1,5 +1,5 @@
 //! `Extender` — builds a topologically-ordered [`InheritanceGraph`] from
-//! ref-expanded schemas.
+//! raw schemas with resolved property references.
 //!
 //! This module resolves inheritance relationships between schemas and produces
 //! a sorted execution plan for property merging.
@@ -11,8 +11,7 @@
 //! # Design
 //!
 //! The `Extender` takes:
-//! - Stale schemas already expanded by [`RefExpander`] (their `$ref`s
-//!   resolved).
+//! - Stale schemas with `$ref`s already resolved by [`RefExpander`].
 //! - A map of fresh (non-stale) schemas loaded from the DB — these may act as
 //!   parents.
 //!
@@ -27,9 +26,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     error::SchemaError,
-    expander::RefExpandedSchema,
     property::{Property, PropertyName},
+    raw::RawSchema,
 };
+
+type ExpandedSchemaInput =
+    (SchemaId, RawSchema, HashMap<PropertyName, Property>);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  NodeDepth
@@ -220,7 +222,7 @@ impl Extender {
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
     pub fn build(
-        expanded: Vec<(SchemaId, RefExpandedSchema)>,
+        expanded: Vec<ExpandedSchemaInput>,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<InheritanceGraph, SchemaError> {
         // Phase 1: build name ↔ id indexes.
@@ -257,7 +259,7 @@ impl Extender {
     /// Uses `Box<str>` keys so `expanded` can be consumed in Phase 2 without
     /// lifetime issues.  `Box<str>: Borrow<str>` so `HashMap::get(&str)` works.
     fn build_name_indexes(
-        expanded: &[(SchemaId, RefExpandedSchema)],
+        expanded: &[ExpandedSchemaInput],
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<NameIndexes, SchemaError> {
         let cap = expanded.len();
@@ -278,22 +280,20 @@ impl Extender {
         }
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "Match ergonomics on &(SchemaId, RefExpandedSchema) \
-                      tuples; explicit derefs would add noise without clarity"
+            reason = "Match ergonomics on &(SchemaId, RawSchema, ..) tuples"
         )]
-        for (id, expanded_schema) in expanded {
-            if name_to_id.insert(expanded_schema.name.clone(), *id).is_some()
-                && !known_parents
-                    .values()
-                    .any(|s| s.name() == &expanded_schema.name)
+        for (id, raw, _) in expanded {
+            let name = SchemaName::try_new(raw.name())?;
+            if name_to_id.insert(name.clone(), *id).is_some()
+                && !known_parents.values().any(|s| s.name() == &name)
             {
                 return Err(SchemaError::Resolution(
                     super::error::SchemaResolutionError::DuplicateSchemaName {
-                        name: expanded_schema.name.as_ref().into(),
+                        name: name.as_ref().into(),
                     },
                 ));
             }
-            id_to_name.insert(*id, expanded_schema.name.clone());
+            id_to_name.insert(*id, name);
         }
         Ok((name_to_id, id_to_name))
     }
@@ -301,16 +301,17 @@ impl Extender {
     /// Phase 2 — build the node map, resolving each `extends` name to a
     /// `SchemaId`.
     fn build_nodes(
-        expanded: Vec<(SchemaId, RefExpandedSchema)>,
+        expanded: Vec<ExpandedSchemaInput>,
         name_to_id: &HashMap<SchemaName, SchemaId>,
     ) -> Result<HashMap<SchemaId, SchemaNode>, SchemaError> {
         let mut nodes = HashMap::with_capacity(expanded.len());
-        for (id, expanded_schema) in expanded {
-            let parent_id = Self::resolve_parent(&expanded_schema, name_to_id)?;
+        for (id, raw, properties) in expanded {
+            let name = SchemaName::try_new(raw.name())?;
+            let parent_id = Self::resolve_parent(raw.extends(), name_to_id)?;
             nodes.insert(id, SchemaNode {
-                name: expanded_schema.name,
-                properties: expanded_schema.properties,
-                excludes: expanded_schema.excludes,
+                name,
+                properties,
+                excludes: raw.excludes().to_vec(),
                 parent_id,
                 children: Vec::new(),
                 // Depth computed in Phase 5
@@ -322,10 +323,10 @@ impl Extender {
 
     /// Resolve the optional `extends` string to a `SchemaId`.
     fn resolve_parent(
-        expanded_schema: &RefExpandedSchema,
+        parent_name: Option<&SchemaName>,
         name_to_id: &HashMap<SchemaName, SchemaId>,
     ) -> Result<Option<SchemaId>, SchemaError> {
-        let Some(parent_name) = expanded_schema.extends.as_ref() else {
+        let Some(parent_name) = parent_name else {
             return Ok(None);
         };
         // SchemaName already validated - no need to re-validate
@@ -600,27 +601,31 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::{Schema, SchemaId},
         error::SchemaError,
     };
 
     mod fixtures {
         use super::*;
-        use crate::schema::expander::RefExpandedSchema;
 
         pub fn simple_expanded(
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
-        ) -> (SchemaId, RefExpandedSchema) {
-            (id, RefExpandedSchema {
-                name: SchemaName::try_new(name).expect("valid test name"),
-                extends: extends.map(|s| {
-                    SchemaName::try_new(s).expect("valid parent name")
-                }),
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-            })
+        ) -> (SchemaId, RawSchema, HashMap<PropertyName, Property>) {
+            let mut json = serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            });
+            if let Some(parent) = extends
+                && let Some(obj) = json.as_object_mut()
+            {
+                obj.insert("extends".into(), serde_json::json!(parent));
+            }
+            let raw = serde_json::from_value::<RawSchema>(json)
+                .expect("valid schema JSON")
+                .with_name(name.into());
+            (id, raw, HashMap::new())
         }
     }
 
@@ -729,17 +734,10 @@ mod tests {
 
         #[test]
         fn cycle_detection_returns_error() {
-            use crate::schema::expander::RefExpandedSchema;
             let id = SchemaId::from_uuid(ORPHAN_ID);
             // Schema "self" extends "self" — a self-loop.
-            let expanded = vec![(id, RefExpandedSchema {
-                name: SchemaName::try_new("self").expect("valid name"),
-                extends: Some(
-                    SchemaName::try_new("self").expect("valid parent"),
-                ),
-                excludes: Vec::new(),
-                properties: HashMap::new(),
-            })];
+            let expanded =
+                vec![fixtures::simple_expanded(id, "self", Some("self"))];
             let result = Extender::build(expanded, &HashMap::new());
             assert!(
                 matches!(
@@ -756,8 +754,6 @@ mod tests {
         /// GAP-001: Test multi-node circular inheritance (A→B→C→A).
         #[test]
         fn cycle_detection_multi_node_cycle() {
-            use crate::schema::expander::RefExpandedSchema;
-
             const ID_A: Uuid =
                 Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1001);
             const ID_B: Uuid =
@@ -771,30 +767,9 @@ mod tests {
 
             // A extends C, B extends A, C extends B → cycle!
             let expanded = vec![
-                (id_a, RefExpandedSchema {
-                    name: SchemaName::try_new("a").expect("valid name"),
-                    extends: Some(
-                        SchemaName::try_new("c").expect("valid parent"),
-                    ),
-                    excludes: Vec::new(),
-                    properties: HashMap::new(),
-                }),
-                (id_b, RefExpandedSchema {
-                    name: SchemaName::try_new("b").expect("valid name"),
-                    extends: Some(
-                        SchemaName::try_new("a").expect("valid parent"),
-                    ),
-                    excludes: Vec::new(),
-                    properties: HashMap::new(),
-                }),
-                (id_c, RefExpandedSchema {
-                    name: SchemaName::try_new("c").expect("valid name"),
-                    extends: Some(
-                        SchemaName::try_new("b").expect("valid parent"),
-                    ),
-                    excludes: Vec::new(),
-                    properties: HashMap::new(),
-                }),
+                fixtures::simple_expanded(id_a, "a", Some("c")),
+                fixtures::simple_expanded(id_b, "b", Some("a")),
+                fixtures::simple_expanded(id_c, "c", Some("b")),
             ];
 
             let result = Extender::build(expanded, &HashMap::new());
