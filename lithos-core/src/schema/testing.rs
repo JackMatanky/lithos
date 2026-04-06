@@ -639,7 +639,7 @@ mod tests {
         // Add some data
         let id = SchemaId::new();
         let name = SchemaName::try_new("test-schema").unwrap();
-        let schema = Schema::new(id, name, None, vec![], HashMap::new());
+        let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
 
         repo.save_schemas(&[schema]).unwrap();
         assert_eq!(repo.schema_count(), 1);

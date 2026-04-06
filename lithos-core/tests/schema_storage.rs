@@ -132,7 +132,7 @@ mod roundtrip_tests {
         let schema = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
-            None,
+            Vec::new(),
             vec![],
             props,
         );
@@ -186,7 +186,7 @@ mod lookup_tests {
         let schema = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("project")?,
-            None,
+            Vec::new(),
             vec![],
             props,
         );
@@ -237,7 +237,7 @@ mod lookup_tests {
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
-            None,
+            Vec::new(),
             vec![],
             task_props,
         );
@@ -248,7 +248,7 @@ mod lookup_tests {
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("note")?,
-            None,
+            Vec::new(),
             vec![],
             note_props,
         );
@@ -364,7 +364,7 @@ mod durability_tests {
         let schema = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("person")?,
-            None,
+            Vec::new(),
             vec![],
             props,
         );
@@ -395,7 +395,7 @@ mod durability_tests {
             expected_prop_count,
             "Property count should match"
         );
-        assert_eq!(loaded.parent_id(), None, "Parent ID should be None");
+        assert!(loaded.parents().is_empty(), "Parents should be empty");
 
         // Verify can still find by name
         let found_id =
@@ -453,7 +453,7 @@ mod batch_operations {
         let schema_a = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
-            None,
+            Vec::new(),
             vec![],
             props.clone(),
         );
@@ -462,7 +462,7 @@ mod batch_operations {
         let schema_b = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("project")?,
-            None,
+            Vec::new(),
             vec![],
             props.clone(),
         );
@@ -471,7 +471,7 @@ mod batch_operations {
         let schema_c = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("note")?,
-            None,
+            Vec::new(),
             vec![],
             props,
         );
@@ -544,7 +544,7 @@ mod regression_tests {
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("empty_schema1")?,
-            None,
+            Vec::new(),
             vec![],
             HashMap::new(),
         );
@@ -553,7 +553,7 @@ mod regression_tests {
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("empty_schema2")?,
-            None,
+            Vec::new(),
             vec![],
             HashMap::new(),
         );
@@ -613,7 +613,7 @@ mod regression_tests {
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema1")?,
-            None,
+            Vec::new(),
             vec![],
             schema1_props,
         );
@@ -636,7 +636,7 @@ mod regression_tests {
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema2")?,
-            None,
+            Vec::new(),
             vec![],
             schema2_props,
         );
@@ -698,7 +698,7 @@ mod regression_tests {
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema1")?,
-            None,
+            Vec::new(),
             vec![],
             seq_schema1_props,
         );
@@ -710,7 +710,7 @@ mod regression_tests {
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema2")?,
-            None,
+            Vec::new(),
             vec![],
             seq_schema2_props,
         );

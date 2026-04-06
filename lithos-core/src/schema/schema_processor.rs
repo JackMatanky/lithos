@@ -2047,7 +2047,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 Ok(Schema::new(
                     id,
                     name,
-                    node.parents.first().copied(),
+                    node.parents.clone(),
                     node.children.clone(),
                     properties,
                 ))
@@ -2090,7 +2090,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 Ok(Schema::new(
                     id,
                     name,
-                    node.parents.first().copied(),
+                    node.parents.clone(),
                     node.children.clone(),
                     merged,
                 ))
@@ -2114,7 +2114,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 Ok(Schema::new(
                     id,
                     name,
-                    None,
+                    Vec::new(),
                     node.children.clone(),
                     expanded.clone(),
                 ))
@@ -2162,7 +2162,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 Ok(Schema::new(
                     id,
                     name,
-                    node.parents.first().copied(),
+                    node.parents.clone(),
                     node.children.clone(),
                     merged,
                 ))

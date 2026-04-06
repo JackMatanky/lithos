@@ -47,7 +47,7 @@ use super::{
 ///
 /// - `id`: Unique schema identifier
 /// - `name`: Validated schema name
-/// - `parent_id`: Optional parent schema for inheritance
+/// - `parents`: Parent schema IDs for inheritance
 /// - `children`: Child schema IDs (for fast inheritance traversal)
 /// - `properties`: Resolved properties after inheritance merge
 /// - `recorded_at`: Ingestion timestamp (**private** - not part of public API)
@@ -66,7 +66,7 @@ use super::{
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("project-note")?;
-/// let schema = Schema::new(id, name, None, vec![], HashMap::new());
+/// let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
 /// assert_eq!(schema.id(), &id);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -77,8 +77,8 @@ pub struct Schema {
     id: SchemaId,
     /// Schema name.
     name: SchemaName,
-    /// Parent schema ID, for inheritance.
-    parent_id: Option<SchemaId>,
+    /// Parent schema IDs, for inheritance.
+    parents: Vec<SchemaId>,
     /// Child schema IDs (for fast inheritance traversal).
     ///
     /// Stores IDs only. Full relationship metadata (extends/excludes) is
@@ -103,7 +103,7 @@ impl Schema {
     ///
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("note")?;
-    /// let schema = Schema::new(id, name, None, vec![], HashMap::new());
+    /// let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
     /// assert_eq!(schema.id(), &id);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -112,14 +112,14 @@ impl Schema {
     pub fn new(
         id: SchemaId,
         name: SchemaName,
-        parent_id: Option<SchemaId>,
+        parents: Vec<SchemaId>,
         children: Vec<SchemaId>,
         properties: HashMap<PropertyName, Property>,
     ) -> Self {
         Self {
             id,
             name,
-            parent_id,
+            parents,
             children,
             properties,
             recorded_at: SystemTime::now(),
@@ -140,11 +140,11 @@ impl Schema {
         &self.name
     }
 
-    /// Returns the parent schema ID, if any.
+    /// Returns the parent schema IDs.
     #[inline]
     #[must_use]
-    pub const fn parent_id(&self) -> Option<&SchemaId> {
-        self.parent_id.as_ref()
+    pub fn parents(&self) -> &[SchemaId] {
+        &self.parents
     }
 
     /// Returns the child schema IDs.
@@ -551,11 +551,11 @@ mod tests {
         let id = SchemaId::new();
         let name = SchemaName::try_new("test").unwrap();
         let schema =
-            Schema::new(id, name.clone(), None, vec![], HashMap::new());
+            Schema::new(id, name.clone(), Vec::new(), vec![], HashMap::new());
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
-        assert_eq!(schema.parent_id(), None);
+        assert!(schema.parents().is_empty());
         assert!(schema.properties().is_empty());
     }
 
@@ -567,13 +567,13 @@ mod tests {
         let schema = Schema::new(
             id,
             name.clone(),
-            Some(parent_id),
+            vec![parent_id],
             vec![],
             HashMap::new(),
         );
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
-        assert_eq!(schema.parent_id(), Some(&parent_id));
+        assert_eq!(schema.parents(), &[parent_id]);
     }
 }
