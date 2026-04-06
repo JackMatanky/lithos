@@ -76,7 +76,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone as _};
 use rkyv::{Archive, Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use super::{
@@ -87,7 +86,7 @@ use super::{
     tag::Tag,
     value::FieldValue,
 };
-use crate::config::task::TaskConfigSpec;
+use crate::config::{task::TaskConfigSpec, value::ValueRef};
 
 // ================================================================
 // Core Task Entity
@@ -290,7 +289,7 @@ impl Task {
         // 1. Get status (caller should ensure item is a checkbox)
         let status_symbol =
             item.task_status().ok_or_else(|| TaskError::MissingStatus {
-                text: item.text().to_owned().into(),
+                text: item.text().into(),
             })?;
 
         // Look up status name from symbol using config
@@ -298,7 +297,10 @@ impl Task {
             .status_mappings
             .get(&status_symbol.value())
             .cloned()
-            .unwrap_or_else(|| status_symbol.value().to_string().into());
+            .unwrap_or_else(|| {
+                let mut buf = [0u8; 4];
+                status_symbol.value().encode_utf8(&mut buf).into()
+            });
 
         // 2. Copy and validate fields from ListItem
         let mut fields = HashMap::with_capacity(item.fields().len());
@@ -306,9 +308,9 @@ impl Task {
             let key = field.key().clone();
             let mut value = field.value().clone();
             if let Some(field_spec) = spec.field_specs.get(key.as_kebab()) {
-                let raw_json = field_value_to_json_for_spec(&value, field_spec);
-                if let Err(error) = field_spec.validate_raw_value(&raw_json) {
-                    let raw = field_value_raw_string(&value);
+                let raw_value = field_value_for_spec(&value);
+                if let Err(error) = field_spec.validate_value(raw_value) {
+                    let raw = value.to_raw_string();
                     tracing::warn!(
                         field = key.as_str(),
                         raw = raw.as_ref(),
@@ -365,36 +367,26 @@ impl Task {
     }
 }
 
-fn field_value_to_json(value: &FieldValue) -> JsonValue {
-    serde_json::to_value(value).unwrap_or(JsonValue::Null)
-}
-
-fn field_value_to_json_for_spec(
-    value: &FieldValue,
-    spec: &crate::config::value::FieldSpec,
-) -> JsonValue {
-    if matches!(spec, crate::config::value::FieldSpec::Integer { .. })
-        && let FieldValue::Number(number) = value
-        && number.fract() == 0.0f64
-        && let Ok(parsed) = number.to_string().parse::<i64>()
-    {
-        return JsonValue::Number(parsed.into());
-    }
-    field_value_to_json(value)
-}
-
-fn field_value_raw_string(value: &FieldValue) -> Box<str> {
+fn field_value_for_spec(value: &FieldValue) -> ValueRef<'_> {
     match value {
-        FieldValue::String(text) => text.clone(),
-        FieldValue::Array(_)
-        | FieldValue::Boolean(_)
-        | FieldValue::Date(_)
-        | FieldValue::DateTime(_)
+        FieldValue::Number(number) => value
+            .as_i64_exact()
+            .map_or(ValueRef::Float(*number), ValueRef::Integer),
+        FieldValue::String(text) => ValueRef::String(text),
+        FieldValue::Date(_) => value
+            .as_naive_date()
+            .map_or(ValueRef::Other(value.type_name()), ValueRef::Date),
+        FieldValue::DateTime(_) => value
+            .as_datetime()
+            .map_or(ValueRef::Other(value.type_name()), |dt| {
+                ValueRef::DateTime(dt.naive_local())
+            }),
+        FieldValue::Boolean(_)
         | FieldValue::Time(_)
         | FieldValue::Duration(_)
-        | FieldValue::Number(_)
+        | FieldValue::Array(_)
         | FieldValue::Object(_)
-        | FieldValue::Null => value.to_string().into_boxed_str(),
+        | FieldValue::Null => ValueRef::Other(value.type_name()),
     }
 }
 

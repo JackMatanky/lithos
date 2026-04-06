@@ -3,6 +3,8 @@
 //! Combines read and write operations for the note context in a single
 //! repository interface, following the File → Raw → Domain → Storage pipeline.
 
+use std::borrow::Cow;
+
 use uuid::Uuid;
 
 use crate::{
@@ -370,10 +372,10 @@ impl Repository for RedbRepository<'_> {
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
 
-        let stored_note = if note_id == note.id() {
-            note.clone()
+        let stored_note: Cow<'_, Note> = if note_id == note.id() {
+            Cow::Borrowed(note)
         } else {
-            note.clone().with_id(note_id)
+            Cow::Owned(note.clone().with_id(note_id))
         };
         let old_index_data = if existing_id.is_some() {
             let stored = self
@@ -400,7 +402,7 @@ impl Repository for RedbRepository<'_> {
                 path,
                 note_id,
             )?;
-            writer.put_note(&stored_note)?;
+            writer.put_note(stored_note.as_ref())?;
             Ok(())
         })?;
 

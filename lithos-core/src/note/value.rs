@@ -357,6 +357,17 @@ impl FieldValue {
         }
     }
 
+    /// Returns the number as an exact i64 if it is integral and in range.
+    #[inline]
+    #[must_use]
+    pub fn as_i64_exact(&self) -> Option<i64> {
+        let number = self.as_number()?;
+        if !number.is_finite() || number.fract() != 0.0f64 {
+            return None;
+        }
+        number.to_string().parse::<i64>().ok()
+    }
+
     /// Returns the string value if this is a `String` variant.
     #[inline]
     #[must_use]
@@ -365,6 +376,24 @@ impl FieldValue {
             Some(s)
         } else {
             None
+        }
+    }
+
+    /// Returns a string representation suitable for raw field fallback.
+    #[inline]
+    #[must_use]
+    pub fn to_raw_string(&self) -> Box<str> {
+        match self {
+            FieldValue::String(text) => text.clone(),
+            FieldValue::Array(_)
+            | FieldValue::Boolean(_)
+            | FieldValue::Date(_)
+            | FieldValue::DateTime(_)
+            | FieldValue::Time(_)
+            | FieldValue::Duration(_)
+            | FieldValue::Number(_)
+            | FieldValue::Object(_)
+            | FieldValue::Null => self.to_string().into_boxed_str(),
         }
     }
 

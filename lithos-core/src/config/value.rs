@@ -81,6 +81,17 @@ pub enum FieldSpec {
     },
 }
 
+/// Borrowed, typed field value for configuration validation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ValueRef<'value> {
+    Integer(i64),
+    Float(f64),
+    String(&'value str),
+    DateTime(chrono::NaiveDateTime),
+    Date(chrono::NaiveDate),
+    Other(&'static str),
+}
+
 impl FieldSpec {
     #[inline]
     /// Build a field spec from raw input.
@@ -273,6 +284,193 @@ impl FieldSpec {
                 name,
                 format,
             } => Self::validate_datetime(value, name, format),
+        }
+    }
+
+    /// Validate a typed value against this spec.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the value does not match the spec.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics are preferred for config validation"
+    )]
+    pub fn validate_value(
+        &self,
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        match self {
+            Self::Integer {
+                name,
+                bounds,
+            } => Self::validate_value_integer(name, bounds, value),
+            Self::Float {
+                name,
+                bounds,
+            } => Self::validate_value_float(name, bounds, value),
+            Self::String {
+                name,
+                compiled,
+                ..
+            } => Self::validate_value_string(name, compiled.as_deref(), value),
+            Self::Enum {
+                name,
+                values,
+            } => Self::validate_value_enum(name, values, value),
+            Self::DateTime {
+                name,
+                format,
+            } => Self::validate_value_datetime(name, format, value),
+        }
+    }
+
+    fn validate_value_integer(
+        name: &FieldName,
+        bounds: &Bounds<i64>,
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        match value {
+            ValueRef::Integer(number) => {
+                if !bounds.validate(number) {
+                    return Err(ConfigError::OutOfRange {
+                        field: name.as_str().into(),
+                        value: number.to_string().into(),
+                        min: bounds.min().map(|v| v.to_string().into()),
+                        max: bounds.max().map(|v| v.to_string().into()),
+                    });
+                }
+                Ok(())
+            }
+            other @ (ValueRef::Float(_)
+            | ValueRef::String(_)
+            | ValueRef::DateTime(_)
+            | ValueRef::Date(_)
+            | ValueRef::Other(_)) => Err(ConfigError::InvalidType {
+                field: name.as_str().into(),
+                expected: "integer".into(),
+                actual: value_ref_type(other).into(),
+            }),
+        }
+    }
+
+    fn validate_value_float(
+        name: &FieldName,
+        bounds: &Bounds<f64>,
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        let number = match value {
+            ValueRef::Float(number) => number,
+            ValueRef::Integer(number) => {
+                #[expect(
+                    clippy::as_conversions,
+                    clippy::cast_precision_loss,
+                    reason = "Integer to float mirrors JSON validation \
+                              behavior"
+                )]
+                let number = number as f64;
+                number
+            }
+            other @ (ValueRef::String(_)
+            | ValueRef::DateTime(_)
+            | ValueRef::Date(_)
+            | ValueRef::Other(_)) => {
+                return Err(ConfigError::InvalidType {
+                    field: name.as_str().into(),
+                    expected: "float".into(),
+                    actual: value_ref_type(other).into(),
+                });
+            }
+        };
+        if !bounds.validate(number) {
+            return Err(ConfigError::OutOfRange {
+                field: name.as_str().into(),
+                value: number.to_string().into(),
+                min: bounds.min().map(|v| v.to_string().into()),
+                max: bounds.max().map(|v| v.to_string().into()),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_value_string(
+        name: &FieldName,
+        compiled: Option<&Regex>,
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        match value {
+            ValueRef::String(text) => {
+                if let Some(regex) = compiled
+                    && !regex.is_match(text)
+                {
+                    return Err(ConfigError::ValidationFailed {
+                        field: name.as_str().into(),
+                        message: "pattern mismatch".into(),
+                    });
+                }
+                Ok(())
+            }
+            other @ (ValueRef::Integer(_)
+            | ValueRef::Float(_)
+            | ValueRef::DateTime(_)
+            | ValueRef::Date(_)
+            | ValueRef::Other(_)) => Err(ConfigError::InvalidType {
+                field: name.as_str().into(),
+                expected: "string".into(),
+                actual: value_ref_type(other).into(),
+            }),
+        }
+    }
+
+    fn validate_value_enum(
+        name: &FieldName,
+        values: &[Box<str>],
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        match value {
+            ValueRef::String(text) => {
+                if !values.iter().any(|v| v.as_ref() == text) {
+                    return Err(ConfigError::InvalidEnumValue {
+                        field: name.as_str().into(),
+                        value: text.into(),
+                        allowed: values
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>(),
+                    });
+                }
+                Ok(())
+            }
+            other @ (ValueRef::Integer(_)
+            | ValueRef::Float(_)
+            | ValueRef::DateTime(_)
+            | ValueRef::Date(_)
+            | ValueRef::Other(_)) => Err(ConfigError::InvalidType {
+                field: name.as_str().into(),
+                expected: "string".into(),
+                actual: value_ref_type(other).into(),
+            }),
+        }
+    }
+
+    fn validate_value_datetime(
+        name: &FieldName,
+        format: &str,
+        value: ValueRef<'_>,
+    ) -> Result<(), ConfigError> {
+        match value {
+            ValueRef::String(text) => {
+                parse_datetime_value(text, format, name.as_str())?;
+                Ok(())
+            }
+            ValueRef::DateTime(_) | ValueRef::Date(_) => Ok(()),
+            other @ (ValueRef::Integer(_)
+            | ValueRef::Float(_)
+            | ValueRef::Other(_)) => Err(ConfigError::InvalidType {
+                field: name.as_str().into(),
+                expected: "datetime".into(),
+                actual: value_ref_type(other).into(),
+            }),
         }
     }
 
@@ -596,6 +794,17 @@ fn value_type(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn value_ref_type(value: ValueRef<'_>) -> &'static str {
+    match value {
+        ValueRef::Integer(_) => "integer",
+        ValueRef::Float(_) => "float",
+        ValueRef::String(_) => "string",
+        ValueRef::DateTime(_) => "datetime",
+        ValueRef::Date(_) => "date",
+        ValueRef::Other(name) => name,
     }
 }
 
