@@ -83,7 +83,8 @@ The Note bounded context currently lacks complete representation of markdown lis
 
 **Data Integrity**:
 
-- Invalid metadata → parse error (fail-fast)
+- Invalid non-temporal field values that fail TaskConfig spec validation are preserved as `FieldValue::String(raw)` and logged as warnings
+- Invalid temporal fields (date spec mismatches) abort task promotion with a parse error
 - Unconfigured fields → stored as `FieldValue::String` (forward compatibility)
 - List items without promotion → List only (no Task entity)
  - TaskId is persisted in `Note.tasks` and does not require writing back to the note file
@@ -219,7 +220,7 @@ for task in note.tasks() {
 ┌──────────────────────────────────────────────┐
 │ Semantic Layer (Tasks)                       │
 │ - Promoted checkboxes only                   │
-│ - Rich metadata (config-validated)           │
+│ - Rich metadata (best-effort validation)     │
 │ - Queryable, indexed                         │
 │ - Stored in: Note::tasks                     │
 └──────────────────────────────────────────────┘
@@ -236,7 +237,7 @@ for task in note.tasks() {
 
 - **List** = HTML `<ul>` or `<ol>` (document structure)
 - **Task** = Application-level TODO item (business semantics)
-- **TaskMetadata** = Key-value store validated by TaskConfig
+- **TaskMetadata** = Key-value store with best-effort spec validation (invalid values preserved as raw strings)
 
 ## 3. Detailed Design (The "How")
 
@@ -454,8 +455,8 @@ pub enum ListType {
 
 #### `TaskMetadata` (Domain)
 
-- **Purpose**: Task-specific metadata validated against TaskConfig
-- **Key rules**: Field names are canonical (from config); values are FieldValue
+- **Purpose**: Task-specific metadata with best-effort spec validation
+- **Key rules**: Field names are canonical (from config); values are `FieldValue` (invalid spec values stored as raw strings)
 - **Shape**:
 
 ```rust
@@ -687,11 +688,11 @@ impl Task {
 
 #### Component: `Task`
 
-- **Responsibility**: Promoted task entity with validated metadata and first-class temporal fields
+- **Responsibility**: Promoted task entity with best-effort metadata validation and first-class temporal fields
 - **Public Interface**:
   - `Task::from_checkbox(raw_text: &str, status_symbol: StatusSymbol, position: SourceByteOffset, config: &TaskConfig) -> Result<Self, NoteError>`
-    - _Behavior_: Creates task from checkbox text; validates metadata against config; extracts temporal fields
-    - _Errors_: Unknown status symbol, invalid metadata, type mismatch, out of bounds, invalid date format
+    - _Behavior_: Creates task from checkbox text; validates metadata where spec exists (invalid values preserved as raw strings); extracts temporal fields
+    - _Errors_: Unknown status symbol, invalid temporal field, type mismatch, out of bounds, invalid date format
   - `Task::should_promote(text: &str, config: &TaskConfig) -> bool`
     - _Behavior_: Checks if text contains any configured task tag (tag-based promotion only)
     - _Note_: Presence of metadata does NOT auto-promote (explicit is better than implicit)
@@ -701,7 +702,8 @@ impl Task {
   - Status is semantic name (not symbol)
   - Text is clean (no tags/metadata markers)
   - Temporal fields are first-class (not in metadata) for query optimization
-  - Metadata validated against TaskConfig (excluding temporal fields)
+  - Metadata is validated when a field spec exists; invalid spec values are preserved as raw strings
+  - Temporal fields use DateSpec strictly when configured
   - Promotion requires task tag (config-driven, explicit)
 
 #### Component: `TaskMetadata`
@@ -715,7 +717,7 @@ impl Task {
   - `get(&self, field: &str) -> Option<&FieldValue>`
     - _Behavior_: Retrieves field value
   - Type-specific getters (get_string, get_number, get_boolean, get_date)
-- **State/Invariants**: None (stores whatever was validated)
+- **State/Invariants**: None (stores validated values or raw-string fallbacks)
 
 ### 3.4 Integration & Data Flow
 
@@ -778,6 +780,8 @@ sequenceDiagram
 
     Task->>Task: Store metadata
 ```
+
+Note: when `spec.validate_raw_value(...)` fails, the value is preserved as `FieldValue::String(raw)` and a warning is emitted. Temporal fields are still parsed strictly using `DateSpec`.
 
 #### Dependencies
 

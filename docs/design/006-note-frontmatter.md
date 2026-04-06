@@ -26,7 +26,7 @@ Integration points:
 - `Note` aggregate stores `Option<Frontmatter>`.
 - Configuration defines which keys represent special fields (title, aliases, file_class, etc.) via `crate::config::types::Frontmatter` and aggregated config.
 - A domain event `FrontmatterValidated` exists to represent app-layer schema validation having occurred.
-- Frontmatter extraction should use pulldown-cmark metadata blocks (`Tag::MetadataBlock`) with `Options::ENABLE_YAML_STYLE_METADATA_BLOCKS` (and optionally `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS`) to capture the exact frontmatter slice and byte offsets.
+- Frontmatter extraction should use pulldown-cmark metadata blocks (`Tag::MetadataBlock`) with `Options::ENABLE_YAML_STYLE_METADATA_BLOCKS` (and optionally `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS`) to capture the exact frontmatter slice and byte offsets. Parsing/serde happens in the raw layer; the domain does not deserialize.
 
 The design must address a few tensions that show up in production usage:
 
@@ -168,7 +168,7 @@ assert_eq!(title_ref, Some("My Note"));
 
 Frontmatter is a note-context leaf component used by:
 
-- note parsing / ingestion (creates `Frontmatter`)
+- note parsing / ingestion (captures `RawFrontmatter`, then converts to `Frontmatter` during Raw → Domain)
 - note aggregate (`Note` stores it)
 - schema validation in the app layer (emits `FrontmatterValidated`)
 
@@ -203,42 +203,20 @@ Also note: recursion is persisted. The rkyv derives must continue to use the doc
 
 #### YAML/TOML Conversion to FieldValue
 
-Frontmatter parsing converts YAML/TOML values into the `FieldValue` enum at the adapter boundary:
+Frontmatter parsing converts YAML/TOML values into `RawFieldValue` in the raw layer, then converts to `FieldValue` during Raw → Domain:
 
 ```rust
-impl Frontmatter {
-    pub fn from_yaml(yaml: &str) -> Result<Self, FrontmatterError> {
-        let yaml_value: serde_yaml::Value = serde_yaml::from_str(yaml)?;
-        let fields = convert_yaml_to_field_values(yaml_value)?;
-        Ok(Frontmatter { fields })
-    }
+// raw/frontmatter.rs
+let raw_fields = raw_frontmatter.parse_fields()?; // HashMap<Box<str>, RawFieldValue>
 
-    pub fn from_toml(toml: &str) -> Result<Self, FrontmatterError> {
-        let toml_value: toml::Value = toml::from_str(toml)?;
-        let fields = convert_toml_to_field_values(toml_value)?;
-        Ok(Frontmatter { fields })
-    }
-}
+// note/value.rs
+let fields = raw_fields
+    .into_iter()
+    .map(|(k, v)| (k, FieldValue::from(v)))
+    .collect::<HashMap<_, _>>();
 
-fn convert_yaml_to_field_values(
-    yaml: serde_yaml::Value
-) -> Result<HashMap<String, FieldValue>, FrontmatterError> {
-    // Convert serde_yaml::Value → FieldValue
-    // Maps:
-    // - serde_yaml::Value::String → FieldValue::String
-    // - serde_yaml::Value::Number → FieldValue::Number
-    // - serde_yaml::Value::Bool → FieldValue::Boolean
-    // - serde_yaml::Value::Sequence → FieldValue::Array (recursive)
-    // - serde_yaml::Value::Mapping → FieldValue::Object (recursive)
-    // - Tagged values with date/time → FieldValue::Date (parsed via chrono)
-}
-
-fn convert_toml_to_field_values(
-    toml: toml::Value
-) -> Result<HashMap<String, FieldValue>, FrontmatterError> {
-    // Similar conversion for TOML
-    // Uses toml::Value → FieldValue mapping
-}
+// note/frontmatter.rs
+let frontmatter = Frontmatter::from_fields(fields, spec);
 ```
 
 **Conversion Rules**:
@@ -254,7 +232,7 @@ fn convert_toml_to_field_values(
 - Unsupported YAML/TOML types (e.g., binary) → `FrontmatterError::UnsupportedType`
 - Malformed frontmatter → `FrontmatterError::ParseError`
 
-**Location**: Conversion logic lives in `note/frontmatter.rs` (adapter boundary between serde and domain).
+**Location**: Parsing and serde conversion live in `note/raw/frontmatter.rs`; `RawFieldValue` → `FieldValue` conversion lives in `note/value.rs`; `Frontmatter::from_fields` lives in `note/frontmatter.rs`.
 
 Note: the current model stores `DateTime<Utc>` in `FieldValue::Date`. If a future change prefers `i64` timestamps for storage, that is a persisted-format migration and should be expressed as a new variant or a revised `FieldValue` shape.
 

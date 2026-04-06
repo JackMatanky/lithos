@@ -82,6 +82,12 @@ current violations, and defines how the redesign fixes them.
 3. Minimal AST; parity is achieved in projections, not in AST complexity.
 4. Byte offsets are canonical; line/column computed on demand using `LineIndex`.
 
+### Link Resolution Behavior (Current Parser)
+
+- Reference links follow CommonMark rules: labels are normalized (case-folded, whitespace collapsed, escapes handled) and **first definition wins**.
+- Reference definitions are collected only from markdown body events (metadata blocks and code fences are ignored).
+- External link detection uses RFC3986-style scheme checks (any valid `<scheme>:`), so non-http schemes like `obsidian:`, `file:`, or `s3:` are treated as external; fragment-only targets remain internal.
+
 ## Current Module Inventory (Audit)
 This inventory captures what each file currently contains, what to keep, and
 where it should live in the redesign. The goal is to remove overlap and keep
