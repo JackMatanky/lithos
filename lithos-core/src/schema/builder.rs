@@ -27,13 +27,9 @@ use crate::{
 
 /// Schema loader — orchestrates the full schema ingestion pipeline.
 pub struct Builder<'config, R> {
-    #[expect(dead_code, reason = "Builder retains config for future stages")]
     config: &'config Config,
     source: FsReader,
     repository: R,
-    schema_dir: PathBuf,
-    property_bank_path: PathBuf,
-    property_bank_filename: Option<Box<str>>,
     property_bank_delta: Option<HashSet<PropertyName>>,
 }
 
@@ -92,21 +88,10 @@ where
         source: FsReader,
         config: &'config Config,
     ) -> Self {
-        let property_bank_path = config.paths().property_bank_path();
-        let property_bank_filename = property_bank_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(Into::into);
-        let schema_dir =
-            config.paths().schema.schemas_dir().as_path().to_path_buf();
-
         Self {
             config,
             source,
             repository,
-            schema_dir,
-            property_bank_path,
-            property_bank_filename,
             property_bank_delta: None,
         }
     }
@@ -264,27 +249,21 @@ where
         Ok(completed)
     }
 
-    #[inline]
-    #[expect(
-        dead_code,
-        reason = "property bank delta will be wired into later stages"
-    )]
-    pub(crate) fn set_property_bank_delta(
-        &mut self,
-        property_bank_delta: Option<HashSet<PropertyName>>,
-    ) {
-        self.property_bank_delta = property_bank_delta;
-    }
-
     fn resolve_property_bank_filename(
         &self,
     ) -> Result<Box<str>, SchemaLoaderError> {
-        if let Some(name) = self.property_bank_filename.as_ref() {
-            return Ok(name.clone());
+        if let Some(name) = self
+            .config
+            .paths()
+            .property_bank_path()
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
+            return Ok(name.into());
         }
 
         self.source
-            .filename(self.property_bank_path.as_path())
+            .filename(self.config.paths().property_bank_path().as_path())
             .map(Into::into)
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
     }
@@ -301,12 +280,14 @@ where
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let bank_filename = self.resolve_property_bank_filename()?;
+        let schema_dir = self.config.paths().schema.schemas_dir();
+        let property_bank_path = self.config.paths().property_bank_path();
 
-        let pattern = format!("{}/**/*", self.schema_dir.display());
+        let pattern = format!("{}/**/*", schema_dir.as_path().display());
         let all_files = self.source.list_files(&pattern).map_err(|e| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                 crate::schema::error::SchemaFileError::Io {
-                    path: self.schema_dir.clone(),
+                    path: schema_dir.as_path().to_path_buf(),
                     source: std::io::Error::other(e),
                 },
             ))
@@ -335,7 +316,7 @@ where
                 has_property_bank = true;
                 on_bank_found(PropertyBankContext {
                     filename: bank_filename.clone(),
-                    path: self.property_bank_path.clone(),
+                    path: property_bank_path.clone(),
                 });
                 continue;
             }
