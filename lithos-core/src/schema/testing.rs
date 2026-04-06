@@ -306,7 +306,7 @@ impl Repository for InMemoryRepository {
         for (schema_id, schema) in schemas.iter() {
             let matching_props: Vec<PropertyName> = schema
                 .properties()
-                .iter_named()
+                .iter()
                 .filter(|(prop_name, _)| property_names.contains(prop_name))
                 .map(|(prop_name, _)| prop_name.clone())
                 .collect();

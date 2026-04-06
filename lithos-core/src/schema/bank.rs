@@ -197,7 +197,7 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
-        self.properties.contains_key(name)
+        self.properties.has(name)
     }
 
     /// Get all properties in the bank.

@@ -2186,7 +2186,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 .get(parent_id)
                 .or_else(|| fetched_by_id.get(parent_id))
             {
-                for (name, prop) in schema.properties().iter_named() {
+                for (name, prop) in schema.properties() {
                     merged.insert(name.clone(), prop.clone());
                 }
             }

@@ -44,8 +44,8 @@ impl Merger {
 
         let mut result = child.clone();
 
-        for (name, prop) in parent.iter_named() {
-            if excluded_names.contains(name) || result.contains_key(name) {
+        for (name, prop) in parent {
+            if excluded_names.contains(name) || result.has(name) {
                 continue;
             }
             result.insert(name.clone(), prop.clone());
@@ -118,7 +118,7 @@ mod tests {
 
             let merged = Merger::inherit_properties(&parent, &child, &[]);
             let prop_names: Vec<&str> =
-                merged.iter_named().map(|(n, _)| n.as_ref()).collect();
+                merged.iter().map(|(n, _)| n.as_ref()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -170,8 +170,8 @@ mod tests {
 
             let excludes = vec![PropertyName::try_new("skip")?];
             let merged = Merger::inherit_properties(&parent, &child, &excludes);
-            assert!(merged.contains_key(&PropertyName::try_new("keep")?));
-            assert!(!merged.contains_key(&PropertyName::try_new("skip")?));
+            assert!(merged.has(&PropertyName::try_new("keep")?));
+            assert!(!merged.has(&PropertyName::try_new("skip")?));
             Ok(())
         }
     }

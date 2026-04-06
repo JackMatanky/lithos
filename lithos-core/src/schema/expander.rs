@@ -317,7 +317,7 @@ mod tests {
             let mut refs = HashMap::new();
             refs.insert(name.clone(), entry);
             let expanded_props = expander.expand_properties(&refs)?;
-            assert!(expanded_props.contains_key(&name));
+            assert!(expanded_props.has(&name));
             Ok(())
         }
 

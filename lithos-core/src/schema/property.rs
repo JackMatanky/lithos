@@ -66,7 +66,7 @@ impl PropertyMap {
     /// Returns true if the map contains the given name.
     #[inline]
     #[must_use]
-    pub fn contains_key(&self, name: &PropertyName) -> bool {
+    pub fn has(&self, name: &PropertyName) -> bool {
         self.0.contains_key(name)
     }
 
@@ -84,14 +84,6 @@ impl PropertyMap {
     #[inline]
     pub fn remove(&mut self, name: &PropertyName) -> Option<Property> {
         self.0.remove(name)
-    }
-
-    /// Returns an iterator over named properties.
-    #[inline]
-    pub fn iter_named(
-        &self,
-    ) -> impl Iterator<Item = (&PropertyName, &Property)> {
-        self.0.iter()
     }
 
     /// Returns an iterator over property values.

@@ -746,8 +746,8 @@ mod incremental_loading {
         let task = second_schema;
         let title = PropertyName::try_new("title")?;
         let status = PropertyName::try_new("status")?;
-        assert!(task.properties().contains_key(&title));
-        assert!(task.properties().contains_key(&status));
+        assert!(task.properties().has(&title));
+        assert!(task.properties().has(&status));
 
         Ok(())
     }
