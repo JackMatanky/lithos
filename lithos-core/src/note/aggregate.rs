@@ -9,7 +9,7 @@
 //! metadata, structure, and content facts for a single markdown file in
 //! the vault.
 
-use std::{fmt, time::SystemTime};
+use std::{collections::HashSet, fmt, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
@@ -343,8 +343,12 @@ impl Note {
         &self.inline_fields
     }
 
-    pub(crate) fn add_tag(tags: &mut Vec<Tag>, tag: Tag) {
-        if !tags.iter().any(|t| t.full_path() == tag.full_path()) {
+    pub(crate) fn add_tag(
+        tags: &mut Vec<Tag>,
+        seen: &mut HashSet<Box<str>>,
+        tag: Tag,
+    ) {
+        if seen.insert(tag.full_path().into()) {
             tags.push(tag);
         }
     }
@@ -437,28 +441,29 @@ impl Note {
         frontmatter: Option<&Frontmatter>,
     ) -> Vec<Tag> {
         let mut tags = Vec::new();
+        let mut seen = HashSet::new();
         for raw_tag in raw_tags {
             if let Ok(tag) =
                 Tag::try_new_with_range(raw_tag.value.as_ref(), raw_tag.range)
             {
-                Note::add_tag(&mut tags, tag);
+                Note::add_tag(&mut tags, &mut seen, tag);
             }
         }
         for item in list_items {
             for tag in item.tags() {
-                Note::add_tag(&mut tags, tag.clone());
+                Note::add_tag(&mut tags, &mut seen, tag.clone());
             }
         }
         for task in tasks {
             for tag in task.tags() {
-                Note::add_tag(&mut tags, tag.clone());
+                Note::add_tag(&mut tags, &mut seen, tag.clone());
             }
         }
         if let Some(frontmatter) = frontmatter
             && let Some(fm_tags) = frontmatter.tags()
         {
             for tag in fm_tags {
-                Note::add_tag(&mut tags, tag.clone());
+                Note::add_tag(&mut tags, &mut seen, tag.clone());
             }
         }
         tags

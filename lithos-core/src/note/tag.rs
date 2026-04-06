@@ -8,13 +8,9 @@
 //! Represents hierarchical tags used for note organization.
 #![allow(
     missing_docs,
-    clippy::exhaustive_structs,
-    clippy::exhaustive_enums,
     reason = "rkyv derives generate archived/resolver items that are missing \
               docs"
 )]
-
-use std::ops::Deref;
 
 use rkyv::{Archive, Deserialize, Serialize};
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
@@ -197,30 +193,6 @@ impl TagPath {
 
     #[inline]
     fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Internal wrapper for tag segments.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    SerdeSerialize,
-    SerdeDeserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct Segments(Vec<Box<str>>);
-
-impl Deref for Segments {
-    type Target = [Box<str>];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }

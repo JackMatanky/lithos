@@ -513,10 +513,26 @@ pub enum Target {
 
 impl Target {
     pub(crate) fn is_external_target(target: &str) -> bool {
-        target.starts_with("http://")
-            || target.starts_with("https://")
-            || target.starts_with("ftp://")
-            || target.starts_with("mailto:")
+        let bytes = target.as_bytes();
+        let Some(first) = bytes.first().copied() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic() {
+            return false;
+        }
+
+        let mut idx = 1usize;
+        while let Some(&b) = bytes.get(idx) {
+            if b == b':' {
+                return true;
+            }
+            if b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.') {
+                idx = idx.saturating_add(1);
+                continue;
+            }
+            return false;
+        }
+        false
     }
 
     /// Returns `true` if the target is an external URL.

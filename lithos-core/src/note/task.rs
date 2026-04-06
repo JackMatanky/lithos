@@ -76,6 +76,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone as _};
 use rkyv::{Archive, Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use super::{
@@ -299,12 +300,26 @@ impl Task {
             .cloned()
             .unwrap_or_else(|| status_symbol.value().to_string().into());
 
-        // 2. Copy all fields from ListItem
-        let fields: HashMap<_, _> = item
-            .fields()
-            .iter()
-            .map(|f| (f.key().clone(), f.value().clone()))
-            .collect();
+        // 2. Copy and validate fields from ListItem
+        let mut fields = HashMap::with_capacity(item.fields().len());
+        for field in item.fields() {
+            let key = field.key().clone();
+            let mut value = field.value().clone();
+            if let Some(field_spec) = spec.field_specs.get(key.as_kebab()) {
+                let raw_json = field_value_to_json_for_spec(&value, field_spec);
+                if let Err(error) = field_spec.validate_raw_value(&raw_json) {
+                    let raw = field_value_raw_string(&value);
+                    tracing::warn!(
+                        field = key.as_str(),
+                        raw = raw.as_ref(),
+                        ?error,
+                        "Task field failed validation; storing raw string"
+                    );
+                    value = FieldValue::String(raw);
+                }
+            }
+            fields.insert(key, value);
+        }
 
         // 3. Extract date slots from fields using spec
         let mut dates = TaskDates::new();
@@ -347,6 +362,39 @@ impl Task {
 
         Task::try_new(status, text, item.range(), tags, fields, dates)
             .map_err(Into::into)
+    }
+}
+
+fn field_value_to_json(value: &FieldValue) -> JsonValue {
+    serde_json::to_value(value).unwrap_or(JsonValue::Null)
+}
+
+fn field_value_to_json_for_spec(
+    value: &FieldValue,
+    spec: &crate::config::value::FieldSpec,
+) -> JsonValue {
+    if matches!(spec, crate::config::value::FieldSpec::Integer { .. })
+        && let FieldValue::Number(number) = value
+        && number.fract() == 0.0f64
+        && let Ok(parsed) = number.to_string().parse::<i64>()
+    {
+        return JsonValue::Number(parsed.into());
+    }
+    field_value_to_json(value)
+}
+
+fn field_value_raw_string(value: &FieldValue) -> Box<str> {
+    match value {
+        FieldValue::String(text) => text.clone(),
+        FieldValue::Array(_)
+        | FieldValue::Boolean(_)
+        | FieldValue::Date(_)
+        | FieldValue::DateTime(_)
+        | FieldValue::Time(_)
+        | FieldValue::Duration(_)
+        | FieldValue::Number(_)
+        | FieldValue::Object(_)
+        | FieldValue::Null => value.to_string().into_boxed_str(),
     }
 }
 
@@ -939,6 +987,11 @@ impl TaskDateValue {
             if let Ok(dt) = DateTime::parse_from_str(s, date_spec.format()) {
                 return Self::new(FieldValue::DateTime(dt.into()), spec);
             }
+            return Err(TaskError::InvalidDate {
+                keyword: key.into(),
+                raw: s.into(),
+                reason: "does not match configured format",
+            });
         }
 
         // Try RFC3339 datetime
@@ -1215,6 +1268,41 @@ mod tests {
         assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
+    #[test]
+    fn invalid_field_values_fall_back_to_string() {
+        let mut spec = task_spec_fixture();
+        spec.field_specs.insert(
+            "priority".into(),
+            crate::config::value::FieldSpec::Integer {
+                name: crate::config::value::FieldName::try_new("priority")
+                    .unwrap(),
+                bounds: crate::bounds::Bounds::Unbounded,
+            },
+        );
+
+        let task =
+            promote_task("#task Review PR [priority:: nope]", &spec, &[]);
+
+        let priority_field = task
+            .fields()
+            .iter()
+            .find(|(k, _)| k.as_str() == "priority")
+            .map(|(_, v)| v);
+        assert_eq!(priority_field.and_then(|v| v.as_str()), Some("nope"));
+    }
+
+    #[test]
+    fn date_specs_reject_invalid_formats() {
+        let spec = task_spec_fixture();
+        let item = list_item_from_text(
+            "#task Review PR [due:: 2024/01/01]",
+            &spec,
+            &[],
+        );
+        let result = Task::promote(&item, &spec);
+        result.unwrap_err();
+    }
+
     fn date_of(value: &TaskDateValue) -> NaiveDate {
         value.as_naive_date().expect("date")
     }
@@ -1224,11 +1312,15 @@ mod tests {
         spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Task {
-        let item = list_item_from_text(promoted_text, emoji_markers);
+        let item = list_item_from_text(promoted_text, spec, emoji_markers);
         Task::promote(&item, spec).expect("task conversion")
     }
 
-    fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
+    fn list_item_from_text(
+        raw_text: &str,
+        spec: &TaskConfigSpec,
+        emoji_markers: &[char],
+    ) -> ListItem {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -1251,11 +1343,19 @@ mod tests {
                         value,
                         range,
                     } = field;
+                    let normalized =
+                        crate::note::inline_fields::InlineFieldKey::normalize(
+                            key.as_ref(),
+                        );
+                    let date_spec = spec
+                        .temporal_specs
+                        .get(normalized.as_ref())
+                        .map(|(_, spec, _)| spec.as_ref());
                     let typed_value =
                         crate::note::raw::RawFieldValue::from_str_with_spec(
                             value.as_ref(),
                             key.as_ref(),
-                            None,
+                            date_spec,
                         )
                         .into_owned();
                     inline_fields.push(crate::note::raw::RawInlineField::new(

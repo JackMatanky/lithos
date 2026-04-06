@@ -452,7 +452,7 @@ impl<'source> From<RawFieldValue<'source>> for FieldValue {
             RawFieldValue::Time(t) => FieldValue::Time(t.into()),
             RawFieldValue::Boolean(b) => FieldValue::Boolean(b),
             RawFieldValue::Array(values) => FieldValue::Array(
-                Vec::from(values)
+                values
                     .into_iter()
                     .map(FieldValue::from)
                     .collect::<Vec<_>>()

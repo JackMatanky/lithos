@@ -60,6 +60,7 @@ impl<'source> RawFieldValue<'source> {
             if let Ok(dt) = DateTime::parse_from_str(text, date_spec.format()) {
                 return Self::DateTime(dt);
             }
+            return Self::String(Cow::Borrowed(text));
         }
 
         // 2. Heuristic parsing

@@ -14,17 +14,21 @@ use pulldown_cmark::{
     CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
 };
 
-use crate::note::{
-    error::{NoteIngestError, NoteParseError, StructureError},
-    paths::NotePath,
-    position::{SourceByteOffset, SourceByteRange},
-    raw::{
-        RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
-        RawInlineField, RawLink, RawLinkStyle, RawList, RawListDepth,
-        RawListItem, RawListKind, RawNote, RawSection, RawSectionKind, RawTag,
-        RawTaskMarker,
+use crate::{
+    config::task::TaskConfigSpec,
+    note::{
+        error::{NoteIngestError, NoteParseError, StructureError},
+        inline_fields::InlineFieldKey,
+        paths::NotePath,
+        position::{SourceByteOffset, SourceByteRange},
+        raw::{
+            RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
+            RawInlineField, RawInlineFieldToken, RawLink, RawLinkStyle,
+            RawList, RawListDepth, RawListItem, RawListKind, RawNote,
+            RawSection, RawSectionKind, RawTag, RawTaskMarker,
+        },
+        scanner::NoteScanner,
     },
-    scanner::NoteScanner,
 };
 
 type ScannedArtifacts<'source> = (
@@ -33,6 +37,8 @@ type ScannedArtifacts<'source> = (
     Vec<RawBlockRef<'source>>,
     Option<RawTaskMarker>,
 );
+
+type ReferenceMap = std::collections::HashMap<Box<str>, Box<str>>;
 
 /// Markdown parser for extracting note facts and structure.
 #[non_exhaustive]
@@ -105,7 +111,9 @@ impl MarkdownParser {
         )> = None;
         let mut metadata_text = pool.take();
 
-        let reference_map = reference_definitions_map(markdown);
+        let metadata_ranges = Self::metadata_ranges(markdown);
+        let mut reference_map: Option<ReferenceMap> = None;
+        let empty_reference_map = ReferenceMap::new();
         let parser = Parser::new_ext(markdown, Self::obsidian_options());
         let events = parser.into_offset_iter().map(|(event, range)| {
             let normalized = match event {
@@ -157,10 +165,33 @@ impl MarkdownParser {
                     metadata_text.clear();
                 }
                 Event::Start(tag) => {
+                    #[expect(
+                        clippy::pattern_type_mismatch,
+                        reason = "Match ergonomics on &Tag keep event \
+                                  handling concise"
+                    )]
+                    if let pulldown_cmark::Tag::Link {
+                        link_type,
+                        ..
+                    }
+                    | pulldown_cmark::Tag::Image {
+                        link_type,
+                        ..
+                    } = &tag
+                        && is_reference_link_type(*link_type)
+                        && reference_map.is_none()
+                    {
+                        reference_map = Some(reference_definitions_map(
+                            markdown,
+                            &metadata_ranges,
+                        ));
+                    }
+                    let map =
+                        reference_map.as_ref().unwrap_or(&empty_reference_map);
                     Self::handle_start_tag(
                         tag,
                         start_pos,
-                        &reference_map,
+                        map,
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
@@ -176,6 +207,7 @@ impl MarkdownParser {
                         range,
                         markdown,
                         &scanner,
+                        task_spec,
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
@@ -259,6 +291,40 @@ impl MarkdownParser {
             .union(Options::ENABLE_MATH)
     }
 
+    fn metadata_ranges(markdown: &str) -> Vec<std::ops::Range<usize>> {
+        let parser = Parser::new_ext(markdown, Self::obsidian_options());
+        let mut ranges = Vec::new();
+        let mut current_start = None;
+
+        for (event, range) in parser.into_offset_iter() {
+            match event {
+                Event::Start(pulldown_cmark::Tag::MetadataBlock(_)) => {
+                    current_start = Some(range.start);
+                }
+                Event::End(pulldown_cmark::TagEnd::MetadataBlock(_)) => {
+                    if let Some(start) = current_start.take() {
+                        ranges.push(start..range.end);
+                    }
+                }
+                Event::Start(_)
+                | Event::End(_)
+                | Event::Text(_)
+                | Event::Code(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::FootnoteReference(_)
+                | Event::SoftBreak
+                | Event::HardBreak
+                | Event::Rule
+                | Event::TaskListMarker(_) => {}
+            }
+        }
+
+        ranges
+    }
+
     #[inline]
     fn heading_level_value(level: pulldown_cmark::HeadingLevel) -> u8 {
         match level {
@@ -279,7 +345,7 @@ impl MarkdownParser {
     fn handle_start_tag<'source>(
         tag: pulldown_cmark::Tag<'source>,
         start_pos: SourceByteOffset,
-        reference_map: &std::collections::HashMap<Box<str>, Box<str>>,
+        reference_map: &ReferenceMap,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
@@ -404,6 +470,7 @@ impl MarkdownParser {
         range: std::ops::Range<usize>,
         markdown: &'source str,
         scanner: &NoteScanner,
+        task_spec: &TaskConfigSpec,
         depth: &mut u32,
         block_stack: &mut Vec<ActiveBlock>,
         list_stack: &mut Vec<RawListKind>,
@@ -494,6 +561,7 @@ impl MarkdownParser {
                                     &block.scannable_ranges,
                                     false,
                                     block_range,
+                                    task_spec,
                                 )?;
                             tags.extend(scan_tags);
                             inline_fields.extend(scan_fields);
@@ -511,6 +579,7 @@ impl MarkdownParser {
                                 block_refs,
                                 markdown,
                                 scanner,
+                                task_spec,
                             )?;
                         }
                         BlockKind::ListItem => {
@@ -525,6 +594,7 @@ impl MarkdownParser {
                                 block_refs,
                                 markdown,
                                 scanner,
+                                task_spec,
                             )?;
                         }
                         BlockKind::List => {
@@ -675,19 +745,27 @@ impl MarkdownParser {
         Ok(true)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Scanner needs full context for inline artifacts"
+    )]
     fn scan_block_artifacts<'source>(
         scanner: &NoteScanner,
         source: &'source str,
         scannable_ranges: &[std::ops::Range<usize>],
         include_task_marker: bool,
         block_range: SourceByteRange,
+        task_spec: &TaskConfigSpec,
     ) -> Result<ScannedArtifacts<'source>, NoteIngestError> {
         let raw_tokens = scanner
             .scan_ranges_raw(source, scannable_ranges, include_task_marker)
             .map_err(NoteIngestError::Domain)?;
         let tags = raw_tokens.tags;
-        let inline_fields =
-            raw_tokens.inline_fields.into_iter().map(Into::into).collect();
+        let inline_fields = raw_tokens
+            .inline_fields
+            .into_iter()
+            .map(|token| Self::inline_field_from_token(token, task_spec))
+            .collect();
         let mut block_refs = raw_tokens.block_refs;
         if block_refs.is_empty()
             && let Some(tail_range) =
@@ -703,6 +781,40 @@ impl MarkdownParser {
             block_refs.extend(tail_tokens.block_refs);
         }
         Ok((tags, inline_fields, block_refs, raw_tokens.task_marker))
+    }
+
+    fn inline_field_from_token<'source>(
+        token: RawInlineFieldToken<'source>,
+        task_spec: &TaskConfigSpec,
+    ) -> RawInlineField<'source> {
+        let RawInlineFieldToken {
+            key,
+            value,
+            range,
+        } = token;
+        let normalized = InlineFieldKey::normalize(key.as_ref());
+        let date_spec = task_spec
+            .temporal_specs
+            .get(normalized.as_ref())
+            .map(|entry| entry.1.as_ref());
+        let typed_value = match value {
+            Cow::Borrowed(text) => {
+                crate::note::raw::RawFieldValue::from_str_with_spec(
+                    text,
+                    key.as_ref(),
+                    date_spec,
+                )
+            }
+            Cow::Owned(text) => {
+                crate::note::raw::RawFieldValue::from_str_with_spec(
+                    &text,
+                    key.as_ref(),
+                    date_spec,
+                )
+                .into_owned()
+            }
+        };
+        RawInlineField::new(key, typed_value, range)
     }
 
     #[inline]
@@ -746,6 +858,7 @@ impl MarkdownParser {
         block_refs: &mut Vec<RawBlockRef<'source>>,
         markdown: &'source str,
         scanner: &NoteScanner,
+        task_spec: &TaskConfigSpec,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::Paragraph,
@@ -759,6 +872,7 @@ impl MarkdownParser {
                 &block.scannable_ranges,
                 false,
                 block_range,
+                task_spec,
             )?;
         tags.extend(scan_tags);
         inline_fields.extend(scan_fields);
@@ -816,6 +930,7 @@ impl MarkdownParser {
         block_refs: &mut Vec<RawBlockRef<'source>>,
         markdown: &'source str,
         scanner: &NoteScanner,
+        task_spec: &TaskConfigSpec,
     ) -> Result<(), NoteIngestError> {
         sections.push(RawSection::new(
             RawSectionKind::List,
@@ -830,6 +945,7 @@ impl MarkdownParser {
                 &block.scannable_ranges,
                 false,
                 block_range,
+                task_spec,
             )?;
         let task_marker = if is_checked.is_some() {
             scanner
@@ -987,10 +1103,7 @@ impl<'source> LinkTarget<'source> {
     }
 
     fn is_external(&self) -> bool {
-        self.0.starts_with("http://")
-            || self.0.starts_with("https://")
-            || self.0.starts_with("ftp://")
-            || self.0.starts_with("mailto:")
+        crate::note::link::Target::is_external_target(self.0.as_ref())
     }
 }
 
@@ -1060,22 +1173,24 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
 fn resolve_reference_target<'source>(
     link_type: pulldown_cmark::LinkType,
     dest_url: CowStr<'source>,
-    reference_map: &std::collections::HashMap<Box<str>, Box<str>>,
+    reference_map: &ReferenceMap,
 ) -> Cow<'source, str> {
-    if is_reference_link_type(link_type)
-        && let Some(resolved) = reference_map.get(dest_url.as_ref())
-    {
-        return Cow::Owned(resolved.as_ref().to_owned());
+    if is_reference_link_type(link_type) {
+        let normalized = normalize_reference_label(dest_url.as_ref());
+        if let Some(resolved) = reference_map.get(normalized.as_ref()) {
+            return Cow::Owned(resolved.as_ref().to_owned());
+        }
     }
     cow_str_to_cow(dest_url)
 }
 
 fn reference_definitions_map(
     markdown: &str,
-) -> std::collections::HashMap<Box<str>, Box<str>> {
-    let mut map = std::collections::HashMap::new();
-    for (label, dest) in scan_reference_definitions(markdown) {
-        map.insert(label, dest);
+    skip_ranges: &[std::ops::Range<usize>],
+) -> ReferenceMap {
+    let mut map = ReferenceMap::new();
+    for (label, dest) in scan_reference_definitions(markdown, skip_ranges) {
+        map.entry(label).or_insert(dest);
     }
     map
 }
@@ -1088,11 +1203,57 @@ struct FenceState {
     count: usize,
 }
 
-fn scan_reference_definitions(markdown: &str) -> Vec<ReferenceDef> {
+fn normalize_reference_label(label: &str) -> Box<str> {
+    let mut normalized = String::with_capacity(label.len());
+    let mut last_was_space = false;
+    let mut chars = label.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        let ch = if ch == '\\' {
+            chars.next().unwrap_or('\\')
+        } else {
+            ch
+        };
+
+        if ch.is_whitespace() {
+            if normalized.is_empty() || last_was_space {
+                continue;
+            }
+            normalized.push(' ');
+            last_was_space = true;
+            continue;
+        }
+
+        normalized.push(ch.to_ascii_lowercase());
+        last_was_space = false;
+    }
+
+    if last_was_space {
+        normalized.pop();
+    }
+
+    normalized.into_boxed_str()
+}
+
+fn scan_reference_definitions(
+    markdown: &str,
+    skip_ranges: &[std::ops::Range<usize>],
+) -> Vec<ReferenceDef> {
     let mut defs = Vec::new();
     let mut fence: Option<FenceState> = None;
+    let mut offset = 0usize;
 
-    for line in markdown.lines() {
+    let mut lines = markdown.lines().peekable();
+    while let Some(line) = lines.next() {
+        let line_len = line.len();
+        let line_start = offset;
+        let line_end = line_start.saturating_add(line_len);
+        let next_offset = advance_line_offset(markdown, line_end);
+        if is_line_in_ranges(line_start, line_end, skip_ranges) {
+            offset = next_offset;
+            continue;
+        }
+
         if let Some(state) = fence {
             if let Some((marker, count)) = line_fence_marker(line)
                 && marker == state.marker
@@ -1100,10 +1261,12 @@ fn scan_reference_definitions(markdown: &str) -> Vec<ReferenceDef> {
             {
                 fence = None;
             }
+            offset = next_offset;
             continue;
         }
 
         if is_indented_code_line(line) {
+            offset = next_offset;
             continue;
         }
 
@@ -1112,46 +1275,114 @@ fn scan_reference_definitions(markdown: &str) -> Vec<ReferenceDef> {
                 marker,
                 count,
             });
+            offset = next_offset;
             continue;
         }
 
         let (leading_spaces, rest) = split_leading_spaces(line);
         if leading_spaces > 3 || !rest.starts_with('[') {
+            offset = next_offset;
             continue;
         }
 
         let Some(label_end) = rest.find("]:") else {
+            offset = next_offset;
             continue;
         };
         let label = rest.get(1..label_end).unwrap_or("").trim();
         if label.is_empty() {
+            offset = next_offset;
             continue;
         }
+        let label = normalize_reference_label(label);
 
         let dest_start = label_end.saturating_add(2);
         let dest_part = rest.get(dest_start..).unwrap_or("").trim_start();
         if dest_part.is_empty() {
+            if let Some((dest, next_line_offset)) = parse_multiline_destination(
+                lines.peek().copied(),
+                next_offset,
+                markdown,
+                skip_ranges,
+            ) {
+                defs.push((label, dest.into()));
+                lines.next();
+                offset = next_line_offset;
+                continue;
+            }
+            offset = next_offset;
             continue;
         }
 
-        let dest = if let Some(stripped) = dest_part.strip_prefix('<') {
-            let Some(close_idx) = stripped.find('>') else {
-                continue;
-            };
-            stripped.get(..close_idx).unwrap_or("")
-        } else {
-            dest_part.split_whitespace().next().unwrap_or("")
+        let Some(dest) = parse_reference_destination(dest_part) else {
+            offset = next_offset;
+            continue;
         };
 
         let dest = dest.trim();
         if dest.is_empty() {
+            offset = next_offset;
             continue;
         }
 
-        defs.push((label.into(), dest.into()));
+        defs.push((label, dest.into()));
+
+        offset = next_offset;
     }
 
     defs
+}
+
+fn parse_reference_destination(dest_part: &str) -> Option<&str> {
+    let dest = if let Some(stripped) = dest_part.strip_prefix('<') {
+        let close_idx = stripped.find('>')?;
+        stripped.get(..close_idx).unwrap_or("")
+    } else {
+        dest_part.split_whitespace().next().unwrap_or("")
+    };
+
+    let dest = dest.trim();
+    (!dest.is_empty()).then_some(dest)
+}
+
+fn parse_multiline_destination<'source>(
+    next_line: Option<&'source str>,
+    next_offset: usize,
+    markdown: &str,
+    skip_ranges: &[std::ops::Range<usize>],
+) -> Option<(&'source str, usize)> {
+    let next_line = next_line?;
+    let next_line_len = next_line.len();
+    let next_line_start = next_offset;
+    let next_line_end = next_line_start.saturating_add(next_line_len);
+    let next_line_offset = advance_line_offset(markdown, next_line_end);
+    if is_line_in_ranges(next_line_start, next_line_end, skip_ranges) {
+        return None;
+    }
+
+    let (_next_leading, next_rest) = split_leading_spaces(next_line);
+    let dest_part = next_rest.trim_start();
+    let dest = parse_reference_destination(dest_part)?;
+    Some((dest, next_line_offset))
+}
+
+fn is_line_in_ranges(
+    line_start: usize,
+    line_end: usize,
+    ranges: &[std::ops::Range<usize>],
+) -> bool {
+    ranges.iter().any(|range| range.start < line_end && range.end > line_start)
+}
+
+fn advance_line_offset(markdown: &str, line_end: usize) -> usize {
+    let rest = markdown.get(line_end..).unwrap_or("");
+    if rest.starts_with("\r\n") {
+        line_end.saturating_add(2)
+    } else if rest.starts_with('\n') || rest.starts_with('\r') {
+        line_end.saturating_add(1)
+    } else {
+        line_end
+    }
 }
 
 fn is_indented_code_line(line: &str) -> bool {
@@ -1282,5 +1513,89 @@ mod tests {
         let item = raw.list_items.first().expect("list item exists");
         assert_eq!(item.is_checked, Some(true));
         assert!(matches!(item.task_marker, Some(RawTaskMarker::Checked('x'))));
+    }
+
+    #[test]
+    fn reference_definitions_first_wins() {
+        let md = "[ref]: http://a.example\n[ref]: http://b.example\n\n[ref][]";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "http://a.example");
+    }
+
+    #[test]
+    fn reference_definitions_are_case_insensitive() {
+        let md = "[Ref]: http://example.test\n\n[ref][]";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "http://example.test");
+    }
+
+    #[test]
+    fn reference_definitions_in_frontmatter_are_ignored() {
+        let md = "---\n[ref]: http://frontmatter.test\n---\n\n[ref][]";
+        let raw = parse_raw(md);
+        assert!(raw.links.is_empty());
+    }
+
+    #[test]
+    fn reference_definitions_in_fenced_code_are_ignored() {
+        let md = "```\n[ref]: http://code.test\n```\n\n[ref][]";
+        let raw = parse_raw(md);
+        assert!(raw.links.is_empty());
+    }
+
+    #[test]
+    fn reference_definitions_normalize_whitespace() {
+        let md = "[Foo   Bar]: http://example.test\n\n[foo bar][]";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "http://example.test");
+    }
+
+    #[test]
+    fn reference_definitions_unescape_labels() {
+        let md = "[Foo\\ Bar]: http://example.test\n\n[foo\\ bar][]";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "http://example.test");
+    }
+
+    #[test]
+    fn reference_definitions_allow_multiline_destination() {
+        let md = "[ref]:\n  http://example.test\n\n[ref][]";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "http://example.test");
+    }
+
+    #[test]
+    fn external_scheme_targets_preserve_fragments() {
+        let md = "[obsidian](obsidian://open?vault=V#frag)";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "obsidian://open?vault=V#frag");
+        assert!(link.anchor.is_none());
+    }
+
+    #[test]
+    fn file_scheme_targets_preserve_fragments() {
+        let md = "[file](file:///Users/example/test.md#section)";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(
+            link.target.as_ref(),
+            "file:///Users/example/test.md#section"
+        );
+        assert!(link.anchor.is_none());
+    }
+
+    #[test]
+    fn s3_scheme_targets_preserve_fragments() {
+        let md = "[s3](s3://bucket/key#object)";
+        let raw = parse_raw(md);
+        let link = raw.links.first().expect("link exists");
+        assert_eq!(link.target.as_ref(), "s3://bucket/key#object");
+        assert!(link.anchor.is_none());
     }
 }
