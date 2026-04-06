@@ -82,7 +82,7 @@ use crate::{
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
         bank::PropertyBank,
-        builder::DiscoveryContext,
+        builder::FilesContext,
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
@@ -605,7 +605,7 @@ type FileState =
 
 impl SchemaProcessor<Discovery, GraphMissing> {
     pub(crate) fn discover(
-        context: &DiscoveryContext,
+        context: &FilesContext,
         source: &FsReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let files = &context.files;
@@ -644,7 +644,8 @@ impl SchemaProcessor<Discovery, GraphMissing> {
 
 impl SchemaProcessor<Discovery, GraphPresent> {
     pub(crate) fn discover<R>(
-        context: &DiscoveryContext,
+        context: &FilesContext,
+        graph: &InheritanceGraph<InheritanceNode>,
         repository: &R,
         source: &FsReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError>
@@ -652,7 +653,6 @@ impl SchemaProcessor<Discovery, GraphPresent> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        let graph = &context.graph;
         let files = &context.files;
 
         let views_by_path =
@@ -671,7 +671,7 @@ impl SchemaProcessor<Discovery, GraphPresent> {
             files,
             &views_by_path,
             &ids_by_path,
-            graph.as_ref(),
+            Some(graph),
             source,
         );
 
@@ -694,18 +694,7 @@ impl SchemaProcessor<Discovery, GraphPresent> {
                 );
             Ok(DiscoveryBranch::AllMissing(processor))
         } else {
-            let Some(graph) = graph.clone() else {
-                return Err(SchemaLoaderError::Ingestion(
-                    SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: "missing inheritance graph for present \
-                                     schemas"
-                                .into(),
-                        },
-                    ),
-                ));
-            };
-
+            let graph = graph.clone();
             let processor: SchemaProcessor<Discovery, GraphPresent> =
                 SchemaProcessor::<Discovery, GraphPresent>::transition(
                     Discovery,

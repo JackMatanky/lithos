@@ -14,6 +14,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         error::SchemaLoaderError,
+        graph::{InheritanceGraph, InheritanceNode},
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
@@ -37,15 +38,44 @@ pub struct Builder<'config, R> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DiscoveryContext {
-    pub(crate) graph: Option<
-        crate::schema::graph::InheritanceGraph<
-            crate::schema::graph::InheritanceNode,
-        >,
-    >,
+pub(crate) struct FilesContext {
     pub(crate) files: Vec<PathBuf>,
-    #[expect(dead_code, reason = "kept for future property-bank gating")]
     pub(crate) has_property_bank: bool,
+}
+
+impl FilesContext {
+    #[inline]
+    fn new(files: Vec<PathBuf>) -> Self {
+        Self {
+            files,
+            has_property_bank: false,
+        }
+    }
+
+    #[inline]
+    fn set_property_bank_existence(&mut self) {
+        self.has_property_bank = true;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PropertyBankContext {
+    pub(crate) filename: Box<str>,
+    pub(crate) path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum BankContextBranch {
+    Missing,
+    Present(PropertyBankContext),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum GraphContextBranch {
+    Missing,
+    Present {
+        graph: InheritanceGraph<InheritanceNode>,
+    },
 }
 
 type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
@@ -81,31 +111,56 @@ where
         }
     }
 
-    /// Load and construct all schemas using a discovery context.
-    fn load_schemas(
-        &self,
-        pb: &PropertyBank,
-        context: &DiscoveryContext,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+    /// Run the full ingestion pipeline.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "full pipeline keeps branching together"
+    )]
+    pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
         use std::collections::HashMap;
 
         use super::schema_processor::{
             Discovery, DiscoveryBranch, FileParsed, GraphMissing, GraphPresent,
             InheritanceGraphed, Missing, NewBatch, Parsed, SchemaProcessor,
         };
-        use crate::schema::graph::InheritanceGraph;
 
-        let branch = if context.graph.is_some() {
-            SchemaProcessor::<Discovery, GraphPresent>::discover(
-                context,
+        let mut bank_branch = BankContextBranch::Missing;
+        let files_context = self.discover_files(|context| {
+            bank_branch = BankContextBranch::Present(context);
+        })?;
+        let graph_branch = self.discover_graph()?;
+
+        let property_bank = match bank_branch {
+            BankContextBranch::Missing => {
+                self.property_bank_delta = None;
+                None
+            }
+            BankContextBranch::Present(context) => {
+                Some(self.load_property_bank(&context)?)
+            }
+        };
+
+        if files_context.files.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let property_bank = property_bank.unwrap_or_else(PropertyBank::new);
+
+        let branch = match graph_branch {
+            GraphContextBranch::Present {
+                graph,
+            } => SchemaProcessor::<Discovery, GraphPresent>::discover(
+                &files_context,
+                &graph,
                 &self.repository,
                 &self.source,
-            )?
-        } else {
-            SchemaProcessor::<Discovery, GraphMissing>::discover(
-                context,
-                &self.source,
-            )?
+            )?,
+            GraphContextBranch::Missing => {
+                SchemaProcessor::<Discovery, GraphMissing>::discover(
+                    &files_context,
+                    &self.source,
+                )?
+            }
         };
 
         match branch {
@@ -136,8 +191,8 @@ where
                     self.property_bank_delta.as_ref(),
                 )?;
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;
-                let constructed =
-                    refreshed.construct_schemas(&self.repository, pb)?;
+                let constructed = refreshed
+                    .construct_schemas(&self.repository, &property_bank)?;
                 let schemas = constructed.complete(&self.repository)?;
                 Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
@@ -171,37 +226,22 @@ where
                     self.property_bank_delta.as_ref(),
                 )?;
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;
-                let constructed =
-                    refreshed.construct_schemas(&self.repository, pb)?;
+                let constructed = refreshed
+                    .construct_schemas(&self.repository, &property_bank)?;
                 let schemas = constructed.complete(&self.repository)?;
                 Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
         }
     }
 
-    /// Run the full ingestion pipeline.
-    pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
-        let context = self.discover()?;
-        let pb = self.load_property_bank()?;
-        if context.files.is_empty() {
-            return Ok(Vec::new());
-        }
-        self.load_schemas(&pb, &context)
-    }
-
     /// Load and construct the `PropertyBank`, automatically handling
     /// incremental staleness.
-    pub fn load_property_bank(
+    pub(crate) fn load_property_bank(
         &mut self,
+        context: &PropertyBankContext,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        let config_path = self.property_bank_path.as_path();
-        let filename = match self.property_bank_filename.as_deref() {
-            Some(name) => name,
-            None => self
-                .source
-                .filename(config_path)
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?,
-        };
+        let config_path = context.path.as_path();
+        let filename = context.filename.as_ref();
 
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
@@ -236,33 +276,32 @@ where
         self.property_bank_delta = property_bank_delta;
     }
 
-    /// Discover schema files and load inheritance graph from DB.
-    ///
-    /// This method performs initial filesystem scanning and DB queries to
-    /// prepare the context for schema pipeline processing.
-    ///
-    /// # Operations
-    ///
-    /// 1. Scans schema directory for valid schema files (json, toml, yaml, yml)
-    /// 2. Detects if property bank file exists
-    /// 3. Excludes property bank file from schema file list
-    /// 4. Loads persisted topological graph from DB (if exists)
-    /// 5. Returns `DiscoveryContext` containing graph, files, and
-    ///    `has_property_bank` flag
-    ///
-    /// # Errors
-    ///
-    /// Returns `SchemaLoaderError` if:
-    /// - File scanning fails (I/O error)
-    /// - DB access fails (repository error)
-    pub(crate) fn discover(
+    fn resolve_property_bank_filename(
         &self,
-    ) -> Result<DiscoveryContext, SchemaLoaderError> {
+    ) -> Result<Box<str>, SchemaLoaderError> {
+        if let Some(name) = self.property_bank_filename.as_ref() {
+            return Ok(name.clone());
+        }
+
+        self.source
+            .filename(self.property_bank_path.as_path())
+            .map(Into::into)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
+    }
+
+    pub(crate) fn discover_files<F>(
+        &self,
+        mut on_bank_found: F,
+    ) -> Result<FilesContext, SchemaLoaderError>
+    where
+        F: FnMut(PropertyBankContext),
+    {
         use crate::schema::error::SchemaIngestionError;
 
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
-        // 1. Scan schema directory
+        let bank_filename = self.resolve_property_bank_filename()?;
+
         let pattern = format!("{}/**/*", self.schema_dir.display());
         let all_files = self.source.list_files(&pattern).map_err(|e| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::File(
@@ -273,53 +312,66 @@ where
             ))
         })?;
 
-        // 2. Check if property bank exists on disk
-        let property_bank_filename = self.property_bank_filename.as_deref();
-        let has_property_bank = all_files.iter().any(|path| {
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .zip(property_bank_filename)
-                .is_some_and(|(name, pb_name)| name == pb_name)
-        });
+        let mut files = Vec::new();
+        let mut has_property_bank = false;
 
-        // 3. Filter for schema files (exclude property bank)
-        let files: Vec<PathBuf> = all_files
-            .into_iter()
-            .filter(|path| {
-                let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-                else {
-                    return false;
-                };
+        for path in all_files {
+            let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+            else {
+                continue;
+            };
 
-                // Exclude property bank file
-                if let Some(pb_name) = property_bank_filename
-                    && file_name == pb_name
-                {
-                    return false;
+            if file_name == bank_filename.as_ref() {
+                if has_property_bank {
+                    return Err(SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: "duplicate property bank file found"
+                                    .into(),
+                            },
+                        ),
+                    ));
                 }
+                has_property_bank = true;
+                on_bank_found(PropertyBankContext {
+                    filename: bank_filename.clone(),
+                    path: self.property_bank_path.clone(),
+                });
+                continue;
+            }
 
-                // Only include valid schema extensions
-                let Some(ext) = path.extension().and_then(|e| e.to_str())
-                else {
-                    return false;
-                };
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                continue;
+            };
 
-                SCHEMA_EXTENSIONS
-                    .iter()
-                    .any(|allowed| ext.eq_ignore_ascii_case(allowed))
-            })
-            .collect();
+            if SCHEMA_EXTENSIONS
+                .iter()
+                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+            {
+                files.push(path);
+            }
+        }
 
-        // 4. Load graph from DB (if exists)
+        let mut context = FilesContext::new(files);
+        if has_property_bank {
+            context.set_property_bank_existence();
+        }
+        Ok(context)
+    }
+
+    pub(crate) fn discover_graph(
+        &self,
+    ) -> Result<GraphContextBranch, SchemaLoaderError> {
         let graph = self
             .repository
             .get_topological_graph()
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        Ok(DiscoveryContext {
-            graph,
-            files,
-            has_property_bank,
+        Ok(match graph {
+            Some(graph) => GraphContextBranch::Present {
+                graph,
+            },
+            None => GraphContextBranch::Missing,
         })
     }
 
@@ -485,10 +537,10 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discover().unwrap();
+        let graph_branch = builder.discover_graph().unwrap();
 
         assert!(
-            context.graph.is_some(),
+            matches!(graph_branch, GraphContextBranch::Present { .. }),
             "Should load graph from DB when present"
         );
     }
@@ -502,12 +554,25 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discover().unwrap();
+        let mut bank_branch = BankContextBranch::Missing;
+        let context = builder
+            .discover_files(|bank| {
+                bank_branch = BankContextBranch::Present(bank);
+            })
+            .unwrap();
 
+        assert!(
+            context.has_property_bank,
+            "Should detect property bank presence"
+        );
         assert_eq!(
             context.files.len(),
             1,
             "Should exclude property_bank from schema files"
+        );
+        assert!(
+            matches!(bank_branch, BankContextBranch::Present(_)),
+            "Should return property bank context"
         );
     }
 
@@ -519,10 +584,10 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discover().unwrap();
+        let graph_branch = builder.discover_graph().unwrap();
 
         assert!(
-            context.graph.is_none(),
+            matches!(graph_branch, GraphContextBranch::Missing),
             "Should handle missing graph gracefully"
         );
     }
@@ -543,7 +608,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discover().unwrap();
+        let context = builder.discover_files(|_| {}).unwrap();
 
         assert_eq!(
             context.files.len(),

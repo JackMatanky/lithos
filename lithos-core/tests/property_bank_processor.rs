@@ -69,13 +69,14 @@ fn loads_and_persists_property_bank() -> TestResult {
     let source = FsReader::new(vault_dir.path());
     let mut builder = Builder::new(repository, source, &config);
 
-    let bank = builder.load_property_bank()?;
-    assert!(bank.has(&"title".try_into()?), "Expected title property");
-    assert!(bank.has(&"status".try_into()?), "Expected status property");
+    let _schemas = builder.load_all()?;
 
     let repository2 = setup_repository(test_db.db());
-    let saved_bank = repository2.get_property_bank()?;
-    assert!(saved_bank.is_some(), "Expected bank to be persisted");
+    let saved_bank = repository2
+        .get_property_bank()?
+        .expect("Expected bank to be persisted");
+    assert!(saved_bank.has(&"title".try_into()?), "Expected title property");
+    assert!(saved_bank.has(&"status".try_into()?), "Expected status property");
 
     let source2 = FsReader::new(vault_dir.path());
     let filename = source2.filename(&property_path)?;
