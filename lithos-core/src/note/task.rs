@@ -306,20 +306,26 @@ impl Task {
         let mut fields = HashMap::with_capacity(item.fields().len());
         for field in item.fields() {
             let key = field.key().clone();
-            let mut value = field.value().clone();
-            if let Some(field_spec) = spec.field_specs.get(key.as_kebab()) {
-                let raw_value = field_value_for_spec(&value);
+            let value_ref = field.value();
+            let value = if let Some(field_spec) =
+                spec.field_specs.get(key.as_kebab())
+            {
+                let raw_value = field_value_for_spec(value_ref);
                 if let Err(error) = field_spec.validate_value(raw_value) {
-                    let raw = value.to_raw_string();
+                    let raw = value_ref.to_raw_string();
                     tracing::warn!(
                         field = key.as_str(),
                         raw = raw.as_ref(),
                         ?error,
                         "Task field failed validation; storing raw string"
                     );
-                    value = FieldValue::String(raw);
+                    FieldValue::String(raw)
+                } else {
+                    value_ref.clone()
                 }
-            }
+            } else {
+                value_ref.clone()
+            };
             fields.insert(key, value);
         }
 

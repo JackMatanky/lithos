@@ -341,13 +341,9 @@ impl Repository for RedbRepository<'_> {
 
     #[inline]
     fn delete_note(&self, id: NoteId) -> Result<(), Self::Error> {
-        let uuid = Uuid::from(id);
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str = uuid.as_hyphenated().encode_lower(&mut id_buffer);
-        let id_str: &str = id_str;
         let stored = self
             .db
-            .get_owned::<Note>(NOTES_BY_ID, id_str)
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
             .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(stored) = stored {
@@ -411,12 +407,8 @@ impl Repository for RedbRepository<'_> {
 
     #[inline]
     fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error> {
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str =
-            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
-        let id_str: &str = id_str;
         self.db
-            .get_owned::<Note>(NOTES_BY_ID, id_str)
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -432,12 +424,8 @@ impl Repository for RedbRepository<'_> {
         let Some(id) = id else {
             return Ok(None);
         };
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str =
-            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
-        let id_str: &str = id_str;
         self.db
-            .get_owned::<Note>(NOTES_BY_ID, id_str)
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -457,12 +445,8 @@ impl Repository for RedbRepository<'_> {
         let Some(id) = id else {
             return Ok(None);
         };
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str =
-            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
-        let id_str: &str = id_str;
         self.db
-            .get::<Note, _, R>(NOTES_BY_ID, id_str, f)
+            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, Uuid::from(id), f)
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -482,12 +466,8 @@ impl Repository for RedbRepository<'_> {
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
-        let mut id_buffer = Uuid::encode_buffer();
-        let id_str =
-            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
-        let id_str: &str = id_str;
         self.db
-            .get::<Note, _, R>(NOTES_BY_ID, id_str, f)
+            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, Uuid::from(id), f)
             .map_err(NoteRepositoryError::Storage)
     }
 

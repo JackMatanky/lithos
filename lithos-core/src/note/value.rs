@@ -365,7 +365,29 @@ impl FieldValue {
         if !number.is_finite() || number.fract() != 0.0f64 {
             return None;
         }
-        number.to_string().parse::<i64>().ok()
+        let value = number.trunc();
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "Range check for exact integer conversion"
+        )]
+        let min = i64::MIN as f64;
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "Range check for exact integer conversion"
+        )]
+        let max = i64::MAX as f64;
+        if value < min || value > max {
+            return None;
+        }
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "Checked integer range and fractional component"
+        )]
+        let value = value as i64;
+        Some(value)
     }
 
     /// Returns the string value if this is a `String` variant.
