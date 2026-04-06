@@ -1,3 +1,15 @@
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pipeline structs expose fields for stage transitions"
+)]
+#![expect(
+    clippy::iter_over_hash_type,
+    reason = "ordering is irrelevant for schema graph processing"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "match ergonomics on borrowed payloads keep code readable"
+)]
 //! Schema processor pipeline with batch processing and incremental
 //! construction.
 //!
@@ -58,19 +70,6 @@
 //! };
 //! ```
 
-#![expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pipeline structs expose fields for stage transitions"
-)]
-#![expect(
-    clippy::iter_over_hash_type,
-    reason = "ordering is irrelevant for schema graph processing"
-)]
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "match ergonomics on borrowed payloads keep code readable"
-)]
-
 use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
@@ -106,10 +105,10 @@ use crate::{
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
-pub(crate) struct Comparison;
+pub(crate) struct Discovery;
 
 #[derive(Debug)]
-pub(crate) struct Discovery;
+pub(crate) struct Comparison;
 
 #[derive(Debug)]
 pub(crate) struct FileParsed;
@@ -312,6 +311,14 @@ pub(crate) struct InitialScan {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct InitialRead {
+    pub(crate) path: PathBuf,
+    pub(crate) times: RawFileTimes,
+    pub(crate) content_str: Box<str>,
+    pub(crate) content_hash: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
     pub(crate) path: PathBuf,
     pub(crate) times: RawFileTimes,
@@ -334,8 +341,8 @@ pub(crate) type StaleBankReferencesPayload = PresentPayload;
 pub(crate) struct StalePayload {
     pub(crate) path: PathBuf,
     pub(crate) times: RawFileTimes,
-    pub(crate) content_hash: [u8; 32],
     pub(crate) content_str: Box<str>,
+    pub(crate) content_hash: [u8; 32],
     pub(crate) view: RawSchemaView,
 }
 
@@ -426,7 +433,7 @@ pub(crate) struct UpdateNodePayload {
 
 #[derive(Debug)]
 pub(crate) struct SchemaProcessor<Stage, Status> {
-    pub(crate) status: Status,
+    status: Status,
     _stage: PhantomData<Stage>,
 }
 
@@ -460,53 +467,64 @@ pub(crate) struct Review;
 
 #[derive(Debug)]
 pub(crate) struct AllMissing {
-    pub(crate) new_schemas: NewBatch<InitialScan>,
+    new_schemas: NewBatch<InitialScan>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Present {
-    pub(crate) graph: InheritanceGraph<InheritanceNode>,
-    pub(crate) cached: HashMap<SchemaId, PresentPayload>,
-    pub(crate) new_schemas: NewBatch<InitialScan>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    graph: InheritanceGraph<InheritanceNode>,
+    cached: HashMap<SchemaId, PresentPayload>,
+    new_schemas: NewBatch<InitialScan>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Compared {
-    pub(crate) graph: InheritanceGraph<SchemaGraphNode<ComparisonBranch>>,
-    #[expect(dead_code, reason = "reserved for future batch reconciliation")]
-    pub(crate) new_schemas: NewBatch<InitialScan>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    graph: InheritanceGraph<SchemaGraphNode<ComparisonBranch>>,
+    new_schemas: NewBatch<InitialRead>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Parsed {
-    pub(crate) graph: InheritanceGraph<SchemaGraphNode<FileParsedBranch>>,
-    #[expect(dead_code, reason = "reserved for future batch reconciliation")]
-    pub(crate) new_schemas: NewBatch<InitialParsed>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    graph: InheritanceGraph<SchemaGraphNode<FileParsedBranch>>,
+    new_schemas: NewBatch<InitialParsed>,
+    deleted_ids: Vec<SchemaId>,
+}
+
+impl Parsed {
+    #[inline]
+    pub(crate) fn empty(
+        graph: InheritanceGraph<SchemaGraphNode<FileParsedBranch>>,
+    ) -> Self {
+        Self {
+            graph,
+            new_schemas: NewBatch::new(),
+            deleted_ids: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct Graphed {
-    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<InheritanceBranch>>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    graph: InheritanceGraph<InheritanceGraphNode<InheritanceBranch>>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Analyzed {
-    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
-    pub(crate) refresh_ids: Vec<SchemaId>,
-    pub(crate) rebuild_ids: Vec<SchemaId>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
+    refresh_ids: Vec<SchemaId>,
+    rebuild_ids: Vec<SchemaId>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Constructed {
-    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
-    pub(crate) schemas: Vec<Arc<Schema>>,
+    graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
+    schemas: Vec<Arc<Schema>>,
     #[expect(dead_code, reason = "retained for future delete handling")]
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
@@ -776,8 +794,8 @@ impl SchemaProcessor<Comparison, Present> {
         let Present {
             graph,
             cached,
+            new_schemas,
             deleted_ids,
-            ..
         } = self.status;
 
         let mut nodes: HashMap<SchemaId, SchemaGraphNode<ComparisonBranch>> =
@@ -809,13 +827,29 @@ impl SchemaProcessor<Comparison, Present> {
             nodes.insert(id, Self::to_graph_node(node, status, branch));
         }
 
+        let mut new_reads = NewBatch::new();
+        for (id, scan) in new_schemas {
+            let content = source
+                .read_to_string(&scan.path)
+                .map_err(SchemaIngestionError::from)
+                .map_err(SchemaLoaderError::Ingestion)?;
+            let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
+
+            new_reads.insert(id, InitialRead {
+                path: scan.path,
+                times: scan.times,
+                content_hash,
+                content_str: content.into_boxed_str(),
+            });
+        }
+
         Ok(Self::transition(FileParsed, Compared {
             graph: InheritanceGraph {
                 order: graph.order,
                 nodes,
                 roots: graph.roots,
             },
-            new_schemas: NewBatch::new(),
+            new_schemas: new_reads,
             deleted_ids,
         }))
     }
@@ -1009,6 +1043,37 @@ impl SchemaProcessor<FileParsed, Compared> {
     ) -> Result<SchemaProcessor<FileParsed, Parsed>, SchemaLoaderError> {
         let mut nodes = HashMap::new();
 
+        let mut parsed_new = NewBatch::new();
+        for (id, read) in self.status.new_schemas {
+            let schema_name = read
+                .path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: "schema filename missing stem".into(),
+                        },
+                    ))
+                })?;
+            let times_for_raw = read.times.clone();
+            let raw = FsReader::parse_structured_from_str::<RawSchema>(
+                &read.path,
+                &read.content_str,
+            )
+            .map_err(SchemaIngestionError::from)
+            .map_err(SchemaLoaderError::Ingestion)?
+            .with_file_times(times_for_raw)
+            .with_name(schema_name.into());
+
+            parsed_new.insert(id, InitialParsed {
+                path: read.path,
+                times: read.times,
+                content_hash: read.content_hash,
+                raw,
+            });
+        }
+
         for (id, node) in self.status.graph.nodes {
             let next = match node.payload {
                 ComparisonBranch::Stale(payload) => {
@@ -1128,9 +1193,16 @@ impl SchemaProcessor<FileParsed, Compared> {
                 nodes,
                 roots: self.status.graph.roots,
             },
-            new_schemas: NewBatch::new(),
+            new_schemas: parsed_new,
             deleted_ids: self.status.deleted_ids,
         }))
+    }
+}
+
+impl SchemaProcessor<FileParsed, Parsed> {
+    #[inline]
+    pub(crate) fn new_schemas(&self) -> &NewBatch<InitialParsed> {
+        &self.status.new_schemas
     }
 }
 

@@ -54,18 +54,13 @@ where
     }
 
     /// Run the full ingestion pipeline.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "full pipeline keeps branching together"
-    )]
     pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
         use std::collections::HashMap;
 
         use super::schema_processor::{
             AllMissing, Comparison as SchemaComparison, Discovery,
-            DiscoveryBranch, FileParsed, InheritanceGraphed, NeverSeen,
-            NewBatch, Parsed, Present as SchemaPresent, Review,
-            SchemaProcessor,
+            DiscoveryBranch, FileParsed, InheritanceGraphed, NeverSeen, Parsed,
+            Present as SchemaPresent, Review, SchemaProcessor,
         };
 
         let mut bank_branch = BankContextBranch::Missing;
@@ -118,15 +113,11 @@ where
                 let parsed_state: SchemaProcessor<FileParsed, Parsed> =
                     SchemaProcessor::<FileParsed, Parsed>::transition(
                         FileParsed,
-                        Parsed {
-                            graph: InheritanceGraph {
-                                order: Vec::new(),
-                                nodes: HashMap::new(),
-                                roots: Vec::new(),
-                            },
-                            new_schemas: NewBatch::new(),
-                            deleted_ids: Vec::new(),
-                        },
+                        Parsed::empty(InheritanceGraph {
+                            order: Vec::new(),
+                            nodes: HashMap::new(),
+                            roots: Vec::new(),
+                        }),
                     );
                 let graphed =
                     SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
@@ -148,24 +139,10 @@ where
                     SchemaComparison,
                     SchemaPresent,
                 >::transition(SchemaComparison, present.into_status());
-                let new_schemas = present.status.new_schemas.clone();
-                let parsed_new = if new_schemas.is_empty() {
-                    NewBatch::new()
-                } else {
-                    let missing_processor: SchemaProcessor<
-                        FileParsed,
-                        AllMissing,
-                    > = SchemaProcessor::<FileParsed, AllMissing>::transition(
-                        FileParsed,
-                        AllMissing {
-                            new_schemas,
-                        },
-                    );
-                    missing_processor.parse_new_schemas(&self.source)?
-                };
                 let compared = present
                     .compare(&self.source, self.property_bank_delta.as_ref())?;
                 let parsed = compared.parse_stale_schemas(&self.source)?;
+                let parsed_new = parsed.new_schemas().clone();
                 let graphed =
                     SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
                         parsed,
