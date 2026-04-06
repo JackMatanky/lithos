@@ -50,8 +50,8 @@
 //!             new_schemas: NewBatch::new(),
 //!             deleted_ids: vec![],
 //!         });
-//!         parsed
-//!             .build_graph(parsed_new)?
+//!         SchemaProcessor::<InheritanceGraphed, Parsed>
+//!             ::build_graph(parsed, &parsed_new)?
 //!             .analyze_properties(&source, None)?
 //!             .refresh_metadata(&repo)?
 //!             .construct_schemas(&repo, &bank)?
@@ -60,8 +60,8 @@
 //!     DiscoveryBranch::HasPresent(present) => {
 //!         let compared = present.compare(&source, None)?;
 //!         let parsed = compared.parse_stale_schemas(&source)?;
-//!         parsed
-//!             .build_graph(NewBatch::new())?
+//!         SchemaProcessor::<InheritanceGraphed, Parsed>
+//!             ::build_graph(parsed, &NewBatch::new())?
 //!             .analyze_properties(&source, None)?
 //!             .refresh_metadata(&repo)?
 //!             .construct_schemas(&repo, &bank)?
@@ -1178,7 +1178,7 @@ impl SchemaProcessor<FileParsed, Compared> {
 //  INHERITANCEGRAPHED STAGE IMPLEMENTATION
 // ═════════════════════════════════════════════════════════════════════════════
 
-impl SchemaProcessor<FileParsed, Parsed> {
+impl SchemaProcessor<InheritanceGraphed, Parsed> {
     #[expect(
         clippy::too_many_lines,
         reason = "graph construction keeps related steps co-located"
@@ -1188,7 +1188,7 @@ impl SchemaProcessor<FileParsed, Parsed> {
         reason = "graph construction mirrors pipeline decisions"
     )]
     pub(crate) fn build_graph(
-        self,
+        parsed: SchemaProcessor<FileParsed, Parsed>,
         new_parsed: &NewBatch<InitialParsed>,
     ) -> Result<SchemaProcessor<InheritanceGraphed, Graphed>, SchemaLoaderError>
     {
@@ -1196,7 +1196,7 @@ impl SchemaProcessor<FileParsed, Parsed> {
             graph,
             deleted_ids,
             ..
-        } = self.status;
+        } = parsed.status;
 
         let status_by_id: HashMap<SchemaId, NodeStatus> =
             graph.nodes.iter().map(|(id, node)| (*id, node.status)).collect();
@@ -1334,14 +1334,17 @@ impl SchemaProcessor<FileParsed, Parsed> {
             });
         }
 
-        Ok(Self::transition(InheritanceGraphed, Graphed {
-            graph: TopologicalGraph {
-                order: finalized_graph.order,
-                nodes,
-                roots: finalized_graph.roots,
+        Ok(SchemaProcessor::<InheritanceGraphed, Graphed>::transition(
+            InheritanceGraphed,
+            Graphed {
+                graph: TopologicalGraph {
+                    order: finalized_graph.order,
+                    nodes,
+                    roots: finalized_graph.roots,
+                },
+                deleted_ids,
             },
-            deleted_ids,
-        }))
+        ))
     }
 }
 

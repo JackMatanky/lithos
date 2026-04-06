@@ -92,7 +92,7 @@ where
 
         use super::schema_processor::{
             Discovery, DiscoveryBranch, FileParsed, GraphMissing, GraphPresent,
-            Missing, NewBatch, Parsed, SchemaProcessor,
+            InheritanceGraphed, Missing, NewBatch, Parsed, SchemaProcessor,
         };
         use crate::schema::graph::TopologicalGraph;
 
@@ -127,7 +127,11 @@ where
                             deleted_ids: Vec::new(),
                         },
                     );
-                let graphed = parsed_state.build_graph(&parsed_new)?;
+                let graphed =
+                    SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
+                        parsed_state,
+                        &parsed_new,
+                    )?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
                     self.property_bank_delta.as_ref(),
@@ -158,7 +162,11 @@ where
                 let compared = present
                     .compare(&self.source, self.property_bank_delta.as_ref())?;
                 let parsed = compared.parse_stale_schemas(&self.source)?;
-                let graphed = parsed.build_graph(&parsed_new)?;
+                let graphed =
+                    SchemaProcessor::<InheritanceGraphed, Parsed>::build_graph(
+                        parsed,
+                        &parsed_new,
+                    )?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
                     self.property_bank_delta.as_ref(),
