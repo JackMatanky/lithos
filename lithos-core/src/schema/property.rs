@@ -1,12 +1,31 @@
 //! Property domain entities and value objects.
+//!
+//! This module is the canonical domain boundary for properties in the schema
+//! context. It defines the value types that make property metadata safe and
+//! explicit (`Property`, `PropertyId`, `PropertyName`, `Optionality`,
+//! `Multiplicity`) and the primary collection surface (`PropertyMap`) that the
+//! rest of the schema pipeline uses.
+//!
+//! ## Design constraints
+//! - **Names live in the map key**: `PropertyMap` stores the property name as
+//!   its key, and `Property` values are intentionally name-agnostic. This keeps
+//!   a single source of truth for names and prevents accidental desync.
+//! - **Validation by construction**: `PropertyName` and `PropertySpec` enforce
+//!   syntax and shape constraints at creation time, so `Property::new` is
+//!   infallible once inputs are validated.
+//! - **Raw → domain conversion is fallible**: conversions from
+//!   `RawPropertyMap<T>` validate specs and can return `SchemaError`.
+//!
+//! ## How to use
+//! 1. Convert raw properties into a `PropertyMap` for domain use.
+//! 2. Read or merge via `PropertyMap` in the schema pipeline.
+//! 3. Use `Property::validate_value` when validating values against specs.
 
 #![expect(
     clippy::module_name_repetitions,
-    reason = "Property* types are descriptive and namespaced intentionally"
-)]
-#![expect(
     clippy::exhaustive_enums,
-    reason = "rkyv Archive derive generates exhaustive archived enums"
+    reason = "Property* types are descriptive and namespaced intentionally \
+              and rkyv Archive derive generates exhaustive archived enums"
 )]
 
 use std::{
@@ -30,7 +49,34 @@ use super::{
 ///
 /// This wrapper preserves the invariant that a property's name is stored only
 /// in the map key, not inside the `Property` value.
-#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
+///
+/// Conversions from raw property maps can fail if the underlying property
+/// specification is invalid.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     property::{
+///         Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+///         PropertyName,
+///     },
+///     property_spec::{BoolSpec, PropertySpec},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::try_new("status")?;
+/// let property = Property::new(
+///     PropertyId::new(),
+///     Optionality::Required,
+///     Multiplicity::Single,
+///     PropertySpec::Bool(BoolSpec::default()),
+/// );
+/// let mut map = PropertyMap::new();
+/// map.insert(name, property);
+/// assert_eq!(map.len(), 1);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Archive, Deserialize, Serialize)]
 #[non_exhaustive]
 pub struct PropertyMap(HashMap<PropertyName, Property>);
 
@@ -93,6 +139,8 @@ impl PropertyMap {
     }
 
     /// Extends the map with entries from another `PropertyMap`.
+    ///
+    /// Entries from `other` overwrite entries with the same name.
     #[inline]
     pub fn extend(&mut self, other: PropertyMap) {
         for (name, property) in other {
@@ -113,6 +161,42 @@ impl PropertyMap {
         &self,
     ) -> std::collections::hash_map::Iter<'_, PropertyName, Property> {
         self.0.iter()
+    }
+}
+
+impl AsRef<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn as_ref(&self) -> &HashMap<PropertyName, Property> {
+        &self.0
+    }
+}
+
+impl From<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn from(map: HashMap<PropertyName, Property>) -> Self {
+        Self(map)
+    }
+}
+
+impl<'map> IntoIterator for &'map PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::Iter<'map, PropertyName, Property>;
+    type Item = (&'map PropertyName, &'map Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::IntoIter<PropertyName, Property>;
+    type Item = (PropertyName, Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -208,42 +292,6 @@ impl TryFrom<HashMap<PropertyName, RawPropertyBankEntry>> for PropertyMap {
     }
 }
 
-impl AsRef<HashMap<PropertyName, Property>> for PropertyMap {
-    #[inline]
-    fn as_ref(&self) -> &HashMap<PropertyName, Property> {
-        &self.0
-    }
-}
-
-impl From<HashMap<PropertyName, Property>> for PropertyMap {
-    #[inline]
-    fn from(map: HashMap<PropertyName, Property>) -> Self {
-        Self(map)
-    }
-}
-
-impl<'map> IntoIterator for &'map PropertyMap {
-    type IntoIter =
-        std::collections::hash_map::Iter<'map, PropertyName, Property>;
-    type Item = (&'map PropertyName, &'map Property);
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-impl IntoIterator for PropertyMap {
-    type IntoIter =
-        std::collections::hash_map::IntoIter<PropertyName, Property>;
-    type Item = (PropertyName, Property);
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 /// Reusable property definition with type-specific validation.
 ///
 /// This is the resolved entity used in the Domain layer.
@@ -268,7 +316,7 @@ impl IntoIterator for PropertyMap {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Archive, Deserialize, Serialize)]
 #[non_exhaustive]
 pub struct Property {
     /// Unique identity (UUID v7).
@@ -346,6 +394,24 @@ impl Property {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     property::{Multiplicity, Optionality, Property, PropertyId},
+    ///     property_spec::{BoolSpec, PropertySpec},
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec::default()),
+    /// );
+    /// property.validate_value(&serde_json::json!(true))?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn validate_value(
         &self,
@@ -390,17 +456,17 @@ impl Property {
 /// let _ = id.as_uuid();
 /// ```
 #[derive(
-    Debug,
-    Clone,
     Copy,
-    PartialEq,
+    Clone,
+    Debug,
     Eq,
-    PartialOrd,
-    Ord,
     Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
     Archive,
-    Serialize,
     Deserialize,
+    Serialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
@@ -472,20 +538,20 @@ impl Display for PropertyId {
 /// # }
 /// ```
 #[derive(
-    Debug,
     Clone,
-    PartialEq,
+    Debug,
     Eq,
-    PartialOrd,
-    Ord,
     Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
     Archive,
-    Serialize,
     Deserialize,
+    Serialize,
+    serde::Serialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
-#[derive(serde::Serialize)]
 pub struct PropertyName(Box<str>);
 
 impl PropertyName {
@@ -539,6 +605,13 @@ impl PropertyName {
         Ok(Self(name.into()))
     }
 
+    /// Returns the inner string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     #[inline]
     fn validate(
         name: &str,
@@ -577,13 +650,6 @@ impl PropertyName {
         }
         Ok(())
     }
-
-    /// Returns the inner string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 impl AsRef<str> for PropertyName {
@@ -593,17 +659,17 @@ impl AsRef<str> for PropertyName {
     }
 }
 
-impl Display for PropertyName {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 impl Borrow<str> for PropertyName {
     #[inline]
     fn borrow(&self) -> &str {
         &self.0
+    }
+}
+
+impl Display for PropertyName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -661,17 +727,27 @@ impl<'de> serde::Deserialize<'de> for PropertyName {
 }
 
 /// Whether a property is required or optional.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::Optionality;
+///
+/// let optional = Optionality::from(false);
+/// let required = Optionality::from(true);
+/// assert!(matches!(optional, Optionality::Optional));
+/// assert!(matches!(required, Optionality::Required));
+/// ```
 #[derive(
-    Debug,
-    Clone,
     Copy,
+    Clone,
+    Debug,
     Default,
-    PartialEq,
     Eq,
     Hash,
+    PartialEq,
     Archive,
-    Serialize,
     Deserialize,
+    Serialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -695,17 +771,27 @@ impl From<bool> for Optionality {
 }
 
 /// Whether a property accepts a single value or multiple values.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::Multiplicity;
+///
+/// let single = Multiplicity::from(false);
+/// let many = Multiplicity::from(true);
+/// assert!(matches!(single, Multiplicity::Single));
+/// assert!(matches!(many, Multiplicity::Many));
+/// ```
 #[derive(
-    Debug,
-    Clone,
     Copy,
+    Clone,
+    Debug,
     Default,
-    PartialEq,
     Eq,
     Hash,
+    PartialEq,
     Archive,
-    Serialize,
     Deserialize,
+    Serialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
