@@ -1,5 +1,9 @@
 #![expect(clippy::missing_errors_doc, reason = "Facade methods")]
 #![expect(clippy::missing_inline_in_public_items, reason = "Facade methods")]
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "builder context uses pub(crate) fields for tests"
+)]
 
 use std::{collections::HashSet, path::PathBuf};
 
@@ -12,7 +16,7 @@ use crate::{
         error::SchemaLoaderError,
         property::PropertyName,
         property_bank_processor::{
-            Analysis, AnalysisBranch, Comparison, ComparisonBranch, Completed,
+            AnalysisBranch, Comparison, ComparisonBranch, Completed,
             ContentBranch, Discovery, Missing, Parsed, Present,
             PropertyBankProcessor, Ready, Suspect, TimestampBranch, Unknown,
         },
@@ -30,6 +34,18 @@ pub struct Builder<'config, R> {
     property_bank_path: PathBuf,
     property_bank_filename: Option<Box<str>>,
     property_bank_delta: Option<HashSet<PropertyName>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DiscoveryContext {
+    pub(crate) graph: Option<
+        crate::schema::graph::TopologicalGraph<
+            crate::schema::graph::InheritanceNode,
+        >,
+    >,
+    pub(crate) files: Vec<PathBuf>,
+    #[expect(dead_code, reason = "kept for future property-bank gating")]
+    pub(crate) has_property_bank: bool,
 }
 
 type PropertyBankCompletion =
@@ -66,187 +82,104 @@ where
         }
     }
 
-    /// Load and construct all schemas, resolving inheritance and property
-    /// references.
-    pub(crate) fn load_schemas(
+    /// Load and construct all schemas using a discovery context.
+    fn load_schemas(
         &self,
         pb: &PropertyBank,
+        context: &DiscoveryContext,
     ) -> Result<Vec<Schema>, SchemaLoaderError> {
+        use std::collections::HashMap;
+
         use super::schema_processor::{
-            ContentBranch, Discovery, DiscoveryBranch, DiscoveryState,
-            SchemaProcessor, TimestampBranch,
+            Discovery, DiscoveryBranch, FileParsed, GraphMissing, GraphPresent,
+            Missing, NewBatch, Parsed, SchemaProcessor,
         };
+        use crate::schema::graph::TopologicalGraph;
 
-        // Phase 1: Discovery - Load graph + scan files
-        let context = self.discovery()?;
-
-        // Start pipeline with discovery context
-        let processor =
-            SchemaProcessor::<Discovery, DiscoveryState>::from_context(context);
-
-        // Run discovery stage
-        let branch = processor.discover(&self.repository, &self.source)?;
+        let branch = if context.graph.is_some() {
+            SchemaProcessor::<Discovery, GraphPresent>::discover(
+                context,
+                &self.repository,
+                &self.source,
+            )?
+        } else {
+            SchemaProcessor::<Discovery, GraphMissing>::discover(
+                context,
+                &self.source,
+            )?
+        };
 
         match branch {
             DiscoveryBranch::AllMissing(missing) => {
-                // All files are new - parse them
-                let parsed = missing.parse_new_schemas(&self.source)?;
-                let graphed = parsed.build_graph(None)?;
-                let analyzed = SchemaProcessor::from_graphed_batch(graphed)
-                    .analyze_properties(None)?;
-                let refreshed = SchemaProcessor::from_analyzed_batch(analyzed)
-                    .refresh_metadata(&self.repository)?;
-                let state =
+                let parsed_new = missing
+                    .into_file_parsed()
+                    .parse_new_schemas(&self.source)?;
+                let parsed_state: SchemaProcessor<FileParsed, Parsed> =
+                    SchemaProcessor::<FileParsed, Parsed>::transition(
+                        FileParsed,
+                        Parsed {
+                            graph: TopologicalGraph {
+                                order: Vec::new(),
+                                nodes: HashMap::new(),
+                                roots: Vec::new(),
+                            },
+                            new_schemas: NewBatch::new(),
+                            deleted_ids: Vec::new(),
+                        },
+                    );
+                let graphed = parsed_state.build_graph(&parsed_new)?;
+                let analyzed = graphed.analyze_properties(
+                    &self.source,
+                    self.property_bank_delta.as_ref(),
+                )?;
+                let refreshed = analyzed.refresh_metadata(&self.repository)?;
+                let constructed =
                     refreshed.construct_schemas(&self.repository, pb)?;
-                let processor = SchemaProcessor::from_construction_state(state);
-                let schemas = processor.complete(&self.repository)?;
+                let schemas = constructed.complete(&self.repository)?;
                 Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
-            DiscoveryBranch::SomePresent {
-                missing,
-                present,
-            } => {
-                // Phase 2: TimeComparison - check timestamps
-                let ts_branch = present.compare_timestamps(&self.source)?;
-
-                match ts_branch {
-                    TimestampBranch::AllFresh(fresh) => {
-                        // All timestamps match - skip to construction
-                        let graphed = fresh.into_graphed_batch();
-                        let analyzed =
-                            SchemaProcessor::from_graphed_batch(graphed)
-                                .analyze_properties(
-                                    self.property_bank_delta.as_ref(),
-                                )?;
-                        let refreshed =
-                            SchemaProcessor::from_analyzed_batch(analyzed)
-                                .refresh_metadata(&self.repository)?;
-                        let state = refreshed
-                            .construct_schemas(&self.repository, pb)?;
-                        let processor =
-                            SchemaProcessor::from_construction_state(state);
-                        let schemas = processor.complete(&self.repository)?;
-                        Ok(schemas
-                            .into_iter()
-                            .map(|arc| (*arc).clone())
-                            .collect())
-                    }
-                    TimestampBranch::SomeSuspect {
-                        fresh,
-                        suspect,
-                    } => {
-                        // Phase 3: ContentComparison - check content hashes
-                        let content_branch =
-                            suspect.compare_content(&self.source)?;
-
-                        match content_branch {
-                            ContentBranch::AllStaleTimestamps(timestamps) => {
-                                // Only timestamps changed - refresh and
-                                // construct
-                                let graphed = timestamps.into_graphed_batch();
-                                let analyzed =
-                                    SchemaProcessor::from_graphed_batch(
-                                        graphed,
-                                    )
-                                    .analyze_properties(
-                                        self.property_bank_delta.as_ref(),
-                                    )?;
-                                let refreshed =
-                                    SchemaProcessor::from_analyzed_batch(
-                                        analyzed,
-                                    )
-                                    .refresh_metadata(&self.repository)?;
-                                let state = refreshed
-                                    .construct_schemas(&self.repository, pb)?;
-                                let processor =
-                                    SchemaProcessor::from_construction_state(
-                                        state,
-                                    );
-                                let schemas =
-                                    processor.complete(&self.repository)?;
-                                Ok(schemas
-                                    .into_iter()
-                                    .map(|arc| (*arc).clone())
-                                    .collect())
-                            }
-                            ContentBranch::SomeStaleContent {
-                                timestamps,
-                                content,
-                            } => {
-                                // Phase 5: FileParsed - parse changed schemas
-                                let parsed_content = content.pass_through();
-
-                                // Parse missing schemas if any
-                                let parsed_new = if let Some(m) = missing {
-                                    Some(m.parse_new_schemas(&self.source)?)
-                                } else {
-                                    None
-                                };
-
-                                // Merge parsed batches
-                                let mut merged = parsed_content;
-                                if let Some(new) = parsed_new {
-                                    merged.new_schemas.extend(new.new_schemas);
-                                }
-
-                                // Get existing graph from fresh/timestamps
-                                let existing_graph = fresh
-                                    .map(|f| f.into_inheritance_graph())
-                                    .or_else(|| {
-                                        timestamps
-                                            .map(|t| t.into_inheritance_graph())
-                                    });
-
-                                // Phase 6: InheritanceGraphed
-                                let graphed =
-                                    merged.build_graph(existing_graph)?;
-
-                                // Phase 7: PropertyAnalysis
-                                let analyzed =
-                                    SchemaProcessor::from_graphed_batch(
-                                        graphed,
-                                    )
-                                    .analyze_properties(
-                                        self.property_bank_delta.as_ref(),
-                                    )?;
-
-                                // Phase 8: Refresh
-                                let refreshed =
-                                    SchemaProcessor::from_analyzed_batch(
-                                        analyzed,
-                                    )
-                                    .refresh_metadata(&self.repository)?;
-
-                                // Phase 9: Construction
-                                let state = refreshed
-                                    .construct_schemas(&self.repository, pb)?;
-
-                                // Phase 10: Completion
-                                let processor =
-                                    SchemaProcessor::from_construction_state(
-                                        state,
-                                    );
-                                let schemas =
-                                    processor.complete(&self.repository)?;
-                                Ok(schemas
-                                    .into_iter()
-                                    .map(|arc| (*arc).clone())
-                                    .collect())
-                            }
-                        }
-                    }
-                }
+            DiscoveryBranch::HasPresent(present) => {
+                let present = present.into_comparison();
+                let new_schemas = present.status.new_schemas.clone();
+                let parsed_new = if new_schemas.is_empty() {
+                    NewBatch::new()
+                } else {
+                    let missing_processor: SchemaProcessor<
+                        FileParsed,
+                        Missing,
+                    > = SchemaProcessor::<FileParsed, Missing>::transition(
+                        FileParsed,
+                        Missing {
+                            new_schemas,
+                        },
+                    );
+                    missing_processor.parse_new_schemas(&self.source)?
+                };
+                let compared = present
+                    .compare(&self.source, self.property_bank_delta.as_ref())?;
+                let parsed = compared.parse_stale_schemas(&self.source)?;
+                let graphed = parsed.build_graph(&parsed_new)?;
+                let analyzed = graphed.analyze_properties(
+                    &self.source,
+                    self.property_bank_delta.as_ref(),
+                )?;
+                let refreshed = analyzed.refresh_metadata(&self.repository)?;
+                let constructed =
+                    refreshed.construct_schemas(&self.repository, pb)?;
+                let schemas = constructed.complete(&self.repository)?;
+                Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
         }
     }
 
     /// Run the full ingestion pipeline.
-    #[expect(dead_code, reason = "reserved for schema loading")]
-    pub(crate) fn load_all(
-        &mut self,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+    pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
+        let context = self.discover()?;
         let pb = self.load_property_bank()?;
-        self.load_schemas(&pb)
+        if context.files.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.load_schemas(&pb, &context)
     }
 
     /// Load and construct the `PropertyBank`, automatically handling
@@ -283,6 +216,7 @@ where
         self.property_bank_delta = delta;
         Ok(completed.into_bank())
     }
+
     #[inline]
     #[expect(
         dead_code,
@@ -307,18 +241,16 @@ where
     /// 3. Excludes property bank file from schema file list
     /// 4. Loads persisted topological graph from DB (if exists)
     /// 5. Returns `DiscoveryContext` containing graph, files, and
-    ///    has_property_bank flag
+    ///    `has_property_bank` flag
     ///
     /// # Errors
     ///
     /// Returns `SchemaLoaderError` if:
     /// - File scanning fails (I/O error)
     /// - DB access fails (repository error)
-    pub(crate) fn discovery(
+    pub(crate) fn discover(
         &self,
-    ) -> Result<super::schema_processor::DiscoveryContext, SchemaLoaderError>
-    {
-        use super::schema_processor::DiscoveryContext;
+    ) -> Result<DiscoveryContext, SchemaLoaderError> {
         use crate::schema::error::SchemaIngestionError;
 
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
@@ -384,7 +316,6 @@ where
         })
     }
 
-
     fn handle_missing(
         &self,
         processor: PropertyBankProcessor<Parsed, Missing>,
@@ -425,7 +356,7 @@ where
                 Ok((completed, None))
             }
             ContentBranch::Mismatch(p) => {
-                let parsed = p.parse(&self.source, config_path)?;
+                let parsed = p.parse(config_path)?;
                 self.handle_analysis_branch(parsed.analyze(), filename)
             }
         }
@@ -455,6 +386,7 @@ where
             }
         }
     }
+}
 
 #[cfg(test)]
 mod tests {
@@ -545,7 +477,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discovery().unwrap();
+        let context = builder.discover().unwrap();
 
         assert!(
             context.graph.is_some(),
@@ -562,7 +494,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discovery().unwrap();
+        let context = builder.discover().unwrap();
 
         assert_eq!(
             context.files.len(),
@@ -579,7 +511,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discovery().unwrap();
+        let context = builder.discover().unwrap();
 
         assert!(
             context.graph.is_none(),
@@ -603,7 +535,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discovery().unwrap();
+        let context = builder.discover().unwrap();
 
         assert_eq!(
             context.files.len(),

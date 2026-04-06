@@ -77,20 +77,24 @@
 //!
 //! match branch {
 //!     ComparisonBranch::Missing(p) => {
-//!         let content = source.read_to_string(&config_path)?;
-//!         p.parse(&config_path, &content)?.create(filename, &repo)?
+//!         p.parse(&source, &config_path)?.create(filename, &repo)?
 //!     }
 //!     ComparisonBranch::Present(p) => {
-//!         let content = source.read_to_string(&config_path)?;
-//!         match p.check_timestamps(&content) {
+//!         match p.check_timestamps(&source, &config_path)? {
 //!             TimestampBranch::Match(p) => p.fetch(&repo)?,
-//!             TimestampBranch::Mismatch(p) => match p.check_content(&config_path) {
-//!                 ContentBranch::Match(p) => p.sync_metadata(&repo)?,
-//!                 ContentBranch::Mismatch(p) => match p.analyze(&config_path)? {
-//!                     AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
-//!                     AnalysisBranch::Delta(p) => p.update(filename, &repo)?,
-//!                 },
-//!             },
+//!             TimestampBranch::Mismatch(p) => {
+//!                 match p.check_content() {
+//!                     ContentBranch::Match(p) => p.sync_metadata(&repo)?,
+//!                     ContentBranch::Mismatch(p) => {
+//!                         let parsed = p.parse(&config_path)?;
+//!                         match parsed.analyze() {
+//!                             AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
+//!                             AnalysisBranch::Delta(p) => p.update(filename, &repo)?,
+//!                             AnalysisBranch::Corrupt(p) => p.create(filename, &repo)?,
+//!                         }
+//!                     }
+//!                 }
+//!             }
 //!         }
 //!     }
 //! }
@@ -308,8 +312,9 @@ pub(crate) enum TimestampBranch {
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
     ///
-    /// Reads the file content internally using the provided FsReader and path.
-    /// Content is only retained on mismatch to avoid unnecessary allocation.
+    /// Reads the file content internally using the provided `FsReader` and
+    /// path. Content is only retained on mismatch to avoid unnecessary
+    /// allocation.
     ///
     /// # Errors
     ///
@@ -366,9 +371,7 @@ impl PropertyBankProcessor<Comparison, Suspect> {
     /// Transitions to Parsed stage with Stale on mismatch.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn check_content(
-        self,
-    ) -> Result<ContentBranch, SchemaLoaderError> {
+    pub(crate) fn check_content(self) -> ContentBranch {
         let content_hash =
             *blake3::hash(self.status.content.as_bytes()).as_bytes();
 
@@ -379,20 +382,17 @@ impl PropertyBankProcessor<Comparison, Suspect> {
             .is_some_and(|v| v.hashes().is_content_match(&content_hash));
 
         if content_match {
-            Ok(ContentBranch::Match(Self::transition(
-                Refresh,
-                StaleTimestamps {
-                    times: self.status.times,
-                    view: self.status.view,
-                },
-            )))
+            ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
+                times: self.status.times,
+                view: self.status.view,
+            }))
         } else {
-            Ok(ContentBranch::Mismatch(Self::transition(Parsed, Stale {
+            ContentBranch::Mismatch(Self::transition(Parsed, Stale {
                 times: self.status.times,
                 content: self.status.content,
                 content_hash,
                 view: self.status.view,
-            })))
+            }))
         }
     }
 }
@@ -404,8 +404,8 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 /// Parsing phase: file content has been parsed into a raw bank.
 /// This stage sits between Comparison and Analysis.
 ///
-/// Path A (Missing): Missing → Parsed (Missing) → Construction (New)
-/// Path B (Content mismatch): Suspect → Parsed (Stale) → Analysis
+/// Path A (Missing): Missing → Parsed (Missing) → Construction (New).
+/// Path B (Content mismatch): Suspect → Parsed (Stale) → Analysis.
 #[derive(Debug)]
 pub(crate) struct Parsed;
 
@@ -413,7 +413,6 @@ pub(crate) struct Parsed;
 /// Transitions to Analysis for property hash comparison.
 #[derive(Debug)]
 pub(crate) struct ParsedStale {
-    times: RawFileTimes,
     raw: RawPropertyBank,
     content_hash: [u8; 32],
     view: RawPropertyBankView,
@@ -424,7 +423,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
     /// Parses new file content into a raw bank and transitions directly to
     /// Construction (New).
     ///
-    /// This is Path A: Missing → Parsed (Missing) → Construction (New)
+    /// This is Path A: Missing → Parsed (Missing) → Construction (New).
     ///
     /// # Errors
     ///
@@ -455,9 +454,9 @@ impl PropertyBankProcessor<Parsed, Missing> {
     }
 }
 
-/// Stale operations: parse content and transition to ParsedStale.
+/// Stale operations: parse content and transition to `ParsedStale`.
 impl PropertyBankProcessor<Parsed, Stale> {
-    /// Parses content and transitions to ParsedStale.
+    /// Parses content and transitions to `ParsedStale`.
     ///
     /// This is the entry point for Path B where content was already read
     /// in the Comparison stage.
@@ -470,7 +469,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
     pub(crate) fn parse(
         self,
         config_path: &std::path::Path,
-    ) -> Result<PropertyBankProcessor<Parsed, ParsedStale>, SchemaLoaderError>
+    ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaLoaderError>
     {
         let raw: RawPropertyBank = FsReader::parse_structured_from_str(
             config_path,
@@ -480,8 +479,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
 
         let raw = raw.with_file_times(self.status.times.clone());
 
-        Ok(Self::transition(Parsed, ParsedStale {
-            times: self.status.times,
+        Ok(Self::transition(Analysis, ParsedStale {
             raw,
             content_hash: self.status.content_hash,
             view: self.status.view,
@@ -940,7 +938,7 @@ impl PropertyBankProcessor<Construction, Changed> {
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
             filename,
-            self.status.raw_hash,
+            self.status.raw_hash.clone(),
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 

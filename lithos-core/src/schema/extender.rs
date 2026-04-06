@@ -242,11 +242,14 @@ impl Extender {
         // Phase 6: Kahn's topological ordering.
         let (order, roots) = Self::kahn_order(&nodes)?;
 
-        Ok(InheritanceGraph {
+        let graph = InheritanceGraph {
             roots,
             nodes,
             order,
-        })
+        };
+        let roots_ref = graph.roots();
+        let _roots_len = roots_ref.len();
+        Ok(graph)
     }
 
     /// Phase 1 — build owned `name → id` and `id → name` indexes.

@@ -57,7 +57,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    schema::{loader::Loader, storage::Repository as _},
+    schema::{builder::Builder, storage::Repository as _},
 };
 use tempfile::TempDir;
 
@@ -147,9 +147,9 @@ mod initial_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
-        let resolved = loader.load()?;
+        let resolved = loader.load_all()?;
 
         assert_eq!(resolved.len(), 1, "Should resolve 1 schema");
         let schema = resolved.first().expect("Should have schema");
@@ -208,9 +208,9 @@ mod initial_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
-        let resolved = loader.load()?;
+        let resolved = loader.load_all()?;
 
         assert_eq!(resolved.len(), 1, "Should resolve 1 schema");
         let schema = resolved.first().expect("Should have schema");
@@ -276,9 +276,9 @@ mod initial_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
-        let resolved = loader.load()?;
+        let resolved = loader.load_all()?;
 
         assert_eq!(resolved.len(), 3, "Should resolve 3 schemas");
         let names: Vec<&str> =
@@ -334,10 +334,10 @@ mod initial_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
         // Load should process property bank
-        let _resolved = loader.load()?;
+        let _resolved = loader.load_all()?;
 
         // Verify property bank was persisted (need new repository instance)
         let repository2 = setup_repository(test_db.db());
@@ -416,9 +416,9 @@ mod inheritance {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
-        let resolved = loader.load()?;
+        let resolved = loader.load_all()?;
 
         assert_eq!(resolved.len(), 2, "Should resolve 2 schemas");
 
@@ -505,8 +505,8 @@ mod incremental_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
-        let first = loader.load()?;
+        let mut loader = Builder::new(repository, source, &config);
+        let first = loader.load_all()?;
         assert_eq!(first.len(), 2, "First load: 2 schemas");
 
         // WAIT: Ensure mtime changes (filesystem granularity)
@@ -529,8 +529,8 @@ mod incremental_loading {
         // SECOND LOAD: Only task.json should be re-resolved
         let repository2 = setup_repository(test_db.db());
         let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository2, source2, &config);
-        let second = loader2.load()?;
+        let mut loader2 = Builder::new(repository2, source2, &config);
+        let second = loader2.load_all()?;
 
         assert_eq!(second.len(), 1, "Second load: only changed schema");
         let changed_schema =
@@ -598,8 +598,8 @@ mod incremental_loading {
         {
             let repository = setup_repository(test_db.db());
             let source = FsReader::new(vault_dir.path());
-            let loader = Loader::new(repository, source, &config);
-            let first = loader.load()?;
+            let mut loader = Builder::new(repository, source, &config);
+            let first = loader.load_all()?;
             assert_eq!(first.len(), 1);
         }; // Repository dropped, but database Arc still held by test_db
 
@@ -613,8 +613,8 @@ mod incremental_loading {
         let second = {
             let repository2 = setup_repository(&fresh_db);
             let source2 = FsReader::new(vault_dir.path());
-            let loader2 = Loader::new(repository2, source2, &config);
-            loader2.load()?
+            let mut loader2 = Builder::new(repository2, source2, &config);
+            loader2.load_all()?
         };
 
         // Schemas should be FRESH (views were persisted)
@@ -688,8 +688,8 @@ mod incremental_loading {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
-        let first = loader.load()?;
+        let mut loader = Builder::new(repository, source, &config);
+        let first = loader.load_all()?;
         assert_eq!(first.len(), 1);
         let first_schema = first.first().expect("Should have first schema");
         assert_eq!(
@@ -728,8 +728,8 @@ mod incremental_loading {
         // SECOND LOAD: Schema should be re-resolved with new property
         let repository2 = setup_repository(test_db.db());
         let source2 = FsReader::new(vault_dir.path());
-        let loader2 = Loader::new(repository2, source2, &config);
-        let second = loader2.load()?;
+        let mut loader2 = Builder::new(repository2, source2, &config);
+        let second = loader2.load_all()?;
 
         assert_eq!(second.len(), 1, "Should re-resolve schema");
         let second_schema =
@@ -783,7 +783,7 @@ mod error_handling {
     /// - Partial persistence → database in inconsistent state.
     ///
     /// # Observability
-    /// - Asserts `loader.load()` returns Err (not Ok).
+    /// - Asserts `loader.load_all()` returns Err (not Ok).
     /// - Error indicates missing property reference.
     #[test]
     fn detects_missing_property_bank_reference() -> TestResult {
@@ -806,10 +806,10 @@ mod error_handling {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
         // Should return error for missing reference
-        let result = loader.load();
+        let result = loader.load_all();
         assert!(result.is_err(), "Should fail with missing reference");
 
         Ok(())
@@ -839,7 +839,7 @@ mod error_handling {
     /// - Error message unclear → difficult to identify problematic schemas.
     ///
     /// # Observability
-    /// - Asserts `loader.load()` returns Err (not Ok).
+    /// - Asserts `loader.load_all()` returns Err (not Ok).
     /// - Error indicates circular inheritance detected.
     #[test]
     fn detects_circular_inheritance() -> TestResult {
@@ -860,10 +860,10 @@ mod error_handling {
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.db());
         let source = FsReader::new(vault_dir.path());
-        let loader = Loader::new(repository, source, &config);
+        let mut loader = Builder::new(repository, source, &config);
 
         // Should return error for circular inheritance
-        let result = loader.load();
+        let result = loader.load_all();
         assert!(result.is_err(), "Should fail with circular inheritance");
 
         Ok(())

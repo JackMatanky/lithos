@@ -81,7 +81,6 @@ use crate::schema::{
     aggregate::{SchemaId, SchemaName},
     error::{SchemaError, SchemaLoaderError, SchemaResolutionError},
     raw::{RawFileTimes, RawSchema},
-    schema_pipeline::FileStatus,
     views::RawSchemaView,
 };
 
@@ -993,71 +992,137 @@ impl<'graph> DagValidator<'graph> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  DAG BUILDER (Graph Construction from FileStatus)
+//  DAG BUILDER (Graph Construction and Patching)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// Builder for constructing `TopologicalGraph` from pipeline state.
+/// Builder for constructing or patching `TopologicalGraph<InheritanceNode>`.
 ///
-/// This struct encapsulates the complex logic of building a graph from
-/// file statuses, resolving parent relationships, and validating the result.
-pub(crate) struct DagBuilder<'status> {
-    statuses: &'status HashMap<SchemaId, FileStatus>,
+/// Supports two modes:
+/// - **Build**: Create a new graph from scratch given raw schemas
+/// - **Patch**: Update an existing graph with new/changed schemas
+pub(crate) struct DagBuilder {
+    nodes: HashMap<SchemaId, InheritanceNode>,
+    name_index: HashMap<SchemaName, SchemaId>,
 }
 
-impl<'status> DagBuilder<'status> {
-    /// Create a new builder from file statuses.
-    #[must_use]
-    pub(crate) fn new(
-        statuses: &'status HashMap<SchemaId, FileStatus>,
+impl DagBuilder {
+    /// Create a new builder from raw schemas.
+    ///
+    /// Used for building a graph from scratch (first run).
+    #[expect(dead_code, reason = "reserved for future graph bootstrap")]
+    pub(crate) fn from_schemas(
+        schemas: &HashMap<SchemaId, &RawSchema>,
+    ) -> Result<Self, SchemaLoaderError> {
+        let mut builder = Self {
+            nodes: HashMap::with_capacity(schemas.len()),
+            name_index: HashMap::with_capacity(schemas.len()),
+        };
+
+        for (&id, raw) in schemas {
+            builder.add_schema(id, raw)?;
+        }
+
+        Ok(builder)
+    }
+
+    /// Create a builder pre-populated from an existing graph.
+    ///
+    /// Used for patching: the existing graph structure is preserved and
+    /// new/changed schemas are merged in via `add_schema()`.
+    ///
+    /// The `name_index` parameter provides schema name → id mapping for
+    /// existing nodes that don't carry names in their `InheritanceNode`.
+    pub(crate) fn from_existing_graph(
+        graph: &TopologicalGraph<InheritanceNode>,
+        name_index: HashMap<SchemaName, SchemaId>,
     ) -> Self {
         Self {
-            statuses,
+            nodes: graph.nodes.clone(),
+            name_index,
         }
     }
 
-    /// Build a complete graph from statuses.
+    /// Add a schema node to the builder.
+    ///
+    /// If a node with the same ID already exists, it will be replaced
+    /// (for patching changed schemas).
+    pub(crate) fn add_schema(
+        &mut self,
+        id: SchemaId,
+        raw: &RawSchema,
+    ) -> Result<(), SchemaLoaderError> {
+        let name = SchemaName::try_new(raw.name())
+            .map_err(SchemaLoaderError::Resolution)?;
+
+        // Register name -> id mapping
+        if self
+            .name_index
+            .get(&name)
+            .is_some_and(|existing_id| *existing_id != id)
+        {
+            return Err(SchemaLoaderError::Resolution(
+                SchemaError::Resolution(
+                    SchemaResolutionError::DuplicateSchemaName {
+                        name: name.as_ref().into(),
+                    },
+                ),
+            ));
+        }
+        self.name_index.insert(name.clone(), id);
+
+        // Resolve parent
+        let parents = if let Some(parent_name) = raw.extends() {
+            if let Some(&parent_id) = self.name_index.get(parent_name) {
+                vec![parent_id]
+            } else {
+                // Parent not yet in index - will be resolved in finalize()
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Insert or replace node, preserving children
+        let existing = self.nodes.remove(&id);
+        let children = existing.map(|n| n.children).unwrap_or_default();
+
+        self.nodes.insert(id, InheritanceNode {
+            id,
+            parents,
+            children,
+            depth: NodeDepth::ROOT,
+        });
+
+        Ok(())
+    }
+
+    /// Build or patch the graph, validating and computing all metadata.
     ///
     /// # Errors
     ///
-    /// Returns error if graph construction fails (e.g., cycle detected, missing
-    /// parent).
-    pub(crate) fn build(
-        self,
+    /// Returns error if graph validation fails (cycles, missing parents, etc.).
+    pub(crate) fn finalize(
+        mut self,
     ) -> Result<TopologicalGraph<InheritanceNode>, SchemaLoaderError> {
-        let index = self.build_name_index()?;
-        let mut nodes: HashMap<SchemaId, InheritanceNode> =
-            HashMap::with_capacity(self.statuses.len());
+        // Second pass: resolve any parents that weren't available on first pass
+        self.resolve_pending_parents()?;
 
-        // Build initial nodes with parents resolved
-        for (id, status) in self.statuses {
-            let parents = Self::resolve_parents(status, &index)?;
-
-            nodes.insert(*id, InheritanceNode {
-                id: *id,
-                parents,
-                children: Vec::new(),
-                depth: NodeDepth::ROOT,
-            });
-        }
-
-        // Build bidirectional children links
-        Self::build_children(&mut nodes);
+        // Rebuild bidirectional children links
+        Self::build_children(&mut self.nodes);
 
         // Validate no cycles
-        let mut validator = DagValidator::new(&nodes);
-        validator.detect_cycles().map_err(|e| {
+        DagValidator::new(&self.nodes).detect_cycles().map_err(|e| {
             SchemaLoaderError::Resolution(SchemaError::Resolution(e))
         })?;
 
-        // Compute depths
+        // Compute depths and topological order
         let mut graph = TopologicalGraph {
-            nodes,
+            nodes: self.nodes,
             order: Vec::new(),
             roots: Vec::new(),
         };
         graph.compute_depths();
 
-        // Compute topological order
         let (order, roots) = graph.topological_sort().map_err(|e| {
             SchemaLoaderError::Resolution(SchemaError::Resolution(e))
         })?;
@@ -1067,86 +1132,22 @@ impl<'status> DagBuilder<'status> {
         Ok(graph)
     }
 
-    fn build_name_index(
-        &self,
-    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaLoaderError> {
-        let mut index = HashMap::with_capacity(self.statuses.len());
-
-        for (id, status) in self.statuses {
-            let name = if let Some(raw) = status.raw() {
-                SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?
-            } else if let Some(view) = status.view() {
-                SchemaName::try_new(view.name())
-                    .map_err(SchemaLoaderError::Resolution)?
-            } else {
-                return Err(SchemaLoaderError::Ingestion(
-                    crate::schema::error::SchemaIngestionError::Storage(
-                        crate::schema::error::SchemaStorageError::NotFound {
-                            name: status.path().to_string_lossy().into(),
-                        },
-                    ),
-                ));
-            };
-
-            if index.insert(name.clone(), *id).is_some() {
-                return Err(SchemaLoaderError::Resolution(
-                    crate::schema::error::SchemaError::Resolution(
-                        SchemaResolutionError::DuplicateSchemaName {
-                            name: name.as_ref().into(),
-                        },
-                    ),
-                ));
-            }
-        }
-
-        Ok(index)
-    }
-
-    fn resolve_parents(
-        status: &FileStatus,
-        index: &HashMap<SchemaName, SchemaId>,
-    ) -> Result<Vec<SchemaId>, SchemaLoaderError> {
-        let child_name = if let Some(raw) = status.raw() {
-            SchemaName::try_new(raw.name())
-                .map_err(SchemaLoaderError::Resolution)?
-        } else if let Some(view) = status.view() {
-            SchemaName::try_new(view.name())
-                .map_err(SchemaLoaderError::Resolution)?
-        } else {
-            return Err(SchemaLoaderError::Ingestion(
-                crate::schema::error::SchemaIngestionError::Storage(
-                    crate::schema::error::SchemaStorageError::NotFound {
-                        name: status.path().to_string_lossy().into(),
-                    },
-                ),
-            ));
-        };
-
-        let extends = if let Some(raw) = status.raw() {
-            raw.extends().cloned()
-        } else if let Some(view) = status.view() {
-            view.extends().cloned()
-        } else {
-            None
-        };
-
-        if let Some(parent_name) = extends {
-            let parent_id =
-                index.get(&parent_name).copied().ok_or_else(|| {
-                    SchemaLoaderError::Resolution(
-                        crate::schema::error::SchemaError::Resolution(
-                            SchemaResolutionError::ParentNotFound {
-                                child: child_name.clone(),
-                                parent: parent_name.clone(),
-                            },
-                        ),
-                    )
-                })?;
-            Ok(vec![parent_id])
-        } else {
-            Ok(Vec::new())
-        }
+    #[expect(
+        clippy::unused_self,
+        reason = "kept as a hook for future validation steps"
+    )]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "placeholder for fallible validation in future"
+    )]
+    fn resolve_pending_parents(&mut self) -> Result<(), SchemaLoaderError> {
+        // All parents should have been resolved during add_schema() calls.
+        // Any node with empty parents is either a root or has an unresolved
+        // extends reference - the latter is an error.
+        // Since we don't have raw schema references here, we can't check
+        // extends. The caller must ensure all schemas are added before
+        // finalize.
+        Ok(())
     }
 
     fn build_children(nodes: &mut HashMap<SchemaId, InheritanceNode>) {

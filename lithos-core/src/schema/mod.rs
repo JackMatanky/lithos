@@ -42,12 +42,12 @@ pub mod expander;
 /// PropertyBank state machine for incremental loading and staleness detection.
 pub mod property_bank_processor;
 
-/// Two-level typestate schema ingestion pipeline.
+/// Batch-based schema processor pipeline.
 ///
 /// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
-/// storage and builder modules to use the pipeline types.
+/// builder and tests to use the new batch processor.
 #[doc(hidden)]
-pub mod schema_pipeline;
+pub mod schema_processor;
 
 /// DAG structures and algorithms for schema inheritance.
 pub mod graph;
@@ -56,13 +56,6 @@ pub mod graph;
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
 pub mod events;
-/// File ingestion pipeline for schemas and property banks.
-///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the ingestor while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod ingestor;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///
@@ -74,8 +67,6 @@ pub mod extender;
 
 /// Facade for schema orchestration.
 pub mod builder;
-/// Schema loader — orchestrates file ingestion and resolution.
-pub mod loader;
 /// Property domain entities.
 pub mod property;
 /// Property specification variants.
