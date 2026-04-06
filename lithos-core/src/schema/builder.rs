@@ -33,49 +33,6 @@ pub struct Builder<'config, R> {
     property_bank_delta: Option<HashSet<PropertyName>>,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct FilesContext {
-    pub(crate) files: Vec<PathBuf>,
-    pub(crate) has_property_bank: bool,
-}
-
-impl FilesContext {
-    #[inline]
-    fn new(files: Vec<PathBuf>) -> Self {
-        Self {
-            files,
-            has_property_bank: false,
-        }
-    }
-
-    #[inline]
-    fn set_property_bank_existence(&mut self) {
-        self.has_property_bank = true;
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PropertyBankContext {
-    pub(crate) filename: Box<str>,
-    pub(crate) path: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum BankContextBranch {
-    Missing,
-    Present(PropertyBankContext),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum GraphContextBranch {
-    Missing,
-    Present {
-        graph: InheritanceGraph<InheritanceNode>,
-    },
-}
-
-type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
-
 impl<'config, R: Repository> Builder<'config, R>
 where
     R::Error: Into<crate::schema::error::SchemaRepositoryError>,
@@ -249,25 +206,6 @@ where
         Ok(completed)
     }
 
-    fn resolve_property_bank_filename(
-        &self,
-    ) -> Result<Box<str>, SchemaLoaderError> {
-        if let Some(name) = self
-            .config
-            .paths()
-            .property_bank_path()
-            .file_name()
-            .and_then(|name| name.to_str())
-        {
-            return Ok(name.into());
-        }
-
-        self.source
-            .filename(self.config.paths().property_bank_path().as_path())
-            .map(Into::into)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
-    }
-
     pub(crate) fn discover_files<F>(
         &self,
         mut on_bank_found: F,
@@ -356,6 +294,25 @@ where
         })
     }
 
+    fn resolve_property_bank_filename(
+        &self,
+    ) -> Result<Box<str>, SchemaLoaderError> {
+        if let Some(name) = self
+            .config
+            .paths()
+            .property_bank_path()
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
+            return Ok(name.into());
+        }
+
+        self.source
+            .filename(self.config.paths().property_bank_path().as_path())
+            .map(Into::into)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
+    }
+
     fn handle_missing(
         &self,
         processor: PropertyBankProcessor<Parsed, Missing>,
@@ -428,6 +385,49 @@ where
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub(crate) struct FilesContext {
+    pub(crate) files: Vec<PathBuf>,
+    pub(crate) has_property_bank: bool,
+}
+
+impl FilesContext {
+    #[inline]
+    fn new(files: Vec<PathBuf>) -> Self {
+        Self {
+            files,
+            has_property_bank: false,
+        }
+    }
+
+    #[inline]
+    fn set_property_bank_existence(&mut self) {
+        self.has_property_bank = true;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PropertyBankContext {
+    pub(crate) filename: Box<str>,
+    pub(crate) path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum BankContextBranch {
+    Missing,
+    Present(PropertyBankContext),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum GraphContextBranch {
+    Missing,
+    Present {
+        graph: InheritanceGraph<InheritanceNode>,
+    },
+}
+
+type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
 
 #[cfg(test)]
 mod tests {
