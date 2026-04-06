@@ -11,18 +11,246 @@
 
 use std::{
     borrow::Borrow,
+    collections::HashMap,
     fmt::{Debug, Display},
     sync::LazyLock,
 };
 
 use regex::Regex;
+use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
     error::SchemaError,
     property_spec::PropertySpec,
-    raw::property::{RawPropertyBankEntry, RawPropertyInline},
+    raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
 };
+
+/// Map of properties keyed by name.
+///
+/// This wrapper preserves the invariant that a property's name is stored only
+/// in the map key, not inside the `Property` value.
+#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PropertyMap(HashMap<PropertyName, Property>);
+
+impl PropertyMap {
+    /// Creates an empty property map.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    /// Returns true if the map is empty.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the number of properties in the map.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns a property by name.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, name: &PropertyName) -> Option<&Property> {
+        self.0.get(name)
+    }
+
+    /// Returns true if the map contains the given name.
+    #[inline]
+    #[must_use]
+    pub fn contains_key(&self, name: &PropertyName) -> bool {
+        self.0.contains_key(name)
+    }
+
+    /// Inserts a property with the given name.
+    #[inline]
+    pub fn insert(
+        &mut self,
+        name: PropertyName,
+        property: Property,
+    ) -> Option<Property> {
+        self.0.insert(name, property)
+    }
+
+    /// Removes a property by name.
+    #[inline]
+    pub fn remove(&mut self, name: &PropertyName) -> Option<Property> {
+        self.0.remove(name)
+    }
+
+    /// Returns an iterator over named properties.
+    #[inline]
+    pub fn iter_named(
+        &self,
+    ) -> impl Iterator<Item = (&PropertyName, &Property)> {
+        self.0.iter()
+    }
+
+    /// Returns an iterator over property values.
+    #[inline]
+    pub fn values(&self) -> impl Iterator<Item = &Property> {
+        self.0.values()
+    }
+
+    /// Extends the map with entries from another `PropertyMap`.
+    #[inline]
+    pub fn extend(&mut self, other: PropertyMap) {
+        for (name, property) in other {
+            self.insert(name, property);
+        }
+    }
+
+    /// Returns an iterator over property names.
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = &PropertyName> {
+        self.0.keys()
+    }
+
+    /// Returns an iterator over named properties.
+    #[inline]
+    #[must_use]
+    pub fn iter(
+        &self,
+    ) -> std::collections::hash_map::Iter<'_, PropertyName, Property> {
+        self.0.iter()
+    }
+}
+
+impl TryFrom<RawPropertyMap<RawPropertyInline>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: RawPropertyMap<RawPropertyInline>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        for (name, raw) in &value {
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::from(raw.required),
+                Multiplicity::from(raw.multi),
+                raw.spec.clone().try_into()?,
+            );
+            map.insert(name.clone(), property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<RawPropertyMap<RawPropertyBankEntry>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: RawPropertyMap<RawPropertyBankEntry>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        for (name, raw) in &value {
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::default(),
+                Multiplicity::from(raw.multi),
+                raw.spec.clone().try_into()?,
+            );
+            map.insert(name.clone(), property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<HashMap<PropertyName, RawPropertyInline>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: HashMap<PropertyName, RawPropertyInline>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property map construction preserves key/value pairs"
+        )]
+        for (name, raw) in value {
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::from(raw.required),
+                Multiplicity::from(raw.multi),
+                raw.spec.try_into()?,
+            );
+            map.insert(name, property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<HashMap<PropertyName, RawPropertyBankEntry>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: HashMap<PropertyName, RawPropertyBankEntry>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property map construction preserves key/value pairs"
+        )]
+        for (name, raw) in value {
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::default(),
+                Multiplicity::from(raw.multi),
+                raw.spec.try_into()?,
+            );
+            map.insert(name, property);
+        }
+        Ok(map)
+    }
+}
+
+impl AsRef<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn as_ref(&self) -> &HashMap<PropertyName, Property> {
+        &self.0
+    }
+}
+
+impl From<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn from(map: HashMap<PropertyName, Property>) -> Self {
+        Self(map)
+    }
+}
+
+impl<'map> IntoIterator for &'map PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::Iter<'map, PropertyName, Property>;
+    type Item = (&'map PropertyName, &'map Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::IntoIter<PropertyName, Property>;
+    type Item = (PropertyName, Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 /// Reusable property definition with type-specific validation.
 ///
@@ -37,11 +265,9 @@ use super::{
 ///     property_spec::{BoolSpec, PropertySpec},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let name = PropertyName::try_new("is_active")?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let property = Property::new(
 ///     PropertyId::new(),
-///     name,
 ///     Optionality::Required,
 ///     Multiplicity::Single,
 ///     spec,
@@ -50,15 +276,11 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Property {
     /// Unique identity (UUID v7).
     id: PropertyId,
-    /// Property name.
-    name: PropertyName,
     /// Whether property is required.
     optionality: Optionality,
     /// Whether property accepts array of values.
@@ -76,14 +298,12 @@ impl Property {
     #[must_use]
     pub const fn new(
         id: PropertyId,
-        name: PropertyName,
         optionality: Optionality,
         multiplicity: Multiplicity,
         spec: PropertySpec,
     ) -> Self {
         Self {
             id,
-            name,
             optionality,
             multiplicity,
             spec,
@@ -95,13 +315,6 @@ impl Property {
     #[must_use]
     pub const fn id(&self) -> PropertyId {
         self.id
-    }
-
-    /// Returns the property's name.
-    #[inline]
-    #[must_use]
-    pub const fn name(&self) -> &PropertyName {
-        &self.name
     }
 
     /// Returns the property's optionality.
@@ -175,42 +388,6 @@ impl Property {
     }
 }
 
-impl TryFrom<(PropertyName, RawPropertyInline)> for Property {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(
-        value: (PropertyName, RawPropertyInline),
-    ) -> Result<Self, Self::Error> {
-        let (name, raw) = value;
-        Ok(Self::new(
-            PropertyId::new(),
-            name,
-            Optionality::from(raw.required),
-            Multiplicity::from(raw.multi),
-            raw.spec.try_into()?,
-        ))
-    }
-}
-
-impl TryFrom<(PropertyName, RawPropertyBankEntry)> for Property {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(
-        value: (PropertyName, RawPropertyBankEntry),
-    ) -> Result<Self, Self::Error> {
-        let (name, raw) = value;
-        Ok(Self::new(
-            PropertyId::new(),
-            name,
-            Optionality::default(),
-            Multiplicity::from(raw.multi),
-            raw.spec.try_into()?,
-        ))
-    }
-}
-
 /// Unique identity for a property.
 ///
 /// # Examples
@@ -229,9 +406,9 @@ impl TryFrom<(PropertyName, RawPropertyBankEntry)> for Property {
     PartialOrd,
     Ord,
     Hash,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
@@ -310,9 +487,9 @@ impl Display for PropertyId {
     PartialOrd,
     Ord,
     Hash,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
@@ -500,9 +677,9 @@ impl<'de> serde::Deserialize<'de> for PropertyName {
     PartialEq,
     Eq,
     Hash,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -534,9 +711,9 @@ impl From<bool> for Optionality {
     PartialEq,
     Eq,
     Hash,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -609,10 +786,9 @@ mod tests {
             /// Returns `SchemaError` if the property name is invalid.
             #[inline]
             pub fn build(self) -> Result<Property, SchemaError> {
-                let name = PropertyName::try_new(&self.name)?;
+                let _name = PropertyName::try_new(&self.name)?;
                 Ok(Property::new(
                     PropertyId::from_uuid(TEST_PROPERTY_ID),
-                    name,
                     self.optionality,
                     self.multiplicity,
                     self.spec,
@@ -666,17 +842,6 @@ mod tests {
             }
 
             #[test]
-            fn builder_sets_name() {
-                let property = build_property();
-
-                assert_eq!(
-                    property.name().as_str(),
-                    "priority",
-                    "Builder should set property name to 'priority'"
-                );
-            }
-
-            #[test]
             fn builder_sets_required_flag() {
                 let property = build_property();
 
@@ -709,12 +874,8 @@ mod tests {
 
         fn required_scalar_property() -> Property {
             let spec = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::try_new("status")
-                .expect("Expected valid property name");
-
             Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
-                name,
                 Optionality::Required,
                 Multiplicity::Single,
                 spec,
@@ -748,17 +909,6 @@ mod tests {
             assert!(
                 property.multiplicity() == Multiplicity::Single,
                 "Property should not be an array when array flag is false"
-            );
-        }
-
-        #[test]
-        fn returns_name_from_accessor() {
-            let property = required_scalar_property();
-
-            assert_eq!(
-                property.name().as_str(),
-                "status",
-                "Property name should match"
             );
         }
 

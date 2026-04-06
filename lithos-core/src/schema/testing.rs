@@ -51,7 +51,7 @@ use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     graph::{InheritanceGraph, InheritanceNode},
-    property::PropertyName,
+    property::{PropertyMap, PropertyName},
     storage::{NameIdPair, Repository, SchemaPathIdPairs, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},
 };
@@ -306,7 +306,7 @@ impl Repository for InMemoryRepository {
         for (schema_id, schema) in schemas.iter() {
             let matching_props: Vec<PropertyName> = schema
                 .properties()
-                .iter()
+                .iter_named()
                 .filter(|(prop_name, _)| property_names.contains(prop_name))
                 .map(|(prop_name, _)| prop_name.clone())
                 .collect();
@@ -639,7 +639,8 @@ mod tests {
         // Add some data
         let id = SchemaId::new();
         let name = SchemaName::try_new("test-schema").unwrap();
-        let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
+        let schema =
+            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 
         repo.save_schemas(&[schema]).unwrap();
         assert_eq!(repo.schema_count(), 1);

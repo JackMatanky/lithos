@@ -6,9 +6,9 @@
 //! - Parent properties in excludes list are filtered out
 //! - All other parent properties are inherited
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use super::property::{Property, PropertyName};
+use super::property::{PropertyMap, PropertyName};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Merger
@@ -35,21 +35,16 @@ impl Merger {
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
     pub fn inherit_properties(
-        parent: &HashMap<PropertyName, Property>,
-        child: &HashMap<PropertyName, Property>,
+        parent: &PropertyMap,
+        child: &PropertyMap,
         excludes: &[PropertyName],
-    ) -> HashMap<PropertyName, Property> {
+    ) -> PropertyMap {
         let excluded_names: HashSet<PropertyName> =
             excludes.iter().cloned().collect();
 
         let mut result = child.clone();
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "HashMap iteration is intentional for property \
-                      inheritance"
-        )]
-        for (name, prop) in parent {
+        for (name, prop) in parent.iter_named() {
             if excluded_names.contains(name) || result.contains_key(name) {
                 continue;
             }
@@ -78,7 +73,8 @@ mod tests {
     use crate::schema::{
         error::SchemaError,
         property::{
-            Multiplicity, Optionality, Property, PropertyId, PropertyName,
+            Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+            PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
     };
@@ -86,20 +82,22 @@ mod tests {
     mod fixtures {
         use super::*;
 
-        pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Ok(Property::new(
+        pub fn bool_property(
+            name: &str,
+        ) -> Result<(PropertyName, Property), SchemaError> {
+            let property = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new(name)?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            ))
+            );
+            Ok((PropertyName::try_new(name)?, property))
         }
 
         pub fn map_properties(
-            props: Vec<Property>,
-        ) -> HashMap<PropertyName, Property> {
-            props.into_iter().map(|p| (p.name().clone(), p)).collect()
+            props: Vec<(PropertyName, Property)>,
+        ) -> PropertyMap {
+            PropertyMap::from(props.into_iter().collect::<HashMap<_, _>>())
         }
     }
 
@@ -120,7 +118,7 @@ mod tests {
 
             let merged = Merger::inherit_properties(&parent, &child, &[]);
             let prop_names: Vec<&str> =
-                merged.values().map(|p| p.name().as_ref()).collect();
+                merged.iter_named().map(|(n, _)| n.as_ref()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -134,28 +132,30 @@ mod tests {
 
         #[test]
         fn child_override_beats_parent() -> Result<(), SchemaError> {
+            let name = PropertyName::try_new("shared")?;
             let parent_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new("shared")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let child_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::try_new("shared")?,
                 Optionality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
 
-            let parent = fixtures::map_properties(vec![parent_prop]);
-            let child = fixtures::map_properties(vec![child_prop.clone()]);
+            let parent =
+                fixtures::map_properties(vec![(name.clone(), parent_prop)]);
+            let child = fixtures::map_properties(vec![(
+                name.clone(),
+                child_prop.clone(),
+            )]);
 
             let merged = Merger::inherit_properties(&parent, &child, &[]);
-            let stored_prop = merged
-                .get(&PropertyName::try_new("shared")?)
-                .expect("shared property exists");
+            let stored_prop =
+                merged.get(&name).expect("shared property exists");
             assert_eq!(stored_prop.optionality(), Optionality::Optional);
             Ok(())
         }

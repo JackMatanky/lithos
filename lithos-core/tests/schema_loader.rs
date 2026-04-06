@@ -57,7 +57,9 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    schema::{builder::Builder, storage::Repository as _},
+    schema::{
+        builder::Builder, property::PropertyName, storage::Repository as _,
+    },
 };
 use tempfile::TempDir;
 
@@ -742,8 +744,10 @@ mod incremental_loading {
 
         // VERIFY: Check that both properties resolved correctly
         let task = second_schema;
-        assert!(task.properties().contains_key("title"));
-        assert!(task.properties().contains_key("status"));
+        let title = PropertyName::try_new("title")?;
+        let status = PropertyName::try_new("status")?;
+        assert!(task.properties().contains_key(&title));
+        assert!(task.properties().contains_key(&status));
 
         Ok(())
     }

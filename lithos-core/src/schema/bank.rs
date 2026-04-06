@@ -3,13 +3,16 @@
 //! Provides name-indexed property lookup with singleton persistence and
 //! versioning for incremental resolution.
 
-use std::{collections::HashMap, fmt::Display, time::SystemTime};
+use std::{fmt::Display, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     error::SchemaError,
-    property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
+    property::{
+        Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+        PropertyName,
+    },
     raw::RawPropertyBank,
 };
 
@@ -39,15 +42,10 @@ use super::{
 /// let name = PropertyName::try_new("is_active")?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let id = PropertyId::new();
-/// let property = Property::new(
-///     id,
-///     name.clone(),
-///     Optionality::Required,
-///     Multiplicity::Single,
-///     spec,
-/// );
+/// let property =
+///     Property::new(id, Optionality::Required, Multiplicity::Single, spec);
 ///
-/// bank.register(property)?;
+/// bank.register(&name, property)?;
 /// assert!(bank.has(&name), "Bank should contain property name");
 /// # Ok(())
 /// # }
@@ -55,8 +53,8 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PropertyBank {
-    /// Registered properties keyed by name (`HashMap` for O(1) lookup).
-    properties: HashMap<PropertyName, Property>,
+    /// Registered properties keyed by name (`PropertyMap` for O(1) lookup).
+    properties: PropertyMap,
     /// Version counter for staleness detection.
     version: BankVersion,
     /// Ingestion timestamp (private - not exposed in public API).
@@ -80,7 +78,7 @@ impl PropertyBank {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            properties: HashMap::new(),
+            properties: PropertyMap::new(),
             version: BankVersion::initial(),
             recorded_at: SystemTime::now(),
         }
@@ -120,15 +118,10 @@ impl PropertyBank {
     /// let name = PropertyName::try_new("is_active")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = PropertyId::new();
-    /// let property = Property::new(
-    ///     id,
-    ///     name,
-    ///     Optionality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
+    /// let property =
+    ///     Property::new(id, Optionality::Required, Multiplicity::Single, spec);
     ///
-    /// bank.register(property)?;
+    /// bank.register(&name, property)?;
     /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
     /// # Ok(())
     /// # }
@@ -137,9 +130,13 @@ impl PropertyBank {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn register(&mut self, property: Property) -> Result<(), SchemaError> {
+    pub fn register(
+        &mut self,
+        name: &PropertyName,
+        property: Property,
+    ) -> Result<(), SchemaError> {
         let id = property.id();
-        let name = property.name().clone();
+        let name = name.clone();
 
         if let Some(existing) = self.properties.get(&name) {
             if existing == &property {
@@ -219,9 +216,7 @@ impl PropertyBank {
     }
 
     #[inline]
-    pub(super) fn set_properties(
-        &mut self,
-    ) -> &mut HashMap<PropertyName, Property> {
+    pub(super) fn set_properties(&mut self) -> &mut PropertyMap {
         &mut self.properties
     }
 
@@ -296,7 +291,6 @@ impl PropertyBank {
 
                 let property = Property::new(
                     id,
-                    name.clone(),
                     Optionality::Optional,
                     multiplicity,
                     spec,
@@ -370,13 +364,12 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
 
             let property = Property::new(
                 PropertyId::new(),
-                name.clone(),
                 Optionality::Optional,
                 multiplicity,
                 spec,
             );
 
-            bank.register(property)?;
+            bank.register(name, property)?;
         }
 
         Ok(bank)
@@ -531,15 +524,15 @@ mod tests {
         pub fn bank_with_property()
         -> Result<(PropertyBank, PropertyId), SchemaError> {
             let mut bank = PropertyBank::new();
+            let name = PropertyName::try_new("flag")?;
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                PropertyName::try_new("flag")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let id = property.id();
-            bank.register(property)?;
+            bank.register(&name, property)?;
             Ok((bank, id))
         }
     }
@@ -569,16 +562,16 @@ mod tests {
             let name = PropertyName::try_new("test").expect("Valid name");
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name,
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec,
             );
 
             // WHEN: registering the same property twice
-            bank.register(prop.clone())
+            bank.register(&name, prop.clone())
                 .expect("First registration should succeed");
-            bank.register(prop).expect("Second registration should succeed");
+            bank.register(&name, prop)
+                .expect("Second registration should succeed");
 
             // THEN: the count remains 1
             let count = bank.all().count();
@@ -601,26 +594,25 @@ mod tests {
             let name1 = PropertyName::try_new("status").expect("Valid name");
             let prop1 = Property::new(
                 id,
-                name1,
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec1,
             );
 
-            bank.register(prop1).expect("First registration should succeed");
+            bank.register(&name1, prop1)
+                .expect("First registration should succeed");
 
             // WHEN: attempting to register different content with same ID
             let spec2 = PropertySpec::Bool(BoolSpec::default());
             let name2 = PropertyName::try_new("priority").expect("Valid name");
             let prop2 = Property::new(
                 id,
-                name2,
                 Optionality::Required,
                 Multiplicity::Many,
                 spec2,
             );
 
-            let result = bank.register(prop2);
+            let result = bank.register(&name2, prop2);
 
             // THEN: registration should fail
             assert!(
@@ -664,23 +656,22 @@ mod tests {
             let name = PropertyName::try_new("test").expect("Valid name");
             let prop1 = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name.clone(),
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec1,
             );
-            bank.register(prop1).expect("Initial registration should succeed");
+            bank.register(&name, prop1)
+                .expect("Initial registration should succeed");
 
             // WHEN: registering a different definition with the same name
             let spec2 = PropertySpec::Bool(BoolSpec::default());
             let prop2 = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_B),
-                name,
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec2,
             );
-            let res = bank.register(prop2);
+            let res = bank.register(&name, prop2);
 
             // THEN: it must return a DuplicatePropertyName error
             assert!(
@@ -704,12 +695,11 @@ mod tests {
                 PropertyName::try_new("status").expect("valid property name");
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name.clone(),
                 Optionality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
-            bank.register(prop).expect("initial registration succeeds");
+            bank.register(&name, prop).expect("initial registration succeeds");
 
             // Use JSON deserialization to construct RawPropertyBank
             let raw_json = serde_json::json!({

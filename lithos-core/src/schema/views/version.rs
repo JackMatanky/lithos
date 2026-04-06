@@ -26,7 +26,7 @@ use super::metadata::{FileTimesMetadata, HashMetadata};
 use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
-    property::{Property, PropertyName},
+    property::{PropertyMap, PropertyName},
     raw::{RawPropertyBank, RawSchema},
 };
 
@@ -89,7 +89,7 @@ pub struct SchemaVersion {
     /// Cached expanded properties (from `RefExpander`).
     ///
     /// Enables skipping expansion when `PropertyBank` is fresh.
-    expanded_properties: Option<HashMap<PropertyName, Property>>,
+    expanded_properties: Option<PropertyMap>,
 }
 
 impl SchemaVersion {
@@ -198,9 +198,7 @@ impl SchemaVersion {
     /// Get cached expanded properties if available.
     #[inline]
     #[must_use]
-    pub fn expanded_properties(
-        &self,
-    ) -> Option<&HashMap<PropertyName, Property>> {
+    pub fn expanded_properties(&self) -> Option<&PropertyMap> {
         self.expanded_properties.as_ref()
     }
 
@@ -208,10 +206,7 @@ impl SchemaVersion {
     ///
     /// Called after `RefExpander` processes the schema.
     #[inline]
-    pub fn set_expanded_properties(
-        &mut self,
-        properties: HashMap<PropertyName, Property>,
-    ) {
+    pub fn set_expanded_properties(&mut self, properties: PropertyMap) {
         self.expanded_properties = Some(properties);
     }
 }
@@ -327,6 +322,7 @@ mod tests {
     use std::{collections::HashMap, time::SystemTime};
 
     use super::*;
+    use crate::schema::property::PropertyMap;
 
     fn create_test_raw_schema() -> RawSchema {
         let json = serde_json::json!({
@@ -351,7 +347,7 @@ mod tests {
 
         assert!(version.expanded_properties().is_none());
 
-        let expanded = HashMap::new();
+        let expanded = PropertyMap::new();
         version.set_expanded_properties(expanded);
 
         assert!(version.expanded_properties().is_some());

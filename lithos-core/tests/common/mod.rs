@@ -61,6 +61,9 @@ where
 /// Standard test result type for integration tests.
 pub type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
+/// Named property tuple used by schema tests.
+pub type NamedProperty = (PropertyName, Property);
+
 // ----------------------------------------------------------- //
 //                    RAII Test Database                       //
 // ----------------------------------------------------------- //
@@ -301,7 +304,7 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_bool(self) -> TestResult<Property> {
+    pub fn build_bool(self) -> TestResult<NamedProperty> {
         self.build_with_spec(PropertySpec::Bool(BoolSpec::default()))
     }
 
@@ -310,7 +313,7 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_string_default(self) -> TestResult<Property> {
+    pub fn build_string_default(self) -> TestResult<NamedProperty> {
         self.build_with_spec(PropertySpec::String(StringSpec::default()))
     }
 
@@ -319,10 +322,15 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_with_spec(self, spec: PropertySpec) -> TestResult<Property> {
+    pub fn build_with_spec(
+        self,
+        spec: PropertySpec,
+    ) -> TestResult<NamedProperty> {
         let name = PropertyName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        Ok(Property::new(id, name, self.optionality, self.multiplicity, spec))
+        let property =
+            Property::new(id, self.optionality, self.multiplicity, spec);
+        Ok((name, property))
     }
 }
 
@@ -335,12 +343,12 @@ impl PropertyBuilder {
 /// ```no_run
 /// # use tests::common::{bool_property, TestResult};
 /// # fn test() -> TestResult {
-/// let status = bool_property("is_active")?;
+/// let (_name, status) = bool_property("is_active")?;
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
-pub fn bool_property(name: &str) -> TestResult<Property> {
+pub fn bool_property(name: &str) -> TestResult<NamedProperty> {
     PropertyBuilder::new(name).build_bool()
 }
 
@@ -353,12 +361,12 @@ pub fn bool_property(name: &str) -> TestResult<Property> {
 /// ```no_run
 /// # use tests::common::{string_property, TestResult};
 /// # fn test() -> TestResult {
-/// let title = string_property("title")?;
+/// let (_name, title) = string_property("title")?;
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
-pub fn string_property(name: &str) -> TestResult<Property> {
+pub fn string_property(name: &str) -> TestResult<NamedProperty> {
     PropertyBuilder::new(name).build_string_default()
 }
 
@@ -381,7 +389,7 @@ pub fn string_property(name: &str) -> TestResult<Property> {
 /// ```no_run
 /// # use tests::common::{SchemaBuilder, bool_property, TestResult};
 /// # fn test() -> TestResult {
-/// let prop = bool_property("status")?;
+/// let (_name, prop) = bool_property("status")?;
 /// let schema = SchemaBuilder::new("task").property(prop).build()?;
 /// # Ok(())
 /// # }

@@ -121,7 +121,7 @@ use crate::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
             SchemaStorageError,
         },
-        property::{Property, PropertyName},
+        property::{PropertyMap, PropertyName},
         raw::{RawFileTimes, RawPropertyBank, RawPropertyBankEntry},
         storage::Repository,
         views::{
@@ -778,15 +778,16 @@ impl PropertyBankProcessor<Construction, New> {
     fn build_bank(&self) -> Result<PropertyBank, SchemaLoaderError> {
         let mut bank = PropertyBank::new();
 
-        for (name, entry) in self.status.raw.properties().iter() {
-            let property = Property::try_from((name.clone(), entry.clone()))
+        let properties =
+            PropertyMap::try_from(self.status.raw.properties().clone())
                 .map_err(|source| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                         path: std::path::PathBuf::from("property_bank"),
                         source,
                     })
                 })?;
-            bank.register(property).map_err(|source| {
+        for (name, property) in properties {
+            bank.register(&name, property).map_err(|source| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                     path: std::path::PathBuf::from("property_bank"),
                     source,
@@ -880,31 +881,22 @@ impl PropertyBankProcessor<Construction, Changed> {
         &self,
         bank: &mut PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
-        use std::collections::hash_map::Entry;
-
         let any_changed = !self.status.delta.is_empty();
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Property registration order in the bank is irrelevant"
-        )]
-        for (name, entry) in &self.status.delta.upserts {
-            let property = Property::try_from((name.clone(), entry.clone()))
-                .map_err(|source| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                        path: std::path::PathBuf::from("property_bank"),
-                        source,
-                    })
-                })?;
-            match bank.set_properties().entry(name.clone()) {
-                Entry::Occupied(mut occupied) => {
-                    let existing_id = occupied.get().id();
-                    let property = property.with_id(existing_id);
-                    occupied.insert(property);
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(property);
-                }
+        let upserts = PropertyMap::try_from(self.status.delta.upserts.clone())
+            .map_err(|source| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                    path: std::path::PathBuf::from("property_bank"),
+                    source,
+                })
+            })?;
+        for (name, property) in upserts {
+            if let Some(existing) = bank.set_properties().get(&name) {
+                let existing_id = existing.id();
+                let property = property.with_id(existing_id);
+                bank.set_properties().insert(name, property);
+            } else {
+                bank.set_properties().insert(name, property);
             }
         }
 

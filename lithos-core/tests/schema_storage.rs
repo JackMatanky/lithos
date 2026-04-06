@@ -49,7 +49,7 @@ use common::*;
 use lithos_core::schema::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    property::PropertyId,
+    property::{PropertyId, PropertyMap},
     storage::Repository as _,
 };
 use uuid::Uuid;
@@ -90,10 +90,10 @@ mod roundtrip_tests {
 
         // Create and save property bank
         let mut bank = PropertyBank::new();
-        let prop = PropertyBuilder::new("status")
+        let (prop_name, prop) = PropertyBuilder::new("status")
             .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
             .build_bool()?;
-        bank.register(prop)?;
+        bank.register(&prop_name, prop)?;
         repository.save_property_bank(&bank)?;
 
         // Retrieve and verify
@@ -126,15 +126,16 @@ mod roundtrip_tests {
         let repository = setup_repository(test_db.db());
 
         // Create schema
-        let prop = PropertyBuilder::new("title").build_string_default()?;
+        let (prop_name, prop) =
+            PropertyBuilder::new("title").build_string_default()?;
         let mut props = HashMap::new();
-        props.insert(prop.name().clone(), prop);
+        props.insert(prop_name, prop);
         let schema = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
             Vec::new(),
             vec![],
-            props,
+            PropertyMap::from(props),
         );
         let schema_id = *schema.id();
 
@@ -180,15 +181,16 @@ mod lookup_tests {
         let repository = setup_repository(test_db.db());
 
         // Create and save
-        let prop = PropertyBuilder::new("title").build_string_default()?;
+        let (prop_name, prop) =
+            PropertyBuilder::new("title").build_string_default()?;
         let mut props = HashMap::new();
-        props.insert(prop.name().clone(), prop);
+        props.insert(prop_name, prop);
         let schema = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("project")?,
             Vec::new(),
             vec![],
-            props,
+            PropertyMap::from(props),
         );
         let schema_id = *schema.id();
         repository.save_schemas(&[schema])?;
@@ -230,27 +232,27 @@ mod lookup_tests {
         let repository = setup_repository(test_db.db());
 
         // Save multiple schemas
-        let title_prop =
+        let (title_name, title_prop) =
             PropertyBuilder::new("title").build_string_default()?;
         let mut task_props = HashMap::new();
-        task_props.insert(title_prop.name().clone(), title_prop);
+        task_props.insert(title_name, title_prop);
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
             Vec::new(),
             vec![],
-            task_props,
+            PropertyMap::from(task_props),
         );
-        let content_prop =
+        let (content_name, content_prop) =
             PropertyBuilder::new("content").build_string_default()?;
         let mut note_props = HashMap::new();
-        note_props.insert(content_prop.name().clone(), content_prop);
+        note_props.insert(content_name, content_prop);
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("note")?,
             Vec::new(),
             vec![],
-            note_props,
+            PropertyMap::from(note_props),
         );
         repository.save_schemas(&[schema1, schema2])?;
 
@@ -297,12 +299,11 @@ mod durability_tests {
 
         // Create and save property bank
         let mut bank = PropertyBank::new();
-        let prop = PropertyBuilder::new("status")
+        let (prop_name, prop) = PropertyBuilder::new("status")
             .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
             .build_bool()?;
-        let prop_name = prop.name().clone();
         let prop_id = prop.id();
-        bank.register(prop)?;
+        bank.register(&prop_name, prop)?;
         repository.save_property_bank(&bank)?;
 
         // Drop repository to release Arc reference before reopen
@@ -356,9 +357,10 @@ mod durability_tests {
         let repository = setup_repository(test_db.db());
 
         // Create schema with properties
-        let prop = PropertyBuilder::new("title").build_string_default()?;
+        let (prop_name, prop) =
+            PropertyBuilder::new("title").build_string_default()?;
         let mut props = HashMap::new();
-        props.insert(prop.name().clone(), prop);
+        props.insert(prop_name, prop);
         let expected_prop_count = 1;
 
         let schema = Schema::new(
@@ -366,7 +368,7 @@ mod durability_tests {
             SchemaName::try_new("person")?,
             Vec::new(),
             vec![],
-            props,
+            PropertyMap::from(props),
         );
         let schema_id = *schema.id();
         let schema_name = schema.name().clone();
@@ -446,16 +448,17 @@ mod batch_operations {
         let repository = setup_repository(test_db.db());
 
         // Prepare batch with 3 valid schemas
-        let prop = PropertyBuilder::new("title").build_string_default()?;
+        let (prop_name, prop) =
+            PropertyBuilder::new("title").build_string_default()?;
         let mut props = HashMap::new();
-        props.insert(prop.name().clone(), prop);
+        props.insert(prop_name, prop);
 
         let schema_a = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("task")?,
             Vec::new(),
             vec![],
-            props.clone(),
+            PropertyMap::from(props.clone()),
         );
         let id_a = *schema_a.id();
 
@@ -464,7 +467,7 @@ mod batch_operations {
             SchemaName::try_new("project")?,
             Vec::new(),
             vec![],
-            props.clone(),
+            PropertyMap::from(props.clone()),
         );
         let id_b = *schema_b.id();
 
@@ -473,7 +476,7 @@ mod batch_operations {
             SchemaName::try_new("note")?,
             Vec::new(),
             vec![],
-            props,
+            PropertyMap::from(props),
         );
         let id_c = *schema_c.id();
 
@@ -546,7 +549,7 @@ mod regression_tests {
             SchemaName::try_new("empty_schema1")?,
             Vec::new(),
             vec![],
-            HashMap::new(),
+            PropertyMap::new(),
         );
         let id1 = *schema1.id();
 
@@ -555,7 +558,7 @@ mod regression_tests {
             SchemaName::try_new("empty_schema2")?,
             Vec::new(),
             vec![],
-            HashMap::new(),
+            PropertyMap::new(),
         );
         let id2 = *schema2.id();
 
@@ -605,17 +608,17 @@ mod regression_tests {
         let repository = setup_repository(test_db.db());
 
         // Create and save schema 1
-        let field1_prop =
+        let (field1_name, field1_prop) =
             PropertyBuilder::new("field1").build_string_default()?;
         let mut schema1_props = HashMap::new();
-        schema1_props.insert(field1_prop.name().clone(), field1_prop);
+        schema1_props.insert(field1_name, field1_prop);
 
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema1")?,
             Vec::new(),
             vec![],
-            schema1_props,
+            PropertyMap::from(schema1_props),
         );
         let id1 = *schema1.id();
         repository.save_schemas(&[schema1])?;
@@ -628,17 +631,17 @@ mod regression_tests {
         );
 
         // Create and save schema 2 separately
-        let field2_prop =
+        let (field2_name, field2_prop) =
             PropertyBuilder::new("field2").build_string_default()?;
         let mut schema2_props = HashMap::new();
-        schema2_props.insert(field2_prop.name().clone(), field2_prop);
+        schema2_props.insert(field2_name, field2_prop);
 
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("separate_schema2")?,
             Vec::new(),
             vec![],
-            schema2_props,
+            PropertyMap::from(schema2_props),
         );
         let id2 = *schema2.id();
         repository.save_schemas(&[schema2])?;
@@ -691,28 +694,28 @@ mod regression_tests {
         use rkyv::{access, deserialize};
 
         // Create 2 schemas
-        let seq_field1 =
+        let (seq_field1_name, seq_field1) =
             PropertyBuilder::new("seq_field1").build_string_default()?;
         let mut seq_schema1_props = HashMap::new();
-        seq_schema1_props.insert(seq_field1.name().clone(), seq_field1);
+        seq_schema1_props.insert(seq_field1_name, seq_field1);
         let schema1 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema1")?,
             Vec::new(),
             vec![],
-            seq_schema1_props,
+            PropertyMap::from(seq_schema1_props),
         );
 
-        let seq_field2 =
+        let (seq_field2_name, seq_field2) =
             PropertyBuilder::new("seq_field2").build_string_default()?;
         let mut seq_schema2_props = HashMap::new();
-        seq_schema2_props.insert(seq_field2.name().clone(), seq_field2);
+        seq_schema2_props.insert(seq_field2_name, seq_field2);
         let schema2 = Schema::new(
             SchemaId::new(),
             SchemaName::try_new("seq_schema2")?,
             Vec::new(),
             vec![],
-            seq_schema2_props,
+            PropertyMap::from(seq_schema2_props),
         );
 
         // Serialize both

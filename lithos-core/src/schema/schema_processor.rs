@@ -90,7 +90,7 @@ use crate::{
             DagBuilder, InheritanceAccess, InheritanceGraph, InheritanceNode,
         },
         merger::Merger,
-        property::{Property, PropertyName},
+        property::{PropertyMap, PropertyName},
         raw::{
             RawFileTimes, RawSchema,
             property::{RawPropertyInline, RawPropertyRef},
@@ -1872,12 +1872,13 @@ impl SchemaProcessor<Refresh, Analyzed> {
             })
             .collect();
 
-        let expanded_by_id: HashMap<SchemaId, HashMap<PropertyName, Property>> =
-            if expand_pairs.is_empty() {
-                HashMap::new()
-            } else {
-                let expander = RefExpander::new(property_bank);
-                expand_pairs
+        let expanded_by_id: HashMap<SchemaId, PropertyMap> = if expand_pairs
+            .is_empty()
+        {
+            HashMap::new()
+        } else {
+            let expander = RefExpander::new(property_bank);
+            expand_pairs
                     .into_iter()
                     .map(|(id, raw)| {
                         let refs = raw.properties().ref_entries();
@@ -1885,20 +1886,24 @@ impl SchemaProcessor<Refresh, Analyzed> {
                             .expand_properties(&refs)
                             .map_err(SchemaLoaderError::Resolution)?;
 
+                        let mut inline_entries = HashMap::new();
                         for (name, entry) in raw.properties() {
                             let inline = match entry {
                                 crate::schema::raw::property::RawProperty::Inline(inline) => inline,
                                 crate::schema::raw::property::RawProperty::Ref(_) => continue,
                             };
-                            let prop = Property::try_from((name.clone(), inline.clone()))
+                            inline_entries.insert(name.clone(), inline.clone());
+                        }
+                        if !inline_entries.is_empty() {
+                            let inline_props = PropertyMap::try_from(inline_entries)
                                 .map_err(SchemaLoaderError::Resolution)?;
-                            expanded_props.insert(name.clone(), prop);
+                            expanded_props.extend(inline_props);
                         }
 
                         Ok((id, expanded_props))
                     })
                     .collect::<Result<_, SchemaLoaderError>>()?
-            };
+        };
 
         let mut changed_schemas = Vec::new();
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
@@ -1976,7 +1981,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
     fn construct_schema_incremental(
         id: SchemaId,
         node: &InheritanceGraphNode<AnalysisBranch>,
-        expanded_by_id: &HashMap<SchemaId, HashMap<PropertyName, Property>>,
+        expanded_by_id: &HashMap<SchemaId, PropertyMap>,
         fetched_by_id: &HashMap<SchemaId, Schema>,
         constructed_cache: &HashMap<SchemaId, Schema>,
     ) -> Result<Schema, SchemaLoaderError> {
@@ -2069,7 +2074,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 })?;
 
                 let parent_props = if node.parents.is_empty() {
-                    HashMap::new()
+                    PropertyMap::new()
                 } else {
                     Self::collect_parent_properties(
                         &node.parents,
@@ -2141,7 +2146,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 })?;
 
                 let parent_props = if node.parents.is_empty() {
-                    HashMap::new()
+                    PropertyMap::new()
                 } else {
                     Self::collect_parent_properties(
                         &node.parents,
@@ -2174,14 +2179,14 @@ impl SchemaProcessor<Refresh, Analyzed> {
         parent_ids: &[SchemaId],
         constructed_cache: &HashMap<SchemaId, Schema>,
         fetched_by_id: &HashMap<SchemaId, Schema>,
-    ) -> HashMap<PropertyName, Property> {
-        let mut merged = HashMap::new();
+    ) -> PropertyMap {
+        let mut merged = PropertyMap::new();
         for parent_id in parent_ids {
             if let Some(schema) = constructed_cache
                 .get(parent_id)
                 .or_else(|| fetched_by_id.get(parent_id))
             {
-                for (name, prop) in schema.properties() {
+                for (name, prop) in schema.properties().iter_named() {
                     merged.insert(name.clone(), prop.clone());
                 }
             }

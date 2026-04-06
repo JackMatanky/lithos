@@ -6,7 +6,7 @@
 //! ```text
 //! Ingestor → RawPropertyMap<RawProperty>
 //! RefExpander  ← here
-//! → HashMap<PropertyName, Property>
+//! → PropertyMap
 //! Merger
 //! ```
 //!
@@ -16,7 +16,7 @@
 //! # Design
 //!
 //! - **Input**: `HashMap<PropertyName, RawPropertyRef>` + `&PropertyBank`
-//! - **Output**: `HashMap<PropertyName, Property>`
+//! - **Output**: `PropertyMap`
 //! - Expander only handles property bank references; inline properties are
 //!   validated elsewhere via `TryFrom` on `Property`.
 
@@ -25,12 +25,14 @@ use std::collections::HashMap;
 use super::{
     bank::PropertyBank,
     error::SchemaError,
-    property::{Multiplicity, Optionality, Property, PropertyName},
+    property::{
+        Multiplicity, Optionality, Property, PropertyMap, PropertyName,
+    },
     property_spec::PropertySpec,
     raw::property::RawPropertyRef,
 };
 type RefPropertyMap = HashMap<PropertyName, RawPropertyRef>;
-type ExpandedPropertyMap = HashMap<PropertyName, Property>;
+type ExpandedPropertyMap = PropertyMap;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  RefExpander
@@ -67,14 +69,14 @@ impl<'bank> RefExpander<'bank> {
         &self,
         properties: &RefPropertyMap,
     ) -> Result<ExpandedPropertyMap, SchemaError> {
-        let mut expanded = HashMap::with_capacity(properties.len());
+        let mut expanded = PropertyMap::new();
 
         #[expect(
             clippy::iter_over_hash_type,
             reason = "Ordering is not required for property expansion"
         )]
         for (name, entry) in properties {
-            let prop = self.expand_property(name, entry)?;
+            let prop = self.expand_property(entry)?;
             expanded.insert(name.clone(), prop);
         }
 
@@ -84,7 +86,6 @@ impl<'bank> RefExpander<'bank> {
     /// Resolve a single raw property reference into a validated [`Property`].
     fn expand_property(
         &self,
-        name: &PropertyName,
         entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
         let bank_name = entry.ref_path.target_name();
@@ -98,13 +99,7 @@ impl<'bank> RefExpander<'bank> {
         let multiplicity = Self::multiplicity(base.multiplicity(), entry.multi);
         let spec = Self::spec(base.spec(), entry)?;
 
-        Ok(Property::new(
-            base.id(),
-            name.clone(),
-            optionality,
-            multiplicity,
-            spec,
-        ))
+        Ok(Property::new(base.id(), optionality, multiplicity, spec))
     }
 
     #[expect(
@@ -253,19 +248,23 @@ mod tests {
     mod fixtures {
         use super::*;
 
-        pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Ok(Property::new(
+        pub fn bool_property(
+            name: &str,
+        ) -> Result<(PropertyName, Property), SchemaError> {
+            let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
-                PropertyName::try_new(name)?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            ))
+            );
+            Ok((PropertyName::try_new(name)?, property))
         }
 
-        pub fn bank_with(prop: Property) -> Result<PropertyBank, SchemaError> {
+        pub fn bank_with(
+            entry: (PropertyName, Property),
+        ) -> Result<PropertyBank, SchemaError> {
             let mut bank = PropertyBank::new();
-            bank.register(prop)?;
+            bank.register(&entry.0, entry.1)?;
             Ok(bank)
         }
 
@@ -315,8 +314,10 @@ mod tests {
             let expander = RefExpander::new(&bank);
             let name = PropertyName::try_new("alias")?;
             let entry = fixtures::ref_entry("property_bank#/status");
-            let prop = expander.expand_property(&name, &entry)?;
-            assert_eq!(prop.name().as_str(), "alias");
+            let mut refs = HashMap::new();
+            refs.insert(name.clone(), entry);
+            let expanded_props = expander.expand_properties(&refs)?;
+            assert!(expanded_props.contains_key(&name));
             Ok(())
         }
 
@@ -332,7 +333,11 @@ mod tests {
                 Some(true),
             );
             let name = PropertyName::try_new("status")?;
-            let prop = expander.expand_property(&name, &entry)?;
+            let mut refs = HashMap::new();
+            refs.insert(name.clone(), entry);
+            let expanded_props = expander.expand_properties(&refs)?;
+            let prop =
+                expanded_props.get(&name).expect("expanded property exists");
             assert_eq!(prop.optionality(), Optionality::Optional);
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
             Ok(())
@@ -351,7 +356,9 @@ mod tests {
             let entry: RawPropertyRef = serde_json::from_str(json)
                 .expect("Valid ref with number override should deserialize");
             let name = PropertyName::try_new("status").expect("valid name");
-            let result = expander.expand_property(&name, &entry);
+            let mut refs = HashMap::new();
+            refs.insert(name, entry);
+            let result = expander.expand_properties(&refs);
             assert!(
                 matches!(
                     result,
@@ -369,7 +376,9 @@ mod tests {
             let expander = RefExpander::new(&bank);
             let entry = fixtures::ref_entry("property_bank#/missing");
             let name = PropertyName::try_new("missing").expect("valid name");
-            let result = expander.expand_property(&name, &entry);
+            let mut refs = HashMap::new();
+            refs.insert(name, entry);
+            let result = expander.expand_properties(&refs);
             assert!(
                 matches!(
                     result,

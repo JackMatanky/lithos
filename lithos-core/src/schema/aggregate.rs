@@ -20,10 +20,7 @@
 //! - `recorded_at` field is private (ingestion metadata, not exposed in public
 //!   API)
 
-use std::{
-    borrow::Borrow, collections::HashMap, fmt::Display, sync::LazyLock,
-    time::SystemTime,
-};
+use std::{borrow::Borrow, fmt::Display, sync::LazyLock, time::SystemTime};
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
@@ -31,7 +28,7 @@ use uuid::Uuid;
 
 use super::{
     error::SchemaError,
-    property::{Property, PropertyId, PropertyName},
+    property::{Property, PropertyId, PropertyMap, PropertyName},
 };
 
 // ============================================================================
@@ -60,13 +57,14 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// use std::collections::HashMap;
-///
-/// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+/// use lithos_core::schema::{
+///     aggregate::{Schema, SchemaId, SchemaName},
+///     property::PropertyMap,
+/// };
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("project-note")?;
-/// let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
+/// let schema = Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 /// assert_eq!(schema.id(), &id);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -84,8 +82,8 @@ pub struct Schema {
     /// Stores IDs only. Full relationship metadata (extends/excludes) is
     /// managed via inheritance views in the repository layer.
     children: Vec<SchemaId>,
-    /// Resolved properties (`HashMap` for O(1) lookup by name).
-    properties: HashMap<PropertyName, Property>,
+    /// Resolved properties (`PropertyMap` for O(1) lookup by name).
+    properties: PropertyMap,
     /// Ingestion timestamp (private - not exposed in public API).
     #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
@@ -97,13 +95,14 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::HashMap;
-    ///
-    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// use lithos_core::schema::{
+    ///     aggregate::{Schema, SchemaId, SchemaName},
+    ///     property::PropertyMap,
+    /// };
     ///
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("note")?;
-    /// let schema = Schema::new(id, name, Vec::new(), vec![], HashMap::new());
+    /// let schema = Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
     /// assert_eq!(schema.id(), &id);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -114,7 +113,7 @@ impl Schema {
         name: SchemaName,
         parents: Vec<SchemaId>,
         children: Vec<SchemaId>,
-        properties: HashMap<PropertyName, Property>,
+        properties: PropertyMap,
     ) -> Self {
         Self {
             id,
@@ -161,7 +160,7 @@ impl Schema {
     /// Returns the resolved properties.
     #[inline]
     #[must_use]
-    pub const fn properties(&self) -> &HashMap<PropertyName, Property> {
+    pub const fn properties(&self) -> &PropertyMap {
         &self.properties
     }
 
@@ -550,8 +549,13 @@ mod tests {
     fn schema_new_creates_with_empty_properties() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("test").unwrap();
-        let schema =
-            Schema::new(id, name.clone(), Vec::new(), vec![], HashMap::new());
+        let schema = Schema::new(
+            id,
+            name.clone(),
+            Vec::new(),
+            vec![],
+            PropertyMap::new(),
+        );
 
         assert_eq!(schema.id(), &id);
         assert_eq!(schema.name(), &name);
@@ -569,7 +573,7 @@ mod tests {
             name.clone(),
             vec![parent_id],
             vec![],
-            HashMap::new(),
+            PropertyMap::new(),
         );
 
         assert_eq!(schema.id(), &id);
