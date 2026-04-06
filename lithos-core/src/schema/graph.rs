@@ -11,7 +11,7 @@
 //!   parent/child links
 //! - **`GraphNode<T>`**: Processing representation with generic payload for
 //!   pipeline stages
-//! - **`TopologicalGraph<T>`**: Container maintaining topological order and
+//! - **`InheritanceGraph<T>`**: Container maintaining topological order and
 //!   graph invariants
 //!
 //! # DAG vs Tree
@@ -42,7 +42,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use crate::schema::graph::{DagBuilder, TopologicalGraph, InheritanceNode};
+//! use crate::schema::graph::{DagBuilder, InheritanceGraph, InheritanceNode};
 //!
 //! // Build graph from file statuses
 //! let graph = DagBuilder::new(&statuses).build()?;
@@ -102,7 +102,7 @@ use crate::schema::{
 /// - `T = GraphNode<Payload>` for processing
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct TopologicalGraph<T> {
+pub struct InheritanceGraph<T> {
     /// Node ids in topological order (parents before children).
     pub order: Vec<SchemaId>,
     /// Node storage keyed by schema id.
@@ -388,7 +388,7 @@ impl<T> InheritanceAccess for GraphNode<T> {
     }
 }
 
-impl<T: InheritanceAccess> TopologicalGraph<T> {
+impl<T: InheritanceAccess> InheritanceGraph<T> {
     /// Compute topological order using Kahn's algorithm.
     ///
     /// Returns the order (parents before children) and root nodes.
@@ -625,7 +625,7 @@ impl<T: InheritanceAccess> TopologicalGraph<T> {
 //  TOPOLOGICAL GRAPH METHODS (InheritanceNode only - requires mutation)
 // ═════════════════════════════════════════════════════════════════════════════
 
-impl TopologicalGraph<InheritanceNode> {
+impl InheritanceGraph<InheritanceNode> {
     /// Compute depths for all nodes: depth = `max(parent_depths)` + 1.
     #[expect(
         clippy::excessive_nesting,
@@ -995,7 +995,7 @@ impl<'graph> DagValidator<'graph> {
 //  DAG BUILDER (Graph Construction and Patching)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// Builder for constructing or patching `TopologicalGraph<InheritanceNode>`.
+/// Builder for constructing or patching `InheritanceGraph<InheritanceNode>`.
 ///
 /// Supports two modes:
 /// - **Build**: Create a new graph from scratch given raw schemas
@@ -1033,7 +1033,7 @@ impl DagBuilder {
     /// The `name_index` parameter provides schema name → id mapping for
     /// existing nodes that don't carry names in their `InheritanceNode`.
     pub(crate) fn from_existing_graph(
-        graph: &TopologicalGraph<InheritanceNode>,
+        graph: &InheritanceGraph<InheritanceNode>,
         name_index: HashMap<SchemaName, SchemaId>,
     ) -> Self {
         Self {
@@ -1103,7 +1103,7 @@ impl DagBuilder {
     /// Returns error if graph validation fails (cycles, missing parents, etc.).
     pub(crate) fn finalize(
         mut self,
-    ) -> Result<TopologicalGraph<InheritanceNode>, SchemaLoaderError> {
+    ) -> Result<InheritanceGraph<InheritanceNode>, SchemaLoaderError> {
         // Second pass: resolve any parents that weren't available on first pass
         self.resolve_pending_parents()?;
 
@@ -1116,7 +1116,7 @@ impl DagBuilder {
         })?;
 
         // Compute depths and topological order
-        let mut graph = TopologicalGraph {
+        let mut graph = InheritanceGraph {
             nodes: self.nodes,
             order: Vec::new(),
             roots: Vec::new(),
@@ -1177,7 +1177,7 @@ mod tests {
     use super::*;
 
     fn build_diamond_graph()
-    -> (TopologicalGraph<InheritanceNode>, Vec<SchemaId>) {
+    -> (InheritanceGraph<InheritanceNode>, Vec<SchemaId>) {
         let id_a = SchemaId::new();
         let id_b = SchemaId::new();
         let id_c = SchemaId::new();
@@ -1203,7 +1203,7 @@ mod tests {
             (id_d, node_d),
         ]);
 
-        let graph = TopologicalGraph {
+        let graph = InheritanceGraph {
             nodes,
             order: Vec::new(),
             roots: Vec::new(),
@@ -1295,7 +1295,7 @@ mod tests {
             InheritanceNode::new_child(id_b, vec![id_a], NodeDepth::ROOT);
         node_a.add_child(id_b);
 
-        let mut graph = TopologicalGraph {
+        let mut graph = InheritanceGraph {
             nodes: HashMap::from([(id_a, node_a), (id_b, node_b)]),
             order: Vec::new(),
             roots: Vec::new(),

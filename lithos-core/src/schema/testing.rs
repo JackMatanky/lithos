@@ -50,7 +50,7 @@ use std::{
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    graph::{InheritanceNode, TopologicalGraph},
+    graph::{InheritanceGraph, InheritanceNode},
     property::PropertyName,
     storage::{NameIdPair, Repository, SchemaPathIdPairs, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},
@@ -107,7 +107,7 @@ pub struct InMemoryRepository {
     raw_bank_views: Arc<RwLock<HashMap<String, RawPropertyBankView>>>,
 
     /// Cached topological graph singleton.
-    topological_graph: Arc<RwLock<Option<TopologicalGraph<InheritanceNode>>>>,
+    topological_graph: Arc<RwLock<Option<InheritanceGraph<InheritanceNode>>>>,
 }
 
 impl InMemoryRepository {
@@ -523,7 +523,7 @@ impl Repository for InMemoryRepository {
 
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error> {
+    ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error> {
         let graph = self.topological_graph.read().map_err(|_| {
             InMemoryError::lock_poisoned("get_topological_graph")
         })?;
@@ -533,7 +533,7 @@ impl Repository for InMemoryRepository {
 
     fn save_topological_graph(
         &self,
-        graph: &TopologicalGraph<InheritanceNode>,
+        graph: &InheritanceGraph<InheritanceNode>,
     ) -> Result<(), Self::Error> {
         let mut storage = self.topological_graph.write().map_err(|_| {
             InMemoryError::lock_poisoned("save_topological_graph")
@@ -581,7 +581,7 @@ impl Repository for InMemoryRepository {
 
             fn get_topological_graph(
                 &self,
-            ) -> Result<Option<TopologicalGraph<InheritanceNode>>, Self::Error>
+            ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error>
             {
                 self.repo.get_topological_graph()
             }

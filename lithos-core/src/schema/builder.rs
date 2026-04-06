@@ -39,7 +39,7 @@ pub struct Builder<'config, R> {
 #[derive(Debug, Clone)]
 pub(crate) struct DiscoveryContext {
     pub(crate) graph: Option<
-        crate::schema::graph::TopologicalGraph<
+        crate::schema::graph::InheritanceGraph<
             crate::schema::graph::InheritanceNode,
         >,
     >,
@@ -94,7 +94,7 @@ where
             Discovery, DiscoveryBranch, FileParsed, GraphMissing, GraphPresent,
             InheritanceGraphed, Missing, NewBatch, Parsed, SchemaProcessor,
         };
-        use crate::schema::graph::TopologicalGraph;
+        use crate::schema::graph::InheritanceGraph;
 
         let branch = if context.graph.is_some() {
             SchemaProcessor::<Discovery, GraphPresent>::discover(
@@ -118,7 +118,7 @@ where
                     SchemaProcessor::<FileParsed, Parsed>::transition(
                         FileParsed,
                         Parsed {
-                            graph: TopologicalGraph {
+                            graph: InheritanceGraph {
                                 order: Vec::new(),
                                 nodes: HashMap::new(),
                                 roots: Vec::new(),
@@ -408,7 +408,7 @@ mod tests {
         fs::FsReader,
         schema::{
             aggregate::SchemaId,
-            graph::{InheritanceNode, TopologicalGraph},
+            graph::{InheritanceGraph, InheritanceNode},
             testing::InMemoryRepository,
         },
     };
@@ -455,7 +455,7 @@ description = "Test schema"
         let mut nodes = HashMap::new();
         nodes.insert(id, node);
 
-        let graph = TopologicalGraph {
+        let graph = InheritanceGraph {
             nodes,
             order: vec![id],
             roots: vec![id],

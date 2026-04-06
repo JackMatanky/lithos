@@ -46,7 +46,7 @@
 //!     DiscoveryBranch::AllMissing(missing) => {
 //!         let parsed_new = missing.parse_new_schemas(&source)?;
 //!         let parsed = SchemaProcessor::transition(FileParsed, Parsed {
-//!             graph: TopologicalGraph { order: vec![], nodes: HashMap::new(), roots: vec![] },
+//!             graph: InheritanceGraph { order: vec![], nodes: HashMap::new(), roots: vec![] },
 //!             new_schemas: NewBatch::new(),
 //!             deleted_ids: vec![],
 //!         });
@@ -87,7 +87,7 @@ use crate::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
         graph::{
-            DagBuilder, InheritanceAccess, InheritanceNode, TopologicalGraph,
+            DagBuilder, InheritanceAccess, InheritanceGraph, InheritanceNode,
         },
         merger::Merger,
         property::{Property, PropertyName},
@@ -462,7 +462,7 @@ pub(crate) struct GraphMissing {
     reason = "field name clarifies the present-schemas map"
 )]
 pub(crate) struct Present {
-    pub(crate) graph: TopologicalGraph<InheritanceNode>,
+    pub(crate) graph: InheritanceGraph<InheritanceNode>,
     pub(crate) present: HashMap<SchemaId, PresentPayload>,
     pub(crate) new_schemas: NewBatch<InitialScan>,
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -470,7 +470,7 @@ pub(crate) struct Present {
 
 #[derive(Debug)]
 pub(crate) struct GraphPresent {
-    pub(crate) graph: TopologicalGraph<InheritanceNode>,
+    pub(crate) graph: InheritanceGraph<InheritanceNode>,
     pub(crate) present: HashMap<SchemaId, PresentPayload>,
     pub(crate) new_schemas: NewBatch<InitialScan>,
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -478,7 +478,7 @@ pub(crate) struct GraphPresent {
 
 #[derive(Debug)]
 pub(crate) struct Compared {
-    pub(crate) graph: TopologicalGraph<SchemaGraphNode<ComparisonBranch>>,
+    pub(crate) graph: InheritanceGraph<SchemaGraphNode<ComparisonBranch>>,
     #[expect(dead_code, reason = "reserved for future batch reconciliation")]
     pub(crate) new_schemas: NewBatch<InitialScan>,
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -486,7 +486,7 @@ pub(crate) struct Compared {
 
 #[derive(Debug)]
 pub(crate) struct Parsed {
-    pub(crate) graph: TopologicalGraph<SchemaGraphNode<FileParsedBranch>>,
+    pub(crate) graph: InheritanceGraph<SchemaGraphNode<FileParsedBranch>>,
     #[expect(dead_code, reason = "reserved for future batch reconciliation")]
     pub(crate) new_schemas: NewBatch<InitialParsed>,
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -494,13 +494,13 @@ pub(crate) struct Parsed {
 
 #[derive(Debug)]
 pub(crate) struct Graphed {
-    pub(crate) graph: TopologicalGraph<InheritanceGraphNode<InheritanceBranch>>,
+    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<InheritanceBranch>>,
     pub(crate) deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Analyzed {
-    pub(crate) graph: TopologicalGraph<InheritanceGraphNode<AnalysisBranch>>,
+    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
     pub(crate) refresh_ids: Vec<SchemaId>,
     pub(crate) rebuild_ids: Vec<SchemaId>,
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -508,7 +508,7 @@ pub(crate) struct Analyzed {
 
 #[derive(Debug)]
 pub(crate) struct Constructed {
-    pub(crate) graph: TopologicalGraph<InheritanceGraphNode<AnalysisBranch>>,
+    pub(crate) graph: InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
     pub(crate) schemas: Vec<Arc<Schema>>,
     #[expect(dead_code, reason = "retained for future delete handling")]
     pub(crate) deleted_ids: Vec<SchemaId>,
@@ -761,7 +761,7 @@ impl<Status> SchemaProcessor<Discovery, Status> {
         files: &[PathBuf],
         views_by_path: &HashMap<PathBuf, RawSchemaView>,
         ids_by_path: &HashMap<PathBuf, SchemaId>,
-        graph: Option<&TopologicalGraph<InheritanceNode>>,
+        graph: Option<&InheritanceGraph<InheritanceNode>>,
         source: &FsReader,
     ) -> FileState {
         let mut missing = NewBatch::new();
@@ -851,7 +851,7 @@ impl SchemaProcessor<Comparison, Present> {
         }
 
         Ok(Self::transition(FileParsed, Compared {
-            graph: TopologicalGraph {
+            graph: InheritanceGraph {
                 order: graph.order,
                 nodes,
                 roots: graph.roots,
@@ -1164,7 +1164,7 @@ impl SchemaProcessor<FileParsed, Compared> {
         }
 
         Ok(Self::transition(FileParsed, Parsed {
-            graph: TopologicalGraph {
+            graph: InheritanceGraph {
                 order: self.status.graph.order,
                 nodes,
                 roots: self.status.graph.roots,
@@ -1338,7 +1338,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         Ok(SchemaProcessor::<InheritanceGraphed, Graphed>::transition(
             InheritanceGraphed,
             Graphed {
-                graph: TopologicalGraph {
+                graph: InheritanceGraph {
                     order: finalized_graph.order,
                     nodes,
                     roots: finalized_graph.roots,
@@ -1657,7 +1657,7 @@ impl SchemaProcessor<InheritanceGraphed, Graphed> {
         }
 
         Ok(Self::transition(PropertyAnalysis, Analyzed {
-            graph: TopologicalGraph {
+            graph: InheritanceGraph {
                 order: graph.order,
                 nodes: analyzed_nodes,
                 roots: graph.roots,
@@ -2226,8 +2226,8 @@ impl SchemaProcessor<Construction, Constructed> {
 }
 
 fn dehydrate_graph_to_inheritance(
-    graph: &TopologicalGraph<InheritanceGraphNode<AnalysisBranch>>,
-) -> TopologicalGraph<InheritanceNode> {
+    graph: &InheritanceGraph<InheritanceGraphNode<AnalysisBranch>>,
+) -> InheritanceGraph<InheritanceNode> {
     let mut nodes = HashMap::new();
 
     for (id, node) in &graph.nodes {
@@ -2239,7 +2239,7 @@ fn dehydrate_graph_to_inheritance(
         });
     }
 
-    TopologicalGraph {
+    InheritanceGraph {
         order: graph.order.clone(),
         nodes,
         roots: graph.roots.clone(),
@@ -2320,8 +2320,8 @@ fn diff_properties(
 }
 
 fn dehydrate_parsed_graph(
-    graph: &TopologicalGraph<SchemaGraphNode<FileParsedBranch>>,
-) -> TopologicalGraph<InheritanceNode> {
+    graph: &InheritanceGraph<SchemaGraphNode<FileParsedBranch>>,
+) -> InheritanceGraph<InheritanceNode> {
     let mut nodes = HashMap::new();
     for (id, node) in &graph.nodes {
         nodes.insert(*id, InheritanceNode {
@@ -2332,7 +2332,7 @@ fn dehydrate_parsed_graph(
         });
     }
 
-    TopologicalGraph {
+    InheritanceGraph {
         order: graph.order.clone(),
         nodes,
         roots: graph.roots.clone(),

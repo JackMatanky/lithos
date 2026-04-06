@@ -131,14 +131,14 @@ pub(crate) mod db_table {
     /// Topologically sorted inheritance graph singleton.
     ///
     /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
-    /// Value: rkyv-serialized `TopologicalGraph<InheritanceNode>`.
+    /// Value: rkyv-serialized `InheritanceGraph<InheritanceNode>`.
     ///
     /// Contains DAG structure with `SchemaId` links, child lists, and depth
     /// information. Rebuilt/patched when inheritance relationships change.
     pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_topological_graph");
 
-    /// Key for `TopologicalGraph` singleton table.
+    /// Key for `InheritanceGraph` singleton table.
     pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 }
 
