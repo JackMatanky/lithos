@@ -1,15 +1,3 @@
-#![expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pipeline structs expose fields for stage transitions"
-)]
-#![expect(
-    clippy::iter_over_hash_type,
-    reason = "ordering is irrelevant for schema graph processing"
-)]
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "match ergonomics on borrowed payloads keep code readable"
-)]
 //! Schema processor pipeline with batch processing and incremental
 //! construction.
 //!
@@ -32,7 +20,7 @@
 //! ```
 //!
 //! # Invariants
-//! - `Missing` owns the initial scan data for new schemas only.
+//! - `AllMissing` owns the initial scan data for new schemas only.
 //! - `Present` owns the discovery graph plus payloads for schemas with views.
 //! - `ComparisonBranch` variants carry the data needed for parsing or refresh.
 //! - `FileParsedBranch::StaleParsed` guarantees parsed raw content.
@@ -43,8 +31,8 @@
 //! ```ignore
 //! let discovery = discover(&context, &repo, &source)?;
 //! let schemas = match discovery {
-//!     DiscoveryBranch::AllMissing(missing) => {
-//!         let parsed_new = missing.parse_new_schemas(&source)?;
+//!     DiscoveryBranch::AllMissing(all_missing) => {
+//!         let parsed_new = all_missing.parse_new_schemas(&source)?;
 //!         let parsed = SchemaProcessor::transition(FileParsed, Parsed {
 //!             graph: InheritanceGraph { order: vec![], nodes: HashMap::new(), roots: vec![] },
 //!             new_schemas: NewBatch::new(),
@@ -69,6 +57,19 @@
 //!     }
 //! };
 //! ```
+
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pipeline structs expose fields for stage transitions"
+)]
+#![expect(
+    clippy::iter_over_hash_type,
+    reason = "ordering is irrelevant for schema graph processing"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "match ergonomics on borrowed payloads keep code readable"
+)]
 
 use std::{
     collections::{HashMap, HashSet},
@@ -440,6 +441,11 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
             _stage: PhantomData,
         }
     }
+
+    #[inline]
+    pub(crate) fn into_status(self) -> Status {
+        self.status
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -447,31 +453,20 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
-pub(crate) struct Missing {
+pub(crate) struct NeverSeen;
+
+#[derive(Debug)]
+pub(crate) struct Review;
+
+#[derive(Debug)]
+pub(crate) struct AllMissing {
     pub(crate) new_schemas: NewBatch<InitialScan>,
 }
 
 #[derive(Debug)]
-pub(crate) struct GraphMissing {
-    pub(crate) new_schemas: NewBatch<InitialScan>,
-}
-
-#[derive(Debug)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "field name clarifies the present-schemas map"
-)]
 pub(crate) struct Present {
     pub(crate) graph: InheritanceGraph<InheritanceNode>,
-    pub(crate) present: HashMap<SchemaId, PresentPayload>,
-    pub(crate) new_schemas: NewBatch<InitialScan>,
-    pub(crate) deleted_ids: Vec<SchemaId>,
-}
-
-#[derive(Debug)]
-pub(crate) struct GraphPresent {
-    pub(crate) graph: InheritanceGraph<InheritanceNode>,
-    pub(crate) present: HashMap<SchemaId, PresentPayload>,
+    pub(crate) cached: HashMap<SchemaId, PresentPayload>,
     pub(crate) new_schemas: NewBatch<InitialScan>,
     pub(crate) deleted_ids: Vec<SchemaId>,
 }
@@ -521,8 +516,8 @@ pub(crate) struct Constructed {
     reason = "branch payloads carry full pipeline context"
 )]
 pub(crate) enum DiscoveryBranch {
-    AllMissing(SchemaProcessor<Discovery, GraphMissing>),
-    HasPresent(SchemaProcessor<Discovery, GraphPresent>),
+    AllMissing(SchemaProcessor<Discovery, AllMissing>),
+    HasPresent(SchemaProcessor<Discovery, Present>),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -603,7 +598,7 @@ impl<T> IntoIterator for NewBatch<T> {
 type FileState =
     (NewBatch<InitialScan>, HashMap<SchemaId, PresentPayload>, Vec<SchemaId>);
 
-impl SchemaProcessor<Discovery, GraphMissing> {
+impl SchemaProcessor<Discovery, NeverSeen> {
     pub(crate) fn discover(
         context: &FilesContext,
         source: &FsReader,
@@ -620,29 +615,18 @@ impl SchemaProcessor<Discovery, GraphMissing> {
             ));
         }
 
-        let processor: SchemaProcessor<Discovery, GraphMissing> =
-            SchemaProcessor::<Discovery, GraphMissing>::transition(
+        let processor: SchemaProcessor<Discovery, AllMissing> =
+            SchemaProcessor::<Discovery, AllMissing>::transition(
                 Discovery,
-                GraphMissing {
+                AllMissing {
                     new_schemas: missing,
                 },
             );
         Ok(DiscoveryBranch::AllMissing(processor))
     }
-
-    pub(crate) fn into_file_parsed(
-        self,
-    ) -> SchemaProcessor<FileParsed, Missing> {
-        SchemaProcessor::<FileParsed, Missing>::transition(
-            FileParsed,
-            Missing {
-                new_schemas: self.status.new_schemas,
-            },
-        )
-    }
 }
 
-impl SchemaProcessor<Discovery, GraphPresent> {
+impl SchemaProcessor<Discovery, Review> {
     pub(crate) fn discover<R>(
         context: &FilesContext,
         graph: &InheritanceGraph<InheritanceNode>,
@@ -667,7 +651,7 @@ impl SchemaProcessor<Discovery, GraphPresent> {
                 SchemaLoaderError::Repository(repo_err)
             })?;
 
-        let (missing, present, deleted_ids) = Self::classify_file_state(
+        let (missing, cached, deleted_ids) = Self::classify_file_state(
             files,
             &views_by_path,
             &ids_by_path,
@@ -675,7 +659,7 @@ impl SchemaProcessor<Discovery, GraphPresent> {
             source,
         );
 
-        if missing.is_empty() && present.is_empty() {
+        if missing.is_empty() && cached.is_empty() {
             use crate::schema::error::SchemaFileError;
             return Err(SchemaLoaderError::Ingestion(
                 SchemaIngestionError::File(SchemaFileError::FileSystem {
@@ -684,43 +668,29 @@ impl SchemaProcessor<Discovery, GraphPresent> {
             ));
         }
 
-        if present.is_empty() {
-            let processor: SchemaProcessor<Discovery, GraphMissing> =
-                SchemaProcessor::<Discovery, GraphMissing>::transition(
+        if cached.is_empty() {
+            let processor: SchemaProcessor<Discovery, AllMissing> =
+                SchemaProcessor::<Discovery, AllMissing>::transition(
                     Discovery,
-                    GraphMissing {
+                    AllMissing {
                         new_schemas: missing,
                     },
                 );
             Ok(DiscoveryBranch::AllMissing(processor))
         } else {
             let graph = graph.clone();
-            let processor: SchemaProcessor<Discovery, GraphPresent> =
-                SchemaProcessor::<Discovery, GraphPresent>::transition(
+            let processor: SchemaProcessor<Discovery, Present> =
+                SchemaProcessor::<Discovery, Present>::transition(
                     Discovery,
-                    GraphPresent {
+                    Present {
                         graph,
-                        present,
+                        cached,
                         new_schemas: missing,
                         deleted_ids,
                     },
                 );
             Ok(DiscoveryBranch::HasPresent(processor))
         }
-    }
-
-    pub(crate) fn into_comparison(
-        self,
-    ) -> SchemaProcessor<Comparison, Present> {
-        SchemaProcessor::<Comparison, Present>::transition(
-            Comparison,
-            Present {
-                graph: self.status.graph,
-                present: self.status.present,
-                new_schemas: self.status.new_schemas,
-                deleted_ids: self.status.deleted_ids,
-            },
-        )
     }
 }
 
@@ -754,7 +724,7 @@ impl<Status> SchemaProcessor<Discovery, Status> {
         source: &FsReader,
     ) -> FileState {
         let mut missing = NewBatch::new();
-        let mut present: HashMap<SchemaId, PresentPayload> = HashMap::new();
+        let mut cached: HashMap<SchemaId, PresentPayload> = HashMap::new();
 
         for path in files {
             let times = RawFileTimes {
@@ -765,7 +735,7 @@ impl<Status> SchemaProcessor<Discovery, Status> {
             if let (Some(view), Some(id)) =
                 (views_by_path.get(path), ids_by_path.get(path))
             {
-                present.insert(*id, PresentPayload {
+                cached.insert(*id, PresentPayload {
                     path: path.clone(),
                     times,
                     view: view.clone(),
@@ -781,7 +751,7 @@ impl<Status> SchemaProcessor<Discovery, Status> {
 
         let mut deleted_ids = Vec::new();
         if let Some(graph) = graph {
-            let file_ids: HashSet<SchemaId> = present.keys().copied().collect();
+            let file_ids: HashSet<SchemaId> = cached.keys().copied().collect();
             for id in graph.nodes.keys() {
                 if !file_ids.contains(id) && !missing.contains_key(id) {
                     deleted_ids.push(*id);
@@ -789,7 +759,7 @@ impl<Status> SchemaProcessor<Discovery, Status> {
             }
         }
 
-        (missing, present, deleted_ids)
+        (missing, cached, deleted_ids)
     }
 }
 
@@ -805,7 +775,7 @@ impl SchemaProcessor<Comparison, Present> {
     ) -> Result<SchemaProcessor<FileParsed, Compared>, SchemaLoaderError> {
         let Present {
             graph,
-            present,
+            cached,
             deleted_ids,
             ..
         } = self.status;
@@ -813,7 +783,7 @@ impl SchemaProcessor<Comparison, Present> {
         let mut nodes: HashMap<SchemaId, SchemaGraphNode<ComparisonBranch>> =
             HashMap::new();
 
-        for (id, payload) in present {
+        for (id, payload) in cached {
             let PresentPayload {
                 path,
                 times,
@@ -974,12 +944,12 @@ impl SchemaProcessor<Comparison, Present> {
 //  FILEPARSED STAGE IMPLEMENTATION
 // ═════════════════════════════════════════════════════════════════════════════
 
-impl SchemaProcessor<FileParsed, Missing> {
+impl SchemaProcessor<FileParsed, AllMissing> {
     pub(crate) fn parse_new_schemas(
         self,
         source: &FsReader,
     ) -> Result<NewBatch<InitialParsed>, SchemaLoaderError> {
-        let Missing {
+        let AllMissing {
             new_schemas,
         } = self.status;
         let mut parsed = NewBatch::new();

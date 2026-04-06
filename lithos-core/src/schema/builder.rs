@@ -62,8 +62,10 @@ where
         use std::collections::HashMap;
 
         use super::schema_processor::{
-            Discovery, DiscoveryBranch, FileParsed, GraphMissing, GraphPresent,
-            InheritanceGraphed, Missing, NewBatch, Parsed, SchemaProcessor,
+            AllMissing, Comparison as SchemaComparison, Discovery,
+            DiscoveryBranch, FileParsed, InheritanceGraphed, NeverSeen,
+            NewBatch, Parsed, Present as SchemaPresent, Review,
+            SchemaProcessor,
         };
 
         let mut bank_branch = BankContextBranch::Missing;
@@ -91,14 +93,14 @@ where
         let branch = match graph_branch {
             GraphContextBranch::Present {
                 graph,
-            } => SchemaProcessor::<Discovery, GraphPresent>::discover(
+            } => SchemaProcessor::<Discovery, Review>::discover(
                 &files_context,
                 &graph,
                 &self.repository,
                 &self.source,
             )?,
             GraphContextBranch::Missing => {
-                SchemaProcessor::<Discovery, GraphMissing>::discover(
+                SchemaProcessor::<Discovery, NeverSeen>::discover(
                     &files_context,
                     &self.source,
                 )?
@@ -107,8 +109,11 @@ where
 
         match branch {
             DiscoveryBranch::AllMissing(missing) => {
-                let parsed_new = missing
-                    .into_file_parsed()
+                let parsed_new =
+                    SchemaProcessor::<FileParsed, AllMissing>::transition(
+                        FileParsed,
+                        missing.into_status(),
+                    )
                     .parse_new_schemas(&self.source)?;
                 let parsed_state: SchemaProcessor<FileParsed, Parsed> =
                     SchemaProcessor::<FileParsed, Parsed>::transition(
@@ -139,17 +144,20 @@ where
                 Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
             }
             DiscoveryBranch::HasPresent(present) => {
-                let present = present.into_comparison();
+                let present = SchemaProcessor::<
+                    SchemaComparison,
+                    SchemaPresent,
+                >::transition(SchemaComparison, present.into_status());
                 let new_schemas = present.status.new_schemas.clone();
                 let parsed_new = if new_schemas.is_empty() {
                     NewBatch::new()
                 } else {
                     let missing_processor: SchemaProcessor<
                         FileParsed,
-                        Missing,
-                    > = SchemaProcessor::<FileParsed, Missing>::transition(
+                        AllMissing,
+                    > = SchemaProcessor::<FileParsed, AllMissing>::transition(
                         FileParsed,
-                        Missing {
+                        AllMissing {
                             new_schemas,
                         },
                     );
