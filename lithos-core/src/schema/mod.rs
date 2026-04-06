@@ -57,14 +57,6 @@ pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
 pub mod events;
 
-/// Schema inheritance-tree builder pipeline stage.
-///
-/// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks to measure individual pipeline stages while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod extender;
-
 /// Facade for schema orchestration.
 pub mod builder;
 /// Property domain entities.

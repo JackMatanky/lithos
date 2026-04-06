@@ -89,6 +89,7 @@ use crate::{
         graph::{
             DagBuilder, InheritanceAccess, InheritanceNode, TopologicalGraph,
         },
+        merger::Merger,
         property::{Property, PropertyName},
         raw::{
             RawFileTimes, RawSchema,
@@ -2077,13 +2078,11 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     )
                 };
 
-                let mut merged = parent_props;
-                for (name, prop) in expanded {
-                    merged.insert(name.clone(), prop.clone());
-                }
-                for excluded in raw.excludes() {
-                    merged.remove(excluded);
-                }
+                let merged = Merger::inherit_properties(
+                    &parent_props,
+                    expanded,
+                    raw.excludes(),
+                );
 
                 let name = SchemaName::try_new(raw.name())
                     .map_err(SchemaLoaderError::Resolution)?;
@@ -2151,13 +2150,11 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     )
                 };
 
-                let mut merged = parent_props;
-                for (name, prop) in expanded {
-                    merged.insert(name.clone(), prop.clone());
-                }
-                for excluded in raw.excludes() {
-                    merged.remove(excluded);
-                }
+                let merged = Merger::inherit_properties(
+                    &parent_props,
+                    expanded,
+                    raw.excludes(),
+                );
 
                 let name = SchemaName::try_new(raw.name())
                     .map_err(SchemaLoaderError::Resolution)?;

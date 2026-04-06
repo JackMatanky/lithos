@@ -7,7 +7,7 @@
 //! Ingestor → RawPropertyMap<RawProperty>
 //! RefExpander  ← here
 //! → HashMap<PropertyName, Property>
-//! Extender → Merger
+//! Merger
 //! ```
 //!
 //! After `RefExpander` completes, the [`PropertyBank`] is no longer
