@@ -11,9 +11,7 @@ use super::{
     FileTimesMetadata, HashMetadata, PropertyBankVersion, SchemaVersion,
 };
 use crate::schema::{
-    aggregate::SchemaName,
-    property::PropertyName,
-    raw::{RawPropertyBank, RawSchema},
+    aggregate::SchemaName, property::PropertyName, raw::RawPropertyBank,
 };
 
 /// Maximum number of versions to retain per file.
@@ -136,44 +134,6 @@ impl RawSchemaView {
         }
 
         self.versions.push_front(version);
-    }
-
-    /// Reconstructs `RawSchema` from the current version.
-    ///
-    /// Returns `None` if no current version exists.
-    ///
-    /// The schema name is derived from the file path basename.
-    ///
-    /// # Errors
-    /// Returns error if deserialization of properties fails.
-    #[inline]
-    pub fn to_raw(
-        &self,
-    ) -> Result<Option<RawSchema>, crate::schema::error::SchemaIngestionError>
-    {
-        let Some(version) = self.current() else {
-            return Ok(None);
-        };
-
-        // Deserialize full RawSchema from stored JSON
-        // raw_properties contains the complete RawSchema JSON (not just
-        // properties)
-        let raw_schema =
-            serde_json::from_slice::<RawSchema>(version.raw_properties())
-                .map_err(|e| {
-                    crate::schema::error::SchemaIngestionError::Parse(
-                        crate::schema::error::SchemaParseError::CachedView {
-                            path: std::path::PathBuf::from(self.name()),
-                            reason: format!(
-                                "failed to reconstruct schema: {e}"
-                            )
-                            .into(),
-                        },
-                    )
-                })?
-                .with_name(self.name().into());
-
-        Ok(Some(raw_schema))
     }
 
     /// Creates a view from a raw schema with content.
@@ -307,8 +267,8 @@ impl RawPropertyBankView {
     /// Adds a new version with updated content hash and existing file times.
     ///
     /// # Errors
-    /// Returns error if the cached raw property bank cannot be reconstructed
-    /// or serialized.
+    /// This method is currently infallible; the `Result` is retained for
+    /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn update_content_hash(
         &mut self,
@@ -320,81 +280,21 @@ impl RawPropertyBankView {
                 crate::schema::error::SchemaStorageError::PropertyBankNotFound,
             ))?;
         let file_times = current.file_times().clone();
-        let raw =
-            self.to_raw()?
-                .ok_or(crate::schema::error::SchemaIngestionError::Storage(
-                crate::schema::error::SchemaStorageError::PropertyBankNotFound,
-            ))?;
 
         let hashes = HashMetadata::new(
             content_hash,
             current.hashes().properties().clone(),
         );
-        let version = PropertyBankVersion::new(file_times, hashes, &raw)?;
+        let version =
+            PropertyBankVersion::new(file_times, hashes, current.version())?;
         self.add_version(version);
         Ok(())
     }
 
-    /// Reconstructs `RawPropertyBank` from cached compressed content.
+    /// Creates a view from a raw property bank with hashes.
     ///
-    /// This enables reusing cached property bank data without re-reading files.
-    /// Returns `None` if no compressed content is stored, or if
-    /// decompression/parsing fails.
-    ///
-    /// # Design Note
-    ///
-    /// Reconstructs the raw property bank from cached compressed content.
-    ///
-    /// Returns `None` if no current version exists, no compressed content is
-    /// stored, or if decompression/parsing fails.
-    ///
-    /// The `path` parameter is needed to determine the file format (JSON, TOML,
-    /// or YAML) for parsing.
-    ///
-    /// This enables the Fresh optimization - returning cached data without
-    /// re-reading or re-parsing the file.
-    /// Reconstructs `RawPropertyBank` from the current version.
-    ///
-    /// Returns `None` if no current version exists.
-    ///
-    /// # Errors
-    /// Returns error if deserialization of properties fails.
-    #[inline]
-    pub fn to_raw(
-        &self,
-    ) -> Result<
-        Option<RawPropertyBank>,
-        crate::schema::error::SchemaIngestionError,
-    > {
-        let Some(version) = self.current() else {
-            return Ok(None);
-        };
-
-        // Deserialize full RawPropertyBank from stored JSON
-        // raw_properties contains the complete RawPropertyBank JSON (not just
-        // properties)
-        let raw_bank: RawPropertyBank =
-            serde_json::from_slice::<RawPropertyBank>(version.raw_properties())
-                .map_err(|e| {
-                    crate::schema::error::SchemaIngestionError::Parse(
-                        crate::schema::error::SchemaParseError::CachedView {
-                            path: std::path::PathBuf::from("property_bank"),
-                            reason: format!(
-                                "failed to reconstruct property bank: {e}"
-                            )
-                            .into(),
-                        },
-                    )
-                })?;
-
-        Ok(Some(raw_bank))
-    }
-
-    /// Creates a view from a raw property bank with content.
-    ///
-    /// This is the complete version of `TryFrom` that accepts the file content
-    /// and compresses it for caching. Use this when you have the content
-    /// available and want to enable the Fresh optimization.
+    /// Use this when you have computed hashes and want to persist a new
+    /// versioned view for staleness checks.
     ///
     /// # Errors
     /// Returns error if metadata is missing or validation fails.
@@ -411,7 +311,11 @@ impl RawPropertyBankView {
             raw.file_times().modified_at,
         );
 
-        let version = PropertyBankVersion::new(file_times, raw_hash, raw)?;
+        let version = PropertyBankVersion::new(
+            file_times,
+            raw_hash,
+            raw.version().as_str(),
+        )?;
 
         Ok(Self::new(Filename::new(filename.into()), version))
     }
@@ -548,80 +452,6 @@ mod tests {
         fn as_str_returns_full_filename() {
             let filename = Filename::new("note.toml".into());
             assert_eq!(filename.as_str(), "note.toml");
-        }
-    }
-
-    mod schema {
-        use std::collections::HashMap;
-
-        use super::super::{Filename, RawSchemaView, SchemaVersion};
-        use crate::schema::{
-            raw::RawSchema,
-            views::{FileTimesMetadata, HashMetadata},
-        };
-
-        #[test]
-        fn to_raw_reconstructs_schema() {
-            // Create a test RawSchema via deserialization
-            let json = r#"{
-                "$version": "1.0",
-                "properties": {}
-            }"#;
-            let raw = serde_json::from_str::<RawSchema>(json)
-                .expect("valid schema should deserialize")
-                .with_name("test".into());
-
-            let file_times = FileTimesMetadata::new(None, None);
-            let hashes = HashMetadata::new([0; 32], HashMap::new());
-            let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
-
-            let filename = Filename::new("test.toml".into());
-            let view = RawSchemaView::new(filename, version);
-
-            let reconstructed = view
-                .to_raw()
-                .expect("should succeed")
-                .expect("should have value");
-            assert_eq!(reconstructed.name(), "test");
-            assert_eq!(reconstructed.properties().len(), 0);
-        }
-    }
-
-    mod property_bank {
-        use std::collections::HashMap;
-
-        use super::super::{
-            Filename, PropertyBankVersion, RawPropertyBankView,
-        };
-        use crate::schema::{
-            raw::RawPropertyBank,
-            views::{FileTimesMetadata, HashMetadata},
-        };
-
-        #[test]
-        fn to_raw_reconstructs_property_bank() {
-            // Create a test RawPropertyBank via deserialization
-            let json = r#"{
-                "$version": "1.0",
-                "properties": {}
-            }"#;
-            let raw: RawPropertyBank =
-                serde_json::from_str::<RawPropertyBank>(json)
-                    .expect("valid property bank should deserialize");
-
-            let file_times = FileTimesMetadata::new(None, None);
-            let hashes = HashMetadata::new([0; 32], HashMap::new());
-            let version =
-                PropertyBankVersion::new(file_times, hashes, &raw).unwrap();
-
-            let filename = Filename::new("properties.yaml".into());
-            let view = RawPropertyBankView::new(filename, version);
-
-            let reconstructed = view
-                .to_raw()
-                .expect("should succeed")
-                .expect("should have value");
-            assert_eq!(reconstructed.properties().len(), 0);
         }
     }
 }

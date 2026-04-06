@@ -1,40 +1,35 @@
 //! PropertyBank domain aggregate for centralized property registration.
 //!
-//! Provides name-indexed property lookup with singleton persistence and
-//! versioning for incremental resolution.
+//! Provides name-indexed property lookup with singleton persistence.
 
-use std::{fmt::Display, time::SystemTime};
+use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     error::SchemaError,
-    property::{
-        Multiplicity, Optionality, Property, PropertyId, PropertyMap,
-        PropertyName,
-    },
+    property::{Property, PropertyMap, PropertyName},
     raw::RawPropertyBank,
 };
 
 /// Registry of reusable Property definitions keyed by name.
 ///
-/// The `PropertyBank` acts as a singleton registry with versioned persistence.
-/// It is loaded first at program start and versioned for incremental
-/// resolution.
+/// The `PropertyBank` acts as a singleton registry with persisted state.
+/// It is loaded first at program start and stored on modification.
 ///
 /// # Storage Strategy
 ///
 /// The `PropertyBank` is a singleton registry persisted by the adapter layer.
 /// - **Lifecycle**: Loaded once at startup, persisted on modification
-/// - **Versioning**: `BankVersion` increments on any property change
-/// - **Storage**: `bank_metadata` and versioned `bank_property_by_*` tables
+/// - **Storage**: `property_bank` singleton table
 ///
 /// # Examples
 ///
 /// ```
 /// # use lithos_core::schema::bank::PropertyBank;
 /// # use lithos_core::schema::property::{
-/// #     Multiplicity, Optionality, Property, PropertyId, PropertyName,
+/// #     Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+/// #     PropertyName,
 /// # };
 /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,7 +40,9 @@ use super::{
 /// let property =
 ///     Property::new(id, Optionality::Required, Multiplicity::Single, spec);
 ///
-/// bank.register(&name, property)?;
+/// let mut properties = PropertyMap::new();
+/// properties.insert(name.clone(), property);
+/// let bank = PropertyBank::from(properties);
 /// assert!(bank.has(&name), "Bank should contain property name");
 /// # Ok(())
 /// # }
@@ -55,8 +52,6 @@ use super::{
 pub struct PropertyBank {
     /// Registered properties keyed by name (`PropertyMap` for O(1) lookup).
     properties: PropertyMap,
-    /// Version counter for staleness detection.
-    version: BankVersion,
     /// Ingestion timestamp (private - not exposed in public API).
     #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
@@ -79,88 +74,8 @@ impl PropertyBank {
     pub fn new() -> Self {
         Self {
             properties: PropertyMap::new(),
-            version: BankVersion::initial(),
             recorded_at: SystemTime::now(),
         }
-    }
-
-    /// Returns the current `PropertyBank` version.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// let _version = bank.version();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn version(&self) -> BankVersion {
-        self.version
-    }
-
-    /// Register a property in the bank.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::{
-    ///     bank::PropertyBank,
-    ///     property::{
-    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
-    ///     },
-    ///     property_spec::{BoolSpec, PropertySpec},
-    /// };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let mut bank = PropertyBank::new();
-    ///
-    /// let name = PropertyName::try_new("is_active")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = PropertyId::new();
-    /// let property =
-    ///     Property::new(id, Optionality::Required, Multiplicity::Single, spec);
-    ///
-    /// bank.register(&name, property)?;
-    /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn register(
-        &mut self,
-        name: &PropertyName,
-        property: Property,
-    ) -> Result<(), SchemaError> {
-        let id = property.id();
-        let name = name.clone();
-
-        if let Some(existing) = self.properties.get(&name) {
-            if existing == &property {
-                return Ok(());
-            }
-            return Err(SchemaError::PropertyBank(
-                super::error::PropertyBankError::DuplicatePropertyName {
-                    name: name.as_str().into(),
-                },
-            ));
-        }
-
-        if self.properties.values().any(|prop| prop.id() == id) {
-            return Err(SchemaError::PropertyBank(
-                super::error::PropertyBankError::DuplicatePropertyId {
-                    id: id.to_string().into(),
-                },
-            ));
-        }
-
-        self.properties.insert(name.clone(), property);
-        self.version = self.version.increment();
-
-        Ok(())
     }
 
     /// Lookup property by name (O(log n)).
@@ -221,97 +136,8 @@ impl PropertyBank {
     }
 
     #[inline]
-    pub(super) fn set_version(&mut self) -> &mut BankVersion {
-        &mut self.version
-    }
-
-    #[inline]
     pub(super) fn set_recorded_at(&mut self) -> &mut SystemTime {
         &mut self.recorded_at
-    }
-
-    /// Incrementally update specific properties from raw data based on a list
-    /// of changed property names.
-    ///
-    /// This method performs incremental updates to the `PropertyBank` by:
-    /// - Updating properties that exist in both raw and changed list
-    /// - Adding new properties that appear in changed list
-    /// - Removing properties in changed list that don't exist in raw
-    /// - Preserving IDs for properties that already exist
-    ///
-    /// The version counter is incremented only if changes were actually made.
-    ///
-    /// Only processes properties in `changed`, making this more efficient than
-    /// rebuilding the entire bank. Updates existing properties, adds new ones,
-    /// and removes deleted ones. Property IDs are preserved when updating.
-    /// The version counter increments only if changes were actually made.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::{
-    ///     bank::PropertyBank,
-    ///     property::PropertyName,
-    ///     raw::RawPropertyBank,
-    /// };
-    ///
-    /// let mut bank = PropertyBank::new();
-    /// let raw = load_raw_property_bank()?;
-    /// let changed = vec![PropertyName::try_new("title")?];
-    ///
-    /// bank.update_from_raw(&raw, &changed)?;
-    /// ```
-    ///
-    /// # Errors
-    /// Returns error if property validation fails.
-    #[inline]
-    pub fn update_from_raw(
-        &mut self,
-        raw: &RawPropertyBank,
-        changed: &[PropertyName],
-    ) -> Result<(), SchemaError> {
-        if changed.is_empty() {
-            return Ok(());
-        }
-
-        let mut any_changed = false;
-
-        for name in changed {
-            if let Some(raw_entry) = raw.properties().get(name) {
-                // Property exists in raw - update or insert
-                let spec = raw_entry.spec.clone().try_into()?;
-                let multiplicity = if raw_entry.multi {
-                    Multiplicity::Many
-                } else {
-                    Multiplicity::Single
-                };
-
-                // Preserve ID if property already exists, otherwise create new
-                let id =
-                    self.get(name).map_or_else(PropertyId::new, Property::id);
-
-                let property = Property::new(
-                    id,
-                    Optionality::Optional,
-                    multiplicity,
-                    spec,
-                );
-
-                self.properties.insert(name.clone(), property);
-                any_changed = true;
-            } else {
-                // Property was removed from raw
-                if self.properties.remove(name).is_some() {
-                    any_changed = true;
-                }
-            }
-        }
-
-        if any_changed {
-            self.version = self.version.increment();
-            self.recorded_at = SystemTime::now();
-        }
-
-        Ok(())
     }
 }
 
@@ -322,13 +148,22 @@ impl Default for PropertyBank {
     }
 }
 
+impl From<PropertyMap> for PropertyBank {
+    #[inline]
+    fn from(properties: PropertyMap) -> Self {
+        Self {
+            properties,
+            recorded_at: SystemTime::now(),
+        }
+    }
+}
+
 impl TryFrom<RawPropertyBank> for PropertyBank {
     type Error = SchemaError;
 
     /// Build a `PropertyBank` from raw vault data with fresh IDs.
     ///
     /// All properties get newly generated IDs (no ID preservation).
-    /// Properties are loaded in deterministic name order.
     ///
     /// # Errors
     /// Returns `SchemaError` if any property fails validation.
@@ -347,152 +182,8 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
     /// ```
     #[inline]
     fn try_from(raw: RawPropertyBank) -> Result<Self, Self::Error> {
-        let mut bank = Self::new();
-
-        let mut entries: Vec<_> = raw.properties().iter().collect();
-        entries.sort_by(|left, right| left.0.cmp(right.0));
-
-        for (name, entry) in entries {
-            // Keys in RawPropertyMap are already PropertyName, no conversion
-            // needed
-            let spec = entry.spec.clone().try_into()?;
-            let multiplicity = if entry.multi {
-                Multiplicity::Many
-            } else {
-                Multiplicity::Single
-            };
-
-            let property = Property::new(
-                PropertyId::new(),
-                Optionality::Optional,
-                multiplicity,
-                spec,
-            );
-
-            bank.register(name, property)?;
-        }
-
-        Ok(bank)
-    }
-}
-
-/// `PropertyBank` version counter for staleness detection.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::bank::BankVersion;
-///
-/// let version = BankVersion::initial();
-/// let next = version.increment();
-/// assert!(version.is_older_than(next));
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct BankVersion(u64);
-
-impl BankVersion {
-    /// Returns the initial version.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// assert_eq!(version.as_u64(), 0);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn initial() -> Self {
-        Self(0)
-    }
-
-    /// Returns the next version value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// let next = version.increment();
-    /// assert!(version.is_older_than(next));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn increment(self) -> Self {
-        Self(self.0.saturating_add(1))
-    }
-
-    /// Returns the version as a raw integer.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// assert_eq!(version.as_u64(), 0);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_u64(self) -> u64 {
-        self.0
-    }
-
-    /// Constructs a version from a raw integer.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::from_u64(5);
-    /// assert_eq!(version.as_u64(), 5);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_u64(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns true when this version is older than the other.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let old = BankVersion::initial();
-    /// let new = old.increment();
-    /// assert!(old.is_older_than(new));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn is_older_than(self, other: Self) -> bool {
-        self.0 < other.0
-    }
-}
-
-impl Default for BankVersion {
-    #[inline]
-    fn default() -> Self {
-        Self::initial()
-    }
-}
-
-impl Display for BankVersion {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v{}", self.0)
+        let properties = PropertyMap::try_from(raw.properties().clone())?;
+        Ok(PropertyBank::from(properties))
     }
 }
 
@@ -532,15 +223,13 @@ mod tests {
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let id = property.id();
-            bank.register(&name, property)?;
+            bank.properties.insert(name, property);
             Ok((bank, id))
         }
     }
 
     const TEST_PROPERTY_ID_A: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0701);
-    const TEST_PROPERTY_ID_B: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0702);
 
     mod property_bank {
         use super::*;
@@ -549,13 +238,12 @@ mod tests {
                 Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
             property_spec::{PropertySpec, StringSpec},
-            raw::RawPropertyBank,
         };
 
-        /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
+        /// 3.3-UNIT-023: `insert_is_idempotent_on_identical_name`.
         /// Priority: P1.
         #[test]
-        fn is_idempotent_on_identical_registration() {
+        fn insert_is_idempotent_on_identical_name() {
             // GIVEN: a PropertyBank and an existing property
             let mut bank = PropertyBank::new();
             let spec = PropertySpec::String(StringSpec::default());
@@ -567,68 +255,13 @@ mod tests {
                 spec,
             );
 
-            // WHEN: registering the same property twice
-            bank.register(&name, prop.clone())
-                .expect("First registration should succeed");
-            bank.register(&name, prop)
-                .expect("Second registration should succeed");
+            // WHEN: inserting the same property twice
+            bank.properties.insert(name.clone(), prop.clone());
+            bank.properties.insert(name, prop);
 
             // THEN: the count remains 1
             let count = bank.all().count();
-            assert_eq!(
-                count, 1,
-                "Expected 1 property after identical registrations"
-            );
-        }
-
-        /// Test: `rejects_same_id_different_content`.
-        /// Verifies that registering a property with the same ID but different
-        /// content fails with an error (HIGH-005 fix).
-        #[test]
-        fn rejects_same_id_different_content() {
-            // GIVEN: a PropertyBank with a registered property
-            let mut bank = PropertyBank::new();
-            let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
-
-            let spec1 = PropertySpec::String(StringSpec::default());
-            let name1 = PropertyName::try_new("status").expect("Valid name");
-            let prop1 = Property::new(
-                id,
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec1,
-            );
-
-            bank.register(&name1, prop1)
-                .expect("First registration should succeed");
-
-            // WHEN: attempting to register different content with same ID
-            let spec2 = PropertySpec::Bool(BoolSpec::default());
-            let name2 = PropertyName::try_new("priority").expect("Valid name");
-            let prop2 = Property::new(
-                id,
-                Optionality::Required,
-                Multiplicity::Many,
-                spec2,
-            );
-
-            let result = bank.register(&name2, prop2);
-
-            // THEN: registration should fail
-            assert!(
-                result.is_err(),
-                "Should reject same ID with different content"
-            );
-
-            assert!(
-                matches!(
-                    &result,
-                    Err(SchemaError::PropertyBank(
-                        crate::schema::error::PropertyBankError::DuplicatePropertyId { .. }
-                    ))
-                ),
-                "Expected DuplicatePropertyId, got: {result:?}"
-            );
+            assert_eq!(count, 1, "Expected 1 property after identical inserts");
         }
 
         /// 3.3-UNIT-020: `maintains_name_lookup_for_fast_access`.
@@ -643,91 +276,6 @@ mod tests {
             assert!(
                 bank.get(&name).is_some(),
                 "Registered property should be retrievable by name: 'flag'"
-            );
-        }
-
-        /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
-        /// Priority: P1.
-        #[test]
-        fn rejects_duplicate_names_with_different_definitions() {
-            // GIVEN: a PropertyBank with a registered property
-            let mut bank = PropertyBank::new();
-            let spec1 = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::try_new("test").expect("Valid name");
-            let prop1 = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec1,
-            );
-            bank.register(&name, prop1)
-                .expect("Initial registration should succeed");
-
-            // WHEN: registering a different definition with the same name
-            let spec2 = PropertySpec::Bool(BoolSpec::default());
-            let prop2 = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_B),
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec2,
-            );
-            let res = bank.register(&name, prop2);
-
-            // THEN: it must return a DuplicatePropertyName error
-            assert!(
-                matches!(
-                    res,
-                    Err(SchemaError::PropertyBank(
-                        crate::schema::error::PropertyBankError::DuplicatePropertyName { .. }
-                    ))
-                ),
-                "Duplicate property name should be rejected with \
-                 DuplicatePropertyName, got: {res:?}"
-            );
-        }
-
-        /// 3.3-UNIT-025: `update_from_raw_preserves_ids_by_name`.
-        /// Priority: P1.
-        #[test]
-        fn update_from_raw_preserves_ids_by_name() {
-            let mut bank = PropertyBank::new();
-            let name =
-                PropertyName::try_new("status").expect("valid property name");
-            let prop = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank.register(&name, prop).expect("initial registration succeeds");
-
-            // Use JSON deserialization to construct RawPropertyBank
-            let raw_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "status": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw: RawPropertyBank = serde_json::from_value(raw_json)
-                .expect("valid property bank JSON");
-
-            // Use update_from_raw to update only the "status" property
-            let changed = vec![name.clone()];
-            bank.update_from_raw(&raw, &changed)
-                .expect("update should succeed");
-
-            let updated_prop =
-                bank.get(&name).expect("Expected updated property");
-
-            let expected_id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
-            assert_eq!(
-                updated_prop.id(),
-                expected_id,
-                "Expected ID {expected_id}, got {}",
-                updated_prop.id()
             );
         }
 
@@ -821,152 +369,6 @@ mod tests {
             for handle in handles {
                 handle.join().expect("Thread join succeeded");
             }
-        }
-
-        /// Test: `update_from_raw()` incrementally updates changed properties.
-        #[test]
-        fn update_from_raw_incremental_update() {
-            let mut bank = PropertyBank::new();
-
-            // Initial property bank using JSON deserialization
-            let raw_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {
-                        "multi": false,
-                        "type": "string"
-                    },
-                    "status": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw: RawPropertyBank = serde_json::from_value(raw_json)
-                .expect("valid property bank JSON");
-
-            // Initial load
-            let changed = vec![
-                PropertyName::try_new("title").unwrap(),
-                PropertyName::try_new("status").unwrap(),
-            ];
-            bank.update_from_raw(&raw, &changed).expect("should update");
-
-            assert_eq!(bank.all().count(), 2);
-
-            // Modify one property (multi changed to true)
-            let raw_updated_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {
-                        "multi": true,  // Changed to multi
-                        "type": "string"
-                    },
-                    "status": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw_updated: RawPropertyBank =
-                serde_json::from_value(raw_updated_json)
-                    .expect("valid property bank JSON");
-
-            // Incremental update (only title changed)
-            let changed_props = vec![PropertyName::try_new("title").unwrap()];
-            bank.update_from_raw(&raw_updated, &changed_props)
-                .expect("should update incrementally");
-
-            assert_eq!(bank.all().count(), 2);
-
-            // Verify title was updated
-            let title = bank.get(&PropertyName::try_new("title").unwrap());
-            assert!(title.is_some());
-            assert_eq!(title.unwrap().multiplicity(), Multiplicity::Many);
-        }
-
-        /// Test: `update_from_raw()` with empty changed list is no-op.
-        #[test]
-        fn update_from_raw_empty_changed_is_noop() {
-            let mut bank = PropertyBank::new();
-
-            let raw_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw: RawPropertyBank = serde_json::from_value(raw_json)
-                .expect("valid property bank JSON");
-
-            let version_before = bank.version();
-
-            // Update with empty changed list
-            bank.update_from_raw(&raw, &[]).expect("should succeed");
-
-            assert_eq!(bank.version(), version_before);
-            assert_eq!(bank.all().count(), 0);
-        }
-
-        /// Test: `update_from_raw()` handles property removal.
-        #[test]
-        fn update_from_raw_removes_deleted_properties() {
-            let mut bank = PropertyBank::new();
-
-            // Initial property bank with two properties
-            let raw_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {
-                        "multi": false,
-                        "type": "string"
-                    },
-                    "status": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw: RawPropertyBank = serde_json::from_value(raw_json)
-                .expect("valid property bank JSON");
-
-            let changed = vec![
-                PropertyName::try_new("title").unwrap(),
-                PropertyName::try_new("status").unwrap(),
-            ];
-            bank.update_from_raw(&raw, &changed).expect("should update");
-
-            assert_eq!(bank.all().count(), 2);
-
-            // Remove status property (only title remains)
-            let raw_updated_json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {
-                        "multi": false,
-                        "type": "string"
-                    }
-                }
-            });
-            let raw_updated: RawPropertyBank =
-                serde_json::from_value(raw_updated_json)
-                    .expect("valid property bank JSON");
-
-            // Update with status in changed list (it was removed from raw)
-            let changed_props = vec![PropertyName::try_new("status").unwrap()];
-            bank.update_from_raw(&raw_updated, &changed_props)
-                .expect("should update");
-
-            assert_eq!(bank.all().count(), 1);
-            assert!(
-                bank.get(&PropertyName::try_new("title").unwrap()).is_some()
-            );
-            assert!(
-                bank.get(&PropertyName::try_new("status").unwrap()).is_none()
-            );
         }
     }
 }

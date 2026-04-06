@@ -148,6 +148,25 @@ impl PropertyMap {
         }
     }
 
+    /// Returns a copy of this map with IDs preserved from an existing map.
+    ///
+    /// For any property name present in `existing`, the returned map uses the
+    /// existing property's ID. New names keep their generated IDs.
+    #[inline]
+    #[must_use]
+    pub fn with_ids(self, existing: &PropertyMap) -> Self {
+        let mut map = PropertyMap::new();
+        for (name, property) in self {
+            let property = if let Some(current) = existing.get(&name) {
+                property.with_id(current.id())
+            } else {
+                property
+            };
+            map.insert(name, property);
+        }
+        map
+    }
+
     /// Returns an iterator over property names.
     #[inline]
     pub fn keys(&self) -> impl Iterator<Item = &PropertyName> {

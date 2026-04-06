@@ -9,16 +9,14 @@
 //! types:
 //! - Metadata fields (`extends`, `excludes`, `version`) are stored as validated
 //!   types
-//! - Complex property trees (`RawProperty`, `RawPropertyBankEntry`) are
-//!   serialized via serde
-//! - The serde-serialized bytes are stored in `Vec<u8>` fields which rkyv
-//!   handles natively
+//! - Complex property trees remain in the Raw* layer
+//! - Version views store only validated metadata needed for staleness checks
 //!
 //! This keeps the parsing layer (Raw* types with serde) separate from the
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -27,7 +25,7 @@ use crate::schema::{
     aggregate::SchemaName,
     error::SchemaIngestionError,
     property::{PropertyMap, PropertyName},
-    raw::{RawPropertyBank, RawSchema},
+    raw::RawSchema,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,15 +37,14 @@ use crate::schema::{
 /// Stores:
 /// - File and hash metadata for staleness detection
 /// - Schema format version, inheritance metadata (validated, queryable)
-/// - Properties as serde-serialized bytes (avoids rkyv on Raw* types)
 /// - Cached expanded properties for incremental resolution
 ///
 /// ## Design Rationale
 ///
 /// This hybrid approach keeps metadata fields (`extends`, `excludes`) as
-/// validated types for direct querying, while serializing the complex property
-/// tree via serde. This avoids adding rkyv derives to the entire Raw* parsing
-/// layer while maintaining queryability of inheritance metadata.
+/// validated types for direct querying while leaving the raw property tree in
+/// the Raw* parsing layer. This avoids adding rkyv derives to the raw schema
+/// parsing types while maintaining queryability of inheritance metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
     /// File timestamp metadata.
@@ -72,15 +69,6 @@ pub struct SchemaVersion {
     /// Validated and stored as typed field for efficient querying.
     excludes: Vec<PropertyName>,
 
-    /// Raw properties map (serde JSON format).
-    ///
-    /// Contains: `HashMap<Box<str>, RawProperty>`.
-    ///
-    /// Properties are serialized via serde (not rkyv) to avoid adding rkyv
-    /// derives to the Raw* parsing layer. The serialization format (JSON)
-    /// is independent of the original schema file format (TOML/JSON/YAML).
-    raw_properties: Vec<u8>,
-
     /// Map of schema property name to property bank target name.
     ///
     /// Extracted from `$ref` entries during ingestion.
@@ -96,7 +84,8 @@ impl SchemaVersion {
     /// Create a new schema version from a `RawSchema`.
     ///
     /// # Errors
-    /// Returns error if property name validation fails or serialization fails.
+    /// This constructor is currently infallible; the `Result` is retained for
+    /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
         file_times: FileTimesMetadata,
@@ -110,16 +99,6 @@ impl SchemaVersion {
 
         // Property names are already validated via RawPropertyMap
         // deserialization No need to validate them again here
-
-        // Serialize the complete raw schema via serde (not rkyv)
-        let raw_properties = serde_json::to_vec(raw).map_err(|e| {
-            SchemaIngestionError::Parse(
-                crate::schema::error::SchemaParseError::Serialization {
-                    path: PathBuf::from(raw.name()),
-                    reason: e.to_string().into(),
-                },
-            )
-        })?;
 
         // Extract bank references from properties map
         let mut bank_references = HashMap::new();
@@ -138,7 +117,6 @@ impl SchemaVersion {
             version: raw.version().as_str().into(),
             extends,
             excludes,
-            raw_properties,
             bank_references,
             expanded_properties: None,
         })
@@ -163,13 +141,6 @@ impl SchemaVersion {
     #[must_use]
     pub fn version(&self) -> &str {
         &self.version
-    }
-
-    /// Get raw properties as serialized bytes.
-    #[inline]
-    #[must_use]
-    pub fn raw_properties(&self) -> &[u8] {
-        &self.raw_properties
     }
 
     /// Get parent schema name.
@@ -209,6 +180,28 @@ impl SchemaVersion {
     pub fn set_expanded_properties(&mut self, properties: PropertyMap) {
         self.expanded_properties = Some(properties);
     }
+
+    /// Clone the version with updated file times and hashes.
+    ///
+    /// Resets cached expanded properties to keep refresh behavior consistent
+    /// with raw-based reconstruction.
+    #[inline]
+    #[must_use]
+    pub fn with_metadata(
+        &self,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
+    ) -> Self {
+        Self {
+            file_times,
+            hashes,
+            version: self.version.clone(),
+            extends: self.extends.clone(),
+            excludes: self.excludes.clone(),
+            bank_references: self.bank_references.clone(),
+            expanded_properties: None,
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,13 +213,12 @@ impl SchemaVersion {
 /// Stores:
 /// - File and hash metadata for staleness detection
 /// - Property bank format version as simple string
-/// - Properties as serde-serialized bytes (avoids rkyv on Raw* types)
 ///
 /// ## Design Rationale
 ///
 /// Similar to `SchemaVersion`, this uses a hybrid approach: metadata fields are
-/// stored as validated types, while the complex property tree is serialized via
-/// serde to avoid adding rkyv derives to the Raw* parsing layer.
+/// stored as validated types, while the complex property tree remains in the
+/// Raw* parsing layer to avoid adding rkyv derives.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
     /// File timestamp metadata.
@@ -240,45 +232,24 @@ pub struct PropertyBankVersion {
     /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
     /// rkyv derives on Raw* types.
     version: Box<str>,
-
-    /// Raw properties map (serde JSON format).
-    ///
-    /// Contains: `HashMap<Box<str>, RawPropertyBankEntry>`.
-    ///
-    /// Properties are serialized via serde (not rkyv) to avoid adding rkyv
-    /// derives to the Raw* parsing layer.
-    raw_properties: Vec<u8>,
 }
 
 impl PropertyBankVersion {
-    /// Create a new property bank version from a `RawPropertyBank`.
+    /// Create a new property bank version from a version string.
     ///
     /// # Errors
-    /// Returns error if property name validation fails or serialization fails.
+    /// This constructor is currently infallible; the `Result` is retained for
+    /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
         file_times: FileTimesMetadata,
         hashes: HashMetadata,
-        raw: &RawPropertyBank,
+        version: &str,
     ) -> Result<Self, SchemaIngestionError> {
-        // Property names are already validated via RawPropertyMap
-        // deserialization No need to validate them again here
-
-        // Serialize the complete raw property bank via serde (not rkyv)
-        let raw_properties = serde_json::to_vec(raw).map_err(|e| {
-            SchemaIngestionError::Parse(
-                crate::schema::error::SchemaParseError::Serialization {
-                    path: PathBuf::from("property_bank"),
-                    reason: e.to_string().into(),
-                },
-            )
-        })?;
-
         Ok(Self {
             file_times,
             hashes,
-            version: raw.version().as_str().into(),
-            raw_properties,
+            version: version.into(),
         })
     }
 
@@ -307,13 +278,6 @@ impl PropertyBankVersion {
     #[must_use]
     pub fn version(&self) -> &str {
         &self.version
-    }
-
-    /// Get raw properties as serialized bytes.
-    #[inline]
-    #[must_use]
-    pub fn raw_properties(&self) -> &[u8] {
-        &self.raw_properties
     }
 }
 

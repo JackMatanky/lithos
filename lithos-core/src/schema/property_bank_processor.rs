@@ -787,12 +787,7 @@ impl PropertyBankProcessor<Construction, New> {
                     })
                 })?;
         for (name, property) in properties {
-            bank.register(&name, property).map_err(|source| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                    path: std::path::PathBuf::from("property_bank"),
-                    source,
-                })
-            })?;
+            bank.set_properties().insert(name, property);
         }
 
         Ok(bank)
@@ -883,30 +878,24 @@ impl PropertyBankProcessor<Construction, Changed> {
     ) -> Result<(), SchemaLoaderError> {
         let any_changed = !self.status.delta.is_empty();
 
+        let existing = bank.set_properties();
         let upserts = PropertyMap::try_from(self.status.delta.upserts.clone())
             .map_err(|source| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                     path: std::path::PathBuf::from("property_bank"),
                     source,
                 })
-            })?;
+            })?
+            .with_ids(existing);
         for (name, property) in upserts {
-            if let Some(existing) = bank.set_properties().get(&name) {
-                let existing_id = existing.id();
-                let property = property.with_id(existing_id);
-                bank.set_properties().insert(name, property);
-            } else {
-                bank.set_properties().insert(name, property);
-            }
+            existing.insert(name, property);
         }
 
         for name in &self.status.delta.removals {
-            bank.set_properties().remove(name);
+            existing.remove(name);
         }
 
         if any_changed {
-            let next = bank.version().increment();
-            *bank.set_version() = next;
             *bank.set_recorded_at() = SystemTime::now();
         }
 

@@ -89,11 +89,12 @@ mod roundtrip_tests {
         let repository = setup_repository(test_db.db());
 
         // Create and save property bank
-        let mut bank = PropertyBank::new();
         let (prop_name, prop) = PropertyBuilder::new("status")
             .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
             .build_bool()?;
-        bank.register(&prop_name, prop)?;
+        let mut properties = PropertyMap::new();
+        properties.insert(prop_name.clone(), prop);
+        let bank = PropertyBank::from(properties);
         repository.save_property_bank(&bank)?;
 
         // Retrieve and verify
@@ -298,12 +299,13 @@ mod durability_tests {
         let repository = setup_repository(test_db.db());
 
         // Create and save property bank
-        let mut bank = PropertyBank::new();
         let (prop_name, prop) = PropertyBuilder::new("status")
             .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
             .build_bool()?;
         let prop_id = prop.id();
-        bank.register(&prop_name, prop)?;
+        let mut properties = PropertyMap::new();
+        properties.insert(prop_name.clone(), prop);
+        let bank = PropertyBank::from(properties);
         repository.save_property_bank(&bank)?;
 
         // Drop repository to release Arc reference before reopen

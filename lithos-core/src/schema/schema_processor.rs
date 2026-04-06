@@ -1728,10 +1728,7 @@ impl SchemaProcessor<PropertyAnalysis, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        use crate::schema::views::{
-            metadata::{FileTimesMetadata, HashMetadata},
-            version::SchemaVersion,
-        };
+        use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
 
         for id in &self.status.refresh_ids {
             let Some(node) = self.status.graph.nodes.get_mut(id) else {
@@ -1742,20 +1739,15 @@ impl SchemaProcessor<PropertyAnalysis, Analyzed> {
                 continue;
             };
 
-            let raw = payload
-                .view
-                .to_raw()
-                .map_err(SchemaLoaderError::Ingestion)?
-                .ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: "missing raw schema in cached view".into(),
-                        },
-                    ))
-                })?;
+            let current = payload.view.current().ok_or_else(|| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::FileSystem {
+                        reason: "missing schema metadata in cached view".into(),
+                    },
+                ))
+            })?;
 
-            let property_hashes =
-                HashMetadata::compute_property_hashes(raw.properties());
+            let property_hashes = current.hashes().properties().clone();
 
             let file_times = FileTimesMetadata::new(
                 payload.times.created_at,
@@ -1763,8 +1755,7 @@ impl SchemaProcessor<PropertyAnalysis, Analyzed> {
             );
             let hashes =
                 HashMetadata::new(payload.content_hash, property_hashes);
-            let version = SchemaVersion::new(file_times, hashes, &raw)
-                .map_err(SchemaLoaderError::Ingestion)?;
+            let version = current.with_metadata(file_times, hashes);
 
             payload.view.add_version(version);
 

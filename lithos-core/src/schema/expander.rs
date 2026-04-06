@@ -240,7 +240,7 @@ mod tests {
     use super::*;
     use crate::schema::{
         bank::PropertyBank,
-        property::{PropertyId, PropertyName},
+        property::{PropertyId, PropertyMap, PropertyName},
         property_spec::{BoolSpec, PropertySpec},
         raw::property::RawPropertyRef,
     };
@@ -260,12 +260,10 @@ mod tests {
             Ok((PropertyName::try_new(name)?, property))
         }
 
-        pub fn bank_with(
-            entry: (PropertyName, Property),
-        ) -> Result<PropertyBank, SchemaError> {
-            let mut bank = PropertyBank::new();
-            bank.register(&entry.0, entry.1)?;
-            Ok(bank)
+        pub fn bank_with(entry: (PropertyName, Property)) -> PropertyBank {
+            let mut properties = PropertyMap::new();
+            properties.insert(entry.0, entry.1);
+            PropertyBank::from(properties)
         }
 
         pub fn ref_entry(ref_path: &str) -> RawPropertyRef {
@@ -310,7 +308,7 @@ mod tests {
         #[test]
         fn ref_resolves_from_bank() -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
-            let bank = fixtures::bank_with(base)?;
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
             let name = PropertyName::try_new("alias")?;
             let entry = fixtures::ref_entry("property_bank#/status");
@@ -325,7 +323,7 @@ mod tests {
         fn ref_overrides_optionality_and_multiplicity()
         -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
-            let bank = fixtures::bank_with(base)?;
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
             let entry = fixtures::ref_with_overrides(
                 "property_bank#/status",
@@ -347,7 +345,7 @@ mod tests {
         fn ref_type_mismatch_returns_error() {
             let base =
                 fixtures::bool_property("status").expect("valid property");
-            let bank = fixtures::bank_with(base).expect("valid bank");
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
             let json = r#"{
                 "$ref": "property_bank#/status",
