@@ -612,10 +612,10 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
         raw: &RawPropertyBank,
         prev_hashes: &HashMap<PropertyName, [u8; 32]>,
     ) -> DeltaResult {
-        let mut property_hashes = HashMap::new();
-        let mut upserts = HashMap::new();
-        let mut upsert_names = Vec::new();
-        let mut seen = HashSet::with_capacity(raw.properties().len());
+        let property_count = raw.properties().len();
+        let mut property_hashes = HashMap::with_capacity(property_count);
+        let mut upserts = HashMap::with_capacity(property_count);
+        let mut upsert_names = Vec::with_capacity(property_count);
 
         for (name, entry) in raw.properties().iter() {
             let new_hash = HashMetadata::hash_entry(entry);
@@ -624,12 +624,11 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
                 upserts.insert(name.clone(), entry.clone());
                 upsert_names.push(name.clone());
             }
-            seen.insert(name.clone());
         }
 
         let mut removals = prev_hashes
             .keys()
-            .filter(|&name| !seen.contains(name))
+            .filter(|&name| !property_hashes.contains_key(name))
             .cloned()
             .collect::<Vec<_>>();
 
