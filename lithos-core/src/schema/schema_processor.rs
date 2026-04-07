@@ -350,7 +350,7 @@ pub(crate) enum ContentBranch {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ComparisonPayload {
+pub(crate) enum ComparedPayload {
     Fresh(FreshPayload),
     StaleTimestamps(FoundPayload),
     StaleBankReferences(StalePayload),
@@ -566,9 +566,17 @@ pub(crate) struct Present {
 }
 
 #[derive(Debug)]
+#[expect(
+    dead_code,
+    reason = "ID vectors for incremental pipeline optimization"
+)]
 pub(crate) struct Compared {
-    graph: InheritanceGraph<PreProcessNode<ComparisonPayload>>,
+    graph: InheritanceGraph<PreProcessNode<ComparedPayload>>,
     new_schemas: NewBatch<InitialRead>,
+    fresh: Vec<SchemaId>,
+    stale_timestamps: Vec<SchemaId>,
+    stale_refs: Vec<SchemaId>,
+    stale: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
 }
 
@@ -835,8 +843,13 @@ impl SchemaProcessor<Comparison, Present> {
         } = self.status;
 
         let (mut graph_nodes, graph_order, graph_roots) = graph.into_parts();
-        let mut nodes: HashMap<SchemaId, PreProcessNode<ComparisonPayload>> =
+        let mut nodes: HashMap<SchemaId, PreProcessNode<ComparedPayload>> =
             HashMap::new();
+
+        let mut fresh_ids = Vec::new();
+        let mut stale_ts_ids = Vec::new();
+        let mut stale_ref_ids = Vec::new();
+        let mut stale_ids = Vec::new();
 
         let bank_affected =
             Self::collect_bank_affected_ids(&graph_nodes, property_bank_delta);
@@ -873,17 +886,15 @@ impl SchemaProcessor<Comparison, Present> {
                             let content_hash =
                                 *blake3::hash(content_str.as_bytes())
                                     .as_bytes();
-                            ComparisonPayload::StaleBankReferences(
-                                StalePayload {
-                                    path: matched_payload.path,
-                                    times: matched_payload.times,
-                                    content_str: content_str.into(),
-                                    content_hash,
-                                    view: matched_payload.view,
-                                },
-                            )
+                            ComparedPayload::StaleBankReferences(StalePayload {
+                                path: matched_payload.path,
+                                times: matched_payload.times,
+                                content_str: content_str.into(),
+                                content_hash,
+                                view: matched_payload.view,
+                            })
                         } else {
-                            ComparisonPayload::Fresh(FreshPayload {
+                            ComparedPayload::Fresh(FreshPayload {
                                 path: matched_payload.path,
                                 view: matched_payload.view,
                             })
@@ -900,7 +911,7 @@ impl SchemaProcessor<Comparison, Present> {
                                     content_payload.content_str.as_bytes(),
                                 )
                                 .as_bytes();
-                                ComparisonPayload::StaleBankReferences(
+                                ComparedPayload::StaleBankReferences(
                                     StalePayload {
                                         path: content_payload.path,
                                         times: content_payload.times,
@@ -912,21 +923,34 @@ impl SchemaProcessor<Comparison, Present> {
                                 )
                             }
                             ContentBranch::Match(content_payload) => {
-                                ComparisonPayload::StaleTimestamps(
-                                    FoundPayload {
-                                        path: content_payload.path,
-                                        times: content_payload.times,
-                                        view: content_payload.view,
-                                    },
-                                )
+                                ComparedPayload::StaleTimestamps(FoundPayload {
+                                    path: content_payload.path,
+                                    times: content_payload.times,
+                                    view: content_payload.view,
+                                })
                             }
                             ContentBranch::Mismatch(stale_payload) => {
-                                ComparisonPayload::Stale(stale_payload)
+                                ComparedPayload::Stale(stale_payload)
                             }
                         }
                     }
                 };
             let status = Self::status_for_payload(&comparison_payload);
+
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "match on enum reference for ID tracking"
+            )]
+            match &comparison_payload {
+                ComparedPayload::Fresh(_) => fresh_ids.push(node_id),
+                ComparedPayload::StaleTimestamps(_) => {
+                    stale_ts_ids.push(node_id);
+                }
+                ComparedPayload::StaleBankReferences(_) => {
+                    stale_ref_ids.push(node_id);
+                }
+                ComparedPayload::Stale(_) => stale_ids.push(node_id),
+            }
 
             nodes.insert(node_id, PreProcessNode {
                 id: node_id,
@@ -959,6 +983,10 @@ impl SchemaProcessor<Comparison, Present> {
         Ok(Self::transition(FileParsed, Compared {
             graph: InheritanceGraph::new(nodes, graph_order, graph_roots),
             new_schemas: new_reads,
+            fresh: fresh_ids,
+            stale_timestamps: stale_ts_ids,
+            stale_refs: stale_ref_ids,
+            stale: stale_ids,
             deleted_ids,
         }))
     }
@@ -1051,16 +1079,14 @@ impl SchemaProcessor<Comparison, Present> {
         clippy::pattern_type_mismatch,
         reason = "match ergonomics on borrowed branch"
     )]
-    fn status_for_payload(payload: &ComparisonPayload) -> NodeStatus {
+    fn status_for_payload(payload: &ComparedPayload) -> NodeStatus {
         match payload {
-            ComparisonPayload::Fresh(_) => NodeStatus::Fresh,
-            ComparisonPayload::StaleTimestamps(_) => {
-                NodeStatus::StaleTimestamps
-            }
-            ComparisonPayload::StaleBankReferences(_) => {
+            ComparedPayload::Fresh(_) => NodeStatus::Fresh,
+            ComparedPayload::StaleTimestamps(_) => NodeStatus::StaleTimestamps,
+            ComparedPayload::StaleBankReferences(_) => {
                 NodeStatus::StaleBankReferences
             }
-            ComparisonPayload::Stale(_) => NodeStatus::Stale,
+            ComparedPayload::Stale(_) => NodeStatus::Stale,
         }
     }
 }
@@ -1134,6 +1160,7 @@ impl SchemaProcessor<FileParsed, Compared> {
             graph,
             new_schemas,
             deleted_ids,
+            ..
         } = self.status;
         let mut nodes = HashMap::new();
 
@@ -1169,7 +1196,7 @@ impl SchemaProcessor<FileParsed, Compared> {
         node_entries.sort_by_key(|entry| entry.0);
         for (id, node) in node_entries {
             let next = match node.payload {
-                ComparisonPayload::Stale(payload) => {
+                ComparedPayload::Stale(payload) => {
                     let schema_name = source
                         .basename(&payload.path)
                         .map_err(SchemaIngestionError::from)
@@ -1201,7 +1228,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                         ),
                     }
                 }
-                ComparisonPayload::StaleBankReferences(payload) => {
+                ComparedPayload::StaleBankReferences(payload) => {
                     let schema_name = source
                         .basename(&payload.path)
                         .map_err(SchemaIngestionError::from)
@@ -1234,7 +1261,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                         ),
                     }
                 }
-                ComparisonPayload::Fresh(payload) => PreProcessNode {
+                ComparedPayload::Fresh(payload) => PreProcessNode {
                     id: node.id,
                     parents: node.parents,
                     children: node.children,
@@ -1242,7 +1269,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                     status: NodeStatus::Fresh,
                     payload: FileParsedBranch::Fresh(payload),
                 },
-                ComparisonPayload::StaleTimestamps(payload) => PreProcessNode {
+                ComparedPayload::StaleTimestamps(payload) => PreProcessNode {
                     id: node.id,
                     parents: node.parents,
                     children: node.children,
