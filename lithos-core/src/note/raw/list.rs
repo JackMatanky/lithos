@@ -39,6 +39,41 @@ impl RawTaskMarker {
     }
 }
 
+/// Raw task status symbol with source position.
+///
+/// This combines a [`RawTaskMarker`] classification with the exact source
+/// position where the marker character appears in the markdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RawTaskStatusSymbol {
+    /// The task marker classification.
+    pub marker: RawTaskMarker,
+    /// The absolute source position of the marker character.
+    pub position: SourceByteOffset,
+}
+
+impl RawTaskStatusSymbol {
+    /// Create a new raw task status symbol.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        marker: RawTaskMarker,
+        position: SourceByteOffset,
+    ) -> Self {
+        Self {
+            marker,
+            position,
+        }
+    }
+
+    /// Returns the raw marker character.
+    #[inline]
+    #[must_use]
+    pub const fn marker_char(self) -> char {
+        self.marker.marker()
+    }
+}
+
 /// Raw list type extracted from markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -103,7 +138,7 @@ pub struct RawListItem<'source> {
     pub depth: RawListDepth,
     pub text: Cow<'source, str>,
     pub is_checked: Option<bool>,
-    pub task_marker: Option<RawTaskMarker>,
+    pub task_marker: Option<RawTaskStatusSymbol>,
     pub range: SourceByteRange,
     pub text_range: SourceByteRange,
     pub parent: Option<SourceByteOffset>,
@@ -124,7 +159,7 @@ impl<'source> RawListItem<'source> {
         depth: RawListDepth,
         text: Cow<'source, str>,
         is_checked: Option<bool>,
-        task_marker: Option<RawTaskMarker>,
+        task_marker: Option<RawTaskStatusSymbol>,
         range: SourceByteRange,
         text_range: SourceByteRange,
         parent: Option<SourceByteOffset>,

@@ -25,7 +25,7 @@ use crate::{
             RawBlockRef, RawFrontmatter, RawFrontmatterFormat, RawHeading,
             RawInlineField, RawInlineFieldToken, RawLink, RawLinkStyle,
             RawList, RawListDepth, RawListItem, RawListKind, RawNote,
-            RawSection, RawSectionKind, RawTag, RawTaskMarker,
+            RawSection, RawSectionKind, RawTag, RawTaskStatusSymbol,
         },
         scanner::NoteScanner,
     },
@@ -35,7 +35,7 @@ type ScannedArtifacts<'source> = (
     Vec<RawTag<'source>>,
     Vec<RawInlineField<'source>>,
     Vec<RawBlockRef<'source>>,
-    Option<RawTaskMarker>,
+    Option<RawTaskStatusSymbol>,
 );
 
 type ReferenceMap = std::collections::HashMap<Box<str>, Box<str>>;
@@ -111,11 +111,23 @@ impl MarkdownParser {
         )> = None;
         let mut metadata_text = pool.take();
 
-        let metadata_ranges = Self::metadata_ranges(markdown);
-        let mut reference_map: Option<ReferenceMap> = None;
-        let empty_reference_map = ReferenceMap::new();
-        let parser = Parser::new_ext(markdown, Self::obsidian_options());
-        let events = parser.into_offset_iter().map(|(event, range)| {
+        let parser = Parser::new_ext(markdown, Self::extension_options());
+        let offset_iter = parser.into_offset_iter();
+
+        // Collect reference definitions before consuming the iterator
+        let ref_defs: std::collections::HashMap<Box<str>, Box<str>> =
+            offset_iter
+                .reference_definitions()
+                .iter()
+                .map(|(label, link_def)| {
+                    (
+                        normalize_reference_label(label),
+                        link_def.dest.as_ref().into(),
+                    )
+                })
+                .collect();
+
+        let events = offset_iter.map(|(event, range)| {
             let normalized = match event {
                 Event::SoftBreak => Event::Text(CowStr::Borrowed(" ")),
                 Event::HardBreak => Event::Text(CowStr::Borrowed("\n")),
@@ -165,33 +177,10 @@ impl MarkdownParser {
                     metadata_text.clear();
                 }
                 Event::Start(tag) => {
-                    #[expect(
-                        clippy::pattern_type_mismatch,
-                        reason = "Match ergonomics on &Tag keep event \
-                                  handling concise"
-                    )]
-                    if let pulldown_cmark::Tag::Link {
-                        link_type,
-                        ..
-                    }
-                    | pulldown_cmark::Tag::Image {
-                        link_type,
-                        ..
-                    } = &tag
-                        && is_reference_link_type(*link_type)
-                        && reference_map.is_none()
-                    {
-                        reference_map = Some(reference_definitions_map(
-                            markdown,
-                            &metadata_ranges,
-                        ));
-                    }
-                    let map =
-                        reference_map.as_ref().unwrap_or(&empty_reference_map);
                     Self::handle_start_tag(
                         tag,
                         start_pos,
-                        map,
+                        &ref_defs,
                         &mut depth,
                         &mut block_stack,
                         &mut list_stack,
@@ -279,50 +268,12 @@ impl MarkdownParser {
     /// parsing.
     #[inline]
     #[must_use]
-    pub const fn obsidian_options() -> Options {
+    pub const fn extension_options() -> Options {
         Options::ENABLE_TASKLISTS
             .union(Options::ENABLE_WIKILINKS)
             .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
             .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
-            .union(Options::ENABLE_HEADING_ATTRIBUTES)
-            .union(Options::ENABLE_TABLES)
-            .union(Options::ENABLE_FOOTNOTES)
             .union(Options::ENABLE_STRIKETHROUGH)
-            .union(Options::ENABLE_MATH)
-    }
-
-    fn metadata_ranges(markdown: &str) -> Vec<std::ops::Range<usize>> {
-        let parser = Parser::new_ext(markdown, Self::obsidian_options());
-        let mut ranges = Vec::new();
-        let mut current_start = None;
-
-        for (event, range) in parser.into_offset_iter() {
-            match event {
-                Event::Start(pulldown_cmark::Tag::MetadataBlock(_)) => {
-                    current_start = Some(range.start);
-                }
-                Event::End(pulldown_cmark::TagEnd::MetadataBlock(_)) => {
-                    if let Some(start) = current_start.take() {
-                        ranges.push(start..range.end);
-                    }
-                }
-                Event::Start(_)
-                | Event::End(_)
-                | Event::Text(_)
-                | Event::Code(_)
-                | Event::InlineMath(_)
-                | Event::DisplayMath(_)
-                | Event::Html(_)
-                | Event::InlineHtml(_)
-                | Event::FootnoteReference(_)
-                | Event::SoftBreak
-                | Event::HardBreak
-                | Event::Rule
-                | Event::TaskListMarker(_) => {}
-            }
-        }
-
-        ranges
     }
 
     #[inline]
@@ -592,6 +543,8 @@ impl MarkdownParser {
                                 list_items,
                                 list_contexts,
                                 block_refs,
+                                tags,
+                                inline_fields,
                                 markdown,
                                 scanner,
                                 task_spec,
@@ -913,11 +866,9 @@ impl MarkdownParser {
 
     #[expect(
         clippy::too_many_arguments,
-        reason = "Finalizing a list item requires full state context"
-    )]
-    #[expect(
-        clippy::ptr_arg,
-        reason = "List contexts are a mutable stack in this parser"
+        clippy::too_many_lines,
+        reason = "List item finalization is complex by nature; contexts are a \
+                  mutable stack in this parser"
     )]
     fn finalize_list_item<'source>(
         block: &ActiveBlock,
@@ -926,8 +877,10 @@ impl MarkdownParser {
         list_stack: &[RawListKind],
         open_item_by_depth: &mut [SourceByteOffset],
         list_items: &mut Vec<RawListItem<'source>>,
-        list_contexts: &mut Vec<ListContext>,
+        list_contexts: &mut [ListContext],
         block_refs: &mut Vec<RawBlockRef<'source>>,
+        tags: &mut Vec<RawTag<'source>>,
+        inline_fields: &mut Vec<RawInlineField<'source>>,
         markdown: &'source str,
         scanner: &NoteScanner,
         task_spec: &TaskConfigSpec,
@@ -947,9 +900,44 @@ impl MarkdownParser {
                 block_range,
                 task_spec,
             )?;
+
+        // Add tags and inline fields to global collections (they are also
+        // stored on the list item)
+        tags.extend(scan_tags.clone());
+        inline_fields.extend(scan_fields.clone());
+
+        block_refs.extend(scan_refs);
+
+        // Only scan first line for task marker (checkboxes always at start)
         let task_marker = if is_checked.is_some() {
+            let block_start = block_range.start().as_usize();
+            let block_slice = markdown.get(block_start..).unwrap_or("");
+            let first_line_len =
+                block_slice.find('\n').unwrap_or(block_slice.len()).min(80); // Cap at 80 chars (checkboxes are always near start)
+
+            let first_line_end = SourceByteOffset::try_from(
+                block_start.saturating_add(first_line_len),
+            )
+            .map_err(|_err| {
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "u32::MAX fits in usize"
+                )]
+                NoteIngestError::Domain(
+                    crate::note::error::StructureError::OutOfBounds {
+                        offset: block_start.saturating_add(first_line_len),
+                        source_len: u32::MAX as usize,
+                    }
+                    .into(),
+                )
+            })?;
+
+            let prefix_range =
+                SourceByteRange::new(block_range.start(), first_line_end)
+                    .map_err(NoteIngestError::Domain)?;
+
             scanner
-                .scan_task_marker(markdown, block_range)
+                .scan_task_marker(markdown, prefix_range)
                 .map_err(NoteIngestError::Domain)?
         } else {
             None
@@ -1021,7 +1009,6 @@ impl MarkdownParser {
             scan_fields,
         ));
 
-        block_refs.extend(scan_refs);
         Ok(())
     }
 }
@@ -1184,25 +1171,6 @@ fn resolve_reference_target<'source>(
     cow_str_to_cow(dest_url)
 }
 
-fn reference_definitions_map(
-    markdown: &str,
-    skip_ranges: &[std::ops::Range<usize>],
-) -> ReferenceMap {
-    let mut map = ReferenceMap::new();
-    for (label, dest) in scan_reference_definitions(markdown, skip_ranges) {
-        map.entry(label).or_insert(dest);
-    }
-    map
-}
-
-type ReferenceDef = (Box<str>, Box<str>);
-
-#[derive(Debug, Clone, Copy)]
-struct FenceState {
-    marker: char,
-    count: usize,
-}
-
 fn normalize_reference_label(label: &str) -> Box<str> {
     let mut normalized = String::with_capacity(label.len());
     let mut last_was_space = false;
@@ -1235,198 +1203,13 @@ fn normalize_reference_label(label: &str) -> Box<str> {
     normalized.into_boxed_str()
 }
 
-fn scan_reference_definitions(
-    markdown: &str,
-    skip_ranges: &[std::ops::Range<usize>],
-) -> Vec<ReferenceDef> {
-    let mut defs = Vec::new();
-    let mut fence: Option<FenceState> = None;
-    let mut offset = 0usize;
-
-    let mut lines = markdown.lines().peekable();
-    while let Some(line) = lines.next() {
-        let line_len = line.len();
-        let line_start = offset;
-        let line_end = line_start.saturating_add(line_len);
-        let next_offset = advance_line_offset(markdown, line_end);
-        if is_line_in_ranges(line_start, line_end, skip_ranges) {
-            offset = next_offset;
-            continue;
-        }
-
-        if let Some(state) = fence {
-            if let Some((marker, count)) = line_fence_marker(line)
-                && marker == state.marker
-                && count >= state.count
-            {
-                fence = None;
-            }
-            offset = next_offset;
-            continue;
-        }
-
-        if is_indented_code_line(line) {
-            offset = next_offset;
-            continue;
-        }
-
-        if let Some((marker, count)) = line_fence_marker(line) {
-            fence = Some(FenceState {
-                marker,
-                count,
-            });
-            offset = next_offset;
-            continue;
-        }
-
-        let (leading_spaces, rest) = split_leading_spaces(line);
-        if leading_spaces > 3 || !rest.starts_with('[') {
-            offset = next_offset;
-            continue;
-        }
-
-        let Some(label_end) = rest.find("]:") else {
-            offset = next_offset;
-            continue;
-        };
-        let label = rest.get(1..label_end).unwrap_or("").trim();
-        if label.is_empty() {
-            offset = next_offset;
-            continue;
-        }
-        let label = normalize_reference_label(label);
-
-        let dest_start = label_end.saturating_add(2);
-        let dest_part = rest.get(dest_start..).unwrap_or("").trim_start();
-        if dest_part.is_empty() {
-            if let Some((dest, next_line_offset)) = parse_multiline_destination(
-                lines.peek().copied(),
-                next_offset,
-                markdown,
-                skip_ranges,
-            ) {
-                defs.push((label, dest.into()));
-                lines.next();
-                offset = next_line_offset;
-                continue;
-            }
-            offset = next_offset;
-            continue;
-        }
-
-        let Some(dest) = parse_reference_destination(dest_part) else {
-            offset = next_offset;
-            continue;
-        };
-
-        let dest = dest.trim();
-        if dest.is_empty() {
-            offset = next_offset;
-            continue;
-        }
-
-        defs.push((label, dest.into()));
-
-        offset = next_offset;
-    }
-
-    defs
-}
-
-fn parse_reference_destination(dest_part: &str) -> Option<&str> {
-    let dest = if let Some(stripped) = dest_part.strip_prefix('<') {
-        let close_idx = stripped.find('>')?;
-        stripped.get(..close_idx).unwrap_or("")
-    } else {
-        dest_part.split_whitespace().next().unwrap_or("")
-    };
-
-    let dest = dest.trim();
-    (!dest.is_empty()).then_some(dest)
-}
-
-fn parse_multiline_destination<'source>(
-    next_line: Option<&'source str>,
-    next_offset: usize,
-    markdown: &str,
-    skip_ranges: &[std::ops::Range<usize>],
-) -> Option<(&'source str, usize)> {
-    let next_line = next_line?;
-    let next_line_len = next_line.len();
-    let next_line_start = next_offset;
-    let next_line_end = next_line_start.saturating_add(next_line_len);
-    let next_line_offset = advance_line_offset(markdown, next_line_end);
-    if is_line_in_ranges(next_line_start, next_line_end, skip_ranges) {
-        return None;
-    }
-
-    let (_next_leading, next_rest) = split_leading_spaces(next_line);
-    let dest_part = next_rest.trim_start();
-    let dest = parse_reference_destination(dest_part)?;
-    Some((dest, next_line_offset))
-}
-
-fn is_line_in_ranges(
-    line_start: usize,
-    line_end: usize,
-    ranges: &[std::ops::Range<usize>],
-) -> bool {
-    ranges.iter().any(|range| range.start < line_end && range.end > line_start)
-}
-
-fn advance_line_offset(markdown: &str, line_end: usize) -> usize {
-    let rest = markdown.get(line_end..).unwrap_or("");
-    if rest.starts_with("\r\n") {
-        line_end.saturating_add(2)
-    } else if rest.starts_with('\n') || rest.starts_with('\r') {
-        line_end.saturating_add(1)
-    } else {
-        line_end
-    }
-}
-
-fn is_indented_code_line(line: &str) -> bool {
-    line.starts_with("    ") || line.starts_with('\t')
-}
-
-fn split_leading_spaces(line: &str) -> (usize, &str) {
-    let mut count = 0usize;
-    for ch in line.chars() {
-        if ch == ' ' {
-            count = count.saturating_add(1);
-        } else if ch == '\t' {
-            count = 4;
-            break;
-        } else {
-            break;
-        }
-    }
-    let rest = line.get(count..).unwrap_or("");
-    (count, rest)
-}
-
-fn line_fence_marker(line: &str) -> Option<(char, usize)> {
-    let trimmed = line.trim_start_matches([' ', '\t']);
-    let mut chars = trimmed.chars();
-    let marker = chars.next()?;
-    if marker != '`' && marker != '~' {
-        return None;
-    }
-    let mut count = 1usize;
-    for ch in chars {
-        if ch == marker {
-            count = count.saturating_add(1);
-        } else {
-            break;
-        }
-    }
-    (count >= 3).then_some((marker, count))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::task::TaskConfigSpec, note::raw::RawFieldValue};
+    use crate::{
+        config::task::TaskConfigSpec,
+        note::raw::{RawFieldValue, RawTaskMarker},
+    };
 
     fn task_spec_fixture() -> TaskConfigSpec {
         TaskConfigSpec {
@@ -1512,7 +1295,10 @@ mod tests {
         let raw = parse_raw(md);
         let item = raw.list_items.first().expect("list item exists");
         assert_eq!(item.is_checked, Some(true));
-        assert!(matches!(item.task_marker, Some(RawTaskMarker::Checked('x'))));
+        assert!(matches!(
+            item.task_marker.map(|s| s.marker),
+            Some(RawTaskMarker::Checked('x'))
+        ));
     }
 
     #[test]

@@ -693,7 +693,10 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{RawFieldValue, RawInlineField, RawTaskMarker},
+            raw::{
+                RawFieldValue, RawInlineField, RawTaskMarker,
+                RawTaskStatusSymbol,
+            },
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -877,20 +880,20 @@ mod tests {
                         range,
                     ));
                 }
-                ScannedArtifact::TaskMarker {
-                    marker,
-                    ..
-                } => {
-                    task_marker = Some(RawTaskMarker::from_char(marker));
+                ScannedArtifact::TaskMarker(symbol) => {
+                    task_marker = Some(symbol);
                 }
                 ScannedArtifact::BlockRef(_) => {}
             }
         }
 
         let mut is_checked = task_marker
-            .map(|marker| matches!(marker, RawTaskMarker::Checked(_)));
+            .map(|marker| matches!(marker.marker, RawTaskMarker::Checked(_)));
         if task_marker.is_none() {
-            task_marker = Some(RawTaskMarker::Unchecked(' '));
+            task_marker = Some(RawTaskStatusSymbol::new(
+                RawTaskMarker::Unchecked(' '),
+                SourceByteOffset::new(0),
+            ));
             is_checked = Some(false);
         }
 

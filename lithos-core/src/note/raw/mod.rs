@@ -26,6 +26,7 @@ pub type RawListDepth = list::RawListDepth;
 pub type RawListItem<'source> = list::RawListItem<'source>;
 pub type RawListKind = list::RawListKind;
 pub type RawTaskMarker = list::RawTaskMarker;
+pub type RawTaskStatusSymbol = list::RawTaskStatusSymbol;
 pub type RawNote<'source> = aggregate::RawNote<'source>;
 pub type RawSection = section::RawSection;
 pub type RawSectionKind = section::RawSectionKind;

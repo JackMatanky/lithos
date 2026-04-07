@@ -13,7 +13,10 @@
 use crate::note::{
     error::NoteError,
     position::{SourceByteOffset, SourceByteRange},
-    raw::{RawBlockRef, RawInlineFieldToken, RawTag, RawTaskMarker},
+    raw::{
+        RawBlockRef, RawInlineFieldToken, RawTag, RawTaskMarker,
+        RawTaskStatusSymbol,
+    },
 };
 
 /// A zero-copy artifact extracted from a text block.
@@ -43,12 +46,7 @@ pub enum ScannedArtifact<'source> {
     ///
     /// Extracted from list items identifying the precise character used within
     /// the checkbox.
-    TaskMarker {
-        /// The character inside the checkbox.
-        marker: char,
-        /// The absolute source position of the marker character.
-        position: SourceByteOffset,
-    },
+    TaskMarker(RawTaskStatusSymbol),
 }
 
 /// Raw tokens extracted from a scan pass.
@@ -57,7 +55,7 @@ pub(crate) struct ScannedRawArtifacts<'source> {
     pub tags: Vec<RawTag<'source>>,
     pub inline_fields: Vec<RawInlineFieldToken<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
-    pub task_marker: Option<RawTaskMarker>,
+    pub task_marker: Option<RawTaskStatusSymbol>,
 }
 
 impl ScannedArtifact<'_> {
@@ -73,10 +71,7 @@ impl ScannedArtifact<'_> {
             Self::Tag(tag) => tag.range.start(),
             Self::InlineField(field) => field.range.start(),
             Self::BlockRef(block_ref) => block_ref.position,
-            Self::TaskMarker {
-                position,
-                ..
-            } => *position,
+            Self::TaskMarker(symbol) => symbol.position,
         }
     }
 
@@ -84,7 +79,7 @@ impl ScannedArtifact<'_> {
     #[inline]
     #[must_use]
     pub const fn is_marker(&self) -> bool {
-        matches!(self, Self::TaskMarker { .. })
+        matches!(self, Self::TaskMarker(_))
     }
 
     /// Converts the artifact to an owned variant.
@@ -99,13 +94,7 @@ impl ScannedArtifact<'_> {
             Self::BlockRef(block_ref) => {
                 ScannedArtifact::BlockRef(block_ref.into_owned())
             }
-            Self::TaskMarker {
-                marker,
-                position,
-            } => ScannedArtifact::TaskMarker {
-                marker,
-                position,
-            },
+            Self::TaskMarker(symbol) => ScannedArtifact::TaskMarker(symbol),
         }
     }
 }
@@ -227,7 +216,7 @@ impl NoteScanner {
         &self,
         text: &str,
         range: SourceByteRange,
-    ) -> Result<Option<RawTaskMarker>, NoteError> {
+    ) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
         let start = range.start().as_usize();
         let end = range.end().as_usize();
         let slice = start..end;
@@ -297,10 +286,11 @@ impl NoteScanner {
                 && cursor.rest.get(2..3) == Some("]")
             {
                 let marker_pos = cursor.offset.add_offset(1)?;
-                artifacts.push(ScannedArtifact::TaskMarker {
-                    marker: marker_char,
-                    position: marker_pos,
-                });
+                let symbol = RawTaskStatusSymbol::new(
+                    RawTaskMarker::from_char(marker_char),
+                    marker_pos,
+                );
+                artifacts.push(ScannedArtifact::TaskMarker(symbol));
                 cursor.advance(3)?;
             }
         } else if let Some(field) = Self::scan_bare_field(cursor)? {
@@ -619,12 +609,9 @@ fn split_artifacts(
             ScannedArtifact::BlockRef(block_ref) => {
                 raw.block_refs.push(block_ref);
             }
-            ScannedArtifact::TaskMarker {
-                marker,
-                ..
-            } => {
+            ScannedArtifact::TaskMarker(symbol) => {
                 if include_task_marker {
-                    raw.task_marker = Some(RawTaskMarker::from_char(marker));
+                    raw.task_marker = Some(symbol);
                 }
             }
         }
@@ -892,10 +879,7 @@ mod tests {
             assert_eq!(artifacts.len(), 5);
             assert!(matches!(
                 artifacts.first(),
-                Some(ScannedArtifact::TaskMarker {
-                    marker: 'x',
-                    ..
-                })
+                Some(ScannedArtifact::TaskMarker(symbol)) if symbol.marker.marker() == 'x'
             ));
             assert!(matches!(
                 artifacts.get(1),
@@ -973,7 +957,7 @@ mod tests {
             assert_eq!(raw_tokens.inline_fields.len(), 1);
             assert_eq!(raw_tokens.block_refs.len(), 1);
             assert!(matches!(
-                raw_tokens.task_marker,
+                raw_tokens.task_marker.map(|s| s.marker),
                 Some(RawTaskMarker::Checked('x'))
             ));
         }
@@ -1048,7 +1032,7 @@ mod tests {
             assert!(
                 matches!(
                     artifacts.first(),
-                    Some(&ScannedArtifact::TaskMarker { marker, .. }) if marker == expected
+                    Some(ScannedArtifact::TaskMarker(symbol)) if symbol.marker.marker() == expected
                 ),
                 "Failed for: {text}"
             );
@@ -1064,7 +1048,7 @@ mod tests {
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             let has_task = artifacts
                 .iter()
-                .any(|a| matches!(a, ScannedArtifact::TaskMarker { .. }));
+                .any(|a| matches!(a, ScannedArtifact::TaskMarker(_)));
             assert!(!has_task, "Should not have task for: {text}");
         }
 
@@ -1079,7 +1063,10 @@ mod tests {
             let marker = scanner
                 .scan_task_marker(text, range)
                 .expect("scan task marker");
-            assert!(matches!(marker, Some(RawTaskMarker::Checked('x'))));
+            assert!(matches!(
+                marker.map(|s| s.marker),
+                Some(RawTaskMarker::Checked('x'))
+            ));
         }
     }
 

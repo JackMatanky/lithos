@@ -470,7 +470,7 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
         };
         let status = raw
             .task_marker
-            .map(|marker| StatusSymbol::try_new(marker.marker()))
+            .map(|symbol| StatusSymbol::try_new(symbol.marker.marker()))
             .transpose()?;
 
         let mut tags = Vec::with_capacity(raw.tags.len());
