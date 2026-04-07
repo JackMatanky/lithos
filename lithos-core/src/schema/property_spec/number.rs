@@ -178,7 +178,7 @@ impl NumberSpec {
     /// # Examples
     /// ```
     /// use lithos_core::schema::{
-    ///     property_spec::NumberSpec, raw::property_spec::RawNumberSpec,
+    ///     property_spec::NumberSpec, raw::spec_number::RawNumberSpec,
     /// };
     ///
     /// let base = NumberSpec::try_new(None, None, None)?;
@@ -189,7 +189,7 @@ impl NumberSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::property_spec::RawNumberSpec,
+        overrides: &crate::schema::raw::spec_number::RawNumberSpec,
     ) -> Result<Self, SchemaError> {
         let min = overrides.min.or(self.bounds.min().map(FiniteF64::get));
         let max = overrides.max.or(self.bounds.max().map(FiniteF64::get));
@@ -226,12 +226,12 @@ impl ArchivedNumberSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::property_spec::RawNumberSpec> for NumberSpec {
+impl TryFrom<crate::schema::raw::spec_number::RawNumberSpec> for NumberSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::property_spec::RawNumberSpec,
+        raw: crate::schema::raw::spec_number::RawNumberSpec,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.min, raw.max, raw.step)
     }
@@ -344,7 +344,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::schema::raw::property_spec::RawNumberSpec;
+    use crate::schema::raw::spec_number::RawNumberSpec;
 
     fn validated_spec(def: &RawNumberSpec) -> NumberSpec {
         NumberSpec::try_new(def.min, def.max, def.step)

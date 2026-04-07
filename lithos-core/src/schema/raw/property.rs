@@ -11,10 +11,41 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::property_spec::{
-    RawDateSpec, RawFileSpec, RawNumberSpec, RawPropertySpec, RawStringSpec,
+use super::{
+    spec_bool::RawBoolSpec, spec_date::RawDateSpec, spec_file::RawFileSpec,
+    spec_number::RawNumberSpec, spec_string::RawStringSpec,
 };
 use crate::schema::property::PropertyName;
+
+/// Raw property specification (serde-facing input type).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::{
+///     property::RawPropertySpec, spec_bool::RawBoolSpec,
+/// };
+///
+/// let spec = RawPropertySpec::Bool(RawBoolSpec);
+/// match spec {
+///     RawPropertySpec::Bool(_) => {}
+///     _ => {}
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum RawPropertySpec {
+    /// Boolean property definition (marker type).
+    Bool(RawBoolSpec),
+    /// Date property definition.
+    Date(RawDateSpec),
+    /// File property definition.
+    File(RawFileSpec),
+    /// Number property definition.
+    Number(RawNumberSpec),
+    /// String property definition.
+    String(RawStringSpec),
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  RawPropertyMap<T>
@@ -798,7 +829,7 @@ mod tests {
 
     #[test]
     fn raw_property_inline_variant_constructs() {
-        use super::super::property_spec::RawBoolSpec;
+        use super::super::spec_bool::RawBoolSpec;
 
         let inline = RawPropertyInline {
             required: false,

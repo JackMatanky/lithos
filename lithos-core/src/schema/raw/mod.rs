@@ -77,7 +77,11 @@
 
 mod aggregate;
 pub mod property;
-pub mod property_spec;
+pub mod spec_bool;
+pub mod spec_date;
+pub mod spec_file;
+pub mod spec_number;
+pub mod spec_string;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Type Aliases (Re-exports)
@@ -114,31 +118,40 @@ pub type RawPropertyMap<T> = property::RawPropertyMap<T>;
 pub type RawPropertyRefPath = property::RawPropertyRefPath;
 
 /// Raw property specification (serde-facing input type).
-pub type RawPropertySpec = property_spec::RawPropertySpec;
+pub type RawPropertySpec = property::RawPropertySpec;
 
 /// Boolean property definition (marker type).
-pub type RawBoolSpec = property_spec::RawBoolSpec;
+pub type RawBoolSpec = spec_bool::RawBoolSpec;
 
 /// Date property definition.
-pub type RawDateSpec = property_spec::RawDateSpec;
+pub type RawDateSpec = spec_date::RawDateSpec;
 
 /// File property definition.
-pub type RawFileSpec = property_spec::RawFileSpec;
+pub type RawFileSpec = spec_file::RawFileSpec;
 
 /// Number property definition.
-pub type RawNumberSpec = property_spec::RawNumberSpec;
+pub type RawNumberSpec = spec_number::RawNumberSpec;
 
 /// String property definition.
-pub type RawStringSpec = property_spec::RawStringSpec;
+pub type RawStringSpec = spec_string::RawStringSpec;
 
 /// Raw options definition supporting three formats.
-pub type RawOptions = property_spec::RawOptions;
+pub type RawOptions = spec_string::RawOptions;
+
+/// Mode 1: Plain array of string values.
+pub type RawOptionsList = spec_string::RawOptionsList;
+
+/// Mode 2: Integer-keyed ordered object.
+pub type RawOptionsMap = spec_string::RawOptionsMap;
+
+/// Mode 3: Rich entries with optional label and order.
+pub type RawOptionsRich = spec_string::RawOptionsRich;
 
 /// Rich option entry with optional label and display order.
-pub type RawOptionEntry = property_spec::RawOptionEntry;
+pub type RawOptionEntry = spec_string::RawOptionEntry;
 
 /// Named string format for common validation patterns.
-pub type RawStringFormat = property_spec::RawStringFormat;
+pub type RawStringFormat = spec_string::RawStringFormat;
 
 /// Raw string pattern supporting both custom regex and predefined formats.
-pub type RawStringPattern = property_spec::RawStringPattern;
+pub type RawStringPattern = spec_string::RawStringPattern;

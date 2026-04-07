@@ -504,6 +504,20 @@ pub enum PropertySpecError {
     #[error("option value cannot be empty")]
     OptionValueEmpty,
 
+    /// Returned when an option order key is not a valid integer.
+    #[error("option order key must be an integer: {key}")]
+    InvalidOptionsEntryOrderType {
+        /// The invalid key.
+        key: Box<str>,
+    },
+
+    /// Returned when an option order key is less than 1.
+    #[error("option order key must be >= 1: {order}")]
+    InvalidOptionsEntryOrderValue {
+        /// The invalid order value.
+        order: u32,
+    },
+
     /// Returned when a directory path constraint is invalid.
     #[error("invalid directory path: {path}")]
     InvalidDirectoryPath {

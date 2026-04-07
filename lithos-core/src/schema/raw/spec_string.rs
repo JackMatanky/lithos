@@ -1,132 +1,10 @@
-//! Raw property specification types.
-//!
-//! Defines the type-specific validation constraints for properties:
-//! - Property specs (Bool, Date, File, Number, String)
-//! - String options (List, Map, Rich)
-//! - String patterns (named formats and custom regex)
+//! String property specification types.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-/// Raw property specification (serde-facing input type).
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::{
-///     RawBoolSpec, RawPropertySpec,
-/// };
-///
-/// let spec = RawPropertySpec::Bool(RawBoolSpec);
-/// match spec {
-///     RawPropertySpec::Bool(_) => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum RawPropertySpec {
-    /// Boolean property definition (marker type).
-    Bool(RawBoolSpec),
-    /// Date property definition.
-    Date(RawDateSpec),
-    /// File property definition.
-    File(RawFileSpec),
-    /// Number property definition.
-    Number(RawNumberSpec),
-    /// String property definition.
-    String(RawStringSpec),
-}
+use serde::de::{Error, MapAccess, Visitor};
 
-/// Boolean property definition (marker type).
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::RawBoolSpec;
-///
-/// let _spec = RawBoolSpec;
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-#[expect(
-    clippy::exhaustive_structs,
-    reason = "Marker type with no fields; non_exhaustive prevents construction"
-)]
-pub struct RawBoolSpec;
-
-/// Date property definition.
-///
-/// All fields are `Option<T>` to support both inline definitions
-/// (where `format` is required) and override contexts (where `None`
-/// means "don't override").
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::RawDateSpec;
-///
-/// let _spec = RawDateSpec::default();
-/// ```
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct RawDateSpec {
-    /// Date format string (using chrono format tokens).
-    pub format: Option<Box<str>>,
-}
-
-/// File property definition.
-///
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::RawFileSpec;
-///
-/// let _spec = RawFileSpec::default();
-/// ```
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct RawFileSpec {
-    /// Optional directory restriction (vault-relative path).
-    pub directory: Option<Box<str>>,
-    /// Optional file class restriction (schema name).
-    pub file_class: Option<Box<str>>,
-}
-
-/// Number property definition.
-///
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::RawNumberSpec;
-///
-/// let _spec = RawNumberSpec::default();
-/// ```
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct RawNumberSpec {
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
+use crate::schema::error::{PropertySpecError, SchemaError};
 
 /// Named string format for common validation patterns (raw/syntax layer).
 ///
@@ -180,7 +58,7 @@ pub enum RawStringPattern {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::property_spec::RawStringSpec;
+/// use lithos_core::schema::raw::spec_string::RawStringSpec;
 ///
 /// let _spec = RawStringSpec::default();
 /// ```
@@ -194,6 +72,223 @@ pub struct RawStringSpec {
     /// Optional validation pattern (custom regex or predefined format).
     pub pattern: Option<RawStringPattern>,
 }
+
+/// Ordered entry position parsed from map keys.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize,
+)]
+#[non_exhaustive]
+pub struct RawEntryOrder(u32);
+
+#[expect(
+    clippy::missing_trait_methods,
+    clippy::missing_inline_in_public_items,
+    reason = "Custom serde Visitor requires specific method impls"
+)]
+impl<'de> serde::Deserialize<'de> for RawEntryOrder {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        struct RawEntryOrderVisitor;
+
+        impl Visitor<'_> for RawEntryOrderVisitor {
+            type Value = RawEntryOrder;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str("a string integer >= 1")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                RawEntryOrder::try_from(v).map_err(Error::custom)
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.visit_str(&v)
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let value: u32 = v.try_into().map_err(|_e| {
+                    Error::custom("order key exceeds u32::MAX")
+                })?;
+                if value == 0 {
+                    return Err(Error::custom("order key must be >= 1"));
+                }
+                Ok(RawEntryOrder(value))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                if v <= 0 {
+                    return Err(Error::custom("order key must be >= 1"));
+                }
+                let value: u32 = v.try_into().map_err(|_e| {
+                    Error::custom("order key exceeds u32::MAX")
+                })?;
+                Ok(RawEntryOrder(value))
+            }
+        }
+
+        deserializer.deserialize_any(RawEntryOrderVisitor)
+    }
+}
+
+impl RawEntryOrder {
+    /// Returns the order value.
+    #[inline]
+    #[must_use]
+    pub fn value(self) -> u32 {
+        self.0
+    }
+}
+
+impl TryFrom<&str> for RawEntryOrder {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let parsed: u32 = value.parse().map_err(|_e| {
+            SchemaError::PropertySpec(
+                PropertySpecError::InvalidOptionsEntryOrderType {
+                    key: value.into(),
+                },
+            )
+        })?;
+        if parsed == 0 {
+            return Err(SchemaError::PropertySpec(
+                PropertySpecError::InvalidOptionsEntryOrderValue {
+                    order: 0,
+                },
+            ));
+        }
+        Ok(Self(parsed))
+    }
+}
+
+/// Ordered map entry parsed from integer-keyed objects.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawOptionMapEntry {
+    /// The order key parsed from the map key.
+    pub order: RawEntryOrder,
+    /// The option value.
+    pub value: Box<str>,
+}
+
+/// Mode 1: Plain array of string values.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawOptionsList(pub Vec<Box<str>>);
+
+/// Mode 2: Integer-keyed ordered object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RawOptionsMap(pub Vec<RawOptionMapEntry>);
+
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "Serialize impl requires specific method signature"
+)]
+impl serde::Serialize for RawOptionsMap {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap as _;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for entry in &self.0 {
+            map.serialize_entry(
+                &entry.order.value().to_string(),
+                &entry.value,
+            )?;
+        }
+        map.end()
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    clippy::missing_inline_in_public_items,
+    reason = "Custom serde Visitor requires specific method impls"
+)]
+impl<'de> serde::Deserialize<'de> for RawOptionsMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        struct RawOptionsMapVisitor;
+
+        impl<'de> Visitor<'de> for RawOptionsMapVisitor {
+            type Value = RawOptionsMap;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str(
+                    "a map with integer string keys and string values",
+                )
+            }
+
+            #[expect(
+                clippy::excessive_nesting,
+                reason = "Deserializing map entries with duplicate checks \
+                          inherently requires some nesting"
+            )]
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut seen = BTreeSet::new();
+                let mut entries = Vec::new();
+                while let Some((order, value)) =
+                    map.next_entry::<RawEntryOrder, Box<str>>()?
+                {
+                    if !seen.insert(order) {
+                        return Err(Error::custom(format!(
+                            "duplicate order key {}",
+                            order.value()
+                        )));
+                    }
+                    entries.push(RawOptionMapEntry {
+                        order,
+                        value,
+                    });
+                }
+                entries.sort_by_key(|entry| entry.order);
+                Ok(RawOptionsMap(entries))
+            }
+        }
+
+        deserializer.deserialize_map(RawOptionsMapVisitor)
+    }
+}
+
+/// Mode 3: Rich entries with optional label and order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawOptionsRich(pub Vec<RawOptionEntry>);
 
 /// Raw options definition supporting three formats.
 ///
@@ -211,33 +306,22 @@ pub struct RawStringSpec {
 /// 1. If sequence: try as List (strings), then Rich (objects)
 /// 2. If map: deserialize as Map
 /// 3. Fail with clear error for other types
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::property_spec::RawOptions;
-///
-/// let options = RawOptions::List(vec!["open".into(), "closed".into()]);
-/// match options {
-///     RawOptions::List(_) => {}
-///     _ => {}
-/// }
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub enum RawOptions {
     /// Mode 1: Plain array of string values.
-    List(Vec<Box<str>>),
+    List(RawOptionsList),
     /// Mode 2: Integer-keyed ordered object.
-    Map(BTreeMap<Box<str>, Box<str>>),
+    Map(RawOptionsMap),
     /// Mode 3: Rich entries with optional label and order.
-    Rich(Vec<RawOptionEntry>),
+    Rich(RawOptionsRich),
 }
 
 /// Rich option entry with optional label and display order.
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::property_spec::RawOptionEntry;
+/// use lithos_core::schema::raw::spec_string::RawOptionEntry;
 ///
 /// let entry = RawOptionEntry {
 ///     value: "open".into(),
@@ -257,7 +341,8 @@ pub struct RawOptionEntry {
     pub order: Option<u32>,
 }
 
-// Custom deserializer for RawOptions to avoid relying on untagged variant order
+/// Custom deserializer for `RawOptions` to avoid relying on untagged variant
+/// order.
 #[expect(
     clippy::missing_trait_methods,
     clippy::missing_inline_in_public_items,
@@ -318,7 +403,7 @@ impl<'de> serde::Deserialize<'de> for RawOptions {
                                 ));
                             }
                         }
-                        Ok(RawOptions::List(items))
+                        Ok(RawOptions::List(RawOptionsList(items)))
                     } else if value.is_object() {
                         // Rich mode: array of objects
                         let first_entry: RawOptionEntry =
@@ -330,7 +415,7 @@ impl<'de> serde::Deserialize<'de> for RawOptions {
                         {
                             entries.push(entry);
                         }
-                        Ok(RawOptions::Rich(entries))
+                        Ok(RawOptions::Rich(RawOptionsRich(entries)))
                     } else {
                         Err(Error::custom(
                             "expected array elements to be strings or objects",
@@ -338,22 +423,21 @@ impl<'de> serde::Deserialize<'de> for RawOptions {
                     }
                 } else {
                     // Empty array defaults to List
-                    Ok(RawOptions::List(vec![]))
+                    Ok(RawOptions::List(RawOptionsList(vec![])))
                 }
             }
 
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
             where
                 A: MapAccess<'de>,
             {
-                // Map mode: object with string keys and string values
-                let mut result = BTreeMap::new();
-                while let Some((key, value)) =
-                    map.next_entry::<Box<str>, Box<str>>()?
-                {
-                    result.insert(key, value);
-                }
-                Ok(RawOptions::Map(result))
+                use serde::Deserialize as _;
+
+                // Map mode: object with integer string keys and string values
+                let map = RawOptionsMap::deserialize(
+                    serde::de::value::MapAccessDeserializer::new(map),
+                )?;
+                Ok(RawOptions::Map(map))
             }
         }
 
@@ -377,15 +461,6 @@ impl RawOptions {
     /// Panics if Rich mode option list has more than `u32::MAX` entries (>4
     /// billion). This is unrealistic in practice and indicates a malformed
     /// input.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::raw::property_spec::RawOptions;
-    ///
-    /// let entries = RawOptions::List(vec!["open".into()]).into_entries();
-    /// assert_eq!(entries.len(), 1);
-    /// assert_eq!(entries[0].value.as_ref(), "open");
-    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -395,7 +470,7 @@ impl RawOptions {
     )]
     pub fn into_entries(self) -> Vec<RawOptionEntry> {
         match self {
-            Self::List(items) => items
+            Self::List(RawOptionsList(items)) => items
                 .into_iter()
                 .map(|value| RawOptionEntry {
                     value,
@@ -403,33 +478,18 @@ impl RawOptions {
                     order: None,
                 })
                 .collect(),
-            Self::Map(map) => {
-                let mut entries: Vec<_> = map
-                    .into_iter()
-                    .filter_map(|(key, value)| {
-                        key.parse::<u32>()
-                            .inspect_err(|e| {
-                                tracing::debug!(
-                                    key = %key,
-                                    error = %e,
-                                    "Option map key is not a valid u32, entry will be skipped"
-                                );
-                            })
-                            .ok()
-                            .map(|order| (order, value))
-                    })
-                    .collect();
-                entries.sort_by_key(|&(order, _)| order);
+            Self::Map(RawOptionsMap(mut entries)) => {
+                entries.sort_by_key(|entry| entry.order);
                 entries
                     .into_iter()
-                    .map(|(_, value)| RawOptionEntry {
-                        value,
+                    .map(|entry| RawOptionEntry {
+                        value: entry.value,
                         label: None,
                         order: None,
                     })
                     .collect()
             }
-            Self::Rich(entries) => {
+            Self::Rich(RawOptionsRich(entries)) => {
                 let mut entries: Vec<_> = entries
                     .into_iter()
                     .enumerate()
@@ -467,8 +527,6 @@ impl RawOptions {
               failure clearly, wildcard for unknown future variants is fine"
 )]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::*;
 
     #[test]
@@ -476,7 +534,7 @@ mod tests {
         let json = r#"["open", "closed", "archived"]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::List(items) => {
+            RawOptions::List(RawOptionsList(items)) => {
                 assert_eq!(items.len(), 3);
                 assert_eq!(items[0].as_ref(), "open");
                 assert_eq!(items[1].as_ref(), "closed");
@@ -491,7 +549,7 @@ mod tests {
         let json = "[]";
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::List(items) => {
+            RawOptions::List(RawOptionsList(items)) => {
                 assert!(items.is_empty());
             }
             _ => panic!("Expected List variant"),
@@ -503,20 +561,14 @@ mod tests {
         let json = r#"{"1": "todo", "2": "done", "3": "archived"}"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Map(map) => {
-                assert_eq!(map.len(), 3);
-                assert_eq!(
-                    map.get("1").map(std::convert::AsRef::as_ref),
-                    Some("todo")
-                );
-                assert_eq!(
-                    map.get("2").map(std::convert::AsRef::as_ref),
-                    Some("done")
-                );
-                assert_eq!(
-                    map.get("3").map(std::convert::AsRef::as_ref),
-                    Some("archived")
-                );
+            RawOptions::Map(RawOptionsMap(entries)) => {
+                assert_eq!(entries.len(), 3);
+                assert_eq!(entries[0].order.value(), 1);
+                assert_eq!(entries[0].value.as_ref(), "todo");
+                assert_eq!(entries[1].order.value(), 2);
+                assert_eq!(entries[1].value.as_ref(), "done");
+                assert_eq!(entries[2].order.value(), 3);
+                assert_eq!(entries[2].value.as_ref(), "archived");
             }
             _ => panic!("Expected Map variant"),
         }
@@ -530,7 +582,7 @@ mod tests {
         ]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Rich(entries) => {
+            RawOptions::Rich(RawOptionsRich(entries)) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].value.as_ref(), "open");
                 assert_eq!(entries[0].label.as_deref(), Some("Open"));
@@ -548,7 +600,7 @@ mod tests {
         let json = r#"[{"value": "open"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Rich(entries) => {
+            RawOptions::Rich(RawOptionsRich(entries)) => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].value.as_ref(), "open");
                 assert_eq!(entries[0].label, None);
@@ -560,14 +612,10 @@ mod tests {
 
     #[test]
     fn raw_options_deserializes_from_yaml_list() {
-        let yaml = "
-- open
-- closed
-- archived
-";
+        let yaml = "- open\n- closed\n- archived\n";
         let options: RawOptions = serde_yaml::from_str(yaml).unwrap();
         match options {
-            RawOptions::List(items) => {
+            RawOptions::List(RawOptionsList(items)) => {
                 assert_eq!(items.len(), 3);
                 assert_eq!(items[0].as_ref(), "open");
             }
@@ -585,7 +633,7 @@ mod tests {
         }
         let wrapper: Wrapper = toml::from_str(toml_str).unwrap();
         match wrapper.options {
-            RawOptions::List(items) => {
+            RawOptions::List(RawOptionsList(items)) => {
                 assert_eq!(items.len(), 2);
                 assert_eq!(items[0].as_ref(), "open");
                 assert_eq!(items[1].as_ref(), "closed");
@@ -613,8 +661,11 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_list_preserves_order() {
-        let options =
-            RawOptions::List(vec!["a".into(), "b".into(), "c".into()]);
+        let options = RawOptions::List(RawOptionsList(vec![
+            "a".into(),
+            "b".into(),
+            "c".into(),
+        ]));
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "a");
@@ -625,11 +676,20 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_map_sorts_by_key() {
-        let mut map = BTreeMap::new();
-        map.insert("3".into(), "third".into());
-        map.insert("1".into(), "first".into());
-        map.insert("2".into(), "second".into());
-        let options = RawOptions::Map(map);
+        let options = RawOptions::Map(RawOptionsMap(vec![
+            RawOptionMapEntry {
+                order: RawEntryOrder(3),
+                value: "third".into(),
+            },
+            RawOptionMapEntry {
+                order: RawEntryOrder(1),
+                value: "first".into(),
+            },
+            RawOptionMapEntry {
+                order: RawEntryOrder(2),
+                value: "second".into(),
+            },
+        ]));
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "first");
@@ -639,7 +699,7 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_rich_sorts_by_order() {
-        let options = RawOptions::Rich(vec![
+        let options = RawOptions::Rich(RawOptionsRich(vec![
             RawOptionEntry {
                 value: "c".into(),
                 label: Some("Third".into()),
@@ -655,7 +715,7 @@ mod tests {
                 label: Some("Second".into()),
                 order: Some(2),
             },
-        ]);
+        ]));
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "a");
@@ -666,7 +726,7 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_rich_uses_array_position_when_no_order() {
-        let options = RawOptions::Rich(vec![
+        let options = RawOptions::Rich(RawOptionsRich(vec![
             RawOptionEntry {
                 value: "first".into(),
                 label: None,
@@ -677,7 +737,7 @@ mod tests {
                 label: None,
                 order: None,
             },
-        ]);
+        ]));
         let entries = options.into_entries();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].value.as_ref(), "first");
@@ -692,7 +752,7 @@ mod tests {
         let json = r#"[{"value": "a"}, {"value": "b"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Rich(entries) => {
+            RawOptions::Rich(RawOptionsRich(entries)) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].value.as_ref(), "a");
                 assert_eq!(entries[0].label, None);
@@ -707,7 +767,7 @@ mod tests {
         let json = r#"["value", "label", "order"]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::List(items) => {
+            RawOptions::List(RawOptionsList(items)) => {
                 assert_eq!(items.len(), 3);
                 // These are literal strings, not field names
                 assert_eq!(items[0].as_ref(), "value");
@@ -786,19 +846,24 @@ mod tests {
 
     #[test]
     fn raw_options_map_with_non_numeric_keys() {
-        // Map keys can be any string, not just numeric
+        // Map keys must be integer strings
         let json = r#"{"open": "Open", "closed": "Closed"}"#;
-        let options: RawOptions = serde_json::from_str(json).unwrap();
-        match options {
-            RawOptions::Map(map) => {
-                assert_eq!(map.len(), 2);
-                assert_eq!(
-                    map.get("open").map(std::convert::AsRef::as_ref),
-                    Some("Open")
-                );
-            }
-            _ => panic!("Expected Map variant"),
-        }
+        let result: Result<RawOptions, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Non-numeric keys must be rejected");
+    }
+
+    #[test]
+    fn raw_options_map_rejects_zero_key() {
+        let json = r#"{"0": "zero"}"#;
+        let result: Result<RawOptions, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Order key 0 must be rejected");
+    }
+
+    #[test]
+    fn raw_options_map_rejects_duplicate_keys() {
+        let json = r#"{"1": "first", "1": "second"}"#;
+        let result: Result<RawOptions, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Duplicate order keys must be rejected");
     }
 
     #[test]
@@ -807,7 +872,7 @@ mod tests {
         let json = r#"[{"value": "a", "label": "A", "extra": "ignored"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Rich(entries) => {
+            RawOptions::Rich(RawOptionsRich(entries)) => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].value.as_ref(), "a");
                 assert_eq!(entries[0].label.as_deref(), Some("A"));
@@ -822,8 +887,8 @@ mod tests {
         let json = "{}";
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Map(map) => {
-                assert!(map.is_empty());
+            RawOptions::Map(RawOptionsMap(entries)) => {
+                assert!(entries.is_empty());
             }
             _ => panic!("Expected Map variant for empty object"),
         }

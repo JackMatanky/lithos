@@ -33,7 +33,7 @@ use crate::schema::error::SchemaError;
 #[non_exhaustive]
 pub struct StringSpec {
     /// Optional allowed values (enum-like).
-    options: Option<Box<[OptionEntry]>>,
+    options: Option<OptionEntries>,
     /// Optional regex pattern or predefined format.
     pattern: Option<StringPattern>,
 }
@@ -58,7 +58,7 @@ impl StringSpec {
     #[inline]
     pub fn try_new(
         pattern: Option<StringPattern>,
-        options: Option<Vec<OptionEntry>>,
+        options: Option<OptionEntries>,
     ) -> Result<Self, SchemaError> {
         // 1. Validate options are not empty if present
         if let Some(opts) = options.as_ref()
@@ -70,7 +70,7 @@ impl StringSpec {
         }
 
         let spec = Self {
-            options: options.map(Vec::into_boxed_slice),
+            options,
             pattern,
         };
 
@@ -95,7 +95,7 @@ impl StringSpec {
     #[inline]
     #[must_use]
     pub fn options(&self) -> Option<&[OptionEntry]> {
-        self.options.as_deref()
+        self.options.as_ref().map(OptionEntries::as_slice)
     }
 
     /// Returns the validation pattern for this string if defined.
@@ -117,15 +117,15 @@ impl StringSpec {
     )]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::property_spec::RawStringSpec,
+        overrides: &crate::schema::raw::spec_string::RawStringSpec,
     ) -> Result<Self, SchemaError> {
         let pattern = match overrides.pattern.as_ref() {
             Some(
-                crate::schema::raw::property_spec::RawStringPattern::Custom(p),
+                crate::schema::raw::spec_string::RawStringPattern::Custom(p),
             ) => Some(StringPattern::try_custom(p.clone())?),
-            Some(
-                crate::schema::raw::property_spec::RawStringPattern::Named(f),
-            ) => Some(StringPattern::from(*f)),
+            Some(crate::schema::raw::spec_string::RawStringPattern::Named(
+                f,
+            )) => Some(StringPattern::from(*f)),
             None => self.pattern,
         };
 
@@ -133,14 +133,16 @@ impl StringSpec {
             .options
             .as_ref()
             .map(|o| {
-                o.clone()
+                let entries = o
+                    .clone()
                     .into_entries()
                     .into_iter()
                     .map(OptionEntry::try_from)
-                    .collect::<Result<Vec<_>, _>>()
+                    .collect::<Result<Vec<_>, _>>()?;
+                OptionEntries::try_new(entries)
             })
             .transpose()?
-            .or_else(|| self.options.map(Vec::from));
+            .or(self.options);
 
         Self::try_new(pattern, options)
     }
@@ -207,30 +209,32 @@ impl ArchivedStringSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::property_spec::RawStringSpec> for StringSpec {
+impl TryFrom<crate::schema::raw::spec_string::RawStringSpec> for StringSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::property_spec::RawStringSpec,
+        raw: crate::schema::raw::spec_string::RawStringSpec,
     ) -> Result<Self, Self::Error> {
         let pattern = match raw.pattern {
             Some(
-                crate::schema::raw::property_spec::RawStringPattern::Custom(p),
+                crate::schema::raw::spec_string::RawStringPattern::Custom(p),
             ) => Some(StringPattern::try_custom(p)?),
-            Some(
-                crate::schema::raw::property_spec::RawStringPattern::Named(f),
-            ) => Some(StringPattern::from(f)),
+            Some(crate::schema::raw::spec_string::RawStringPattern::Named(
+                f,
+            )) => Some(StringPattern::from(f)),
             None => None,
         };
 
         let options = raw
             .options
             .map(|o| {
-                o.into_entries()
+                let entries = o
+                    .into_entries()
                     .into_iter()
                     .map(TryInto::try_into)
-                    .collect::<Result<Vec<_>, _>>()
+                    .collect::<Result<Vec<_>, _>>()?;
+                OptionEntries::try_new(entries)
             })
             .transpose()?;
 
@@ -563,14 +567,10 @@ impl ArchivedStringPattern {
     }
 }
 
-impl From<crate::schema::raw::property_spec::RawStringFormat>
-    for StringPattern
-{
+impl From<crate::schema::raw::spec_string::RawStringFormat> for StringPattern {
     #[inline]
-    fn from(
-        format: crate::schema::raw::property_spec::RawStringFormat,
-    ) -> Self {
-        use crate::schema::raw::property_spec::RawStringFormat;
+    fn from(format: crate::schema::raw::spec_string::RawStringFormat) -> Self {
+        use crate::schema::raw::spec_string::RawStringFormat;
         match format {
             RawStringFormat::Email => Self::Email,
             RawStringFormat::Url => Self::Url,
@@ -625,6 +625,85 @@ pub struct OptionEntry {
     label: Option<Box<str>>,
 }
 
+/// A wrapper for ordered option entries with helper sorting APIs.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug, PartialEq, Eq, Hash))]
+#[non_exhaustive]
+pub struct OptionEntries(Box<[OptionEntry]>);
+
+impl OptionEntries {
+    /// Create a new `OptionEntries`, validating non-empty constraints.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if the entries list is empty.
+    #[inline]
+    pub fn try_new(entries: Vec<OptionEntry>) -> Result<Self, SchemaError> {
+        if entries.is_empty() {
+            return Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::OptionsEmpty,
+            ));
+        }
+        Ok(Self(entries.into_boxed_slice()))
+    }
+
+    /// Returns the ordered entries as a slice.
+    #[inline]
+    #[must_use]
+    pub fn as_slice(&self) -> &[OptionEntry] {
+        &self.0
+    }
+
+    /// Iterate over entries in stored order.
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<'_, OptionEntry> {
+        self.0.iter()
+    }
+
+    /// Returns entries sorted by label (fallback to value when label missing).
+    #[must_use]
+    pub fn sorted_by_label(&self) -> Vec<&OptionEntry> {
+        let mut items: Vec<_> = self.0.iter().collect();
+        items.sort_by(|a, b| {
+            let a_key = a.label().unwrap_or_else(|| a.value());
+            let b_key = b.label().unwrap_or_else(|| b.value());
+            a_key.cmp(b_key)
+        });
+        items
+    }
+
+    /// Returns entries sorted by value.
+    #[must_use]
+    pub fn sorted_by_value(&self) -> Vec<&OptionEntry> {
+        let mut items: Vec<_> = self.0.iter().collect();
+        items.sort_by(|a, b| a.value().cmp(b.value()));
+        items
+    }
+
+    /// Returns true if there are no entries.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl ArchivedOptionEntries {
+    /// Iterate over archived entries in stored order.
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<'_, ArchivedOptionEntry> {
+        self.0.iter()
+    }
+
+    /// Returns the ordered archived entries as a slice.
+    #[inline]
+    #[must_use]
+    pub fn as_slice(&self) -> &[ArchivedOptionEntry] {
+        self.0.as_ref()
+    }
+}
+
 impl OptionEntry {
     /// Create a new `OptionEntry`, validating the value.
     ///
@@ -662,14 +741,12 @@ impl OptionEntry {
     }
 }
 
-impl TryFrom<crate::schema::raw::property_spec::RawOptionEntry>
-    for OptionEntry
-{
+impl TryFrom<crate::schema::raw::spec_string::RawOptionEntry> for OptionEntry {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::property_spec::RawOptionEntry,
+        raw: crate::schema::raw::spec_string::RawOptionEntry,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.value, raw.label)
     }
@@ -682,6 +759,61 @@ impl TryFrom<crate::schema::raw::property_spec::RawOptionEntry>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::missing_asserts_for_indexing,
+        reason = "Test code: indexing is safe after known-length construction"
+    )]
+    mod option_entries {
+        use super::*;
+
+        #[test]
+        fn preserves_order_and_sorts_by_label() {
+            let entries = OptionEntries::try_new(vec![
+                OptionEntry::try_new("b", Some("bee".into())).unwrap(),
+                OptionEntry::try_new("a", None).unwrap(),
+                OptionEntry::try_new("c", Some("see".into())).unwrap(),
+            ])
+            .unwrap();
+
+            let ordered = entries.as_slice();
+            assert_eq!(ordered[0].value(), "b");
+            assert_eq!(ordered[1].value(), "a");
+            assert_eq!(ordered[2].value(), "c");
+
+            let sorted = entries.sorted_by_label();
+            assert_eq!(sorted[0].value(), "a");
+            assert_eq!(sorted[1].value(), "b");
+            assert_eq!(sorted[2].value(), "c");
+        }
+
+        #[test]
+        fn sorts_by_value() {
+            let entries = OptionEntries::try_new(vec![
+                OptionEntry::try_new("z", None).unwrap(),
+                OptionEntry::try_new("m", None).unwrap(),
+                OptionEntry::try_new("a", None).unwrap(),
+            ])
+            .unwrap();
+
+            let sorted = entries.sorted_by_value();
+            assert_eq!(sorted[0].value(), "a");
+            assert_eq!(sorted[1].value(), "m");
+            assert_eq!(sorted[2].value(), "z");
+        }
+
+        #[test]
+        fn rejects_empty_entries() {
+            let result = OptionEntries::try_new(vec![]);
+            assert!(matches!(
+                result,
+                Err(SchemaError::PropertySpec(
+                    crate::schema::error::PropertySpecError::OptionsEmpty
+                ))
+            ));
+        }
+    }
 
     mod string_pattern {
         use super::*;
@@ -724,12 +856,17 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
-        use crate::schema::raw::property_spec::{RawOptions, RawStringSpec};
+        use crate::schema::raw::spec_string::{
+            RawOptions, RawOptionsList, RawStringSpec,
+        };
 
         #[rstest]
         #[case::options_match(
             RawStringSpec {
-                options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
+                options: Some(RawOptions::List(RawOptionsList(vec![
+                    "A".into(),
+                    "B".into(),
+                ]))),
                 ..Default::default()
             },
             "A",
@@ -737,7 +874,10 @@ mod tests {
         )]
         #[case::options_mismatch(
             RawStringSpec {
-                options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
+                options: Some(RawOptions::List(RawOptionsList(vec![
+                    "A".into(),
+                    "B".into(),
+                ]))),
                 ..Default::default()
             },
             "C",
@@ -749,7 +889,7 @@ mod tests {
             ))
         )]
         #[case::regex_match(
-            RawStringSpec { pattern: Some(crate::schema::raw::property_spec::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
+            RawStringSpec { pattern: Some(crate::schema::raw::spec_string::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
             "123",
             Ok(())
         )]
@@ -773,8 +913,10 @@ mod tests {
         #[test]
         fn try_new_rejects_inconsistent_options() {
             let pattern = StringPattern::try_custom(r"^\d+$").unwrap();
-            let options =
-                vec![OptionEntry::try_new("not-a-number", None).unwrap()];
+            let options = OptionEntries::try_new(vec![
+                OptionEntry::try_new("not-a-number", None).unwrap(),
+            ])
+            .unwrap();
 
             let result = StringSpec::try_new(Some(pattern), Some(options));
             assert!(matches!(

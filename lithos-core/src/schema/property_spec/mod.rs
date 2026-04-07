@@ -75,7 +75,7 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{raw::property_spec::{RawPropertySpec, RawBoolSpec}, property_spec::PropertySpec};
+    /// # use lithos_core::schema::{raw::{property::RawPropertySpec, spec_bool::RawBoolSpec}, property_spec::PropertySpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let def = RawPropertySpec::Bool(RawBoolSpec);
     /// let spec = PropertySpec::try_from(def)?;
@@ -197,9 +197,7 @@ impl ArchivedPropertySpec {
 // Conversions from Raw Types (Syntax → Domain)
 // ============================================================================
 
-impl TryFrom<crate::schema::raw::property_spec::RawPropertySpec>
-    for PropertySpec
-{
+impl TryFrom<crate::schema::raw::property::RawPropertySpec> for PropertySpec {
     type Error = SchemaError;
 
     /// Convert raw property spec (syntax layer) to validated domain spec.
@@ -212,9 +210,9 @@ impl TryFrom<crate::schema::raw::property_spec::RawPropertySpec>
     /// required fields, etc.).
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::property_spec::RawPropertySpec,
+        raw: crate::schema::raw::property::RawPropertySpec,
     ) -> Result<Self, Self::Error> {
-        use crate::schema::raw::property_spec::RawPropertySpec;
+        use crate::schema::raw::property::RawPropertySpec;
 
         match raw {
             RawPropertySpec::Bool(def) => Ok(Self::Bool(def.try_into()?)),
@@ -229,7 +227,9 @@ impl TryFrom<crate::schema::raw::property_spec::RawPropertySpec>
 #[cfg(test)]
 mod tests {
     use super::PropertySpec;
-    use crate::schema::raw::property_spec::{RawBoolSpec, RawPropertySpec};
+    use crate::schema::raw::{
+        property::RawPropertySpec, spec_bool::RawBoolSpec,
+    };
 
     #[test]
     fn validate_dispatches_to_bool_spec() {

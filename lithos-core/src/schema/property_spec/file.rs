@@ -95,7 +95,7 @@ impl FileSpec {
     /// # Examples
     /// ```
     /// use lithos_core::schema::{
-    ///     property_spec::FileSpec, raw::property_spec::RawFileSpec,
+    ///     property_spec::FileSpec, raw::spec_file::RawFileSpec,
     /// };
     ///
     /// let base = FileSpec::try_new(None, None)?;
@@ -111,7 +111,7 @@ impl FileSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::property_spec::RawFileSpec,
+        overrides: &crate::schema::raw::spec_file::RawFileSpec,
     ) -> Result<Self, SchemaError> {
         let directory = overrides
             .directory
@@ -158,12 +158,12 @@ impl ArchivedFileSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::property_spec::RawFileSpec> for FileSpec {
+impl TryFrom<crate::schema::raw::spec_file::RawFileSpec> for FileSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::property_spec::RawFileSpec,
+        raw: crate::schema::raw::spec_file::RawFileSpec,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.directory.as_deref(), raw.file_class.as_deref())
     }
