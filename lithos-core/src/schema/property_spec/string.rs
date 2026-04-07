@@ -741,12 +741,12 @@ impl OptionEntry {
     }
 }
 
-impl TryFrom<crate::schema::raw::spec_string::RawOptionEntry> for OptionEntry {
+impl TryFrom<crate::schema::raw::spec_string::RawEntryLabeled> for OptionEntry {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::spec_string::RawOptionEntry,
+        raw: crate::schema::raw::spec_string::RawEntryLabeled,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.value, raw.label)
     }
@@ -857,13 +857,13 @@ mod tests {
 
         use super::*;
         use crate::schema::raw::spec_string::{
-            RawOptions, RawOptionsList, RawStringSpec,
+            RawOptions, RawOptionsPlain, RawStringSpec,
         };
 
         #[rstest]
         #[case::options_match(
             RawStringSpec {
-                options: Some(RawOptions::List(RawOptionsList::from(vec![
+                options: Some(RawOptions::Plain(RawOptionsPlain::from(vec![
                     "A".into(),
                     "B".into(),
                 ]))),
@@ -874,7 +874,7 @@ mod tests {
         )]
         #[case::options_mismatch(
             RawStringSpec {
-                options: Some(RawOptions::List(RawOptionsList::from(vec![
+                options: Some(RawOptions::Plain(RawOptionsPlain::from(vec![
                     "A".into(),
                     "B".into(),
                 ]))),
