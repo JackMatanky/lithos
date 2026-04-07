@@ -308,11 +308,11 @@ impl From<Vec<Box<str>>> for RawOptionsPlain {
 /// Integer-keyed ordered object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RawOptionsOrdered(Vec<RawEntryInputOrdered>);
+pub struct RawOptionsOrdered(Vec<RawEntryOrdered>);
 
-impl From<Vec<RawEntryInputOrdered>> for RawOptionsOrdered {
+impl From<Vec<RawEntryOrdered>> for RawOptionsOrdered {
     #[inline]
-    fn from(vec: Vec<RawEntryInputOrdered>) -> Self {
+    fn from(vec: Vec<RawEntryOrdered>) -> Self {
         Self(vec)
     }
 }
@@ -385,7 +385,7 @@ impl<'de> serde::Deserialize<'de> for RawOptionsOrdered {
                             order.value()
                         )));
                     }
-                    entries.push(RawEntryInputOrdered {
+                    entries.push(RawEntryOrdered {
                         order,
                         value,
                     });
@@ -445,13 +445,13 @@ pub struct RawEntryLabeled {
 }
 
 // ============================================================================
-// RawEntryInputOrdered
+// RawEntryOrdered
 // ============================================================================
 
 /// Ordered map entry parsed from integer-keyed objects.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawEntryInputOrdered {
+pub struct RawEntryOrdered {
     /// The order key parsed from the map key.
     pub order: RawEntryInputOrder,
     /// The option value.
@@ -733,15 +733,15 @@ mod tests {
     #[test]
     fn raw_options_into_entries_map_sorts_by_key() {
         let options = RawOptions::Ordered(RawOptionsOrdered(vec![
-            RawEntryInputOrdered {
+            RawEntryOrdered {
                 order: RawEntryInputOrder(3),
                 value: "third".into(),
             },
-            RawEntryInputOrdered {
+            RawEntryOrdered {
                 order: RawEntryInputOrder(1),
                 value: "first".into(),
             },
-            RawEntryInputOrdered {
+            RawEntryOrdered {
                 order: RawEntryInputOrder(2),
                 value: "second".into(),
             },

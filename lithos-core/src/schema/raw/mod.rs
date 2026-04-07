@@ -151,7 +151,7 @@ pub type RawOptionsLabeled = spec_string::RawOptionsLabeled;
 pub type RawEntryLabeled = spec_string::RawEntryLabeled;
 
 /// Ordered map entry.
-pub type RawEntryOrdered = spec_string::RawEntryInputOrdered;
+pub type RawEntryOrdered = spec_string::RawEntryOrdered;
 
 /// Input order position.
 pub type RawEntryInputOrder = spec_string::RawEntryInputOrder;
