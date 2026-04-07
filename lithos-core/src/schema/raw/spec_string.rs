@@ -6,6 +6,52 @@ use serde::de::{Error, MapAccess, Visitor};
 
 use crate::schema::error::{PropertySpecError, SchemaError};
 
+// ============================================================================
+// RawStringSpec
+// ============================================================================
+
+/// String property definition.
+///
+/// Supports `options` and `pattern` per the meta-schema.
+/// All fields are `Option<T>` to support both inline definitions
+/// and override contexts.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::spec_string::RawStringSpec;
+///
+/// let _spec = RawStringSpec::default();
+/// ```
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct RawStringSpec {
+    /// Optional allowed values in one of three formats.
+    pub options: Option<RawOptions>,
+    /// Optional validation pattern (custom regex or predefined format).
+    pub pattern: Option<RawStringPattern>,
+}
+
+// ============================================================================
+// RawStringPattern
+// ============================================================================
+
+/// Raw string pattern supporting both custom regex and predefined formats.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawStringPattern {
+    /// Predefined named format.
+    Named(RawStringFormat),
+    /// Custom regex pattern.
+    Custom(Box<str>),
+}
+
+// ============================================================================
+// RawStringFormat
+// ============================================================================
+
 /// Named string format for common validation patterns (raw/syntax layer).
 ///
 /// This is the deserialization type. It gets converted to `StringPattern`
@@ -39,39 +85,383 @@ pub enum RawStringFormat {
     ZipCode,
 }
 
-/// Raw string pattern supporting both custom regex and predefined formats.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
+// ============================================================================
+// RawOptions
+// ============================================================================
+
+/// Raw options definition supporting three formats.
+///
+/// # Modes
+///
+/// - **Mode 1 (List)**: `["a", "b"]` — plain array of string values
+/// - **Mode 2 (Map)**: `{"1": "to_do", "2": "done"}` — ordered integer-keyed
+///   object
+/// - **Mode 3 (Rich)**: `[{"value": "a", "label": "A", "order": 1}]` — rich
+///   entries with labels
+///
+/// # Deserialization Strategy
+///
+/// Uses custom deserializer with explicit type checking:
+/// 1. If sequence: try as List (strings), then Rich (objects)
+/// 2. If map: deserialize as Map
+/// 3. Fail with clear error for other types
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub enum RawStringPattern {
-    /// Predefined named format.
-    Named(RawStringFormat),
-    /// Custom regex pattern.
-    Custom(Box<str>),
+pub enum RawOptions {
+    /// Mode 1: Plain array of string values.
+    List(RawOptionsList),
+    /// Mode 2: Integer-keyed ordered object.
+    Map(RawOptionsMap),
+    /// Mode 3: Rich entries with optional label and order.
+    Rich(RawOptionsRich),
 }
 
-/// String property definition.
-///
-/// Supports `options` and `pattern` per the meta-schema.
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
+#[expect(
+    clippy::missing_trait_methods,
+    clippy::missing_inline_in_public_items,
+    clippy::excessive_nesting,
+    reason = "Custom serde Visitor requires specific method impls; excessive \
+              nesting is inherent to discriminating union variants by peeking"
+)]
+impl<'de> serde::Deserialize<'de> for RawOptions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+
+        struct RawOptionsVisitor;
+
+        impl<'de> Visitor<'de> for RawOptionsVisitor {
+            type Value = RawOptions;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str(
+                    "a sequence of strings, a sequence of objects with \
+                     'value' field, or a map with string keys and string \
+                     values",
+                )
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let first = seq.next_element::<serde_json::Value>()?;
+                if let Some(value) = first {
+                    if value.is_string() {
+                        let mut items = vec![
+                            value
+                                .as_str()
+                                .ok_or_else(|| {
+                                    Error::custom("expected string")
+                                })?
+                                .into(),
+                        ];
+                        while let Some(elem) =
+                            seq.next_element::<serde_json::Value>()?
+                        {
+                            if let Some(s) = elem.as_str() {
+                                items.push(s.into());
+                            } else {
+                                return Err(Error::custom(
+                                    "expected all array elements to be strings",
+                                ));
+                            }
+                        }
+                        Ok(RawOptions::List(RawOptionsList(items)))
+                    } else if value.is_object() {
+                        let first_entry: RawOptionEntry =
+                            serde_json::from_value(value)
+                                .map_err(Error::custom)?;
+                        let mut entries = vec![first_entry];
+                        while let Some(entry) =
+                            seq.next_element::<RawOptionEntry>()?
+                        {
+                            entries.push(entry);
+                        }
+                        Ok(RawOptions::Rich(RawOptionsRich(entries)))
+                    } else {
+                        Err(Error::custom(
+                            "expected array elements to be strings or objects",
+                        ))
+                    }
+                } else {
+                    Ok(RawOptions::List(RawOptionsList(vec![])))
+                }
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                use serde::Deserialize as _;
+
+                let map = RawOptionsMap::deserialize(
+                    serde::de::value::MapAccessDeserializer::new(map),
+                )?;
+                Ok(RawOptions::Map(map))
+            }
+        }
+
+        deserializer.deserialize_any(RawOptionsVisitor)
+    }
+}
+
+impl RawOptions {
+    /// Convert raw options to a normalized vector of `OptionEntry`.
+    ///
+    /// # Modes
+    ///
+    /// - **List**: entries have `value = item`, `label = None`, order
+    ///   preserved.
+    /// - **Map**: keys parsed as integers, sorted by key, entries have `value =
+    ///   map_value`, `label = None`.
+    /// - **Rich**: sorted by `order` field (then array position), entries have
+    ///   `value` and `label`.
+    ///
+    /// # Panics
+    /// Panics if Rich mode option list has more than `u32::MAX` entries
+    /// (>4 billion). This is unrealistic in practice and indicates a
+    /// malformed input.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Fail-fast on unrealistic >4 billion options prevents silent \
+                  data corruption"
+    )]
+    pub fn into_entries(self) -> Vec<RawOptionEntry> {
+        match self {
+            Self::List(RawOptionsList(items)) => items
+                .into_iter()
+                .map(|value| RawOptionEntry {
+                    value,
+                    label: None,
+                    order: None,
+                })
+                .collect(),
+            Self::Map(RawOptionsMap(mut entries)) => {
+                entries.sort_by_key(|entry| entry.order);
+                entries
+                    .into_iter()
+                    .map(|entry| RawOptionEntry {
+                        value: entry.value,
+                        label: None,
+                        order: None,
+                    })
+                    .collect()
+            }
+            Self::Rich(RawOptionsRich(entries)) => {
+                let mut entries: Vec<_> = entries
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, entry)| {
+                        let order = entry.order.unwrap_or_else(|| {
+                            u32::try_from(idx).expect(
+                                "Option list index exceeds u32::MAX (>4 \
+                                 billion entries)",
+                            )
+                        });
+                        (order, entry)
+                    })
+                    .collect();
+                entries.sort_by_key(|&(order, _)| order);
+                entries
+                    .into_iter()
+                    .map(|(_, entry)| RawOptionEntry {
+                        value: entry.value,
+                        label: entry.label,
+                        order: None,
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
+// ============================================================================
+// RawOptionsList
+// ============================================================================
+
+/// Mode 1: Plain array of string values.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawOptionsList(Vec<Box<str>>);
+
+impl From<Vec<Box<str>>> for RawOptionsList {
+    #[inline]
+    fn from(vec: Vec<Box<str>>) -> Self {
+        Self(vec)
+    }
+}
+
+// ============================================================================
+// RawOptionsMap
+// ============================================================================
+
+/// Mode 2: Integer-keyed ordered object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RawOptionsMap(Vec<RawOptionMapEntry>);
+
+impl From<Vec<RawOptionMapEntry>> for RawOptionsMap {
+    #[inline]
+    fn from(vec: Vec<RawOptionMapEntry>) -> Self {
+        Self(vec)
+    }
+}
+
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "Serialize impl requires specific method signature"
+)]
+impl serde::Serialize for RawOptionsMap {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap as _;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for entry in &self.0 {
+            map.serialize_entry(
+                &entry.order.value().to_string(),
+                &entry.value,
+            )?;
+        }
+        map.end()
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    clippy::missing_inline_in_public_items,
+    reason = "Custom serde Visitor requires specific method impls"
+)]
+impl<'de> serde::Deserialize<'de> for RawOptionsMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        struct RawOptionsMapVisitor;
+
+        impl<'de> Visitor<'de> for RawOptionsMapVisitor {
+            type Value = RawOptionsMap;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str(
+                    "a map with integer string keys and string values",
+                )
+            }
+
+            #[expect(
+                clippy::excessive_nesting,
+                reason = "Deserializing map entries with duplicate checks \
+                          inherently requires some nesting"
+            )]
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut seen = BTreeSet::new();
+                let mut entries = Vec::new();
+                while let Some((order, value)) =
+                    map.next_entry::<RawEntryOrder, Box<str>>()?
+                {
+                    if !seen.insert(order) {
+                        return Err(Error::custom(format!(
+                            "duplicate order key {}",
+                            order.value()
+                        )));
+                    }
+                    entries.push(RawOptionMapEntry {
+                        order,
+                        value,
+                    });
+                }
+                entries.sort_by_key(|entry| entry.order);
+                Ok(RawOptionsMap(entries))
+            }
+        }
+
+        deserializer.deserialize_map(RawOptionsMapVisitor)
+    }
+}
+
+// ============================================================================
+// RawOptionsRich
+// ============================================================================
+
+/// Mode 3: Rich entries with optional label and order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawOptionsRich(Vec<RawOptionEntry>);
+
+impl From<Vec<RawOptionEntry>> for RawOptionsRich {
+    #[inline]
+    fn from(vec: Vec<RawOptionEntry>) -> Self {
+        Self(vec)
+    }
+}
+
+// ============================================================================
+// RawOptionEntry
+// ============================================================================
+
+/// Rich option entry with optional label and display order.
 ///
 /// # Examples
-/// ```
-/// use lithos_core::schema::raw::spec_string::RawStringSpec;
+/// ```ignore
+/// use lithos_core::schema::raw::spec_string::RawOptionEntry;
 ///
-/// let _spec = RawStringSpec::default();
+/// let entry = RawOptionEntry {
+///     value: "open".into(),
+///     label: Some("Open".into()),
+///     order: Some(1),
+/// };
+/// let _ = entry;
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawStringSpec {
-    /// Optional allowed values in one of three formats.
-    pub options: Option<RawOptions>,
-    /// Optional validation pattern (custom regex or predefined format).
-    pub pattern: Option<RawStringPattern>,
+pub struct RawOptionEntry {
+    /// The option value.
+    pub value: Box<str>,
+    /// Optional display label.
+    pub label: Option<Box<str>>,
+    /// Optional display order (lower = earlier).
+    pub order: Option<u32>,
 }
+
+// ============================================================================
+// RawOptionMapEntry
+// ============================================================================
+
+/// Ordered map entry parsed from integer-keyed objects.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawOptionMapEntry {
+    /// The order key parsed from the map key.
+    pub order: RawEntryOrder,
+    /// The option value.
+    pub value: Box<str>,
+}
+
+// ============================================================================
+// RawEntryOrder
+// ============================================================================
 
 /// Ordered entry position parsed from map keys.
 #[derive(
@@ -181,341 +571,9 @@ impl TryFrom<&str> for RawEntryOrder {
     }
 }
 
-/// Ordered map entry parsed from integer-keyed objects.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawOptionMapEntry {
-    /// The order key parsed from the map key.
-    pub order: RawEntryOrder,
-    /// The option value.
-    pub value: Box<str>,
-}
-
-/// Mode 1: Plain array of string values.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct RawOptionsList(pub Vec<Box<str>>);
-
-/// Mode 2: Integer-keyed ordered object.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct RawOptionsMap(pub Vec<RawOptionMapEntry>);
-
-#[expect(
-    clippy::missing_inline_in_public_items,
-    reason = "Serialize impl requires specific method signature"
-)]
-impl serde::Serialize for RawOptionsMap {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap as _;
-
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for entry in &self.0 {
-            map.serialize_entry(
-                &entry.order.value().to_string(),
-                &entry.value,
-            )?;
-        }
-        map.end()
-    }
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    clippy::missing_inline_in_public_items,
-    reason = "Custom serde Visitor requires specific method impls"
-)]
-impl<'de> serde::Deserialize<'de> for RawOptionsMap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use std::fmt;
-
-        struct RawOptionsMapVisitor;
-
-        impl<'de> Visitor<'de> for RawOptionsMapVisitor {
-            type Value = RawOptionsMap;
-
-            fn expecting(
-                &self,
-                formatter: &mut fmt::Formatter<'_>,
-            ) -> fmt::Result {
-                formatter.write_str(
-                    "a map with integer string keys and string values",
-                )
-            }
-
-            #[expect(
-                clippy::excessive_nesting,
-                reason = "Deserializing map entries with duplicate checks \
-                          inherently requires some nesting"
-            )]
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut seen = BTreeSet::new();
-                let mut entries = Vec::new();
-                while let Some((order, value)) =
-                    map.next_entry::<RawEntryOrder, Box<str>>()?
-                {
-                    if !seen.insert(order) {
-                        return Err(Error::custom(format!(
-                            "duplicate order key {}",
-                            order.value()
-                        )));
-                    }
-                    entries.push(RawOptionMapEntry {
-                        order,
-                        value,
-                    });
-                }
-                entries.sort_by_key(|entry| entry.order);
-                Ok(RawOptionsMap(entries))
-            }
-        }
-
-        deserializer.deserialize_map(RawOptionsMapVisitor)
-    }
-}
-
-/// Mode 3: Rich entries with optional label and order.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct RawOptionsRich(pub Vec<RawOptionEntry>);
-
-/// Raw options definition supporting three formats.
-///
-/// # Modes
-///
-/// - **Mode 1 (List)**: `["a", "b"]` — plain array of string values
-/// - **Mode 2 (Map)**: `{"1": "to_do", "2": "done"}` — ordered integer-keyed
-///   object
-/// - **Mode 3 (Rich)**: `[{"value": "a", "label": "A", "order": 1}]` — rich
-///   entries with labels
-///
-/// # Deserialization Strategy
-///
-/// Uses custom deserializer with explicit type checking:
-/// 1. If sequence: try as List (strings), then Rich (objects)
-/// 2. If map: deserialize as Map
-/// 3. Fail with clear error for other types
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[non_exhaustive]
-pub enum RawOptions {
-    /// Mode 1: Plain array of string values.
-    List(RawOptionsList),
-    /// Mode 2: Integer-keyed ordered object.
-    Map(RawOptionsMap),
-    /// Mode 3: Rich entries with optional label and order.
-    Rich(RawOptionsRich),
-}
-
-/// Rich option entry with optional label and display order.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::spec_string::RawOptionEntry;
-///
-/// let entry = RawOptionEntry {
-///     value: "open".into(),
-///     label: Some("Open".into()),
-///     order: Some(1),
-/// };
-/// let _ = entry;
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawOptionEntry {
-    /// The option value.
-    pub value: Box<str>,
-    /// Optional display label.
-    pub label: Option<Box<str>>,
-    /// Optional display order (lower = earlier).
-    pub order: Option<u32>,
-}
-
-/// Custom deserializer for `RawOptions` to avoid relying on untagged variant
-/// order.
-#[expect(
-    clippy::missing_trait_methods,
-    clippy::missing_inline_in_public_items,
-    clippy::excessive_nesting,
-    reason = "Custom serde Visitor requires specific method impls; excessive \
-              nesting is inherent to discriminating union variants by peeking"
-)]
-impl<'de> serde::Deserialize<'de> for RawOptions {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use std::fmt;
-
-        use serde::de::{Error, MapAccess, SeqAccess, Visitor};
-
-        struct RawOptionsVisitor;
-
-        impl<'de> Visitor<'de> for RawOptionsVisitor {
-            type Value = RawOptions;
-
-            fn expecting(
-                &self,
-                formatter: &mut fmt::Formatter<'_>,
-            ) -> fmt::Result {
-                formatter.write_str(
-                    "a sequence of strings, a sequence of objects with \
-                     'value' field, or a map with string keys and string \
-                     values",
-                )
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                // Peek at first element to determine if List or Rich
-                let first = seq.next_element::<serde_json::Value>()?;
-                if let Some(value) = first {
-                    if value.is_string() {
-                        // List mode: array of strings
-                        let mut items = vec![
-                            value
-                                .as_str()
-                                .ok_or_else(|| {
-                                    Error::custom("expected string")
-                                })?
-                                .into(),
-                        ];
-                        while let Some(elem) =
-                            seq.next_element::<serde_json::Value>()?
-                        {
-                            if let Some(s) = elem.as_str() {
-                                items.push(s.into());
-                            } else {
-                                return Err(Error::custom(
-                                    "expected all array elements to be strings",
-                                ));
-                            }
-                        }
-                        Ok(RawOptions::List(RawOptionsList(items)))
-                    } else if value.is_object() {
-                        // Rich mode: array of objects
-                        let first_entry: RawOptionEntry =
-                            serde_json::from_value(value)
-                                .map_err(Error::custom)?;
-                        let mut entries = vec![first_entry];
-                        while let Some(entry) =
-                            seq.next_element::<RawOptionEntry>()?
-                        {
-                            entries.push(entry);
-                        }
-                        Ok(RawOptions::Rich(RawOptionsRich(entries)))
-                    } else {
-                        Err(Error::custom(
-                            "expected array elements to be strings or objects",
-                        ))
-                    }
-                } else {
-                    // Empty array defaults to List
-                    Ok(RawOptions::List(RawOptionsList(vec![])))
-                }
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                use serde::Deserialize as _;
-
-                // Map mode: object with integer string keys and string values
-                let map = RawOptionsMap::deserialize(
-                    serde::de::value::MapAccessDeserializer::new(map),
-                )?;
-                Ok(RawOptions::Map(map))
-            }
-        }
-
-        deserializer.deserialize_any(RawOptionsVisitor)
-    }
-}
-
-impl RawOptions {
-    /// Convert raw options to a normalized vector of `OptionEntry`.
-    ///
-    /// # Modes
-    ///
-    /// - **List**: entries have `value = item`, `label = None`, order
-    ///   preserved.
-    /// - **Map**: keys parsed as integers, sorted by key, entries have `value =
-    ///   map_value`, `label = None`.
-    /// - **Rich**: sorted by `order` field (then array position), entries have
-    ///   `value` and `label`.
-    ///
-    /// # Panics
-    /// Panics if Rich mode option list has more than `u32::MAX` entries (>4
-    /// billion). This is unrealistic in practice and indicates a malformed
-    /// input.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "Fail-fast on unrealistic >4 billion options prevents silent \
-                  data corruption"
-    )]
-    pub fn into_entries(self) -> Vec<RawOptionEntry> {
-        match self {
-            Self::List(RawOptionsList(items)) => items
-                .into_iter()
-                .map(|value| RawOptionEntry {
-                    value,
-                    label: None,
-                    order: None,
-                })
-                .collect(),
-            Self::Map(RawOptionsMap(mut entries)) => {
-                entries.sort_by_key(|entry| entry.order);
-                entries
-                    .into_iter()
-                    .map(|entry| RawOptionEntry {
-                        value: entry.value,
-                        label: None,
-                        order: None,
-                    })
-                    .collect()
-            }
-            Self::Rich(RawOptionsRich(entries)) => {
-                let mut entries: Vec<_> = entries
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, entry)| {
-                        let order = entry.order.unwrap_or_else(|| {
-                            u32::try_from(idx).expect(
-                                "Option list index exceeds u32::MAX (>4 \
-                                 billion entries)",
-                            )
-                        });
-                        (order, entry)
-                    })
-                    .collect();
-                entries.sort_by_key(|&(order, _)| order);
-                entries
-                    .into_iter()
-                    .map(|(_, entry)| RawOptionEntry {
-                        value: entry.value,
-                        label: entry.label,
-                        order: None,
-                    })
-                    .collect()
-            }
-        }
-    }
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 #[expect(
@@ -625,7 +683,6 @@ mod tests {
 
     #[test]
     fn raw_options_deserializes_from_toml_inline_array() {
-        // TOML requires inline arrays to be in a table context
         let toml_str = r#"options = ["open", "closed"]"#;
         #[derive(serde::Deserialize)]
         struct Wrapper {
@@ -748,7 +805,6 @@ mod tests {
 
     #[test]
     fn raw_options_disambiguates_empty_object_array_as_rich() {
-        // Array of objects with only `value` field should deserialize as Rich
         let json = r#"[{"value": "a"}, {"value": "b"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
@@ -763,13 +819,11 @@ mod tests {
 
     #[test]
     fn raw_options_disambiguates_strings_as_list() {
-        // Array of strings should always deserialize as List
         let json = r#"["value", "label", "order"]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
             RawOptions::List(RawOptionsList(items)) => {
                 assert_eq!(items.len(), 3);
-                // These are literal strings, not field names
                 assert_eq!(items[0].as_ref(), "value");
                 assert_eq!(items[1].as_ref(), "label");
                 assert_eq!(items[2].as_ref(), "order");
@@ -780,7 +834,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_array_of_numbers() {
-        // Numbers are not valid option values
         let json = "[1, 2, 3]";
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -791,7 +844,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_array_of_bools() {
-        // Booleans are not valid option values
         let json = "[true, false]";
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -802,7 +854,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_array_of_nulls() {
-        // Nulls are not valid option values
         let json = "[null, null]";
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -813,7 +864,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_nested_arrays() {
-        // Nested arrays are not a valid mode
         let json = r#"[["a", "b"], ["c", "d"]]"#;
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -824,7 +874,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_string_primitive() {
-        // Single string is not an array or map
         let json = r#""single_value""#;
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -835,7 +884,6 @@ mod tests {
 
     #[test]
     fn raw_options_rejects_number_primitive() {
-        // Single number is not an array or map
         let json = "42";
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(
@@ -846,7 +894,6 @@ mod tests {
 
     #[test]
     fn raw_options_map_with_non_numeric_keys() {
-        // Map keys must be integer strings
         let json = r#"{"open": "Open", "closed": "Closed"}"#;
         let result: Result<RawOptions, _> = serde_json::from_str(json);
         assert!(result.is_err(), "Non-numeric keys must be rejected");
@@ -868,7 +915,6 @@ mod tests {
 
     #[test]
     fn raw_options_rich_with_extra_fields_ignored() {
-        // Extra fields in Rich entries should be ignored (forward compat)
         let json = r#"[{"value": "a", "label": "A", "extra": "ignored"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
@@ -883,7 +929,6 @@ mod tests {
 
     #[test]
     fn raw_options_empty_map() {
-        // Empty map should deserialize successfully
         let json = "{}";
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {

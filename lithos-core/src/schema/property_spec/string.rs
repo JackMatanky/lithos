@@ -863,7 +863,7 @@ mod tests {
         #[rstest]
         #[case::options_match(
             RawStringSpec {
-                options: Some(RawOptions::List(RawOptionsList(vec![
+                options: Some(RawOptions::List(RawOptionsList::from(vec![
                     "A".into(),
                     "B".into(),
                 ]))),
@@ -874,7 +874,7 @@ mod tests {
         )]
         #[case::options_mismatch(
             RawStringSpec {
-                options: Some(RawOptions::List(RawOptionsList(vec![
+                options: Some(RawOptions::List(RawOptionsList::from(vec![
                     "A".into(),
                     "B".into(),
                 ]))),
