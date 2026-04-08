@@ -201,7 +201,7 @@ impl NoteScanner {
         ranges: &[std::ops::Range<usize>],
         include_task_marker: bool,
     ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
-        let mut artifacts = Vec::new();
+        let mut artifacts = Vec::with_capacity(8);
         self.scan_ranges(text, ranges, &mut artifacts)?;
         Ok(split_artifacts(artifacts, include_task_marker))
     }
@@ -220,7 +220,7 @@ impl NoteScanner {
         let start = range.start().as_usize();
         let end = range.end().as_usize();
         let slice = start..end;
-        let mut artifacts = Vec::new();
+        let mut artifacts = Vec::with_capacity(4);
         self.scan_ranges(text, std::slice::from_ref(&slice), &mut artifacts)?;
         let scanned = split_artifacts(artifacts, true);
         Ok(scanned.task_marker)
@@ -259,6 +259,7 @@ impl NoteScanner {
 
     /// Handles triggers that only occur at the beginning of a line (tasks and
     /// bare fields).
+    #[inline]
     fn handle_line_start<'source>(
         cursor: &mut Cursor<'source>,
         artifacts: &mut Vec<ScannedArtifact<'source>>,
@@ -304,6 +305,7 @@ impl NoteScanner {
     }
 
     /// Matches common list item prefixes including ordered list numbers.
+    #[inline]
     fn match_list_prefix(cursor: &Cursor<'_>) -> Option<usize> {
         let first = cursor.peek_byte()?;
         if matches!(first, b'-' | b'*' | b'+') {
@@ -327,6 +329,7 @@ impl NoteScanner {
     }
 
     /// Main dispatch loop for artifacts that can occur anywhere in a block.
+    #[inline]
     fn handle_body<'source>(
         &self,
         cursor: &mut Cursor<'source>,
@@ -599,7 +602,13 @@ fn split_artifacts(
     artifacts: Vec<ScannedArtifact<'_>>,
     include_task_marker: bool,
 ) -> ScannedRawArtifacts<'_> {
-    let mut raw = ScannedRawArtifacts::default();
+    let capacity = artifacts.len();
+    let mut raw = ScannedRawArtifacts {
+        tags: Vec::with_capacity(capacity),
+        inline_fields: Vec::with_capacity(capacity.saturating_div(2)),
+        block_refs: Vec::with_capacity(capacity.saturating_div(4)),
+        task_marker: None,
+    };
     for artifact in artifacts {
         match artifact {
             ScannedArtifact::Tag(tag) => raw.tags.push(tag),

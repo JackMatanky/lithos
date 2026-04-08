@@ -901,11 +901,6 @@ impl MarkdownParser {
                 task_spec,
             )?;
 
-        // Add tags and inline fields to global collections (they are also
-        // stored on the list item)
-        tags.extend(scan_tags.clone());
-        inline_fields.extend(scan_fields.clone());
-
         block_refs.extend(scan_refs);
 
         // Only scan first line for task marker (checkboxes always at start)
@@ -996,7 +991,7 @@ impl MarkdownParser {
             context.item_positions.push(block.start_offset);
         }
 
-        list_items.push(RawListItem::new(
+        let raw_list_item = RawListItem::new(
             list_kind,
             list_depth,
             raw_text.into(),
@@ -1007,7 +1002,10 @@ impl MarkdownParser {
             parent_pos,
             scan_tags,
             scan_fields,
-        ));
+        );
+        tags.extend(raw_list_item.tags.clone());
+        inline_fields.extend(raw_list_item.inline_fields.clone());
+        list_items.push(raw_list_item);
 
         Ok(())
     }
@@ -1079,9 +1077,15 @@ impl<'source> LinkTarget<'source> {
                 .map_or((Cow::Borrowed(text), None), |(p, a)| {
                     (Cow::Borrowed(p), Some(Cow::Borrowed(a)))
                 }),
-            Cow::Owned(text) => {
-                if let Some((p, a)) = text.split_once('#') {
-                    (Cow::Owned(p.to_owned()), Some(Cow::Owned(a.to_owned())))
+            Cow::Owned(mut text) => {
+                if let Some(pos) = text.find('#') {
+                    #[expect(
+                        clippy::arithmetic_side_effects,
+                        reason = "pos is from find(), always < text.len()"
+                    )]
+                    let anchor = text.split_off(pos + 1);
+                    text.truncate(pos);
+                    (Cow::Owned(text), Some(Cow::Owned(anchor)))
                 } else {
                     (Cow::Owned(text), None)
                 }
@@ -1205,6 +1209,8 @@ fn normalize_reference_label(label: &str) -> Box<str> {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use super::*;
     use crate::{
         config::task::TaskConfigSpec,
@@ -1383,5 +1389,41 @@ mod tests {
         let link = raw.links.first().expect("link exists");
         assert_eq!(link.target.as_ref(), "s3://bucket/key#object");
         assert!(link.anchor.is_none());
+    }
+
+    #[test]
+    fn link_target_split_with_owned_string_and_anchor() {
+        let owned = Cow::Owned(String::from("note#heading"));
+        let target = LinkTarget::new(owned);
+        let (path, anchor) = target.split();
+
+        assert_eq!(path.as_ref(), "note");
+        assert_eq!(
+            anchor.as_ref().map(std::convert::AsRef::as_ref),
+            Some("heading")
+        );
+    }
+
+    #[test]
+    fn link_target_split_with_owned_string_no_anchor() {
+        let owned = Cow::Owned(String::from("note"));
+        let target = LinkTarget::new(owned);
+        let (path, anchor) = target.split();
+
+        assert_eq!(path.as_ref(), "note");
+        assert!(anchor.is_none());
+    }
+
+    #[test]
+    fn link_target_split_with_owned_string_multiple_hashes() {
+        let owned = Cow::Owned(String::from("note#a#b#c"));
+        let target = LinkTarget::new(owned);
+        let (path, anchor) = target.split();
+
+        assert_eq!(path.as_ref(), "note");
+        assert_eq!(
+            anchor.as_ref().map(std::convert::AsRef::as_ref),
+            Some("a#b#c")
+        );
     }
 }
