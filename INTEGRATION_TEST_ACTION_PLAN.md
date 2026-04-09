@@ -140,11 +140,11 @@ fn incremental_load_detects_file_changes() -> TestResult {
 
     // SETUP: Write initial files
     write_file(vault_dir.path(), "schemas/property_bank.json",
-        r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"##)?;
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##)?;
     write_file(vault_dir.path(), "schemas/note.json",
-        r#"{"$version": "1.0", "properties": {"content": {"type": "string"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"content": {"type": "string"}}}"##)?;
 
     // FIRST LOAD: Both schemas should be NEW
     let config = test_config(vault_dir.path())?;
@@ -160,7 +160,7 @@ fn incremental_load_detects_file_changes() -> TestResult {
 
     // MODIFY: Change only task.json
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}, "done": {"type": "bool"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}, "done": {"type": "bool"}}}"##)?;
 
     // SECOND LOAD: Only task.json should be re-resolved
     let repository2 = setup_repository(test_db.db());
@@ -204,9 +204,9 @@ fn staleness_persists_across_database_reopens() -> TestResult {
 
     // SETUP: Write files
     write_file(vault_dir.path(), "schemas/property_bank.json",
-        r#"{"$version": "1.0", "properties": {}}"#)?;
+        r##"{"$version": "1.0", "properties": {}}"##)?;
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"##)?;
 
     // FIRST SESSION: Load schemas
     {
@@ -271,9 +271,9 @@ fn property_bank_incremental_update_triggers_re_resolution() -> TestResult {
 
     // SETUP: Initial files
     write_file(vault_dir.path(), "schemas/property_bank.json",
-        r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"##)?;
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"#)?;
+        r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##)?;
 
     // FIRST LOAD
     let config = test_config(vault_dir.path())?;
