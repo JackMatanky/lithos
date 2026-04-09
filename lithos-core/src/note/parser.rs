@@ -443,11 +443,7 @@ impl MarkdownParser {
                 if let Some(mut link) = current_link.take() {
                     let (target_raw, anchor_raw) =
                         LinkTarget::new(link.target).split();
-                    let alias_raw = if link.alias.is_empty() {
-                        None
-                    } else {
-                        Some(link.alias.trim().to_owned())
-                    };
+                    let alias_raw = trim_to_opt(&link.alias);
 
                     links.push(RawLink::new(
                         link.style,
@@ -1044,12 +1040,12 @@ enum BlockKind {
     CodeBlock,
 }
 
-#[inline]
-fn cow_str_to_cow(value: CowStr<'_>) -> Cow<'_, str> {
-    match value {
-        CowStr::Borrowed(text) => Cow::Borrowed(text),
-        CowStr::Boxed(text) => Cow::Owned(text.into()),
-        CowStr::Inlined(text) => Cow::Owned(text.as_ref().to_owned()),
+fn trim_to_opt(s: &str) -> Option<String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
     }
 }
 
@@ -1226,13 +1222,23 @@ fn resolve_reference_target<'source>(
     if is_reference_link_type(link_type) {
         let normalized = normalize_reference_label(dest_url.as_ref());
         if let Some(resolved) = reference_map.get(normalized.as_ref()) {
-            return Cow::Owned(resolved.as_ref().to_owned());
+            return Cow::Owned(String::from(resolved.as_ref()));
         }
     }
-    cow_str_to_cow(dest_url)
+    Cow::from(dest_url)
 }
 
 fn normalize_reference_label(label: &str) -> Box<str> {
+    let needs_lowercase = label.chars().any(|c| c.is_ascii_uppercase());
+    let needs_whitespace_fix = label.starts_with([' ', '\t'])
+        || label.ends_with([' ', '\t'])
+        || label.contains("  ")
+        || label.contains('\\');
+
+    if !needs_lowercase && !needs_whitespace_fix {
+        return label.to_owned().into_boxed_str();
+    }
+
     let mut normalized = String::with_capacity(label.len());
     let mut last_was_space = false;
     let mut chars = label.chars().peekable();

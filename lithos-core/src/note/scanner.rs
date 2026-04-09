@@ -106,7 +106,6 @@ impl ScannedArtifact<'_> {
 /// through the text.
 #[derive(Debug, Clone)]
 pub struct NoteScanner {
-    /// Emoji markers used for identifying colon-less inline fields.
     emoji_markers: Box<[char]>,
 }
 
@@ -306,6 +305,10 @@ impl NoteScanner {
 
     /// Matches common list item prefixes including ordered list numbers.
     #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "idx bounded by bytes.get(idx) loop guard; cannot overflow"
+    )]
     fn match_list_prefix(cursor: &Cursor<'_>) -> Option<usize> {
         let first = cursor.peek_byte()?;
         if matches!(first, b'-' | b'*' | b'+') {
@@ -317,12 +320,12 @@ impl NoteScanner {
             while let Some(&b) = bytes.get(idx)
                 && b.is_ascii_digit()
             {
-                idx = idx.saturating_add(1);
+                idx += 1;
             }
             if let Some(&b) = bytes.get(idx)
                 && matches!(b, b'.' | b')')
             {
-                return Some(idx.saturating_add(1));
+                return Some(idx + 1);
             }
         }
         None
@@ -386,6 +389,10 @@ impl NoteScanner {
     }
 
     /// Scans for a tag artifact starting at the current cursor position.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "idx bounded by bytes.get(idx) loop guard; cannot overflow"
+    )]
     fn scan_tag<'source>(
         cursor: &mut Cursor<'source>,
     ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
@@ -393,14 +400,14 @@ impl NoteScanner {
         let mut idx = 1usize; // skip '#'
         while let Some(&b) = bytes.get(idx) {
             if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'/') {
-                idx = idx.saturating_add(1);
+                idx += 1;
             } else if b >= 128 {
                 // Potential Unicode alphanumeric in tag
                 if let Some(ch) =
                     cursor.rest.get(idx..).and_then(|s| s.chars().next())
                     && ch.is_alphanumeric()
                 {
-                    idx = idx.saturating_add(ch.len_utf8());
+                    idx += ch.len_utf8();
                     continue;
                 }
                 break;
@@ -684,9 +691,9 @@ impl<'source> Cursor<'source> {
 
     /// Advances the cursor by the specified number of bytes.
     ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if the resulting offset exceeds supported bounds.
+    /// Advances the scanner by `bytes` positions. If `bytes` exceeds the
+    /// remaining length, the cursor is moved to the end of the string
+    /// (truncation).
     #[inline]
     fn advance(&mut self, bytes: usize) -> Result<(), NoteError> {
         self.rest = self.rest.get(bytes..).unwrap_or("");
@@ -695,12 +702,16 @@ impl<'source> Cursor<'source> {
     }
 
     /// Consumes whitespace characters from the current line.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "idx bounded by bytes.get(idx) loop guard; cannot overflow"
+    )]
     fn skip_whitespace_on_line(&mut self) -> Result<(), NoteError> {
         let bytes = self.rest.as_bytes();
         let mut idx = 0usize;
         while let Some(&b) = bytes.get(idx) {
             if b == b' ' || b == b'\t' {
-                idx = idx.saturating_add(1);
+                idx += 1;
             } else {
                 break;
             }
