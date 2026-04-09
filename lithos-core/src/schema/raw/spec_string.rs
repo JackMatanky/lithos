@@ -2,8 +2,6 @@
 
 use std::collections::BTreeSet;
 
-use serde::de::{Error, MapAccess, Visitor};
-
 use crate::schema::error::{PropertySpecError, SchemaError};
 
 // ============================================================================
@@ -97,123 +95,24 @@ pub enum RawStringFormat {
 /// - **Ordered**: `{"1": "to_do", "2": "done"}` — ordered integer-keyed object
 /// - **Labeled**: `[{"value": "a", "label": "A", "order": 1}]` — rich entries
 ///   with labels
-///
-/// # Deserialization Strategy
-///
-/// Uses custom deserializer with explicit type checking:
-/// 1. If sequence: try as Plain (strings), then Labeled (objects)
-/// 2. If map: deserialize as Ordered
-/// 3. Fail with clear error for other types
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
 #[non_exhaustive]
 pub enum RawOptions {
     /// Plain array of string values.
-    Plain(RawOptionsPlain),
+    Plain(Vec<Box<str>>),
     /// Integer-keyed ordered object.
-    Ordered(RawOptionsOrdered),
+    #[serde(
+        deserialize_with = "deserialize_ordered_map",
+        serialize_with = "serialize_ordered_map"
+    )]
+    Ordered(Vec<RawEntryValue>),
     /// Rich entries with optional label and order.
-    Labeled(RawOptionsLabeled),
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    clippy::missing_inline_in_public_items,
-    clippy::excessive_nesting,
-    reason = "Custom serde Visitor requires specific method impls; excessive \
-              nesting is inherent to discriminating union variants by peeking"
-)]
-impl<'de> serde::Deserialize<'de> for RawOptions {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use std::fmt;
-
-        use serde::de::{Error, MapAccess, SeqAccess, Visitor};
-
-        struct RawOptionsVisitor;
-
-        impl<'de> Visitor<'de> for RawOptionsVisitor {
-            type Value = RawOptions;
-
-            fn expecting(
-                &self,
-                formatter: &mut fmt::Formatter<'_>,
-            ) -> fmt::Result {
-                formatter.write_str(
-                    "a sequence of strings, a sequence of objects with \
-                     'value' field, or a map with string keys and string \
-                     values",
-                )
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let first = seq.next_element::<serde_json::Value>()?;
-                if let Some(value) = first {
-                    if value.is_string() {
-                        let mut items = vec![
-                            value
-                                .as_str()
-                                .ok_or_else(|| {
-                                    Error::custom("expected string")
-                                })?
-                                .into(),
-                        ];
-                        while let Some(elem) =
-                            seq.next_element::<serde_json::Value>()?
-                        {
-                            if let Some(s) = elem.as_str() {
-                                items.push(s.into());
-                            } else {
-                                return Err(Error::custom(
-                                    "expected all array elements to be strings",
-                                ));
-                            }
-                        }
-                        Ok(RawOptions::Plain(RawOptionsPlain(items)))
-                    } else if value.is_object() {
-                        let first_entry: RawEntryLabeled =
-                            serde_json::from_value(value)
-                                .map_err(Error::custom)?;
-                        let mut entries = vec![first_entry];
-                        while let Some(entry) =
-                            seq.next_element::<RawEntryLabeled>()?
-                        {
-                            entries.push(entry);
-                        }
-                        Ok(RawOptions::Labeled(RawOptionsLabeled(entries)))
-                    } else {
-                        Err(Error::custom(
-                            "expected array elements to be strings or objects",
-                        ))
-                    }
-                } else {
-                    Ok(RawOptions::Plain(RawOptionsPlain(vec![])))
-                }
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                use serde::Deserialize as _;
-
-                let map = RawOptionsOrdered::deserialize(
-                    serde::de::value::MapAccessDeserializer::new(map),
-                )?;
-                Ok(RawOptions::Ordered(map))
-            }
-        }
-
-        deserializer.deserialize_any(RawOptionsVisitor)
-    }
+    Labeled(Vec<RawEntryValue>),
 }
 
 impl RawOptions {
-    /// Convert raw options to a normalized vector of `RawEntryLabeled`.
+    /// Convert raw options to a normalized vector of `RawEntryValue`.
     ///
     /// # Modes
     ///
@@ -235,28 +134,21 @@ impl RawOptions {
         reason = "Fail-fast on unrealistic >4 billion options prevents silent \
                   data corruption"
     )]
-    pub fn into_entries(self) -> Vec<RawEntryLabeled> {
+    pub fn into_entries(self) -> Vec<RawEntryValue> {
         match self {
-            Self::Plain(RawOptionsPlain(items)) => items
+            Self::Plain(items) => items
                 .into_iter()
-                .map(|value| RawEntryLabeled {
+                .map(|value| RawEntryValue {
                     value,
                     label: None,
                     order: None,
                 })
                 .collect(),
-            Self::Ordered(RawOptionsOrdered(mut entries)) => {
+            Self::Ordered(mut entries) => {
                 entries.sort_by_key(|entry| entry.order);
                 entries
-                    .into_iter()
-                    .map(|entry| RawEntryLabeled {
-                        value: entry.value,
-                        label: None,
-                        order: None,
-                    })
-                    .collect()
             }
-            Self::Labeled(RawOptionsLabeled(entries)) => {
+            Self::Labeled(entries) => {
                 let mut entries: Vec<_> = entries
                     .into_iter()
                     .enumerate()
@@ -273,7 +165,7 @@ impl RawOptions {
                 entries.sort_by_key(|&(order, _)| order);
                 entries
                     .into_iter()
-                    .map(|(_, entry)| RawEntryLabeled {
+                    .map(|(_, entry)| RawEntryValue {
                         value: entry.value,
                         label: entry.label,
                         order: None,
@@ -284,158 +176,89 @@ impl RawOptions {
     }
 }
 
-// ============================================================================
-// RawOptionsPlain
-// ============================================================================
-
-/// Plain array of string values.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct RawOptionsPlain(Vec<Box<str>>);
-
-impl From<Vec<Box<str>>> for RawOptionsPlain {
-    #[inline]
-    fn from(vec: Vec<Box<str>>) -> Self {
-        Self(vec)
-    }
-}
-
-// ============================================================================
-// RawOptionsOrdered
-// ============================================================================
-
-/// Integer-keyed ordered object.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct RawOptionsOrdered(Vec<RawEntryOrdered>);
-
-impl From<Vec<RawEntryOrdered>> for RawOptionsOrdered {
-    #[inline]
-    fn from(vec: Vec<RawEntryOrdered>) -> Self {
-        Self(vec)
-    }
-}
-
-#[expect(
-    clippy::missing_inline_in_public_items,
-    reason = "Serialize impl requires specific method signature"
-)]
-impl serde::Serialize for RawOptionsOrdered {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap as _;
-
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for entry in &self.0 {
-            map.serialize_entry(
-                &entry.order.value().to_string(),
-                &entry.value,
-            )?;
-        }
-        map.end()
-    }
-}
-
+/// Bridge function to deserialize an integer-keyed map into a sorted vector of
+/// entries.
 #[expect(
     clippy::missing_trait_methods,
-    clippy::missing_inline_in_public_items,
-    reason = "Custom serde Visitor requires specific method impls"
+    reason = "Manual Visitor used for structural map-to-vec conversion"
 )]
-impl<'de> serde::Deserialize<'de> for RawOptionsOrdered {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use std::fmt;
+fn deserialize_ordered_map<'de, D>(
+    deserializer: D,
+) -> Result<Vec<RawEntryValue>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, Visitor};
 
-        struct RawOptionsOrderedVisitor;
+    struct OrderedMapVisitor;
 
-        impl<'de> Visitor<'de> for RawOptionsOrderedVisitor {
-            type Value = RawOptionsOrdered;
+    impl<'de> Visitor<'de> for OrderedMapVisitor {
+        type Value = Vec<RawEntryValue>;
 
-            fn expecting(
-                &self,
-                formatter: &mut fmt::Formatter<'_>,
-            ) -> fmt::Result {
-                formatter.write_str(
-                    "a map with integer string keys and string values",
-                )
-            }
-
-            #[expect(
-                clippy::excessive_nesting,
-                reason = "Deserializing map entries with duplicate checks \
-                          inherently requires some nesting"
-            )]
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut seen = BTreeSet::new();
-                let mut entries = Vec::new();
-                while let Some((order, value)) =
-                    map.next_entry::<RawEntryInputOrder, Box<str>>()?
-                {
-                    if !seen.insert(order) {
-                        return Err(Error::custom(format!(
-                            "duplicate order key {}",
-                            order.value()
-                        )));
-                    }
-                    entries.push(RawEntryOrdered {
-                        order,
-                        value,
-                    });
-                }
-                entries.sort_by_key(|entry| entry.order);
-                Ok(RawOptionsOrdered(entries))
-            }
+        fn expecting(
+            &self,
+            formatter: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            formatter.write_str("a map with integer string keys")
         }
 
-        deserializer.deserialize_map(RawOptionsOrderedVisitor)
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut seen = BTreeSet::new();
+            let mut entries = Vec::new();
+            while let Some((order, value)) =
+                map.next_entry::<RawEntryInputOrder, Box<str>>()?
+            {
+                if !seen.insert(order) {
+                    return Err(serde::de::Error::custom(format!(
+                        "duplicate order key {order}"
+                    )));
+                }
+                entries.push(RawEntryValue {
+                    value,
+                    label: None,
+                    order: Some(order),
+                });
+            }
+            entries.sort_by_key(|e| e.order);
+            Ok(entries)
+        }
     }
+
+    deserializer.deserialize_map(OrderedMapVisitor)
+}
+
+/// Bridge function to serialize a vector of entries back into an integer-keyed
+/// map.
+fn serialize_ordered_map<S>(
+    entries: &[RawEntryValue],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap as _;
+
+    let mut map = serializer.serialize_map(Some(entries.len()))?;
+    for entry in entries {
+        let key = entry
+            .order
+            .map_or_else(|| "0".to_owned(), |o| o.value().to_string());
+        map.serialize_entry(&key, &entry.value)?;
+    }
+    map.end()
 }
 
 // ============================================================================
-// RawOptionsLabeled
+// RawEntryValue
 // ============================================================================
 
-/// Rich entries with optional label and order.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct RawOptionsLabeled(Vec<RawEntryLabeled>);
-
-impl From<Vec<RawEntryLabeled>> for RawOptionsLabeled {
-    #[inline]
-    fn from(vec: Vec<RawEntryLabeled>) -> Self {
-        Self(vec)
-    }
-}
-
-// ============================================================================
-// RawEntryLabeled
-// ============================================================================
-
-/// Rich option entry with optional label and input order.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::spec_string::RawEntryLabeled;
-///
-/// let entry = RawEntryLabeled {
-///     value: "open".into(),
-///     label: Some("Open".into()),
-///     order: Some(1),
-/// };
-/// let _ = entry;
-/// ```
+/// A rich option entry with optional label and input order.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawEntryLabeled {
+pub struct RawEntryValue {
     /// The option value.
     pub value: Box<str>,
     /// Optional display label.
@@ -445,98 +268,15 @@ pub struct RawEntryLabeled {
 }
 
 // ============================================================================
-// RawEntryOrdered
-// ============================================================================
-
-/// Ordered map entry parsed from integer-keyed objects.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawEntryOrdered {
-    /// The order key parsed from the map key.
-    pub order: RawEntryInputOrder,
-    /// The option value.
-    pub value: Box<str>,
-}
-
-// ============================================================================
 // RawEntryInputOrder
 // ============================================================================
 
-/// Input order position parsed from map keys.
+/// Input order position parsed from map keys or attributes.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize,
 )]
 #[non_exhaustive]
 pub struct RawEntryInputOrder(u32);
-
-#[expect(
-    clippy::missing_trait_methods,
-    clippy::missing_inline_in_public_items,
-    reason = "Custom serde Visitor requires specific method impls"
-)]
-impl<'de> serde::Deserialize<'de> for RawEntryInputOrder {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use std::fmt;
-
-        struct RawEntryInputOrderVisitor;
-
-        impl Visitor<'_> for RawEntryInputOrderVisitor {
-            type Value = RawEntryInputOrder;
-
-            fn expecting(
-                &self,
-                formatter: &mut fmt::Formatter<'_>,
-            ) -> fmt::Result {
-                formatter.write_str("a string integer >= 1")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                RawEntryInputOrder::try_from(v).map_err(Error::custom)
-            }
-
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                self.visit_str(&v)
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                let value: u32 = v.try_into().map_err(|_e| {
-                    Error::custom("order key exceeds u32::MAX")
-                })?;
-                if value == 0 {
-                    return Err(Error::custom("order key must be >= 1"));
-                }
-                Ok(RawEntryInputOrder(value))
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                if v <= 0 {
-                    return Err(Error::custom("order key must be >= 1"));
-                }
-                let value: u32 = v.try_into().map_err(|_e| {
-                    Error::custom("order key exceeds u32::MAX")
-                })?;
-                Ok(RawEntryInputOrder(value))
-            }
-        }
-
-        deserializer.deserialize_any(RawEntryInputOrderVisitor)
-    }
-}
 
 impl RawEntryInputOrder {
     /// Returns the order value.
@@ -547,11 +287,18 @@ impl RawEntryInputOrder {
     }
 }
 
-impl TryFrom<&str> for RawEntryInputOrder {
-    type Error = SchemaError;
+impl std::fmt::Display for RawEntryInputOrder {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::str::FromStr for RawEntryInputOrder {
+    type Err = SchemaError;
 
     #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         let parsed: u32 = value.parse().map_err(|_e| {
             SchemaError::PropertySpec(
                 PropertySpecError::InvalidOptionsEntryOrderType {
@@ -567,6 +314,71 @@ impl TryFrom<&str> for RawEntryInputOrder {
             ));
         }
         Ok(Self(parsed))
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Manual Visitor used for flexible parsing from string or integer"
+)]
+impl<'de> serde::Deserialize<'de> for RawEntryInputOrder {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        struct RawEntryInputOrderVisitor;
+
+        impl serde::de::Visitor<'_> for RawEntryInputOrderVisitor {
+            type Value = RawEntryInputOrder;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str("a string integer or number >= 1")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse().map_err(serde::de::Error::custom)
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let value: u32 = v.try_into().map_err(|_e| {
+                    serde::de::Error::custom("order key exceeds u32::MAX")
+                })?;
+                if value == 0 {
+                    return Err(serde::de::Error::custom(
+                        "order key must be >= 1",
+                    ));
+                }
+                Ok(RawEntryInputOrder(value))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v <= 0 {
+                    return Err(serde::de::Error::custom(
+                        "order key must be >= 1",
+                    ));
+                }
+                let value = u64::try_from(v)
+                    .map_err(|e| serde::de::Error::custom(e.to_string()))?;
+                self.visit_u64(value)
+            }
+        }
+
+        deserializer.deserialize_any(RawEntryInputOrderVisitor)
     }
 }
 
@@ -591,13 +403,13 @@ mod tests {
         let json = r#"["open", "closed", "archived"]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Plain(RawOptionsPlain(items)) => {
+            RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
                 assert_eq!(items[0].as_ref(), "open");
                 assert_eq!(items[1].as_ref(), "closed");
                 assert_eq!(items[2].as_ref(), "archived");
             }
-            _ => panic!("Expected List variant"),
+            _ => panic!("Expected Plain variant"),
         }
     }
 
@@ -606,10 +418,10 @@ mod tests {
         let json = "[]";
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Plain(RawOptionsPlain(items)) => {
+            RawOptions::Plain(items) => {
                 assert!(items.is_empty());
             }
-            _ => panic!("Expected List variant"),
+            _ => panic!("Expected Plain variant"),
         }
     }
 
@@ -618,16 +430,16 @@ mod tests {
         let json = r#"{"1": "todo", "2": "done", "3": "archived"}"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Ordered(RawOptionsOrdered(entries)) => {
+            RawOptions::Ordered(entries) => {
                 assert_eq!(entries.len(), 3);
-                assert_eq!(entries[0].order.value(), 1);
+                assert_eq!(entries[0].order.unwrap().value(), 1);
                 assert_eq!(entries[0].value.as_ref(), "todo");
-                assert_eq!(entries[1].order.value(), 2);
+                assert_eq!(entries[1].order.unwrap().value(), 2);
                 assert_eq!(entries[1].value.as_ref(), "done");
-                assert_eq!(entries[2].order.value(), 3);
+                assert_eq!(entries[2].order.unwrap().value(), 3);
                 assert_eq!(entries[2].value.as_ref(), "archived");
             }
-            _ => panic!("Expected Map variant"),
+            _ => panic!("Expected Ordered variant"),
         }
     }
 
@@ -639,7 +451,7 @@ mod tests {
         ]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Labeled(RawOptionsLabeled(entries)) => {
+            RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].value.as_ref(), "open");
                 assert_eq!(entries[0].label.as_deref(), Some("Open"));
@@ -648,7 +460,7 @@ mod tests {
                 assert_eq!(entries[1].label.as_deref(), Some("Closed"));
                 assert_eq!(entries[1].order, Some(RawEntryInputOrder(2)));
             }
-            _ => panic!("Expected Rich variant"),
+            _ => panic!("Expected Labeled variant"),
         }
     }
 
@@ -657,13 +469,13 @@ mod tests {
         let json = r#"[{"value": "open"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Labeled(RawOptionsLabeled(entries)) => {
+            RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].value.as_ref(), "open");
                 assert_eq!(entries[0].label, None);
                 assert_eq!(entries[0].order, None);
             }
-            _ => panic!("Expected Rich variant"),
+            _ => panic!("Expected Labeled variant"),
         }
     }
 
@@ -672,11 +484,11 @@ mod tests {
         let yaml = "- open\n- closed\n- archived\n";
         let options: RawOptions = serde_yaml::from_str(yaml).unwrap();
         match options {
-            RawOptions::Plain(RawOptionsPlain(items)) => {
+            RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
                 assert_eq!(items[0].as_ref(), "open");
             }
-            _ => panic!("Expected List variant"),
+            _ => panic!("Expected Plain variant"),
         }
     }
 
@@ -689,12 +501,12 @@ mod tests {
         }
         let wrapper: Wrapper = toml::from_str(toml_str).unwrap();
         match wrapper.options {
-            RawOptions::Plain(RawOptionsPlain(items)) => {
+            RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 2);
                 assert_eq!(items[0].as_ref(), "open");
                 assert_eq!(items[1].as_ref(), "closed");
             }
-            _ => panic!("Expected List variant"),
+            _ => panic!("Expected Plain variant"),
         }
     }
 
@@ -717,11 +529,8 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_list_preserves_order() {
-        let options = RawOptions::Plain(RawOptionsPlain(vec![
-            "a".into(),
-            "b".into(),
-            "c".into(),
-        ]));
+        let options =
+            RawOptions::Plain(vec!["a".into(), "b".into(), "c".into()]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "a");
@@ -732,20 +541,23 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_map_sorts_by_key() {
-        let options = RawOptions::Ordered(RawOptionsOrdered(vec![
-            RawEntryOrdered {
-                order: RawEntryInputOrder(3),
+        let options = RawOptions::Ordered(vec![
+            RawEntryValue {
+                order: Some(RawEntryInputOrder(3)),
                 value: "third".into(),
+                label: None,
             },
-            RawEntryOrdered {
-                order: RawEntryInputOrder(1),
+            RawEntryValue {
+                order: Some(RawEntryInputOrder(1)),
                 value: "first".into(),
+                label: None,
             },
-            RawEntryOrdered {
-                order: RawEntryInputOrder(2),
+            RawEntryValue {
+                order: Some(RawEntryInputOrder(2)),
                 value: "second".into(),
+                label: None,
             },
-        ]));
+        ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "first");
@@ -755,23 +567,23 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_rich_sorts_by_order() {
-        let options = RawOptions::Labeled(RawOptionsLabeled(vec![
-            RawEntryLabeled {
+        let options = RawOptions::Labeled(vec![
+            RawEntryValue {
                 value: "c".into(),
                 label: Some("Third".into()),
                 order: Some(RawEntryInputOrder(3)),
             },
-            RawEntryLabeled {
+            RawEntryValue {
                 value: "a".into(),
                 label: Some("First".into()),
                 order: Some(RawEntryInputOrder(1)),
             },
-            RawEntryLabeled {
+            RawEntryValue {
                 value: "b".into(),
                 label: Some("Second".into()),
                 order: Some(RawEntryInputOrder(2)),
             },
-        ]));
+        ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].value.as_ref(), "a");
@@ -782,18 +594,18 @@ mod tests {
 
     #[test]
     fn raw_options_into_entries_rich_uses_array_position_when_no_order() {
-        let options = RawOptions::Labeled(RawOptionsLabeled(vec![
-            RawEntryLabeled {
+        let options = RawOptions::Labeled(vec![
+            RawEntryValue {
                 value: "first".into(),
                 label: None,
                 order: None,
             },
-            RawEntryLabeled {
+            RawEntryValue {
                 value: "second".into(),
                 label: None,
                 order: None,
             },
-        ]));
+        ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].value.as_ref(), "first");
@@ -807,12 +619,12 @@ mod tests {
         let json = r#"[{"value": "a"}, {"value": "b"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Labeled(RawOptionsLabeled(entries)) => {
+            RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].value.as_ref(), "a");
                 assert_eq!(entries[0].label, None);
             }
-            _ => panic!("Expected Rich variant for array of objects"),
+            _ => panic!("Expected Labeled variant for array of objects"),
         }
     }
 
@@ -821,13 +633,13 @@ mod tests {
         let json = r#"["value", "label", "order"]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Plain(RawOptionsPlain(items)) => {
+            RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
                 assert_eq!(items[0].as_ref(), "value");
                 assert_eq!(items[1].as_ref(), "label");
                 assert_eq!(items[2].as_ref(), "order");
             }
-            _ => panic!("Expected List variant for string array"),
+            _ => panic!("Expected Plain variant for string array"),
         }
     }
 
@@ -917,12 +729,12 @@ mod tests {
         let json = r#"[{"value": "a", "label": "A", "extra": "ignored"}]"#;
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Labeled(RawOptionsLabeled(entries)) => {
+            RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].value.as_ref(), "a");
                 assert_eq!(entries[0].label.as_deref(), Some("A"));
             }
-            _ => panic!("Expected Rich variant"),
+            _ => panic!("Expected Labeled variant"),
         }
     }
 
@@ -931,10 +743,10 @@ mod tests {
         let json = "{}";
         let options: RawOptions = serde_json::from_str(json).unwrap();
         match options {
-            RawOptions::Ordered(RawOptionsOrdered(entries)) => {
+            RawOptions::Ordered(entries) => {
                 assert!(entries.is_empty());
             }
-            _ => panic!("Expected Map variant for empty object"),
+            _ => panic!("Expected Ordered variant for empty object"),
         }
     }
 }

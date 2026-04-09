@@ -9,13 +9,11 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 use super::{
     spec_bool::RawBoolSpec, spec_date::RawDateSpec, spec_file::RawFileSpec,
     spec_number::RawNumberSpec, spec_string::RawStringSpec,
 };
-use crate::schema::property::PropertyName;
+use crate::schema::{error::SchemaError, property::PropertyName};
 
 /// Raw property specification (serde-facing input type).
 ///
@@ -52,28 +50,8 @@ pub enum RawPropertySpec {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Validated property map that guarantees all keys are valid `PropertyNames`.
-///
-/// This type provides custom deserialization that validates property names
-/// during parsing, making invalid states unrepresentable.
-///
-/// # Design
-///
-/// - Keys are guaranteed to be valid `PropertyName` instances
-/// - Validation happens during deserialization (fail-fast)
-/// - Reusable across `RawPropertyBank` and `RawSchema`
-/// - Inner map is private to maintain invariants
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::schema::raw::property::RawPropertyMap;
-/// # use serde_json;
-/// // Deserialization validates property names automatically
-/// let json = r#"{"valid_name": "value", "another_valid": "value2"}"#;
-/// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
-/// assert_eq!(map.len(), 2);
-/// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 #[non_exhaustive]
 pub struct RawPropertyMap<T> {
     /// Inner `HashMap` with validated `PropertyName` keys.
@@ -255,101 +233,57 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
     }
 }
 
-// Custom Deserialize implementation validates keys during parsing
-impl<'de, T> Deserialize<'de> for RawPropertyMap<T>
-where
-    T: Deserialize<'de>,
-{
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error as _;
-
-        // Deserialize as HashMap<Box<str>, T>
-        let raw_map: HashMap<Box<str>, T> = HashMap::deserialize(deserializer)?;
-
-        // Validate all keys and convert to PropertyName
-        let inner: HashMap<PropertyName, T> = raw_map
-            .into_iter()
-            .map(|(k, v)| {
-                PropertyName::try_new(&k)
-                    .map(|name| (name, v))
-                    .map_err(D::Error::custom)
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(RawPropertyMap {
-            inner,
-        })
-    }
-
-    #[inline]
-    fn deserialize_in_place<D>(
-        deserializer: D,
-        place: &mut Self,
-    ) -> Result<(), D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        *place = Self::deserialize(deserializer)?;
-        Ok(())
-    }
-}
-
-// Serialize implementation for symmetry (useful for debugging and testing)
-impl<T> Serialize for RawPropertyMap<T>
-where
-    T: Serialize,
-{
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Serialize as HashMap<String, T> for compatibility
-        let string_map: HashMap<String, &T> = self
-            .inner
-            .iter()
-            .map(|(k, v)| (k.as_str().to_owned(), v))
-            .collect();
-        string_map.serialize(serializer)
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  RawPropertyRefPath
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Validated reference path to a property bank entry.
-///
-/// Ensures the path is properly formatted (e.g., `property_bank#/name`)
-/// and allows O(1) extraction of the target property name.
-///
-/// # Design
-///
-/// - Validates format during deserialization
-/// - Pre-extracts target `PropertyName` for efficient access
-/// - Stores full path for error reporting
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::schema::raw::property::RawPropertyRefPath;
-/// # use serde_json;
-/// let json = r#""property_bank#/archived""#;
-/// let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
-/// assert_eq!(path.target_name().as_str(), "archived");
-/// assert_eq!(path.as_str(), "property_bank#/archived");
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize)]
+#[serde(try_from = "String")]
 #[non_exhaustive]
 pub struct RawPropertyRefPath {
     /// Full reference path (e.g., "`property_bank#/archived`").
     full_path: Box<str>,
     /// Pre-extracted target property name (e.g., "archived").
     target_name: PropertyName,
+}
+
+impl serde::Serialize for RawPropertyRefPath {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.full_path.serialize(serializer)
+    }
+}
+
+impl TryFrom<String> for RawPropertyRefPath {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(path: String) -> Result<Self, Self::Error> {
+        // Validate prefix
+        let target = path.strip_prefix("property_bank#/").ok_or_else(|| {
+            SchemaError::Syntax(crate::schema::error::SchemaSyntaxError::PropertyName(
+                crate::schema::error::PropertyNameError::InvalidFormat {
+                    name: path.clone().into(),
+                    context: crate::schema::error::PropertyNameContext::PropertyBank,
+                },
+            ))
+        })?;
+
+        // Validate and construct target PropertyName
+        let target_name = PropertyName::try_new_with_context(
+            target,
+            crate::schema::error::PropertyNameContext::PropertyBank,
+        )?;
+
+        Ok(RawPropertyRefPath {
+            full_path: path.into_boxed_str(),
+            target_name,
+        })
+    }
 }
 
 impl RawPropertyRefPath {
@@ -403,58 +337,6 @@ impl std::fmt::Display for RawPropertyRefPath {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.full_path)
-    }
-}
-
-// Custom Deserialize to validate format and extract target name
-impl<'de> Deserialize<'de> for RawPropertyRefPath {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error as _;
-
-        let path = String::deserialize(deserializer)?;
-
-        // Validate prefix
-        let target = path.strip_prefix("property_bank#/").ok_or_else(|| {
-            D::Error::custom(
-                "Property reference must start with 'property_bank#/'",
-            )
-        })?;
-
-        // Validate and construct target PropertyName
-        let target_name =
-            PropertyName::try_new(target).map_err(D::Error::custom)?;
-
-        Ok(RawPropertyRefPath {
-            full_path: path.into_boxed_str(),
-            target_name,
-        })
-    }
-
-    #[inline]
-    fn deserialize_in_place<D>(
-        deserializer: D,
-        place: &mut Self,
-    ) -> Result<(), D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        *place = Self::deserialize(deserializer)?;
-        Ok(())
-    }
-}
-
-// Serialize implementation for symmetry
-impl Serialize for RawPropertyRefPath {
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.full_path.serialize(serializer)
     }
 }
 

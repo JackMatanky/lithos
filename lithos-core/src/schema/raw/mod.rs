@@ -138,20 +138,8 @@ pub type RawStringSpec = spec_string::RawStringSpec;
 /// Raw options definition supporting three formats.
 pub type RawOptions = spec_string::RawOptions;
 
-/// Plain array of string values.
-pub type RawOptionsPlain = spec_string::RawOptionsPlain;
-
-/// Integer-keyed ordered object.
-pub type RawOptionsOrdered = spec_string::RawOptionsOrdered;
-
-/// Rich entries with optional label and order.
-pub type RawOptionsLabeled = spec_string::RawOptionsLabeled;
-
-/// Rich option entry with optional label and input order.
-pub type RawEntryLabeled = spec_string::RawEntryLabeled;
-
-/// Ordered map entry.
-pub type RawEntryOrdered = spec_string::RawEntryOrdered;
+/// A rich option entry with optional label and input order.
+pub type RawEntryValue = spec_string::RawEntryValue;
 
 /// Input order position.
 pub type RawEntryInputOrder = spec_string::RawEntryInputOrder;

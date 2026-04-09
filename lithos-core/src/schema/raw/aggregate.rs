@@ -315,10 +315,10 @@ pub struct RawFileTimes {
 ///
 /// # Design Note
 ///
-/// This type implements custom `serde::Deserialize` to validate the version
-/// string during parsing, following the "parse, don't validate" principle.
-/// Invalid versions are rejected immediately with clear error messages.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// This type uses `serde(try_from)` to validate the version string during
+/// parsing, following the "parse, don't validate" principle.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(try_from = "String")]
 pub struct RawSchemaVersion(Box<str>);
 
 impl RawSchemaVersion {
@@ -333,27 +333,29 @@ impl RawSchemaVersion {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "deserialize_in_place is not applicable for this wrapper"
-)]
-impl<'de> serde::Deserialize<'de> for RawSchemaVersion {
+impl serde::Serialize for RawSchemaVersion {
     #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        D: serde::Deserializer<'de>,
+        S: serde::Serializer,
     {
-        let s = Box::<str>::deserialize(deserializer)?;
+        self.0.serialize(serializer)
+    }
+}
 
-        if s.as_ref() != Self::SUPPORTED {
-            return Err(serde::de::Error::custom(format!(
+impl TryFrom<String> for RawSchemaVersion {
+    type Error = String;
+
+    #[inline]
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        if s != Self::SUPPORTED {
+            return Err(format!(
                 "unsupported schema version '{}', expected '{}'",
                 s,
                 Self::SUPPORTED
-            )));
+            ));
         }
-
-        Ok(Self(s))
+        Ok(Self(s.into()))
     }
 }
 
@@ -364,24 +366,21 @@ impl Default for RawSchemaVersion {
     }
 }
 
-impl From<&str> for RawSchemaVersion {
+impl TryFrom<&str> for RawSchemaVersion {
+    type Error = String;
+
     #[inline]
-    fn from(s: &str) -> Self {
-        Self(s.into())
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::try_from(s.to_owned())
     }
 }
 
-impl From<Box<str>> for RawSchemaVersion {
-    #[inline]
-    fn from(s: Box<str>) -> Self {
-        Self(s)
-    }
-}
+impl TryFrom<Box<str>> for RawSchemaVersion {
+    type Error = String;
 
-impl From<String> for RawSchemaVersion {
     #[inline]
-    fn from(s: String) -> Self {
-        Self(s.into())
+    fn try_from(s: Box<str>) -> Result<Self, Self::Error> {
+        Self::try_from(s.into_string())
     }
 }
 
