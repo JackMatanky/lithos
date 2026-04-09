@@ -75,6 +75,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::schema::{
     aggregate::{SchemaId, SchemaName},
     error::{SchemaError, SchemaLoaderError, SchemaResolutionError},
+    index::SchemaIndex,
     raw::RawSchema,
 };
 
@@ -949,51 +950,64 @@ impl<'graph> DagValidator<'graph> {
 /// - **Patch**: Update an existing graph with new/changed schemas
 pub(crate) struct DagBuilder {
     nodes: HashMap<SchemaId, InheritanceNode>,
-    name_index: HashMap<SchemaName, SchemaId>,
     pending_parents: Vec<PendingParent>,
 }
 
 #[derive(Debug, Clone)]
 struct PendingParent {
     child_id: SchemaId,
-    child_name: SchemaName,
     parent_name: SchemaName,
 }
 
 impl DagBuilder {
     /// Create a new builder from raw schemas.
     ///
-    /// Used for building a graph from scratch (first run).
-    pub(crate) fn from_schemas(
+    /// Used for building a graph from scratch when all schemas are new.
+    pub(crate) fn from_new_schemas(
         schemas: &HashMap<SchemaId, &RawSchema>,
     ) -> Result<Self, SchemaLoaderError> {
+        // Create a temporary index from the new schemas
+        let index = SchemaIndex::from_name_id_pairs(
+            schemas
+                .iter()
+                .map(|(&id, raw)| {
+                    let name = SchemaName::try_new(raw.name())
+                        .map_err(SchemaLoaderError::Resolution)?;
+                    Ok((name, id))
+                })
+                .collect::<Result<Vec<_>, SchemaLoaderError>>()?,
+        );
+
+        Ok(Self::from_schemas_with_index(schemas, &index))
+    }
+
+    /// Create a new builder from raw schemas using an existing index for
+    /// resolution.
+    pub(crate) fn from_schemas_with_index(
+        schemas: &HashMap<SchemaId, &RawSchema>,
+        index: &SchemaIndex,
+    ) -> Self {
         let mut builder = Self {
             nodes: HashMap::with_capacity(schemas.len()),
-            name_index: HashMap::with_capacity(schemas.len()),
             pending_parents: Vec::new(),
         };
 
         for (&id, raw) in schemas {
-            builder.add_schema(id, raw)?;
+            builder.add_schema(id, raw, index);
         }
 
-        Ok(builder)
+        builder
     }
 
     /// Create a builder pre-populated from an existing graph.
     ///
     /// Used for patching: the existing graph structure is preserved and
     /// new/changed schemas are merged in via `add_schema()`.
-    ///
-    /// The `name_index` parameter provides schema name → id mapping for
-    /// existing nodes that don't carry names in their `InheritanceNode`.
     pub(crate) fn from_existing_graph(
         graph: &InheritanceGraph<InheritanceNode>,
-        name_index: HashMap<SchemaName, SchemaId>,
     ) -> Self {
         Self {
             nodes: graph.nodes.clone(),
-            name_index,
             pending_parents: Vec::new(),
         }
     }
@@ -1006,34 +1020,15 @@ impl DagBuilder {
         &mut self,
         id: SchemaId,
         raw: &RawSchema,
-    ) -> Result<(), SchemaLoaderError> {
-        let name = SchemaName::try_new(raw.name())
-            .map_err(SchemaLoaderError::Resolution)?;
-
-        // Register name -> id mapping
-        if self
-            .name_index
-            .get(&name)
-            .is_some_and(|existing_id| *existing_id != id)
-        {
-            return Err(SchemaLoaderError::Resolution(
-                SchemaError::Resolution(
-                    SchemaResolutionError::DuplicateSchemaName {
-                        name: name.as_ref().into(),
-                    },
-                ),
-            ));
-        }
-        self.name_index.insert(name.clone(), id);
-
+        index: &SchemaIndex,
+    ) {
         // Resolve parent
         let parents = if let Some(parent_name) = raw.extends() {
-            if let Some(&parent_id) = self.name_index.get(parent_name) {
+            if let Some(parent_id) = index.get_id_by_name(parent_name) {
                 vec![parent_id]
             } else {
                 self.pending_parents.push(PendingParent {
                     child_id: id,
-                    child_name: name.clone(),
                     parent_name: parent_name.clone(),
                 });
                 Vec::new()
@@ -1052,8 +1047,6 @@ impl DagBuilder {
             children,
             depth: NodeDepth::ROOT,
         });
-
-        Ok(())
     }
 
     /// Build or patch the graph, validating and computing all metadata.
@@ -1063,9 +1056,10 @@ impl DagBuilder {
     /// Returns error if graph validation fails (cycles, missing parents, etc.).
     pub(crate) fn finalize(
         mut self,
+        index: &SchemaIndex,
     ) -> Result<InheritanceGraph<InheritanceNode>, SchemaLoaderError> {
         // Second pass: resolve any parents that weren't available on first pass
-        self.resolve_pending_parents()?;
+        self.resolve_pending_parents(index)?;
 
         // Rebuild bidirectional children links
         Self::build_children(&mut self.nodes);
@@ -1092,15 +1086,27 @@ impl DagBuilder {
         Ok(graph)
     }
 
-    fn resolve_pending_parents(&mut self) -> Result<(), SchemaLoaderError> {
+    fn resolve_pending_parents(
+        &mut self,
+        index: &SchemaIndex,
+    ) -> Result<(), SchemaLoaderError> {
         let pending = std::mem::take(&mut self.pending_parents);
         for entry in pending {
-            let Some(&parent_id) = self.name_index.get(&entry.parent_name)
+            let Some(parent_id) = index.get_id_by_name(&entry.parent_name)
             else {
+                // We need the child name for the error message
+                let child_name =
+                    if let Some(name) = index.get_name_by_id(&entry.child_id) {
+                        name.clone()
+                    } else {
+                        SchemaName::try_new("unknown")
+                            .map_err(SchemaLoaderError::Resolution)?
+                    };
+
                 return Err(SchemaLoaderError::Resolution(
                     SchemaError::Resolution(
                         SchemaResolutionError::ParentNotFound {
-                            child: entry.child_name,
+                            child: child_name,
                             parent: entry.parent_name,
                         },
                     ),

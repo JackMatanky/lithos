@@ -71,6 +71,7 @@ use crate::{
             DagBuilder, InheritanceGraph, InheritanceNode, NodeAccessor,
             NodeDepth,
         },
+        index::SchemaIndex,
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::{
@@ -1370,8 +1371,9 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             name_index.insert(name, id);
         }
 
-        let mut builder =
-            DagBuilder::from_existing_graph(&base_graph, name_index.clone());
+        let index = SchemaIndex::from_name_id_pairs(name_index.clone());
+
+        let mut builder = DagBuilder::from_existing_graph(&base_graph);
 
         let mut builder_ids: Vec<_> =
             new_schemas.iter().map(|(id, _)| *id).collect();
@@ -1380,7 +1382,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             let Some(new) = new_schemas.get(&id) else {
                 continue;
             };
-            builder.add_schema(id, &new.raw)?;
+            builder.add_schema(id, &new.raw, &index);
         }
 
         for id in graph.order() {
@@ -1388,7 +1390,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 continue;
             };
             if let FileParsedBranch::StaleParsed(stale) = payload.clone() {
-                builder.add_schema(*id, &stale.raw)?;
+                builder.add_schema(*id, &stale.raw, &index);
             }
         }
 
@@ -1407,10 +1409,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 .get(id)
                 .and_then(|node| node.parents.first().copied());
 
-            let new_parent = stale
-                .raw
-                .extends()
-                .and_then(|name| name_index.get(name).copied());
+            let new_parent =
+                stale.raw.extends().and_then(|name| index.get_id_by_name(name));
 
             let change_kind = match (old_parent, new_parent) {
                 (None, None) => ExtendsChangeKind::Unchanged,
@@ -1425,7 +1425,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             extends_changes.insert(*id, change_kind);
         }
 
-        let finalized_graph = builder.finalize()?;
+        let finalized_graph = builder.finalize(&index)?;
         let (final_nodes, final_order, final_roots) =
             finalized_graph.into_parts();
 
@@ -1528,8 +1528,19 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             raw_by_id.insert(id, &parsed_schema.raw);
         }
 
-        let builder = DagBuilder::from_schemas(&raw_by_id)?;
-        let graph = builder.finalize()?;
+        let index = SchemaIndex::from_name_id_pairs(
+            new_schemas
+                .iter()
+                .map(|(id, parsed)| {
+                    let name = SchemaName::try_new(parsed.raw.name())
+                        .map_err(SchemaLoaderError::Resolution)?;
+                    Ok((name, *id))
+                })
+                .collect::<Result<Vec<_>, SchemaLoaderError>>()?,
+        );
+
+        let builder = DagBuilder::from_new_schemas(&raw_by_id)?;
+        let graph = builder.finalize(&index)?;
         let (graph_nodes, graph_order, graph_roots) = graph.into_parts();
 
         for (id, parsed) in new_schemas {
