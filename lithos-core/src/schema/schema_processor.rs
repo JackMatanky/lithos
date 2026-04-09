@@ -1336,7 +1336,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 node.parents().to_vec(),
                 node.depth(),
             );
-            new_node.set_children(node.children().to_vec());
+            new_node
+                .set_edges(node.parents().to_vec(), node.children().to_vec());
             new_node
         });
 
@@ -1669,7 +1670,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
         let mut analyzed_nodes = HashMap::new();
 
-        let nodes = std::mem::take(graph.nodes_mut());
+        let nodes = std::mem::take(graph.as_mut_nodes());
         let mut node_entries: Vec<_> = nodes.into_iter().collect();
         node_entries.sort_by_key(|entry| entry.0);
         for (id, node) in node_entries {
@@ -2016,7 +2017,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
         use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
 
         for id in &self.status.refresh_ids {
-            let Some(node) = self.status.graph.nodes_mut().get_mut(id) else {
+            let Some(node) = self.status.graph.as_mut_nodes().get_mut(id)
+            else {
                 continue;
             };
 
@@ -2053,7 +2055,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
         }
 
         for id in &self.status.rebuild_ids {
-            let Some(node) = self.status.graph.nodes_mut().get_mut(id) else {
+            let Some(node) = self.status.graph.as_mut_nodes().get_mut(id)
+            else {
                 continue;
             };
 
@@ -2559,7 +2562,8 @@ impl SchemaProcessor<Construction, NewBuild> {
                 node.parents().to_vec(),
                 node.depth(),
             );
-            new_node.set_children(node.children().to_vec());
+            new_node
+                .set_edges(node.parents().to_vec(), node.children().to_vec());
             new_node
         });
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
@@ -2602,7 +2606,8 @@ impl SchemaProcessor<Construction, Constructed> {
                 node.parents().to_vec(),
                 node.depth(),
             );
-            new_node.set_children(node.children().to_vec());
+            new_node
+                .set_edges(node.parents().to_vec(), node.children().to_vec());
             new_node
         });
 

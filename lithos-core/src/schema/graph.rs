@@ -84,7 +84,6 @@ use crate::schema::{
 // ═════════════════════════════════════════════════════════════════════════════
 //  GRAPH BUILDER (Graph Construction)
 // ═════════════════════════════════════════════════════════════════════════════
-
 /// Builder for constructing `InheritanceGraph<InheritanceNode>` from
 /// `SchemaId` parent lists.
 ///
@@ -134,7 +133,15 @@ impl GraphBuilder {
             SchemaLoaderError::Resolution(SchemaError::Resolution(e))
         })?;
 
-        Ok(Self::assemble(nodes, order, roots))
+        let graph = Self::assemble(nodes, order, roots);
+
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            graph.validate_consistency().is_ok(),
+            "GraphBuilder produced inconsistent graph"
+        );
+
+        Ok(graph)
     }
 
     fn build_nodes(
@@ -143,9 +150,7 @@ impl GraphBuilder {
         let parents_by_id = parents_by_id.into_inner();
         let mut nodes = HashMap::with_capacity(parents_by_id.len());
         for (id, parents) in parents_by_id {
-            let mut node =
-                InheritanceNode::new_child(id, parents, NodeDepth::ROOT);
-            node.set_children(Vec::new());
+            let node = InheritanceNode::new_child(id, parents, NodeDepth::ROOT);
             nodes.insert(id, node);
         }
         nodes
@@ -188,7 +193,8 @@ impl GraphBuilder {
             let mut children =
                 parent_to_children.get(id).cloned().unwrap_or_default();
             children.sort();
-            node.set_children(children);
+            let parents = node.parents().to_vec();
+            node.set_edges(parents, children);
         }
     }
 
@@ -251,7 +257,6 @@ impl GraphBuilder {
 // ═════════════════════════════════════════════════════════════════════════════
 //  GRAPH EDITOR (Scoped Patching)
 // ═════════════════════════════════════════════════════════════════════════════
-
 /// Editor for scoped updates to `InheritanceGraph<InheritanceNode>`.
 ///
 /// Updates are applied to the affected subtree; unaffected nodes keep their
@@ -278,18 +283,19 @@ impl GraphEditor {
         let mut parents = parents;
         ChildParentsMap::normalize_parents(&mut parents);
 
-        if let Some(node) = self.graph.nodes_mut().get_mut(&id) {
-            let old_parents = std::mem::take(node.parents_mut());
+        if let Some(node) = self.graph.as_mut_nodes().get_mut(&id) {
+            let old_parents = node.parents().to_vec();
             for parent_id in old_parents {
                 self.changed_ids.insert(parent_id);
             }
             for parent_id in &parents {
                 self.changed_ids.insert(*parent_id);
             }
-            node.set_parents(parents);
+            let children = node.children().to_vec();
+            node.set_edges(parents, children);
             node.set_depth(NodeDepth::ROOT);
         } else {
-            let mut node = if parents.is_empty() {
+            let node = if parents.is_empty() {
                 InheritanceNode::new_root(id)
             } else {
                 for parent_id in &parents {
@@ -297,8 +303,7 @@ impl GraphEditor {
                 }
                 InheritanceNode::new_child(id, parents, NodeDepth::ROOT)
             };
-            node.set_children(Vec::new());
-            self.graph.nodes_mut().insert(id, node);
+            self.graph.as_mut_nodes().insert(id, node);
         }
 
         self.changed_ids.insert(id);
@@ -306,19 +311,19 @@ impl GraphEditor {
 
     /// Queue a node deletion.
     pub fn delete_node(&mut self, id: SchemaId) {
-        if let Some(mut node) = self.graph.nodes_mut().remove(&id) {
-            for parent_id in std::mem::take(node.parents_mut()) {
+        if let Some(node) = self.graph.as_mut_nodes().remove(&id) {
+            for &parent_id in node.parents() {
                 self.changed_ids.insert(parent_id);
             }
-            for child_id in std::mem::take(node.children_mut()) {
+            for &child_id in node.children() {
                 self.changed_ids.insert(child_id);
             }
         }
 
         self.changed_ids.insert(id);
         self.deleted_ids.insert(id);
-        self.graph.order_mut().retain(|entry| *entry != id);
-        self.graph.roots_mut().retain(|entry| *entry != id);
+        self.graph.as_mut_order().retain(|entry| *entry != id);
+        self.graph.as_mut_roots().retain(|entry| *entry != id);
     }
 
     /// Apply queued changes and return the patched graph.
@@ -343,6 +348,12 @@ impl GraphEditor {
         Self::splice_order(&mut self.graph, &affected_order, &affected)?;
         Self::rebuild_roots(&mut self.graph);
 
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.graph.validate_consistency().is_ok(),
+            "GraphEditor produced inconsistent graph"
+        );
+
         Ok(self.graph)
     }
 
@@ -354,9 +365,12 @@ impl GraphEditor {
             return;
         }
 
-        for node in graph.nodes_mut().values_mut() {
-            node.parents_mut().retain(|id| !deleted.contains(id));
-            node.children_mut().retain(|id| !deleted.contains(id));
+        for node in graph.as_mut_nodes().values_mut() {
+            let mut parents = node.parents().to_vec();
+            let mut children = node.children().to_vec();
+            parents.retain(|id| !deleted.contains(id));
+            children.retain(|id| !deleted.contains(id));
+            node.set_edges(parents, children);
         }
 
         let deleted_ids: Vec<SchemaId> = deleted.iter().copied().collect();
@@ -368,12 +382,12 @@ impl GraphEditor {
         deleted: &[SchemaId],
     ) {
         for id in deleted {
-            graph.nodes_mut().remove(id);
+            graph.as_mut_nodes().remove(id);
         }
         let remaining: HashSet<SchemaId> =
             graph.nodes().keys().copied().collect();
-        graph.order_mut().retain(|id| remaining.contains(id));
-        graph.roots_mut().retain(|id| remaining.contains(id));
+        graph.as_mut_order().retain(|id| remaining.contains(id));
+        graph.as_mut_roots().retain(|id| remaining.contains(id));
     }
 
     fn rebuild_children(
@@ -408,11 +422,12 @@ impl GraphEditor {
         }
 
         for id in update_ids {
-            if let Some(node) = graph.nodes_mut().get_mut(&id) {
+            if let Some(node) = graph.as_mut_nodes().get_mut(&id) {
                 let mut children =
                     parent_to_children.remove(&id).unwrap_or_default();
                 children.sort();
-                node.set_children(children);
+                let parents = node.parents().to_vec();
+                node.set_edges(parents, children);
             }
         }
     }
@@ -457,7 +472,7 @@ impl GraphEditor {
         }
 
         for (id, depth) in depths {
-            if let Some(node) = graph.nodes_mut().get_mut(&id) {
+            if let Some(node) = graph.as_mut_nodes().get_mut(&id) {
                 node.set_depth(NodeDepth::new(depth));
             }
         }
@@ -527,7 +542,7 @@ impl GraphEditor {
             ));
         }
 
-        *graph.order_mut() = new_order;
+        *graph.as_mut_order() = new_order;
         Ok(())
     }
 
@@ -558,7 +573,7 @@ impl GraphEditor {
             .filter(|node| node.parents().is_empty())
             .map(InheritanceNode::id)
             .collect();
-        *graph.roots_mut() = roots;
+        *graph.as_mut_roots() = roots;
     }
 }
 
@@ -748,9 +763,9 @@ mod tests {
         let node_d =
             InheritanceNode::new_child(id_d, vec![id_b, id_c], NodeDepth::ROOT);
 
-        node_a.set_children(vec![id_b, id_c]);
-        node_b.set_children(vec![id_d]);
-        node_c.set_children(vec![id_d]);
+        node_a.set_edges(Vec::new(), vec![id_b, id_c]);
+        node_b.set_edges(vec![id_a], vec![id_d]);
+        node_c.set_edges(vec![id_a], vec![id_d]);
 
         let nodes = HashMap::from([
             (id_a, node_a),
@@ -770,7 +785,7 @@ mod tests {
         let id_a = *ids.first().expect("id a");
         let id_d = *ids.get(3).expect("id d");
 
-        GraphBuilder::compute_depths(graph.nodes_mut());
+        GraphBuilder::compute_depths(graph.as_mut_nodes());
 
         let depth_a = graph.nodes().get(&id_a).expect("node a").depth();
         let depth_d = graph.nodes().get(&id_d).expect("node d").depth();
@@ -782,7 +797,7 @@ mod tests {
     #[test]
     fn topological_order_respects_all_parents() {
         let (mut graph, ids) = build_diamond_graph();
-        GraphBuilder::compute_depths(graph.nodes_mut());
+        GraphBuilder::compute_depths(graph.as_mut_nodes());
 
         let sorter = TopologicalSorter::new(graph.nodes());
         let (order, _roots) = sorter.sort().expect("topo sort");
@@ -832,7 +847,7 @@ mod tests {
         let id_b = SchemaId::new();
 
         let mut node_a = InheritanceNode::new_root(id_a);
-        node_a.set_children(vec![id_b]);
+        node_a.set_edges(Vec::new(), vec![id_b]);
         let node_b =
             InheritanceNode::new_child(id_b, vec![id_a], NodeDepth::ROOT);
 

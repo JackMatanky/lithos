@@ -129,7 +129,7 @@ impl<T> InheritanceGraph<T> {
     }
 
     #[inline]
-    pub(crate) fn nodes_mut(&mut self) -> &mut HashMap<SchemaId, T> {
+    pub(crate) fn as_mut_nodes(&mut self) -> &mut HashMap<SchemaId, T> {
         &mut self.nodes
     }
 
@@ -140,7 +140,7 @@ impl<T> InheritanceGraph<T> {
     }
 
     #[inline]
-    pub(crate) fn order_mut(&mut self) -> &mut Vec<SchemaId> {
+    pub(crate) fn as_mut_order(&mut self) -> &mut Vec<SchemaId> {
         &mut self.order
     }
 
@@ -151,7 +151,7 @@ impl<T> InheritanceGraph<T> {
     }
 
     #[inline]
-    pub(crate) fn roots_mut(&mut self) -> &mut Vec<SchemaId> {
+    pub(crate) fn as_mut_roots(&mut self) -> &mut Vec<SchemaId> {
         &mut self.roots
     }
 
@@ -310,15 +310,17 @@ impl InheritanceNode {
         self.depth
     }
 
-    /// Sets the parent schema identifiers (normalized internally).
+    /// Updates node edges (parents and children) atomically.
+    ///
+    /// This method is intended for low-level structural surgery by the
+    /// `GraphBuilder` and `GraphEditor`.
     #[inline]
-    pub(crate) fn set_parents(&mut self, parents: Vec<SchemaId>) {
+    pub(crate) fn set_edges(
+        &mut self,
+        parents: Vec<SchemaId>,
+        children: Vec<SchemaId>,
+    ) {
         self.parents = parents;
-    }
-
-    /// Sets the child schema identifiers (sorted, unique).
-    #[inline]
-    pub(crate) fn set_children(&mut self, children: Vec<SchemaId>) {
         self.children = children;
     }
 
@@ -326,18 +328,6 @@ impl InheritanceNode {
     #[inline]
     pub(crate) fn set_depth(&mut self, depth: NodeDepth) {
         self.depth = depth;
-    }
-
-    /// Returns a mutable reference to the parent schema identifiers.
-    #[inline]
-    pub(crate) fn parents_mut(&mut self) -> &mut Vec<SchemaId> {
-        &mut self.parents
-    }
-
-    /// Returns a mutable reference to the child schema identifiers.
-    #[inline]
-    pub(crate) fn children_mut(&mut self) -> &mut Vec<SchemaId> {
-        &mut self.children
     }
 }
 
@@ -467,10 +457,6 @@ impl InheritanceGraph<InheritanceNode> {
     ///
     /// Returns error if any inconsistency is found.
     #[cfg(debug_assertions)]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "debug-only invariant check")
-    )]
     pub(crate) fn validate_consistency(&self) -> Result<(), SchemaLoaderError> {
         #[expect(
             clippy::iter_over_hash_type,
@@ -552,9 +538,9 @@ mod tests {
         let node_d =
             InheritanceNode::new_child(id_d, vec![id_b, id_c], NodeDepth::ROOT);
 
-        node_a.children = vec![id_b, id_c];
-        node_b.children = vec![id_d];
-        node_c.children = vec![id_d];
+        node_a.set_edges(Vec::new(), vec![id_b, id_c]);
+        node_b.set_edges(vec![id_a], vec![id_d]);
+        node_c.set_edges(vec![id_a], vec![id_d]);
 
         let nodes = HashMap::from([
             (id_a, node_a),
