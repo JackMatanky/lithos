@@ -75,13 +75,17 @@
     reason = "Raw* types follow naming conventions for input layer types"
 )]
 
-mod aggregate;
+pub mod bank;
+pub mod metadata;
 pub mod property;
 pub mod spec_bool;
 pub mod spec_date;
 pub mod spec_file;
 pub mod spec_number;
 pub mod spec_string;
+pub mod version;
+
+mod aggregate;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Type Aliases (Re-exports)
@@ -91,13 +95,13 @@ pub mod spec_string;
 pub type RawSchema = aggregate::RawSchema;
 
 /// Raw property bank loaded from vault files.
-pub type RawPropertyBank = aggregate::RawPropertyBank;
+pub type RawPropertyBank = bank::RawPropertyBank;
 
 /// Raw file timestamps for staleness detection.
-pub type RawFileTimes = aggregate::RawFileTimes;
+pub type RawFileTimes = metadata::RawFileTimes;
 
 /// Schema format version.
-pub type RawSchemaVersion = aggregate::RawSchemaVersion;
+pub type RawSchemaVersion = version::RawSchemaVersion;
 
 /// Raw property for schema properties map.
 pub type RawProperty = property::RawProperty;
