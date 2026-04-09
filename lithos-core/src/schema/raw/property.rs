@@ -242,7 +242,7 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 #[serde(try_from = "String")]
 #[non_exhaustive]
 pub struct RawPropertyRefPath {
-    /// Full reference path (e.g., "`property_bank#/archived`").
+    /// Full reference path (e.g., "`#property_bank/archived`").
     full_path: Box<str>,
     /// Pre-extracted target property name (e.g., "archived").
     target_name: PropertyName,
@@ -264,7 +264,7 @@ impl TryFrom<String> for RawPropertyRefPath {
     #[inline]
     fn try_from(path: String) -> Result<Self, Self::Error> {
         // Validate prefix
-        let target = path.strip_prefix("property_bank#/").ok_or_else(|| {
+        let target = path.strip_prefix("#property_bank/").ok_or_else(|| {
             SchemaError::Syntax(crate::schema::error::SchemaSyntaxError::PropertyName(
                 crate::schema::error::PropertyNameError::InvalidFormat {
                     name: path.clone().into(),
@@ -289,14 +289,14 @@ impl TryFrom<String> for RawPropertyRefPath {
 impl RawPropertyRefPath {
     /// Returns the target property name being referenced.
     ///
-    /// This is the property name after `property_bank#/` in the path.
+    /// This is the property name after `#property_bank/` in the path.
     ///
     /// # Examples
     ///
     /// ```
     /// # use lithos_core::schema::raw::property::RawPropertyRefPath;
     /// # use serde_json;
-    /// let json = r#""property_bank#/status""#;
+    /// let json = r##""#property_bank/status""##;
     /// let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
     /// assert_eq!(path.target_name().as_str(), "status");
     /// ```
@@ -313,9 +313,9 @@ impl RawPropertyRefPath {
     /// ```
     /// # use lithos_core::schema::raw::property::RawPropertyRefPath;
     /// # use serde_json;
-    /// let json = r#""property_bank#/flag""#;
+    /// let json = r##""#property_bank/flag""##;
     /// let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
-    /// assert_eq!(path.as_str(), "property_bank#/flag");
+    /// assert_eq!(path.as_str(), "#property_bank/flag");
     /// ```
     #[inline]
     #[must_use]
@@ -424,7 +424,7 @@ pub struct RawPropertyInline {
 pub struct RawPropertyRef {
     /// The reference path (validated during deserialization).
     ///
-    /// Format: `property_bank#/<property_name>` where `<property_name>` is a
+    /// Format: `#property_bank/<property_name>` where `<property_name>` is a
     /// valid property name. The target property name is pre-extracted for
     /// efficient access via `ref_path.target_name()`.
     #[serde(rename = "$ref")]
@@ -633,7 +633,7 @@ mod tests {
 
         #[test]
         fn deserializes_valid_reference_path() {
-            let json = r#""property_bank#/valid_name""#;
+            let json = r##""#property_bank/valid_name""##;
             let result: Result<RawPropertyRefPath, _> =
                 serde_json::from_str(json);
 
@@ -646,7 +646,7 @@ mod tests {
             );
             assert_eq!(
                 path.as_str(),
-                "property_bank#/valid_name",
+                "#property_bank/valid_name",
                 "Should preserve full path"
             );
         }
@@ -674,7 +674,7 @@ mod tests {
 
         #[test]
         fn rejects_invalid_target_property_name() {
-            let json = r#""property_bank#/Invalid Name!""#;
+            let json = r##""#property_bank/Invalid Name!""##;
             let result: Result<RawPropertyRefPath, _> =
                 serde_json::from_str(json);
 
@@ -686,7 +686,7 @@ mod tests {
 
         #[test]
         fn rejects_empty_target_name() {
-            let json = r#""property_bank#/""#;
+            let json = r##""#property_bank/""##;
             let result: Result<RawPropertyRefPath, _> =
                 serde_json::from_str(json);
 
@@ -695,14 +695,14 @@ mod tests {
 
         #[test]
         fn displays_as_full_path() {
-            let json = r#""property_bank#/name""#;
+            let json = r##""#property_bank/name""##;
             let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
-            assert_eq!(format!("{path}"), "property_bank#/name");
+            assert_eq!(format!("{path}"), "#property_bank/name");
         }
 
         #[test]
         fn serializes_to_full_path_string() {
-            let json = r#""property_bank#/name""#;
+            let json = r##""#property_bank/name""##;
             let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
             let serialized = serde_json::to_string(&path).unwrap();
             assert_eq!(serialized, json);
@@ -730,9 +730,9 @@ mod tests {
     fn raw_property_ref_variant_constructs() {
         // RawPropertyRef now uses RawPropertyRefPath which validates during
         // deserialization
-        let json = r#"{
-            "$ref": "property_bank#/status"
-        }"#;
+        let json = r##"{
+            "$ref": "#property_bank/status"
+        }"##;
         let reference: RawPropertyRef =
             serde_json::from_str(json).expect("Valid ref should deserialize");
         let reference_variant = RawProperty::Ref(reference);

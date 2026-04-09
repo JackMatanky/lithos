@@ -1,7 +1,7 @@
 {
   "properties": {
     "pillar": {
-      "$ref": "property_bank#/pillar"
+      "$ref": "#property_bank/pillar"
     }
   }
 }

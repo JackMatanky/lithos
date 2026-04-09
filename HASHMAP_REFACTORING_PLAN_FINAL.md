@@ -201,7 +201,7 @@ Extender (UNCHANGED - in extender.rs)
 //!
 //! ### Expander: PropertyBank Reference Overrides
 //! ```ignore
-//! // Schema file has: { "$ref": "property_bank#/title", "required": false }
+//! // Schema file has: { "$ref": "#property_bank/title", "required": false }
 //! // Bank has:        Property { name: "title", required: true, ... }
 //! // Result:          Property { name: "title", required: false, ... }
 //! ```
@@ -897,7 +897,7 @@ mod tests {
         fn bool_rejects_number_override() {
             let base = PropertySpec::Bool(BoolSpec);
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec {
@@ -922,7 +922,7 @@ mod tests {
         fn bool_rejects_string_override() {
             let base = PropertySpec::Bool(BoolSpec);
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec::default(),
@@ -946,7 +946,7 @@ mod tests {
                 step: None,
             });
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec {
@@ -978,7 +978,7 @@ mod tests {
                 step: None,
             });
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec::default(),
@@ -1001,7 +1001,7 @@ mod tests {
                 pattern: None,
             });
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec::default(),
@@ -1032,7 +1032,7 @@ mod tests {
         #[test]
         fn preserves_base_when_no_overrides() {
             let base = fixtures::bool_property("test");
-            let ref_entry = fixtures::ref_entry("property_bank#/test");
+            let ref_entry = fixtures::ref_entry("#property_bank/test");
 
             let result = PropertyResolver::resolve_from_bank_ref(&base, &ref_entry);
             assert!(result.is_ok());
@@ -1046,7 +1046,7 @@ mod tests {
         fn applies_optionality_override() {
             let base = fixtures::bool_property("test"); // Required by default
             let ref_entry = fixtures::ref_with_overrides(
-                "property_bank#/test",
+                "#property_bank/test",
                 Some(false), // Override to optional
                 None,
             );
@@ -1061,7 +1061,7 @@ mod tests {
         fn applies_multiplicity_override() {
             let base = fixtures::bool_property("test"); // Single by default
             let ref_entry = fixtures::ref_with_overrides(
-                "property_bank#/test",
+                "#property_bank/test",
                 None,
                 Some(true), // Override to multi
             );
@@ -1076,7 +1076,7 @@ mod tests {
         fn applies_all_overrides() {
             let base = fixtures::bool_property("test");
             let ref_entry = fixtures::ref_with_overrides(
-                "property_bank#/test",
+                "#property_bank/test",
                 Some(false),
                 Some(true),
             );
@@ -1092,7 +1092,7 @@ mod tests {
         fn rejects_type_mismatch() {
             let base = fixtures::bool_property("test");
             let ref_entry = RawPropertyRef {
-                ref_path: "property_bank#/test".into(),
+                ref_path: "#property_bank/test".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec {

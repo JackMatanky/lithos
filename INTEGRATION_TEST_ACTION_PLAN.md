@@ -142,7 +142,7 @@ fn incremental_load_detects_file_changes() -> TestResult {
     write_file(vault_dir.path(), "schemas/property_bank.json",
         r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#)?;
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#)?;
+        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"#)?;
     write_file(vault_dir.path(), "schemas/note.json",
         r#"{"$version": "1.0", "properties": {"content": {"type": "string"}}}"#)?;
 
@@ -160,7 +160,7 @@ fn incremental_load_detects_file_changes() -> TestResult {
 
     // MODIFY: Change only task.json
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}, "done": {"type": "bool"}}}"#)?;
+        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}, "done": {"type": "bool"}}}"#)?;
 
     // SECOND LOAD: Only task.json should be re-resolved
     let repository2 = setup_repository(test_db.db());
@@ -273,7 +273,7 @@ fn property_bank_incremental_update_triggers_re_resolution() -> TestResult {
     write_file(vault_dir.path(), "schemas/property_bank.json",
         r#"{"$version": "1.0", "properties": {"title": {"type": "string"}}}"#)?;
     write_file(vault_dir.path(), "schemas/task.json",
-        r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#)?;
+        r#"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"#)?;
 
     // FIRST LOAD
     let config = test_config(vault_dir.path())?;
@@ -298,8 +298,8 @@ fn property_bank_incremental_update_triggers_re_resolution() -> TestResult {
     // UPDATE: task.json to use new property
     write_file(vault_dir.path(), "schemas/task.json",
         r#"{"$version": "1.0", "properties": {
-            "title": {"$ref": "property_bank#/title"},
-            "status": {"$ref": "property_bank#/status"}
+            "title": {"$ref": "#property_bank/title"},
+            "status": {"$ref": "#property_bank/status"}
         }}"#)?;
 
     // SECOND LOAD: Schema should be re-resolved with new property

@@ -2,9 +2,7 @@
   "properties": {
     "type": {
       "type": "string",
-      "options": [
-        "book"
-      ]
+      "options": ["book"]
     },
     "author": {
       "multi": true,
@@ -27,7 +25,7 @@
       "directory": "(52_organizations)/"
     },
     "doi": {
-      "$ref": "property_bank#/doi"
+      "$ref": "#property_bank/doi"
     },
     "isbn10": {
       "type": "string"
@@ -36,16 +34,16 @@
       "type": "string"
     },
     "year_published": {
-      "$ref": "property_bank#/year_published"
+      "$ref": "#property_bank/year_published"
     },
     "city": {
-      "$ref": "property_bank#/city"
+      "$ref": "#property_bank/city"
     },
     "edition": {
       "type": "number"
     },
     "cover_url": {
-      "$ref": "property_bank#/url"
+      "$ref": "#property_bank/url"
     },
     "cover_path": {
       "type": "file"

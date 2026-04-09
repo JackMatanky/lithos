@@ -323,7 +323,7 @@ mod tests {
             "$version": "1.0",
             "properties": {
                 "inline": { "type": "bool" },
-                "referenced": { "$ref": "property_bank#/status" }
+                "referenced": { "$ref": "#property_bank/status" }
             }
         });
         let raw: RawSchema = serde_json::from_value(json).unwrap();

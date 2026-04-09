@@ -7,7 +7,7 @@
       "type": "string"
     },
     "about": {
-      "$ref": "property_bank#/about"
+      "$ref": "#property_bank/about"
     },
     "industry": {
       "multi": true,

@@ -1,10 +1,10 @@
 {
   "properties": {
     "title": {
-      "$ref": "property_bank#/title"
+      "$ref": "#property_bank/title"
     },
     "aliases": {
-      "$ref": "property_bank#/aliases"
+      "$ref": "#property_bank/aliases"
     },
     "duration": {
       "type": "string",
@@ -17,22 +17,22 @@
       ]
     },
     "date_start": {
-      "$ref": "property_bank#/date_iso_8601"
+      "$ref": "#property_bank/date_iso_8601"
     },
     "date_end": {
-      "$ref": "property_bank#/date_iso_8601"
+      "$ref": "#property_bank/date_iso_8601"
     },
     "context": {
-      "$ref": "property_bank#/context"
+      "$ref": "#property_bank/context"
     },
     "pillar": {
-      "$ref": "property_bank#/pillar"
+      "$ref": "#property_bank/pillar"
     },
     "organization": {
-      "$ref": "property_bank#/organization"
+      "$ref": "#property_bank/organization"
     },
     "contact": {
-      "$ref": "property_bank#/contact"
+      "$ref": "#property_bank/contact"
     },
     "priority": {
       "type": "string",
@@ -45,14 +45,11 @@
       ]
     },
     "status": {
-      "$ref": "property_bank#/task_status"
+      "$ref": "#property_bank/task_status"
     },
     "type": {
       "type": "string",
-      "options": [
-        "outcome",
-        "value"
-      ]
+      "options": ["outcome", "value"]
     }
   }
 }

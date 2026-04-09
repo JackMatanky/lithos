@@ -311,7 +311,7 @@ mod tests {
             let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
             let name = PropertyName::try_new("alias")?;
-            let entry = fixtures::ref_entry("property_bank#/status");
+            let entry = fixtures::ref_entry("#property_bank/status");
             let mut refs = HashMap::new();
             refs.insert(name.clone(), entry);
             let expanded_props = expander.expand_properties(&refs)?;
@@ -326,7 +326,7 @@ mod tests {
             let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
             let entry = fixtures::ref_with_overrides(
-                "property_bank#/status",
+                "#property_bank/status",
                 Some(false),
                 Some(true),
             );
@@ -347,10 +347,10 @@ mod tests {
                 fixtures::bool_property("status").expect("valid property");
             let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
-            let json = r#"{
-                "$ref": "property_bank#/status",
+            let json = r##"{
+                "$ref": "#property_bank/status",
                 "min": 0.0
-            }"#;
+            }"##;
             let entry: RawPropertyRef = serde_json::from_str(json)
                 .expect("Valid ref with number override should deserialize");
             let name = PropertyName::try_new("status").expect("valid name");
@@ -372,7 +372,7 @@ mod tests {
         fn ref_missing_in_bank_returns_error() {
             let bank = PropertyBank::new();
             let expander = RefExpander::new(&bank);
-            let entry = fixtures::ref_entry("property_bank#/missing");
+            let entry = fixtures::ref_entry("#property_bank/missing");
             let name = PropertyName::try_new("missing").expect("valid name");
             let mut refs = HashMap::new();
             refs.insert(name, entry);

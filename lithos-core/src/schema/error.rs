@@ -637,7 +637,7 @@ pub enum PropertyRefError {
     /// Returned when a `$ref` string is not in the expected format.
     #[error(
         "invalid property reference: '{reference}' (expected format: \
-         property_bank#/<name>)"
+         #property_bank/<name>)"
     )]
     InvalidFormat {
         /// The invalid reference string.
@@ -891,7 +891,7 @@ mod tests {
         )]
         #[case::property_ref_invalid(
             SchemaError::PropertyRef(PropertyRefError::InvalidFormat {
-                reference: "property_bank#/title".into(),
+                reference: "#property_bank/title".into(),
             }),
             "invalid property reference"
         )]
@@ -946,7 +946,7 @@ mod tests {
             let error = SchemaIngestionError::Schema {
                 path: PathBuf::from("schemas/bad.json"),
                 source: SchemaError::PropertyRef(PropertyRefError::NotFound {
-                    reference: "property_bank#/title".into(),
+                    reference: "#property_bank/title".into(),
                 }),
             };
 
@@ -984,10 +984,10 @@ mod tests {
         #[test]
         fn schema_error_equality_compares_variants() {
             let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
+                reference: "#property_bank/title".into(),
             });
             let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
+                reference: "#property_bank/title".into(),
             });
 
             assert_eq!(
@@ -999,10 +999,10 @@ mod tests {
         #[test]
         fn schema_error_equality_distinguishes_variants() {
             let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/title".into(),
+                reference: "#property_bank/title".into(),
             });
             let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "property_bank#/status".into(),
+                reference: "#property_bank/status".into(),
             });
 
             assert!(

@@ -227,26 +227,26 @@ Every property is either an **inline definition** or a **property bank reference
 
 ### Property Bank Reference
 
-The format is `property_bank#/<name>` where `<name>` is a key in the vault's property bank. A `$ref` resolves the property definition from the bank, then any additional fields override the defaults.
+The format is `#property_bank/<name>` where `<name>` is a key in the vault's property bank. A `$ref` resolves the property definition from the bank, then any additional fields override the defaults.
 
 **Simple reference (no overrides):**
 
 **JSON**
 ```json
-"status": { "$ref": "property_bank#/task_status" }
+"status": { "$ref": "#property_bank/task_status" }
 ```
 
 **TOML**
 ```toml
 [properties.status]
-"$ref" = "property_bank#/task_status"
+"$ref" = "#property_bank/task_status"
 ```
 
 **YAML**
 ```yaml
 properties:
   status:
-    $ref: "property_bank#/task_status"
+    $ref: "#property_bank/task_status"
 ```
 
 **Reference with overrides:**
@@ -256,7 +256,7 @@ The `required` field is only valid in schemas (not in the property bank). Other 
 **JSON**
 ```json
 "contact": {
-  "$ref": "property_bank#/contact",
+  "$ref": "#property_bank/contact",
   "multi": false,
   "required": true
 }
@@ -265,7 +265,7 @@ The `required` field is only valid in schemas (not in the property bank). Other 
 **TOML**
 ```toml
 [properties.contact]
-"$ref" = "property_bank#/contact"
+"$ref" = "#property_bank/contact"
 multi = false
 required = true
 ```
@@ -274,7 +274,7 @@ required = true
 ```yaml
 properties:
   contact:
-    $ref: "property_bank#/contact"
+    $ref: "#property_bank/contact"
     multi: false
     required: true
 ```
@@ -720,7 +720,7 @@ properties:
 {
   "name": "dir",
   "properties": {
-    "title": { "$ref": "property_bank#/title" },
+    "title": { "$ref": "#property_bank/title" },
     "country": {
       "multi": true,
       "type": "string"
@@ -737,7 +737,7 @@ properties:
 name = "dir"
 
 [properties.title]
-"$ref" = "property_bank#/title"
+"$ref" = "#property_bank/title"
 
 [properties.country]
 multi = true
@@ -752,7 +752,7 @@ type = "string"
 name: dir
 properties:
   title:
-    $ref: "property_bank#/title"
+    $ref: "#property_bank/title"
   country:
     multi: true
     type: string
@@ -776,8 +776,8 @@ properties:
     "name_first": {
       "type": "string"
     },
-    "date_birth": { "$ref": "property_bank#/date_iso_8601" },
-    "organization": { "$ref": "property_bank#/organization" },
+    "date_birth": { "$ref": "#property_bank/date_iso_8601" },
+    "organization": { "$ref": "#property_bank/organization" },
     "gender": {
       "type": "string",
       "options": ["female", "male", "other"]
@@ -798,10 +798,10 @@ type = "string"
 type = "string"
 
 [properties.date_birth]
-"$ref" = "property_bank#/date_iso_8601"
+"$ref" = "#property_bank/date_iso_8601"
 
 [properties.organization]
-"$ref" = "property_bank#/organization"
+"$ref" = "#property_bank/organization"
 
 [properties.gender]
 type = "string"
@@ -818,9 +818,9 @@ properties:
   name_first:
     type: string
   date_birth:
-    $ref: "property_bank#/date_iso_8601"
+    $ref: "#property_bank/date_iso_8601"
   organization:
-    $ref: "property_bank#/organization"
+    $ref: "#property_bank/organization"
   gender:
     type: string
     options:

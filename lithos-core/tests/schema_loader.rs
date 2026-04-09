@@ -110,7 +110,7 @@ mod initial_loading {
     ///
     /// # Expected Behavior
     /// - Loader ingests both files from filesystem via `FsReader`.
-    /// - References are expanded: `{"$ref": "property_bank#/title"}` →
+    /// - References are expanded: `{"$ref": "#property_bank/title"}` →
     ///   `{"type": "string"}`.
     /// - Resolved schema persisted to storage with 2 concrete properties.
     /// - Schema name matches filename (task).
@@ -140,10 +140,10 @@ mod initial_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"$ref": "property_bank#/title"},
-                "status": {"$ref": "property_bank#/status"}
-            }}"#,
+            r##"{"$version": "1.0", "properties": {
+                "title": {"$ref": "#property_bank/title"},
+                "status": {"$ref": "#property_bank/status"}
+            }}"##,
         )?;
 
         let config = test_config(vault_dir.path())?;
@@ -262,12 +262,12 @@ mod initial_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##,
         )?;
         write_file(
             vault_dir.path(),
             "schemas/note.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##,
         )?;
         write_file(
             vault_dir.path(),
@@ -495,7 +495,7 @@ mod incremental_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##,
         )?;
         write_file(
             vault_dir.path(),
@@ -522,10 +522,10 @@ mod incremental_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"$ref": "property_bank#/title"},
+            r##"{"$version": "1.0", "properties": {
+                "title": {"$ref": "#property_bank/title"},
                 "done": {"type": "bool"}
-            }}"#,
+            }}"##,
         )?;
 
         // SECOND LOAD: Only task.json should be re-resolved
@@ -683,7 +683,7 @@ mod incremental_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {"title": {"$ref": "property_bank#/title"}}}"#,
+            r##"{"$version": "1.0", "properties": {"title": {"$ref": "#property_bank/title"}}}"##,
         )?;
 
         // FIRST LOAD
@@ -721,10 +721,10 @@ mod incremental_loading {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "title": {"$ref": "property_bank#/title"},
-                "status": {"$ref": "property_bank#/status"}
-            }}"#,
+            r##"{"$version": "1.0", "properties": {
+                "title": {"$ref": "#property_bank/title"},
+                "status": {"$ref": "#property_bank/status"}
+            }}"##,
         )?;
 
         // SECOND LOAD: Schema should be re-resolved with new property
@@ -802,9 +802,9 @@ mod error_handling {
         write_file(
             vault_dir.path(),
             "schemas/task.json",
-            r#"{"$version": "1.0", "properties": {
-                "missing": {"$ref": "property_bank#/nonexistent"}
-            }}"#,
+            r##"{"$version": "1.0", "properties": {
+                "missing": {"$ref": "#property_bank/nonexistent"}
+            }}"##,
         )?;
 
         let config = test_config(vault_dir.path())?;

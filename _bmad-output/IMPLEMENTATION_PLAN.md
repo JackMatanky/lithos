@@ -46,7 +46,7 @@ This document provides a **phased implementation plan** for refactoring the `sch
    - Zero-cost abstraction (compiles to `HashMap<PropertyName, T>`)
 
 2. ✅ **`RawPropertyRefPath` type** - Validates `$ref` format during parsing
-   - Ensures `property_bank#/` prefix
+   - Ensures `#property_bank/` prefix
    - Extracts target property name
    - O(1) access to target via `target_name()` method
 

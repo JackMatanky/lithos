@@ -683,7 +683,7 @@ Replace the raw `Box<str>` in `RawPropertyRef` with a dedicated type that parses
 ```rust
 /// Validated reference path to a property bank entry.
 ///
-/// Ensures the path is properly formatted (e.g., `property_bank#/name`)
+/// Ensures the path is properly formatted (e.g., `#property_bank/name`)
 /// and allows O(1) extraction of the target property name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RawPropertyRefPath {
@@ -710,8 +710,8 @@ impl<'de> Deserialize<'de> for RawPropertyRefPath {
         let path = String::deserialize(deserializer)?;
 
         let target = path
-            .strip_prefix("property_bank#/")
-            .ok_or_else(|| serde::de::Error::custom("Must start with 'property_bank#/'"))?;
+            .strip_prefix("#property_bank/")
+            .ok_or_else(|| serde::de::Error::custom("Must start with '#property_bank/'"))?;
 
         let target_name = PropertyName::try_new(target)
             .map_err(serde::de::Error::custom)?;

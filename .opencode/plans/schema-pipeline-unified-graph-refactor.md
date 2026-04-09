@@ -1444,10 +1444,10 @@ fn pipeline_rebuilds_schemas_with_changed_bank_refs() {
     let repo = InMemoryRepository::new();
 
     // Create schema that references PropertyBank
-    let schema_content = r#"
+    let schema_content = r##"
         version = "1.0"
-        properties.title = { "$ref": "property_bank#/standard_title" }
-    "#;
+        properties.title = { "$ref": "#property_bank/standard_title" }
+    "##;
     fs::write(temp.path().join("article.toml"), schema_content).unwrap();
 
     // First run: Process schema

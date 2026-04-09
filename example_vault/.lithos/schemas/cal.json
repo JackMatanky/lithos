@@ -4,13 +4,13 @@
       "type": "string"
     },
     "date_start": {
-      "$ref": "property_bank#/datetime_local"
+      "$ref": "#property_bank/datetime_local"
     },
     "date_end": {
-      "$ref": "property_bank#/datetime_local"
+      "$ref": "#property_bank/datetime_local"
     },
     "year": {
-      "$ref": "property_bank#/date_year"
+      "$ref": "#property_bank/date_year"
     },
     "year_day": {
       "type": "string"
@@ -129,25 +129,11 @@
     },
     "weekday_number": {
       "type": "string",
-      "options": [
-        "00",
-        "01",
-        "02",
-        "03",
-        "04",
-        "05",
-        "06"
-      ]
+      "options": ["00", "01", "02", "03", "04", "05", "06"]
     },
     "type": {
       "type": "string",
-      "options": [
-        "day",
-        "month",
-        "quarter",
-        "week",
-        "year"
-      ]
+      "options": ["day", "month", "quarter", "week", "year"]
     }
   }
 }

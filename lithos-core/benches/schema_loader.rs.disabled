@@ -399,7 +399,7 @@ const PROPERTY_BANK_JSON: &str = r#"{
 const SCHEMAS: &[(&str, &str)] = &[
     (
         "task",
-        r#"{"properties":{"date":{"$ref":"property_bank#/date_iso_8601"},"task_start":{"type":"date","format":"%Y-%m-%d"},"task_end":{"type":"date","format":"%Y-%m-%d"},"due_do":{"type":"string","options":["do","due"]},"pillar":{"$ref":"property_bank#/pillar"},"goal":{"$ref":"property_bank#/goal"},"context":{"$ref":"property_bank#/context"},"project":{"$ref":"property_bank#/project"},"parent_task":{"$ref":"property_bank#/parent_task"},"status":{"$ref":"property_bank#/task_status"},"type":{"type":"string","options":["action_item","habit","meeting","parent_task","project","ritual"]},"organization":{"$ref":"property_bank#/organization"},"contact":{"$ref":"property_bank#/contact"},"library":{"$ref":"property_bank#/library"}}}"#,
+        r##"{"properties":{"date":{"$ref":"#property_bank/date_iso_8601"},"task_start":{"type":"date","format":"%Y-%m-%d"},"task_end":{"type":"date","format":"%Y-%m-%d"},"due_do":{"type":"string","options":["do","due"]},"pillar":{"$ref":"#property_bank/pillar"},"goal":{"$ref":"#property_bank/goal"},"context":{"$ref":"#property_bank/context"},"project":{"$ref":"#property_bank/project"},"parent_task":{"$ref":"#property_bank/parent_task"},"status":{"$ref":"#property_bank/task_status"},"type":{"type":"string","options":["action_item","habit","meeting","parent_task","project","ritual"]},"organization":{"$ref":"#property_bank/organization"},"contact":{"$ref":"#property_bank/contact"},"library":{"$ref":"#property_bank/library"}}}"##,
     ),
     (
         "task_project",
@@ -411,11 +411,11 @@ const SCHEMAS: &[(&str, &str)] = &[
     ),
     (
         "lib",
-        r#"{"properties":{"title":{"$ref":"property_bank#/title"},"url":{"$ref":"property_bank#/url"},"doi":{"$ref":"property_bank#/doi"}}}"#,
+        r##"{"properties":{"title":{"$ref":"#property_bank/title"},"url":{"$ref":"#property_bank/url"},"doi":{"$ref":"#property_bank/doi"}}}"##,
     ),
     (
         "lib_book",
-        r#"{"extends":"lib","properties":{"volume":{"$ref":"property_bank#/volume"}}}"#,
+        r##"{"extends":"lib","properties":{"volume":{"$ref":"#property_bank/volume"}}}"##,
     ),
 ];
 
