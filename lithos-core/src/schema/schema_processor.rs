@@ -67,11 +67,11 @@ use crate::{
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
-        graph::{
-            DagBuilder, InheritanceGraph, InheritanceNode, NodeAccessor,
-            NodeDepth,
-        },
+        graph::GraphBuilder,
         index::SchemaIndex,
+        inheritance::{
+            InheritanceGraph, InheritanceNode, NodeAccessor, NodeDepth,
+        },
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::{
@@ -221,16 +221,20 @@ pub(crate) struct PreProcessNode<T> {
 }
 
 impl<T> NodeAccessor for PreProcessNode<T> {
-    fn children(&self) -> &[SchemaId] {
-        &self.children
-    }
-
     fn id(&self) -> SchemaId {
         self.id
     }
 
+    fn children(&self) -> &[SchemaId] {
+        &self.children
+    }
+
     fn parents(&self) -> &[SchemaId] {
         &self.parents
+    }
+
+    fn depth(&self) -> NodeDepth {
+        self.depth
     }
 }
 
@@ -246,16 +250,20 @@ pub(crate) struct PostProcessNode<T> {
 }
 
 impl<T> NodeAccessor for PostProcessNode<T> {
-    fn children(&self) -> &[SchemaId] {
-        &self.children
-    }
-
     fn id(&self) -> SchemaId {
         self.id
     }
 
+    fn children(&self) -> &[SchemaId] {
+        &self.children
+    }
+
     fn parents(&self) -> &[SchemaId] {
         &self.parents
+    }
+
+    fn depth(&self) -> NodeDepth {
+        self.depth
     }
 }
 
@@ -806,10 +814,10 @@ impl SchemaProcessor<Discovery, Review> {
             };
 
             nodes.insert(*id, PreProcessNode {
-                id: node.id,
-                parents: node.parents.clone(),
-                children: node.children.clone(),
-                depth: node.depth,
+                id: node.id(),
+                parents: node.parents().to_vec(),
+                children: node.children().to_vec(),
+                depth: node.depth(),
                 status,
                 payload,
             });
@@ -1322,11 +1330,14 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             status_by_id.insert(*id, node.status);
         }
 
-        let base_graph = graph.map_payload(|node| InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
+        let base_graph = graph.map_payload(|node| {
+            let mut new_node = InheritanceNode::new_child(
+                node.id(),
+                node.parents().to_vec(),
+                node.depth(),
+            );
+            new_node.set_children(node.children().to_vec());
+            new_node
         });
 
         let mut name_index: HashMap<SchemaName, SchemaId> = HashMap::new();
@@ -1367,36 +1378,35 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         let mut new_ids: Vec<_> =
             new_schemas.iter().map(|(id, _)| *id).collect();
         new_ids.sort();
-        for id in new_ids {
-            let Some(new) = new_schemas.get(&id) else {
+        for id in &new_ids {
+            let Some(new) = new_schemas.get(id) else {
                 continue;
             };
             let name = SchemaName::try_new(new.raw.name())
                 .map_err(SchemaLoaderError::Resolution)?;
-            name_index.insert(name, id);
+            name_index.insert(name, *id);
         }
 
         let index = SchemaIndex::from_name_id_pairs(name_index.clone());
 
-        let mut builder = DagBuilder::from_existing_graph(&base_graph);
+        let mut editor =
+            crate::schema::graph::GraphEditor::from_graph(&base_graph);
 
-        let mut builder_ids: Vec<_> =
-            new_schemas.iter().map(|(id, _)| *id).collect();
-        builder_ids.sort();
-        for id in builder_ids {
-            let Some(new) = new_schemas.get(&id) else {
-                continue;
-            };
-            builder.add_schema(id, &new.raw, &index);
+        for id in &deleted_ids {
+            editor.delete_node(*id);
         }
 
-        for id in graph.order() {
-            let Some(payload) = parsed_payloads.get(id) else {
+        for id in &new_ids {
+            let Some(new) = new_schemas.get(id) else {
                 continue;
             };
-            if let FileParsedBranch::StaleParsed(stale) = payload.clone() {
-                builder.add_schema(*id, &stale.raw, &index);
+            let mut parents = Vec::new();
+            if let Some(parent_id) =
+                new.raw.extends().and_then(|name| index.get_id_by_name(name))
+            {
+                parents.push(parent_id);
             }
+            editor.apply_change(*id, parents);
         }
 
         let mut extends_changes: HashMap<SchemaId, ExtendsChangeKind> =
@@ -1405,17 +1415,24 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             let Some(payload) = parsed_payloads.get(id) else {
                 continue;
             };
-            let FileParsedBranch::StaleParsed(stale) = payload.clone() else {
-                continue;
-            };
 
             let old_parent = base_graph
                 .nodes()
                 .get(id)
-                .and_then(|node| node.parents.first().copied());
+                .and_then(|node| node.parents().first().copied());
 
-            let new_parent =
-                stale.raw.extends().and_then(|name| index.get_id_by_name(name));
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "match ergonomics keep structural checks concise"
+            )]
+            let new_parent = match payload {
+                FileParsedBranch::StaleParsed(stale) => stale
+                    .raw
+                    .extends()
+                    .and_then(|name| index.get_id_by_name(name)),
+                FileParsedBranch::Fresh(_)
+                | FileParsedBranch::StaleTimestamps(_) => old_parent,
+            };
 
             let change_kind = match (old_parent, new_parent) {
                 (None, None) => ExtendsChangeKind::Unchanged,
@@ -1427,10 +1444,18 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 (Some(_), Some(_)) => ExtendsChangeKind::Rewired,
             };
 
+            if change_kind != ExtendsChangeKind::Unchanged {
+                let mut parents = Vec::new();
+                if let Some(p) = new_parent {
+                    parents.push(p);
+                }
+                editor.apply_change(*id, parents);
+            }
+
             extends_changes.insert(*id, change_kind);
         }
 
-        let finalized_graph = builder.finalize(&index)?;
+        let finalized_graph = editor.patch()?;
         let (final_nodes, final_order, final_roots) =
             finalized_graph.into_parts();
 
@@ -1492,10 +1517,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             };
 
             nodes.insert(id, PostProcessNode {
-                id: node.id,
-                parents: node.parents,
-                children: node.children,
-                depth: node.depth,
+                id: node.id(),
+                parents: node.parents().to_vec(),
+                children: node.children().to_vec(),
+                depth: node.depth(),
                 status,
                 extends_change,
                 payload,
@@ -1544,8 +1569,21 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                 .collect::<Result<Vec<_>, SchemaLoaderError>>()?,
         );
 
-        let builder = DagBuilder::from_new_schemas(&raw_by_id)?;
-        let graph = builder.finalize(&index)?;
+        let mut builder = GraphBuilder::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "node insertion order is irrelevant for build"
+        )]
+        for (id, raw) in &raw_by_id {
+            let mut parents = Vec::new();
+            if let Some(parent_id) =
+                raw.extends().and_then(|extends| index.get_id_by_name(extends))
+            {
+                parents.push(parent_id);
+            }
+            builder.insert_node(*id, parents);
+        }
+        let graph = builder.build()?;
         let (graph_nodes, graph_order, graph_roots) = graph.into_parts();
 
         for (id, parsed) in new_schemas {
@@ -1570,10 +1608,10 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                 ))
             })?;
             nodes.insert(id, PreProcessNode {
-                id: node.id,
-                parents: node.parents,
-                children: node.children,
-                depth: node.depth,
+                id: node.id(),
+                parents: node.parents().to_vec(),
+                children: node.children().to_vec(),
+                depth: node.depth(),
                 status: NodeStatus::New,
                 payload,
             });
@@ -2515,11 +2553,14 @@ impl SchemaProcessor<Construction, NewBuild> {
             })?;
         }
 
-        let inheritance_graph = graph.map_payload(|node| InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
+        let inheritance_graph = graph.map_payload(|node| {
+            let mut new_node = InheritanceNode::new_child(
+                node.id(),
+                node.parents().to_vec(),
+                node.depth(),
+            );
+            new_node.set_children(node.children().to_vec());
+            new_node
         });
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
             let repo_err: SchemaRepositoryError = e.into();
@@ -2555,11 +2596,14 @@ impl SchemaProcessor<Construction, Constructed> {
             })?;
         }
 
-        let inheritance_graph = graph.map_payload(|node| InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
+        let inheritance_graph = graph.map_payload(|node| {
+            let mut new_node = InheritanceNode::new_child(
+                node.id(),
+                node.parents().to_vec(),
+                node.depth(),
+            );
+            new_node.set_children(node.children().to_vec());
+            new_node
         });
 
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {

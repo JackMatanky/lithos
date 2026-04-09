@@ -16,7 +16,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         error::SchemaLoaderError,
-        graph::{InheritanceGraph, InheritanceNode},
+        inheritance::{InheritanceGraph, InheritanceNode},
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
@@ -398,7 +398,7 @@ mod tests {
         fs::FsReader,
         schema::{
             aggregate::SchemaId,
-            graph::{InheritanceGraph, InheritanceNode},
+            inheritance::{InheritanceGraph, InheritanceNode},
             testing::InMemoryRepository,
         },
     };

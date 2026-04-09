@@ -50,8 +50,8 @@ use std::{
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    graph::{InheritanceGraph, InheritanceNode},
     index::{NameIdPairs, PathIdPairs, SchemaIndex},
+    inheritance::{InheritanceGraph, InheritanceNode},
     property::{PropertyMap, PropertyName},
     storage::{Repository, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},

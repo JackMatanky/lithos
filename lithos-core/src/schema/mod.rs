@@ -51,6 +51,8 @@ pub mod schema_processor;
 
 /// DAG structures and algorithms for schema inheritance.
 pub mod graph;
+/// Core inheritance graph types.
+pub mod inheritance;
 
 /// Schema index types for efficient lookups.
 pub(crate) mod index;

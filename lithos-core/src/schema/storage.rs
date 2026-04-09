@@ -17,8 +17,8 @@ use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     error::{SchemaRepositoryError, SchemaStorageError},
-    graph::{InheritanceGraph, InheritanceNode},
     index::{NameIdPairs, PathIdPairs, SchemaIndex},
+    inheritance::{InheritanceGraph, InheritanceNode},
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
