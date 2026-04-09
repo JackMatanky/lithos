@@ -1322,7 +1322,12 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             status_by_id.insert(*id, node.status);
         }
 
-        let base_graph = dehydrate_parsed_graph(&graph);
+        let base_graph = graph.map_payload(|node| InheritanceNode {
+            id: node.id,
+            parents: node.parents.clone(),
+            children: node.children.clone(),
+            depth: node.depth,
+        });
 
         let mut name_index: HashMap<SchemaName, SchemaId> = HashMap::new();
         let mut parsed_payloads: HashMap<SchemaId, FileParsedBranch> =
@@ -2510,7 +2515,12 @@ impl SchemaProcessor<Construction, NewBuild> {
             })?;
         }
 
-        let inheritance_graph = dehydrate_new_graph_to_inheritance(&graph);
+        let inheritance_graph = graph.map_payload(|node| InheritanceNode {
+            id: node.id,
+            parents: node.parents.clone(),
+            children: node.children.clone(),
+            depth: node.depth,
+        });
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
             let repo_err: SchemaRepositoryError = e.into();
             SchemaLoaderError::Repository(repo_err)
@@ -2545,7 +2555,12 @@ impl SchemaProcessor<Construction, Constructed> {
             })?;
         }
 
-        let inheritance_graph = dehydrate_graph_to_inheritance(&graph);
+        let inheritance_graph = graph.map_payload(|node| InheritanceNode {
+            id: node.id,
+            parents: node.parents.clone(),
+            children: node.children.clone(),
+            depth: node.depth,
+        });
 
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
             let repo_err: SchemaRepositoryError = e.into();
@@ -2565,26 +2580,6 @@ impl SchemaProcessor<Completed, Constructed> {
     pub(crate) fn into_schemas(self) -> Vec<Arc<Schema>> {
         self.status.schemas
     }
-}
-
-fn dehydrate_graph_to_inheritance(
-    graph: &InheritanceGraph<PostProcessNode<AnalysisBranch>>,
-) -> InheritanceGraph<InheritanceNode> {
-    let mut nodes = HashMap::new();
-
-    for id in graph.order() {
-        let Some(node) = graph.nodes().get(id) else {
-            continue;
-        };
-        nodes.insert(*id, InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
-        });
-    }
-
-    InheritanceGraph::new(nodes, graph.order().to_vec(), graph.roots().to_vec())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2678,44 +2673,6 @@ fn diff_properties(
         upserts,
         removed,
     }
-}
-
-fn dehydrate_parsed_graph(
-    graph: &InheritanceGraph<PreProcessNode<FileParsedBranch>>,
-) -> InheritanceGraph<InheritanceNode> {
-    let mut nodes = HashMap::new();
-    for id in graph.order() {
-        let Some(node) = graph.nodes().get(id) else {
-            continue;
-        };
-        nodes.insert(*id, InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
-        });
-    }
-
-    InheritanceGraph::new(nodes, graph.order().to_vec(), graph.roots().to_vec())
-}
-
-fn dehydrate_new_graph_to_inheritance(
-    graph: &InheritanceGraph<PreProcessNode<NewParsedPayload>>,
-) -> InheritanceGraph<InheritanceNode> {
-    let mut nodes = HashMap::new();
-    for id in graph.order() {
-        let Some(node) = graph.nodes().get(id) else {
-            continue;
-        };
-        nodes.insert(*id, InheritanceNode {
-            id: node.id,
-            parents: node.parents.clone(),
-            children: node.children.clone(),
-            depth: node.depth,
-        });
-    }
-
-    InheritanceGraph::new(nodes, graph.order().to_vec(), graph.roots().to_vec())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

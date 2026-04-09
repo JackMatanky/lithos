@@ -160,6 +160,21 @@ impl<T> InheritanceGraph<T> {
     pub(crate) fn into_parts(self) -> GraphParts<T> {
         (self.nodes, self.order, self.roots)
     }
+
+    pub(crate) fn map_payload<U, F>(&self, mut f: F) -> InheritanceGraph<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        let mut nodes = HashMap::with_capacity(self.nodes.len());
+        for id in self.order() {
+            let Some(node) = self.nodes.get(id) else {
+                continue;
+            };
+            nodes.insert(*id, f(node));
+        }
+
+        InheritanceGraph::new(nodes, self.order.clone(), self.roots.clone())
+    }
 }
 
 /// Minimal DAG node for database storage.
