@@ -80,17 +80,15 @@ impl MarkdownParser {
         let offset_iter = parser.into_offset_iter();
 
         // Collect reference definitions before consuming the iterator
-        let ref_defs: std::collections::HashMap<Box<str>, Box<str>> =
+        let ref_defs = RefDefs::new(
             offset_iter
                 .reference_definitions()
                 .iter()
                 .map(|(label, link_def)| {
-                    (
-                        normalize_reference_label(label),
-                        link_def.dest.as_ref().into(),
-                    )
+                    (label.to_owned(), link_def.dest.to_string())
                 })
-                .collect();
+                .collect(),
+        );
 
         let mut state = ParserState {
             block: BlockState {
@@ -145,29 +143,32 @@ impl MarkdownParser {
         });
         let iter = TextMergeWithOffset::new(events);
 
-        for (event, range) in iter {
-            let start_pos =
-                SourceByteOffset::try_from(range.start).map_err(|_err| {
-                    #[expect(
-                        clippy::as_conversions,
-                        reason = "u32::MAX fits in usize"
-                    )]
-                    NoteParseError::SourceTooLarge {
-                        size: range.start,
-                        limit: u32::MAX as usize,
-                    }
-                })?;
+        let to_offset = |start: usize| {
+            SourceByteOffset::try_from(start).map_err(|_err| {
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "u32::MAX fits in usize"
+                )]
+                NoteParseError::SourceTooLarge {
+                    size: start,
+                    limit: u32::MAX as usize,
+                }
+            })
+        };
 
+        for (event, range) in iter {
             if MetadataHandler::on_event(&event, &range, &mut state)? {
                 continue;
             }
 
             match event {
                 Event::Start(pulldown_cmark::Tag::MetadataBlock(kind)) => {
+                    let start_pos = to_offset(range.start)?;
                     state.meta.in_metadata = Some((kind, start_pos));
                     state.meta.buffer.clear();
                 }
                 Event::Start(tag) => {
+                    let start_pos = to_offset(range.start)?;
                     StartTagHandler::on_start(tag, start_pos, &mut state);
                 }
                 Event::End(end_tag) => {
@@ -183,7 +184,7 @@ impl MarkdownParser {
                 }
                 Event::TaskListMarker(checked) => {
                     if let Some(block) = state.block.stack.last_mut() {
-                        block.task_marker = Some(checked);
+                        block.meta.task_marker = Some(checked);
                     }
                 }
                 Event::InlineMath(_)
@@ -351,12 +352,12 @@ impl MarkdownParser {
         state.out.sections.push(RawSection::new(
             RawSectionKind::Paragraph,
             block_range,
-            block.depth,
+            block.meta.depth,
         ));
         let (scan_tags, scan_fields, scan_refs, _marker) =
             Self::scan_block_artifacts(
                 &scan,
-                &block.scannable_ranges,
+                &block.text.scannable_ranges,
                 false,
                 block_range,
             )?;
@@ -365,10 +366,10 @@ impl MarkdownParser {
         state.out.block_refs.extend(scan_refs);
 
         if let Some(parent) = state.block.stack.last_mut()
-            && matches!(parent.kind, BlockKind::ListItem)
-            && parent.full_text.is_empty()
+            && matches!(parent.meta.kind, BlockKind::ListItem)
+            && parent.text.full_text.is_empty()
         {
-            parent.full_text.push_str(&block.full_text);
+            parent.text.full_text.push_str(&block.text.full_text);
         }
         Ok(())
     }
@@ -382,11 +383,12 @@ impl MarkdownParser {
         let Some(context) = list_contexts.pop() else {
             return;
         };
-        let list_depth = if block.depth <= 1 {
+        let list_depth = if block.meta.depth <= 1 {
             RawListDepth::Root
         } else {
             RawListDepth::Nested(
-                u8::try_from(block.depth.saturating_sub(1)).unwrap_or(u8::MAX),
+                u8::try_from(block.meta.depth.saturating_sub(1))
+                    .unwrap_or(u8::MAX),
             )
         };
         lists.push(RawList::new(
@@ -411,13 +413,13 @@ impl MarkdownParser {
         state.out.sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
-            block.depth,
+            block.meta.depth,
         ));
-        let is_checked = block.task_marker;
+        let is_checked = block.meta.task_marker;
         let (scan_tags, scan_fields, scan_refs, _) =
             Self::scan_block_artifacts(
                 &scan,
-                &block.scannable_ranges,
+                &block.text.scannable_ranges,
                 false,
                 block_range,
             )?;
@@ -452,8 +454,7 @@ impl MarkdownParser {
                 SourceByteRange::new(block_range.start(), first_line_end)
                     .map_err(NoteIngestError::Domain)?;
 
-            scan.scanner
-                .scan_task_marker(scan.source, prefix_range)
+            NoteScanner::scan_task_marker(scan.source, prefix_range)
                 .map_err(NoteIngestError::Domain)?
         } else {
             None
@@ -461,15 +462,16 @@ impl MarkdownParser {
 
         let list_kind =
             state.list.stack.last().copied().unwrap_or(RawListKind::Unordered);
-        let list_depth = if block.depth <= 1 {
+        let list_depth = if block.meta.depth <= 1 {
             RawListDepth::Root
         } else {
             RawListDepth::Nested(
-                u8::try_from(block.depth.saturating_sub(1)).unwrap_or(u8::MAX),
+                u8::try_from(block.meta.depth.saturating_sub(1))
+                    .unwrap_or(u8::MAX),
             )
         };
-        let depth_index = usize::try_from(block.depth).unwrap_or(0);
-        let parent_pos = if block.depth <= 1 {
+        let depth_index = usize::try_from(block.meta.depth).unwrap_or(0);
+        let parent_pos = if block.meta.depth <= 1 {
             None
         } else {
             state
@@ -488,16 +490,18 @@ impl MarkdownParser {
                  failure"
             );
         }
-        let raw_text = block.full_text.trim().to_owned();
+        let raw_text = block.text.full_text.trim().to_owned();
         let text_range = if raw_text.is_empty() {
             SourceByteRange::new(block_range.start(), block_range.start())
                 .map_err(NoteIngestError::Domain)?
         } else {
             let leading_trim = block
+                .text
                 .full_text
                 .len()
-                .saturating_sub(block.full_text.trim_start().len());
+                .saturating_sub(block.text.full_text.trim_start().len());
             let base_start = block
+                .text
                 .scannable_ranges
                 .first()
                 .and_then(|range| SourceByteOffset::try_from(range.start).ok())
@@ -513,7 +517,7 @@ impl MarkdownParser {
         };
 
         if let Some(context_list) = state.list.contexts.last_mut() {
-            context_list.item_positions.push(block.start_offset);
+            context_list.item_positions.push(block.meta.start_offset);
         }
 
         let raw_list_item = RawListItem::new(
@@ -580,7 +584,31 @@ type ScannedArtifacts<'source> = (
     Option<RawTaskStatusSymbol>,
 );
 
-type ReferenceMap = std::collections::HashMap<Box<str>, Box<str>>;
+struct RefDefs {
+    normalized: std::collections::HashMap<Box<str>, Box<str>>,
+}
+
+impl RefDefs {
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Normalization chooses first-seen label order"
+    )]
+    fn new(raw: std::collections::HashMap<String, String>) -> Self {
+        let mut normalized = std::collections::HashMap::new();
+        for (label, dest) in raw {
+            let key = normalize_reference_label(&label);
+            normalized.entry(key).or_insert(dest.into_boxed_str());
+        }
+        Self {
+            normalized,
+        }
+    }
+
+    fn resolve(&self, label: &str) -> Option<&str> {
+        let normalized = normalize_reference_label(label);
+        self.normalized.get(normalized.as_ref()).map(AsRef::as_ref)
+    }
+}
 
 struct MetadataHandler;
 
@@ -685,7 +713,7 @@ impl StartTagHandler {
                 let target = resolve_reference_target(
                     link_type,
                     dest_url,
-                    &state.link.ref_defs,
+                    &mut state.link.ref_defs,
                 );
                 state.link.current = Some(LinkFrame {
                     style: link_type.into(),
@@ -708,7 +736,7 @@ impl StartTagHandler {
                 let target = resolve_reference_target(
                     link_type,
                     dest_url,
-                    &state.link.ref_defs,
+                    &mut state.link.ref_defs,
                 );
                 state.link.current = Some(LinkFrame {
                     style: link_type.into(),
@@ -760,12 +788,16 @@ impl StartTagHandler {
                     .truncate(depth_index.saturating_add(1));
             }
             state.block.stack.push(ActiveBlock {
-                kind: bkind,
-                depth: current_depth,
-                start_offset: start_pos,
-                full_text: state.pool.take(),
-                scannable_ranges: Vec::with_capacity(4),
-                task_marker: None,
+                meta: ActiveBlockMeta {
+                    kind: bkind,
+                    depth: current_depth,
+                    start_offset: start_pos,
+                    task_marker: None,
+                },
+                text: ActiveBlockText {
+                    full_text: state.pool.take(),
+                    scannable_ranges: Vec::with_capacity(4),
+                },
             });
         }
     }
@@ -811,7 +843,7 @@ impl EndTagHandler {
             | pulldown_cmark::TagEnd::CodeBlock => {
                 if let Some(mut block) = state.block.stack.pop() {
                     if matches!(
-                        block.kind,
+                        block.meta.kind,
                         BlockKind::List | BlockKind::BlockQuote
                     ) {
                         state.block.depth = state.block.depth.saturating_sub(1);
@@ -832,7 +864,7 @@ impl EndTagHandler {
                             )
                         })?;
                     let block_range =
-                        SourceByteRange::new(block.start_offset, end_pos)
+                        SourceByteRange::new(block.meta.start_offset, end_pos)
                             .map_err(NoteIngestError::Domain)?;
 
                     let scan = ScanContext {
@@ -841,13 +873,13 @@ impl EndTagHandler {
                         task_spec: state.task_spec,
                     };
 
-                    match block.kind {
+                    match block.meta.kind {
                         BlockKind::Heading(level) => {
                             state.out.headings.push(RawHeading::new(
                                 level,
-                                block.full_text.trim().to_owned().into(),
+                                block.text.full_text.trim().to_owned().into(),
                                 block_range,
-                                block.start_offset,
+                                block.meta.start_offset,
                             ));
                             state.out.sections.push(RawSection::new(
                                 RawSectionKind::Heading,
@@ -857,7 +889,7 @@ impl EndTagHandler {
                             let (scan_tags, scan_fields, scan_refs, _marker) =
                                 MarkdownParser::scan_block_artifacts(
                                     &scan,
-                                    &block.scannable_ranges,
+                                    &block.text.scannable_ranges,
                                     false,
                                     block_range,
                                 )?;
@@ -894,18 +926,18 @@ impl EndTagHandler {
                             state.out.sections.push(RawSection::new(
                                 RawSectionKind::BlockQuote,
                                 block_range,
-                                block.depth,
+                                block.meta.depth,
                             ));
                         }
                         BlockKind::CodeBlock => {
                             state.out.sections.push(RawSection::new(
                                 RawSectionKind::CodeBlock,
                                 block_range,
-                                block.depth,
+                                block.meta.depth,
                             ));
                         }
                     }
-                    state.pool.put(std::mem::take(&mut block.full_text));
+                    state.pool.put(std::mem::take(&mut block.text.full_text));
                 }
             }
             pulldown_cmark::TagEnd::HtmlBlock
@@ -938,9 +970,9 @@ impl TextHandler {
     ) {
         let text_str = text.as_ref();
         if let Some(block) = state.block.stack.last_mut() {
-            block.full_text.push_str(text_str);
+            block.text.full_text.push_str(text_str);
             if state.link.current.is_none() {
-                block.scannable_ranges.push(range.clone());
+                block.text.scannable_ranges.push(range.clone());
             }
         }
         if let Some(link) = state.link.current.as_mut() {
@@ -955,7 +987,7 @@ impl TextHandler {
     ) {
         let text_str = text.as_ref();
         if let Some(block) = state.block.stack.last_mut() {
-            block.full_text.push_str(text_str);
+            block.text.full_text.push_str(text_str);
         }
         if let Some(link) = state.link.current.as_mut() {
             link.alias.push_str(text_str);
@@ -986,7 +1018,7 @@ struct ListState {
 
 struct LinkState<'source> {
     current: Option<LinkFrame<'source>>,
-    ref_defs: ReferenceMap,
+    ref_defs: RefDefs,
 }
 
 struct MetaState {
@@ -1013,13 +1045,21 @@ struct ScanContext<'source, 'spec, 'scan> {
     task_spec: &'spec TaskConfigSpec,
 }
 
-struct ActiveBlock {
+struct ActiveBlockMeta {
     kind: BlockKind,
     depth: u32,
     start_offset: SourceByteOffset,
+    task_marker: Option<bool>,
+}
+
+struct ActiveBlockText {
     full_text: String,
     scannable_ranges: Vec<std::ops::Range<usize>>,
-    task_marker: Option<bool>,
+}
+
+struct ActiveBlock {
+    meta: ActiveBlockMeta,
+    text: ActiveBlockText,
 }
 
 struct ListContext {
@@ -1186,13 +1226,12 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
 fn resolve_reference_target<'source>(
     link_type: pulldown_cmark::LinkType,
     dest_url: CowStr<'source>,
-    reference_map: &ReferenceMap,
+    ref_defs: &mut RefDefs,
 ) -> Cow<'source, str> {
-    if is_reference_link_type(link_type) {
-        let normalized = normalize_reference_label(dest_url.as_ref());
-        if let Some(resolved) = reference_map.get(normalized.as_ref()) {
-            return Cow::Owned(String::from(resolved.as_ref()));
-        }
+    if is_reference_link_type(link_type)
+        && let Some(resolved) = ref_defs.resolve(dest_url.as_ref())
+    {
+        return Cow::Owned(String::from(resolved));
     }
     Cow::from(dest_url)
 }

@@ -147,7 +147,7 @@ impl NoteScanner {
         base_offset: SourceByteOffset,
     ) -> Result<Vec<ScannedArtifact<'source>>, NoteError> {
         let mut cursor = Cursor::new(text, base_offset);
-        let mut artifacts = Vec::new();
+        let mut artifacts = Vec::with_capacity(8);
         self.scan_cursor(&mut cursor, &mut artifacts)?;
         Ok(artifacts)
     }
@@ -212,17 +212,17 @@ impl NoteScanner {
     /// Returns [`NoteError`] if any range offset exceeds supported bounds.
     #[inline]
     pub(crate) fn scan_task_marker(
-        &self,
         text: &str,
         range: SourceByteRange,
     ) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
         let start = range.start().as_usize();
         let end = range.end().as_usize();
         let slice = start..end;
-        let mut artifacts = Vec::with_capacity(4);
-        self.scan_ranges(text, std::slice::from_ref(&slice), &mut artifacts)?;
-        let scanned = split_artifacts(artifacts, true);
-        Ok(scanned.task_marker)
+        let Some(segment) = text.get(slice) else {
+            return Ok(None);
+        };
+        let mut cursor = Cursor::new(segment, range.start());
+        scan_task_marker_at_line_start(&mut cursor)
     }
 
     /// Continues scanning from a provided [`Cursor`] state.
@@ -880,6 +880,34 @@ fn split_artifacts(
     raw
 }
 
+fn scan_task_marker_at_line_start(
+    cursor: &mut Cursor<'_>,
+) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
+    cursor.skip_whitespace_on_line()?;
+    let Some(first) = cursor.peek_byte() else {
+        return Ok(None);
+    };
+    if first == b'\n' || first == b'\r' {
+        return Ok(None);
+    }
+    if let Some(prefix_len) = NoteScanner::match_list_prefix(cursor) {
+        cursor.advance(prefix_len)?;
+        cursor.skip_whitespace_on_line()?;
+        if cursor.rest.starts_with('[')
+            && let Some(marker_char) = cursor.rest.chars().nth(1)
+            && cursor.rest.get(2..3) == Some("]")
+        {
+            let marker_pos = cursor.offset.add_offset(1)?;
+            let symbol = RawTaskStatusSymbol::new(
+                RawTaskMarker::from_char(marker_char),
+                marker_pos,
+            );
+            return Ok(Some(symbol));
+        }
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     mod block_ref {
@@ -1230,14 +1258,12 @@ mod tests {
 
         #[test]
         fn should_scan_task_marker_from_range() {
-            let scanner = scanner_fixture();
             let text = "- [x] Done";
             let end = SourceByteOffset::try_from(text.len())
                 .expect("valid end offset");
             let range = SourceByteRange::new(SourceByteOffset::new(0), end)
                 .expect("valid range");
-            let marker = scanner
-                .scan_task_marker(text, range)
+            let marker = NoteScanner::scan_task_marker(text, range)
                 .expect("scan task marker");
             assert!(matches!(
                 marker.map(|s| s.marker),
