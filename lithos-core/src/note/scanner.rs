@@ -109,6 +109,30 @@ pub struct NoteScanner {
     emoji_markers: Box<[char]>,
 }
 
+trait LineStartRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError>;
+}
+
+trait BodyRule {
+    fn try_scan<'source>(
+        &self,
+        scanner: &NoteScanner,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError>;
+}
+
+struct TaskRule;
+struct BareFieldRule;
+struct TagRule;
+struct DelimitedFieldRule;
+struct BlockRefRule;
+struct EmojiFieldRule;
+
 impl NoteScanner {
     /// Create a new scanner with a custom set of emoji markers.
     #[inline]
@@ -275,29 +299,7 @@ impl NoteScanner {
             return Ok(());
         }
 
-        // Try to match list prefix: -, *, +, or 1.
-        if let Some(prefix_len) = Self::match_list_prefix(cursor) {
-            cursor.advance(prefix_len)?;
-            cursor.skip_whitespace_on_line()?;
-
-            // Try to match checkbox: [x]
-            if cursor.rest.starts_with('[')
-                && let Some(marker_char) = cursor.rest.chars().nth(1)
-                && cursor.rest.get(2..3) == Some("]")
-            {
-                let marker_pos = cursor.offset.add_offset(1)?;
-                let symbol = RawTaskStatusSymbol::new(
-                    RawTaskMarker::from_char(marker_char),
-                    marker_pos,
-                );
-                artifacts.push(ScannedArtifact::TaskMarker(symbol));
-                cursor.advance(3)?;
-            }
-        } else if let Some(field) = Self::scan_bare_field(cursor)? {
-            artifacts.push(field);
-        } else {
-            // No trigger at line start
-        }
+        Self::run_line_start_rules(cursor, artifacts)?;
 
         cursor.mode = ScanMode::InBody;
         Ok(())
@@ -339,53 +341,72 @@ impl NoteScanner {
         artifacts: &mut Vec<ScannedArtifact<'source>>,
     ) -> Result<(), NoteError> {
         match cursor.peek_byte() {
-            Some(b'#') if !cursor.prev_alnum => {
-                if let Some(tag) = Self::scan_tag(cursor)? {
-                    artifacts.push(tag);
-                } else {
-                    cursor.advance(1)?;
-                }
-            }
-            Some(b'[' | b'(') => {
-                if let Some(field) = Self::scan_delimited_field(cursor)? {
-                    artifacts.push(field);
-                } else {
-                    cursor.advance(1)?;
-                }
-            }
-            Some(b'^') if !cursor.prev_alnum => {
-                if let Some(block_ref) = Self::scan_block_ref(cursor)? {
-                    artifacts.push(block_ref);
-                } else {
-                    cursor.advance(1)?;
-                }
-            }
             Some(b'\n' | b'\r') => {
                 cursor.advance(1)?;
                 cursor.mode = ScanMode::AtLineStart;
                 cursor.prev_alnum = false;
+                return Ok(());
             }
+            None => return Ok(()),
+            _ => {}
+        }
+
+        if Self::run_body_rules(self, cursor, artifacts)? {
+            return Ok(());
+        }
+
+        match cursor.peek_byte() {
             Some(b) if b < 128 => {
                 cursor.prev_alnum = b.is_ascii_alphanumeric();
                 cursor.advance(1)?;
             }
             Some(_) => {
-                // Multi-byte Unicode character
                 let ch = cursor.rest.chars().next().unwrap_or('\0');
-                if self.emoji_markers.contains(&ch) {
-                    if let Some(field) = Self::scan_emoji_field(cursor)? {
-                        artifacts.push(field);
-                    } else {
-                        cursor.advance(ch.len_utf8())?;
-                    }
-                } else {
-                    cursor.prev_alnum = ch.is_alphanumeric();
-                    cursor.advance(ch.len_utf8())?;
-                }
+                cursor.prev_alnum = ch.is_alphanumeric();
+                cursor.advance(ch.len_utf8())?;
             }
             None => {}
         }
         Ok(())
+    }
+
+    fn run_line_start_rules<'source>(
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        let task_rule = TaskRule;
+        if task_rule.try_scan(cursor, artifacts)? {
+            return Ok(true);
+        }
+        let bare_field_rule = BareFieldRule;
+        if bare_field_rule.try_scan(cursor, artifacts)? {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn run_body_rules<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        let tag_rule = TagRule;
+        if tag_rule.try_scan(self, cursor, artifacts)? {
+            return Ok(true);
+        }
+        let delimited_field_rule = DelimitedFieldRule;
+        if delimited_field_rule.try_scan(self, cursor, artifacts)? {
+            return Ok(true);
+        }
+        let block_ref_rule = BlockRefRule;
+        if block_ref_rule.try_scan(self, cursor, artifacts)? {
+            return Ok(true);
+        }
+        let emoji_field_rule = EmojiFieldRule;
+        if emoji_field_rule.try_scan(self, cursor, artifacts)? {
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// Scans for a tag artifact starting at the current cursor position.
@@ -602,6 +623,127 @@ impl NoteScanner {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl LineStartRule for TaskRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if let Some(prefix_len) = NoteScanner::match_list_prefix(cursor) {
+            cursor.advance(prefix_len)?;
+            cursor.skip_whitespace_on_line()?;
+
+            if cursor.rest.starts_with('[')
+                && let Some(marker_char) = cursor.rest.chars().nth(1)
+                && cursor.rest.get(2..3) == Some("]")
+            {
+                let marker_pos = cursor.offset.add_offset(1)?;
+                let symbol = RawTaskStatusSymbol::new(
+                    RawTaskMarker::from_char(marker_char),
+                    marker_pos,
+                );
+                artifacts.push(ScannedArtifact::TaskMarker(symbol));
+                cursor.advance(3)?;
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+impl LineStartRule for BareFieldRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if let Some(field) = NoteScanner::scan_bare_field(cursor)? {
+            artifacts.push(field);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+impl BodyRule for TagRule {
+    fn try_scan<'source>(
+        &self,
+        _scanner: &NoteScanner,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if matches!(cursor.peek_byte(), Some(b'#')) && !cursor.prev_alnum {
+            if let Some(tag) = NoteScanner::scan_tag(cursor)? {
+                artifacts.push(tag);
+                return Ok(true);
+            }
+            cursor.advance(1)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+impl BodyRule for DelimitedFieldRule {
+    fn try_scan<'source>(
+        &self,
+        _scanner: &NoteScanner,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if matches!(cursor.peek_byte(), Some(b'[' | b'(')) {
+            if let Some(field) = NoteScanner::scan_delimited_field(cursor)? {
+                artifacts.push(field);
+                return Ok(true);
+            }
+            cursor.advance(1)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+impl BodyRule for BlockRefRule {
+    fn try_scan<'source>(
+        &self,
+        _scanner: &NoteScanner,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if matches!(cursor.peek_byte(), Some(b'^')) && !cursor.prev_alnum {
+            if let Some(block_ref) = NoteScanner::scan_block_ref(cursor)? {
+                artifacts.push(block_ref);
+                return Ok(true);
+            }
+            cursor.advance(1)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+impl BodyRule for EmojiFieldRule {
+    fn try_scan<'source>(
+        &self,
+        scanner: &NoteScanner,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        let Some(ch) = cursor.rest.chars().next() else {
+            return Ok(false);
+        };
+        if !scanner.emoji_markers.contains(&ch) {
+            return Ok(false);
+        }
+        if let Some(field) = NoteScanner::scan_emoji_field(cursor)? {
+            artifacts.push(field);
+            return Ok(true);
+        }
+        cursor.advance(ch.len_utf8())?;
+        Ok(true)
     }
 }
 
@@ -875,6 +1017,15 @@ mod tests {
         fn should_ignore_bare_field_in_body() {
             let scanner = scanner_fixture();
             let text = "Not a bare_key:: bare_value";
+            let artifacts =
+                scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
+            assert!(artifacts.is_empty());
+        }
+
+        #[test]
+        fn should_not_parse_bare_field_after_list_prefix() {
+            let scanner = scanner_fixture();
+            let text = "- bare_key:: bare_value";
             let artifacts =
                 scanner.scan_block(text, SourceByteOffset::new(0)).unwrap();
             assert!(artifacts.is_empty());
