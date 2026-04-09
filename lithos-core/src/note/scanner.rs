@@ -605,8 +605,8 @@ fn split_artifacts(
     let capacity = artifacts.len();
     let mut raw = ScannedRawArtifacts {
         tags: Vec::with_capacity(capacity),
-        inline_fields: Vec::with_capacity(capacity.saturating_div(2)),
-        block_refs: Vec::with_capacity(capacity.saturating_div(4)),
+        inline_fields: Vec::with_capacity(capacity),
+        block_refs: Vec::with_capacity(capacity),
         task_marker: None,
     };
     for artifact in artifacts {

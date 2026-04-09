@@ -87,20 +87,20 @@ impl MarkdownParser {
 
         let mut block_refs = Vec::new();
 
-        let mut headings = Vec::with_capacity(16);
-        let mut sections = Vec::with_capacity(32);
-        let mut links = Vec::with_capacity(32);
-        let mut tags = Vec::with_capacity(16);
-        let mut lists = Vec::with_capacity(8);
-        let mut list_items = Vec::with_capacity(32);
-        let mut inline_fields = Vec::with_capacity(16);
+        let mut headings = Vec::with_capacity(4);
+        let mut sections = Vec::with_capacity(8);
+        let mut links = Vec::with_capacity(8);
+        let mut tags = Vec::with_capacity(8);
+        let mut lists = Vec::with_capacity(4);
+        let mut list_items = Vec::with_capacity(8);
+        let mut inline_fields = Vec::with_capacity(8);
         let mut frontmatter = None;
 
-        let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(8);
-        let mut list_stack: Vec<RawListKind> = Vec::with_capacity(8);
-        let mut list_contexts: Vec<ListContext> = Vec::with_capacity(8);
+        let mut block_stack: Vec<ActiveBlock> = Vec::with_capacity(4);
+        let mut list_stack: Vec<RawListKind> = Vec::with_capacity(4);
+        let mut list_contexts: Vec<ListContext> = Vec::with_capacity(4);
         let mut open_item_by_depth: Vec<SourceByteOffset> =
-            Vec::with_capacity(16);
+            Vec::with_capacity(8);
 
         let mut depth: u32 = 0;
 
