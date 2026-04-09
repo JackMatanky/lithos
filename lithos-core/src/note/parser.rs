@@ -31,15 +31,6 @@ use crate::{
     },
 };
 
-type ScannedArtifacts<'source> = (
-    Vec<RawTag<'source>>,
-    Vec<RawInlineField<'source>>,
-    Vec<RawBlockRef<'source>>,
-    Option<RawTaskStatusSymbol>,
-);
-
-type ReferenceMap = std::collections::HashMap<Box<str>, Box<str>>;
-
 /// Markdown parser for extracting note facts and structure.
 #[non_exhaustive]
 pub struct MarkdownParser;
@@ -545,6 +536,54 @@ impl MarkdownParser {
     }
 }
 
+/// Metrics collected during `StringPool` operations for benchmarking.
+#[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct StringPoolMetrics {
+    /// Number of times `take()` was called (strings requested from pool).
+    pub takes: usize,
+    /// Number of times `put()` was called (strings returned to pool).
+    pub puts: usize,
+    /// Current number of strings held in the pool.
+    pub pool_size: usize,
+    /// Current capacity of the pool's internal vector.
+    pub pool_capacity: usize,
+}
+
+thread_local! {
+    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
+        std::cell::RefCell::new(StringPoolMetrics::default());
+}
+
+/// Retrieve the current `StringPool` metrics.
+///
+/// These metrics are accumulated during parsing operations.
+#[inline]
+#[must_use]
+pub fn get_string_pool_metrics() -> StringPoolMetrics {
+    STRING_POOL_METRICS.with(|cell| *cell.borrow())
+}
+
+/// Reset `StringPool` metrics to zero.
+///
+/// Call this before a benchmark iteration to start fresh metrics collection.
+#[inline]
+pub fn reset_string_pool_metrics() {
+    STRING_POOL_METRICS
+        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
+}
+
+type ScannedArtifacts<'source> = (
+    Vec<RawTag<'source>>,
+    Vec<RawInlineField<'source>>,
+    Vec<RawBlockRef<'source>>,
+    Option<RawTaskStatusSymbol>,
+);
+
+type ReferenceMap = std::collections::HashMap<Box<str>, Box<str>>;
+
+struct MetadataHandler;
+
 impl MetadataHandler {
     fn on_event(
         event: &Event<'_>,
@@ -605,6 +644,8 @@ impl MetadataHandler {
         Ok(true)
     }
 }
+
+struct StartTagHandler;
 
 impl StartTagHandler {
     #[expect(
@@ -729,6 +770,8 @@ impl StartTagHandler {
         }
     }
 }
+
+struct EndTagHandler;
 
 impl EndTagHandler {
     #[expect(
@@ -885,6 +928,8 @@ impl EndTagHandler {
     }
 }
 
+struct TextHandler;
+
 impl TextHandler {
     fn on_scannable_text(
         text: &pulldown_cmark::CowStr<'_>,
@@ -968,11 +1013,6 @@ struct ScanContext<'source, 'spec, 'scan> {
     task_spec: &'spec TaskConfigSpec,
 }
 
-struct MetadataHandler;
-struct StartTagHandler;
-struct EndTagHandler;
-struct TextHandler;
-
 struct ActiveBlock {
     kind: BlockKind,
     depth: u32,
@@ -1004,15 +1044,6 @@ enum BlockKind {
     List,
     BlockQuote,
     CodeBlock,
-}
-
-fn trim_to_opt(s: &str) -> Option<String> {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_owned())
-    }
 }
 
 struct LinkFrame<'source> {
@@ -1058,43 +1089,6 @@ impl<'source> LinkTarget<'source> {
     fn is_external(&self) -> bool {
         crate::note::link::Target::is_external_target(self.0.as_ref())
     }
-}
-
-/// Metrics collected during `StringPool` operations for benchmarking.
-#[derive(Default, Debug, Clone, Copy)]
-#[non_exhaustive]
-pub struct StringPoolMetrics {
-    /// Number of times `take()` was called (strings requested from pool).
-    pub takes: usize,
-    /// Number of times `put()` was called (strings returned to pool).
-    pub puts: usize,
-    /// Current number of strings held in the pool.
-    pub pool_size: usize,
-    /// Current capacity of the pool's internal vector.
-    pub pool_capacity: usize,
-}
-
-thread_local! {
-    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
-        std::cell::RefCell::new(StringPoolMetrics::default());
-}
-
-/// Retrieve the current `StringPool` metrics.
-///
-/// These metrics are accumulated during parsing operations.
-#[inline]
-#[must_use]
-pub fn get_string_pool_metrics() -> StringPoolMetrics {
-    STRING_POOL_METRICS.with(|cell| *cell.borrow())
-}
-
-/// Reset `StringPool` metrics to zero.
-///
-/// Call this before a benchmark iteration to start fresh metrics collection.
-#[inline]
-pub fn reset_string_pool_metrics() {
-    STRING_POOL_METRICS
-        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
 }
 
 struct StringPool {
@@ -1164,6 +1158,15 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
             | pulldown_cmark::LinkType::Autolink
             | pulldown_cmark::LinkType::Email => Self::Markdown,
         }
+    }
+}
+
+fn trim_to_opt(s: &str) -> Option<String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
     }
 }
 
