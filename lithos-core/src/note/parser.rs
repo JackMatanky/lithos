@@ -1098,6 +1098,43 @@ impl<'source> LinkTarget<'source> {
     }
 }
 
+/// Metrics collected during `StringPool` operations for benchmarking.
+#[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct StringPoolMetrics {
+    /// Number of times `take()` was called (strings requested from pool).
+    pub takes: usize,
+    /// Number of times `put()` was called (strings returned to pool).
+    pub puts: usize,
+    /// Current number of strings held in the pool.
+    pub pool_size: usize,
+    /// Current capacity of the pool's internal vector.
+    pub pool_capacity: usize,
+}
+
+thread_local! {
+    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
+        std::cell::RefCell::new(StringPoolMetrics::default());
+}
+
+/// Retrieve the current `StringPool` metrics.
+///
+/// These metrics are accumulated during parsing operations.
+#[inline]
+#[must_use]
+pub fn get_string_pool_metrics() -> StringPoolMetrics {
+    STRING_POOL_METRICS.with(|cell| *cell.borrow())
+}
+
+/// Reset `StringPool` metrics to zero.
+///
+/// Call this before a benchmark iteration to start fresh metrics collection.
+#[inline]
+pub fn reset_string_pool_metrics() {
+    STRING_POOL_METRICS
+        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
+}
+
 struct StringPool {
     pool: Vec<String>,
 }
@@ -1108,13 +1145,33 @@ impl StringPool {
         }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "metrics are user-controlled instrumentation"
+    )]
     fn take(&mut self) -> String {
+        STRING_POOL_METRICS.with(|cell| {
+            let mut metrics = cell.borrow_mut();
+            metrics.takes += 1;
+            metrics.pool_size = self.pool.len();
+            metrics.pool_capacity = self.pool.capacity();
+        });
         self.pool.pop().unwrap_or_else(|| String::with_capacity(128))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "metrics are user-controlled instrumentation"
+    )]
     fn put(&mut self, mut s: String) {
         s.clear();
         self.pool.push(s);
+        STRING_POOL_METRICS.with(|cell| {
+            let mut metrics = cell.borrow_mut();
+            metrics.puts += 1;
+            metrics.pool_size = self.pool.len();
+            metrics.pool_capacity = self.pool.capacity();
+        });
     }
 }
 
