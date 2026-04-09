@@ -18,6 +18,7 @@ use super::{
     bank::PropertyBank,
     error::{SchemaRepositoryError, SchemaStorageError},
     graph::{InheritanceGraph, InheritanceNode},
+    index::{NameIdPairs, PathIdPairs, SchemaIndex},
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
@@ -26,12 +27,6 @@ use crate::db::{BatchReader, Database};
 fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
     SchemaRepositoryError::Storage(SchemaStorageError::Storage(error))
 }
-
-/// A schema name-to-ID pair.
-pub type NameIdPair = (SchemaName, SchemaId);
-
-/// Schema path-to-ID pairs.
-pub type SchemaPathIdPairs = Vec<(PathBuf, SchemaId)>;
 
 /// Schema-to-properties usage map: `schema_id` → Vec<`property_name`>.
 ///
@@ -203,8 +198,7 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns storage-specific error if the query fails.
-    fn list_schema_name_id_pairs(&self)
-    -> Result<Vec<NameIdPair>, Self::Error>;
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error>;
 
     /// Lists schema path-to-ID pairs.
     ///
@@ -214,9 +208,17 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns storage-specific error if the query fails.
-    fn list_schema_path_id_pairs(
-        &self,
-    ) -> Result<SchemaPathIdPairs, Self::Error>;
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error>;
+
+    /// Gets a unified index of all schemas.
+    ///
+    /// The index provides O(1) lookups by name, ID, and path. It is derived
+    /// from the repository's path and name tables.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the index construction fails.
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error>;
 
     // ========================================================================
     // Property Bank Read Operations
@@ -519,12 +521,11 @@ impl Repository for RedbRepository {
     }
 
     #[inline]
-    fn list_schema_name_id_pairs(
-        &self,
-    ) -> Result<Vec<NameIdPair>, Self::Error> {
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_NAME;
 
-        self.db
+        let pairs: Vec<_> = self
+            .db
             .list_key_value_pairs(SCHEMA_ID_BY_NAME)
             .map_err(map_db_error)?
             .into_iter()
@@ -533,23 +534,36 @@ impl Repository for RedbRepository {
                     .map(|name| (name, id))
                     .map_err(SchemaRepositoryError::from)
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(pairs.into())
     }
 
     #[inline]
-    fn list_schema_path_id_pairs(
-        &self,
-    ) -> Result<SchemaPathIdPairs, Self::Error> {
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
-        self.db
+        let pairs: Vec<_> = self
+            .db
             .list_key_value_pairs(SCHEMA_ID_BY_PATH)
             .map_err(map_db_error)?
             .into_iter()
             .map(|(path_str, id): (String, SchemaId)| {
-                Ok((PathBuf::from(path_str), id))
+                (PathBuf::from(path_str), id)
             })
-            .collect()
+            .collect();
+
+        Ok(pairs.into())
+    }
+
+    #[inline]
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
+        let name_pairs = self.list_schema_name_id_pairs()?;
+        let path_pairs = self.list_schema_path_id_pairs()?;
+        Ok(SchemaIndex::from_pairs(
+            name_pairs.into_vec(),
+            path_pairs.into_vec(),
+        ))
     }
 
     // ========================================================================

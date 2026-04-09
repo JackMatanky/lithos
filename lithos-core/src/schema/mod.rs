@@ -52,6 +52,9 @@ pub mod schema_processor;
 /// DAG structures and algorithms for schema inheritance.
 pub mod graph;
 
+/// Schema index types for efficient lookups.
+pub(crate) mod index;
+
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.

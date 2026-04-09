@@ -51,8 +51,9 @@ use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     graph::{InheritanceGraph, InheritanceNode},
+    index::{NameIdPairs, PathIdPairs, SchemaIndex},
     property::{PropertyMap, PropertyName},
-    storage::{NameIdPair, Repository, SchemaPathIdPairs, SchemaPropertyUsage},
+    storage::{Repository, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},
 };
 
@@ -260,24 +261,33 @@ impl Repository for InMemoryRepository {
         Ok(schemas.values().cloned().collect())
     }
 
-    fn list_schema_name_id_pairs(
-        &self,
-    ) -> Result<Vec<NameIdPair>, Self::Error> {
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error> {
         let name_to_id = self.name_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned("list_schema_name_id_pairs")
         })?;
 
-        Ok(name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect())
+        let pairs: Vec<_> =
+            name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect();
+        Ok(pairs.into())
     }
 
-    fn list_schema_path_id_pairs(
-        &self,
-    ) -> Result<SchemaPathIdPairs, Self::Error> {
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned("list_schema_path_id_pairs")
         })?;
 
-        Ok(path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect())
+        let pairs: Vec<_> =
+            path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect();
+        Ok(pairs.into())
+    }
+
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
+        let name_pairs = self.list_schema_name_id_pairs()?;
+        let path_pairs = self.list_schema_path_id_pairs()?;
+        Ok(SchemaIndex::from_pairs(
+            name_pairs.into_vec(),
+            path_pairs.into_vec(),
+        ))
     }
 
     // ========================================================================

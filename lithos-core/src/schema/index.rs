@@ -14,16 +14,15 @@
 
 #![expect(dead_code, reason = "index methods used by downstream modules")]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, ops::Deref, path::PathBuf};
 
 use crate::schema::aggregate::{SchemaId, SchemaName};
 
-/// Inner maps returned by `into_inner`.
-pub(crate) type IndexMaps = (
-    HashMap<SchemaName, SchemaId>,
-    HashMap<SchemaId, SchemaName>,
-    HashMap<PathBuf, SchemaId>,
-);
+/// A schema name-to-ID pair.
+pub type NameIdPair = (SchemaName, SchemaId);
+
+/// A schema path-to-ID pair.
+pub type PathIdPair = (PathBuf, SchemaId);
 
 /// Bidirectional index for schema lookups.
 ///
@@ -43,26 +42,24 @@ pub(crate) type IndexMaps = (
 ///     (SchemaName::try_new("task")?, id2),
 /// ]);
 /// ```
-#[derive(Debug, Clone, Default)]
-pub(crate) struct SchemaIndex {
+#[derive(Debug, Clone)]
+pub struct SchemaIndex {
     name_to_id: HashMap<SchemaName, SchemaId>,
     id_to_name: HashMap<SchemaId, SchemaName>,
     path_to_id: HashMap<PathBuf, SchemaId>,
 }
 
 impl SchemaIndex {
-    /// Create an empty index.
-    #[inline]
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Create index from name→ID pairs (e.g., from repository's list method).
-    pub(crate) fn from_name_id_pairs(
-        pairs: impl IntoIterator<Item = (SchemaName, SchemaId)>,
-    ) -> Self {
-        let mut name_to_id = HashMap::new();
-        let mut id_to_name = HashMap::new();
+    pub fn from_name_id_pairs<I>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (SchemaName, SchemaId)>,
+    {
+        let pairs: Vec<_> = pairs.into_iter().collect();
+        let capacity = pairs.len();
+
+        let mut name_to_id = HashMap::with_capacity(capacity);
+        let mut id_to_name = HashMap::with_capacity(capacity);
 
         for (name, id) in pairs {
             id_to_name.insert(id, name.clone());
@@ -77,36 +74,56 @@ impl SchemaIndex {
     }
 
     /// Create index from path→ID pairs (e.g., from repository's list method).
-    pub(crate) fn from_path_id_pairs(
-        pairs: impl IntoIterator<Item = (PathBuf, SchemaId)>,
-    ) -> Self {
-        let mut path_to_id = HashMap::new();
+    ///
+    /// Derives `SchemaName` from path basename (file stem) for name→ID lookups.
+    pub fn from_path_id_pairs<I>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (PathBuf, SchemaId)>,
+    {
+        let pairs: Vec<_> = pairs.into_iter().collect();
+        let capacity = pairs.len();
+
+        let mut path_to_id = HashMap::with_capacity(capacity);
+        let mut name_to_id = HashMap::with_capacity(capacity);
+        let mut id_to_name = HashMap::with_capacity(capacity);
 
         for (path, id) in pairs {
+            if let Some(name) = path.file_stem().and_then(|s| {
+                SchemaName::try_new(s.to_string_lossy().as_ref()).ok()
+            }) {
+                id_to_name.insert(id, name.clone());
+                name_to_id.insert(name, id);
+            }
             path_to_id.insert(path, id);
         }
 
         Self {
-            name_to_id: HashMap::new(),
-            id_to_name: HashMap::new(),
+            name_to_id,
+            id_to_name,
             path_to_id,
         }
     }
 
     /// Create index from both name→ID and path→ID pairs.
-    pub(crate) fn from_pairs(
-        name_pairs: impl IntoIterator<Item = (SchemaName, SchemaId)>,
-        path_pairs: impl IntoIterator<Item = (PathBuf, SchemaId)>,
-    ) -> Self {
-        let mut name_to_id = HashMap::new();
-        let mut id_to_name = HashMap::new();
+    pub fn from_pairs<I, J>(name_pairs: I, path_pairs: J) -> Self
+    where
+        I: IntoIterator<Item = (SchemaName, SchemaId)>,
+        J: IntoIterator<Item = (PathBuf, SchemaId)>,
+    {
+        let name_pairs: Vec<_> = name_pairs.into_iter().collect();
+        let path_pairs: Vec<_> = path_pairs.into_iter().collect();
+        let name_capacity = name_pairs.len();
+        let path_capacity = path_pairs.len();
+
+        let mut name_to_id = HashMap::with_capacity(name_capacity);
+        let mut id_to_name = HashMap::with_capacity(name_capacity);
 
         for (name, id) in name_pairs {
             id_to_name.insert(id, name.clone());
             name_to_id.insert(name, id);
         }
 
-        let mut path_to_id = HashMap::new();
+        let mut path_to_id = HashMap::with_capacity(path_capacity);
         for (path, id) in path_pairs {
             path_to_id.insert(path, id);
         }
@@ -120,63 +137,198 @@ impl SchemaIndex {
 
     /// Get schema ID by name.
     #[inline]
-    pub(crate) fn get_id_by_name(&self, name: &SchemaName) -> Option<SchemaId> {
+    #[must_use]
+    pub fn get_id_by_name(&self, name: &SchemaName) -> Option<SchemaId> {
         self.name_to_id.get(name).copied()
     }
 
     /// Get schema name by ID.
     #[inline]
-    pub(crate) fn get_name_by_id(&self, id: &SchemaId) -> Option<&SchemaName> {
+    #[must_use]
+    pub fn get_name_by_id(&self, id: &SchemaId) -> Option<&SchemaName> {
         self.id_to_name.get(id)
     }
 
     /// Get schema ID by path.
     #[inline]
-    pub(crate) fn get_id_by_path(&self, path: &PathBuf) -> Option<SchemaId> {
+    #[must_use]
+    pub fn get_id_by_path(&self, path: &PathBuf) -> Option<SchemaId> {
         self.path_to_id.get(path).copied()
     }
 
     /// Iterate over name→ID pairs.
-    pub(crate) fn iter_name_id(
+    pub fn iter_name_id(
         &self,
     ) -> impl Iterator<Item = (&SchemaName, &SchemaId)> {
         self.name_to_id.iter()
     }
 
     /// Iterate over path→ID pairs.
-    pub(crate) fn iter_path_id(
-        &self,
-    ) -> impl Iterator<Item = (&PathBuf, &SchemaId)> {
+    pub fn iter_path_id(&self) -> impl Iterator<Item = (&PathBuf, &SchemaId)> {
         self.path_to_id.iter()
     }
 
     /// Get the number of schemas in the index.
     #[inline]
-    pub(crate) fn len(&self) -> usize {
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.name_to_id.len()
     }
 
     /// Check if the index is empty.
     #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.name_to_id.is_empty()
     }
 
     /// Consume the index and return the inner maps.
     #[inline]
-    pub(crate) fn into_inner(self) -> IndexMaps {
+    #[must_use]
+    pub fn into_inner(self) -> IndexMaps {
         (self.name_to_id, self.id_to_name, self.path_to_id)
     }
 
     /// Insert a name→ID mapping.
-    pub(crate) fn insert_name(&mut self, name: SchemaName, id: SchemaId) {
+    pub fn insert_name(&mut self, name: SchemaName, id: SchemaId) {
         self.id_to_name.insert(id, name.clone());
         self.name_to_id.insert(name, id);
     }
 
     /// Insert a path→ID mapping.
-    pub(crate) fn insert_path(&mut self, path: PathBuf, id: SchemaId) {
+    pub fn insert_path(&mut self, path: PathBuf, id: SchemaId) {
         self.path_to_id.insert(path, id);
+    }
+}
+
+/// Inner maps returned by `into_inner`.
+pub type IndexMaps = (
+    HashMap<SchemaName, SchemaId>,
+    HashMap<SchemaId, SchemaName>,
+    HashMap<PathBuf, SchemaId>,
+);
+
+/// Collection of name→ID pairs for schema lookups.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NameIdPairs(Vec<(SchemaName, SchemaId)>);
+
+impl NameIdPairs {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+
+    pub fn push(&mut self, pair: (SchemaName, SchemaId)) {
+        self.0.push(pair);
+    }
+
+    pub fn into_vec(self) -> Vec<(SchemaName, SchemaId)> {
+        self.0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &(SchemaName, SchemaId)> {
+        self.0.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Convert to a `HashMap` of name → id.
+    pub fn to_map(&self) -> HashMap<SchemaName, SchemaId> {
+        self.0.iter().map(|pair| (pair.0.clone(), pair.1)).collect()
+    }
+
+    /// Reverse the tuple order to get (id, name) pairs for building id → name
+    /// maps.
+    pub fn reversed(&self) -> Vec<(SchemaId, SchemaName)> {
+        self.0.iter().map(|pair| (pair.1, pair.0.clone())).collect()
+    }
+}
+
+impl Default for NameIdPairs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Vec<(SchemaName, SchemaId)>> for NameIdPairs {
+    fn from(vec: Vec<(SchemaName, SchemaId)>) -> Self {
+        Self(vec)
+    }
+}
+
+impl Deref for NameIdPairs {
+    type Target = Vec<(SchemaName, SchemaId)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Collection of path→ID pairs for schema discovery.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PathIdPairs(Vec<(PathBuf, SchemaId)>);
+
+impl PathIdPairs {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+
+    pub fn push(&mut self, pair: (PathBuf, SchemaId)) {
+        self.0.push(pair);
+    }
+
+    pub fn into_vec(self) -> Vec<(PathBuf, SchemaId)> {
+        self.0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &(PathBuf, SchemaId)> {
+        self.0.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Convert to a `HashMap` of path → id.
+    pub fn to_map(&self) -> HashMap<PathBuf, SchemaId> {
+        self.0.iter().map(|pair| (pair.0.clone(), pair.1)).collect()
+    }
+}
+
+impl Default for PathIdPairs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Vec<(PathBuf, SchemaId)>> for PathIdPairs {
+    fn from(vec: Vec<(PathBuf, SchemaId)>) -> Self {
+        Self(vec)
+    }
+}
+
+impl Deref for PathIdPairs {
+    type Target = Vec<(PathBuf, SchemaId)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -200,5 +352,74 @@ mod tests {
         assert_eq!(index.get_id_by_name(&name2), Some(id2));
         assert_eq!(index.get_name_by_id(&id1), Some(&name1));
         assert_eq!(index.get_name_by_id(&id2), Some(&name2));
+    }
+
+    #[test]
+    fn from_path_id_pairs_derives_names() {
+        let id1 = SchemaId::new();
+        let id2 = SchemaId::new();
+
+        let index = SchemaIndex::from_path_id_pairs([
+            (PathBuf::from("schemas/user.json"), id1),
+            (PathBuf::from("schemas/task.json"), id2),
+        ]);
+
+        let name_user = SchemaName::try_new("user").unwrap();
+        let name_task = SchemaName::try_new("task").unwrap();
+
+        assert_eq!(index.get_id_by_name(&name_user), Some(id1));
+        assert_eq!(index.get_id_by_name(&name_task), Some(id2));
+    }
+
+    #[test]
+    fn name_id_pairs_newtype() {
+        let name1 = SchemaName::try_new("user").unwrap();
+        let name2 = SchemaName::try_new("task").unwrap();
+        let id1 = SchemaId::new();
+        let id2 = SchemaId::new();
+
+        let mut pairs = NameIdPairs::new();
+        pairs.push((name1.clone(), id1));
+        pairs.push((name2.clone(), id2));
+
+        assert_eq!(pairs.len(), 2);
+        assert!(!pairs.is_empty());
+
+        let vec: Vec<_> = pairs.into_vec();
+        assert_eq!(vec.len(), 2);
+    }
+
+    #[test]
+    fn path_id_pairs_newtype() {
+        let id1 = SchemaId::new();
+        let id2 = SchemaId::new();
+
+        let mut pairs = PathIdPairs::new();
+        pairs.push((PathBuf::from("schemas/user.json"), id1));
+        pairs.push((PathBuf::from("schemas/task.json"), id2));
+
+        assert_eq!(pairs.len(), 2);
+        assert!(!pairs.is_empty());
+
+        let vec: Vec<_> = pairs.into_vec();
+        assert_eq!(vec.len(), 2);
+    }
+
+    #[test]
+    fn name_id_pairs_from_vec() {
+        let name1 = SchemaName::try_new("user").unwrap();
+        let id1 = SchemaId::new();
+
+        let pairs: NameIdPairs = vec![(name1, id1)].into();
+        assert_eq!(pairs.len(), 1);
+    }
+
+    #[test]
+    fn path_id_pairs_from_vec() {
+        let id1 = SchemaId::new();
+
+        let pairs: PathIdPairs =
+            vec![(PathBuf::from("schemas/user.json"), id1)].into();
+        assert_eq!(pairs.len(), 1);
     }
 }
