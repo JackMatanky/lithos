@@ -89,14 +89,14 @@ use crate::schema::{
 ///
 /// Parent lists are normalized (sorted, deduplicated) before building.
 pub(crate) struct GraphBuilder {
-    parents_by_id: ChildParentsMap,
+    child_parents_edges: ChildParentsMap,
 }
 
 impl GraphBuilder {
     #[inline]
     pub(crate) fn new() -> Self {
         Self {
-            parents_by_id: ChildParentsMap::new(),
+            child_parents_edges: ChildParentsMap::new(),
         }
     }
 
@@ -104,13 +104,13 @@ impl GraphBuilder {
     #[expect(dead_code, reason = "reserved for future builder inputs")]
     pub(crate) fn with_nodes(nodes: ChildParentsMap) -> Self {
         Self {
-            parents_by_id: nodes,
+            child_parents_edges: nodes,
         }
     }
 
     #[inline]
     pub(crate) fn insert_node(&mut self, id: SchemaId, parents: Vec<SchemaId>) {
-        self.parents_by_id.insert(id, parents);
+        self.child_parents_edges.insert(id, parents);
     }
 
     /// Build a validated graph with order and roots populated.
@@ -121,9 +121,9 @@ impl GraphBuilder {
     pub(crate) fn build(
         self,
     ) -> Result<InheritanceGraph<InheritanceNode>, SchemaLoaderError> {
-        let mut parents_by_id = self.parents_by_id;
-        parents_by_id.normalize_all();
-        let mut nodes = Self::build_nodes(parents_by_id);
+        let mut child_parents_edges = self.child_parents_edges;
+        child_parents_edges.normalize_all();
+        let mut nodes = Self::build_nodes(child_parents_edges);
         Self::validate_parents_exist(&nodes)?;
         Self::build_children(&mut nodes);
         Self::compute_depths(&mut nodes);
@@ -145,11 +145,11 @@ impl GraphBuilder {
     }
 
     fn build_nodes(
-        parents_by_id: ChildParentsMap,
+        child_parents_edges: ChildParentsMap,
     ) -> HashMap<SchemaId, InheritanceNode> {
-        let parents_by_id = parents_by_id.into_inner();
-        let mut nodes = HashMap::with_capacity(parents_by_id.len());
-        for (id, parents) in parents_by_id {
+        let child_parents_edges = child_parents_edges.into_inner();
+        let mut nodes = HashMap::with_capacity(child_parents_edges.len());
+        for (id, parents) in child_parents_edges {
             let node = InheritanceNode::new_child(id, parents, NodeDepth::ROOT);
             nodes.insert(id, node);
         }
@@ -706,6 +706,16 @@ impl<'graph, T: NodeAccessor> TopologicalSorter<'graph, T> {
 }
 
 /// Map of child schema IDs to their parent IDs.
+///
+/// In this map:
+/// - **Key**: The `SchemaId` of a child node.
+/// - **Value**: A `Vec<SchemaId>` containing the IDs of its direct parents.
+///
+/// This structure represents the incoming edges (dependencies) for each node
+/// in the inheritance graph. It is used during graph construction and
+/// topological sorting to efficiently track and resolve parent-child
+/// relationships while ensuring the graph remains a directed acyclic
+/// graph (DAG).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ChildParentsMap(HashMap<SchemaId, Vec<SchemaId>>);
 
