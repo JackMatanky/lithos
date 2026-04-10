@@ -78,14 +78,13 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::schema::{
     aggregate::SchemaId,
     error::{SchemaError, SchemaLoaderError, SchemaResolutionError},
-    inheritance::{InheritanceGraph, InheritanceNode, NodeAccessor, NodeDepth},
+    inheritance::{GraphNode, InheritanceGraph, NodeAccessor, NodeDepth},
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  GRAPH BUILDER (Graph Construction)
 // ═════════════════════════════════════════════════════════════════════════════
-/// Builder for constructing `InheritanceGraph<InheritanceNode>` from
-/// `SchemaId` parent lists.
+/// Builder for constructing `InheritanceGraph<T>` from `SchemaId` parent lists.
 ///
 /// Parent lists are normalized (sorted, deduplicated) before building.
 pub(crate) struct GraphBuilder {
@@ -118,12 +117,17 @@ impl GraphBuilder {
     /// # Errors
     ///
     /// Returns an error if any parent ID is missing or the graph is cyclic.
-    pub(crate) fn build(
+    pub(crate) fn build<T, F>(
         self,
-    ) -> Result<InheritanceGraph<InheritanceNode>, SchemaLoaderError> {
+        mut make_node: F,
+    ) -> Result<InheritanceGraph<T>, SchemaLoaderError>
+    where
+        T: GraphNode,
+        F: FnMut(SchemaId, Vec<SchemaId>) -> T,
+    {
         let mut child_parents_edges = self.child_parents_edges;
         child_parents_edges.normalize_all();
-        let mut nodes = Self::build_nodes(child_parents_edges);
+        let mut nodes = Self::build_nodes(child_parents_edges, &mut make_node);
         Self::validate_parents_exist(&nodes)?;
         Self::build_children(&mut nodes);
         Self::compute_depths(&mut nodes);
@@ -144,21 +148,24 @@ impl GraphBuilder {
         Ok(graph)
     }
 
-    fn build_nodes(
+    fn build_nodes<T>(
         child_parents_edges: ChildParentsMap,
-    ) -> HashMap<SchemaId, InheritanceNode> {
+        make_node: &mut impl FnMut(SchemaId, Vec<SchemaId>) -> T,
+    ) -> HashMap<SchemaId, T> {
         let child_parents_edges = child_parents_edges.into_inner();
         let mut nodes = HashMap::with_capacity(child_parents_edges.len());
         for (id, parents) in child_parents_edges {
-            let node = InheritanceNode::new_child(id, parents, NodeDepth::ROOT);
-            nodes.insert(id, node);
+            nodes.insert(id, make_node(id, parents));
         }
         nodes
     }
 
-    fn validate_parents_exist(
-        nodes: &HashMap<SchemaId, InheritanceNode>,
-    ) -> Result<(), SchemaLoaderError> {
+    fn validate_parents_exist<T>(
+        nodes: &HashMap<SchemaId, T>,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        T: NodeAccessor,
+    {
         for node in nodes.values() {
             for parent_id in node.parents() {
                 if !nodes.contains_key(parent_id) {
@@ -175,7 +182,10 @@ impl GraphBuilder {
         Ok(())
     }
 
-    fn build_children(nodes: &mut HashMap<SchemaId, InheritanceNode>) {
+    fn build_children<T>(nodes: &mut HashMap<SchemaId, T>)
+    where
+        T: GraphNode,
+    {
         let parent_to_children: HashMap<SchemaId, Vec<SchemaId>> = nodes
             .values()
             .flat_map(|node| {
@@ -198,12 +208,15 @@ impl GraphBuilder {
         }
     }
 
-    fn compute_depths(nodes: &mut HashMap<SchemaId, InheritanceNode>) {
+    fn compute_depths<T>(nodes: &mut HashMap<SchemaId, T>)
+    where
+        T: GraphNode,
+    {
         let mut depths: HashMap<SchemaId, usize> = HashMap::new();
         let mut queue: VecDeque<SchemaId> = nodes
             .values()
-            .filter(|node| node.is_root())
-            .map(InheritanceNode::id)
+            .filter(|node| node.parents().is_empty())
+            .map(NodeAccessor::id)
             .collect();
 
         for &root_id in &queue {
@@ -234,7 +247,7 @@ impl GraphBuilder {
 
     #[inline]
     fn calculate_node_depth(
-        node: &InheritanceNode,
+        node: &impl NodeAccessor,
         depths: &HashMap<SchemaId, usize>,
     ) -> Option<usize> {
         let mut max_parent_depth = 0;
@@ -245,37 +258,53 @@ impl GraphBuilder {
         Some(max_parent_depth.saturating_add(1))
     }
 
-    fn assemble(
-        nodes: HashMap<SchemaId, InheritanceNode>,
+    fn assemble<T>(
+        nodes: HashMap<SchemaId, T>,
         order: Vec<SchemaId>,
         roots: Vec<SchemaId>,
-    ) -> InheritanceGraph<InheritanceNode> {
-        InheritanceGraph::new(nodes, order, roots)
+    ) -> InheritanceGraph<T> {
+        InheritanceGraph::from_parts(nodes, order, roots)
     }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  GRAPH EDITOR (Scoped Patching)
 // ═════════════════════════════════════════════════════════════════════════════
-/// Editor for scoped updates to `InheritanceGraph<InheritanceNode>`.
+/// Editor for scoped updates to `InheritanceGraph<T>`.
 ///
 /// Updates are applied to the affected subtree; unaffected nodes keep their
 /// relative order.
-pub struct GraphEditor {
-    graph: InheritanceGraph<InheritanceNode>,
+pub struct GraphEditor<T> {
+    nodes: HashMap<SchemaId, T>,
+    order: Vec<SchemaId>,
+    roots: Vec<SchemaId>,
     changed_ids: HashSet<SchemaId>,
     deleted_ids: HashSet<SchemaId>,
 }
 
-impl GraphEditor {
-    /// Create a new editor from an existing graph.
+impl<T> GraphEditor<T>
+where
+    T: GraphNode,
+{
+    /// Create a new editor from graph parts.
     #[must_use]
-    pub fn from_graph(graph: &InheritanceGraph<InheritanceNode>) -> Self {
+    pub fn from_parts(
+        nodes: HashMap<SchemaId, T>,
+        order: Vec<SchemaId>,
+        roots: Vec<SchemaId>,
+    ) -> Self {
         Self {
-            graph: graph.clone(),
+            nodes,
+            order,
+            roots,
             changed_ids: HashSet::new(),
             deleted_ids: HashSet::new(),
         }
+    }
+
+    /// Insert a new node into the editor.
+    pub fn insert_node(&mut self, node: T) {
+        self.nodes.insert(node.id(), node);
     }
 
     /// Queue a change to a node's parents.
@@ -283,7 +312,7 @@ impl GraphEditor {
         let mut parents = parents;
         ChildParentsMap::normalize_parents(&mut parents);
 
-        if let Some(node) = self.graph.as_mut_nodes().get_mut(&id) {
+        if let Some(node) = self.nodes.get_mut(&id) {
             let old_parents = node.parents().to_vec();
             for parent_id in old_parents {
                 self.changed_ids.insert(parent_id);
@@ -295,15 +324,12 @@ impl GraphEditor {
             node.set_edges(parents, children);
             node.set_depth(NodeDepth::ROOT);
         } else {
-            let node = if parents.is_empty() {
-                InheritanceNode::new_root(id)
-            } else {
-                for parent_id in &parents {
-                    self.changed_ids.insert(*parent_id);
-                }
-                InheritanceNode::new_child(id, parents, NodeDepth::ROOT)
-            };
-            self.graph.as_mut_nodes().insert(id, node);
+            debug_assert!(
+                false,
+                "GraphEditor.apply_change requires node to exist; insert_node \
+                 first"
+            );
+            return;
         }
 
         self.changed_ids.insert(id);
@@ -311,7 +337,7 @@ impl GraphEditor {
 
     /// Queue a node deletion.
     pub fn delete_node(&mut self, id: SchemaId) {
-        if let Some(node) = self.graph.as_mut_nodes().remove(&id) {
+        if let Some(node) = self.nodes.remove(&id) {
             for &parent_id in node.parents() {
                 self.changed_ids.insert(parent_id);
             }
@@ -322,8 +348,8 @@ impl GraphEditor {
 
         self.changed_ids.insert(id);
         self.deleted_ids.insert(id);
-        self.graph.as_mut_order().retain(|entry| *entry != id);
-        self.graph.as_mut_roots().retain(|entry| *entry != id);
+        self.order.retain(|entry| *entry != id);
+        self.roots.retain(|entry| *entry != id);
     }
 
     /// Apply queued changes and return the patched graph.
@@ -331,41 +357,53 @@ impl GraphEditor {
     /// # Errors
     ///
     /// Returns an error if patching introduces a cycle.
-    pub fn patch(
-        mut self,
-    ) -> Result<InheritanceGraph<InheritanceNode>, SchemaLoaderError> {
-        Self::apply_deletes_cleanup(&mut self.graph, &self.deleted_ids);
+    pub fn patch(mut self) -> Result<InheritanceGraph<T>, SchemaLoaderError> {
+        Self::apply_deletes_cleanup(
+            &mut self.nodes,
+            &mut self.order,
+            &mut self.roots,
+            &self.deleted_ids,
+        );
 
-        let affected = self.graph.affected_subtree(&self.changed_ids);
-        Self::rebuild_children(&mut self.graph, &affected);
+        let affected = Self::affected_subtree(&self.nodes, &self.changed_ids);
+        Self::rebuild_children(&mut self.nodes, &affected);
 
-        let sorter = TopologicalSorter::new(self.graph.nodes());
+        let sorter = TopologicalSorter::new(&self.nodes);
         let affected_order = sorter.sort_scoped(&affected).map_err(|e| {
             SchemaLoaderError::Resolution(SchemaError::Resolution(e))
         })?;
 
-        Self::recompute_depths(&mut self.graph, &affected);
-        Self::splice_order(&mut self.graph, &affected_order, &affected)?;
-        Self::rebuild_roots(&mut self.graph);
+        Self::recompute_depths(&mut self.nodes, &affected);
+        Self::splice_order(
+            &mut self.order,
+            &self.nodes,
+            &affected_order,
+            &affected,
+        )?;
+        Self::rebuild_roots(&mut self.roots, &self.nodes);
 
+        let graph =
+            InheritanceGraph::from_parts(self.nodes, self.order, self.roots);
         #[cfg(debug_assertions)]
         debug_assert!(
-            self.graph.validate_consistency().is_ok(),
+            graph.validate_consistency().is_ok(),
             "GraphEditor produced inconsistent graph"
         );
 
-        Ok(self.graph)
+        Ok(graph)
     }
 
     fn apply_deletes_cleanup(
-        graph: &mut InheritanceGraph<InheritanceNode>,
+        nodes: &mut HashMap<SchemaId, T>,
+        order: &mut Vec<SchemaId>,
+        roots: &mut Vec<SchemaId>,
         deleted: &HashSet<SchemaId>,
     ) {
         if deleted.is_empty() {
             return;
         }
 
-        for node in graph.as_mut_nodes().values_mut() {
+        for node in nodes.values_mut() {
             let mut parents = node.parents().to_vec();
             let mut children = node.children().to_vec();
             parents.retain(|id| !deleted.contains(id));
@@ -374,24 +412,25 @@ impl GraphEditor {
         }
 
         let deleted_ids: Vec<SchemaId> = deleted.iter().copied().collect();
-        Self::prune(graph, &deleted_ids);
+        Self::prune(nodes, order, roots, &deleted_ids);
     }
 
     fn prune(
-        graph: &mut InheritanceGraph<InheritanceNode>,
+        nodes: &mut HashMap<SchemaId, T>,
+        order: &mut Vec<SchemaId>,
+        roots: &mut Vec<SchemaId>,
         deleted: &[SchemaId],
     ) {
         for id in deleted {
-            graph.as_mut_nodes().remove(id);
+            nodes.remove(id);
         }
-        let remaining: HashSet<SchemaId> =
-            graph.nodes().keys().copied().collect();
-        graph.as_mut_order().retain(|id| remaining.contains(id));
-        graph.as_mut_roots().retain(|id| remaining.contains(id));
+        let remaining: HashSet<SchemaId> = nodes.keys().copied().collect();
+        order.retain(|id| remaining.contains(id));
+        roots.retain(|id| remaining.contains(id));
     }
 
     fn rebuild_children(
-        graph: &mut InheritanceGraph<InheritanceNode>,
+        nodes: &mut HashMap<SchemaId, T>,
         affected: &HashSet<SchemaId>,
     ) {
         if affected.is_empty() {
@@ -401,7 +440,7 @@ impl GraphEditor {
         let mut update_ids: HashSet<SchemaId> = HashSet::new();
         for &id in affected {
             update_ids.insert(id);
-            if let Some(node) = graph.nodes().get(&id) {
+            if let Some(node) = nodes.get(&id) {
                 for parent_id in node.parents() {
                     update_ids.insert(*parent_id);
                 }
@@ -410,7 +449,7 @@ impl GraphEditor {
 
         let mut parent_to_children: HashMap<SchemaId, Vec<SchemaId>> =
             HashMap::new();
-        for node in graph.nodes().values() {
+        for node in nodes.values() {
             for parent in node.parents() {
                 if update_ids.contains(parent) {
                     parent_to_children
@@ -422,7 +461,7 @@ impl GraphEditor {
         }
 
         for id in update_ids {
-            if let Some(node) = graph.as_mut_nodes().get_mut(&id) {
+            if let Some(node) = nodes.get_mut(&id) {
                 let mut children =
                     parent_to_children.remove(&id).unwrap_or_default();
                 children.sort();
@@ -433,7 +472,7 @@ impl GraphEditor {
     }
 
     fn recompute_depths(
-        graph: &mut InheritanceGraph<InheritanceNode>,
+        nodes: &mut HashMap<SchemaId, T>,
         affected: &HashSet<SchemaId>,
     ) {
         if affected.is_empty() {
@@ -444,24 +483,24 @@ impl GraphEditor {
         let mut queue: VecDeque<SchemaId> = VecDeque::new();
 
         for &id in affected {
-            if let Some(node) = graph.nodes().get(&id)
+            if let Some(node) = nodes.get(&id)
                 && node.parents().iter().all(|p| !affected.contains(p))
             {
-                let depth = Self::get_max_parent_depth(graph, node);
+                let depth = Self::get_max_parent_depth(nodes, node);
                 depths.insert(id, depth);
                 queue.push_back(id);
             }
         }
 
         while let Some(id) = queue.pop_front() {
-            let Some(node) = graph.nodes().get(&id) else {
+            let Some(node) = nodes.get(&id) else {
                 continue;
             };
             for &child_id in node.children() {
                 if !affected.contains(&child_id) {
                     continue;
                 }
-                if let Some(child) = graph.nodes().get(&child_id)
+                if let Some(child) = nodes.get(&child_id)
                     && let Some(depth) =
                         Self::calculate_node_depth(child, &depths)
                 {
@@ -472,7 +511,7 @@ impl GraphEditor {
         }
 
         for (id, depth) in depths {
-            if let Some(node) = graph.as_mut_nodes().get_mut(&id) {
+            if let Some(node) = nodes.get_mut(&id) {
                 node.set_depth(NodeDepth::new(depth));
             }
         }
@@ -480,7 +519,7 @@ impl GraphEditor {
 
     #[inline]
     fn calculate_node_depth(
-        node: &InheritanceNode,
+        node: &impl NodeAccessor,
         depths: &HashMap<SchemaId, usize>,
     ) -> Option<usize> {
         let mut max_parent_depth = 0;
@@ -492,20 +531,19 @@ impl GraphEditor {
     }
 
     fn get_max_parent_depth(
-        graph: &InheritanceGraph<InheritanceNode>,
-        node: &InheritanceNode,
+        nodes: &HashMap<SchemaId, T>,
+        node: &impl NodeAccessor,
     ) -> usize {
         node.parents()
             .iter()
-            .filter_map(|p| {
-                graph.nodes().get(p).map(|pn| pn.depth().as_usize())
-            })
+            .filter_map(|p| nodes.get(p).map(|pn| pn.depth().as_usize()))
             .max()
             .map_or(0, |d| d.saturating_add(1))
     }
 
     fn splice_order(
-        graph: &mut InheritanceGraph<InheritanceNode>,
+        order: &mut Vec<SchemaId>,
+        nodes: &HashMap<SchemaId, T>,
         affected_order: &[SchemaId],
         affected: &HashSet<SchemaId>,
     ) -> Result<(), SchemaLoaderError> {
@@ -513,15 +551,13 @@ impl GraphEditor {
             HashMap::new();
 
         for &id in affected_order {
-            let anchor = Self::nearest_unaffected_ancestor(graph, id, affected);
+            let anchor = Self::nearest_unaffected_ancestor(nodes, id, affected);
             anchor_map.entry(anchor).or_default().push(id);
         }
 
-        let capacity = graph.order().len().saturating_add(affected.len());
+        let capacity = order.len().saturating_add(affected.len());
         let mut new_order = Vec::with_capacity(capacity);
-        for id in
-            graph.order().iter().copied().filter(|id| !affected.contains(id))
-        {
+        for id in order.iter().copied().filter(|id| !affected.contains(id)) {
             new_order.push(id);
             if let Some(mut list) = anchor_map.remove(&Some(id)) {
                 new_order.append(&mut list);
@@ -534,7 +570,7 @@ impl GraphEditor {
             new_order.append(&mut list);
         }
 
-        if new_order.len() != graph.nodes().len() {
+        if new_order.len() != nodes.len() {
             return Err(SchemaLoaderError::Resolution(
                 SchemaError::Resolution(SchemaResolutionError::CycleDetected {
                     schemas: Vec::new(),
@@ -542,23 +578,23 @@ impl GraphEditor {
             ));
         }
 
-        *graph.as_mut_order() = new_order;
+        *order = new_order;
         Ok(())
     }
 
     fn nearest_unaffected_ancestor(
-        graph: &InheritanceGraph<InheritanceNode>,
+        nodes: &HashMap<SchemaId, T>,
         id: SchemaId,
         affected: &HashSet<SchemaId>,
     ) -> Option<SchemaId> {
-        let node = graph.nodes().get(&id)?;
+        let node = nodes.get(&id)?;
 
         for &parent_id in node.parents() {
             if !affected.contains(&parent_id) {
                 return Some(parent_id);
             }
             if let Some(ancestor) =
-                Self::nearest_unaffected_ancestor(graph, parent_id, affected)
+                Self::nearest_unaffected_ancestor(nodes, parent_id, affected)
             {
                 return Some(ancestor);
             }
@@ -566,14 +602,46 @@ impl GraphEditor {
         None
     }
 
-    fn rebuild_roots(graph: &mut InheritanceGraph<InheritanceNode>) {
-        let roots: Vec<SchemaId> = graph
-            .nodes()
+    fn rebuild_roots(roots: &mut Vec<SchemaId>, nodes: &HashMap<SchemaId, T>) {
+        let new_roots: Vec<SchemaId> = nodes
             .values()
             .filter(|node| node.parents().is_empty())
-            .map(InheritanceNode::id)
+            .map(NodeAccessor::id)
             .collect();
-        *graph.as_mut_roots() = roots;
+        *roots = new_roots;
+    }
+
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "traversal keeps nesting explicit for clarity"
+    )]
+    fn affected_subtree(
+        nodes: &HashMap<SchemaId, T>,
+        changed_ids: &HashSet<SchemaId>,
+    ) -> HashSet<SchemaId> {
+        let mut affected = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "traversal order is irrelevant for reachability"
+        )]
+        for &id in changed_ids {
+            queue.push_back(id);
+            affected.insert(id);
+        }
+
+        while let Some(id) = queue.pop_front() {
+            if let Some(node) = nodes.get(&id) {
+                for &child_id in node.children() {
+                    if affected.insert(child_id) {
+                        queue.push_back(child_id);
+                    }
+                }
+            }
+        }
+
+        affected
     }
 }
 
@@ -757,6 +825,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::schema::inheritance::InheritanceNode;
 
     fn build_diamond_graph()
     -> (InheritanceGraph<InheritanceNode>, Vec<SchemaId>) {
@@ -784,21 +853,23 @@ mod tests {
             (id_d, node_d),
         ]);
 
-        let graph = InheritanceGraph::new(nodes, Vec::new(), Vec::new());
+        let graph = InheritanceGraph::from_parts(nodes, Vec::new(), Vec::new());
 
         (graph, vec![id_a, id_b, id_c, id_d])
     }
 
     #[test]
     fn computes_depths_for_diamond_inheritance() {
-        let (mut graph, ids) = build_diamond_graph();
+        let (base_graph, ids) = build_diamond_graph();
+        let (mut nodes, order, roots) = base_graph.into_parts();
         let id_a = *ids.first().expect("id a");
         let id_d = *ids.get(3).expect("id d");
 
-        GraphBuilder::compute_depths(graph.as_mut_nodes());
+        GraphBuilder::compute_depths(&mut nodes);
 
-        let depth_a = graph.nodes().get(&id_a).expect("node a").depth();
-        let depth_d = graph.nodes().get(&id_d).expect("node d").depth();
+        let updated_graph = InheritanceGraph::from_parts(nodes, order, roots);
+        let depth_a = updated_graph.nodes().get(&id_a).expect("node a").depth();
+        let depth_d = updated_graph.nodes().get(&id_d).expect("node d").depth();
 
         assert_eq!(depth_a, NodeDepth::ROOT);
         assert_eq!(depth_d, NodeDepth::new(2));
@@ -806,14 +877,20 @@ mod tests {
 
     #[test]
     fn topological_order_respects_all_parents() {
-        let (mut graph, ids) = build_diamond_graph();
-        GraphBuilder::compute_depths(graph.as_mut_nodes());
+        let (base_graph, ids) = build_diamond_graph();
+        let (mut nodes, order, roots) = base_graph.into_parts();
+        GraphBuilder::compute_depths(&mut nodes);
+        let updated_graph = InheritanceGraph::from_parts(nodes, order, roots);
 
-        let sorter = TopologicalSorter::new(graph.nodes());
-        let (order, _roots) = sorter.sort().expect("topo sort");
+        let sorter = TopologicalSorter::new(updated_graph.nodes());
+        let (sorted_order, _roots) = sorter.sort().expect("topo sort");
 
-        let position: HashMap<SchemaId, usize> =
-            order.iter().copied().enumerate().map(|(i, id)| (id, i)).collect();
+        let position: HashMap<SchemaId, usize> = sorted_order
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, id)| (id, i))
+            .collect();
 
         let id_a = *ids.first().expect("id a");
         let id_b = *ids.get(1).expect("id b");
@@ -861,13 +938,14 @@ mod tests {
         let node_b =
             InheritanceNode::new_child(id_b, vec![id_a], NodeDepth::ROOT);
 
-        let graph = InheritanceGraph::new(
+        let graph = InheritanceGraph::from_parts(
             HashMap::from([(id_a, node_a), (id_b, node_b)]),
             vec![id_a, id_b],
             vec![id_a],
         );
 
-        let mut editor = GraphEditor::from_graph(&graph);
+        let (nodes, order, roots) = graph.into_parts();
+        let mut editor = GraphEditor::from_parts(nodes, order, roots);
         editor.apply_change(id_b, Vec::new());
         let patched_graph = editor.patch().expect("patch graph");
 

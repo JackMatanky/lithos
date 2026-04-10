@@ -70,7 +70,8 @@ use crate::{
         graph::GraphBuilder,
         index::SchemaIndex,
         inheritance::{
-            InheritanceGraph, InheritanceNode, NodeAccessor, NodeDepth,
+            GraphNode, InheritanceGraph, InheritanceNode, NodeAccessor,
+            NodeDepth,
         },
         merger::Merger,
         property::{PropertyMap, PropertyName},
@@ -238,6 +239,17 @@ impl<T> NodeAccessor for PreProcessNode<T> {
     }
 }
 
+impl<T> GraphNode for PreProcessNode<T> {
+    fn set_edges(&mut self, parents: Vec<SchemaId>, children: Vec<SchemaId>) {
+        self.parents = parents;
+        self.children = children;
+    }
+
+    fn set_depth(&mut self, depth: NodeDepth) {
+        self.depth = depth;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PostProcessNode<T> {
     id: SchemaId,
@@ -264,6 +276,17 @@ impl<T> NodeAccessor for PostProcessNode<T> {
 
     fn depth(&self) -> NodeDepth {
         self.depth
+    }
+}
+
+impl<T> GraphNode for PostProcessNode<T> {
+    fn set_edges(&mut self, parents: Vec<SchemaId>, children: Vec<SchemaId>) {
+        self.parents = parents;
+        self.children = children;
+    }
+
+    fn set_depth(&mut self, depth: NodeDepth) {
+        self.depth = depth;
     }
 }
 
@@ -823,7 +846,7 @@ impl SchemaProcessor<Discovery, Review> {
             });
         }
 
-        InheritanceGraph::new(
+        InheritanceGraph::from_parts(
             nodes,
             graph.order().to_vec(),
             graph.roots().to_vec(),
@@ -990,7 +1013,11 @@ impl SchemaProcessor<Comparison, Present> {
         }
 
         Ok(Self::transition(FileParsed, Compared {
-            graph: InheritanceGraph::new(nodes, graph_order, graph_roots),
+            graph: InheritanceGraph::from_parts(
+                nodes,
+                graph_order,
+                graph_roots,
+            ),
             new_schemas: new_reads,
             fresh: fresh_ids,
             stale_timestamps: stale_ts_ids,
@@ -1292,7 +1319,11 @@ impl SchemaProcessor<FileParsed, Compared> {
         }
 
         Ok(Self::transition(InheritanceGraphed, Parsed {
-            graph: InheritanceGraph::new(nodes, graph_order, graph_roots),
+            graph: InheritanceGraph::from_parts(
+                nodes,
+                graph_order,
+                graph_roots,
+            ),
             new_schemas: parsed_new,
             deleted_ids,
         }))
@@ -1330,15 +1361,13 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             status_by_id.insert(*id, node.status);
         }
 
-        let base_graph = graph.map_payload(|node| {
-            let mut new_node = InheritanceNode::new_child(
-                node.id(),
-                node.parents().to_vec(),
-                node.depth(),
-            );
-            new_node
-                .set_edges(node.parents().to_vec(), node.children().to_vec());
-            new_node
+        let base_graph = graph.map_payload(|node| PreProcessNode {
+            id: node.id(),
+            parents: node.parents().to_vec(),
+            children: node.children().to_vec(),
+            depth: node.depth(),
+            status: node.status,
+            payload: (),
         });
 
         let mut name_index: HashMap<SchemaName, SchemaId> = HashMap::new();
@@ -1390,8 +1419,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 
         let index = SchemaIndex::from_name_id_pairs(name_index.clone());
 
-        let mut editor =
-            crate::schema::graph::GraphEditor::from_graph(&base_graph);
+        let (base_nodes, base_order, base_roots) = base_graph.into_parts();
+        let mut editor = crate::schema::graph::GraphEditor::from_parts(
+            base_nodes, base_order, base_roots,
+        );
 
         for id in &deleted_ids {
             editor.delete_node(*id);
@@ -1401,6 +1432,14 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             let Some(new) = new_schemas.get(id) else {
                 continue;
             };
+            editor.insert_node(PreProcessNode {
+                id: *id,
+                parents: Vec::new(),
+                children: Vec::new(),
+                depth: NodeDepth::ROOT,
+                status: NodeStatus::New,
+                payload: (),
+            });
             let mut parents = Vec::new();
             if let Some(parent_id) =
                 new.raw.extends().and_then(|name| index.get_id_by_name(name))
@@ -1417,7 +1456,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 continue;
             };
 
-            let old_parent = base_graph
+            let old_parent = graph
                 .nodes()
                 .get(id)
                 .and_then(|node| node.parents().first().copied());
@@ -1531,7 +1570,11 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         Ok(SchemaProcessor::<PropertyAnalysis, Graphed>::transition(
             PropertyAnalysis,
             Graphed {
-                graph: InheritanceGraph::new(nodes, final_order, final_roots),
+                graph: InheritanceGraph::from_parts(
+                    nodes,
+                    final_order,
+                    final_roots,
+                ),
                 deleted_ids,
             },
         ))
@@ -1584,7 +1627,9 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             }
             builder.insert_node(*id, parents);
         }
-        let graph = builder.build()?;
+        let graph = builder.build(|id, parents| {
+            InheritanceNode::new_child(id, parents, NodeDepth::ROOT)
+        })?;
         let (graph_nodes, graph_order, graph_roots) = graph.into_parts();
 
         for (id, parsed) in new_schemas {
@@ -1621,7 +1666,11 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
         Ok(SchemaProcessor::<Construction, NewBuild>::transition(
             Construction,
             NewBuild {
-                graph: InheritanceGraph::new(nodes, graph_order, graph_roots),
+                graph: InheritanceGraph::from_parts(
+                    nodes,
+                    graph_order,
+                    graph_roots,
+                ),
             },
         ))
     }
@@ -1646,7 +1695,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         property_bank_delta: Option<&HashSet<PropertyName>>,
     ) -> Result<SchemaProcessor<Refresh, Analyzed>, SchemaLoaderError> {
         let Graphed {
-            mut graph,
+            graph,
             deleted_ids,
         } = self.status;
 
@@ -1670,7 +1719,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
         let mut analyzed_nodes = HashMap::new();
 
-        let nodes = std::mem::take(graph.as_mut_nodes());
+        let (nodes, order, roots) = graph.into_parts();
         let mut node_entries: Vec<_> = nodes.into_iter().collect();
         node_entries.sort_by_key(|entry| entry.0);
         for (id, node) in node_entries {
@@ -1940,18 +1989,14 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             });
         }
 
-        for id in graph.order() {
+        for id in &order {
             if affected.contains(id) && !rebuild_ids.contains(id) {
                 rebuild_ids.push(*id);
             }
         }
 
         Ok(Self::transition(Refresh, Analyzed {
-            graph: InheritanceGraph::new(
-                analyzed_nodes,
-                graph.order().to_vec(),
-                graph.roots().to_vec(),
-            ),
+            graph: InheritanceGraph::from_parts(analyzed_nodes, order, roots),
             refresh_ids,
             rebuild_ids,
             deleted_ids,
@@ -2016,9 +2061,10 @@ impl SchemaProcessor<Refresh, Analyzed> {
     {
         use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
 
+        let (mut nodes, order, roots) = self.status.graph.into_parts();
+
         for id in &self.status.refresh_ids {
-            let Some(node) = self.status.graph.as_mut_nodes().get_mut(id)
-            else {
+            let Some(node) = nodes.get_mut(id) else {
                 continue;
             };
 
@@ -2055,8 +2101,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         }
 
         for id in &self.status.rebuild_ids {
-            let Some(node) = self.status.graph.as_mut_nodes().get_mut(id)
-            else {
+            let Some(node) = nodes.get_mut(id) else {
                 continue;
             };
 
@@ -2072,6 +2117,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
             )?;
         }
 
+        self.status.graph = InheritanceGraph::from_parts(nodes, order, roots);
         Ok(Self::transition(Construction, self.status))
     }
 }

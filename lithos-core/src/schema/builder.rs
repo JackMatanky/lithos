@@ -445,7 +445,7 @@ description = "Test schema"
         let mut nodes = HashMap::new();
         nodes.insert(id, node);
 
-        let graph = InheritanceGraph::new(nodes, vec![id], vec![id]);
+        let graph = InheritanceGraph::from_parts(nodes, vec![id], vec![id]);
 
         // Save graph to DB
         repo.save_topological_graph(&graph).unwrap();

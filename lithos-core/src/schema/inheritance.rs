@@ -50,7 +50,6 @@
 //! assert!(!child.is_root());
 //! ```
 
-// rkyv derives emit archived structs that trigger exhaustive_structs.
 #![allow(
     clippy::exhaustive_structs,
     reason = "rkyv derives emit archived structs without non_exhaustive"
@@ -110,7 +109,7 @@ pub struct InheritanceGraph<T> {
 impl<T> InheritanceGraph<T> {
     #[inline]
     #[must_use]
-    pub(crate) fn new(
+    pub(crate) fn from_parts(
         nodes: HashMap<SchemaId, T>,
         order: Vec<SchemaId>,
         roots: Vec<SchemaId>,
@@ -129,30 +128,15 @@ impl<T> InheritanceGraph<T> {
     }
 
     #[inline]
-    pub(crate) fn as_mut_nodes(&mut self) -> &mut HashMap<SchemaId, T> {
-        &mut self.nodes
-    }
-
-    #[inline]
     #[must_use]
     pub(crate) fn order(&self) -> &[SchemaId] {
         &self.order
     }
 
     #[inline]
-    pub(crate) fn as_mut_order(&mut self) -> &mut Vec<SchemaId> {
-        &mut self.order
-    }
-
-    #[inline]
     #[must_use]
     pub(crate) fn roots(&self) -> &[SchemaId] {
         &self.roots
-    }
-
-    #[inline]
-    pub(crate) fn as_mut_roots(&mut self) -> &mut Vec<SchemaId> {
-        &mut self.roots
     }
 
     #[inline]
@@ -173,7 +157,11 @@ impl<T> InheritanceGraph<T> {
             nodes.insert(*id, f(node));
         }
 
-        InheritanceGraph::new(nodes, self.order.clone(), self.roots.clone())
+        InheritanceGraph::from_parts(
+            nodes,
+            self.order.clone(),
+            self.roots.clone(),
+        )
     }
 }
 
@@ -310,25 +298,18 @@ impl InheritanceNode {
         self.depth
     }
 
-    /// Updates node edges (parents and children) atomically.
-    ///
-    /// This method is intended for low-level structural surgery by the
-    /// `GraphBuilder` and `GraphEditor`.
-    #[inline]
-    pub(crate) fn set_edges(
-        &mut self,
-        parents: Vec<SchemaId>,
-        children: Vec<SchemaId>,
-    ) {
-        self.parents = parents;
-        self.children = children;
-    }
+    // GraphNode trait provides mutation hooks used by builders/editors.
+}
 
+/// Trait for mutating inheritance fields on graph nodes.
+///
+/// Builders and editors operate on `GraphNode` to guarantee structural
+/// updates remain consistent.
+pub trait GraphNode: NodeAccessor {
     /// Sets the cached inheritance depth for this node.
-    #[inline]
-    pub(crate) fn set_depth(&mut self, depth: NodeDepth) {
-        self.depth = depth;
-    }
+    fn set_depth(&mut self, depth: NodeDepth);
+    /// Updates node edges (parents and children) atomically.
+    fn set_edges(&mut self, parents: Vec<SchemaId>, children: Vec<SchemaId>);
 }
 
 /// Trait for accessing inheritance fields from generic node types.
@@ -362,6 +343,19 @@ impl NodeAccessor for InheritanceNode {
     #[inline]
     fn parents(&self) -> &[SchemaId] {
         &self.parents
+    }
+}
+
+impl GraphNode for InheritanceNode {
+    #[inline]
+    fn set_edges(&mut self, parents: Vec<SchemaId>, children: Vec<SchemaId>) {
+        self.parents = parents;
+        self.children = children;
+    }
+
+    #[inline]
+    fn set_depth(&mut self, depth: NodeDepth) {
+        self.depth = depth;
     }
 }
 
@@ -399,6 +393,71 @@ impl<T: NodeAccessor> InheritanceGraph<T> {
         }
 
         affected
+    }
+
+    /// Validate bidirectional consistency (debug helper).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if any inconsistency is found.
+    #[cfg(debug_assertions)]
+    pub(crate) fn validate_consistency(&self) -> Result<(), SchemaLoaderError> {
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "validation covers all nodes; order is irrelevant"
+        )]
+        for (id, node) in &self.nodes {
+            // Check parent → child links
+            for &parent_id in node.parents() {
+                let parent = self.nodes.get(&parent_id).ok_or({
+                    SchemaLoaderError::Resolution(SchemaError::Resolution(
+                        SchemaResolutionError::MissingNode {
+                            id: parent_id,
+                        },
+                    ))
+                })?;
+                if !parent.children().contains(id) {
+                    return Err(SchemaLoaderError::Ingestion(
+                        crate::schema::error::SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: format!(
+                                    "graph invariant violated: parent \
+                                     {parent_id} missing child {id} in \
+                                     children list"
+                                )
+                                .into(),
+                            },
+                        ),
+                    ));
+                }
+            }
+
+            // Check child → parent links
+            for &child_id in node.children() {
+                let child = self.nodes.get(&child_id).ok_or({
+                    SchemaLoaderError::Resolution(SchemaError::Resolution(
+                        SchemaResolutionError::MissingNode {
+                            id: child_id,
+                        },
+                    ))
+                })?;
+                if !child.parents().contains(id) {
+                    return Err(SchemaLoaderError::Ingestion(
+                        crate::schema::error::SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: format!(
+                                    "graph invariant violated: child \
+                                     {child_id} missing parent {id} in \
+                                     parents list"
+                                )
+                                .into(),
+                            },
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -450,73 +509,6 @@ impl NodeDepth {
     }
 }
 
-impl InheritanceGraph<InheritanceNode> {
-    /// Validate bidirectional consistency (debug helper).
-    ///
-    /// # Errors
-    ///
-    /// Returns error if any inconsistency is found.
-    #[cfg(debug_assertions)]
-    pub(crate) fn validate_consistency(&self) -> Result<(), SchemaLoaderError> {
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "validation covers all nodes; order is irrelevant"
-        )]
-        for (id, node) in &self.nodes {
-            // Check parent → child links
-            for &parent_id in &node.parents {
-                let parent = self.nodes.get(&parent_id).ok_or({
-                    SchemaLoaderError::Resolution(SchemaError::Resolution(
-                        SchemaResolutionError::MissingNode {
-                            id: parent_id,
-                        },
-                    ))
-                })?;
-                if !parent.children.contains(id) {
-                    return Err(SchemaLoaderError::Ingestion(
-                        crate::schema::error::SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
-                                reason: format!(
-                                    "graph invariant violated: parent \
-                                     {parent_id} missing child {id} in \
-                                     children list"
-                                )
-                                .into(),
-                            },
-                        ),
-                    ));
-                }
-            }
-
-            // Check child → parent links
-            for &child_id in &node.children {
-                let child = self.nodes.get(&child_id).ok_or({
-                    SchemaLoaderError::Resolution(SchemaError::Resolution(
-                        SchemaResolutionError::MissingNode {
-                            id: child_id,
-                        },
-                    ))
-                })?;
-                if !child.parents.contains(id) {
-                    return Err(SchemaLoaderError::Ingestion(
-                        crate::schema::error::SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
-                                reason: format!(
-                                    "graph invariant violated: child \
-                                     {child_id} missing parent {id} in \
-                                     parents list"
-                                )
-                                .into(),
-                            },
-                        ),
-                    ));
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -549,11 +541,7 @@ mod tests {
             (id_d, node_d),
         ]);
 
-        let graph = InheritanceGraph {
-            nodes,
-            order: Vec::new(),
-            roots: Vec::new(),
-        };
+        let graph = InheritanceGraph::from_parts(nodes, Vec::new(), Vec::new());
 
         (graph, vec![id_a, id_b, id_c, id_d])
     }
