@@ -1,14 +1,13 @@
-//! Date property specification types.
+//! Date property override types.
 
-/// Date property definition.
+/// Date property override bundle.
 ///
-/// All fields are `Option<T>` to support both inline definitions
-/// (where `format` is required) and override contexts (where `None`
-/// means "don't override").
+/// All fields are `Option<T>` to support override contexts (where `None`
+/// means "don't override"). Inline definitions use `RawPropertyDate`.
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::spec_date::RawDateSpec;
+/// use lithos_core::schema::raw::date::RawDateSpec;
 ///
 /// let _spec = RawDateSpec::default();
 /// ```

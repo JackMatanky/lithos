@@ -30,7 +30,7 @@
 
 use std::{
     borrow::Borrow,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Debug, Display},
     sync::LazyLock,
 };
@@ -42,7 +42,13 @@ use uuid::Uuid;
 use super::{
     error::SchemaError,
     property_spec::PropertySpec,
-    raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
+    raw::{
+        date::RawDateSpec,
+        file::RawFileSpec,
+        number::RawNumberSpec,
+        property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
+        string::{RawOptions, RawStringSpec},
+    },
 };
 
 /// Map of properties keyed by name.
@@ -228,11 +234,12 @@ impl TryFrom<RawPropertyMap<RawPropertyInline>> for PropertyMap {
     ) -> Result<Self, Self::Error> {
         let mut map = PropertyMap::new();
         for (name, raw) in &value {
+            let spec = property_spec_from_inline(raw, name, "schema")?;
             let property = Property::new(
                 PropertyId::new(),
-                Optionality::from(raw.required),
-                Multiplicity::from(raw.multi),
-                raw.spec.clone().try_into()?,
+                Optionality::from(inline_required(raw)),
+                Multiplicity::from(inline_multi(raw)),
+                spec,
             );
             map.insert(name.clone(), property);
         }
@@ -249,11 +256,21 @@ impl TryFrom<RawPropertyMap<RawPropertyBankEntry>> for PropertyMap {
     ) -> Result<Self, Self::Error> {
         let mut map = PropertyMap::new();
         for (name, raw) in &value {
+            if inline_required(&raw.0) {
+                tracing::warn!(
+                    property = name.as_str(),
+                    context = "property_bank",
+                    "property bank entry cannot be required; overriding to \
+                     false"
+                );
+            }
+            let spec =
+                property_spec_from_inline(&raw.0, name, "property_bank")?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::default(),
-                Multiplicity::from(raw.multi),
-                raw.spec.clone().try_into()?,
+                Multiplicity::from(inline_multi(&raw.0)),
+                spec,
             );
             map.insert(name.clone(), property);
         }
@@ -274,11 +291,12 @@ impl TryFrom<HashMap<PropertyName, RawPropertyInline>> for PropertyMap {
             reason = "Property map construction preserves key/value pairs"
         )]
         for (name, raw) in value {
+            let spec = property_spec_from_inline(&raw, &name, "schema")?;
             let property = Property::new(
                 PropertyId::new(),
-                Optionality::from(raw.required),
-                Multiplicity::from(raw.multi),
-                raw.spec.try_into()?,
+                Optionality::from(inline_required(&raw)),
+                Multiplicity::from(inline_multi(&raw)),
+                spec,
             );
             map.insert(name, property);
         }
@@ -299,15 +317,160 @@ impl TryFrom<HashMap<PropertyName, RawPropertyBankEntry>> for PropertyMap {
             reason = "Property map construction preserves key/value pairs"
         )]
         for (name, raw) in value {
+            if inline_required(&raw.0) {
+                tracing::warn!(
+                    property = name.as_str(),
+                    context = "property_bank",
+                    "property bank entry cannot be required; overriding to \
+                     false"
+                );
+            }
+            let spec =
+                property_spec_from_inline(&raw.0, &name, "property_bank")?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::default(),
-                Multiplicity::from(raw.multi),
-                raw.spec.try_into()?,
+                Multiplicity::from(inline_multi(&raw.0)),
+                spec,
             );
             map.insert(name, property);
         }
         Ok(map)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Raw Inline Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[inline]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
+)]
+fn inline_required(raw: &RawPropertyInline) -> bool {
+    match raw {
+        RawPropertyInline::Bool(def) => def.required,
+        RawPropertyInline::Date(def) => def.required,
+        RawPropertyInline::File(def) => def.required,
+        RawPropertyInline::Number(def) => def.required,
+        RawPropertyInline::String(def) => def.required,
+    }
+}
+
+#[inline]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
+)]
+fn inline_multi(raw: &RawPropertyInline) -> bool {
+    match raw {
+        RawPropertyInline::Bool(def) => def.multi,
+        RawPropertyInline::Date(def) => def.multi,
+        RawPropertyInline::File(def) => def.multi,
+        RawPropertyInline::Number(def) => def.multi,
+        RawPropertyInline::String(def) => def.multi,
+    }
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
+)]
+fn property_spec_from_inline(
+    raw: &RawPropertyInline,
+    name: &PropertyName,
+    context: &'static str,
+) -> Result<PropertySpec, SchemaError> {
+    match raw {
+        RawPropertyInline::Bool(_) => {
+            Ok(PropertySpec::Bool(super::property_spec::BoolSpec::default()))
+        }
+        RawPropertyInline::Date(def) => {
+            let raw_spec = RawDateSpec {
+                format: def.format.clone(),
+            };
+            Ok(PropertySpec::Date(raw_spec.try_into()?))
+        }
+        RawPropertyInline::File(def) => {
+            let raw_spec = RawFileSpec {
+                directory: def.directory.clone(),
+                file_class: def.file_class.clone(),
+            };
+            Ok(PropertySpec::File(raw_spec.try_into()?))
+        }
+        RawPropertyInline::Number(def) => {
+            let raw_spec = RawNumberSpec {
+                min: def.min,
+                max: def.max,
+                step: def.step,
+            };
+            Ok(PropertySpec::Number(raw_spec.try_into()?))
+        }
+        RawPropertyInline::String(def) => {
+            let options =
+                warn_and_normalize_options(def.options.as_ref(), name, context);
+            let raw_spec = RawStringSpec {
+                options,
+                pattern: def.pattern.clone(),
+            };
+            Ok(PropertySpec::String(raw_spec.try_into()?))
+        }
+    }
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn warn_and_normalize_options(
+    options: Option<&RawOptions>,
+    name: &PropertyName,
+    context: &'static str,
+) -> Option<RawOptions> {
+    let options = options?;
+
+    let empty = match options {
+        RawOptions::Plain(items) => items.is_empty(),
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => {
+            entries.is_empty()
+        }
+    };
+
+    if empty {
+        tracing::warn!(
+            property = name.as_str(),
+            context,
+            "options list is empty; treating as unspecified"
+        );
+        return None;
+    }
+
+    if has_duplicate_option_values(options) {
+        tracing::warn!(
+            property = name.as_str(),
+            context,
+            "options list contains duplicate values"
+        );
+    }
+
+    Some(options.clone())
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn has_duplicate_option_values(options: &RawOptions) -> bool {
+    let mut seen: HashSet<&str> = HashSet::new();
+    match options {
+        RawOptions::Plain(items) => {
+            items.iter().map(AsRef::as_ref).any(|value| !seen.insert(value))
+        }
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => entries
+            .iter()
+            .map(|entry| entry.value.as_ref())
+            .any(|value| !seen.insert(value)),
     }
 }
 
@@ -1026,6 +1189,68 @@ mod tests {
                 PropertyName::try_new(name).is_err(),
                 "Should reject invalid name: {name}"
             );
+        }
+    }
+
+    mod property_map_from_raw {
+        use super::super::{
+            super::raw::{
+                RawPropertyBankEntry, RawPropertyInline, RawPropertyMap,
+            },
+            *,
+        };
+
+        #[test]
+        fn bank_required_is_overridden_to_optional() {
+            let json = r#"{"flag": {"type": "bool", "required": true}}"#;
+            let raw: RawPropertyMap<RawPropertyBankEntry> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("flag").unwrap();
+            let prop = map.get(&name).expect("property exists");
+            assert_eq!(prop.optionality(), Optionality::Optional);
+        }
+
+        #[test]
+        fn empty_string_options_are_accepted_as_unspecified() {
+            let json = r#"{"status": {"type": "string", "options": []}}"#;
+            let raw: RawPropertyMap<RawPropertyInline> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("status").unwrap();
+            let prop = map.get(&name).expect("property exists");
+            #[expect(
+                clippy::panic,
+                reason = "test asserts specific spec variant"
+            )]
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "matching on &PropertySpec in tests"
+            )]
+            {
+                match prop.spec() {
+                    PropertySpec::String(spec) => {
+                        assert!(spec.options().is_none());
+                    }
+                    PropertySpec::Bool(_)
+                    | PropertySpec::Date(_)
+                    | PropertySpec::File(_)
+                    | PropertySpec::Number(_) => {
+                        panic!("expected string spec")
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn duplicate_string_options_do_not_error() {
+            let json =
+                r#"{"status": {"type": "string", "options": ["a", "a"]}}"#;
+            let raw: RawPropertyMap<RawPropertyInline> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("status").unwrap();
+            assert!(map.get(&name).is_some());
         }
     }
 

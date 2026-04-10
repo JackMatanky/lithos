@@ -2,48 +2,137 @@
 //!
 //! Defines the property-level structures:
 //! - Property variants (Inline vs Ref)
-//! - Property bank entries
-//! - Overridable fields
+//! - Property bank entries (inline definitions used in the bank)
+//! - Per-type inline DTOs (`RawProperty*`)
 //! - Validated property map wrapper (`RawPropertyMap<T>`)
 //! - Validated property reference path wrapper (`RawPropertyRefPath`)
 
 use std::collections::HashMap;
 
-use super::{
-    spec_bool::RawBoolSpec, spec_date::RawDateSpec, spec_file::RawFileSpec,
-    spec_number::RawNumberSpec, spec_string::RawStringSpec,
+use super::string::{RawOptions, RawStringPattern};
+use crate::schema::{
+    aggregate::SchemaName, error::SchemaError, property::PropertyName,
 };
-use crate::schema::{error::SchemaError, property::PropertyName};
 
-/// Raw property specification (serde-facing input type).
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::{
-///     property::RawPropertySpec, spec_bool::RawBoolSpec,
-/// };
-///
-/// let spec = RawPropertySpec::Bool(RawBoolSpec);
-/// match spec {
-///     RawPropertySpec::Bool(_) => {}
-///     _ => {}
-/// }
-/// ```
+// ─────────────────────────────────────────────────────────────────────────────
+//  Raw Property Inline Types (per-type)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Raw boolean property definition.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
-pub enum RawPropertySpec {
-    /// Boolean property definition (marker type).
-    Bool(RawBoolSpec),
-    /// Date property definition.
-    Date(RawDateSpec),
-    /// File property definition.
-    File(RawFileSpec),
-    /// Number property definition.
-    Number(RawNumberSpec),
-    /// String property definition.
-    String(RawStringSpec),
+pub struct RawPropertyBoolean {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
 }
+
+/// Raw string property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawPropertyString {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional allowed values in one of three formats.
+    pub options: Option<RawOptions>,
+    /// Optional validation pattern (custom regex or predefined format).
+    pub pattern: Option<RawStringPattern>,
+}
+
+/// Raw number property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawPropertyNumber {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional minimum value.
+    pub min: Option<f64>,
+    /// Optional maximum value.
+    pub max: Option<f64>,
+    /// Optional step increment.
+    pub step: Option<f64>,
+}
+
+/// Raw date property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawPropertyDate {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional date format string.
+    pub format: Option<Box<str>>,
+}
+
+/// Raw file property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawPropertyFile {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional directory restriction (vault-relative path).
+    pub directory: Option<Box<str>>,
+    /// Optional file class restriction (schema name).
+    pub file_class: Option<SchemaName>,
+}
+
+/// Inline variant of a raw property definition.
+///
+/// Discriminated by the `type` field. These are full inline definitions used
+/// in schema and property bank files (syntax-only validation at this layer).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum RawPropertyInline {
+    /// Boolean property definition.
+    #[serde(rename = "bool", alias = "boolean")]
+    Bool(RawPropertyBoolean),
+    /// Date property definition.
+    #[serde(rename = "date")]
+    Date(RawPropertyDate),
+    /// File property definition.
+    #[serde(rename = "file")]
+    File(RawPropertyFile),
+    /// Number property definition.
+    #[serde(rename = "number")]
+    Number(RawPropertyNumber),
+    /// String property definition.
+    #[serde(rename = "string")]
+    String(RawPropertyString),
+}
+
+/// Entry in the raw property bank.
+///
+/// Property bank entries use the same schema-level inline DTOs. `required` is
+/// allowed in the input for early warnings and overridden during domain
+/// construction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawPropertyBankEntry(pub RawPropertyInline);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  RawPropertyMap<T>
@@ -352,15 +441,14 @@ impl std::fmt::Display for RawPropertyRefPath {
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::{
-///     RawBoolSpec, RawProperty, RawPropertyInline, RawPropertySpec,
-/// };
+/// use lithos_core::schema::raw::{RawProperty, RawPropertyInline};
 ///
-/// let property = RawProperty::Inline(RawPropertyInline {
-///     required: false,
-///     multi: false,
-///     spec: RawPropertySpec::Bool(RawBoolSpec),
-/// });
+/// let property = RawProperty::Inline(RawPropertyInline::Bool(
+///     lithos_core::schema::raw::property::RawPropertyBoolean {
+///         required: false,
+///         multi: false,
+///     },
+/// ));
 /// match property {
 ///     RawProperty::Inline(_) => {}
 ///     _ => {}
@@ -376,50 +464,11 @@ pub enum RawProperty {
     Inline(RawPropertyInline),
 }
 
-/// Inline variant of a raw property.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::{
-///     RawBoolSpec, RawPropertyInline, RawPropertySpec,
-/// };
-///
-/// let inline = RawPropertyInline {
-///     required: false,
-///     multi: false,
-///     spec: RawPropertySpec::Bool(RawBoolSpec),
-/// };
-/// let _ = inline;
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyInline {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    #[serde(flatten)]
-    pub spec: RawPropertySpec,
-}
-
 /// Reference variant of a raw property with optional overrides.
 ///
-/// Override fields are grouped by type via flattened `Raw*Spec` structs.
-/// All override fields are `Option<T>` — `None` means "don't override".
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::{
-///     RawDateSpec, RawFileSpec, RawNumberSpec, RawPropertyRef, RawStringSpec,
-/// };
-///
-/// // Note: RawPropertyRef is typically deserialized from files, not constructed directly.
-/// // The ref_path field is now a RawPropertyRefPath which validates during deserialization.
-/// ```
+/// All override fields are optional. Unknown fields are rejected.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawPropertyRef {
     /// The reference path (validated during deserialization).
@@ -433,44 +482,22 @@ pub struct RawPropertyRef {
     pub required: Option<bool>,
     /// Override whether property accepts multiple values.
     pub multi: Option<bool>,
-    /// Number-type overrides (min, max, step).
-    #[serde(flatten)]
-    pub number: RawNumberSpec,
     /// String-type overrides (options, pattern).
-    #[serde(flatten)]
-    pub string: RawStringSpec,
+    pub options: Option<RawOptions>,
+    /// Optional string pattern override.
+    pub pattern: Option<RawStringPattern>,
+    /// Number-type overrides (min, max, step).
+    pub min: Option<f64>,
+    /// Optional maximum override.
+    pub max: Option<f64>,
+    /// Optional step override.
+    pub step: Option<f64>,
     /// Date-type overrides (format).
-    #[serde(flatten)]
-    pub date: RawDateSpec,
+    pub format: Option<Box<str>>,
     /// File-type overrides (directory, `file_class`).
-    #[serde(flatten)]
-    pub file: RawFileSpec,
-}
-
-/// Entry in the raw property bank.
-///
-/// The property name is the map key, not a field here.
-/// `required` is not present because the bank is schema-agnostic.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertyBankEntry, RawPropertySpec};
-///
-/// let entry = RawPropertyBankEntry {
-///     multi: false,
-///     spec: RawPropertySpec::Bool(RawBoolSpec),
-/// };
-/// let _ = entry;
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyBankEntry {
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    #[serde(flatten)]
-    pub spec: RawPropertySpec,
+    pub directory: Option<Box<str>>,
+    /// Optional file class override (schema name).
+    pub file_class: Option<SchemaName>,
 }
 
 #[cfg(test)]
@@ -709,16 +736,50 @@ mod tests {
         }
     }
 
+    mod raw_property_inline {
+        use super::*;
+
+        #[test]
+        fn deserializes_bool_and_boolean_tags() {
+            let json_bool = r#"{"type": "bool"}"#;
+            let json_boolean = r#"{"type": "boolean"}"#;
+
+            let bool_inline: RawPropertyInline =
+                serde_json::from_str(json_bool).unwrap();
+            let boolean_inline: RawPropertyInline =
+                serde_json::from_str(json_boolean).unwrap();
+
+            assert!(matches!(bool_inline, RawPropertyInline::Bool(_)));
+            assert!(matches!(boolean_inline, RawPropertyInline::Bool(_)));
+        }
+
+        #[test]
+        fn serializes_bool_tag() {
+            let inline = RawPropertyInline::Bool(RawPropertyBoolean {
+                required: false,
+                multi: false,
+            });
+            let value = serde_json::to_value(&inline).unwrap();
+            let tag = value.get("type").and_then(|value| value.as_str());
+            assert_eq!(tag, Some("bool"));
+        }
+
+        #[test]
+        fn rejects_unknown_fields() {
+            let json = r#"{"type": "string", "extra": "nope"}"#;
+            let result: Result<RawPropertyInline, _> =
+                serde_json::from_str(json);
+            assert!(result.is_err(), "Unknown fields must be rejected");
+        }
+    }
+
     #[test]
     fn raw_property_inline_variant_constructs() {
-        use super::super::spec_bool::RawBoolSpec;
-
-        let inline = RawPropertyInline {
-            required: false,
-            multi: false,
-            spec: RawPropertySpec::Bool(RawBoolSpec),
-        };
-        let inline_variant = RawProperty::Inline(inline);
+        let inline_variant =
+            RawProperty::Inline(RawPropertyInline::Bool(RawPropertyBoolean {
+                required: false,
+                multi: false,
+            }));
 
         assert!(
             matches!(inline_variant, RawProperty::Inline(_)),
@@ -741,5 +802,15 @@ mod tests {
             matches!(reference_variant, RawProperty::Ref(_)),
             "RawProperty should be Ref variant"
         );
+    }
+
+    #[test]
+    fn raw_property_ref_rejects_unknown_fields() {
+        let json = r##"{
+            "$ref": "#property_bank/status",
+            "extra": true
+        }"##;
+        let result: Result<RawPropertyRef, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Unknown fields must be rejected");
     }
 }

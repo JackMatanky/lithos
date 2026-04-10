@@ -14,12 +14,12 @@ use crate::schema::error::SchemaError;
 #[non_exhaustive]
 pub struct BoolSpec;
 
-impl TryFrom<crate::schema::raw::spec_bool::RawBoolSpec> for BoolSpec {
+impl TryFrom<crate::schema::raw::bool::RawBoolSpec> for BoolSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        _raw: crate::schema::raw::spec_bool::RawBoolSpec,
+        _raw: crate::schema::raw::bool::RawBoolSpec,
     ) -> Result<Self, Self::Error> {
         Ok(Self)
     }

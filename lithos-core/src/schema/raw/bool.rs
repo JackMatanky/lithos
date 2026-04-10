@@ -1,10 +1,10 @@
-//! Boolean property specification types.
+//! Boolean property override types.
 
-/// Boolean property definition (marker type).
+/// Boolean property override bundle (marker type).
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::spec_bool::RawBoolSpec;
+/// use lithos_core::schema::raw::bool::RawBoolSpec;
 ///
 /// let _spec = RawBoolSpec;
 /// ```

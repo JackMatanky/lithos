@@ -4,7 +4,13 @@ use std::sync::Arc;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::schema::error::SchemaError;
+use crate::schema::{
+    error::SchemaError,
+    raw::{
+        property::RawPropertyString,
+        string::{RawOptions, RawStringSpec},
+    },
+};
 
 // ============================================================================
 // Public API - Primary Types
@@ -117,15 +123,15 @@ impl StringSpec {
     )]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::spec_string::RawStringSpec,
+        overrides: &crate::schema::raw::string::RawStringSpec,
     ) -> Result<Self, SchemaError> {
         let pattern = match overrides.pattern.as_ref() {
-            Some(
-                crate::schema::raw::spec_string::RawStringPattern::Custom(p),
-            ) => Some(StringPattern::try_custom(p.clone())?),
-            Some(crate::schema::raw::spec_string::RawStringPattern::Named(
-                f,
-            )) => Some(StringPattern::from(*f)),
+            Some(crate::schema::raw::string::RawStringPattern::Custom(p)) => {
+                Some(StringPattern::try_custom(p.clone())?)
+            }
+            Some(crate::schema::raw::string::RawStringPattern::Named(f)) => {
+                Some(StringPattern::from(*f))
+            }
             None => self.pattern,
         };
 
@@ -209,20 +215,20 @@ impl ArchivedStringSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::spec_string::RawStringSpec> for StringSpec {
+impl TryFrom<crate::schema::raw::string::RawStringSpec> for StringSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::spec_string::RawStringSpec,
+        raw: crate::schema::raw::string::RawStringSpec,
     ) -> Result<Self, Self::Error> {
         let pattern = match raw.pattern {
-            Some(
-                crate::schema::raw::spec_string::RawStringPattern::Custom(p),
-            ) => Some(StringPattern::try_custom(p)?),
-            Some(crate::schema::raw::spec_string::RawStringPattern::Named(
-                f,
-            )) => Some(StringPattern::from(f)),
+            Some(crate::schema::raw::string::RawStringPattern::Custom(p)) => {
+                Some(StringPattern::try_custom(p)?)
+            }
+            Some(crate::schema::raw::string::RawStringPattern::Named(f)) => {
+                Some(StringPattern::from(f))
+            }
             None => None,
         };
 
@@ -239,6 +245,29 @@ impl TryFrom<crate::schema::raw::spec_string::RawStringSpec> for StringSpec {
             .transpose()?;
 
         Self::try_new(pattern, options)
+    }
+}
+
+impl TryFrom<RawPropertyString> for StringSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(raw: RawPropertyString) -> Result<Self, Self::Error> {
+        let options = normalize_raw_options(raw.options);
+        let raw_spec = RawStringSpec {
+            options,
+            pattern: raw.pattern,
+        };
+        raw_spec.try_into()
+    }
+}
+
+fn normalize_raw_options(options: Option<RawOptions>) -> Option<RawOptions> {
+    match options {
+        Some(RawOptions::Plain(items)) if items.is_empty() => None,
+        Some(RawOptions::Ordered(entries)) if entries.is_empty() => None,
+        Some(RawOptions::Labeled(entries)) if entries.is_empty() => None,
+        other => other,
     }
 }
 
@@ -567,10 +596,10 @@ impl ArchivedStringPattern {
     }
 }
 
-impl From<crate::schema::raw::spec_string::RawStringFormat> for StringPattern {
+impl From<crate::schema::raw::string::RawStringFormat> for StringPattern {
     #[inline]
-    fn from(format: crate::schema::raw::spec_string::RawStringFormat) -> Self {
-        use crate::schema::raw::spec_string::RawStringFormat;
+    fn from(format: crate::schema::raw::string::RawStringFormat) -> Self {
+        use crate::schema::raw::string::RawStringFormat;
         match format {
             RawStringFormat::Email => Self::Email,
             RawStringFormat::Url => Self::Url,
@@ -741,12 +770,12 @@ impl OptionEntry {
     }
 }
 
-impl TryFrom<crate::schema::raw::spec_string::RawEntryValue> for OptionEntry {
+impl TryFrom<crate::schema::raw::string::RawEntryValue> for OptionEntry {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::spec_string::RawEntryValue,
+        raw: crate::schema::raw::string::RawEntryValue,
     ) -> Result<Self, Self::Error> {
         Self::try_new(raw.value, raw.label)
     }
@@ -856,7 +885,7 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
-        use crate::schema::raw::spec_string::{RawOptions, RawStringSpec};
+        use crate::schema::raw::string::{RawOptions, RawStringSpec};
 
         #[rstest]
         #[case::options_match(
@@ -887,7 +916,7 @@ mod tests {
             ))
         )]
         #[case::regex_match(
-            RawStringSpec { pattern: Some(crate::schema::raw::spec_string::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
+            RawStringSpec { pattern: Some(crate::schema::raw::string::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
             "123",
             Ok(())
         )]

@@ -4,7 +4,9 @@ use std::path::{Component, Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::schema::error::SchemaError;
+use crate::schema::{
+    aggregate::SchemaName, error::SchemaError, raw::property::RawPropertyFile,
+};
 
 /// File property validation constraints.
 ///
@@ -95,7 +97,7 @@ impl FileSpec {
     /// # Examples
     /// ```
     /// use lithos_core::schema::{
-    ///     property_spec::FileSpec, raw::spec_file::RawFileSpec,
+    ///     property_spec::FileSpec, raw::file::RawFileSpec,
     /// };
     ///
     /// let base = FileSpec::try_new(None, None)?;
@@ -111,14 +113,17 @@ impl FileSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::spec_file::RawFileSpec,
+        overrides: &crate::schema::raw::file::RawFileSpec,
     ) -> Result<Self, SchemaError> {
         let directory = overrides
             .directory
             .as_deref()
             .or_else(|| self.directory.as_ref().map(VaultRelPath::as_str));
-        let file_class =
-            overrides.file_class.as_deref().or(self.file_class.as_deref());
+        let file_class = overrides
+            .file_class
+            .as_ref()
+            .map(SchemaName::as_str)
+            .or(self.file_class.as_deref());
         Self::try_new(directory, file_class)
     }
 }
@@ -158,14 +163,28 @@ impl ArchivedFileSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::spec_file::RawFileSpec> for FileSpec {
+impl TryFrom<crate::schema::raw::file::RawFileSpec> for FileSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::spec_file::RawFileSpec,
+        raw: crate::schema::raw::file::RawFileSpec,
     ) -> Result<Self, Self::Error> {
-        Self::try_new(raw.directory.as_deref(), raw.file_class.as_deref())
+        let file_class = raw.file_class.as_ref().map(SchemaName::as_str);
+        Self::try_new(raw.directory.as_deref(), file_class)
+    }
+}
+
+impl TryFrom<RawPropertyFile> for FileSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(raw: RawPropertyFile) -> Result<Self, Self::Error> {
+        let raw_spec = crate::schema::raw::file::RawFileSpec {
+            directory: raw.directory,
+            file_class: raw.file_class,
+        };
+        raw_spec.try_into()
     }
 }
 

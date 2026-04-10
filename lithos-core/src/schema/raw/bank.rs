@@ -11,6 +11,9 @@ use super::{
 /// Property names are validated during deserialization via `RawPropertyMap`,
 /// ensuring all keys are valid `PropertyName` instances.
 ///
+/// Bank entries use inline property DTOs; `required` is accepted at this layer
+/// and overridden with a warning during domain construction.
+///
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::raw::RawPropertyBank;

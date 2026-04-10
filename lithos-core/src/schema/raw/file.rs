@@ -1,13 +1,15 @@
-//! File property specification types.
+//! File property override types.
 
-/// File property definition.
+use crate::schema::aggregate::SchemaName;
+
+/// File property override bundle.
 ///
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
+/// All fields are `Option<T>` to support override contexts.
+/// Inline definitions use `RawPropertyFile`.
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::spec_file::RawFileSpec;
+/// use lithos_core::schema::raw::file::RawFileSpec;
 ///
 /// let _spec = RawFileSpec::default();
 /// ```
@@ -19,7 +21,7 @@ pub struct RawFileSpec {
     /// Optional directory restriction (vault-relative path).
     pub directory: Option<Box<str>>,
     /// Optional file class restriction (schema name).
-    pub file_class: Option<Box<str>>,
+    pub file_class: Option<SchemaName>,
 }
 
 #[cfg(test)]
@@ -37,7 +39,7 @@ mod tests {
     fn raw_file_spec_serialize_with_fields() {
         let spec = RawFileSpec {
             directory: Some("docs/".into()),
-            file_class: Some("document".into()),
+            file_class: Some(SchemaName::try_new("document").unwrap()),
         };
         let json = serde_json::to_string(&spec).unwrap();
         assert!(json.contains("directory"));
@@ -49,7 +51,10 @@ mod tests {
         let json = r#"{"directory": "docs/", "file_class": "document"}"#;
         let spec: RawFileSpec = serde_json::from_str(json).unwrap();
         assert_eq!(spec.directory.as_deref(), Some("docs/"));
-        assert_eq!(spec.file_class.as_deref(), Some("document"));
+        assert_eq!(
+            spec.file_class.as_ref().map(SchemaName::as_str),
+            Some("document")
+        );
     }
 
     #[test]

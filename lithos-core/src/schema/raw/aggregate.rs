@@ -20,6 +20,9 @@ use crate::schema::{
 /// during deserialization via custom `Deserialize` impls for `SchemaName` and
 /// `PropertyName`.
 ///
+/// Property definitions are either inline (`RawPropertyInline`) or references
+/// (`RawPropertyRef`) via `RawProperty`.
+///
 /// The `name` field is special - it's derived from the filename (not the file
 /// content) and validated in `validated()` with file path context for better
 /// error messages.

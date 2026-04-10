@@ -29,7 +29,13 @@ use super::{
         Multiplicity, Optionality, Property, PropertyMap, PropertyName,
     },
     property_spec::PropertySpec,
-    raw::property::RawPropertyRef,
+    raw::{
+        date::RawDateSpec,
+        file::RawFileSpec,
+        number::RawNumberSpec,
+        property::RawPropertyRef,
+        string::{RawOptions, RawStringSpec},
+    },
 };
 type RefPropertyMap = HashMap<PropertyName, RawPropertyRef>;
 type ExpandedPropertyMap = PropertyMap;
@@ -76,7 +82,7 @@ impl<'bank> RefExpander<'bank> {
             reason = "Ordering is not required for property expansion"
         )]
         for (name, entry) in properties {
-            let prop = self.expand_property(entry)?;
+            let prop = self.expand_property(name, entry)?;
             expanded.insert(name.clone(), prop);
         }
 
@@ -86,6 +92,7 @@ impl<'bank> RefExpander<'bank> {
     /// Resolve a single raw property reference into a validated [`Property`].
     fn expand_property(
         &self,
+        name: &PropertyName,
         entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
         let bank_name = entry.ref_path.target_name();
@@ -97,7 +104,7 @@ impl<'bank> RefExpander<'bank> {
 
         let optionality = Self::optionality(base.optionality(), entry.required);
         let multiplicity = Self::multiplicity(base.multiplicity(), entry.multi);
-        let spec = Self::spec(base.spec(), entry)?;
+        let spec = Self::spec(base.spec(), name, entry)?;
 
         Ok(Property::new(base.id(), optionality, multiplicity, spec))
     }
@@ -106,18 +113,23 @@ impl<'bank> RefExpander<'bank> {
         clippy::pattern_type_mismatch,
         reason = "Matching on &PropertySpec with value patterns is idiomatic"
     )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Spec resolution keeps all override logic in one place"
+    )]
     fn spec(
         base: &PropertySpec,
+        name: &PropertyName,
         ref_entry: &RawPropertyRef,
     ) -> Result<PropertySpec, SchemaError> {
-        let has_number = ref_entry.number.min.is_some()
-            || ref_entry.number.max.is_some()
-            || ref_entry.number.step.is_some();
-        let has_string = ref_entry.string.options.is_some()
-            || ref_entry.string.pattern.is_some();
-        let has_date = ref_entry.date.format.is_some();
-        let has_file = ref_entry.file.directory.is_some()
-            || ref_entry.file.file_class.is_some();
+        let has_number = ref_entry.min.is_some()
+            || ref_entry.max.is_some()
+            || ref_entry.step.is_some();
+        let has_string =
+            ref_entry.options.is_some() || ref_entry.pattern.is_some();
+        let has_date = ref_entry.format.is_some();
+        let has_file =
+            ref_entry.directory.is_some() || ref_entry.file_class.is_some();
 
         match base {
             PropertySpec::Bool(_) => {
@@ -146,8 +158,13 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("number", "file"));
                 }
+                let overrides = RawNumberSpec {
+                    min: ref_entry.min,
+                    max: ref_entry.max,
+                    step: ref_entry.step,
+                };
                 Ok(PropertySpec::Number(
-                    spec.clone().apply_overrides(&ref_entry.number)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -161,8 +178,17 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("string", "file"));
                 }
+                let options = warn_and_normalize_options(
+                    name,
+                    "ref_override",
+                    ref_entry.options.as_ref(),
+                );
+                let overrides = RawStringSpec {
+                    options,
+                    pattern: ref_entry.pattern.clone(),
+                };
                 Ok(PropertySpec::String(
-                    spec.clone().apply_overrides(&ref_entry.string)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -176,8 +202,11 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("date", "file"));
                 }
+                let overrides = RawDateSpec {
+                    format: ref_entry.format.clone(),
+                };
                 Ok(PropertySpec::Date(
-                    spec.clone().apply_overrides(&ref_entry.date)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -191,8 +220,12 @@ impl<'bank> RefExpander<'bank> {
                 if has_date {
                     return Err(type_mismatch("file", "date"));
                 }
+                let overrides = RawFileSpec {
+                    directory: ref_entry.directory.clone(),
+                    file_class: ref_entry.file_class.clone(),
+                };
                 Ok(PropertySpec::File(
-                    spec.clone().apply_overrides(&ref_entry.file)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
         }
@@ -214,6 +247,62 @@ impl<'bank> RefExpander<'bank> {
         override_val: Option<bool>,
     ) -> Multiplicity {
         override_val.map_or(base, Multiplicity::from)
+    }
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn warn_and_normalize_options(
+    name: &PropertyName,
+    context: &'static str,
+    options: Option<&RawOptions>,
+) -> Option<RawOptions> {
+    let options = options?;
+
+    let empty = match options {
+        RawOptions::Plain(items) => items.is_empty(),
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => {
+            entries.is_empty()
+        }
+    };
+
+    if empty {
+        tracing::warn!(
+            property = name.as_str(),
+            context,
+            "options list is empty; treating as unspecified"
+        );
+        return None;
+    }
+
+    if has_duplicate_option_values(options) {
+        tracing::warn!(
+            property = name.as_str(),
+            context,
+            "options list contains duplicate values"
+        );
+    }
+
+    Some(options.clone())
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn has_duplicate_option_values(options: &RawOptions) -> bool {
+    let mut seen: std::collections::HashSet<&str> =
+        std::collections::HashSet::new();
+    match options {
+        RawOptions::Plain(items) => {
+            items.iter().map(AsRef::as_ref).any(|value| !seen.insert(value))
+        }
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => entries
+            .iter()
+            .map(|entry| entry.value.as_ref())
+            .any(|value| !seen.insert(value)),
     }
 }
 

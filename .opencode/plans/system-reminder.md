@@ -1,333 +1,201 @@
-# Schema Pipeline Single State Machine Refactor Plan (Comprehensive)
+# Raw Schema DTO Refactor Plan (Per-Type DTOs + Strictness)
 
 ## Objective
-Refactor the schema ingestion pipeline into a single batch state machine with
-per-file status enums. Remove `SchemaFileProcessor`, implement graph patching
-with affected-subtree recomputation and stable order preservation, and handle
-deletions during Discovery. Maintain all existing functionality and align with
-the original redesign intent while keeping the system extensible.
+Refactor `lithos-core/src/schema/raw/` ingestion DTOs to be strict about
+`additionalProperties: false`, align with meta-schema terminology and
+constraints, accept both `bool` and `boolean` on input (serialize as `bool`),
+and keep semantic validation outside raw while emitting early warnings during
+domain construction.
 
-## Scope and Constraints
-- Scope: `lithos-core/src/schema/` only
-- Files likely touched:
-  - `lithos-core/src/schema/schema_pipeline.rs`
-  - `lithos-core/src/schema/builder.rs`
-  - `lithos-core/src/schema/storage.rs` (only if missing APIs)
-  - Tests under `lithos-core/src/schema/` and `lithos-core/tests/`
-- Keep `TopologicalGraph<NodeStatus>` as the persisted graph type
-- Extends delta computed in TreeGraphed
-- Excludes delta computed in PropertyAnalysis
-- Deletions handled during Discovery (not Completion)
-- Stable topo order: preserve order for unaffected nodes
+## Scope
+- `lithos-core/src/schema/raw/`
+- Property bank ingestion and conversion paths
+- Domain construction path that consumes raw property bank entries
+- Tests for raw parsing and early semantic warnings
 
 ## Non-Goals
-- No changes outside schema module
-- No new external dependencies
-- No reformat/rename unrelated code
+- No changes to unrelated contexts (note, template, config, db, fs)
+- No semantic validation in raw beyond syntactic regex checks
+- No new dependencies
+- No changes to schema JSON files unless required by code alignment
 
-## Current Issues to Fix
-- `SchemaFileProcessor` is largely unused but still complex
-- Graphing redoes comparison and parsing logic
-- Extends delta computed too late
-- PropertyBank delta not integrated into schema changes
-- StaleContent refresh uses cached raw, not newly parsed raw
-- Deletions not handled
+## Decisions
+- Use per-type raw DTOs (`RawPropertyString`, `RawPropertyNumber`, etc.)
+- Use internally tagged enums (`type`) for disambiguation
+- Accept both `bool` and `boolean` on input; serialize as `bool`
+- Reuse schema DTOs for property bank entries
+- Property bank `required: true` => warning + override to `false`
+- Syntactic regex validation for schema names in raw
+- Options uniqueness/empties are semantic warnings in domain construction
+
+## Constraints & Standards
+- Obey context isolation rules
+- Follow naming taxonomy (`get_` prefixes avoided, etc.)
+- Avoid string allocation anti-patterns
+- Use `Box<str>` for owned, immutable strings
+- No `unwrap` in production code
+
+## Current Pain Points
+- `flatten` prevents `deny_unknown_fields` for strict schema alignment
+- `RawPropertySpec` tag handling mismatched with schema (`bool` vs `boolean`)
+- Property bank forbids `required`, but raw does not enforce
+- Options constraints are specified in schema but not enforced (by design)
 
 ## Target Architecture
 
-### Single Processor
-`SchemaTreeProcessor<Stage, Status>` is the only typestate driver.
+### New Raw DTO Types (schema-level)
+Create explicit per-type DTOs with strict field sets:
 
-### Per-File Status Enum
+- `RawPropertyBoolean`
+- `RawPropertyString`
+- `RawPropertyNumber`
+- `RawPropertyDate`
+- `RawPropertyFile`
+
+Common fields:
+- `required: bool` (schema only)
+- `multi: bool`
+
+Type-specific fields:
+- String: `options: Option<RawOptions>`, `pattern: Option<RawStringPattern>`
+- Number: `min: Option<f64>`, `max: Option<f64>`, `step: Option<f64>`
+- Date: `format: Option<Box<str>>`
+- File: `directory: Option<Box<str>>`, `file_class: Option<SchemaName>`
+
+All per-type DTOs:
+- `#[serde(deny_unknown_fields)]`
+- `#[serde(default)]` for `required` and `multi`
+
+### Inline Property Enum
+Replace `RawPropertySpec` + `flatten` with an internally tagged enum:
+
 ```rust
-enum FileStatus {
-    Fresh {
-        id: SchemaId,
-        path: PathBuf,
-        view: RawSchemaView,
-    },
-    StaleTimestamps {
-        id: SchemaId,
-        path: PathBuf,
-        view: RawSchemaView,
-        times: RawFileTimes,
-    },
-    StaleContent {
-        id: SchemaId,
-        path: PathBuf,
-        view: RawSchemaView,
-        raw: RawSchema,
-        content_hash: [u8; 32],
-        times: RawFileTimes,
-    },
-    New {
-        id: SchemaId,
-        path: PathBuf,
-        raw: RawSchema,
-        content_hash: [u8; 32],
-        times: RawFileTimes,
-    },
+#[serde(tag = "type")]
+enum RawPropertyInline {
+    Boolean(RawPropertyBoolean),
+    String(RawPropertyString),
+    Number(RawPropertyNumber),
+    Date(RawPropertyDate),
+    File(RawPropertyFile),
 }
 ```
 
-### Stage Sequence
-Discovery -> Comparison -> TreeGraphed -> PropertyAnalysis -> Refresh -> Construction -> Completion
+Boolean compatibility:
+- Accept both `"bool"` and `"boolean"` during deserialization
+- Serialize as `"bool"`
 
-### Stage Payloads
+### Property Bank Entries
+Reuse the schema-level per-type DTOs for bank entries.
+
+Policy:
+- During domain construction, if `required == true`, emit warning and set to
+  `false`.
+
+### RawProperty Wrapper
+Keep `RawProperty` as:
+
 ```rust
-struct DiscoveryState {
-    files: Vec<PathBuf>,
-    cached_graph: Option<TopologicalGraph<NodeStatus>>,
-    id_by_path: HashMap<PathBuf, SchemaId>,
-    view_by_id: HashMap<SchemaId, RawSchemaView>,
-    deleted_ids: Vec<SchemaId>,
-}
-
-struct ComparisonState {
-    statuses: Vec<FileStatus>,
-    fresh_ids: Vec<SchemaId>,
-    stale_ids: Vec<SchemaId>,
-    new_ids: Vec<SchemaId>,
-}
-
-struct TreeGraphedState {
-    graph: TopologicalGraph<NodeStatus>,
-    raw_by_id: HashMap<SchemaId, RawSchema>,
-    extends_deltas: HashMap<SchemaId, ExtendsDelta>,
-    affected_subtrees: HashSet<SchemaId>,
-}
-
-struct PropertyAnalysisState {
-    graph: TopologicalGraph<NodeStatus>,
-    deltas_by_id: HashMap<SchemaId, SchemaPropertyDelta>,
-    excludes_by_id: HashMap<SchemaId, ExcludesDelta>,
-}
-
-struct ConstructionState {
-    graph: TopologicalGraph<NodeStatus>,
-    resolved: Vec<Arc<Schema>>,
-    changed_ids: HashSet<SchemaId>,
-}
-
-struct CompletionState {
-    schemas: Vec<Arc<Schema>>,
-    graph: TopologicalGraph<NodeStatus>,
+#[serde(untagged)]
+enum RawProperty {
+    Ref(RawPropertyRef),
+    Inline(RawPropertyInline),
 }
 ```
 
-## Detailed Implementation Steps
+`RawPropertyRef`:
+- Explicit override fields only (no flatten)
+- `#[serde(deny_unknown_fields)]`
+- `$ref` field uses `RawPropertyRefPath`
 
-### Step 1: Remove SchemaFileProcessor
-- Delete the `SchemaFileProcessor` type and its typestates
-- Remove local stage enums:
-  - `LocalComparisonBranch`, `LocalTimestampBranch`, `LocalContentBranch`, `LocalAnalysisBranch`
-  - `Fresh`, `Suspect`, `StaleTimestamps`, `StaleContent`, `Parsed`, `Changed`, `Ready`, etc.
-- Remove local pipeline functions:
-  - `discover`, `check_timestamps`, `check_content`, `analyze`, `sync_metadata`, `construct`
-- Remove any use sites for local types in `schema_pipeline.rs`
+### Syntactic Validation in Raw
+- `SchemaName` uses `serde(try_from = "String")` or custom `Deserialize`
+- `file_class` and `extends` use `SchemaName`
+- Keep filename match validation outside raw
 
-### Step 2: Add New Status Types and Stage Payloads
-- Add the `FileStatus` enum
-- Add the new stage payload structs
-- Update `SchemaTreeProcessor` transitions to use new payloads
+## Early Semantic Warnings
+Emit warnings as early as possible after raw parsing, during domain
+construction:
 
-### Step 3: Discovery Stage (includes deletion cleanup)
-**Responsibilities:**
-- Scan FS for schema files (exclude property bank filename)
-- Load cached graph from DB
-- Load path->id pairs from DB
-- Load raw schema views in batch
-- Compute deleted ids: ids in DB not present on disk
+- Property bank entries: `required: true` => warning, override to `false`
+- Options:
+  - Duplicate values in `Plain`
+  - Empty `Plain` or empty `Ordered`
 
-**Deletion cleanup during Discovery:**
-- Delete by id:
-  - Raw schema views
-  - Schemas
-  - Inheritance metadata
-  - Graph cache nodes
-- Ensure deleted ids are excluded from all later steps
+Warning mechanism:
+- Use existing logging facility (prefer `tracing::warn!` if available)
+- Ensure warnings include context (property name + file path if available)
 
-**Outputs:**
-- `DiscoveryState` with files, cached graph, maps, deleted ids
+## Implementation Steps
 
-**Edge cases:**
-- Missing cached graph: treat as None
-- DB has ids for missing paths: treat as deletions
+### Step 1: Define per-type DTOs
+- Add new structs in `lithos-core/src/schema/raw/property.rs` or a new module
+  under `raw/`.
+- Apply `deny_unknown_fields` and defaults for `required`/`multi`.
+- Update documentation and tests for each DTO.
 
-### Step 4: Comparison Stage (per file)
-For each file path:
-- Look up SchemaId (existing or new)
-- Load view if present
-- Collect file times
+### Step 2: Replace RawPropertySpec
+- Remove `RawPropertySpec` or convert it to the tagged inline enum.
+- Update all call sites using `RawPropertySpec`.
+- Update serialization tests.
 
-Decision logic:
-- No view: parse once -> `New`
-- Timestamps match: `Fresh`
-- Timestamps mismatch:
-  - Read content once
-  - Compute content hash
-  - Hash match -> `StaleTimestamps`
-  - Hash mismatch -> parse once -> `StaleContent`
+### Step 3: Update RawPropertyInline + RawProperty
+- Convert `RawPropertyInline` to tagged enum over per-type DTOs.
+- Keep `RawProperty` as `Ref | Inline` (untagged).
+- Ensure ref variant is tried first and fails fast on missing `$ref`.
 
-**Outputs:**
-- `ComparisonState` with `statuses` and id sets
+### Step 4: Make RawPropertyRef strict
+- Replace `flatten` overrides with explicit fields in `RawPropertyRef`.
+- Add `deny_unknown_fields`.
+- Confirm overrides align with schema fields.
 
-**Performance:**
-- Parse at most once per stale file
-- Avoid re-reading content later by carrying raw/hash
+### Step 5: Apply syntactic regex validation
+- Convert `RawFileSpec.file_class` to `Option<SchemaName>`.
+- Ensure `extends` uses `SchemaName` (already does).
+- Update tests accordingly.
 
-### Step 5: TreeGraphed Stage (graph patching, stable order)
+### Step 6: Update bank entry ingestion
+- Reuse schema-level DTOs for property bank entries.
+- Update conversion path to warn + override `required` to false.
 
-**Inputs:**
-- `cached_graph`
-- `raw_by_id` for `New` and `StaleContent`
-- `deleted_ids`
+### Step 7: Add early semantic warnings
+- In domain construction path (or earliest semantic conversion stage):
+  - Detect bank `required` truthy
+  - Detect duplicate/empty options
+- Emit warnings and normalize as needed.
 
-**Compute ExtendsDelta:**
-- For each `New` or `StaleContent`:
-  - `old_parent`: from view.current().extends()
-  - `new_parent`: from raw.extends()
-  - Save to `extends_deltas`
+### Step 8: Tests
+- Add or update tests for:
+  - Unknown fields rejected for each per-type DTO
+  - `bool` and `boolean` accepted, serialize as `bool`
+  - `RawPropertyRef` rejects unknown fields
+  - Bank `required: true` produces warning and sets `required = false`
+  - Options warnings for duplicates/empties
 
-**Change sets:**
-- `changed_extends_ids` where delta.changed()
-- `new_ids`
-- `affected_roots = union(changed_extends_ids, new_ids)`
+### Step 9: Docs
+- Update `raw/mod.rs` docs to describe per-type DTOs and strictness
+- Document early semantic warnings in domain construction
 
-**Graph patching algorithm:**
-1) Start from cached graph if available, else build baseline from current files
-2) Remove deleted nodes from graph, roots, order, nodes
-3) Insert new nodes (parent resolved from name->id map)
-4) Rewire parent edges for changed extends
+## File Touchpoints (Expected)
+- `lithos-core/src/schema/raw/property.rs`
+- `lithos-core/src/schema/raw/spec_string.rs` (if RawOptions types move)
+- `lithos-core/src/schema/raw/spec_number.rs`
+- `lithos-core/src/schema/raw/spec_date.rs`
+- `lithos-core/src/schema/raw/spec_file.rs`
+- `lithos-core/src/schema/raw/spec_bool.rs`
+- `lithos-core/src/schema/raw/mod.rs`
+- Domain construction path for schema/property bank ingestion
+- Tests for raw and domain validation
 
-**Children adjacency:**
-- Build `children_by_parent` map from updated graph
+## Risks & Mitigations
+- **Risk:** Breaking compatibility for existing files with unknown fields
+  - Mitigation: Add clear error messages; update docs
+- **Risk:** Ambiguity around `bool` vs `boolean`
+  - Mitigation: Accept both, serialize as `bool`
+- **Risk:** Early warnings lack context
+  - Mitigation: Thread file path/property name into warning calls
 
-**Affected subtree discovery:**
-- BFS from each `affected_root` over `children_by_parent`
-- Collect into `affected_subtrees`
-
-**Scoped validation:**
-- Cycle detection limited to `affected_subtrees` + their immediate parents
-- Depth recompute only in `affected_subtrees`
-  - Root depth = parent.depth + 1 (or 0 if no parent)
-  - Propagate to descendants
-
-**Stable topo order patch:**
-- Let `old_order` = cached graph order
-- Remove all affected ids from `old_order`
-- Compute a topo order for the affected subgraph only
-- Splice affected order into `old_order` at earliest parent position:
-  - If node has parent in `old_order`, insert after last parent index
-  - If root, insert at end
-- Validate final order length == node count
-
-**Outputs:**
-- `TreeGraphedState` with patched graph, raw_by_id, extends_deltas, affected_subtrees
-
-### Step 6: PropertyAnalysis (batch)
-
-**Compute ExcludesDelta:**
-- Compare `view.current().excludes()` vs `raw.excludes()`
-
-**Compute SchemaPropertyDelta:**
-- Compare raw property hashes to cached hashes
-- Build `SchemaPropertyUpserts { inline, refs }` and `removed`
-
-**Integrate PropertyBank delta:**
-- Load bank references from view
-- Intersect with PropertyBank changed set
-- Add affected refs to `SchemaPropertyDelta.upserts.refs`
-
-**Outputs:**
-- `PropertyAnalysisState` with `deltas_by_id`, `excludes_by_id`, and graph
-
-### Step 7: Refresh (per-file)
-- For `StaleTimestamps`:
-  - Update `file_times` in view
-  - Persist view
-- For `StaleContent`:
-  - Rebuild `SchemaVersion` from `raw` (not cached raw)
-  - Update file_times + content hash
-  - Persist view
-- Convert refreshed schemas to `Fresh` for construction
-
-### Step 8: Construction (batch)
-
-**Inputs:**
-- Patched graph order
-- Property deltas and excludes
-- Expanded properties from PropertyBank for changed schemas
-
-**Process topo order:**
-- For each id:
-  - If schema is Fresh and parent is Fresh -> fetch from DB
-  - Else expand changed properties (inline + refs)
-  - Merge parent properties + apply excludes
-  - Construct Schema
-  - Cache in `resolved_cache` for children
-
-**Outputs:**
-- `ConstructionState` with resolved schemas and changed ids
-
-### Step 9: Completion
-- Save changed/new schemas
-- Save `TopologicalGraph<NodeStatus>` cache
-- Save inheritance metadata
-- Return `Vec<Schema>`
-
-### Step 10: Cleanups
-- Remove dead helpers and old branch enums
-- Ensure no unused imports remain
-
-## Repository API Needs
-Verify presence of:
-- `list_schema_path_id_pairs`
-- `get_raw_schema_view`
-- `save_raw_schema_view`
-- `save_schemas`
-- `find_schemas_by_ids`
-- `save_topological_graph`
-- `get_inheritance_metadata`
-- `save_inheritance_metadata`
-- Deletion APIs:
-  - `delete_schema`
-  - `delete_raw_schema_view`
-  - `delete_inheritance_metadata`
-
-If missing, add minimal methods in `storage.rs` and trait.
-
-## Test Plan
-Add/extend tests for:
-- Deletion handling during Discovery
-- Stale timestamps refresh updates view but not schema
-- Stale content refresh rebuilds view from raw
-- Graph patching:
-  - extends change rewires edges
-  - stable order preserves unaffected ids
-  - affected subtree recompute only
-- PropertyBank delta re-expands refs
-- Full pipeline on mixed fresh/stale/new schemas
-
-## Validation Commands
+## Verification
 - `mise run fmt`
 - `mise run lint`
 - `mise run test:unit:schema`
-- `mise run verify`
-
-## Risks and Mitigations
-- **Risk:** Partial topo reorder breaks parent-before-child.
-  - Mitigation: validate order length and parent position constraints in tests.
-- **Risk:** Missing delete APIs.
-  - Mitigation: add minimal delete operations to repository trait.
-- **Risk:** Complexity of patching.
-  - Mitigation: instrument with helper functions and focused unit tests.
-
-## Deliverables Checklist
-- `SchemaFileProcessor` removed
-- Single pipeline in `schema_pipeline.rs`
-- Deletion cleanup in Discovery
-- Graph patching with affected subtree recompute and stable order
-- PropertyBank delta integration
-- Refresh uses raw for StaleContent
-- Tests updated and passing
+- `mise run verify` (if time)

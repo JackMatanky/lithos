@@ -25,6 +25,11 @@
 //!   `PropertyName::deserialize`)
 //! - **Field presence**: Required fields enforced by serde
 //! - **Unknown fields**: Rejected by `#[serde(deny_unknown_fields)]`
+//! - **Property definitions**: Per-type DTOs (`RawPropertyString`,
+//!   `RawPropertyNumber`, etc.) reject unknown fields to mirror
+//!   `additionalProperties: false` in the meta-schema
+//! - **Boolean tag compatibility**: `type = "bool"` and `type = "boolean"` are
+//!   accepted on input; serialization uses `"bool"`
 //!
 //! These validations provide **immediate feedback** with line/column context
 //! from serde, making invalid syntax unrepresentable at the type level.
@@ -35,9 +40,7 @@
 //!
 //! - **Schema name matches filename** (validated in `RawSchema::validated()`)
 //! - **Property references exist** (validated by `Expander`)
-//! - **Parent schema exists** (validated by `Loader`)
-//! - **No circular inheritance** (validated by `Loader`)
-//! - **Depth limits** (validated by `Resolver`)
+//! - **Inheritance sanity** (validated by schema processing pipeline)
 //!
 //! These validations happen after deserialization with **file path context**
 //! for better error messages.
@@ -69,6 +72,22 @@
 //! - ["Parse, Don't Validate" by Alexis King](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
 //! - [Rust API Guidelines - Type Safety](https://rust-lang.github.io/api-guidelines/type-safety.html)
 //! - [Serde Official Documentation](https://serde.rs/impl-deserialize.html)
+//!
+//! ## Raw Type Families
+//!
+//! Raw DTOs are split into two families:
+//!
+//! - **Inline property definitions**: `RawProperty*` types live in
+//!   `raw/property.rs`. These are full per-type definitions used in schema
+//!   files and property bank files (`required`, `multi`, and type-specific
+//!   fields).
+//! - **Override/constraint bundles**: `Raw*Spec` types live in
+//!   `raw/{bool,date,file,number,string}.rs`. These are partial shapes used for
+//!   reference overrides and `apply_overrides` in the domain layer.
+//!
+//! Semantic warnings (e.g., `required` in property bank entries, or empty/
+//! duplicate string options) are emitted during domain construction rather than
+//! at raw parse time.
 
 #![expect(
     clippy::module_name_repetitions,
@@ -76,13 +95,13 @@
 )]
 
 pub mod bank;
+pub mod bool;
+pub mod date;
+pub mod file;
 pub mod metadata;
+pub mod number;
 pub mod property;
-pub mod spec_bool;
-pub mod spec_date;
-pub mod spec_file;
-pub mod spec_number;
-pub mod spec_string;
+pub mod string;
 pub mod version;
 
 mod aggregate;
@@ -112,6 +131,21 @@ pub type RawPropertyBankEntry = property::RawPropertyBankEntry;
 /// Inline variant of a raw property.
 pub type RawPropertyInline = property::RawPropertyInline;
 
+/// Raw boolean property definition.
+pub type RawPropertyBoolean = property::RawPropertyBoolean;
+
+/// Raw string property definition.
+pub type RawPropertyString = property::RawPropertyString;
+
+/// Raw number property definition.
+pub type RawPropertyNumber = property::RawPropertyNumber;
+
+/// Raw date property definition.
+pub type RawPropertyDate = property::RawPropertyDate;
+
+/// Raw file property definition.
+pub type RawPropertyFile = property::RawPropertyFile;
+
 /// Reference variant of a raw property with optional overrides.
 pub type RawPropertyRef = property::RawPropertyRef;
 
@@ -121,35 +155,32 @@ pub type RawPropertyMap<T> = property::RawPropertyMap<T>;
 /// Validated reference path to a property bank entry.
 pub type RawPropertyRefPath = property::RawPropertyRefPath;
 
-/// Raw property specification (serde-facing input type).
-pub type RawPropertySpec = property::RawPropertySpec;
-
 /// Boolean property definition (marker type).
-pub type RawBoolSpec = spec_bool::RawBoolSpec;
+pub type RawBoolSpec = bool::RawBoolSpec;
 
 /// Date property definition.
-pub type RawDateSpec = spec_date::RawDateSpec;
+pub type RawDateSpec = date::RawDateSpec;
 
 /// File property definition.
-pub type RawFileSpec = spec_file::RawFileSpec;
+pub type RawFileSpec = file::RawFileSpec;
 
 /// Number property definition.
-pub type RawNumberSpec = spec_number::RawNumberSpec;
+pub type RawNumberSpec = number::RawNumberSpec;
 
 /// String property definition.
-pub type RawStringSpec = spec_string::RawStringSpec;
+pub type RawStringSpec = string::RawStringSpec;
 
 /// Raw options definition supporting three formats.
-pub type RawOptions = spec_string::RawOptions;
+pub type RawOptions = string::RawOptions;
 
 /// A rich option entry with optional label and input order.
-pub type RawEntryValue = spec_string::RawEntryValue;
+pub type RawEntryValue = string::RawEntryValue;
 
 /// Input order position.
-pub type RawEntryInputOrder = spec_string::RawEntryInputOrder;
+pub type RawEntryInputOrder = string::RawEntryInputOrder;
 
 /// Named string format for common validation patterns.
-pub type RawStringFormat = spec_string::RawStringFormat;
+pub type RawStringFormat = string::RawStringFormat;
 
 /// Raw string pattern supporting both custom regex and predefined formats.
-pub type RawStringPattern = spec_string::RawStringPattern;
+pub type RawStringPattern = string::RawStringPattern;

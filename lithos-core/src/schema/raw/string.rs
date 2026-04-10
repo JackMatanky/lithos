@@ -1,4 +1,4 @@
-//! String property specification types.
+//! String property override types.
 
 use std::collections::BTreeSet;
 
@@ -8,15 +8,15 @@ use crate::schema::error::{PropertySpecError, SchemaError};
 // RawStringSpec
 // ============================================================================
 
-/// String property definition.
+/// String property override bundle.
 ///
 /// Supports `options` and `pattern` per the meta-schema.
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
+/// All fields are `Option<T>` to support override contexts.
+/// Inline definitions use `RawPropertyString`.
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::spec_string::RawStringSpec;
+/// use lithos_core::schema::raw::string::RawStringSpec;
 ///
 /// let _spec = RawStringSpec::default();
 /// ```
@@ -88,6 +88,9 @@ pub enum RawStringFormat {
 // ============================================================================
 
 /// Raw options definition supporting three formats.
+///
+/// Empty lists or duplicate values are allowed here and handled with warnings
+/// during domain construction.
 ///
 /// # Modes
 ///
@@ -257,6 +260,7 @@ where
 
 /// A rich option entry with optional label and input order.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawEntryValue {
     /// The option value.
@@ -725,17 +729,10 @@ mod tests {
     }
 
     #[test]
-    fn raw_options_rich_with_extra_fields_ignored() {
+    fn raw_options_rich_rejects_extra_fields() {
         let json = r#"[{"value": "a", "label": "A", "extra": "ignored"}]"#;
-        let options: RawOptions = serde_json::from_str(json).unwrap();
-        match options {
-            RawOptions::Labeled(entries) => {
-                assert_eq!(entries.len(), 1);
-                assert_eq!(entries[0].value.as_ref(), "a");
-                assert_eq!(entries[0].label.as_deref(), Some("A"));
-            }
-            _ => panic!("Expected Labeled variant"),
-        }
+        let result: Result<RawOptions, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Extra fields must be rejected");
     }
 
     #[test]

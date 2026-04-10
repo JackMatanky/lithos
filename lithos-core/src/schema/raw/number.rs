@@ -1,13 +1,13 @@
-//! Number property specification types.
+//! Number property override types.
 
-/// Number property definition.
+/// Number property override bundle.
 ///
-/// All fields are `Option<T>` to support both inline definitions
-/// and override contexts.
+/// All fields are `Option<T>` to support override contexts.
+/// Inline definitions use `RawPropertyNumber`.
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::raw::spec_number::RawNumberSpec;
+/// use lithos_core::schema::raw::number::RawNumberSpec;
 ///
 /// let _spec = RawNumberSpec::default();
 /// ```

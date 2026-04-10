@@ -2,7 +2,7 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::schema::error::SchemaError;
+use crate::schema::{error::SchemaError, raw::property::RawPropertyDate};
 
 /// Date property validation constraints.
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
@@ -89,7 +89,7 @@ impl DateSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::spec_date::RawDateSpec,
+        overrides: &crate::schema::raw::date::RawDateSpec,
     ) -> Result<Self, SchemaError> {
         if let Some(format) = overrides.format.as_ref() {
             Self::try_new(format.as_ref())
@@ -131,17 +131,29 @@ impl ArchivedDateSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::spec_date::RawDateSpec> for DateSpec {
+impl TryFrom<crate::schema::raw::date::RawDateSpec> for DateSpec {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::spec_date::RawDateSpec,
+        raw: crate::schema::raw::date::RawDateSpec,
     ) -> Result<Self, Self::Error> {
         let format = raw.format.ok_or(SchemaError::PropertySpec(
             crate::schema::error::PropertySpecError::DateFormatRequired,
         ))?;
         Self::try_new(&format)
+    }
+}
+
+impl TryFrom<RawPropertyDate> for DateSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(raw: RawPropertyDate) -> Result<Self, Self::Error> {
+        let raw_spec = crate::schema::raw::date::RawDateSpec {
+            format: raw.format,
+        };
+        raw_spec.try_into()
     }
 }
 
