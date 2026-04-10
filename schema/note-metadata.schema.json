@@ -72,7 +72,7 @@
     },
     "PropertyBankRef": {
       "title": "Property Bank Reference with Overrides",
-      "description": "A reference to a named property in the vault's property bank, with optional override fields. The '$ref' field is required and must follow the format '#property_bank/<name>'. Any additional fields (required, multi, type, options, etc.) override the defaults from the referenced property. This allows schemas to reuse property definitions while customizing constraints.",
+      "description": "A reference to a named property in the vault's property bank, with optional override fields. The '$ref' field is required and must follow the format '#property_bank/<name>'. Any additional fields (required, multi, options, etc.) override the defaults from the referenced property. This allows schemas to reuse property definitions while customizing constraints.",
       "type": "object",
       "required": ["$ref"],
       "additionalProperties": false,
@@ -94,12 +94,6 @@
           "title": "Multiple Values",
           "description": "Override whether this property holds multiple values. If not specified, uses the value from the property bank.",
           "type": "boolean"
-        },
-        "type": {
-          "title": "Property Type Override",
-          "description": "Override the property type. If specified, replaces the type from the property bank. Use with caution — changing type fundamentally changes the property.",
-          "type": "string",
-          "enum": ["string", "number", "boolean", "date", "file"]
         },
         "options": {
           "title": "Allowed Values Override",
