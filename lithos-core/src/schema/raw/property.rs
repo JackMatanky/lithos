@@ -20,41 +20,6 @@ use crate::schema::{
     aggregate::SchemaName, error::SchemaError, property::PropertyName,
 };
 
-/// Inline variant of a raw property definition.
-///
-/// Discriminated by the `type` field. These are full inline definitions used
-/// in schema and property bank files (syntax-only validation at this layer).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type")]
-#[non_exhaustive]
-pub enum RawPropertyInline {
-    /// Boolean property definition.
-    #[serde(rename = "bool", alias = "boolean")]
-    Bool(RawBoolProperty),
-    /// Date property definition.
-    #[serde(rename = "date")]
-    Date(RawDateProperty),
-    /// File property definition.
-    #[serde(rename = "file")]
-    File(RawFileProperty),
-    /// Number property definition.
-    #[serde(rename = "number")]
-    Number(RawNumberProperty),
-    /// String property definition.
-    #[serde(rename = "string")]
-    String(RawStringProperty),
-}
-
-/// Entry in the raw property bank.
-///
-/// Property bank entries use the same schema-level inline DTOs. `required` is
-/// allowed in the input for early warnings and overridden during domain
-/// construction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct RawPropertyBankEntry(pub RawPropertyInline);
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  RawPropertyMap<T>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +209,112 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  RawProperty and Related Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Raw property for schema properties map.
+///
+/// Used in `RawSchema.properties` where the name is the map key.
+/// Discriminated by presence of `$ref` field. Ref is tried first because
+/// it has a required `$ref` field that Inline never has.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{RawProperty, RawPropertyInline};
+///
+/// let property = RawProperty::Inline(RawPropertyInline::Bool(
+///     lithos_core::schema::raw::bool::RawBoolProperty {
+///         required: false,
+///         multi: false,
+///     },
+/// ));
+/// match property {
+///     RawProperty::Inline(_) => {}
+///     _ => {}
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawProperty {
+    /// A reference to a property in the property bank with optional overrides.
+    Ref(RawPropertyRef),
+    /// An inline property definition.
+    Inline(RawPropertyInline),
+}
+
+/// Reference variant of a raw property with optional overrides.
+///
+/// All override fields are optional. Unknown fields are rejected.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawPropertyRef {
+    /// The reference path (validated during deserialization).
+    ///
+    /// Format: `#property_bank/<property_name>` where `<property_name>` is a
+    /// valid property name. The target property name is pre-extracted for
+    /// efficient access via `ref_path.target_name()`.
+    #[serde(rename = "$ref")]
+    pub ref_path: RawPropertyRefPath,
+    /// Override whether property is required.
+    pub required: Option<bool>,
+    /// Override whether property accepts multiple values.
+    pub multi: Option<bool>,
+    /// String-type overrides (options, pattern).
+    pub options: Option<RawOptions>,
+    /// Optional string pattern override.
+    pub pattern: Option<RawStringPattern>,
+    /// Number-type overrides (min, max, step).
+    pub min: Option<f64>,
+    /// Optional maximum override.
+    pub max: Option<f64>,
+    /// Optional step override.
+    pub step: Option<f64>,
+    /// Date-type overrides (format).
+    pub format: Option<Box<str>>,
+    /// File-type overrides (directory, `file_class`).
+    pub directory: Option<Box<str>>,
+    /// Optional file class override (schema name).
+    pub file_class: Option<SchemaName>,
+}
+
+/// Inline variant of a raw property definition.
+///
+/// Discriminated by the `type` field. These are full inline definitions used
+/// in schema and property bank files (syntax-only validation at this layer).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum RawPropertyInline {
+    /// Boolean property definition.
+    #[serde(rename = "bool", alias = "boolean")]
+    Bool(RawBoolProperty),
+    /// Date property definition.
+    #[serde(rename = "date")]
+    Date(RawDateProperty),
+    /// File property definition.
+    #[serde(rename = "file")]
+    File(RawFileProperty),
+    /// Number property definition.
+    #[serde(rename = "number")]
+    Number(RawNumberProperty),
+    /// String property definition.
+    #[serde(rename = "string")]
+    String(RawStringProperty),
+}
+
+/// Entry in the raw property bank.
+///
+/// Property bank entries use the same schema-level inline DTOs. `required` is
+/// allowed in the input for early warnings and overridden during domain
+/// construction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct RawPropertyBankEntry(pub RawPropertyInline);
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  RawPropertyRefPath
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -348,77 +419,6 @@ impl std::fmt::Display for RawPropertyRefPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.full_path)
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RawProperty and Related Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Raw property for schema properties map.
-///
-/// Used in `RawSchema.properties` where the name is the map key.
-/// Discriminated by presence of `$ref` field. Ref is tried first because
-/// it has a required `$ref` field that Inline never has.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::{RawProperty, RawPropertyInline};
-///
-/// let property = RawProperty::Inline(RawPropertyInline::Bool(
-///     lithos_core::schema::raw::bool::RawBoolProperty {
-///         required: false,
-///         multi: false,
-///     },
-/// ));
-/// match property {
-///     RawProperty::Inline(_) => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum RawProperty {
-    /// A reference to a property in the property bank with optional overrides.
-    Ref(RawPropertyRef),
-    /// An inline property definition.
-    Inline(RawPropertyInline),
-}
-
-/// Reference variant of a raw property with optional overrides.
-///
-/// All override fields are optional. Unknown fields are rejected.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyRef {
-    /// The reference path (validated during deserialization).
-    ///
-    /// Format: `#property_bank/<property_name>` where `<property_name>` is a
-    /// valid property name. The target property name is pre-extracted for
-    /// efficient access via `ref_path.target_name()`.
-    #[serde(rename = "$ref")]
-    pub ref_path: RawPropertyRefPath,
-    /// Override whether property is required.
-    pub required: Option<bool>,
-    /// Override whether property accepts multiple values.
-    pub multi: Option<bool>,
-    /// String-type overrides (options, pattern).
-    pub options: Option<RawOptions>,
-    /// Optional string pattern override.
-    pub pattern: Option<RawStringPattern>,
-    /// Number-type overrides (min, max, step).
-    pub min: Option<f64>,
-    /// Optional maximum override.
-    pub max: Option<f64>,
-    /// Optional step override.
-    pub step: Option<f64>,
-    /// Date-type overrides (format).
-    pub format: Option<Box<str>>,
-    /// File-type overrides (directory, `file_class`).
-    pub directory: Option<Box<str>>,
-    /// Optional file class override (schema name).
-    pub file_class: Option<SchemaName>,
 }
 
 #[cfg(test)]
