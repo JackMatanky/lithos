@@ -43,7 +43,7 @@ pub struct MarkdownParser<'source, 'cfg> {
     // PDA state
     stack: Vec<Block<'source>>,
     depth: u32,
-    link: Option<LinkFrame<'source>>,
+    link: Option<PendingLink<'source>>,
     list_kinds: Vec<RawListKind>,
     list_ctxs: Vec<ListCtx>,
     open_items: Vec<SourceByteOffset>,
@@ -389,8 +389,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 block.scannable.push(range);
             }
         }
-        if let Some(link) = self.link.as_mut() {
-            link.alias.push_str(text.as_ref());
+        if let Some(pending) = self.link.as_mut()
+            && pending.collect_alias
+        {
+            pending.alias_buf.push_str(text.as_ref());
         }
     }
 
@@ -399,8 +401,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         if let Some(block) = self.stack.last_mut() {
             block.text.push_str(text.as_ref());
         }
-        if let Some(link) = self.link.as_mut() {
-            link.alias.push_str(text.as_ref());
+        if let Some(pending) = self.link.as_mut()
+            && pending.collect_alias
+        {
+            pending.alias_buf.push_str(text.as_ref());
         }
     }
 
@@ -411,18 +415,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     fn finalize_link(&mut self) {
-        if let Some(mut link) = self.link.take() {
-            let (target_raw, anchor_raw) = LinkTarget::new(link.target).split();
-            let alias_raw = trim_to_opt(&link.alias);
-            self.out.links.push(RawLink::new(
-                link.style,
-                link.is_embed,
-                target_raw,
-                alias_raw.map(Into::into),
-                anchor_raw,
-                link.start,
-            ));
-            self.pool.put(std::mem::take(&mut link.alias));
+        if let Some(mut pending) = self.link.take() {
+            pending.raw.alias = trim_to_opt(&pending.alias_buf).map(Into::into);
+            self.out.links.push(pending.raw);
+            self.pool.put(pending.alias_buf);
         }
     }
 
@@ -489,14 +485,17 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         is_embed: bool,
         start: SourceByteOffset,
     ) {
+        let collect_alias =
+            !matches!(link_type, pulldown_cmark::LinkType::WikiLink {
+                has_pothole: false
+            });
+        let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
-        self.link = Some(LinkFrame {
-            style: link_type.into(),
-            is_embed,
-            target,
-            start,
-            alias: self.pool.take(),
+        self.link = Some(PendingLink {
+            raw: RawLink::new(style, is_embed, target, None, start),
+            alias_buf: self.pool.take(),
+            collect_alias,
         });
     }
 }
@@ -793,50 +792,17 @@ impl LinkRefResolver {
     }
 }
 
-struct LinkFrame<'source> {
-    style: RawLinkStyle,
-    is_embed: bool,
-    target: Cow<'source, str>,
-    start: SourceByteOffset,
-    alias: String,
-}
-
-struct LinkTarget<'source>(Cow<'source, str>);
-
-impl<'source> LinkTarget<'source> {
-    fn new(target: Cow<'source, str>) -> Self {
-        Self(target)
-    }
-
-    fn split(self) -> (Cow<'source, str>, Option<Cow<'source, str>>) {
-        if self.is_external() {
-            return (self.0, None);
-        }
-        match self.0 {
-            Cow::Borrowed(text) => text
-                .split_once('#')
-                .map_or((Cow::Borrowed(text), None), |(p, a)| {
-                    (Cow::Borrowed(p), Some(Cow::Borrowed(a)))
-                }),
-            Cow::Owned(mut text) => {
-                if let Some(pos) = text.find('#') {
-                    #[expect(
-                        clippy::arithmetic_side_effects,
-                        reason = "pos is from find(), always < text.len()"
-                    )]
-                    let anchor = text.split_off(pos + 1);
-                    text.truncate(pos);
-                    (Cow::Owned(text), Some(Cow::Owned(anchor)))
-                } else {
-                    (Cow::Owned(text), None)
-                }
-            }
-        }
-    }
-
-    fn is_external(&self) -> bool {
-        crate::note::link::Target::is_external_target(self.0.as_ref())
-    }
+/// Transient link state accumulated during a link open/close event pair.
+///
+/// Holds the partially-constructed [`RawLink`] and the alias text buffer
+/// (borrowed from [`StringPool`]) until [`MarkdownParser::finalize_link`]
+/// writes the alias and pushes the link to the output.
+struct PendingLink<'source> {
+    raw: RawLink<'source>,
+    alias_buf: String,
+    /// `false` for wiki-links without a `|` separator (`has_pothole = false`),
+    /// where the display text mirrors the target rather than being an alias.
+    collect_alias: bool,
 }
 
 /// Converts a pulldown-cmark metadata block kind to a [`RawFrontmatterFormat`].
@@ -919,8 +885,6 @@ fn resolve_reference_target<'source>(
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
-
     use super::*;
     use crate::{
         config::task::TaskConfigSpec,
@@ -1088,7 +1052,6 @@ mod tests {
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
         assert_eq!(link.target.as_ref(), "obsidian://open?vault=V#frag");
-        assert!(link.anchor.is_none());
     }
 
     #[test]
@@ -1100,7 +1063,6 @@ mod tests {
             link.target.as_ref(),
             "file:///Users/example/test.md#section"
         );
-        assert!(link.anchor.is_none());
     }
 
     #[test]
@@ -1109,42 +1071,5 @@ mod tests {
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
         assert_eq!(link.target.as_ref(), "s3://bucket/key#object");
-        assert!(link.anchor.is_none());
-    }
-
-    #[test]
-    fn link_target_split_with_owned_string_and_anchor() {
-        let owned = Cow::Owned(String::from("note#heading"));
-        let target = LinkTarget::new(owned);
-        let (path, anchor) = target.split();
-
-        assert_eq!(path.as_ref(), "note");
-        assert_eq!(
-            anchor.as_ref().map(std::convert::AsRef::as_ref),
-            Some("heading")
-        );
-    }
-
-    #[test]
-    fn link_target_split_with_owned_string_no_anchor() {
-        let owned = Cow::Owned(String::from("note"));
-        let target = LinkTarget::new(owned);
-        let (path, anchor) = target.split();
-
-        assert_eq!(path.as_ref(), "note");
-        assert!(anchor.is_none());
-    }
-
-    #[test]
-    fn link_target_split_with_owned_string_multiple_hashes() {
-        let owned = Cow::Owned(String::from("note#a#b#c"));
-        let target = LinkTarget::new(owned);
-        let (path, anchor) = target.split();
-
-        assert_eq!(path.as_ref(), "note");
-        assert_eq!(
-            anchor.as_ref().map(std::convert::AsRef::as_ref),
-            Some("a#b#c")
-        );
     }
 }

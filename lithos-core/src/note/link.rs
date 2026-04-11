@@ -291,15 +291,12 @@ impl TryFrom<RawLink<'_>> for Link {
 
     #[inline]
     fn try_from(raw: RawLink<'_>) -> Result<Self, Self::Error> {
+        let is_external = Target::is_external_target(raw.target.as_ref());
+        let (raw, anchor_raw) = raw.split_target(is_external);
         let target = raw.target;
         let target_text = target.as_ref();
-        let is_external = Target::is_external_target(target_text);
-        let anchor = if is_external {
-            None
-        } else {
-            raw.anchor.as_deref().map(Anchor::from_raw).transpose()?
-        };
         let embed_type = EmbedType::from_extension(target_text);
+        let anchor = anchor_raw.as_deref().map(Anchor::from_raw).transpose()?;
         let target = if is_external {
             Target::External {
                 url: target.into_owned().into_boxed_str(),
