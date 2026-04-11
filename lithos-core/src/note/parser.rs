@@ -28,8 +28,7 @@ use crate::{
     },
 };
 
-// ── Primary public API
-// ────────────────────────────────────────────────────────
+// ── Primary public API ───────────────────────────────────────────────────────
 
 /// Markdown parser for extracting note facts and structure.
 ///
@@ -38,7 +37,7 @@ use crate::{
 /// internal implementation detail.
 pub struct MarkdownParser<'source, 'cfg> {
     // Source and configuration
-    ref_defs: RefDefs,
+    ref_defs: LinkRefResolver,
     pool: StringPool,
 
     // PDA state
@@ -70,7 +69,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     ) -> Result<RawNote<'source>, NoteIngestError> {
         let base = Parser::new_ext(source, Self::extension_options());
         let offset_iter = base.into_offset_iter();
-        let ref_defs = RefDefs::new(
+        let ref_defs = LinkRefResolver::new(
             offset_iter
                 .reference_definitions()
                 .iter()
@@ -106,7 +105,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     fn new(
         source: &'source str,
         task_spec: &'cfg TaskConfigSpec,
-        ref_defs: RefDefs,
+        ref_defs: LinkRefResolver,
     ) -> Self {
         let emoji_markers = if task_spec.use_emoji {
             task_spec.emoji_markers.clone()
@@ -455,7 +454,6 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     // Private push helpers
-
     fn push_block(&mut self, kind: BlockKind, start: SourceByteOffset) {
         self.stack.push(Block {
             kind,
@@ -501,45 +499,6 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             alias: self.pool.take(),
         });
     }
-}
-
-// ── String pool instrumentation ──────────────────────────────────────────────
-
-/// Metrics collected during `StringPool` operations for benchmarking.
-#[derive(Default, Debug, Clone, Copy)]
-#[non_exhaustive]
-pub struct StringPoolMetrics {
-    /// Number of times `take()` was called (strings requested from pool).
-    pub takes: usize,
-    /// Number of times `put()` was called (strings returned to pool).
-    pub puts: usize,
-    /// Current number of strings held in the pool.
-    pub pool_size: usize,
-    /// Current capacity of the pool's internal vector.
-    pub pool_capacity: usize,
-}
-
-thread_local! {
-    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
-        std::cell::RefCell::new(StringPoolMetrics::default());
-}
-
-/// Retrieve the current `StringPool` metrics.
-///
-/// These metrics are accumulated during parsing operations.
-#[inline]
-#[must_use]
-pub fn get_string_pool_metrics() -> StringPoolMetrics {
-    STRING_POOL_METRICS.with(|cell| *cell.borrow())
-}
-
-/// Reset `StringPool` metrics to zero.
-///
-/// Call this before a benchmark iteration to start fresh metrics collection.
-#[inline]
-pub fn reset_string_pool_metrics() {
-    STRING_POOL_METRICS
-        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
 }
 
 // ── String pool ──────────────────────────────────────────────────────────────
@@ -597,8 +556,46 @@ impl StringPool {
     }
 }
 
-// ── PDA stack types
-// ───────────────────────────────────────────────────────────
+// ── String pool instrumentation ──────────────────────────────────────────────
+
+/// Metrics collected during `StringPool` operations for benchmarking.
+#[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct StringPoolMetrics {
+    /// Number of times `take()` was called (strings requested from pool).
+    pub takes: usize,
+    /// Number of times `put()` was called (strings returned to pool).
+    pub puts: usize,
+    /// Current number of strings held in the pool.
+    pub pool_size: usize,
+    /// Current capacity of the pool's internal vector.
+    pub pool_capacity: usize,
+}
+
+thread_local! {
+    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
+        std::cell::RefCell::new(StringPoolMetrics::default());
+}
+
+/// Retrieve the current `StringPool` metrics.
+///
+/// These metrics are accumulated during parsing operations.
+#[inline]
+#[must_use]
+pub fn get_string_pool_metrics() -> StringPoolMetrics {
+    STRING_POOL_METRICS.with(|cell| *cell.borrow())
+}
+
+/// Reset `StringPool` metrics to zero.
+///
+/// Call this before a benchmark iteration to start fresh metrics collection.
+#[inline]
+pub fn reset_string_pool_metrics() {
+    STRING_POOL_METRICS
+        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
+}
+
+// ── PDA stack types ──────────────────────────────────────────────────────────
 
 /// A block frame on the parser's pushdown stack.
 ///
@@ -756,11 +753,11 @@ pub(crate) fn block_ref_tail_range(
 
 // ── Private implementation details ───────────────────────────────────────────
 
-struct RefDefs {
+struct LinkRefResolver {
     normalized: std::collections::HashMap<Box<str>, Box<str>>,
 }
 
-impl RefDefs {
+impl LinkRefResolver {
     #[expect(
         clippy::iter_over_hash_type,
         reason = "Normalization chooses first-seen label order"
@@ -768,7 +765,7 @@ impl RefDefs {
     fn new(raw: std::collections::HashMap<String, String>) -> Self {
         let mut normalized = std::collections::HashMap::new();
         for (label, dest) in raw {
-            let key = normalize_reference_label(&label);
+            let key = Self::normalize_label(&label);
             normalized.entry(key).or_insert(dest.into_boxed_str());
         }
         Self {
@@ -777,8 +774,50 @@ impl RefDefs {
     }
 
     fn resolve(&self, label: &str) -> Option<&str> {
-        let normalized = normalize_reference_label(label);
+        let normalized = Self::normalize_label(label);
         self.normalized.get(normalized.as_ref()).map(AsRef::as_ref)
+    }
+
+    fn normalize_label(label: &str) -> Box<str> {
+        let needs_lowercase = label.chars().any(|c| c.is_ascii_uppercase());
+        let needs_whitespace_fix = label.starts_with([' ', '\t'])
+            || label.ends_with([' ', '\t'])
+            || label.contains("  ")
+            || label.contains('\\');
+
+        if !needs_lowercase && !needs_whitespace_fix {
+            return label.to_owned().into_boxed_str();
+        }
+
+        let mut normalized = String::with_capacity(label.len());
+        let mut last_was_space = false;
+        let mut chars = label.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            let ch = if ch == '\\' {
+                chars.next().unwrap_or('\\')
+            } else {
+                ch
+            };
+
+            if ch.is_whitespace() {
+                if normalized.is_empty() || last_was_space {
+                    continue;
+                }
+                normalized.push(' ');
+                last_was_space = true;
+                continue;
+            }
+
+            normalized.push(ch.to_ascii_lowercase());
+            last_was_space = false;
+        }
+
+        if last_was_space {
+            normalized.pop();
+        }
+
+        normalized.into_boxed_str()
     }
 }
 
@@ -896,7 +935,7 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
 fn resolve_reference_target<'source>(
     link_type: pulldown_cmark::LinkType,
     dest_url: CowStr<'source>,
-    ref_defs: &mut RefDefs,
+    ref_defs: &mut LinkRefResolver,
 ) -> Cow<'source, str> {
     if is_reference_link_type(link_type)
         && let Some(resolved) = ref_defs.resolve(dest_url.as_ref())
@@ -904,48 +943,6 @@ fn resolve_reference_target<'source>(
         return Cow::Owned(String::from(resolved));
     }
     Cow::from(dest_url)
-}
-
-fn normalize_reference_label(label: &str) -> Box<str> {
-    let needs_lowercase = label.chars().any(|c| c.is_ascii_uppercase());
-    let needs_whitespace_fix = label.starts_with([' ', '\t'])
-        || label.ends_with([' ', '\t'])
-        || label.contains("  ")
-        || label.contains('\\');
-
-    if !needs_lowercase && !needs_whitespace_fix {
-        return label.to_owned().into_boxed_str();
-    }
-
-    let mut normalized = String::with_capacity(label.len());
-    let mut last_was_space = false;
-    let mut chars = label.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        let ch = if ch == '\\' {
-            chars.next().unwrap_or('\\')
-        } else {
-            ch
-        };
-
-        if ch.is_whitespace() {
-            if normalized.is_empty() || last_was_space {
-                continue;
-            }
-            normalized.push(' ');
-            last_was_space = true;
-            continue;
-        }
-
-        normalized.push(ch.to_ascii_lowercase());
-        last_was_space = false;
-    }
-
-    if last_was_space {
-        normalized.pop();
-    }
-
-    normalized.into_boxed_str()
 }
 
 #[cfg(test)]
