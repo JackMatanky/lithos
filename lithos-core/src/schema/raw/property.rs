@@ -1,11 +1,27 @@
 //! Raw property types.
 //!
-//! Defines the property-level structures:
-//! - Property variants (Inline vs Ref)
-//! - Property bank entries (inline definitions used in the bank)
-//! - Per-type inline DTOs (`Raw*Property`)
-//! - Validated property map wrapper (`RawPropertyMap<T>`)
-//! - Validated property reference path wrapper (`RawPropertyRefPath`)
+//! This module defines the serde-facing property DTOs used during raw schema
+//! ingestion. The design follows serde best practices for strict, structural
+//! parsing without custom visitors:
+//!
+//! - **Internally tagged enum** for inline definitions: `RawPropertyInline` is
+//!   tagged by `type`, which makes variant selection explicit and stable.
+//! - **Untagged enum** for ref vs inline: `RawProperty` uses
+//!   `#[serde(untagged)]` because `$ref` is structurally distinct and required
+//!   for references.
+//! - **`deny_unknown_fields` everywhere** to mirror `additionalProperties:
+//!   false` in the meta-schema.
+//! - **Newtype parsing for ref paths**: `RawPropertyRefPath` uses
+//!   `#[serde(try_from = "String")]` to validate prefix and target name.
+//! - **No `flatten`**: explicit fields avoid ambiguity and allow strictness.
+//!
+//! Component overview:
+//! - `RawPropertyInline`: per-type inline definitions (uses `Raw*Property`
+//!   structs from `raw/{bool,date,file,number,string}.rs`)
+//! - `RawPropertyRef`: `$ref` plus optional override fields
+//! - `RawPropertyBankEntry`: inline definitions used in the property bank
+//! - `RawPropertyMap<T>`: validated map keyed by `PropertyName`
+//! - `RawPropertyRefPath`: validated property bank reference path
 
 use std::collections::HashMap;
 
@@ -214,9 +230,9 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 
 /// Raw property for schema properties map.
 ///
-/// Used in `RawSchema.properties` where the name is the map key.
-/// Discriminated by presence of `$ref` field. Ref is tried first because
-/// it has a required `$ref` field that Inline never has.
+/// Used in `RawSchema.properties` where the name is the map key. The enum is
+/// untagged: references are selected by presence of a required `$ref` field,
+/// while inline definitions match the tagged `type` shape.
 ///
 /// # Examples
 /// ```ignore
@@ -245,7 +261,8 @@ pub enum RawProperty {
 
 /// Reference variant of a raw property with optional overrides.
 ///
-/// All override fields are optional. Unknown fields are rejected.
+/// All override fields are optional. Unknown fields are rejected to mirror the
+/// schema's `additionalProperties: false` constraint.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
