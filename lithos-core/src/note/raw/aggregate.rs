@@ -1,14 +1,34 @@
+//! Raw note aggregate and dual-write accumulator.
+//!
+//! This module contains [`RawNote`], the direct output of the markdown
+//! ingestion pipeline. It accumulates unvalidated, source-borrowed data
+//! extracted from a single markdown document: frontmatter, headings, sections,
+//! links, tags, lists, list items, inline fields, and block references.
+//!
+//! ## Dual-write invariant
+//!
+//! Tags and inline fields found inside list items are written to two places:
+//! the item itself (via [`RawListItem::tags`] / [`RawListItem::inline_fields`])
+//! and the global note-level collections ([`RawNote::tags`] /
+//! [`RawNote::inline_fields`]). This allows both item-scoped queries (e.g.,
+//! "what is the due date of this task?") and note-scoped queries (e.g., "what
+//! tags appear anywhere in this note?") to be answered without re-scanning.
+//!
+//! The invariant is enforced exclusively through [`RawNote::accept_list_item`].
+
 use super::{
     RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink, RawList,
     RawListItem, RawSection, RawTag,
 };
-use crate::note::paths::NotePath;
 
-/// Raw note container with extracted, unvalidated data.
+/// Unvalidated extraction output for a single markdown note.
+///
+/// All fields contain data extracted during a single-pass parse of the source
+/// text. The struct is `#[non_exhaustive]` to allow future artifact types to be
+/// added without breaking downstream code.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawNote<'source> {
-    pub path: NotePath,
     pub frontmatter: Option<RawFrontmatter<'source>>,
     pub headings: Vec<RawHeading<'source>>,
     pub sections: Vec<RawSection>,
@@ -29,7 +49,6 @@ impl<'source> RawNote<'source> {
         reason = "RawNote bundles full extraction output"
     )]
     pub fn new(
-        path: NotePath,
         frontmatter: Option<RawFrontmatter<'source>>,
         headings: Vec<RawHeading<'source>>,
         sections: Vec<RawSection>,
@@ -41,7 +60,6 @@ impl<'source> RawNote<'source> {
         block_refs: Vec<RawBlockRef<'source>>,
     ) -> Self {
         Self {
-            path,
             frontmatter,
             headings,
             sections,
@@ -54,13 +72,23 @@ impl<'source> RawNote<'source> {
         }
     }
 
+    /// Pushes a list item and applies the dual-write invariant.
+    ///
+    /// List item tags and inline fields appear in both the item itself (for
+    /// item-level queries) and the global collections (for note-level queries).
+    /// This is the single location that invariant is enforced.
+    pub(crate) fn accept_list_item(&mut self, item: RawListItem<'source>) {
+        self.tags.extend(item.tags.iter().cloned());
+        self.inline_fields.extend(item.inline_fields.iter().cloned());
+        self.list_items.push(item);
+    }
+
     /// Converts this raw note into an owned variant suitable for returning
     /// across file ingestion boundaries.
     #[inline]
     #[must_use]
     pub fn into_owned(self) -> RawNote<'static> {
         RawNote {
-            path: self.path,
             frontmatter: self.frontmatter.map(RawFrontmatter::into_owned),
             headings: self
                 .headings

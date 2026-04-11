@@ -90,7 +90,11 @@ impl ScannedArtifact<'_> {
     }
 }
 
-/// Raw tokens extracted from a scan pass.
+/// Raw tokens extracted from a single scan pass, grouped by artifact type.
+///
+/// Produced by [`NoteScanner::scan_ranges_raw`] and consumed by
+/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) to populate
+/// [`RawNote`](crate::note::raw::RawNote) collections.
 #[derive(Debug, Default)]
 pub(crate) struct ScannedRawArtifacts<'source> {
     pub tags: Vec<RawTag<'source>>,
@@ -203,6 +207,27 @@ impl NoteScanner {
         let mut artifacts = Vec::with_capacity(8);
         self.scan_ranges(text, ranges, &mut artifacts)?;
         Ok(split_artifacts(artifacts, include_task_marker))
+    }
+
+    /// Scans the first line of a block for a task status symbol.
+    ///
+    /// Caps the scan at 80 bytes since task checkboxes always appear near the
+    /// start of a list item. Delegates to [`Self::scan_task_marker`] after
+    /// computing the first-line range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    pub(crate) fn scan_task_marker_first_line(
+        source: &str,
+        block_range: SourceByteRange,
+    ) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
+        let start = block_range.start().as_usize();
+        let slice = source.get(start..).unwrap_or("");
+        let first_line_len = slice.find('\n').unwrap_or(slice.len()).min(80);
+        let end = block_range.start().add_offset(first_line_len)?;
+        let prefix = SourceByteRange::new(block_range.start(), end)?;
+        Self::scan_task_marker(source, prefix)
     }
 
     /// Scans a block range for a task marker.

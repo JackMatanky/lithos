@@ -1,7 +1,23 @@
 //! Note processing pipeline.
 //!
-//! Provides a typestate-driven pipeline for processing markdown notes using
-//! file metadata and the note repository.
+//! Provides a typestate-driven pipeline for processing markdown notes. The
+//! pipeline is modelled as a series of stages encoded in the type system:
+//!
+//! | Stage | Marker type | What happens |
+//! |-------|-------------|--------------|
+//! | 1 | [`Discovery`] | Repository lookup — is the note already known? |
+//! | 2 | [`Comparison`] | Metadata check — is the stored entry stale? |
+//! | 3 | [`Analysis`] | Read from disk and parse the markdown source. |
+//! | 4 | [`Construction`] | Build domain facts and persist to the repository. |
+//! | 5 | [`Completed`] | Terminal state; a [`NoteProcessReport`] is ready. |
+//!
+//! The status type parameter (e.g., [`Missing`], [`Present`], [`Suspect`])
+//! carries the data accumulated so far. Transitions are expressed as `impl`
+//! blocks on specific `NoteProcessor<Stage, Status>` combinations, so the
+//! compiler prevents out-of-order or missing steps.
+//!
+//! The main entry points are [`NoteProcessor::process_file`] (full ingest)
+//! and [`NoteProcessor::record_deleted`] (deletion).
 
 use std::marker::PhantomData;
 
@@ -94,12 +110,14 @@ pub struct Suspect {
 #[derive(Debug)]
 pub struct New {
     raw: RawNote<'static>,
+    path: NotePath,
 }
 
 /// Status for parsed raw note in the update path.
 #[derive(Debug)]
 pub struct Changed {
     raw: RawNote<'static>,
+    path: NotePath,
 }
 
 /// Terminal status for completed processing.
@@ -397,30 +415,14 @@ impl NoteProcessor<Comparison, Missing> {
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
-        let content = source
-            .read_to_string(std::path::Path::new(
-                self.status.info.path.as_str(),
-            ))
-            .map_err(|error| {
-                NoteIngestError::from(NoteFileError::ReadFailed {
-                    path: self.status.info.path.clone(),
-                    message: error.to_string().into(),
-                })
-            })?;
-        let suspect = Self::transition(Analysis, Suspect {
-            info: self.status.info,
-            content,
-            is_new: true,
-        });
-        let analysis = suspect.parse(task_spec)?;
-        match analysis {
-            AnalysisBranch::New(state) => {
-                state.persist(repository, frontmatter_spec, task_spec)
-            }
-            AnalysisBranch::Changed(state) => {
-                state.persist(repository, frontmatter_spec, task_spec)
-            }
-        }
+        read_and_persist(
+            self.status.info,
+            true,
+            repository,
+            source,
+            task_spec,
+            frontmatter_spec,
+        )
     }
 }
 
@@ -433,30 +435,14 @@ impl NoteProcessor<Analysis, Suspect> {
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
-        let content = source
-            .read_to_string(std::path::Path::new(
-                self.status.info.path.as_str(),
-            ))
-            .map_err(|error| {
-                NoteIngestError::from(NoteFileError::ReadFailed {
-                    path: self.status.info.path.clone(),
-                    message: error.to_string().into(),
-                })
-            })?;
-        let suspect = Self::transition(Analysis, Suspect {
-            info: self.status.info,
-            content,
-            is_new: self.status.is_new,
-        });
-        let analysis = suspect.parse(task_spec)?;
-        match analysis {
-            AnalysisBranch::New(state) => {
-                state.persist(repository, frontmatter_spec, task_spec)
-            }
-            AnalysisBranch::Changed(state) => {
-                state.persist(repository, frontmatter_spec, task_spec)
-            }
-        }
+        read_and_persist(
+            self.status.info,
+            self.status.is_new,
+            repository,
+            source,
+            task_spec,
+            frontmatter_spec,
+        )
     }
 
     #[inline]
@@ -464,22 +450,21 @@ impl NoteProcessor<Analysis, Suspect> {
         self,
         task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<AnalysisBranch, NoteProcessError> {
-        let raw = MarkdownParser::parse(
-            &self.status.content,
-            self.status.info.path.clone(),
-            task_spec,
-        )
-        .map(RawNote::into_owned)?;
+        let raw = MarkdownParser::parse(&self.status.content, task_spec)
+            .map(RawNote::into_owned)?;
+        let path = self.status.info.path.clone();
 
         if self.status.is_new {
             Ok(AnalysisBranch::New(Self::transition(Construction, New {
                 raw,
+                path,
             })))
         } else {
             Ok(AnalysisBranch::Changed(Self::transition(
                 Construction,
                 Changed {
                     raw,
+                    path,
                 },
             )))
         }
@@ -494,12 +479,13 @@ impl NoteProcessor<Construction, New> {
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
         task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
-        let path = self.status.raw.path.clone();
+        let path = self.status.path;
         let note_id = repository
             .find_by_path(&path)?
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
+            &path,
             note_id,
             frontmatter_spec,
             task_spec,
@@ -522,12 +508,13 @@ impl NoteProcessor<Construction, Changed> {
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
         task_spec: &crate::config::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
-        let path = self.status.raw.path.clone();
+        let path = self.status.path;
         let note_id = repository
             .find_by_path(&path)?
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
+            &path,
             note_id,
             frontmatter_spec,
             task_spec,
@@ -546,5 +533,56 @@ impl NoteProcessor<Completed, Ready> {
     #[inline]
     fn report(self) -> NoteProcessReport {
         self.status.report
+    }
+}
+
+/// Reads note content from disk, parses it, and persists the result.
+///
+/// Shared body for the `load_content` methods on
+/// `NoteProcessor<Comparison, Missing>` and `NoteProcessor<Analysis, Suspect>`.
+/// The only difference between those two callers is the `is_new` flag.
+///
+/// # Errors
+///
+/// Returns [`NoteProcessError`] if reading from disk, markdown parsing, or
+/// repository persistence fails.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "All six parameters are distinct concerns; no natural grouping \
+              avoids this without introducing a context struct solely for \
+              this function"
+)]
+fn read_and_persist(
+    info: NoteFileInfo,
+    is_new: bool,
+    repository: &impl Repository<Error = NoteRepositoryError>,
+    source: &FsReader,
+    task_spec: &crate::config::task::TaskConfigSpec,
+    frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
+) -> Result<NoteProcessReport, NoteProcessError> {
+    let content = source
+        .read_to_string(std::path::Path::new(info.path.as_str()))
+        .map_err(|error| {
+            NoteIngestError::from(NoteFileError::ReadFailed {
+                path: info.path.clone(),
+                message: error.to_string().into(),
+            })
+        })?;
+    let suspect = NoteProcessor {
+        status: Suspect {
+            info,
+            content,
+            is_new,
+        },
+        _stage: std::marker::PhantomData::<Analysis>,
+    };
+    let analysis = suspect.parse(task_spec)?;
+    match analysis {
+        AnalysisBranch::New(state) => {
+            state.persist(repository, frontmatter_spec, task_spec)
+        }
+        AnalysisBranch::Changed(state) => {
+            state.persist(repository, frontmatter_spec, task_spec)
+        }
     }
 }

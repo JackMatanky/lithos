@@ -223,10 +223,7 @@ use criterion::{
 use lithos_core::{
     config::task::TaskConfigSpec,
     fs::FsReader,
-    note::{
-        parser::{self, get_string_pool_metrics, reset_string_pool_metrics},
-        paths::NotePath,
-    },
+    note::parser::{self, get_string_pool_metrics, reset_string_pool_metrics},
 };
 
 fn task_spec_fixture() -> TaskConfigSpec {
@@ -424,10 +421,8 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/simple.md"))
                 .expect("read markdown");
-            let path = NotePath::try_new("notes/simple.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, &task_spec)
-                    .expect("ingest markdown");
+            let raw_note = parser::MarkdownParser::parse(&markdown, &task_spec)
+                .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -441,10 +436,8 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/medium.md"))
                 .expect("read markdown");
-            let path = NotePath::try_new("notes/medium.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, &task_spec)
-                    .expect("ingest markdown");
+            let raw_note = parser::MarkdownParser::parse(&markdown, &task_spec)
+                .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -458,11 +451,9 @@ fn bench_ingest_group(
             let markdown = reader
                 .read_to_string(std::path::Path::new("notes/complex.md"))
                 .expect("read markdown");
-            let path =
-                NotePath::try_new("notes/complex.md").expect("note path");
-            let raw_note =
-                parser::MarkdownParser::parse(&markdown, path, &task_spec)
-                    .expect("ingest markdown");
+
+            let raw_note = parser::MarkdownParser::parse(&markdown, &task_spec)
+                .expect("ingest markdown");
             black_box(raw_note);
         });
     });
@@ -479,9 +470,8 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
     parse_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
-            let path = NotePath::try_new("notes/simple.md").expect("note path");
             let outcome =
-                parser::MarkdownParser::parse(samples.simple, path, &task_spec)
+                parser::MarkdownParser::parse(samples.simple, &task_spec)
                     .expect("extract markdown");
             black_box(outcome);
         });
@@ -491,9 +481,8 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
     parse_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
-            let path = NotePath::try_new("notes/medium.md").expect("note path");
             let outcome =
-                parser::MarkdownParser::parse(samples.medium, path, &task_spec)
+                parser::MarkdownParser::parse(samples.medium, &task_spec)
                     .expect("extract markdown");
             black_box(outcome);
         });
@@ -503,14 +492,9 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
     parse_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
     parse_group.bench_function("ingest_markdown/complex", |b| {
         b.iter(|| {
-            let path =
-                NotePath::try_new("notes/complex.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.complex,
-                path,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.complex, &task_spec)
+                    .expect("extract markdown");
             black_box(outcome);
         });
     });
@@ -546,9 +530,8 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     eprintln!("\n=== StringPool Metrics Summary ===");
 
     reset_string_pool_metrics();
-    let simple_path = NotePath::try_new("notes/simple.md").expect("note path");
     let _simple_outcome =
-        parser::MarkdownParser::parse(samples.simple, simple_path, &task_spec)
+        parser::MarkdownParser::parse(samples.simple, &task_spec)
             .expect("extract markdown");
     let simple_metrics = get_string_pool_metrics();
     eprintln!(
@@ -561,9 +544,8 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     );
 
     reset_string_pool_metrics();
-    let medium_path = NotePath::try_new("notes/medium.md").expect("note path");
     let _medium_outcome =
-        parser::MarkdownParser::parse(samples.medium, medium_path, &task_spec)
+        parser::MarkdownParser::parse(samples.medium, &task_spec)
             .expect("extract markdown");
     let medium_metrics = get_string_pool_metrics();
     eprintln!(
@@ -576,14 +558,9 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     );
 
     reset_string_pool_metrics();
-    let complex_path =
-        NotePath::try_new("notes/complex.md").expect("note path");
-    let _complex_outcome = parser::MarkdownParser::parse(
-        samples.complex,
-        complex_path,
-        &task_spec,
-    )
-    .expect("extract markdown");
+    let _complex_outcome =
+        parser::MarkdownParser::parse(samples.complex, &task_spec)
+            .expect("extract markdown");
     let complex_metrics = get_string_pool_metrics();
     eprintln!(
         "Complex ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
@@ -599,14 +576,9 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     pool_group.bench_function("parse_simple/string_pool_stats", |b| {
         b.iter(|| {
             reset_string_pool_metrics();
-            let note_path =
-                NotePath::try_new("notes/simple.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.simple,
-                note_path,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.simple, &task_spec)
+                    .expect("extract markdown");
             black_box(&outcome);
             let metrics = get_string_pool_metrics();
             black_box(metrics);
@@ -616,14 +588,9 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     pool_group.bench_function("parse_medium/string_pool_stats", |b| {
         b.iter(|| {
             reset_string_pool_metrics();
-            let note_path =
-                NotePath::try_new("notes/medium.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.medium,
-                note_path,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.medium, &task_spec)
+                    .expect("extract markdown");
             black_box(&outcome);
             let metrics = get_string_pool_metrics();
             black_box(metrics);
@@ -633,14 +600,9 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     pool_group.bench_function("parse_complex/string_pool_stats", |b| {
         b.iter(|| {
             reset_string_pool_metrics();
-            let note_path =
-                NotePath::try_new("notes/complex.md").expect("note path");
-            let outcome = parser::MarkdownParser::parse(
-                samples.complex,
-                note_path,
-                &task_spec,
-            )
-            .expect("extract markdown");
+            let outcome =
+                parser::MarkdownParser::parse(samples.complex, &task_spec)
+                    .expect("extract markdown");
             black_box(&outcome);
             let metrics = get_string_pool_metrics();
             black_box(metrics);

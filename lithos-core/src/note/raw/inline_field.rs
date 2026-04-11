@@ -1,7 +1,27 @@
+//! Raw inline field types and token-to-field conversion.
+//!
+//! This module defines two representations for inline fields found in markdown:
+//!
+//! - [`RawInlineFieldToken`]: a zero-copy token holding the raw key and value
+//!   strings exactly as extracted by the scanner.
+//! - [`RawInlineField`]: a typed field where the value has been interpreted as
+//!   a [`RawFieldValue`] (date, number, boolean, string, or list).
+//!
+//! The two conversion paths from token to typed field are:
+//!
+//! - [`From<RawInlineFieldToken>`] for [`RawInlineField`]: generic type
+//!   inference with no task-configuration context.
+//! - [`field_token_to_raw`]: task-aware conversion that looks up a
+//!   date/temporal spec by normalized key before choosing the [`RawFieldValue`]
+//!   variant.
+
 use std::borrow::Cow;
 
 use super::value::RawFieldValue;
-use crate::note::position::SourceByteRange;
+use crate::{
+    config::task::TaskConfigSpec,
+    note::{inline_fields::InlineFieldKey, position::SourceByteRange},
+};
 
 /// Raw inline field token extracted from markdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +49,12 @@ impl<'source> RawInlineFieldToken<'source> {
     }
 }
 
+/// Converts a [`RawInlineFieldToken`] into a [`RawInlineField`] using generic
+/// type inference.
+///
+/// Applies [`RawFieldValue::from_str_with_spec`] with no task-configuration
+/// context. For task-aware conversion with date/temporal spec lookup, use
+/// [`field_token_to_raw`] instead.
 impl<'source> From<RawInlineFieldToken<'source>> for RawInlineField<'source> {
     #[inline]
     fn from(token: RawInlineFieldToken<'source>) -> Self {
@@ -77,6 +103,10 @@ impl<'source> RawInlineField<'source> {
 }
 
 impl RawInlineField<'_> {
+    /// Converts this raw inline field into an owned variant.
+    ///
+    /// Clones all borrowed string data into owned allocations, producing a
+    /// `'static` lifetime that can outlive the source text.
     #[inline]
     #[must_use]
     pub fn into_owned(self) -> RawInlineField<'static> {
@@ -89,6 +119,10 @@ impl RawInlineField<'_> {
 }
 
 impl RawInlineFieldToken<'_> {
+    /// Converts this raw inline field token into an owned variant.
+    ///
+    /// Clones all borrowed string data into owned allocations, producing a
+    /// `'static` lifetime that can outlive the source text.
     #[inline]
     #[must_use]
     pub fn into_owned(self) -> RawInlineFieldToken<'static> {
@@ -98,4 +132,32 @@ impl RawInlineFieldToken<'_> {
             range: self.range,
         }
     }
+}
+
+/// Converts a raw inline field token to a typed [`RawInlineField`], applying
+/// any date/temporal spec from the task configuration if the key matches.
+pub(crate) fn field_token_to_raw<'source>(
+    token: RawInlineFieldToken<'source>,
+    task_spec: &TaskConfigSpec,
+) -> RawInlineField<'source> {
+    let RawInlineFieldToken {
+        key,
+        value,
+        range,
+    } = token;
+    let normalized = InlineFieldKey::normalize(key.as_ref());
+    let date_spec = task_spec
+        .temporal_specs
+        .get(normalized.as_ref())
+        .map(|entry| entry.1.as_ref());
+    let typed_value = match value {
+        Cow::Borrowed(text) => {
+            RawFieldValue::from_str_with_spec(text, key.as_ref(), date_spec)
+        }
+        Cow::Owned(text) => {
+            RawFieldValue::from_str_with_spec(&text, key.as_ref(), date_spec)
+                .into_owned()
+        }
+    };
+    RawInlineField::new(key, typed_value, range)
 }

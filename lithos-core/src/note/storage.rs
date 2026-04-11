@@ -536,9 +536,8 @@ mod tests {
         .map_err(|e| e.to_string())
     }
 
-    fn raw_note(path: NotePath) -> RawNote<'static> {
+    fn raw_note(_path: NotePath) -> RawNote<'static> {
         RawNote::new(
-            path,
             None,
             Vec::new(),
             Vec::new(),
@@ -574,11 +573,16 @@ mod tests {
         let raw = raw_note(path.clone());
         let frontmatter_spec = config.to_frontmatter_spec();
         let task_spec = config.to_task_spec();
-        let facts =
-            Note::try_from((raw, NoteId::new(), &frontmatter_spec, &task_spec))
-                .map_err(|err| NoteRepositoryError::ConstraintViolation {
-                    message: err.to_string().into(),
-                })?;
+        let facts = Note::try_from((
+            raw,
+            &path,
+            NoteId::new(),
+            &frontmatter_spec,
+            &task_spec,
+        ))
+        .map_err(|err| NoteRepositoryError::ConstraintViolation {
+            message: err.to_string().into(),
+        })?;
 
         let note_id = repo.save(&facts)?;
         let stored =
@@ -611,11 +615,16 @@ mod tests {
         let raw = raw_note(path.clone());
         let frontmatter_spec = config.to_frontmatter_spec();
         let task_spec = config.to_task_spec();
-        let facts =
-            Note::try_from((raw, NoteId::new(), &frontmatter_spec, &task_spec))
-                .map_err(|err| NoteRepositoryError::ConstraintViolation {
-                    message: err.to_string().into(),
-                })?;
+        let facts = Note::try_from((
+            raw,
+            &path,
+            NoteId::new(),
+            &frontmatter_spec,
+            &task_spec,
+        ))
+        .map_err(|err| NoteRepositoryError::ConstraintViolation {
+            message: err.to_string().into(),
+        })?;
         let note_id = repo.save(&facts)?;
 
         repo.delete_note(note_id)?;

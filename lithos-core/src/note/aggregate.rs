@@ -605,22 +605,27 @@ impl NoteWithFileTimes {
 }
 
 impl<'source>
-    TryFrom<(RawNote<'source>, NoteId, &FrontmatterConfigSpec, &TaskConfigSpec)>
-    for Note
+    TryFrom<(
+        RawNote<'source>,
+        &NotePath,
+        NoteId,
+        &FrontmatterConfigSpec,
+        &TaskConfigSpec,
+    )> for Note
 {
     type Error = NoteError;
 
     #[inline]
     fn try_from(
-        (raw, id, frontmatter_spec, task_spec): (
+        (raw, path, id, frontmatter_spec, task_spec): (
             RawNote<'source>,
+            &NotePath,
             NoteId,
             &FrontmatterConfigSpec,
             &TaskConfigSpec,
         ),
     ) -> Result<Self, Self::Error> {
         let RawNote {
-            path,
             frontmatter,
             headings,
             sections,
@@ -632,6 +637,7 @@ impl<'source>
             block_refs,
             ..
         } = raw;
+        let path = path.clone();
 
         let frontmatter = frontmatter
             .map(|raw_frontmatter| {
