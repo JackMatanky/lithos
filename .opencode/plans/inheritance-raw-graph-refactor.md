@@ -29,22 +29,24 @@ Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/inheritance.
 
 ## Target Design Summary
 - **Raw graph (mutable, unchecked)**: `Graph<T, R>` with `Node<T>` and `Edge<R>`.
-- **AdjacencyMap (computed view)**: built on demand from `Graph<T>`; no extra fields in `Graph<T>`.
-- **Validated graph (immutable)**: `InheritanceGraph<T>` constructed only via `TryFrom<Graph<T>>` and editor patch results.
+- **AdjacencyMap (computed view)**: built on demand from `Graph<T, R>`; no extra fields in `Graph<T, R>`.
+- **Validated graph (immutable)**: `InheritanceGraph<T>` constructed only via `TryFrom<Graph<T, R>>` and editor patch results.
 - **Editor**: renamed to `InheritanceEditor`; performs scoped revalidation and splicing.
 - **No `InheritanceGraph::from_parts`** and **no `InheritanceGraph::validate_consistency`**.
 - **Keep `InheritanceGraph::into_parts()` as `pub(crate)`**.
-- **Split inheritance storage**: introduce `InheritanceNode` + `InheritanceEdge` (or `InheritanceLink`) to separate node data from edge relationships.
+- **Split inheritance structure**: keep `InheritanceNode` for validated node storage, add `InheritanceEdge` as an edge-centric helper for extends analysis and edge metadata handling.
 
 ## Design Decisions
-1) `Graph<T, R>` stores `nodes: HashMap<SchemaId, Node<T>>` and `edges: Vec<Edge<R>>`.
-   - No redundant `SchemaId` in `Node<T>` (id is HashMap key).
+1) **Module placement**: keep raw graph types (`Graph`, `Node`, `Edge`, `AdjacencyMap`) in `schema/graph.rs`. Move `TopologicalSorter` + `TopologicalOrder` into `schema/topo_sort.rs`. Move `InheritanceEditor` into `inheritance.rs`. Implement `TryFrom<Graph<T, R>> for InheritanceGraph<T>` in `inheritance.rs` to match existing placement conventions.
+2) `Graph<T, R>` stores `nodes: HashMap<SchemaId, Node<T>>` and `edges: Vec<Edge<R>>`.
+   - No redundant `SchemaId` in `Node<T>` (id is the map key).
    - `Node<T>` includes `depth: NodeDepth` for scoped updates.
-   - `Edge<R>` is generic to carry relation metadata during processing, with no default type parameter to force explicitness.
-2) `AdjacencyMap` is computed on demand from `Graph<T>`.
-3) `TopologicalOrder` becomes a newtype with `roots()` derived on demand.
-4) `InheritanceEditor` returns a validated `InheritanceGraph<T>` and performs scoped recomputation.
-5) `InheritanceNode` is split from edge representation to reduce noise during extends analysis; edges are first-class (`InheritanceEdge`).
+   - `Edge<R>` is generic to carry relation metadata during processing (no default type params).
+3) `AdjacencyMap` is computed on demand from `Graph<T, R>` and is the source of truth for parents/children during validation and sorting.
+4) `TopologicalSorter` and `TopologicalOrder` live in `topo_sort.rs` (or `toposort.rs`), operate on adjacency/in-degree, and derive roots during sort.
+5) `InheritanceEditor` returns a validated `InheritanceGraph<T>` and performs scoped recomputation with `sort_scoped()` + depth rebuild before final assembly.
+6) `InheritanceNode` remains the validated node storage type (id + parents + children + depth). `InheritanceEdge` is introduced for edge-centric processing and to model relation metadata where needed (e.g., `ExtendsChangeKind`), with metadata dropped during validation.
+7) `NodeDepth` + its tests move to `graph.rs` (graph semantics). Replace `GraphNode`/`NodeAccessor` with two read-only traits: `NodeAccessor` and `EdgeAccessor` (for node fields vs edge lists). With `Graph<T, R>` mutations handled by the graph component itself, we avoid a separate mutating trait.
 
 ### Rationale for generic `Edge<R>` (no defaults)
 - During schema processing, edges may need metadata (e.g., `ExtendsChangeKind`).
@@ -75,7 +77,7 @@ pub(crate) struct Graph<T, R> {
 }
 ```
 
-### 1.2 Add `Graph<T>` API
+### 1.2 Add `Graph<T, R>` API
 Minimum API for construction and edits:
 - `new()`
 - `add_node(id, payload)` (initialize depth as `NodeDepth::ROOT`)
@@ -126,23 +128,29 @@ Normalize parent/child lists (sort + dedup) inside `from_graph`.
 
 ---
 
-## Phase 3: Topological Order Newtype
-### 3.1 Add newtype
+## Phase 3: Topological Sort Module
+### 3.1 Add module
+- Create `lithos-core/src/schema/topo_sort.rs` to host `TopologicalSorter` + `TopologicalOrder`.
+
+### 3.2 Add order struct
 ```rust
-pub(crate) struct TopologicalOrder(Vec<SchemaId>);
+pub(crate) struct TopologicalOrder {
+    order: Vec<SchemaId>,
+    roots: Vec<SchemaId>,
+}
 ```
 
-### 3.2 Add methods
-- `as_slice(&self) -> &[SchemaId]`
-- `roots<T: NodeAccessor>(&self, nodes: &HashMap<SchemaId, T>) -> Vec<SchemaId>`
+### 3.3 Add methods
+- `order(&self) -> &[SchemaId]`
+- `roots(&self) -> &[SchemaId]`
 
-### 3.3 Update TopologicalSorter
-- `sort()` returns `TopologicalOrder`.
-- `sort_scoped()` returns `TopologicalOrder`.
+### 3.4 Update TopologicalSorter
+- `sort()` derives in-degree from `AdjacencyMap` and returns `TopologicalOrder`.
+- `sort_scoped()` uses a scoped adjacency/in-degree view and returns `TopologicalOrder`.
 
 ---
 
-## Phase 4: Validation Boundary (`TryFrom<Graph<T>> for InheritanceGraph<T>`) (inheritance.rs + graph.rs)
+## Phase 4: Validation Boundary (`TryFrom<Graph<T, R>> for InheritanceGraph<T>`) (inheritance.rs)
 ### 4.1 Remove from InheritanceGraph
 - Remove `from_parts`.
 - Remove `validate_consistency`.
@@ -151,19 +159,19 @@ pub(crate) struct TopologicalOrder(Vec<SchemaId>);
 - Remains `pub(crate)`.
 
 ### 4.3 Implement `TryFrom<Graph<T, R>>`
-Place in `inheritance.rs` (required): `impl TryFrom<Graph<T, R>> for InheritanceGraph<T>`.
+Place in `inheritance.rs`: `impl TryFrom<Graph<T, R>> for InheritanceGraph<T>`.
 Error type: use existing `SchemaInheritanceError` for graph invariants. Callers (e.g., schema processor) wrap via `SchemaLoaderError::Resolution`.
 Algorithm:
 1. Build `AdjacencyMap` from raw graph.
 2. Validate missing nodes: for every edge endpoint ensure node exists.
 3. Build `parents` + `children` lists from adjacency map.
-4. Run `TopologicalSorter::sort` (acyclic validation) and derive roots from `TopologicalOrder::roots`.
+4. Run `TopologicalSorter::sort` (acyclic validation) and use the returned roots.
 5. Compute depths from topological order.
 6. Construct `InheritanceGraph<T>` directly inside the `TryFrom` impl (no separate constructor).
 
 Note: edge `relation` metadata is ignored during validation and dropped when producing `InheritanceGraph<T>`.
 
-### 4.4 Split inheritance storage into node + edge types
+### 4.4 Add edge-centric helper type
 - Introduce a new edge type in `inheritance.rs`:
   ```rust
   pub struct InheritanceEdge {
@@ -173,16 +181,24 @@ Note: edge `relation` metadata is ignored during validation and dropped when pro
   ```
 - Keep `InheritanceNode` as the validated node (id, depth, parents, children).
 - Use `InheritanceEdge` in schema processing for extends analysis to reduce noise and focus on edges.
-- Ensure conversion helpers exist to derive `InheritanceEdge` lists from `InheritanceGraph` or raw `Graph<T>`.
+- Ensure conversion helpers exist to derive `InheritanceEdge` lists from `InheritanceGraph` or raw `Graph<T, R>`.
 
 ---
 
-## Phase 5: Rename GraphEditor -> InheritanceEditor (graph.rs)
-### 5.1 Rename type and methods
+## Phase 5: Move Editor and Accessor Traits
+### 5.1 Rename type and move location
 - `GraphEditor` -> `InheritanceEditor`
+- Move implementation from `graph.rs` to `inheritance.rs`.
 - Update all call sites in `schema_processor.rs` and tests.
 
-### 5.2 Update internals to use raw Graph + adjacency views
+### 5.2 Move accessor traits and NodeDepth
+- Move `NodeDepth` and its tests from `inheritance.rs` to `graph.rs`.
+- Replace `GraphNode`/`NodeAccessor` with two read-only traits in `graph.rs`:
+  - `NodeAccessor`: node field access (id/depth/any node-owned fields used by algorithms).
+  - `EdgeAccessor`: parent/child list access for validated nodes.
+- Update trait bounds throughout `graph.rs`, `inheritance.rs`, and `schema_processor.rs` to use the new traits.
+
+### 5.3 Update editor internals to use raw Graph + adjacency views
 Current editor mutates `nodes/order/roots` directly. Replace with:
 1. Accept validated `InheritanceGraph<T>` (via `into_parts` or reference).
 2. Build a raw `Graph<T, R>` subgraph for affected nodes + required neighbors.
@@ -193,7 +209,7 @@ Current editor mutates `nodes/order/roots` directly. Replace with:
 7. Derive roots from `TopologicalOrder::roots` and splice order into old order (current logic).
 8. Return a validated `InheritanceGraph<T>` by using the scoped validation path (no full `TryFrom`).
 
-### 5.3 Scoped validation helper
+### 5.4 Scoped validation helper
 Add a helper in `graph.rs`:
 ```rust
 fn try_from_scoped<T, R>(
@@ -203,6 +219,17 @@ fn try_from_scoped<T, R>(
 ) -> Result<(TopologicalOrder, Vec<SchemaId>, HashMap<SchemaId, NodeDepth>), SchemaResolutionError>;
 ```
 This will centralize scoped topological sort + depth recompute. Roots returned are derived via `TopologicalOrder::roots`.
+
+### 5.5 Internal validated constructor
+- Add a module-private constructor in `inheritance.rs` for editor use only:
+  ```rust
+  pub(crate) fn from_validated_parts(
+      nodes: HashMap<SchemaId, T>,
+      order: Vec<SchemaId>,
+      roots: Vec<SchemaId>,
+  ) -> Self
+  ```
+- This replaces `from_parts` without reintroducing unchecked public construction (only used after `try_from_scoped`).
 
 ---
 
@@ -236,6 +263,11 @@ New flow:
 2. Use `insert_node`, `apply_change`, `delete_node` as before.
 3. Call `patch()` to get a validated graph (scoped).
 
+### 7.2a Move extends metadata to edges
+- Remove `extends_change` from `PostProcessNode`.
+- Track extends relation changes using `Edge<ExtendsChangeKind>` in the raw graph used by `build_graph`.
+- When determining merge roots, derive the change kind from the edge relation for each node (e.g., edge from parent -> child carries the change kind for the child's extends).
+
 ### 7.3 Replace `InheritanceGraph::from_parts` call sites
 All places that currently rewrap `nodes/order/roots` must change to:
 - Build raw `Graph<T, R>` from `nodes` + edges using a dedicated helper (see Phase 7.5).
@@ -248,6 +280,9 @@ Specific call sites to update:
 - `analyze_properties`
 - `refresh_metadata`
 - `build_graph` (final assembly)
+- `builder.rs` test helper (`setup_test_repo_with_graph`)
+- `graph.rs` tests (`build_diamond_graph`, `patch_updates_bidirectional_links`, etc.)
+- `inheritance.rs` tests (`build_diamond_graph`)
 
 ### 7.4 Ensure Node access traits remain correct
 `PreProcessNode` and `PostProcessNode` still implement `GraphNode` for editor operations.
@@ -255,15 +290,15 @@ Specific call sites to update:
 ### 7.5 Add helper: rebuild raw graph from node map + parent lists
 - Implement a shared helper (likely in `graph.rs`):
   ```rust
-  fn graph_from_nodes_and_parents<T, R, F>(
-      nodes: &HashMap<SchemaId, T>,
-      clone_payload: F,
-  ) -> Graph<TPayload, R>
-  where
-      T: NodeAccessor,
-      F: Fn(&T) -> TPayload,
-      R: Default;
-  ```
+   fn graph_from_nodes_and_parents<T, R, F>(
+       nodes: &HashMap<SchemaId, T>,
+       clone_payload: F,
+   ) -> Graph<TPayload, R>
+   where
+       T: NodeAccessor,
+       F: Fn(&T) -> TPayload,
+       R: Default;
+   ```
 - This ensures every call site uses the same normalization rules without requiring `T: Clone`.
 
 ---
