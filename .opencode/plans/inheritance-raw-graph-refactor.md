@@ -53,6 +53,10 @@ Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/topo_sort.rs
 - `topo_sort.rs`: sorting logic using `AdjacencyMap`/IDs only (no dependency on `inheritance.rs`).
 - `inheritance.rs`: owns `InheritanceGraph`, `InheritanceNode`, `InheritanceEditor`, and the `TryFrom<Graph<T, R>>` impl. Depends on `graph.rs` + `topo_sort.rs`.
 
+### Module wiring
+- Add `mod topo_sort;` to `lithos-core/src/schema/mod.rs` and export as needed.
+- Update imports across `graph.rs`, `inheritance.rs`, and `schema_processor.rs` to use `topo_sort::{TopologicalSorter, TopologicalOrder}`.
+
 ### Rationale for generic `Edge<R>` (no defaults)
 - During schema processing, edges may need metadata (e.g., `ExtendsChangeKind`).
 - Keeping `relation` on raw edges avoids polluting node payloads or validated graph structures.
@@ -204,6 +208,7 @@ Note: edge `relation` metadata is ignored during validation and dropped when pro
   - `EdgeAccessor`: parent/child list access for validated nodes.
 - Update trait bounds throughout `graph.rs`, `inheritance.rs`, and `schema_processor.rs` to use the new traits.
  - With minimal `InheritanceNode`, `EdgeAccessor` is implemented by edge-based structures (e.g., adjacency map or edge list) rather than node types.
+ - In schema processor stages, parent/child lookups must use adjacency derived from edges (not node fields).
 
 ### 5.3 Update editor internals to use raw Graph + adjacency views
 Current editor mutates `nodes/order/roots` directly. Replace with:
@@ -277,6 +282,7 @@ New flow:
 - Use `Graph<ProcessorNode<T>, ProcessorEdge>` in processor stages that need edge metadata.
 - Update the extends check in `build_graph` to mutate the edge relation from `Unchanged` to `RootToChild`/`ChildToRoot`/`Rewired` as needed.
 - Update `analyze_properties` merge root detection to read edge metadata instead of `node.extends_change`.
+ - Replace all parent/child reads in processor stages with adjacency or edge queries (e.g., affected subtree, merge root detection, splice order).
 
 ### 7.3 Replace `InheritanceGraph::from_parts` call sites
 All places that currently rewrap `nodes/order/roots` must change to:
