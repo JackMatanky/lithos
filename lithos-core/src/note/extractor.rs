@@ -11,9 +11,7 @@
 use std::borrow::Cow;
 
 use super::{
-    parser::{
-        Block, BlockKind, StringPool, block_ref_tail_range, depth_raw_to_u32,
-    },
+    parser::{Block, BlockKind, StringPool, block_ref_tail_range},
     raw::inline_field::field_token_to_raw,
 };
 use crate::{
@@ -172,7 +170,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         out.sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
-            depth_raw_to_u32(list_depth),
+            list_depth.to_u32(),
         ));
 
         let task_marker = if block.task_checked.is_some() {

@@ -90,6 +90,51 @@ pub enum RawListDepth {
     Nested(u8),
 }
 
+impl RawListDepth {
+    /// Converts this depth to its u32 representation.
+    ///
+    /// [`Root`](RawListDepth::Root) maps to `0`;
+    /// [`Nested(n)`](RawListDepth::Nested) maps to `n` as a `u32`.
+    #[inline]
+    #[must_use]
+    pub const fn to_u32(self) -> u32 {
+        match self {
+            Self::Root => 0,
+            #[expect(
+                clippy::as_conversions,
+                reason = "u8 → u32 is always lossless; u32::from(u8) is not \
+                          const-stable"
+            )]
+            Self::Nested(n) => n as u32,
+        }
+    }
+}
+
+impl TryFrom<u32> for RawListDepth {
+    type Error = u32;
+
+    /// Converts a u32 nesting depth to [`RawListDepth`].
+    ///
+    /// `0` maps to [`Root`](RawListDepth::Root); values `1..=255` map to
+    /// [`Nested(n)`](RawListDepth::Nested). Values greater than `255` return
+    /// the depth as [`Err`].
+    #[inline]
+    fn try_from(depth: u32) -> Result<Self, Self::Error> {
+        match depth {
+            0 => Ok(Self::Root),
+            1..=255 => Ok(Self::Nested(
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions,
+                    reason = "range guard ensures depth fits in u8"
+                )]
+                (depth as u8),
+            )),
+            _ => Err(depth),
+        }
+    }
+}
+
 /// Raw list container extracted from markdown.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

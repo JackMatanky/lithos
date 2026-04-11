@@ -211,7 +211,9 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     .last()
                     .copied()
                     .unwrap_or(RawListKind::Unordered);
-                let list_depth = depth_to_raw(self.depth.saturating_sub(1));
+                let list_depth =
+                    RawListDepth::try_from(self.depth.saturating_sub(1))
+                        .unwrap_or(RawListDepth::Nested(u8::MAX));
                 let depth_index =
                     usize::try_from(self.depth).unwrap_or(0).saturating_sub(1);
                 let parent_pos = if self.depth <= 1 {
@@ -332,7 +334,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 {
                     self.out.lists.push(RawList::new(
                         kind,
-                        depth_to_raw(self.depth),
+                        RawListDepth::try_from(self.depth)
+                            .unwrap_or(RawListDepth::Nested(u8::MAX)),
                         range,
                         ctx.item_positions,
                     ));
@@ -708,23 +711,6 @@ pub(crate) fn pop_block<'source>(
         }
         .into()
     })
-}
-
-/// Converts a u32 container nesting depth to [`RawListDepth`].
-pub(crate) fn depth_to_raw(depth: u32) -> RawListDepth {
-    if depth == 0 {
-        RawListDepth::Root
-    } else {
-        RawListDepth::Nested(u8::try_from(depth).unwrap_or(u8::MAX))
-    }
-}
-
-/// Inverse of [`depth_to_raw`] — converts [`RawListDepth`] to u32.
-pub(crate) fn depth_raw_to_u32(depth: RawListDepth) -> u32 {
-    match depth {
-        RawListDepth::Root => 0,
-        RawListDepth::Nested(n) => u32::from(n),
-    }
 }
 
 /// Converts a byte offset to [`SourceByteOffset`], mapping overflow to a
