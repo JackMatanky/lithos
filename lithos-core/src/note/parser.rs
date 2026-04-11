@@ -723,34 +723,6 @@ pub(crate) fn to_offset(
     })
 }
 
-/// Returns the tail range of `block_range` (up to 512 bytes) if it contains a
-/// `^` character, indicating a potential block reference.
-///
-/// Returns `None` if the range is empty or contains no `^`.
-pub(crate) fn block_ref_tail_range(
-    source: &str,
-    block_range: SourceByteRange,
-) -> Option<std::ops::Range<usize>> {
-    let start = block_range.start().as_usize();
-    let end = block_range.end().as_usize();
-    if end <= start {
-        return None;
-    }
-    let tail_len = end.saturating_sub(start).min(512usize);
-    let mut tail_start = end.saturating_sub(tail_len);
-    if tail_start < start {
-        tail_start = start;
-    }
-    while tail_start < end && !source.is_char_boundary(tail_start) {
-        tail_start = tail_start.saturating_add(1);
-    }
-    let slice = source.get(tail_start..end)?;
-    if !slice.contains('^') {
-        return None;
-    }
-    Some(tail_start..end)
-}
-
 // ── Private implementation details ───────────────────────────────────────────
 
 struct LinkRefResolver {

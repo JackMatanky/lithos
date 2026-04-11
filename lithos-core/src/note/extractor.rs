@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use super::{
-    parser::{Block, BlockKind, StringPool, block_ref_tail_range},
+    parser::{Block, BlockKind, StringPool},
     raw::inline_field::field_token_to_raw,
 };
 use crate::{
@@ -253,8 +253,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         if raw.block_refs.is_empty() {
             let last_end = block.scannable.last().map(|r| r.end);
             if last_end == Some(block_range.end().as_usize())
-                && let Some(tail) =
-                    block_ref_tail_range(self.source, block_range)
+                && let Some(tail) = self.block_ref_tail_range(block_range)
             {
                 let tail_raw = self
                     .scanner
@@ -316,5 +315,34 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
                 .map_err(NoteIngestError::Domain)?
         };
         Ok((raw_text, text_range))
+    }
+
+    /// Returns the tail byte range of `block_range` to scan for block
+    /// references, or `None` if the tail contains no `^` character.
+    ///
+    /// Scans at most the last 512 bytes of the block to avoid re-scanning
+    /// content already covered by the block's scannable ranges.
+    fn block_ref_tail_range(
+        &self,
+        block_range: SourceByteRange,
+    ) -> Option<std::ops::Range<usize>> {
+        let start = block_range.start().as_usize();
+        let end = block_range.end().as_usize();
+        if end <= start {
+            return None;
+        }
+        let tail_len = end.saturating_sub(start).min(512usize);
+        let mut tail_start = end.saturating_sub(tail_len);
+        if tail_start < start {
+            tail_start = start;
+        }
+        while tail_start < end && !self.source.is_char_boundary(tail_start) {
+            tail_start = tail_start.saturating_add(1);
+        }
+        let slice = self.source.get(tail_start..end)?;
+        if !slice.contains('^') {
+            return None;
+        }
+        Some(tail_start..end)
     }
 }
