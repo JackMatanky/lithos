@@ -7,15 +7,14 @@ use crate::note::position::SourceByteOffset;
 /// Raw link extracted from markdown.
 ///
 /// Holds the target exactly as it appears in the source — no anchor is split
-/// out at this layer. Call [`RawLink::split_target`] during conversion to the
-/// domain type when the `(path, anchor)` decomposition is needed.
+/// out at this layer. Call [`RawLinkText::split_target`] during conversion to
+/// the domain type when the `(path, anchor)` decomposition is needed.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct RawLink<'source> {
     pub style: RawLinkStyle,
     pub is_embed: bool,
-    pub target: Cow<'source, str>,
-    pub text: RawLinkText,
+    pub text: RawLinkText<'source>,
     pub position: SourceByteOffset,
 }
 
@@ -32,32 +31,9 @@ impl<'source> RawLink<'source> {
         Self {
             style,
             is_embed,
-            target,
-            text: RawLinkText::new(),
+            text: RawLinkText::new(target),
             position,
         }
-    }
-
-    /// Splits the target at the first `#` for internal links, returning the
-    /// modified link alongside the extracted anchor fragment.
-    ///
-    /// Pass `is_external = true` to leave the target unchanged and return
-    /// `None` for the anchor, preserving any `#` fragment in the URL.
-    #[inline]
-    #[must_use]
-    pub(crate) fn split_target(
-        self,
-        is_external: bool,
-    ) -> (Self, Option<Cow<'source, str>>) {
-        let (target, anchor) =
-            RawLinkTarget::new(self.target).split(is_external);
-        (
-            Self {
-                target,
-                ..self
-            },
-            anchor,
-        )
     }
 }
 
@@ -69,80 +45,111 @@ impl RawLink<'_> {
         RawLink {
             style: self.style,
             is_embed: self.is_embed,
-            target: Cow::Owned(self.target.into_owned()),
-            text: self.text,
+            text: self.text.into_owned(),
             position: self.position,
         }
     }
 }
 
-/// The display text of a link, with lazy alias derivation.
+/// Raw link style before validation.
 ///
-/// `title` holds the raw accumulated text from parser events. `alias` is only
-/// populated after [`RawLinkText::split`] is called — it is `Some` when the
-/// link syntax included an explicit alias separator (`has_alias = true`), and
-/// `None` when the display text just mirrors the target.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RawLinkText {
-    /// Raw accumulated display text.
-    pub title: String,
-    /// Alias text, present only when an explicit separator was in the source.
-    pub alias: Option<String>,
+/// For wiki-links, `has_alias` reflects whether a `|` separator was present
+/// in the source (`[[target|alias]]` vs `[[target]]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawLinkStyle {
+    /// Wiki-link style with explicit alias flag.
+    Wiki {
+        has_alias: bool,
+    },
+    /// Standard markdown link or image style.
+    Markdown,
 }
 
-impl RawLinkText {
-    pub(crate) const fn new() -> Self {
+/// Converts a pulldown-cmark [`LinkType`] to a [`RawLinkStyle`].
+impl From<LinkType> for RawLinkStyle {
+    #[inline]
+    fn from(kind: LinkType) -> Self {
+        match kind {
+            LinkType::WikiLink {
+                has_pothole,
+            } => Self::Wiki {
+                has_alias: has_pothole,
+            },
+            LinkType::Inline
+            | LinkType::Reference
+            | LinkType::ReferenceUnknown
+            | LinkType::Collapsed
+            | LinkType::CollapsedUnknown
+            | LinkType::Shortcut
+            | LinkType::ShortcutUnknown
+            | LinkType::Autolink
+            | LinkType::Email => Self::Markdown,
+        }
+    }
+}
+
+/// The full textual content of a raw link.
+///
+/// Holds the unsplit target string (as given by the parser) alongside the
+/// display text accumulated from events. Provides methods to extract the
+/// anchor fragment and alias during conversion to the domain type rather than
+/// at parse time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawLinkText<'source> {
+    /// Raw target as it appears in the source, including any `#anchor`
+    /// fragment.
+    pub target: Cow<'source, str>,
+    /// Accumulated display text from parser events.
+    pub display: String,
+}
+
+impl<'source> RawLinkText<'source> {
+    pub(crate) const fn new(target: Cow<'source, str>) -> Self {
         Self {
-            title: String::new(),
-            alias: None,
+            target,
+            display: String::new(),
         }
     }
 
-    /// Derives the alias from the accumulated title.
+    /// Returns the alias for this link given its style, or `None` if no
+    /// explicit alias is present.
     ///
-    /// If `has_alias` is `true`, `alias` is set to the trimmed `title` (or
-    /// `None` if the title is blank after trimming). If `has_alias` is `false`,
-    /// `alias` remains `None` — the display text mirrors the target and is not
-    /// a real alias.
-    #[must_use]
-    pub(crate) fn split(mut self, has_alias: bool) -> Self {
+    /// For wiki-links, `has_alias = true` means the display text is a real
+    /// alias; `has_alias = false` means it mirrors the target and should be
+    /// ignored. For markdown links, display text is always treated as the
+    /// alias.
+    pub fn alias(&self, style: RawLinkStyle) -> Option<String> {
+        let has_alias = match style {
+            RawLinkStyle::Wiki {
+                has_alias,
+            } => has_alias,
+            RawLinkStyle::Markdown => true,
+        };
         if has_alias {
-            let trimmed = self.title.trim();
-            self.alias = if trimmed.is_empty() {
+            let trimmed = self.display.trim();
+            if trimmed.is_empty() {
                 None
             } else {
                 Some(trimmed.to_owned())
-            };
+            }
+        } else {
+            None
         }
-        self
-    }
-}
-
-/// Wraps a raw link target string and splits it at the first `#` separator.
-///
-/// For internal links, the text before `#` is the target path and the text
-/// after is the anchor fragment. External links are left unchanged; the
-/// caller is responsible for passing the correct `is_external` flag.
-pub(crate) struct RawLinkTarget<'source>(Cow<'source, str>);
-
-impl<'source> RawLinkTarget<'source> {
-    pub(crate) fn new(target: Cow<'source, str>) -> Self {
-        Self(target)
     }
 
-    /// Splits the target into `(path, anchor)`.
+    /// Splits the target at the first `#` for internal links.
     ///
-    /// Returns `(self, None)` when `is_external` is `true`. For internal
-    /// targets, splits on the first `#`; returns `None` anchor if no `#` is
-    /// present.
-    pub(crate) fn split(
+    /// Pass `is_external = true` to leave the target unchanged and return
+    /// `None` for the anchor, preserving any `#` fragment in the URL.
+    pub(crate) fn split_target(
         self,
         is_external: bool,
     ) -> (Cow<'source, str>, Option<Cow<'source, str>>) {
         if is_external {
-            return (self.0, None);
+            return (self.target, None);
         }
-        match self.0 {
+        match self.target {
             Cow::Borrowed(text) => text
                 .split_once('#')
                 .map_or((Cow::Borrowed(text), None), |(p, a)| {
@@ -165,31 +172,14 @@ impl<'source> RawLinkTarget<'source> {
     }
 }
 
-/// Raw link style before validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RawLinkStyle {
-    Wiki,
-    Markdown,
-}
-
-/// Converts a pulldown-cmark [`LinkType`] to a [`RawLinkStyle`].
-impl From<LinkType> for RawLinkStyle {
+impl RawLinkText<'_> {
+    /// Converts this text into an owned variant.
     #[inline]
-    fn from(kind: LinkType) -> Self {
-        match kind {
-            LinkType::WikiLink {
-                ..
-            } => Self::Wiki,
-            LinkType::Inline
-            | LinkType::Reference
-            | LinkType::ReferenceUnknown
-            | LinkType::Collapsed
-            | LinkType::CollapsedUnknown
-            | LinkType::Shortcut
-            | LinkType::ShortcutUnknown
-            | LinkType::Autolink
-            | LinkType::Email => Self::Markdown,
+    #[must_use]
+    pub fn into_owned(self) -> RawLinkText<'static> {
+        RawLinkText {
+            target: Cow::Owned(self.target.into_owned()),
+            display: self.display,
         }
     }
 }
@@ -199,10 +189,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn split_with_anchor() {
-        let target =
-            RawLinkTarget::new(Cow::Owned(String::from("note#heading")));
-        let (path, anchor) = target.split(false);
+    fn split_target_with_anchor() {
+        let text = RawLinkText::new(Cow::Owned(String::from("note#heading")));
+        let (path, anchor) = text.split_target(false);
 
         assert_eq!(path.as_ref(), "note");
         assert_eq!(
@@ -212,18 +201,18 @@ mod tests {
     }
 
     #[test]
-    fn split_without_anchor() {
-        let target = RawLinkTarget::new(Cow::Owned(String::from("note")));
-        let (path, anchor) = target.split(false);
+    fn split_target_without_anchor() {
+        let text = RawLinkText::new(Cow::Owned(String::from("note")));
+        let (path, anchor) = text.split_target(false);
 
         assert_eq!(path.as_ref(), "note");
         assert!(anchor.is_none());
     }
 
     #[test]
-    fn split_multiple_hashes() {
-        let target = RawLinkTarget::new(Cow::Owned(String::from("note#a#b#c")));
-        let (path, anchor) = target.split(false);
+    fn split_target_multiple_hashes() {
+        let text = RawLinkText::new(Cow::Owned(String::from("note#a#b#c")));
+        let (path, anchor) = text.split_target(false);
 
         assert_eq!(path.as_ref(), "note");
         assert_eq!(
@@ -233,44 +222,61 @@ mod tests {
     }
 
     #[test]
-    fn split_external_preserves_fragment() {
-        let target = RawLinkTarget::new(Cow::Owned(String::from(
+    fn split_target_external_preserves_fragment() {
+        let text = RawLinkText::new(Cow::Owned(String::from(
             "https://example.com/page#section",
         )));
-        let (path, anchor) = target.split(true);
+        let (path, anchor) = text.split_target(true);
 
         assert_eq!(path.as_ref(), "https://example.com/page#section");
         assert!(anchor.is_none());
     }
 
     #[test]
-    fn text_split_with_alias() {
+    fn alias_wiki_with_pothole() {
         let text = RawLinkText {
-            title: String::from("  My Alias  "),
-            alias: None,
+            target: Cow::Borrowed("note"),
+            display: String::from("  My Alias  "),
         };
-        let result = text.split(true);
-        assert_eq!(result.alias.as_deref(), Some("My Alias"));
-        assert_eq!(result.title, "  My Alias  ");
+        let style = RawLinkStyle::Wiki {
+            has_alias: true,
+        };
+        assert_eq!(text.alias(style).as_deref(), Some("My Alias"));
     }
 
     #[test]
-    fn text_split_without_alias() {
+    fn alias_wiki_without_pothole() {
         let text = RawLinkText {
-            title: String::from("Target Note"),
-            alias: None,
+            target: Cow::Borrowed("note"),
+            display: String::from("note"),
         };
-        let result = text.split(false);
-        assert!(result.alias.is_none());
+        let style = RawLinkStyle::Wiki {
+            has_alias: false,
+        };
+        assert!(text.alias(style).is_none());
     }
 
     #[test]
-    fn text_split_blank_alias_returns_none() {
+    fn alias_markdown_uses_display() {
         let text = RawLinkText {
-            title: String::from("   "),
-            alias: None,
+            target: Cow::Borrowed("https://example.com"),
+            display: String::from("Example"),
         };
-        let result = text.split(true);
-        assert!(result.alias.is_none());
+        assert_eq!(
+            text.alias(RawLinkStyle::Markdown).as_deref(),
+            Some("Example")
+        );
+    }
+
+    #[test]
+    fn alias_blank_display_returns_none() {
+        let text = RawLinkText {
+            target: Cow::Borrowed("note"),
+            display: String::from("   "),
+        };
+        let style = RawLinkStyle::Wiki {
+            has_alias: true,
+        };
+        assert!(text.alias(style).is_none());
     }
 }

@@ -291,9 +291,15 @@ impl TryFrom<RawLink<'_>> for Link {
 
     #[inline]
     fn try_from(raw: RawLink<'_>) -> Result<Self, Self::Error> {
-        let is_external = Target::is_external_target(raw.target.as_ref());
-        let (raw, anchor_raw) = raw.split_target(is_external);
-        let target = raw.target;
+        let RawLink {
+            style,
+            is_embed,
+            text,
+            position,
+        } = raw;
+        let is_external = Target::is_external_target(text.target.as_ref());
+        let alias_owned = text.alias(style);
+        let (target, anchor_raw) = text.split_target(is_external);
         let target_text = target.as_ref();
         let embed_type = EmbedType::from_extension(target_text);
         let anchor = anchor_raw.as_deref().map(Anchor::from_raw).transpose()?;
@@ -306,30 +312,28 @@ impl TryFrom<RawLink<'_>> for Link {
                 raw: target.into_owned().into_boxed_str(),
             }
         };
-        let alias = raw.text.alias.as_deref();
+        let alias = alias_owned.as_deref();
 
-        match (raw.is_embed, raw.style) {
-            (true, RawLinkStyle::Wiki) => Ok(Link::try_new_embed(
-                target,
-                embed_type,
-                alias,
-                anchor,
-                raw.position,
+        match (is_embed, style) {
+            (
+                true,
+                RawLinkStyle::Wiki {
+                    ..
+                },
+            ) => Ok(Link::try_new_embed(
+                target, embed_type, alias, anchor, position,
             )?),
             (true, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_embed(
-                target,
-                embed_type,
-                alias,
-                raw.position,
+                target, embed_type, alias, position,
             )?),
-            (false, RawLinkStyle::Wiki) => {
-                Ok(Link::try_new_wikilink(target, alias, anchor, raw.position)?)
-            }
+            (
+                false,
+                RawLinkStyle::Wiki {
+                    ..
+                },
+            ) => Ok(Link::try_new_wikilink(target, alias, anchor, position)?),
             (false, RawLinkStyle::Markdown) => Ok(Link::try_new_markdown_link(
-                target,
-                alias,
-                anchor,
-                raw.position,
+                target, alias, anchor, position,
             )?),
         }
     }

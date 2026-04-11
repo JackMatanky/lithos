@@ -43,7 +43,7 @@ pub struct MarkdownParser<'source, 'cfg> {
     // PDA state
     stack: Vec<Block<'source>>,
     depth: u32,
-    link: Option<(RawLink<'source>, bool)>,
+    link: Option<RawLink<'source>>,
     list_kinds: Vec<RawListKind>,
     list_ctxs: Vec<ListCtx>,
     open_items: Vec<SourceByteOffset>,
@@ -389,8 +389,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 block.scannable.push(range);
             }
         }
-        if let Some((ref mut raw, _)) = self.link {
-            raw.text.title.push_str(text.as_ref());
+        if let Some(ref mut raw) = self.link {
+            raw.text.display.push_str(text.as_ref());
         }
     }
 
@@ -399,8 +399,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         if let Some(block) = self.stack.last_mut() {
             block.text.push_str(text.as_ref());
         }
-        if let Some((ref mut raw, _)) = self.link {
-            raw.text.title.push_str(text.as_ref());
+        if let Some(ref mut raw) = self.link {
+            raw.text.display.push_str(text.as_ref());
         }
     }
 
@@ -411,8 +411,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     fn finalize_link(&mut self) {
-        if let Some((mut raw, has_alias)) = self.link.take() {
-            raw.text = raw.text.split(has_alias);
+        if let Some(raw) = self.link.take() {
             self.out.links.push(raw);
         }
     }
@@ -480,25 +479,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         is_embed: bool,
         start: SourceByteOffset,
     ) {
-        let has_alias = match link_type {
-            pulldown_cmark::LinkType::WikiLink {
-                has_pothole,
-            } => has_pothole,
-            pulldown_cmark::LinkType::Inline
-            | pulldown_cmark::LinkType::Reference
-            | pulldown_cmark::LinkType::ReferenceUnknown
-            | pulldown_cmark::LinkType::Collapsed
-            | pulldown_cmark::LinkType::CollapsedUnknown
-            | pulldown_cmark::LinkType::Shortcut
-            | pulldown_cmark::LinkType::ShortcutUnknown
-            | pulldown_cmark::LinkType::Autolink
-            | pulldown_cmark::LinkType::Email => true,
-        };
         let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
-        self.link =
-            Some((RawLink::new(style, is_embed, target, start), has_alias));
+        self.link = Some(RawLink::new(style, is_embed, target, start));
     }
 }
 
@@ -925,7 +909,7 @@ mod tests {
         let md = "Check [[target]] and [[target|alias]]";
         let raw = parse_raw(md);
         assert_eq!(raw.links.len(), 2);
-        assert_eq!(raw.links.first().unwrap().target.as_ref(), "target");
+        assert_eq!(raw.links.first().unwrap().text.target.as_ref(), "target");
     }
 
     #[test]
@@ -956,7 +940,7 @@ mod tests {
         let md = "[ref]: http://a.example\n[ref]: http://b.example\n\n[ref][]";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "http://a.example");
+        assert_eq!(link.text.target.as_ref(), "http://a.example");
     }
 
     #[test]
@@ -964,7 +948,7 @@ mod tests {
         let md = "[Ref]: http://example.test\n\n[ref][]";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "http://example.test");
+        assert_eq!(link.text.target.as_ref(), "http://example.test");
     }
 
     #[test]
@@ -986,7 +970,7 @@ mod tests {
         let md = "[Foo   Bar]: http://example.test\n\n[foo bar][]";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "http://example.test");
+        assert_eq!(link.text.target.as_ref(), "http://example.test");
     }
 
     #[test]
@@ -994,7 +978,7 @@ mod tests {
         let md = "[Foo\\ Bar]: http://example.test\n\n[foo\\ bar][]";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "http://example.test");
+        assert_eq!(link.text.target.as_ref(), "http://example.test");
     }
 
     #[test]
@@ -1002,7 +986,7 @@ mod tests {
         let md = "[ref]:\n  http://example.test\n\n[ref][]";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "http://example.test");
+        assert_eq!(link.text.target.as_ref(), "http://example.test");
     }
 
     #[test]
@@ -1010,7 +994,7 @@ mod tests {
         let md = "[obsidian](obsidian://open?vault=V#frag)";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "obsidian://open?vault=V#frag");
+        assert_eq!(link.text.target.as_ref(), "obsidian://open?vault=V#frag");
     }
 
     #[test]
@@ -1019,7 +1003,7 @@ mod tests {
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
         assert_eq!(
-            link.target.as_ref(),
+            link.text.target.as_ref(),
             "file:///Users/example/test.md#section"
         );
     }
@@ -1029,6 +1013,6 @@ mod tests {
         let md = "[s3](s3://bucket/key#object)";
         let raw = parse_raw(md);
         let link = raw.links.first().expect("link exists");
-        assert_eq!(link.target.as_ref(), "s3://bucket/key#object");
+        assert_eq!(link.text.target.as_ref(), "s3://bucket/key#object");
     }
 }
