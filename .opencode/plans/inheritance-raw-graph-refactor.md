@@ -1,10 +1,10 @@
 # Inheritance Graph Refactor Plan (Raw Graph + Scoped Validation)
 
 ## Scope
-Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/inheritance.rs`, and `lithos-core/src/schema/schema_processor.rs` to:
+Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/topo_sort.rs`, `lithos-core/src/schema/inheritance.rs`, and `lithos-core/src/schema/schema_processor.rs` to:
 - Remove unchecked graph construction from `InheritanceGraph`.
-- Introduce a raw, mutable `Graph<T>` with `Node<T>` + `Edge` and a computed `AdjacencyMap` view.
-- Make `TryFrom<Graph<T>> for InheritanceGraph<T>` the only validation boundary.
+- Introduce a raw, mutable `Graph<T, R>` with `Node<T>` + `Edge<R>` and a computed `AdjacencyMap` view.
+- Make `TryFrom<Graph<T, R>> for InheritanceGraph<T>` the only validation boundary.
 - Preserve incremental performance via scoped updates in a renamed `InheritanceEditor`.
 - Split inheritance storage to node/edge types to align with graph structure and simplify extends analysis.
 
@@ -45,8 +45,13 @@ Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/inheritance.
 3) `AdjacencyMap` is computed on demand from `Graph<T, R>` and is the source of truth for parents/children during validation and sorting.
 4) `TopologicalSorter` and `TopologicalOrder` live in `topo_sort.rs` (or `toposort.rs`), operate on adjacency/in-degree, and derive roots during sort.
 5) `InheritanceEditor` returns a validated `InheritanceGraph<T>` and performs scoped recomputation with `sort_scoped()` + depth rebuild before final assembly.
-6) `InheritanceNode` remains the validated node storage type (id + parents + children + depth). `InheritanceEdge` is introduced for edge-centric processing and to model relation metadata where needed (e.g., `ExtendsChangeKind`), with metadata dropped during validation.
+6) `InheritanceNode` becomes a minimal storage node (id + depth only) or a thin wrapper over `Node<()>` (effectively `SchemaId -> NodeDepth`). Parent/child relationships are carried by `InheritanceEdge` in the graph, not stored on nodes.
 7) `NodeDepth` + its tests move to `graph.rs` (graph semantics). Replace `GraphNode`/`NodeAccessor` with two read-only traits: `NodeAccessor` and `EdgeAccessor` (for node fields vs edge lists). With `Graph<T, R>` mutations handled by the graph component itself, we avoid a separate mutating trait.
+
+### Dependency boundaries
+- `graph.rs`: raw graph types, adjacency, `NodeDepth`, accessors. No dependency on `inheritance.rs`.
+- `topo_sort.rs`: sorting logic using `AdjacencyMap`/IDs only (no dependency on `inheritance.rs`).
+- `inheritance.rs`: owns `InheritanceGraph`, `InheritanceNode`, `InheritanceEditor`, and the `TryFrom<Graph<T, R>>` impl. Depends on `graph.rs` + `topo_sort.rs`.
 
 ### Rationale for generic `Edge<R>` (no defaults)
 - During schema processing, edges may need metadata (e.g., `ExtendsChangeKind`).
@@ -147,6 +152,7 @@ pub(crate) struct TopologicalOrder {
 ### 3.4 Update TopologicalSorter
 - `sort()` derives in-degree from `AdjacencyMap` and returns `TopologicalOrder`.
 - `sort_scoped()` uses a scoped adjacency/in-degree view and returns `TopologicalOrder`.
+- Move topo sort tests from `graph.rs` into `topo_sort.rs`.
 
 ---
 
@@ -179,7 +185,7 @@ Note: edge `relation` metadata is ignored during validation and dropped when pro
       child: SchemaId,
   }
   ```
-- Keep `InheritanceNode` as the validated node (id, depth, parents, children).
+- Keep `InheritanceNode` minimal (id + depth only) or wrap `Node<()>`.
 - Use `InheritanceEdge` in schema processing for extends analysis to reduce noise and focus on edges.
 - Ensure conversion helpers exist to derive `InheritanceEdge` lists from `InheritanceGraph` or raw `Graph<T, R>`.
 
@@ -197,6 +203,7 @@ Note: edge `relation` metadata is ignored during validation and dropped when pro
   - `NodeAccessor`: node field access (id/depth/any node-owned fields used by algorithms).
   - `EdgeAccessor`: parent/child list access for validated nodes.
 - Update trait bounds throughout `graph.rs`, `inheritance.rs`, and `schema_processor.rs` to use the new traits.
+ - With minimal `InheritanceNode`, `EdgeAccessor` is implemented by edge-based structures (e.g., adjacency map or edge list) rather than node types.
 
 ### 5.3 Update editor internals to use raw Graph + adjacency views
 Current editor mutates `nodes/order/roots` directly. Replace with:
@@ -210,7 +217,7 @@ Current editor mutates `nodes/order/roots` directly. Replace with:
 8. Return a validated `InheritanceGraph<T>` by using the scoped validation path (no full `TryFrom`).
 
 ### 5.4 Scoped validation helper
-Add a helper in `graph.rs`:
+Add a helper in `inheritance.rs` (near `InheritanceEditor`):
 ```rust
 fn try_from_scoped<T, R>(
     graph: &Graph<T, R>,
@@ -263,10 +270,13 @@ New flow:
 2. Use `insert_node`, `apply_change`, `delete_node` as before.
 3. Call `patch()` to get a validated graph (scoped).
 
-### 7.2a Move extends metadata to edges
-- Remove `extends_change` from `PostProcessNode`.
-- Track extends relation changes using `Edge<ExtendsChangeKind>` in the raw graph used by `build_graph`.
-- When determining merge roots, derive the change kind from the edge relation for each node (e.g., edge from parent -> child carries the change kind for the child's extends).
+### 7.2a ProcessorNode + ProcessorEdge
+- Replace `PreProcessNode`/`PostProcessNode` with `ProcessorNode<T>` in the pipeline.
+- `ProcessorNode<T>` fields: `id`, `status`, `depth`, `payload` (no parents/children).
+- Introduce `ProcessorEdge` (edge relation type) with default relation `ExtendsChangeKind::Unchanged`.
+- Use `Graph<ProcessorNode<T>, ProcessorEdge>` in processor stages that need edge metadata.
+- Update the extends check in `build_graph` to mutate the edge relation from `Unchanged` to `RootToChild`/`ChildToRoot`/`Rewired` as needed.
+- Update `analyze_properties` merge root detection to read edge metadata instead of `node.extends_change`.
 
 ### 7.3 Replace `InheritanceGraph::from_parts` call sites
 All places that currently rewrap `nodes/order/roots` must change to:
@@ -284,8 +294,8 @@ Specific call sites to update:
 - `graph.rs` tests (`build_diamond_graph`, `patch_updates_bidirectional_links`, etc.)
 - `inheritance.rs` tests (`build_diamond_graph`)
 
-### 7.4 Ensure Node access traits remain correct
-`PreProcessNode` and `PostProcessNode` still implement `GraphNode` for editor operations.
+### 7.4 Ensure access traits remain correct
+`PreProcessNode` and `PostProcessNode` implement `NodeAccessor` and `EdgeAccessor` as needed by sorting and adjacency logic.
 
 ### 7.5 Add helper: rebuild raw graph from node map + parent lists
 - Implement a shared helper (likely in `graph.rs`):
@@ -338,7 +348,8 @@ Specific call sites to update:
 ---
 
 ## Deliverables
-- Updated `graph.rs` with raw `Graph<T>`, `AdjacencyMap`, `InheritanceEditor`, `TopologicalOrder`.
-- Updated `inheritance.rs` removing `from_parts` + `validate_consistency`.
-- Updated `schema_processor.rs` using `Graph<T>` + `TryFrom` and `InheritanceEditor`.
+- Updated `graph.rs` with raw `Graph<T, R>`, `AdjacencyMap`, `NodeDepth`, and accessors.
+- New `topo_sort.rs` with `TopologicalSorter` + `TopologicalOrder` and tests.
+- Updated `inheritance.rs` removing `from_parts` + `validate_consistency`, adding `TryFrom<Graph<T, R>>` and `InheritanceEditor`.
+- Updated `schema_processor.rs` using `Graph<T, R>` + `TryFrom` and `InheritanceEditor`.
 - Updated tests and docs.
