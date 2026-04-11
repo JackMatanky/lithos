@@ -212,8 +212,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     .copied()
                     .unwrap_or(RawListKind::Unordered);
                 let list_depth =
-                    RawListDepth::try_from(self.depth.saturating_sub(1))
-                        .unwrap_or(RawListDepth::Nested(u8::MAX));
+                    RawListDepth::from(self.depth.saturating_sub(1));
                 let depth_index =
                     usize::try_from(self.depth).unwrap_or(0).saturating_sub(1);
                 let parent_pos = if self.depth <= 1 {
@@ -334,8 +333,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 {
                     self.out.lists.push(RawList::new(
                         kind,
-                        RawListDepth::try_from(self.depth)
-                            .unwrap_or(RawListDepth::Nested(u8::MAX)),
+                        RawListDepth::from(self.depth),
                         range,
                         ctx.item_positions,
                     ));
@@ -505,8 +503,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 }
 
-// ── String pool instrumentation
-// ───────────────────────────────────────────────
+// ── String pool instrumentation ──────────────────────────────────────────────
 
 /// Metrics collected during `StringPool` operations for benchmarking.
 #[derive(Default, Debug, Clone, Copy)]
@@ -545,8 +542,7 @@ pub fn reset_string_pool_metrics() {
         .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
 }
 
-// ── String pool
-// ───────────────────────────────────────────────────────────────
+// ── String pool ──────────────────────────────────────────────────────────────
 
 /// A pool of cleared `String` buffers reused across block frames.
 ///

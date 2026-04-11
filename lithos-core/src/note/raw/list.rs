@@ -110,27 +110,25 @@ impl RawListDepth {
     }
 }
 
-impl TryFrom<u32> for RawListDepth {
-    type Error = u32;
-
+impl From<u32> for RawListDepth {
     /// Converts a u32 nesting depth to [`RawListDepth`].
     ///
     /// `0` maps to [`Root`](RawListDepth::Root); values `1..=255` map to
-    /// [`Nested(n)`](RawListDepth::Nested). Values greater than `255` return
-    /// the depth as [`Err`].
+    /// [`Nested(n)`](RawListDepth::Nested). Values greater than `255` saturate
+    /// to [`Nested(u8::MAX)`](RawListDepth::Nested).
     #[inline]
-    fn try_from(depth: u32) -> Result<Self, Self::Error> {
+    fn from(depth: u32) -> Self {
         match depth {
-            0 => Ok(Self::Root),
-            1..=255 => Ok(Self::Nested(
+            0 => Self::Root,
+            1..=255 => Self::Nested(
                 #[expect(
                     clippy::cast_possible_truncation,
                     clippy::as_conversions,
                     reason = "range guard ensures depth fits in u8"
                 )]
                 (depth as u8),
-            )),
-            _ => Err(depth),
+            ),
+            _ => Self::Nested(u8::MAX),
         }
     }
 }
