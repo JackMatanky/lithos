@@ -28,7 +28,7 @@ Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/inheritance.
 - `PreProcessNode` and `PostProcessNode` implement `GraphNode` for builder/editor operations.
 
 ## Target Design Summary
-- **Raw graph (mutable, unchecked)**: `Graph<T>` with `Node<T>` and `Edge`.
+- **Raw graph (mutable, unchecked)**: `Graph<T, R>` with `Node<T>` and `Edge<R>`.
 - **AdjacencyMap (computed view)**: built on demand from `Graph<T>`; no extra fields in `Graph<T>`.
 - **Validated graph (immutable)**: `InheritanceGraph<T>` constructed only via `TryFrom<Graph<T>>` and editor patch results.
 - **Editor**: renamed to `InheritanceEditor`; performs scoped revalidation and splicing.
@@ -37,10 +37,10 @@ Refactor `lithos-core/src/schema/graph.rs`, `lithos-core/src/schema/inheritance.
 - **Split inheritance storage**: introduce `InheritanceNode` + `InheritanceEdge` (or `InheritanceLink`) to separate node data from edge relationships.
 
 ## Design Decisions
-1) `Graph<T>` stores `nodes: HashMap<SchemaId, Node<T>>` and `edges: Vec<Edge>`.
+1) `Graph<T, R>` stores `nodes: HashMap<SchemaId, Node<T>>` and `edges: Vec<Edge<R>>`.
    - No redundant `SchemaId` in `Node<T>` (id is HashMap key).
    - `Node<T>` includes `depth: NodeDepth` for scoped updates.
-   - `Edge` is generic to carry optional relation metadata during processing, with no default type parameter to force explicitness.
+   - `Edge<R>` is generic to carry relation metadata during processing, with no default type parameter to force explicitness.
 2) `AdjacencyMap` is computed on demand from `Graph<T>`.
 3) `TopologicalOrder` becomes a newtype with `roots()` derived on demand.
 4) `InheritanceEditor` returns a validated `InheritanceGraph<T>` and performs scoped recomputation.
@@ -69,9 +69,9 @@ pub(crate) struct Edge<R> {
     relation: R,
 }
 
-pub(crate) struct Graph<T> {
+pub(crate) struct Graph<T, R> {
     nodes: HashMap<SchemaId, Node<T>>,
-    edges: Vec<Edge>,
+    edges: Vec<Edge<R>>,
 }
 ```
 
@@ -81,6 +81,7 @@ Minimum API for construction and edits:
 - `add_node(id, payload)` (initialize depth as `NodeDepth::ROOT`)
 - `remove_node(id)`
 - `node(id)` / `node_mut(id)`
+- `node_depth(id)` (returns `Option<NodeDepth>` for quick access)
 - `add_edge(from, to)` and `add_edge_with(from, to, relation)`
 - `remove_edge(from, to)`
 - `edges()` (readonly slice)
@@ -103,14 +104,14 @@ pub(crate) struct AdjacencyMap {
 }
 
 impl AdjacencyMap {
-    pub(crate) fn from_graph<T>(graph: &Graph<T>) -> Self { /* normalize */ }
+    pub(crate) fn from_graph<T, R>(graph: &Graph<T, R>) -> Self { /* normalize */ }
 }
 ```
 Normalize parent/child lists (sort + dedup) inside `from_graph`.
 
 ### 1.4 Add raw graph ingest from `ChildParentsMap`
 - Keep `ChildParentsMap` as the simplest RawSchema ingestion shape.
-- Add helper to convert `ChildParentsMap` to `Graph<T>` by:
+- Add helper to convert `ChildParentsMap` to `Graph<T, R>` by:
   - creating nodes for each id
   - emitting edges `(parent -> child)` for each parent list
 
@@ -149,8 +150,9 @@ pub(crate) struct TopologicalOrder(Vec<SchemaId>);
 ### 4.2 Keep `into_parts()`
 - Remains `pub(crate)`.
 
-### 4.3 Implement `TryFrom<Graph<T>>`
-Place in `inheritance.rs` (required): `impl TryFrom<Graph<T>> for InheritanceGraph<T>`.
+### 4.3 Implement `TryFrom<Graph<T, R>>`
+Place in `inheritance.rs` (required): `impl TryFrom<Graph<T, R>> for InheritanceGraph<T>`.
+Error type: use existing `SchemaInheritanceError` for graph invariants. Callers (e.g., schema processor) wrap via `SchemaLoaderError::Resolution`.
 Algorithm:
 1. Build `AdjacencyMap` from raw graph.
 2. Validate missing nodes: for every edge endpoint ensure node exists.
@@ -183,19 +185,19 @@ Note: edge `relation` metadata is ignored during validation and dropped when pro
 ### 5.2 Update internals to use raw Graph + adjacency views
 Current editor mutates `nodes/order/roots` directly. Replace with:
 1. Accept validated `InheritanceGraph<T>` (via `into_parts` or reference).
-2. Build a raw `Graph<T>` subgraph for affected nodes + required neighbors.
+2. Build a raw `Graph<T, R>` subgraph for affected nodes + required neighbors.
 3. Apply changes in raw graph (edges + payloads + depths reset to `ROOT` for affected).
 4. Build `AdjacencyMap` for affected subgraph.
 5. Run scoped topological sort for affected set, returning `TopologicalOrder`.
 6. Recompute depths only for affected nodes.
 7. Derive roots from `TopologicalOrder::roots` and splice order into old order (current logic).
-8. Return a validated `InheritanceGraph<T>` by routing through the `TryFrom<Graph<T>>` validation path (no `from_parts`).
+8. Return a validated `InheritanceGraph<T>` by using the scoped validation path (no full `TryFrom`).
 
 ### 5.3 Scoped validation helper
 Add a helper in `graph.rs`:
 ```rust
-fn try_from_scoped<T>(
-    graph: &Graph<T>,
+fn try_from_scoped<T, R>(
+    graph: &Graph<T, R>,
     affected: &HashSet<SchemaId>,
     base: &InheritanceGraph<T>,
 ) -> Result<(TopologicalOrder, Vec<SchemaId>, HashMap<SchemaId, NodeDepth>), SchemaResolutionError>;
@@ -207,10 +209,10 @@ This will centralize scoped topological sort + depth recompute. Roots returned a
 ## Phase 6: Update InheritanceGraph map_payload (inheritance.rs)
 ### 6.1 Remove map_payload’s dependence on `from_parts`
 Current `map_payload` uses `from_parts`. Replace with:
-- Build a raw `Graph<U>` from `self`:
+- Build a raw `Graph<U, ()>` from `self`:
   - For each node in order: `graph.add_node(id, mapped_payload)`
   - For each node in order: add edges for each parent relationship
-- Convert using `TryFrom<Graph<U>>` (validates structure again, but safe).
+- Convert using `TryFrom<Graph<U, ()>>` (validates structure again, but safe).
 
 If validation overhead is a concern, add a module-private helper in `inheritance.rs` used only by `map_payload` (not exposed) to construct `InheritanceGraph` from already-validated parts.
 
@@ -221,7 +223,7 @@ If validation overhead is a concern, add a module-private helper in `inheritance
 ### 7.1 Replace GraphBuilder usage
 `build_new_graph` currently uses `GraphBuilder` to create a graph from extends.
 New flow:
-1. Build raw `Graph<InheritanceNode>` using `ChildParentsMap` or direct `add_node` and `add_edge` (extends relationship).
+1. Build raw `Graph<InheritanceNode, ()>` using `ChildParentsMap` or direct `add_node` and `add_edge` (extends relationship).
 2. Convert to `InheritanceGraph<InheritanceNode>` via `TryFrom`.
 3. Continue with existing payload wrapping.
 
@@ -236,7 +238,7 @@ New flow:
 
 ### 7.3 Replace `InheritanceGraph::from_parts` call sites
 All places that currently rewrap `nodes/order/roots` must change to:
-- Build raw `Graph<T>` from `nodes` + edges using a dedicated helper (see Phase 7.5).
+- Build raw `Graph<T, R>` from `nodes` + edges using a dedicated helper (see Phase 7.5).
 - Convert via `TryFrom`
 
 Specific call sites to update:
@@ -253,13 +255,14 @@ Specific call sites to update:
 ### 7.5 Add helper: rebuild raw graph from node map + parent lists
 - Implement a shared helper (likely in `graph.rs`):
   ```rust
-  fn graph_from_nodes_and_parents<T, F>(
+  fn graph_from_nodes_and_parents<T, R, F>(
       nodes: &HashMap<SchemaId, T>,
       clone_payload: F,
-  ) -> Graph<TPayload>
+  ) -> Graph<TPayload, R>
   where
       T: NodeAccessor,
-      F: Fn(&T) -> TPayload;
+      F: Fn(&T) -> TPayload,
+      R: Default;
   ```
 - This ensures every call site uses the same normalization rules without requiring `T: Clone`.
 
