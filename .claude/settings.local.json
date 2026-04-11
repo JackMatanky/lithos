@@ -9,7 +9,11 @@
       "WebFetch(domain:pkg.go.dev)",
       "WebFetch(domain:sqlite.org)",
       "WebFetch(domain:docs.obsidian.md)",
-      "SlashCommand(/BMad:tasks:validate-next-story:*)"
+      "SlashCommand(/BMad:tasks:validate-next-story:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(mise run:*)"
     ],
     "deny": [],
     "ask": []

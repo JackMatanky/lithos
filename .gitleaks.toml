@@ -11,7 +11,7 @@ useDefault = true
 [[rules]]
 id = "aws-access-key-id"
 description = "AWS Access Key ID"
-regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+regex = '(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'
 secretGroup = 1
 
 [[rules]]
@@ -23,37 +23,37 @@ secretGroup = 1
 [[rules]]
 id = "github-personal-access-token"
 description = "GitHub Personal Access Token"
-regex = '''ghp_[0-9a-zA-Z]{36}'''
+regex = 'ghp_[0-9a-zA-Z]{36}'
 
 [[rules]]
 id = "github-oauth-token"
 description = "GitHub OAuth Access Token"
-regex = '''gho_[0-9a-zA-Z]{36}'''
+regex = 'gho_[0-9a-zA-Z]{36}'
 
 [[rules]]
 id = "github-app-token"
 description = "GitHub App Token"
-regex = '''(ghu|ghs)_[0-9a-zA-Z]{36}'''
+regex = '(ghu|ghs)_[0-9a-zA-Z]{36}'
 
 [[rules]]
 id = "github-refresh-token"
 description = "GitHub Refresh Token"
-regex = '''ghr_[0-9a-zA-Z]{76}'''
+regex = 'ghr_[0-9a-zA-Z]{76}'
 
 [[rules]]
 id = "slack-token"
 description = "Slack Token"
-regex = '''xox[baprs]-([0-9a-zA-Z]{10,48})?'''
+regex = 'xox[baprs]-([0-9a-zA-Z]{10,48})?'
 
 [[rules]]
 id = "slack-webhook"
 description = "Slack Webhook"
-regex = '''https://hooks.slack.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}'''
+regex = 'https://hooks.slack.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}'
 
 [[rules]]
 id = "private-key"
 description = "Private Key"
-regex = '''-----BEGIN[ A-Z0-9_-]*PRIVATE KEY[ A-Z0-9_-]*-----'''
+regex = '-----BEGIN[ A-Z0-9_-]*PRIVATE KEY[ A-Z0-9_-]*-----'
 
 [[rules]]
 id = "api-key-generic"
@@ -68,7 +68,7 @@ regex = '''(?i)(password|passwd|pwd)(.{0,20})?['\"][0-9a-zA-Z!@#$%^&*()_+-=]{8,}
 [[rules]]
 id = "jwt-token"
 description = "JSON Web Token"
-regex = '''eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'''
+regex = 'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'
 
 [[rules]]
 id = "database-connection-string"
@@ -78,39 +78,41 @@ regex = '''(?i)(mongodb|mysql|postgres|postgresql)://[^\s'"]+'''
 [[rules]]
 id = "high-entropy-string"
 description = "High Entropy String"
-regex = '''[A-Za-z0-9+/]{40,}={0,2}'''
+regex = '[A-Za-z0-9+/]{40,}={0,2}'
 entropy = 4.5
 
 [allowlist]
 description = "Allowlist for test files and documentation"
 files = [
-  '''\.example$''',
-  '''\.template$''',
-  '''\.sample$''',
-  '''^docs/''',
-  '''^examples/''',
+  '\.example$',
+  '\.template$',
+  '\.sample$',
+  '^docs/',
+  '^examples/',
 ]
 
 # Allow specific patterns that are commonly used in documentation or test files
 regexes = [
-  '''example\.com''',
-  '''localhost''',
-  '''127\.0\.0\.1''',
-  '''placeholder''',
-  '''your-api-key-here''',
-  '''INSERT_API_KEY_HERE''',
-  '''TODO:''',
-  '''FIXME:''',
-  '''XXX:''',
+  'example\.com',
+  'localhost',
+  '127\.0\.0\.1',
+  'placeholder',
+  'your-api-key-here',
+  'INSERT_API_KEY_HERE',
+  'TODO:',
+  'FIXME:',
+  'XXX:',
 ]
 
 # Allow specific known false positives
 paths = [
-   '''^testdata/''',
-   '''README\.md''',
-   '''^docs/refs/''',
-   '''\.gitleaks\.toml''',
-   '''\.pre-commit-config\.yaml''',
-   '''^_bmad/tea/workflows/testarch/''',
-   '''^_bmad/_config/files-manifest\.csv''',
+  '^testdata/',
+  '^README\.md$',
+  '^docs/refs/',
+  '^\.gitleaks\.toml$',
+  '^\.pre-commit-config\.yaml$',
+  '^_bmad/_config/files-manifest\.csv$',
+  '^_bmad/tea/workflows/testarch/',
+  '^\.agents/skills/bmad-testarch-[^/]+/resources/knowledge/',
+  '^\.agents/skills/bmad-testarch-atdd/steps-c/'
 ]

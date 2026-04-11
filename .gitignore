@@ -164,6 +164,7 @@ dev-debug.log
 CLAUDE.md
 GEMINI.md
 WARP.md
+.claude/skills/
 
 # -------------- Repository Summarization Output ------------- #
 codebase.xml
