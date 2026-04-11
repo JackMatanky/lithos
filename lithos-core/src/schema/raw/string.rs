@@ -4,6 +4,23 @@ use std::collections::BTreeSet;
 
 use crate::schema::error::{PropertySpecError, SchemaError};
 
+/// Raw string property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawStringProperty {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional allowed values in one of three formats.
+    pub options: Option<RawOptions>,
+    /// Optional validation pattern (custom regex or predefined format).
+    pub pattern: Option<RawStringPattern>,
+}
+
 // ============================================================================
 // RawStringSpec
 // ============================================================================
@@ -12,7 +29,7 @@ use crate::schema::error::{PropertySpecError, SchemaError};
 ///
 /// Supports `options` and `pattern` per the meta-schema.
 /// All fields are `Option<T>` to support override contexts.
-/// Inline definitions use `RawPropertyString`.
+/// Inline definitions use `RawStringProperty`.
 ///
 /// # Examples
 /// ```

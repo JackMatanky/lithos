@@ -1,9 +1,28 @@
 //! Number property override types.
 
+/// Raw number property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawNumberProperty {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional minimum value.
+    pub min: Option<f64>,
+    /// Optional maximum value.
+    pub max: Option<f64>,
+    /// Optional step increment.
+    pub step: Option<f64>,
+}
+
 /// Number property override bundle.
 ///
 /// All fields are `Option<T>` to support override contexts.
-/// Inline definitions use `RawPropertyNumber`.
+/// Inline definitions use `RawNumberProperty`.
 ///
 /// # Examples
 /// ```

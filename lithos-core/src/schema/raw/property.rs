@@ -3,101 +3,22 @@
 //! Defines the property-level structures:
 //! - Property variants (Inline vs Ref)
 //! - Property bank entries (inline definitions used in the bank)
-//! - Per-type inline DTOs (`RawProperty*`)
+//! - Per-type inline DTOs (`Raw*Property`)
 //! - Validated property map wrapper (`RawPropertyMap<T>`)
 //! - Validated property reference path wrapper (`RawPropertyRefPath`)
 
 use std::collections::HashMap;
 
-use super::string::{RawOptions, RawStringPattern};
+use super::{
+    bool::RawBoolProperty,
+    date::RawDateProperty,
+    file::RawFileProperty,
+    number::RawNumberProperty,
+    string::{RawOptions, RawStringPattern, RawStringProperty},
+};
 use crate::schema::{
     aggregate::SchemaName, error::SchemaError, property::PropertyName,
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Raw Property Inline Types (per-type)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Raw boolean property definition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyBoolean {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-}
-
-/// Raw string property definition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyString {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Optional allowed values in one of three formats.
-    pub options: Option<RawOptions>,
-    /// Optional validation pattern (custom regex or predefined format).
-    pub pattern: Option<RawStringPattern>,
-}
-
-/// Raw number property definition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyNumber {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
-
-/// Raw date property definition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyDate {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Optional date format string.
-    pub format: Option<Box<str>>,
-}
-
-/// Raw file property definition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct RawPropertyFile {
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Optional directory restriction (vault-relative path).
-    pub directory: Option<Box<str>>,
-    /// Optional file class restriction (schema name).
-    pub file_class: Option<SchemaName>,
-}
 
 /// Inline variant of a raw property definition.
 ///
@@ -109,19 +30,19 @@ pub struct RawPropertyFile {
 pub enum RawPropertyInline {
     /// Boolean property definition.
     #[serde(rename = "bool", alias = "boolean")]
-    Bool(RawPropertyBoolean),
+    Bool(RawBoolProperty),
     /// Date property definition.
     #[serde(rename = "date")]
-    Date(RawPropertyDate),
+    Date(RawDateProperty),
     /// File property definition.
     #[serde(rename = "file")]
-    File(RawPropertyFile),
+    File(RawFileProperty),
     /// Number property definition.
     #[serde(rename = "number")]
-    Number(RawPropertyNumber),
+    Number(RawNumberProperty),
     /// String property definition.
     #[serde(rename = "string")]
-    String(RawPropertyString),
+    String(RawStringProperty),
 }
 
 /// Entry in the raw property bank.
@@ -444,7 +365,7 @@ impl std::fmt::Display for RawPropertyRefPath {
 /// use lithos_core::schema::raw::{RawProperty, RawPropertyInline};
 ///
 /// let property = RawProperty::Inline(RawPropertyInline::Bool(
-///     lithos_core::schema::raw::property::RawPropertyBoolean {
+///     lithos_core::schema::raw::bool::RawBoolProperty {
 ///         required: false,
 ///         multi: false,
 ///     },
@@ -755,7 +676,7 @@ mod tests {
 
         #[test]
         fn serializes_bool_tag() {
-            let inline = RawPropertyInline::Bool(RawPropertyBoolean {
+            let inline = RawPropertyInline::Bool(RawBoolProperty {
                 required: false,
                 multi: false,
             });
@@ -776,7 +697,7 @@ mod tests {
     #[test]
     fn raw_property_inline_variant_constructs() {
         let inline_variant =
-            RawProperty::Inline(RawPropertyInline::Bool(RawPropertyBoolean {
+            RawProperty::Inline(RawPropertyInline::Bool(RawBoolProperty {
                 required: false,
                 multi: false,
             }));

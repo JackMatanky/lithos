@@ -25,8 +25,8 @@
 //!   `PropertyName::deserialize`)
 //! - **Field presence**: Required fields enforced by serde
 //! - **Unknown fields**: Rejected by `#[serde(deny_unknown_fields)]`
-//! - **Property definitions**: Per-type DTOs (`RawPropertyString`,
-//!   `RawPropertyNumber`, etc.) reject unknown fields to mirror
+//! - **Property definitions**: Per-type DTOs (`RawStringProperty`,
+//!   `RawNumberProperty`, etc.) reject unknown fields to mirror
 //!   `additionalProperties: false` in the meta-schema
 //! - **Boolean tag compatibility**: `type = "bool"` and `type = "boolean"` are
 //!   accepted on input; serialization uses `"bool"`
@@ -132,19 +132,19 @@ pub type RawPropertyBankEntry = property::RawPropertyBankEntry;
 pub type RawPropertyInline = property::RawPropertyInline;
 
 /// Raw boolean property definition.
-pub type RawPropertyBoolean = property::RawPropertyBoolean;
+pub type RawBoolProperty = bool::RawBoolProperty;
 
 /// Raw string property definition.
-pub type RawPropertyString = property::RawPropertyString;
+pub type RawStringProperty = string::RawStringProperty;
 
 /// Raw number property definition.
-pub type RawPropertyNumber = property::RawPropertyNumber;
+pub type RawNumberProperty = number::RawNumberProperty;
 
 /// Raw date property definition.
-pub type RawPropertyDate = property::RawPropertyDate;
+pub type RawDateProperty = date::RawDateProperty;
 
 /// Raw file property definition.
-pub type RawPropertyFile = property::RawPropertyFile;
+pub type RawFileProperty = file::RawFileProperty;
 
 /// Reference variant of a raw property with optional overrides.
 pub type RawPropertyRef = property::RawPropertyRef;

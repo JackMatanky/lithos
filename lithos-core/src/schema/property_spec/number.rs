@@ -4,7 +4,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
     bounds::{Bounds, BoundsError},
-    schema::{error::SchemaError, raw::property::RawPropertyNumber},
+    schema::{error::SchemaError, raw::number::RawNumberProperty},
 };
 
 /// Number property validation constraints.
@@ -237,11 +237,11 @@ impl TryFrom<crate::schema::raw::number::RawNumberSpec> for NumberSpec {
     }
 }
 
-impl TryFrom<RawPropertyNumber> for NumberSpec {
+impl TryFrom<RawNumberProperty> for NumberSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(raw: RawPropertyNumber) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawNumberProperty) -> Result<Self, Self::Error> {
         let raw_spec = crate::schema::raw::number::RawNumberSpec {
             min: raw.min,
             max: raw.max,

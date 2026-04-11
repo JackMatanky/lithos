@@ -1,9 +1,24 @@
 //! Date property override types.
 
+/// Raw date property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawDateProperty {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional date format string.
+    pub format: Option<Box<str>>,
+}
+
 /// Date property override bundle.
 ///
 /// All fields are `Option<T>` to support override contexts (where `None`
-/// means "don't override"). Inline definitions use `RawPropertyDate`.
+/// means "don't override"). Inline definitions use `RawDateProperty`.
 ///
 /// # Examples
 /// ```

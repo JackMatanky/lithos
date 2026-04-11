@@ -1,5 +1,18 @@
 //! Boolean property override types.
 
+/// Raw boolean property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawBoolProperty {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+}
+
 /// Boolean property override bundle (marker type).
 ///
 /// # Examples

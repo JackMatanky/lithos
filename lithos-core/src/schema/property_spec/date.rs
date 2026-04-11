@@ -2,7 +2,7 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::schema::{error::SchemaError, raw::property::RawPropertyDate};
+use crate::schema::{error::SchemaError, raw::date::RawDateProperty};
 
 /// Date property validation constraints.
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
@@ -145,11 +145,11 @@ impl TryFrom<crate::schema::raw::date::RawDateSpec> for DateSpec {
     }
 }
 
-impl TryFrom<RawPropertyDate> for DateSpec {
+impl TryFrom<RawDateProperty> for DateSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(raw: RawPropertyDate) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawDateProperty) -> Result<Self, Self::Error> {
         let raw_spec = crate::schema::raw::date::RawDateSpec {
             format: raw.format,
         };

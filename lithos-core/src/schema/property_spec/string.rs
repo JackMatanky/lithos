@@ -7,10 +7,7 @@ use tracing::warn;
 
 use crate::schema::{
     error::SchemaError,
-    raw::{
-        property::RawPropertyString,
-        string::{RawOptions, RawStringSpec},
-    },
+    raw::string::{RawOptions, RawStringProperty, RawStringSpec},
 };
 
 // ============================================================================
@@ -269,11 +266,11 @@ impl TryFrom<crate::schema::raw::string::RawStringSpec> for StringSpec {
     }
 }
 
-impl TryFrom<RawPropertyString> for StringSpec {
+impl TryFrom<RawStringProperty> for StringSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(raw: RawPropertyString) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawStringProperty) -> Result<Self, Self::Error> {
         let raw_spec = RawStringSpec {
             options: raw.options,
             pattern: raw.pattern,

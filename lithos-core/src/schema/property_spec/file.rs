@@ -5,7 +5,7 @@ use std::path::{Component, Path};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::schema::{
-    aggregate::SchemaName, error::SchemaError, raw::property::RawPropertyFile,
+    aggregate::SchemaName, error::SchemaError, raw::file::RawFileProperty,
 };
 
 /// File property validation constraints.
@@ -175,11 +175,11 @@ impl TryFrom<crate::schema::raw::file::RawFileSpec> for FileSpec {
     }
 }
 
-impl TryFrom<RawPropertyFile> for FileSpec {
+impl TryFrom<RawFileProperty> for FileSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(raw: RawPropertyFile) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawFileProperty) -> Result<Self, Self::Error> {
         let raw_spec = crate::schema::raw::file::RawFileSpec {
             directory: raw.directory,
             file_class: raw.file_class,

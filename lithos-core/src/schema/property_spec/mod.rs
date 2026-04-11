@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn validate_dispatches_to_bool_spec() {
         let spec = PropertySpec::try_from(RawPropertyInline::Bool(
-            crate::schema::raw::property::RawPropertyBoolean {
+            crate::schema::raw::bool::RawBoolProperty {
                 required: false,
                 multi: false,
             },

@@ -2,10 +2,27 @@
 
 use crate::schema::aggregate::SchemaName;
 
+/// Raw file property definition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawFileProperty {
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Optional directory restriction (vault-relative path).
+    pub directory: Option<Box<str>>,
+    /// Optional file class restriction (schema name).
+    pub file_class: Option<SchemaName>,
+}
+
 /// File property override bundle.
 ///
 /// All fields are `Option<T>` to support override contexts.
-/// Inline definitions use `RawPropertyFile`.
+/// Inline definitions use `RawFileProperty`.
 ///
 /// # Examples
 /// ```
