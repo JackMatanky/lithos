@@ -402,6 +402,8 @@ pub struct AdjacencyMap {
 }
 
 impl AdjacencyMap {
+    const EMPTY_NEIGHBORS: &'static [SchemaId] = &[];
+
     /// Builds an adjacency map from a raw graph.
     #[inline]
     #[must_use]
@@ -480,7 +482,7 @@ impl AdjacencyMap {
         reason = "mirrors EdgeAccessor for adjacency queries"
     )]
     pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.in_neighbors.get(&id).map_or(EMPTY_NEIGHBORS, Vec::as_slice)
+        self.in_neighbors.get(&id).map_or(Self::EMPTY_NEIGHBORS, Vec::as_slice)
     }
 
     /// Returns child IDs for the given node.
@@ -491,7 +493,7 @@ impl AdjacencyMap {
         reason = "mirrors EdgeAccessor for adjacency queries"
     )]
     pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.out_neighbors.get(&id).map_or(EMPTY_NEIGHBORS, Vec::as_slice)
+        self.out_neighbors.get(&id).map_or(Self::EMPTY_NEIGHBORS, Vec::as_slice)
     }
 
     /// Returns the total number of nodes in the map.
@@ -644,8 +646,6 @@ impl ChildParentsMap {
         }
     }
 }
-
-const EMPTY_NEIGHBORS: &[SchemaId] = &[];
 
 #[cfg(test)]
 mod tests {
