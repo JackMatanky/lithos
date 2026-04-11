@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use rkyv::{Archive, Deserialize, Serialize};
+use tracing::warn;
 
 use crate::schema::{
     error::SchemaError,
@@ -232,8 +233,28 @@ impl TryFrom<crate::schema::raw::string::RawStringSpec> for StringSpec {
             None => None,
         };
 
-        let options = raw
-            .options
+        let options = match raw.options.as_ref() {
+            Some(options) => {
+                if is_raw_options_empty(options) {
+                    warn!(
+                        context = "string_spec",
+                        "options list is empty; treating as unspecified"
+                    );
+                    None
+                } else {
+                    if has_duplicate_option_values(options) {
+                        warn!(
+                            context = "string_spec",
+                            "options list contains duplicate values"
+                        );
+                    }
+                    Some(options.clone())
+                }
+            }
+            None => None,
+        };
+
+        let options = options
             .map(|o| {
                 let entries = o
                     .into_entries()
@@ -253,21 +274,11 @@ impl TryFrom<RawPropertyString> for StringSpec {
 
     #[inline]
     fn try_from(raw: RawPropertyString) -> Result<Self, Self::Error> {
-        let options = normalize_raw_options(raw.options);
         let raw_spec = RawStringSpec {
-            options,
+            options: raw.options,
             pattern: raw.pattern,
         };
         raw_spec.try_into()
-    }
-}
-
-fn normalize_raw_options(options: Option<RawOptions>) -> Option<RawOptions> {
-    match options {
-        Some(RawOptions::Plain(items)) if items.is_empty() => None,
-        Some(RawOptions::Ordered(entries)) if entries.is_empty() => None,
-        Some(RawOptions::Labeled(entries)) if entries.is_empty() => None,
-        other => other,
     }
 }
 
@@ -715,6 +726,36 @@ impl OptionEntries {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn has_duplicate_option_values(options: &RawOptions) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    match options {
+        RawOptions::Plain(items) => {
+            items.iter().map(AsRef::as_ref).any(|value| !seen.insert(value))
+        }
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => entries
+            .iter()
+            .map(|entry| entry.value.as_ref())
+            .any(|value| !seen.insert(value)),
+    }
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawOptions with value patterns is idiomatic"
+)]
+fn is_raw_options_empty(options: &RawOptions) -> bool {
+    match options {
+        RawOptions::Plain(items) => items.is_empty(),
+        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => {
+            entries.is_empty()
+        }
     }
 }
 

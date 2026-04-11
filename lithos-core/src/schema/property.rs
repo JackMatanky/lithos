@@ -30,7 +30,7 @@
 
 use std::{
     borrow::Borrow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{Debug, Display},
     sync::LazyLock,
 };
@@ -42,13 +42,7 @@ use uuid::Uuid;
 use super::{
     error::SchemaError,
     property_spec::PropertySpec,
-    raw::{
-        date::RawDateSpec,
-        file::RawFileSpec,
-        number::RawNumberSpec,
-        property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
-        string::{RawOptions, RawStringSpec},
-    },
+    raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
 };
 
 /// Map of properties keyed by name.
@@ -234,7 +228,7 @@ impl TryFrom<RawPropertyMap<RawPropertyInline>> for PropertyMap {
     ) -> Result<Self, Self::Error> {
         let mut map = PropertyMap::new();
         for (name, raw) in &value {
-            let spec = property_spec_from_inline(raw, name, "schema")?;
+            let spec = PropertySpec::try_from(raw.clone())?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::from(inline_required(raw)),
@@ -264,8 +258,7 @@ impl TryFrom<RawPropertyMap<RawPropertyBankEntry>> for PropertyMap {
                      false"
                 );
             }
-            let spec =
-                property_spec_from_inline(&raw.0, name, "property_bank")?;
+            let spec = PropertySpec::try_from(raw.0.clone())?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::default(),
@@ -291,7 +284,7 @@ impl TryFrom<HashMap<PropertyName, RawPropertyInline>> for PropertyMap {
             reason = "Property map construction preserves key/value pairs"
         )]
         for (name, raw) in value {
-            let spec = property_spec_from_inline(&raw, &name, "schema")?;
+            let spec = PropertySpec::try_from(raw.clone())?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::from(inline_required(&raw)),
@@ -325,8 +318,7 @@ impl TryFrom<HashMap<PropertyName, RawPropertyBankEntry>> for PropertyMap {
                      false"
                 );
             }
-            let spec =
-                property_spec_from_inline(&raw.0, &name, "property_bank")?;
+            let spec = PropertySpec::try_from(raw.0.clone())?;
             let property = Property::new(
                 PropertyId::new(),
                 Optionality::default(),
@@ -370,107 +362,6 @@ fn inline_multi(raw: &RawPropertyInline) -> bool {
         RawPropertyInline::File(def) => def.multi,
         RawPropertyInline::Number(def) => def.multi,
         RawPropertyInline::String(def) => def.multi,
-    }
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
-)]
-fn property_spec_from_inline(
-    raw: &RawPropertyInline,
-    name: &PropertyName,
-    context: &'static str,
-) -> Result<PropertySpec, SchemaError> {
-    match raw {
-        RawPropertyInline::Bool(_) => {
-            Ok(PropertySpec::Bool(super::property_spec::BoolSpec::default()))
-        }
-        RawPropertyInline::Date(def) => {
-            let raw_spec = RawDateSpec {
-                format: def.format.clone(),
-            };
-            Ok(PropertySpec::Date(raw_spec.try_into()?))
-        }
-        RawPropertyInline::File(def) => {
-            let raw_spec = RawFileSpec {
-                directory: def.directory.clone(),
-                file_class: def.file_class.clone(),
-            };
-            Ok(PropertySpec::File(raw_spec.try_into()?))
-        }
-        RawPropertyInline::Number(def) => {
-            let raw_spec = RawNumberSpec {
-                min: def.min,
-                max: def.max,
-                step: def.step,
-            };
-            Ok(PropertySpec::Number(raw_spec.try_into()?))
-        }
-        RawPropertyInline::String(def) => {
-            let options =
-                warn_and_normalize_options(def.options.as_ref(), name, context);
-            let raw_spec = RawStringSpec {
-                options,
-                pattern: def.pattern.clone(),
-            };
-            Ok(PropertySpec::String(raw_spec.try_into()?))
-        }
-    }
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &RawOptions with value patterns is idiomatic"
-)]
-fn warn_and_normalize_options(
-    options: Option<&RawOptions>,
-    name: &PropertyName,
-    context: &'static str,
-) -> Option<RawOptions> {
-    let options = options?;
-
-    let empty = match options {
-        RawOptions::Plain(items) => items.is_empty(),
-        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => {
-            entries.is_empty()
-        }
-    };
-
-    if empty {
-        tracing::warn!(
-            property = name.as_str(),
-            context,
-            "options list is empty; treating as unspecified"
-        );
-        return None;
-    }
-
-    if has_duplicate_option_values(options) {
-        tracing::warn!(
-            property = name.as_str(),
-            context,
-            "options list contains duplicate values"
-        );
-    }
-
-    Some(options.clone())
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &RawOptions with value patterns is idiomatic"
-)]
-fn has_duplicate_option_values(options: &RawOptions) -> bool {
-    let mut seen: HashSet<&str> = HashSet::new();
-    match options {
-        RawOptions::Plain(items) => {
-            items.iter().map(AsRef::as_ref).any(|value| !seen.insert(value))
-        }
-        RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => entries
-            .iter()
-            .map(|entry| entry.value.as_ref())
-            .any(|value| !seen.insert(value)),
     }
 }
 
