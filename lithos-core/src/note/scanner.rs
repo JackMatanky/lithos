@@ -19,6 +19,9 @@ use crate::note::{
     },
 };
 
+// ── Primary public API types
+// ──────────────────────────────────────────────────
+
 /// A zero-copy artifact extracted from a text block.
 ///
 /// This enum represents the various types of metadata that can be identified
@@ -90,19 +93,6 @@ impl ScannedArtifact<'_> {
     }
 }
 
-/// Raw tokens extracted from a single scan pass, grouped by artifact type.
-///
-/// Produced by [`NoteScanner::scan_ranges_raw`] and consumed by
-/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) to populate
-/// [`RawNote`](crate::note::raw::RawNote) collections.
-#[derive(Debug, Default)]
-pub(crate) struct ScannedRawArtifacts<'source> {
-    pub tags: Vec<RawTag<'source>>,
-    pub inline_fields: Vec<RawInlineFieldToken<'source>>,
-    pub block_refs: Vec<RawBlockRef<'source>>,
-    pub task_marker: Option<RawTaskStatusSymbol>,
-}
-
 /// A cursor-based scanner for extracting metadata artifacts from markdown.
 ///
 /// `NoteScanner` manages the rules for what constitutes valid metadata
@@ -154,6 +144,37 @@ impl NoteScanner {
         let mut artifacts = Vec::with_capacity(8);
         self.scan_cursor(&mut cursor, &mut artifacts)?;
         Ok(artifacts)
+    }
+
+    /// Continues scanning from a provided [`Cursor`] state.
+    ///
+    /// This method allows the scanner to process disjoint segments of text
+    /// (e.g., text interrupted by links) while maintaining the state required
+    /// to correctly identify line-start triggers and alphanumeric boundaries.
+    ///
+    /// New artifacts are pushed onto the provided `artifacts` vector.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if position calculation for an artifact exceeds
+    /// supported byte bounds.
+    #[inline]
+    pub fn scan_cursor<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        while !cursor.is_eof() {
+            match cursor.mode {
+                ScanMode::AtLineStart => {
+                    Self::handle_line_start(cursor, artifacts)?;
+                }
+                ScanMode::InBody => {
+                    self.handle_body(cursor, artifacts)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Scans multiple disjoint ranges within the same source text.
@@ -248,37 +269,6 @@ impl NoteScanner {
         };
         let mut cursor = Cursor::new(segment, range.start());
         scan_task_marker_at_line_start(&mut cursor)
-    }
-
-    /// Continues scanning from a provided [`Cursor`] state.
-    ///
-    /// This method allows the scanner to process disjoint segments of text
-    /// (e.g., text interrupted by links) while maintaining the state required
-    /// to correctly identify line-start triggers and alphanumeric boundaries.
-    ///
-    /// New artifacts are pushed onto the provided `artifacts` vector.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if position calculation for an artifact exceeds
-    /// supported byte bounds.
-    #[inline]
-    pub fn scan_cursor<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<(), NoteError> {
-        while !cursor.is_eof() {
-            match cursor.mode {
-                ScanMode::AtLineStart => {
-                    Self::handle_line_start(cursor, artifacts)?;
-                }
-                ScanMode::InBody => {
-                    self.handle_body(cursor, artifacts)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Handles triggers that only occur at the beginning of a line (tasks and
@@ -714,6 +704,25 @@ impl<'source> Cursor<'source> {
         Ok(())
     }
 }
+
+// ── Internal output type
+// ──────────────────────────────────────────────────────
+
+/// Raw tokens extracted from a single scan pass, grouped by artifact type.
+///
+/// Produced by [`NoteScanner::scan_ranges_raw`] and consumed by
+/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) to populate
+/// [`RawNote`](crate::note::raw::RawNote) collections.
+#[derive(Debug, Default)]
+pub(crate) struct ScannedRawArtifacts<'source> {
+    pub tags: Vec<RawTag<'source>>,
+    pub inline_fields: Vec<RawInlineFieldToken<'source>>,
+    pub block_refs: Vec<RawBlockRef<'source>>,
+    pub task_marker: Option<RawTaskStatusSymbol>,
+}
+
+// ── Private implementation details
+// ────────────────────────────────────────────
 
 /// The positional state of the scanner within a block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

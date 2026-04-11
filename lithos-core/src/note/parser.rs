@@ -28,6 +28,9 @@ use crate::{
     },
 };
 
+// ── Primary public API
+// ────────────────────────────────────────────────────────
+
 /// Markdown parser for extracting note facts and structure.
 ///
 /// This is a stateful pushdown automaton. Callers use only the static
@@ -52,6 +55,54 @@ pub struct MarkdownParser<'source, 'cfg> {
 }
 
 impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
+    /// Parses markdown into a minimal AST and extracts raw note artifacts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] if:
+    /// - Structural extraction fails due to internal parser inconsistencies.
+    /// - Metadata extraction (tags, fields) encounters invalid position
+    ///   mapping.
+    #[inline]
+    pub fn parse(
+        source: &'source str,
+        task_spec: &'cfg TaskConfigSpec,
+    ) -> Result<RawNote<'source>, NoteIngestError> {
+        let base = Parser::new_ext(source, Self::extension_options());
+        let offset_iter = base.into_offset_iter();
+        let ref_defs = RefDefs::new(
+            offset_iter
+                .reference_definitions()
+                .iter()
+                .map(|(label, link_def)| {
+                    (label.to_owned(), link_def.dest.to_string())
+                })
+                .collect(),
+        );
+
+        let mut parser = Self::new(source, task_spec, ref_defs);
+
+        let normalized = offset_iter.map(|(ev, r)| (normalize_breaks(ev), r));
+        for (event, range) in TextMergeWithOffset::new(normalized) {
+            parser.step(event, range)?;
+        }
+
+        parser.out.sections.sort_by_key(|s| u32::from(s.range.start()));
+        Ok(parser.out)
+    }
+
+    /// Returns the pulldown-cmark option set used for Obsidian-compatible
+    /// parsing.
+    #[inline]
+    #[must_use]
+    pub const fn extension_options() -> Options {
+        Options::ENABLE_TASKLISTS
+            .union(Options::ENABLE_WIKILINKS)
+            .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+            .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
+            .union(Options::ENABLE_STRIKETHROUGH)
+    }
+
     fn new(
         source: &'source str,
         task_spec: &'cfg TaskConfigSpec,
@@ -96,42 +147,6 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         }
     }
 
-    /// Parses markdown into a minimal AST and extracts raw note artifacts.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] if:
-    /// - Structural extraction fails due to internal parser inconsistencies.
-    /// - Metadata extraction (tags, fields) encounters invalid position
-    ///   mapping.
-    #[inline]
-    pub fn parse(
-        source: &'source str,
-        task_spec: &'cfg TaskConfigSpec,
-    ) -> Result<RawNote<'source>, NoteIngestError> {
-        let base = Parser::new_ext(source, Self::extension_options());
-        let offset_iter = base.into_offset_iter();
-        let ref_defs = RefDefs::new(
-            offset_iter
-                .reference_definitions()
-                .iter()
-                .map(|(label, link_def)| {
-                    (label.to_owned(), link_def.dest.to_string())
-                })
-                .collect(),
-        );
-
-        let mut parser = Self::new(source, task_spec, ref_defs);
-
-        let normalized = offset_iter.map(|(ev, r)| (normalize_breaks(ev), r));
-        for (event, range) in TextMergeWithOffset::new(normalized) {
-            parser.step(event, range)?;
-        }
-
-        parser.out.sections.sort_by_key(|s| u32::from(s.range.start()));
-        Ok(parser.out)
-    }
-
     fn step(
         &mut self,
         event: Event<'source>,
@@ -156,7 +171,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     // -----------------------------------------------------------------------
-    // Event handlers (Phase 3.3 – 3.5)
+    // Event handlers
     // -----------------------------------------------------------------------
 
     fn on_start(
@@ -485,19 +500,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             alias: self.pool.take(),
         });
     }
-
-    /// Returns the pulldown-cmark option set used for Obsidian-compatible
-    /// parsing.
-    #[inline]
-    #[must_use]
-    pub const fn extension_options() -> Options {
-        Options::ENABLE_TASKLISTS
-            .union(Options::ENABLE_WIKILINKS)
-            .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
-            .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
-            .union(Options::ENABLE_STRIKETHROUGH)
-    }
 }
+
+// ── String pool instrumentation
+// ───────────────────────────────────────────────
 
 /// Metrics collected during `StringPool` operations for benchmarking.
 #[derive(Default, Debug, Clone, Copy)]
@@ -536,7 +542,64 @@ pub fn reset_string_pool_metrics() {
         .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
 }
 
-// ---------------------------------------------------------------------------
+// ── String pool
+// ───────────────────────────────────────────────────────────────
+
+/// A pool of cleared `String` buffers reused across block frames.
+///
+/// Instead of allocating a fresh `String` for each block frame, the parser
+/// returns used strings to this pool via [`put`](Self::put) and retrieves them
+/// via [`take`](Self::take). This eliminates per-block heap allocation in the
+/// common case once the pool has been pre-warmed.
+pub(crate) struct StringPool {
+    pool: Vec<String>,
+}
+
+impl StringPool {
+    /// Creates a new pool with an initial backing capacity.
+    pub(crate) fn new() -> Self {
+        Self {
+            pool: Vec::with_capacity(16),
+        }
+    }
+
+    /// Removes and returns a cleared string from the pool.
+    ///
+    /// Returns a freshly allocated `String` with 128-byte capacity when the
+    /// pool is empty.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "metrics are user-controlled instrumentation"
+    )]
+    pub(crate) fn take(&mut self) -> String {
+        STRING_POOL_METRICS.with(|cell| {
+            let mut metrics = cell.borrow_mut();
+            metrics.takes += 1;
+            metrics.pool_size = self.pool.len();
+            metrics.pool_capacity = self.pool.capacity();
+        });
+        self.pool.pop().unwrap_or_else(|| String::with_capacity(128))
+    }
+
+    /// Clears `s` and returns it to the pool for later reuse.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "metrics are user-controlled instrumentation"
+    )]
+    pub(crate) fn put(&mut self, mut s: String) {
+        s.clear();
+        self.pool.push(s);
+        STRING_POOL_METRICS.with(|cell| {
+            let mut metrics = cell.borrow_mut();
+            metrics.puts += 1;
+            metrics.pool_size = self.pool.len();
+            metrics.pool_capacity = self.pool.capacity();
+        });
+    }
+}
+
+// ── PDA stack types
+// ───────────────────────────────────────────────────────────
 
 /// A block frame on the parser's pushdown stack.
 ///
@@ -573,9 +636,43 @@ impl Block<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Free functions — available to both parser.rs and extractor.rs
-// ---------------------------------------------------------------------------
+/// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
+///
+/// Determines which finalisation path in
+/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) or the `on_end`
+/// handler is taken when the matching `End` event is received.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BlockKind {
+    /// YAML or TOML frontmatter block.
+    Metadata(pulldown_cmark::MetadataBlockKind),
+    /// ATX or setext heading at the given level (1–6).
+    Heading(u8),
+    /// Bare paragraph block.
+    Paragraph,
+    /// A single list item with its enclosing list context.
+    ListItem {
+        list_kind: RawListKind,
+        list_depth: RawListDepth,
+        /// Source position of the parent item, if nested.
+        parent_pos: Option<SourceByteOffset>,
+    },
+    /// Ordered or unordered list container.
+    List,
+    /// Block quote container.
+    BlockQuote,
+    /// Fenced or indented code block.
+    CodeBlock,
+}
+
+/// List context for the new [`MarkdownParser`] stateful struct.
+///
+/// Tracks item start positions for the current open list, used to populate
+/// [`RawList::item_positions`] when the list is finalised.
+pub(crate) struct ListCtx {
+    pub item_positions: Vec<SourceByteOffset>,
+}
+
+// ── Shared pub(crate) free functions ─────────────────────────────────────────
 
 /// Maps `SoftBreak`/`HardBreak` to `Text` events before merging.
 pub(crate) fn normalize_breaks(event: Event<'_>) -> Event<'_> {
@@ -630,18 +727,6 @@ pub(crate) fn depth_raw_to_u32(depth: RawListDepth) -> u32 {
     }
 }
 
-/// Maps a pulldown-cmark [`HeadingLevel`] to its numeric depth (1–6).
-fn level_to_u8(level: pulldown_cmark::HeadingLevel) -> u8 {
-    match level {
-        pulldown_cmark::HeadingLevel::H1 => 1,
-        pulldown_cmark::HeadingLevel::H2 => 2,
-        pulldown_cmark::HeadingLevel::H3 => 3,
-        pulldown_cmark::HeadingLevel::H4 => 4,
-        pulldown_cmark::HeadingLevel::H5 => 5,
-        pulldown_cmark::HeadingLevel::H6 => 6,
-    }
-}
-
 /// Converts a byte offset to [`SourceByteOffset`], mapping overflow to a
 /// [`NoteIngestError`].
 pub(crate) fn to_offset(
@@ -687,7 +772,7 @@ pub(crate) fn block_ref_tail_range(
     Some(tail_start..end)
 }
 
-// ---------------------------------------------------------------------------
+// ── Private implementation details ───────────────────────────────────────────
 
 struct RefDefs {
     normalized: std::collections::HashMap<Box<str>, Box<str>>,
@@ -715,42 +800,6 @@ impl RefDefs {
     }
 }
 
-/// List context for the new [`MarkdownParser`] stateful struct.
-///
-/// Tracks item start positions for the current open list, used to populate
-/// [`RawList::item_positions`] when the list is finalised.
-pub(crate) struct ListCtx {
-    pub item_positions: Vec<SourceByteOffset>,
-}
-
-/// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
-///
-/// Determines which finalisation path in
-/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) or the `on_end`
-/// handler is taken when the matching `End` event is received.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BlockKind {
-    /// YAML or TOML frontmatter block.
-    Metadata(pulldown_cmark::MetadataBlockKind),
-    /// ATX or setext heading at the given level (1–6).
-    Heading(u8),
-    /// Bare paragraph block.
-    Paragraph,
-    /// A single list item with its enclosing list context.
-    ListItem {
-        list_kind: RawListKind,
-        list_depth: RawListDepth,
-        /// Source position of the parent item, if nested.
-        parent_pos: Option<SourceByteOffset>,
-    },
-    /// Ordered or unordered list container.
-    List,
-    /// Block quote container.
-    BlockQuote,
-    /// Fenced or indented code block.
-    CodeBlock,
-}
-
 struct LinkFrame<'source> {
     style: RawLinkStyle,
     is_embed: bool,
@@ -760,6 +809,7 @@ struct LinkFrame<'source> {
 }
 
 struct LinkTarget<'source>(Cow<'source, str>);
+
 impl<'source> LinkTarget<'source> {
     fn new(target: Cow<'source, str>) -> Self {
         Self(target)
@@ -796,58 +846,6 @@ impl<'source> LinkTarget<'source> {
     }
 }
 
-/// A pool of cleared `String` buffers reused across block frames.
-///
-/// Instead of allocating a fresh `String` for each block frame, the parser
-/// returns used strings to this pool via [`put`](Self::put) and retrieves them
-/// via [`take`](Self::take). This eliminates per-block heap allocation in the
-/// common case once the pool has been pre-warmed.
-pub(crate) struct StringPool {
-    pool: Vec<String>,
-}
-impl StringPool {
-    /// Creates a new pool with an initial backing capacity.
-    pub(crate) fn new() -> Self {
-        Self {
-            pool: Vec::with_capacity(16),
-        }
-    }
-
-    /// Removes and returns a cleared string from the pool.
-    ///
-    /// Returns a freshly allocated `String` with 128-byte capacity when the
-    /// pool is empty.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "metrics are user-controlled instrumentation"
-    )]
-    pub(crate) fn take(&mut self) -> String {
-        STRING_POOL_METRICS.with(|cell| {
-            let mut metrics = cell.borrow_mut();
-            metrics.takes += 1;
-            metrics.pool_size = self.pool.len();
-            metrics.pool_capacity = self.pool.capacity();
-        });
-        self.pool.pop().unwrap_or_else(|| String::with_capacity(128))
-    }
-
-    /// Clears `s` and returns it to the pool for later reuse.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "metrics are user-controlled instrumentation"
-    )]
-    pub(crate) fn put(&mut self, mut s: String) {
-        s.clear();
-        self.pool.push(s);
-        STRING_POOL_METRICS.with(|cell| {
-            let mut metrics = cell.borrow_mut();
-            metrics.puts += 1;
-            metrics.pool_size = self.pool.len();
-            metrics.pool_capacity = self.pool.capacity();
-        });
-    }
-}
-
 /// Converts a pulldown-cmark metadata block kind to a [`RawFrontmatterFormat`].
 impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
     #[inline]
@@ -877,6 +875,17 @@ impl From<pulldown_cmark::LinkType> for RawLinkStyle {
             | pulldown_cmark::LinkType::Autolink
             | pulldown_cmark::LinkType::Email => Self::Markdown,
         }
+    }
+}
+
+fn level_to_u8(level: pulldown_cmark::HeadingLevel) -> u8 {
+    match level {
+        pulldown_cmark::HeadingLevel::H1 => 1,
+        pulldown_cmark::HeadingLevel::H2 => 2,
+        pulldown_cmark::HeadingLevel::H3 => 3,
+        pulldown_cmark::HeadingLevel::H4 => 4,
+        pulldown_cmark::HeadingLevel::H5 => 5,
+        pulldown_cmark::HeadingLevel::H6 => 6,
     }
 }
 
