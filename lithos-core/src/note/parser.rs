@@ -43,7 +43,7 @@ pub struct MarkdownParser<'source, 'cfg> {
     // PDA state
     stack: Vec<Block<'source>>,
     depth: u32,
-    link: Option<PendingLink<'source>>,
+    link: Option<(RawLink<'source>, bool)>,
     list_kinds: Vec<RawListKind>,
     list_ctxs: Vec<ListCtx>,
     open_items: Vec<SourceByteOffset>,
@@ -389,10 +389,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 block.scannable.push(range);
             }
         }
-        if let Some(pending) = self.link.as_mut()
-            && pending.collect_alias
-        {
-            pending.alias_buf.push_str(text.as_ref());
+        if let Some((ref mut raw, _)) = self.link {
+            raw.text.title.push_str(text.as_ref());
         }
     }
 
@@ -401,10 +399,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         if let Some(block) = self.stack.last_mut() {
             block.text.push_str(text.as_ref());
         }
-        if let Some(pending) = self.link.as_mut()
-            && pending.collect_alias
-        {
-            pending.alias_buf.push_str(text.as_ref());
+        if let Some((ref mut raw, _)) = self.link {
+            raw.text.title.push_str(text.as_ref());
         }
     }
 
@@ -415,10 +411,9 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     fn finalize_link(&mut self) {
-        if let Some(mut pending) = self.link.take() {
-            pending.raw.alias = trim_to_opt(&pending.alias_buf).map(Into::into);
-            self.out.links.push(pending.raw);
-            self.pool.put(pending.alias_buf);
+        if let Some((mut raw, has_alias)) = self.link.take() {
+            raw.text = raw.text.split(has_alias);
+            self.out.links.push(raw);
         }
     }
 
@@ -485,18 +480,25 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         is_embed: bool,
         start: SourceByteOffset,
     ) {
-        let collect_alias =
-            !matches!(link_type, pulldown_cmark::LinkType::WikiLink {
-                has_pothole: false
-            });
+        let has_alias = match link_type {
+            pulldown_cmark::LinkType::WikiLink {
+                has_pothole,
+            } => has_pothole,
+            pulldown_cmark::LinkType::Inline
+            | pulldown_cmark::LinkType::Reference
+            | pulldown_cmark::LinkType::ReferenceUnknown
+            | pulldown_cmark::LinkType::Collapsed
+            | pulldown_cmark::LinkType::CollapsedUnknown
+            | pulldown_cmark::LinkType::Shortcut
+            | pulldown_cmark::LinkType::ShortcutUnknown
+            | pulldown_cmark::LinkType::Autolink
+            | pulldown_cmark::LinkType::Email => true,
+        };
         let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
-        self.link = Some(PendingLink {
-            raw: RawLink::new(style, is_embed, target, None, start),
-            alias_buf: self.pool.take(),
-            collect_alias,
-        });
+        self.link =
+            Some((RawLink::new(style, is_embed, target, start), has_alias));
     }
 }
 
@@ -792,19 +794,6 @@ impl LinkRefResolver {
     }
 }
 
-/// Transient link state accumulated during a link open/close event pair.
-///
-/// Holds the partially-constructed [`RawLink`] and the alias text buffer
-/// (borrowed from [`StringPool`]) until [`MarkdownParser::finalize_link`]
-/// writes the alias and pushes the link to the output.
-struct PendingLink<'source> {
-    raw: RawLink<'source>,
-    alias_buf: String,
-    /// `false` for wiki-links without a `|` separator (`has_pothole = false`),
-    /// where the display text mirrors the target rather than being an alias.
-    collect_alias: bool,
-}
-
 /// Converts a pulldown-cmark metadata block kind to a [`RawFrontmatterFormat`].
 impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
     #[inline]
@@ -812,27 +801,6 @@ impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
         match kind {
             pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
             pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
-        }
-    }
-}
-
-/// Converts a pulldown-cmark link type to a [`RawLinkStyle`].
-impl From<pulldown_cmark::LinkType> for RawLinkStyle {
-    #[inline]
-    fn from(kind: pulldown_cmark::LinkType) -> Self {
-        match kind {
-            pulldown_cmark::LinkType::WikiLink {
-                ..
-            } => Self::Wiki,
-            pulldown_cmark::LinkType::Inline
-            | pulldown_cmark::LinkType::Reference
-            | pulldown_cmark::LinkType::ReferenceUnknown
-            | pulldown_cmark::LinkType::Collapsed
-            | pulldown_cmark::LinkType::CollapsedUnknown
-            | pulldown_cmark::LinkType::Shortcut
-            | pulldown_cmark::LinkType::ShortcutUnknown
-            | pulldown_cmark::LinkType::Autolink
-            | pulldown_cmark::LinkType::Email => Self::Markdown,
         }
     }
 }
@@ -848,13 +816,17 @@ fn level_to_u8(level: pulldown_cmark::HeadingLevel) -> u8 {
     }
 }
 
-fn trim_to_opt(s: &str) -> Option<String> {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_owned())
+fn resolve_reference_target<'source>(
+    link_type: pulldown_cmark::LinkType,
+    dest_url: CowStr<'source>,
+    ref_defs: &mut LinkRefResolver,
+) -> Cow<'source, str> {
+    if is_reference_link_type(link_type)
+        && let Some(resolved) = ref_defs.resolve(dest_url.as_ref())
+    {
+        return Cow::Owned(String::from(resolved));
     }
+    Cow::from(dest_url)
 }
 
 #[inline]
@@ -868,19 +840,6 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
             | pulldown_cmark::LinkType::Shortcut
             | pulldown_cmark::LinkType::ShortcutUnknown
     )
-}
-
-fn resolve_reference_target<'source>(
-    link_type: pulldown_cmark::LinkType,
-    dest_url: CowStr<'source>,
-    ref_defs: &mut LinkRefResolver,
-) -> Cow<'source, str> {
-    if is_reference_link_type(link_type)
-        && let Some(resolved) = ref_defs.resolve(dest_url.as_ref())
-    {
-        return Cow::Owned(String::from(resolved));
-    }
-    Cow::from(dest_url)
 }
 
 #[cfg(test)]

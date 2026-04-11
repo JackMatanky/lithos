@@ -1,14 +1,8 @@
 use std::borrow::Cow;
 
-use crate::note::position::SourceByteOffset;
+use pulldown_cmark::LinkType;
 
-/// Raw link style before validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RawLinkStyle {
-    Wiki,
-    Markdown,
-}
+use crate::note::position::SourceByteOffset;
 
 /// Raw link extracted from markdown.
 ///
@@ -21,26 +15,25 @@ pub struct RawLink<'source> {
     pub style: RawLinkStyle,
     pub is_embed: bool,
     pub target: Cow<'source, str>,
-    pub alias: Option<Cow<'source, str>>,
+    pub text: RawLinkText,
     pub position: SourceByteOffset,
 }
 
 impl<'source> RawLink<'source> {
-    /// Creates a new raw link.
+    /// Creates a new raw link with empty display text.
     #[inline]
     #[must_use]
     pub const fn new(
         style: RawLinkStyle,
         is_embed: bool,
         target: Cow<'source, str>,
-        alias: Option<Cow<'source, str>>,
         position: SourceByteOffset,
     ) -> Self {
         Self {
             style,
             is_embed,
             target,
-            alias,
+            text: RawLinkText::new(),
             position,
         }
     }
@@ -77,9 +70,51 @@ impl RawLink<'_> {
             style: self.style,
             is_embed: self.is_embed,
             target: Cow::Owned(self.target.into_owned()),
-            alias: self.alias.map(|a| Cow::Owned(a.into_owned())),
+            text: self.text,
             position: self.position,
         }
+    }
+}
+
+/// The display text of a link, with lazy alias derivation.
+///
+/// `title` holds the raw accumulated text from parser events. `alias` is only
+/// populated after [`RawLinkText::split`] is called — it is `Some` when the
+/// link syntax included an explicit alias separator (`has_alias = true`), and
+/// `None` when the display text just mirrors the target.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawLinkText {
+    /// Raw accumulated display text.
+    pub title: String,
+    /// Alias text, present only when an explicit separator was in the source.
+    pub alias: Option<String>,
+}
+
+impl RawLinkText {
+    pub(crate) const fn new() -> Self {
+        Self {
+            title: String::new(),
+            alias: None,
+        }
+    }
+
+    /// Derives the alias from the accumulated title.
+    ///
+    /// If `has_alias` is `true`, `alias` is set to the trimmed `title` (or
+    /// `None` if the title is blank after trimming). If `has_alias` is `false`,
+    /// `alias` remains `None` — the display text mirrors the target and is not
+    /// a real alias.
+    #[must_use]
+    pub(crate) fn split(mut self, has_alias: bool) -> Self {
+        if has_alias {
+            let trimmed = self.title.trim();
+            self.alias = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            };
+        }
+        self
     }
 }
 
@@ -126,6 +161,35 @@ impl<'source> RawLinkTarget<'source> {
                     (Cow::Owned(text), None)
                 }
             }
+        }
+    }
+}
+
+/// Raw link style before validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawLinkStyle {
+    Wiki,
+    Markdown,
+}
+
+/// Converts a pulldown-cmark [`LinkType`] to a [`RawLinkStyle`].
+impl From<LinkType> for RawLinkStyle {
+    #[inline]
+    fn from(kind: LinkType) -> Self {
+        match kind {
+            LinkType::WikiLink {
+                ..
+            } => Self::Wiki,
+            LinkType::Inline
+            | LinkType::Reference
+            | LinkType::ReferenceUnknown
+            | LinkType::Collapsed
+            | LinkType::CollapsedUnknown
+            | LinkType::Shortcut
+            | LinkType::ShortcutUnknown
+            | LinkType::Autolink
+            | LinkType::Email => Self::Markdown,
         }
     }
 }
@@ -177,5 +241,36 @@ mod tests {
 
         assert_eq!(path.as_ref(), "https://example.com/page#section");
         assert!(anchor.is_none());
+    }
+
+    #[test]
+    fn text_split_with_alias() {
+        let text = RawLinkText {
+            title: String::from("  My Alias  "),
+            alias: None,
+        };
+        let result = text.split(true);
+        assert_eq!(result.alias.as_deref(), Some("My Alias"));
+        assert_eq!(result.title, "  My Alias  ");
+    }
+
+    #[test]
+    fn text_split_without_alias() {
+        let text = RawLinkText {
+            title: String::from("Target Note"),
+            alias: None,
+        };
+        let result = text.split(false);
+        assert!(result.alias.is_none());
+    }
+
+    #[test]
+    fn text_split_blank_alias_returns_none() {
+        let text = RawLinkText {
+            title: String::from("   "),
+            alias: None,
+        };
+        let result = text.split(true);
+        assert!(result.alias.is_none());
     }
 }

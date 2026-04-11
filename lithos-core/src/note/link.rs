@@ -306,7 +306,7 @@ impl TryFrom<RawLink<'_>> for Link {
                 raw: target.into_owned().into_boxed_str(),
             }
         };
-        let alias = raw.alias.as_deref();
+        let alias = raw.text.alias.as_deref();
 
         match (raw.is_embed, raw.style) {
             (true, RawLinkStyle::Wiki) => Ok(Link::try_new_embed(
