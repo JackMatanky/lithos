@@ -388,8 +388,6 @@ type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use super::*;
@@ -442,10 +440,10 @@ description = "Test schema"
         let id = SchemaId::new();
         let node = InheritanceNode::new_root(id);
 
-        let mut nodes = HashMap::new();
-        nodes.insert(id, node);
-
-        let graph = InheritanceGraph::from_parts(nodes, vec![id], vec![id]);
+        let mut raw_graph: crate::schema::graph::Graph<InheritanceNode, ()> =
+            crate::schema::graph::Graph::new();
+        raw_graph.add_node(id, node);
+        let graph = InheritanceGraph::try_from(raw_graph).unwrap();
 
         // Save graph to DB
         repo.save_topological_graph(&graph).unwrap();

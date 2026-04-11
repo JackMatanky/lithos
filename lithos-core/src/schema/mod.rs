@@ -53,6 +53,8 @@ pub mod schema_processor;
 pub mod graph;
 /// Core inheritance graph types.
 pub mod inheritance;
+/// Topological sort utilities.
+pub mod topo_sort;
 
 /// Schema index types for efficient lookups.
 pub(crate) mod index;

@@ -687,6 +687,24 @@ pub enum PropertyBankError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaInheritanceError {
+    /// Returned when a schema node is missing from the graph.
+    #[error("missing schema node for id {id}")]
+    MissingNode {
+        /// Schema identifier.
+        id: crate::schema::aggregate::SchemaId,
+    },
+
+    /// Returned when a cycle is detected in the inheritance graph.
+    #[error("cycle detected in schema inheritance graph")]
+    CycleDetected {
+        /// Nodes involved in the cycle.
+        nodes: Vec<crate::schema::aggregate::SchemaId>,
+    },
+
+    /// Returned when the inheritance graph is not directed.
+    #[error("inheritance graph is not directed")]
+    NotDirected,
+
     /// Returned when a declared parent schema is missing.
     #[error("parent not found: {name}")]
     ParentNotFound {
@@ -744,6 +762,10 @@ pub enum SchemaResolutionError {
         /// Schemas involved in the cycle.
         schemas: Vec<crate::schema::aggregate::SchemaName>,
     },
+
+    /// Returned when the graph is not directed.
+    #[error("graph is not directed")]
+    NotDirected,
 }
 
 impl From<SchemaNameError> for SchemaError {
