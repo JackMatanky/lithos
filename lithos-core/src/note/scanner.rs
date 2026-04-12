@@ -19,79 +19,7 @@ use crate::note::{
     },
 };
 
-// ── Primary public API types
-// ──────────────────────────────────────────────────
-
-/// A zero-copy artifact extracted from a text block.
-///
-/// This enum represents the various types of metadata that can be identified
-/// within a markdown block. All variants carry a lifetime linked to the
-/// original source string.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ScannedArtifact<'source> {
-    /// A hashtag (e.g., `#work/project`).
-    ///
-    /// Extracted when a `#` is encountered at a word boundary, followed by
-    /// valid tag characters.
-    Tag(RawTag<'source>),
-    /// An inline field token (e.g., `[key:: value]` or `📅 2024-03-19`).
-    ///
-    /// Supports both the standard Obsidian `key:: value` syntax (bracketed or
-    /// bare at line start) and the colon-less emoji field syntax.
-    InlineField(RawInlineFieldToken<'source>),
-    /// A block reference (e.g., `^block-id`).
-    ///
-    /// Extracted when a `^` is found at the very end of a block (followed only
-    /// by optional whitespace).
-    BlockRef(RawBlockRef<'source>),
-    /// A task marker (e.g., the `x` in `- [x]`).
-    ///
-    /// Extracted from list items identifying the precise character used within
-    /// the checkbox.
-    TaskMarker(RawTaskStatusSymbol),
-}
-
-impl ScannedArtifact<'_> {
-    /// Returns the absolute source position of the artifact.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &self are clearer here"
-    )]
-    pub const fn position(&self) -> SourceByteOffset {
-        match self {
-            Self::Tag(tag) => tag.range.start(),
-            Self::InlineField(field) => field.range.start(),
-            Self::BlockRef(block_ref) => block_ref.position,
-            Self::TaskMarker(symbol) => symbol.position,
-        }
-    }
-
-    /// Returns `true` if this artifact is a task marker.
-    #[inline]
-    #[must_use]
-    pub const fn is_marker(&self) -> bool {
-        matches!(self, Self::TaskMarker(_))
-    }
-
-    /// Converts the artifact to an owned variant.
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> ScannedArtifact<'static> {
-        match self {
-            Self::Tag(tag) => ScannedArtifact::Tag(tag.into_owned()),
-            Self::InlineField(field) => {
-                ScannedArtifact::InlineField(field.into_owned())
-            }
-            Self::BlockRef(block_ref) => {
-                ScannedArtifact::BlockRef(block_ref.into_owned())
-            }
-            Self::TaskMarker(symbol) => ScannedArtifact::TaskMarker(symbol),
-        }
-    }
-}
+// ── Primary public API types ─────────────────────────────────────────────────
 
 /// A cursor-based scanner for extracting metadata artifacts from markdown.
 ///
@@ -146,6 +74,36 @@ impl NoteScanner {
         Ok(artifacts)
     }
 
+    /// Scans multiple disjoint ranges within the same source text.
+    ///
+    /// This preserves cursor state across ranges to maintain word-boundary
+    /// semantics and line-start detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    #[inline]
+    pub fn scan_ranges<'source>(
+        &self,
+        text: &'source str,
+        ranges: &[std::ops::Range<usize>],
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
+        for range in ranges {
+            if range.is_empty() {
+                continue;
+            }
+            let Some(segment) = text.get(range.clone()) else {
+                continue;
+            };
+            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
+            cursor.reset(segment, base_offset);
+            self.scan_cursor(&mut cursor, artifacts)?;
+        }
+        Ok(())
+    }
+
     /// Continues scanning from a provided [`Cursor`] state.
     ///
     /// This method allows the scanner to process disjoint segments of text
@@ -177,36 +135,6 @@ impl NoteScanner {
         Ok(())
     }
 
-    /// Scans multiple disjoint ranges within the same source text.
-    ///
-    /// This preserves cursor state across ranges to maintain word-boundary
-    /// semantics and line-start detection.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
-    #[inline]
-    pub fn scan_ranges<'source>(
-        &self,
-        text: &'source str,
-        ranges: &[std::ops::Range<usize>],
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<(), NoteError> {
-        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
-        for range in ranges {
-            if range.is_empty() {
-                continue;
-            }
-            let Some(segment) = text.get(range.clone()) else {
-                continue;
-            };
-            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
-            cursor.reset(segment, base_offset);
-            self.scan_cursor(&mut cursor, artifacts)?;
-        }
-        Ok(())
-    }
-
     /// Scans ranges and returns raw tokens grouped by type.
     ///
     /// # Errors
@@ -221,7 +149,10 @@ impl NoteScanner {
     ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
         let mut artifacts = Vec::with_capacity(8);
         self.scan_ranges(text, ranges, &mut artifacts)?;
-        Ok(split_artifacts(artifacts, include_task_marker))
+        Ok(ScannedRawArtifacts::from_scanned_artifacts(
+            artifacts,
+            include_task_marker,
+        ))
     }
 
     /// Scans the first line of a block for a task status symbol.
@@ -699,8 +630,78 @@ impl<'source> Cursor<'source> {
     }
 }
 
-// ── Internal output type
-// ──────────────────────────────────────────────────────
+/// A zero-copy artifact extracted from a text block.
+///
+/// This enum represents the various types of metadata that can be identified
+/// within a markdown block. All variants carry a lifetime linked to the
+/// original source string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ScannedArtifact<'source> {
+    /// A hashtag (e.g., `#work/project`).
+    ///
+    /// Extracted when a `#` is encountered at a word boundary, followed by
+    /// valid tag characters.
+    Tag(RawTag<'source>),
+    /// An inline field token (e.g., `[key:: value]` or `📅 2024-03-19`).
+    ///
+    /// Supports both the standard Obsidian `key:: value` syntax (bracketed or
+    /// bare at line start) and the colon-less emoji field syntax.
+    InlineField(RawInlineFieldToken<'source>),
+    /// A block reference (e.g., `^block-id`).
+    ///
+    /// Extracted when a `^` is found at the very end of a block (followed only
+    /// by optional whitespace).
+    BlockRef(RawBlockRef<'source>),
+    /// A task marker (e.g., the `x` in `- [x]`).
+    ///
+    /// Extracted from list items identifying the precise character used within
+    /// the checkbox.
+    TaskMarker(RawTaskStatusSymbol),
+}
+
+impl ScannedArtifact<'_> {
+    /// Returns the absolute source position of the artifact.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self are clearer here"
+    )]
+    pub const fn position(&self) -> SourceByteOffset {
+        match self {
+            Self::Tag(tag) => tag.range.start(),
+            Self::InlineField(field) => field.range.start(),
+            Self::BlockRef(block_ref) => block_ref.position,
+            Self::TaskMarker(symbol) => symbol.position,
+        }
+    }
+
+    /// Returns `true` if this artifact is a task marker.
+    #[inline]
+    #[must_use]
+    pub const fn is_marker(&self) -> bool {
+        matches!(self, Self::TaskMarker(_))
+    }
+
+    /// Converts the artifact to an owned variant.
+    #[inline]
+    #[must_use]
+    pub fn into_owned(self) -> ScannedArtifact<'static> {
+        match self {
+            Self::Tag(tag) => ScannedArtifact::Tag(tag.into_owned()),
+            Self::InlineField(field) => {
+                ScannedArtifact::InlineField(field.into_owned())
+            }
+            Self::BlockRef(block_ref) => {
+                ScannedArtifact::BlockRef(block_ref.into_owned())
+            }
+            Self::TaskMarker(symbol) => ScannedArtifact::TaskMarker(symbol),
+        }
+    }
+}
+
+// ── Internal output type ─────────────────────────────────────────────────────
 
 /// Raw tokens extracted from a single scan pass, grouped by artifact type.
 ///
@@ -715,8 +716,40 @@ pub(crate) struct ScannedRawArtifacts<'source> {
     pub task_marker: Option<RawTaskStatusSymbol>,
 }
 
-// ── Private implementation details
-// ────────────────────────────────────────────
+/// Constructor for `ScannedRawArtifacts` from scanned artifacts.
+impl<'source> ScannedRawArtifacts<'source> {
+    pub(crate) fn from_scanned_artifacts(
+        artifacts: Vec<ScannedArtifact<'source>>,
+        include_task_marker: bool,
+    ) -> Self {
+        let capacity = artifacts.len();
+        let mut raw = ScannedRawArtifacts {
+            tags: Vec::with_capacity(capacity),
+            inline_fields: Vec::with_capacity(capacity),
+            block_refs: Vec::with_capacity(capacity),
+            task_marker: None,
+        };
+        for artifact in artifacts {
+            match artifact {
+                ScannedArtifact::Tag(tag) => raw.tags.push(tag),
+                ScannedArtifact::InlineField(field) => {
+                    raw.inline_fields.push(field);
+                }
+                ScannedArtifact::BlockRef(block_ref) => {
+                    raw.block_refs.push(block_ref);
+                }
+                ScannedArtifact::TaskMarker(symbol) => {
+                    if include_task_marker {
+                        raw.task_marker = Some(symbol);
+                    }
+                }
+            }
+        }
+        raw
+    }
+}
+
+// ── Private implementation details ───────────────────────────────────────────
 
 /// The positional state of the scanner within a block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -728,14 +761,6 @@ enum ScanMode {
     InBody,
 }
 
-trait LineStartRule {
-    fn try_scan<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError>;
-}
-
 trait BodyRule {
     fn try_scan<'source>(
         &self,
@@ -743,52 +768,6 @@ trait BodyRule {
         cursor: &mut Cursor<'source>,
         artifacts: &mut Vec<ScannedArtifact<'source>>,
     ) -> Result<bool, NoteError>;
-}
-
-struct TaskRule;
-
-impl LineStartRule for TaskRule {
-    fn try_scan<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if let Some(prefix_len) = NoteScanner::match_list_prefix(cursor) {
-            cursor.advance(prefix_len)?;
-            cursor.skip_whitespace_on_line()?;
-
-            if cursor.rest.starts_with('[')
-                && let Some(marker_char) = cursor.rest.chars().nth(1)
-                && cursor.rest.get(2..3) == Some("]")
-            {
-                let marker_pos = cursor.offset.add_offset(1)?;
-                let symbol = RawTaskStatusSymbol::new(
-                    RawTaskMarker::from_char(marker_char),
-                    marker_pos,
-                );
-                artifacts.push(ScannedArtifact::TaskMarker(symbol));
-                cursor.advance(3)?;
-            }
-            return Ok(true);
-        }
-        Ok(false)
-    }
-}
-
-struct BareFieldRule;
-
-impl LineStartRule for BareFieldRule {
-    fn try_scan<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if let Some(field) = NoteScanner::scan_bare_field(cursor)? {
-            artifacts.push(field);
-            return Ok(true);
-        }
-        Ok(false)
-    }
 }
 
 struct TagRule;
@@ -878,34 +857,58 @@ impl BodyRule for EmojiFieldRule {
     }
 }
 
-fn split_artifacts(
-    artifacts: Vec<ScannedArtifact<'_>>,
-    include_task_marker: bool,
-) -> ScannedRawArtifacts<'_> {
-    let capacity = artifacts.len();
-    let mut raw = ScannedRawArtifacts {
-        tags: Vec::with_capacity(capacity),
-        inline_fields: Vec::with_capacity(capacity),
-        block_refs: Vec::with_capacity(capacity),
-        task_marker: None,
-    };
-    for artifact in artifacts {
-        match artifact {
-            ScannedArtifact::Tag(tag) => raw.tags.push(tag),
-            ScannedArtifact::InlineField(field) => {
-                raw.inline_fields.push(field);
+trait LineStartRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError>;
+}
+
+struct TaskRule;
+
+impl LineStartRule for TaskRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if let Some(prefix_len) = NoteScanner::match_list_prefix(cursor) {
+            cursor.advance(prefix_len)?;
+            cursor.skip_whitespace_on_line()?;
+
+            if cursor.rest.starts_with('[')
+                && let Some(marker_char) = cursor.rest.chars().nth(1)
+                && cursor.rest.get(2..3) == Some("]")
+            {
+                let marker_pos = cursor.offset.add_offset(1)?;
+                let symbol = RawTaskStatusSymbol::new(
+                    RawTaskMarker::from_char(marker_char),
+                    marker_pos,
+                );
+                artifacts.push(ScannedArtifact::TaskMarker(symbol));
+                cursor.advance(3)?;
             }
-            ScannedArtifact::BlockRef(block_ref) => {
-                raw.block_refs.push(block_ref);
-            }
-            ScannedArtifact::TaskMarker(symbol) => {
-                if include_task_marker {
-                    raw.task_marker = Some(symbol);
-                }
-            }
+            return Ok(true);
         }
+        Ok(false)
     }
-    raw
+}
+
+struct BareFieldRule;
+
+impl LineStartRule for BareFieldRule {
+    fn try_scan<'source>(
+        &self,
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<bool, NoteError> {
+        if let Some(field) = NoteScanner::scan_bare_field(cursor)? {
+            artifacts.push(field);
+            return Ok(true);
+        }
+        Ok(false)
+    }
 }
 
 fn scan_task_marker_at_line_start(
