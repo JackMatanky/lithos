@@ -234,13 +234,13 @@ impl SourceByteRange {
         line_starts: &[usize],
     ) -> Result<SourceLocationRange, NoteError> {
         let start = SourceLocation::try_from_byte_offset_with_index(
-            self.start,
             source,
+            self.start,
             line_starts,
         )?;
         let end = SourceLocation::try_from_byte_offset_with_index(
-            self.end,
             source,
+            self.end,
             line_starts,
         )?;
         Ok(SourceLocationRange::new_unchecked(start, end))
@@ -322,10 +322,10 @@ impl SourceLocation {
         reason = "Line/column counters are bounded by source length"
     )]
     pub fn try_from_byte_offset(
-        offset: SourceByteOffset,
         source: &str,
+        offset: SourceByteOffset,
     ) -> Result<Self, NoteError> {
-        let raw_offset = Self::validate_offset(offset, source)?;
+        let raw_offset = Self::validate_offset(source, offset)?;
 
         let mut line = 1u32;
         let mut column = 1u32;
@@ -359,11 +359,11 @@ impl SourceLocation {
     /// length or is not on a UTF-8 character boundary.
     #[inline]
     pub fn try_from_byte_offset_with_index(
-        offset: SourceByteOffset,
         source: &str,
+        offset: SourceByteOffset,
         line_starts: &[usize],
     ) -> Result<Self, NoteError> {
-        let raw_offset = Self::validate_offset(offset, source)?;
+        let raw_offset = Self::validate_offset(source, offset)?;
 
         let line_index = line_starts
             .partition_point(|&start| start <= raw_offset)
@@ -400,8 +400,8 @@ impl SourceLocation {
 
     #[inline]
     fn validate_offset(
-        offset: SourceByteOffset,
         source: &str,
+        offset: SourceByteOffset,
     ) -> Result<usize, NoteError> {
         let raw_offset: usize = offset.into();
 
@@ -600,7 +600,7 @@ mod tests {
     fn line_column_starts_at_one() -> Result<(), NoteError> {
         let source = "abc";
         let offset = SourceByteOffset::new(0);
-        let location = SourceLocation::try_from_byte_offset(offset, source)?;
+        let location = SourceLocation::try_from_byte_offset(source, offset)?;
         assert_eq!(location.line().value(), 1);
         assert_eq!(location.column().value(), 1);
         Ok(())
@@ -619,7 +619,7 @@ mod tests {
                 source_len: SourceByteOffset::new(u32::MAX),
             }
         })?;
-        let location = SourceLocation::try_from_byte_offset(offset, source)?;
+        let location = SourceLocation::try_from_byte_offset(source, offset)?;
         assert_eq!(location.line().value(), 1);
         assert_eq!(location.column().value(), 2);
 
@@ -629,7 +629,7 @@ mod tests {
                 source_len: SourceByteOffset::new(u32::MAX),
             })?;
         let location_after_newline =
-            SourceLocation::try_from_byte_offset(newline_offset, source)?;
+            SourceLocation::try_from_byte_offset(source, newline_offset)?;
         assert_eq!(location_after_newline.line().value(), 2);
         assert_eq!(location_after_newline.column().value(), 1);
         Ok(())
@@ -639,7 +639,7 @@ mod tests {
     fn line_column_rejects_out_of_bounds() {
         let source = "abc";
         let offset = SourceByteOffset::new(10);
-        let result = SourceLocation::try_from_byte_offset(offset, source);
+        let result = SourceLocation::try_from_byte_offset(source, offset);
         assert!(matches!(result, Err(NoteError::Structure(_))));
     }
 
@@ -647,7 +647,7 @@ mod tests {
     fn line_column_rejects_non_boundary() {
         let source = "a\u{00E9}";
         let offset = SourceByteOffset::new(2);
-        let result = SourceLocation::try_from_byte_offset(offset, source);
+        let result = SourceLocation::try_from_byte_offset(source, offset);
         assert!(matches!(result, Err(NoteError::Structure(_))));
     }
 
@@ -665,8 +665,8 @@ mod tests {
                 source_len: SourceByteOffset::new(u32::MAX),
             })?;
         let location = SourceLocation::try_from_byte_offset_with_index(
-            offset,
             source,
+            offset,
             index.as_slice(),
         )?;
         assert_eq!(location.line().value(), 2);
@@ -690,8 +690,8 @@ mod tests {
                 }
             })?;
         let location = SourceLocation::try_from_byte_offset_with_index(
-            offset,
             source,
+            offset,
             index.as_slice(),
         )?;
         assert_eq!(location.line().value(), 2);
