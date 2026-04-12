@@ -148,6 +148,13 @@ impl From<crate::fs::error::ParseError> for NoteIngestError {
     }
 }
 
+impl From<StructureError> for NoteIngestError {
+    #[inline]
+    fn from(err: StructureError) -> Self {
+        NoteIngestError::Domain(err.into())
+    }
+}
+
 /// Orchestration error returned by the Note processor pipeline.
 ///
 /// Distinguishes between failures in the ingestion, domain validation,

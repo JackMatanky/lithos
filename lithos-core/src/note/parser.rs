@@ -211,7 +211,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     self.open_items
                         .get(depth_index.saturating_sub(1))
                         .copied()
-                        .map(to_offset)
+                        .map(SourceByteOffset::try_from_usize)
                         .transpose()?
                 };
                 self.record_open_item(start, depth_index);
@@ -315,7 +315,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     self.stack.pool_mut(),
                 )?;
                 if let Some(ctx) = self.list_ctxs.last_mut() {
-                    ctx.item_positions.push(to_offset(item_start)?);
+                    ctx.item_positions
+                        .push(SourceByteOffset::try_from_usize(item_start)?);
                 }
             }
             TagEnd::List(_) => {
@@ -456,8 +457,12 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
-        self.link =
-            Some(RawLink::new(style, is_embed, target, to_offset(start)?));
+        self.link = Some(RawLink::new(
+            style,
+            is_embed,
+            target,
+            SourceByteOffset::try_from_usize(start)?,
+        ));
         Ok(())
     }
 }
@@ -648,22 +653,6 @@ pub(crate) fn normalize_breaks(event: Event<'_>) -> Event<'_> {
         | Event::Rule
         | Event::TaskListMarker(_)) => other,
     }
-}
-
-/// Converts a byte offset to [`SourceByteOffset`], mapping overflow to a
-/// [`NoteIngestError`].
-pub(crate) fn to_offset(
-    byte: usize,
-) -> Result<SourceByteOffset, NoteIngestError> {
-    SourceByteOffset::try_from(byte).map_err(|_err| {
-        NoteIngestError::Domain(
-            crate::note::error::StructureError::OutOfBounds {
-                offset: SourceByteOffset::new(u32::MAX),
-                source_len: SourceByteOffset::new(u32::MAX),
-            }
-            .into(),
-        )
-    })
 }
 
 // ── Private implementation details ───────────────────────────────────────────

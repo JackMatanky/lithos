@@ -11,7 +11,7 @@
 use std::borrow::Cow;
 
 use super::{
-    parser::{Block, BlockKind, StringPool, to_offset},
+    parser::{Block, BlockKind, StringPool},
     raw::inline_field::field_token_to_raw,
 };
 use crate::{
@@ -92,7 +92,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             level,
             Cow::Owned(block.text.trim().to_owned()),
             block_range,
-            to_offset(block.start)?,
+            SourceByteOffset::try_from_usize(block.start)?,
         ));
         out.sections.push(RawSection::new(
             RawSectionKind::Heading,

@@ -75,6 +75,20 @@ impl SourceByteOffset {
             .into()
         })
     }
+
+    /// Tries to create from a `usize`, returning a structured error on
+    /// overflow.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StructureError::OutOfBounds`] if `value` exceeds `u32::MAX`.
+    #[inline]
+    pub fn try_from_usize(value: usize) -> Result<Self, StructureError> {
+        Self::try_from(value).map_err(|_err| StructureError::OutOfBounds {
+            offset: Self::new(u32::MAX),
+            source_len: Self::new(u32::MAX),
+        })
+    }
 }
 
 impl From<u32> for SourceByteOffset {
