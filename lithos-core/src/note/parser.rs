@@ -44,7 +44,7 @@ pub struct MarkdownParser<'source, 'cfg> {
     link: Option<RawLink<'source>>,
     list_kinds: Vec<RawListKind>,
     list_ctxs: Vec<ListCtx>,
-    open_items: Vec<SourceByteOffset>,
+    open_items: Vec<usize>,
 
     // Components
     extractor: crate::note::extractor::BlockExtractor<'source, 'cfg>,
@@ -168,9 +168,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     fn on_start(
         &mut self,
         tag: pulldown_cmark::Tag<'source>,
-        byte_start: usize,
+        start: usize,
     ) -> Result<(), NoteIngestError> {
-        let start = to_offset(byte_start)?;
         match tag {
             pulldown_cmark::Tag::MetadataBlock(kind) => {
                 self.stack.push(BlockKind::Metadata(kind), start);
@@ -209,7 +208,11 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 let parent_pos = if self.depth <= 1 {
                     None
                 } else {
-                    self.open_items.get(depth_index.saturating_sub(1)).copied()
+                    self.open_items
+                        .get(depth_index.saturating_sub(1))
+                        .copied()
+                        .map(to_offset)
+                        .transpose()?
                 };
                 self.record_open_item(start, depth_index);
                 self.stack.push(
@@ -233,7 +236,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 dest_url,
                 ..
             } => {
-                self.open_link(link_type, dest_url, false, start);
+                self.open_link(link_type, dest_url, false, start)?;
             }
             pulldown_cmark::Tag::Image {
                 link_type,
@@ -244,7 +247,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     link_type,
                     pulldown_cmark::LinkType::WikiLink { .. }
                 );
-                self.open_link(link_type, dest_url, is_embed, start);
+                self.open_link(link_type, dest_url, is_embed, start)?;
             }
             pulldown_cmark::Tag::HtmlBlock
             | pulldown_cmark::Tag::FootnoteDefinition(_)
@@ -312,7 +315,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     self.stack.pool_mut(),
                 )?;
                 if let Some(ctx) = self.list_ctxs.last_mut() {
-                    ctx.item_positions.push(item_start);
+                    ctx.item_positions.push(to_offset(item_start)?);
                 }
             }
             TagEnd::List(_) => {
@@ -413,9 +416,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         byte_end: usize,
     ) -> Result<(), NoteIngestError> {
         let block = self.stack.pop()?;
-        let end = to_offset(byte_end)?;
-        let block_range = SourceByteRange::new(block.start, end)
-            .map_err(NoteIngestError::Domain)?;
+        let block_range = block.range_to(byte_end)?;
         let BlockKind::Metadata(kind) = block.kind else {
             // Return text to pool if kind doesn't match (shouldn't happen).
             self.stack.recycle(block.text);
@@ -435,16 +436,9 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         Ok(())
     }
 
-    fn record_open_item(
-        &mut self,
-        start: SourceByteOffset,
-        depth_index: usize,
-    ) {
+    fn record_open_item(&mut self, start: usize, depth_index: usize) {
         if self.open_items.len() <= depth_index {
-            self.open_items.resize(
-                depth_index.saturating_add(1),
-                SourceByteOffset::new(0),
-            );
+            self.open_items.resize(depth_index.saturating_add(1), 0);
         }
         if let Some(slot) = self.open_items.get_mut(depth_index) {
             *slot = start;
@@ -457,13 +451,88 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         link_type: pulldown_cmark::LinkType,
         dest_url: CowStr<'source>,
         is_embed: bool,
-        start: SourceByteOffset,
-    ) {
+        start: usize,
+    ) -> Result<(), NoteIngestError> {
         let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
-        self.link = Some(RawLink::new(style, is_embed, target, start));
+        self.link =
+            Some(RawLink::new(style, is_embed, target, to_offset(start)?));
+        Ok(())
     }
+}
+
+// ── PDA stack types ──────────────────────────────────────────────────────────
+
+/// A block frame on the parser's pushdown stack.
+///
+/// Each `Block` corresponds to one open markdown container or leaf element
+/// (heading, paragraph, list item, etc.). Text and scannable byte ranges
+/// accumulate here until the matching `End` event, at which point the block is
+/// popped and passed to [`BlockExtractor`] for artifact extraction.
+///
+/// [`BlockExtractor`]: crate::note::extractor::BlockExtractor
+pub(crate) struct Block<'source> {
+    pub kind: BlockKind,
+    pub start: usize,
+    /// Pool-backed text accumulator.
+    pub text: String,
+    /// Non-link text ranges within the source, used for scanning.
+    pub scannable: Vec<std::ops::Range<usize>>,
+    pub task_checked: Option<bool>,
+    pub _marker: std::marker::PhantomData<&'source str>,
+}
+
+impl Block<'_> {
+    /// Computes the [`SourceByteRange`] from this block's start to `byte_end`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] if `byte_end` exceeds the supported offset
+    /// range or if the resulting range is invalid.
+    pub(crate) fn range_to(
+        &self,
+        byte_end: usize,
+    ) -> Result<SourceByteRange, NoteIngestError> {
+        SourceByteRange::try_from(self.start..byte_end)
+            .map_err(NoteIngestError::Domain)
+    }
+}
+
+/// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
+///
+/// Determines which finalisation path in
+/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) or the `on_end`
+/// handler is taken when the matching `End` event is received.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BlockKind {
+    /// YAML or TOML frontmatter block.
+    Metadata(pulldown_cmark::MetadataBlockKind),
+    /// ATX or setext heading at the given level (1–6).
+    Heading(u8),
+    /// Bare paragraph block.
+    Paragraph,
+    /// A single list item with its enclosing list context.
+    ListItem {
+        list_kind: RawListKind,
+        list_depth: RawListDepth,
+        /// Source position of the parent item, if nested.
+        parent_pos: Option<SourceByteOffset>,
+    },
+    /// Ordered or unordered list container.
+    List,
+    /// Block quote container.
+    BlockQuote,
+    /// Fenced or indented code block.
+    CodeBlock,
+}
+
+/// List context for the new [`MarkdownParser`] stateful struct.
+///
+/// Tracks item start positions for the current open list, used to populate
+/// [`RawList::item_positions`] when the list is finalised.
+pub(crate) struct ListCtx {
+    pub item_positions: Vec<SourceByteOffset>,
 }
 
 // ── String pool ──────────────────────────────────────────────────────────────
@@ -560,79 +629,6 @@ pub fn reset_string_pool_metrics() {
         .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
 }
 
-// ── PDA stack types ──────────────────────────────────────────────────────────
-
-/// A block frame on the parser's pushdown stack.
-///
-/// Each `Block` corresponds to one open markdown container or leaf element
-/// (heading, paragraph, list item, etc.). Text and scannable byte ranges
-/// accumulate here until the matching `End` event, at which point the block is
-/// popped and passed to [`BlockExtractor`] for artifact extraction.
-///
-/// [`BlockExtractor`]: crate::note::extractor::BlockExtractor
-pub(crate) struct Block<'source> {
-    pub kind: BlockKind,
-    pub start: SourceByteOffset,
-    /// Pool-backed text accumulator.
-    pub text: String,
-    /// Non-link text ranges within the source, used for scanning.
-    pub scannable: Vec<std::ops::Range<usize>>,
-    pub task_checked: Option<bool>,
-    pub _marker: std::marker::PhantomData<&'source str>,
-}
-
-impl Block<'_> {
-    /// Computes the [`SourceByteRange`] from this block's start to `byte_end`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] if `byte_end` exceeds the supported offset
-    /// range or if the resulting range is invalid.
-    pub(crate) fn range_to(
-        &self,
-        byte_end: usize,
-    ) -> Result<SourceByteRange, NoteIngestError> {
-        let end = to_offset(byte_end)?;
-        SourceByteRange::new(self.start, end).map_err(NoteIngestError::Domain)
-    }
-}
-
-/// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
-///
-/// Determines which finalisation path in
-/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) or the `on_end`
-/// handler is taken when the matching `End` event is received.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BlockKind {
-    /// YAML or TOML frontmatter block.
-    Metadata(pulldown_cmark::MetadataBlockKind),
-    /// ATX or setext heading at the given level (1–6).
-    Heading(u8),
-    /// Bare paragraph block.
-    Paragraph,
-    /// A single list item with its enclosing list context.
-    ListItem {
-        list_kind: RawListKind,
-        list_depth: RawListDepth,
-        /// Source position of the parent item, if nested.
-        parent_pos: Option<SourceByteOffset>,
-    },
-    /// Ordered or unordered list container.
-    List,
-    /// Block quote container.
-    BlockQuote,
-    /// Fenced or indented code block.
-    CodeBlock,
-}
-
-/// List context for the new [`MarkdownParser`] stateful struct.
-///
-/// Tracks item start positions for the current open list, used to populate
-/// [`RawList::item_positions`] when the list is finalised.
-pub(crate) struct ListCtx {
-    pub item_positions: Vec<SourceByteOffset>,
-}
-
 // ── Shared pub(crate) free functions ─────────────────────────────────────────
 
 /// Maps `SoftBreak`/`HardBreak` to `Text` events before merging.
@@ -660,11 +656,10 @@ pub(crate) fn to_offset(
     byte: usize,
 ) -> Result<SourceByteOffset, NoteIngestError> {
     SourceByteOffset::try_from(byte).map_err(|_err| {
-        #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
         NoteIngestError::Domain(
             crate::note::error::StructureError::OutOfBounds {
-                offset: byte,
-                source_len: u32::MAX as usize,
+                offset: SourceByteOffset::new(u32::MAX),
+                source_len: SourceByteOffset::new(u32::MAX),
             }
             .into(),
         )
@@ -803,7 +798,7 @@ impl<'source> BlockStack<'source> {
     }
 
     /// Pushes a new block frame, taking a text buffer from the pool.
-    fn push(&mut self, kind: BlockKind, start: SourceByteOffset) {
+    fn push(&mut self, kind: BlockKind, start: usize) {
         self.frames.push(Block {
             kind,
             start,

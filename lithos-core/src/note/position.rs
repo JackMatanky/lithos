@@ -66,12 +66,11 @@ impl SourceByteOffset {
     /// cannot fit in `u32`.
     #[inline]
     pub fn add_offset(&self, delta: usize) -> Result<Self, NoteError> {
-        let base = self.as_usize();
+        let base: usize = (*self).into();
         Self::try_from(base.saturating_add(delta)).map_err(|_err| {
-            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
             StructureError::OutOfBounds {
-                offset: base.saturating_add(delta),
-                source_len: u32::MAX as usize,
+                offset: Self::new(u32::MAX),
+                source_len: Self::new(u32::MAX),
             }
             .into()
         })
@@ -89,6 +88,14 @@ impl From<SourceByteOffset> for u32 {
     #[inline]
     fn from(offset: SourceByteOffset) -> Self {
         offset.0
+    }
+}
+
+#[expect(clippy::as_conversions, reason = "u32 always fits in usize")]
+impl From<SourceByteOffset> for usize {
+    #[inline]
+    fn from(offset: SourceByteOffset) -> Self {
+        offset.0 as usize
     }
 }
 
@@ -152,10 +159,9 @@ impl SourceByteRange {
         end: SourceByteOffset,
     ) -> Result<Self, NoteError> {
         if start > end {
-            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
             return Err(StructureError::InvalidRange {
-                start: u32::from(start) as usize,
-                end: u32::from(end) as usize,
+                start,
+                end,
             }
             .into());
         }
@@ -232,24 +238,15 @@ impl TryFrom<Range<usize>> for SourceByteRange {
 
     #[inline]
     fn try_from(range: Range<usize>) -> Result<Self, Self::Error> {
+        let out_of_bounds =
+            |_: std::num::TryFromIntError| StructureError::OutOfBounds {
+                offset: SourceByteOffset::new(u32::MAX),
+                source_len: SourceByteOffset::new(u32::MAX),
+            };
         let start =
-            SourceByteOffset::try_from(range.start).map_err(|_err| {
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "u32::MAX fits in usize"
-                )]
-                StructureError::OutOfBounds {
-                    offset: range.start,
-                    source_len: u32::MAX as usize,
-                }
-            })?;
-        let end = SourceByteOffset::try_from(range.end).map_err(|_err| {
-            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
-            StructureError::OutOfBounds {
-                offset: range.end,
-                source_len: u32::MAX as usize,
-            }
-        })?;
+            SourceByteOffset::try_from(range.start).map_err(out_of_bounds)?;
+        let end =
+            SourceByteOffset::try_from(range.end).map_err(out_of_bounds)?;
         Self::new(start, end)
     }
 }
@@ -365,12 +362,14 @@ impl SourceLocation {
             .partition_point(|&start| start <= raw_offset)
             .saturating_sub(1);
         let line_start = line_starts.get(line_index).copied().unwrap_or(0);
-        let slice = source.get(line_start..raw_offset).ok_or(
+        let slice = source.get(line_start..raw_offset).ok_or_else(|| {
+            let source_len = SourceByteOffset::try_from(source.len())
+                .unwrap_or(SourceByteOffset::new(u32::MAX));
             StructureError::OutOfBounds {
-                offset: raw_offset,
-                source_len: source.len(),
-            },
-        )?;
+                offset,
+                source_len,
+            }
+        })?;
         let column_count = slice.chars().count().saturating_add(1);
         let line =
             u32::try_from(line_index.saturating_add(1)).map_err(|_err| {
@@ -397,26 +396,23 @@ impl SourceLocation {
         offset: SourceByteOffset,
         source: &str,
     ) -> Result<usize, NoteError> {
-        #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
-        let raw_offset =
-            usize::try_from(u32::from(offset)).map_err(|_err| {
-                StructureError::OutOfBounds {
-                    offset: u32::from(offset) as usize,
-                    source_len: source.len(),
-                }
-            })?;
+        let raw_offset: usize = offset.into();
 
         if raw_offset > source.len() {
+            let source_len = SourceByteOffset::try_from(source.len())
+                .unwrap_or(SourceByteOffset::new(u32::MAX));
             return Err(StructureError::OutOfBounds {
-                offset: raw_offset,
-                source_len: source.len(),
+                offset,
+                source_len,
             }
             .into());
         }
         if !source.is_char_boundary(raw_offset) {
+            let source_len = SourceByteOffset::try_from(source.len())
+                .unwrap_or(SourceByteOffset::new(u32::MAX));
             return Err(StructureError::OutOfBounds {
-                offset: raw_offset,
-                source_len: source.len(),
+                offset,
+                source_len,
             }
             .into());
         }
@@ -447,10 +443,9 @@ impl SourceLocationRange {
         end: SourceLocation,
     ) -> Result<Self, NoteError> {
         if start.offset() > end.offset() {
-            #[expect(clippy::as_conversions, reason = "u32 fits in usize")]
             return Err(StructureError::InvalidRange {
-                start: u32::from(start.offset()) as usize,
-                end: u32::from(end.offset()) as usize,
+                start: start.offset(),
+                end: end.offset(),
             }
             .into());
         }
@@ -612,10 +607,9 @@ mod tests {
     fn line_column_tracks_unicode_and_newlines() -> Result<(), NoteError> {
         let source = "a\u{00E9}\nb";
         let offset = SourceByteOffset::try_from("a".len()).map_err(|_err| {
-            #[expect(clippy::as_conversions, reason = "u32::MAX fits in usize")]
             StructureError::OutOfBounds {
-                offset: "a".len(),
-                source_len: u32::MAX as usize,
+                offset: SourceByteOffset::new(u32::MAX),
+                source_len: SourceByteOffset::new(u32::MAX),
             }
         })?;
         let location = SourceLocation::try_from_byte_offset(offset, source)?;
@@ -623,15 +617,9 @@ mod tests {
         assert_eq!(location.column().value(), 2);
 
         let newline_offset = SourceByteOffset::try_from("a\u{00E9}\n".len())
-            .map_err(|_err| {
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "u32::MAX fits in usize"
-                )]
-                StructureError::OutOfBounds {
-                    offset: "a\u{00E9}\n".len(),
-                    source_len: u32::MAX as usize,
-                }
+            .map_err(|_err| StructureError::OutOfBounds {
+                offset: SourceByteOffset::new(u32::MAX),
+                source_len: SourceByteOffset::new(u32::MAX),
             })?;
         let location_after_newline =
             SourceLocation::try_from_byte_offset(newline_offset, source)?;
@@ -665,15 +653,9 @@ mod tests {
         let source = "first\nsecond\nthird";
         let index = LineIndex::new(source);
         let offset = SourceByteOffset::try_from("first\nsecond".len())
-            .map_err(|_err| {
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "u32::MAX fits in usize"
-                )]
-                StructureError::OutOfBounds {
-                    offset: "first\nsecond".len(),
-                    source_len: u32::MAX as usize,
-                }
+            .map_err(|_err| StructureError::OutOfBounds {
+                offset: SourceByteOffset::new(u32::MAX),
+                source_len: SourceByteOffset::new(u32::MAX),
             })?;
         let location = SourceLocation::try_from_byte_offset_with_index(
             offset,
@@ -695,13 +677,9 @@ mod tests {
         let index = LineIndex::new(source);
         let offset =
             SourceByteOffset::try_from("first\r\n".len()).map_err(|_err| {
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "u32::MAX fits in usize"
-                )]
                 StructureError::OutOfBounds {
-                    offset: "first\r\n".len(),
-                    source_len: u32::MAX as usize,
+                    offset: SourceByteOffset::new(u32::MAX),
+                    source_len: SourceByteOffset::new(u32::MAX),
                 }
             })?;
         let location = SourceLocation::try_from_byte_offset_with_index(

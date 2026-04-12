@@ -62,7 +62,7 @@
 
 use std::path::PathBuf;
 
-use super::{aggregate::NoteId, paths::NotePath};
+use super::{aggregate::NoteId, paths::NotePath, position::SourceByteOffset};
 
 // --- Umbrella Error Types ---
 
@@ -524,32 +524,33 @@ pub enum ListError {
 #[non_exhaustive]
 pub enum StructureError {
     /// Mathematical overflow when calculating a source offset.
-    #[error("source offset {offset} overflow by {delta}")]
+    #[error("source offset {offset:?} overflow by {delta}")]
     OffsetOverflow {
         /// The base byte offset.
-        offset: usize,
+        offset: SourceByteOffset,
         /// The relative delta being applied.
         delta: usize,
     },
 
     /// A byte offset refers to a position outside the current source buffer.
     #[error(
-        "source offset {offset} out of bounds (source length: {source_len})"
+        "source offset {offset:?} out of bounds (source length: \
+         {source_len:?})"
     )]
     OutOfBounds {
         /// Problematic offset.
-        offset: usize,
+        offset: SourceByteOffset,
         /// Total buffer length.
-        source_len: usize,
+        source_len: SourceByteOffset,
     },
 
     /// A source range is malformed (start position is after end position).
-    #[error("invalid source range: start {start} > end {end}")]
+    #[error("invalid source range: start {start:?} > end {end:?}")]
     InvalidRange {
         /// Range start offset.
-        start: usize,
+        start: SourceByteOffset,
         /// Range end offset.
-        end: usize,
+        end: SourceByteOffset,
     },
 
     /// Line number requested is zero or logically invalid.

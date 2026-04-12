@@ -202,9 +202,11 @@ impl NoteScanner {
             };
             let base_offset =
                 SourceByteOffset::try_from(range.start).map_err(|_err| {
+                    let source_len = SourceByteOffset::try_from(text.len())
+                        .unwrap_or(SourceByteOffset::new(u32::MAX));
                     crate::note::error::StructureError::OutOfBounds {
-                        offset: range.start,
-                        source_len: text.len(),
+                        offset: SourceByteOffset::new(u32::MAX),
+                        source_len,
                     }
                 })?;
             cursor.reset(segment, base_offset);
