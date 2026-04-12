@@ -74,36 +74,6 @@ impl NoteScanner {
         Ok(artifacts)
     }
 
-    /// Scans multiple disjoint ranges within the same source text.
-    ///
-    /// This preserves cursor state across ranges to maintain word-boundary
-    /// semantics and line-start detection.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
-    #[inline]
-    pub fn scan_ranges<'source>(
-        &self,
-        text: &'source str,
-        ranges: &[std::ops::Range<usize>],
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<(), NoteError> {
-        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
-        for range in ranges {
-            if range.is_empty() {
-                continue;
-            }
-            let Some(segment) = text.get(range.clone()) else {
-                continue;
-            };
-            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
-            cursor.reset(segment, base_offset);
-            self.scan_cursor(&mut cursor, artifacts)?;
-        }
-        Ok(())
-    }
-
     /// Continues scanning from a provided [`Cursor`] state.
     ///
     /// This method allows the scanner to process disjoint segments of text
@@ -148,7 +118,18 @@ impl NoteScanner {
         include_task_marker: bool,
     ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
         let mut artifacts = Vec::with_capacity(8);
-        self.scan_ranges(text, ranges, &mut artifacts)?;
+        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
+        for range in ranges {
+            if range.is_empty() {
+                continue;
+            }
+            let Some(segment) = text.get(range.clone()) else {
+                continue;
+            };
+            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
+            cursor.reset(segment, base_offset);
+            self.scan_cursor(&mut cursor, &mut artifacts)?;
+        }
         Ok(ScannedRawArtifacts::from_scanned_artifacts(
             artifacts,
             include_task_marker,
@@ -158,13 +139,12 @@ impl NoteScanner {
     /// Scans the first line of a block for a task status symbol.
     ///
     /// Caps the scan at 80 bytes since task checkboxes always appear near the
-    /// start of a list item. Delegates to [`Self::scan_task_marker`] after
-    /// computing the first-line range.
+    /// start of a list item.
     ///
     /// # Errors
     ///
     /// Returns [`NoteError`] if any range offset exceeds supported bounds.
-    pub(crate) fn scan_task_marker_first_line(
+    pub(crate) fn scan_task_marker(
         source: &str,
         block_range: SourceByteRange,
     ) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
@@ -173,7 +153,7 @@ impl NoteScanner {
         let first_line_len = slice.find('\n').unwrap_or(slice.len()).min(80);
         let end = block_range.start().add_offset(first_line_len)?;
         let prefix = SourceByteRange::new(block_range.start(), end)?;
-        Self::scan_task_marker(source, prefix)
+        Self::scan_task_marker_block(source, prefix)
     }
 
     /// Scans a block range for a task marker.
@@ -182,7 +162,7 @@ impl NoteScanner {
     ///
     /// Returns [`NoteError`] if any range offset exceeds supported bounds.
     #[inline]
-    pub(crate) fn scan_task_marker(
+    pub(crate) fn scan_task_marker_block(
         text: &str,
         range: SourceByteRange,
     ) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
@@ -193,7 +173,29 @@ impl NoteScanner {
             return Ok(None);
         };
         let mut cursor = Cursor::new(segment, range.start());
-        scan_task_marker_at_line_start(&mut cursor)
+        cursor.skip_whitespace_on_line()?;
+        let Some(first) = cursor.peek_byte() else {
+            return Ok(None);
+        };
+        if first == b'\n' || first == b'\r' {
+            return Ok(None);
+        }
+        if let Some(prefix_len) = NoteScanner::match_list_prefix(&cursor) {
+            cursor.advance(prefix_len)?;
+            cursor.skip_whitespace_on_line()?;
+            if cursor.rest.starts_with('[')
+                && let Some(marker_char) = cursor.rest.chars().nth(1)
+                && cursor.rest.get(2..3) == Some("]")
+            {
+                let marker_pos = cursor.offset.add_offset(1)?;
+                let symbol = RawTaskStatusSymbol::new(
+                    RawTaskMarker::from_char(marker_char),
+                    marker_pos,
+                );
+                return Ok(Some(symbol));
+            }
+        }
+        Ok(None)
     }
 
     /// Handles triggers that only occur at the beginning of a line (tasks and
@@ -219,34 +221,6 @@ impl NoteScanner {
 
         cursor.mode = ScanMode::InBody;
         Ok(())
-    }
-
-    /// Matches common list item prefixes including ordered list numbers.
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "idx bounded by bytes.get(idx) loop guard; cannot overflow"
-    )]
-    fn match_list_prefix(cursor: &Cursor<'_>) -> Option<usize> {
-        let first = cursor.peek_byte()?;
-        if matches!(first, b'-' | b'*' | b'+') {
-            return Some(1);
-        }
-        if first.is_ascii_digit() {
-            let bytes = cursor.rest.as_bytes();
-            let mut idx = 0usize;
-            while let Some(&b) = bytes.get(idx)
-                && b.is_ascii_digit()
-            {
-                idx += 1;
-            }
-            if let Some(&b) = bytes.get(idx)
-                && matches!(b, b'.' | b')')
-            {
-                return Some(idx + 1);
-            }
-        }
-        None
     }
 
     /// Main dispatch loop for artifacts that can occur anywhere in a block.
@@ -539,6 +513,34 @@ impl NoteScanner {
         } else {
             Ok(None)
         }
+    }
+
+    /// Matches common list item prefixes including ordered list numbers.
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "idx bounded by bytes.get(idx) loop guard; cannot overflow"
+    )]
+    fn match_list_prefix(cursor: &Cursor<'_>) -> Option<usize> {
+        let first = cursor.peek_byte()?;
+        if matches!(first, b'-' | b'*' | b'+') {
+            return Some(1);
+        }
+        if first.is_ascii_digit() {
+            let bytes = cursor.rest.as_bytes();
+            let mut idx = 0usize;
+            while let Some(&b) = bytes.get(idx)
+                && b.is_ascii_digit()
+            {
+                idx += 1;
+            }
+            if let Some(&b) = bytes.get(idx)
+                && matches!(b, b'.' | b')')
+            {
+                return Some(idx + 1);
+            }
+        }
+        None
     }
 }
 
@@ -911,34 +913,6 @@ impl LineStartRule for BareFieldRule {
     }
 }
 
-fn scan_task_marker_at_line_start(
-    cursor: &mut Cursor<'_>,
-) -> Result<Option<RawTaskStatusSymbol>, NoteError> {
-    cursor.skip_whitespace_on_line()?;
-    let Some(first) = cursor.peek_byte() else {
-        return Ok(None);
-    };
-    if first == b'\n' || first == b'\r' {
-        return Ok(None);
-    }
-    if let Some(prefix_len) = NoteScanner::match_list_prefix(cursor) {
-        cursor.advance(prefix_len)?;
-        cursor.skip_whitespace_on_line()?;
-        if cursor.rest.starts_with('[')
-            && let Some(marker_char) = cursor.rest.chars().nth(1)
-            && cursor.rest.get(2..3) == Some("]")
-        {
-            let marker_pos = cursor.offset.add_offset(1)?;
-            let symbol = RawTaskStatusSymbol::new(
-                RawTaskMarker::from_char(marker_char),
-                marker_pos,
-            );
-            return Ok(Some(symbol));
-        }
-    }
-    Ok(None)
-}
-
 #[cfg(test)]
 mod tests {
     mod block_ref {
@@ -1294,7 +1268,7 @@ mod tests {
                 .expect("valid end offset");
             let range = SourceByteRange::new(SourceByteOffset::new(0), end)
                 .expect("valid range");
-            let marker = NoteScanner::scan_task_marker(text, range)
+            let marker = NoteScanner::scan_task_marker_block(text, range)
                 .expect("scan task marker");
             assert!(matches!(
                 marker.map(|s| s.marker),

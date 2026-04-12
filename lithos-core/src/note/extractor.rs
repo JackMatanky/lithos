@@ -174,7 +174,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         ));
 
         let task_marker = if block.task_checked.is_some() {
-            self.scan_task_marker_first_line(block_range)?
+            self.scan_task_marker(block_range)?
         } else {
             None
         };
@@ -275,11 +275,11 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
     ///
     /// Returns [`NoteIngestError`] if offset calculation exceeds supported
     /// bounds.
-    fn scan_task_marker_first_line(
+    fn scan_task_marker(
         &self,
         block_range: SourceByteRange,
     ) -> Result<Option<RawTaskStatusSymbol>, NoteIngestError> {
-        NoteScanner::scan_task_marker_first_line(self.source, block_range)
+        NoteScanner::scan_task_marker(self.source, block_range)
             .map_err(NoteIngestError::Domain)
     }
 
