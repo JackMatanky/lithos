@@ -110,17 +110,63 @@ mod tests {
     use super::*;
     use crate::graph::GraphBuilder;
 
-    #[test]
-    fn dag_graph_rejects_cycles() {
-        let mut builder = GraphBuilder::new();
-        builder.add_node(1, Box::<str>::from("A"));
-        builder.add_node(2, Box::<str>::from("B"));
-        builder.add_parent(1, 2);
-        builder.add_parent(2, 1);
+    mod try_from {
+        use super::*;
 
-        let graph = builder.build();
-        let result = DagGraph::try_from(graph);
+        #[test]
+        fn rejects_cycles() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            builder.add_node(2, Box::<str>::from("B"));
+            builder.add_parent(1, 2);
+            builder.add_parent(2, 1);
 
-        assert!(matches!(result, Err(GraphError::CycleDetected { .. })));
+            let graph = builder.build();
+            let result = DagGraph::try_from(graph);
+
+            assert!(
+                matches!(&result, Err(GraphError::CycleDetected { .. })),
+                "expected cycle error, got {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn returns_missing_node_error_when_child_absent() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            builder.add_parent(2, 1);
+
+            let graph = builder.build();
+            let result = DagGraph::try_from(graph);
+
+            assert!(
+                matches!(&result, Err(GraphError::MissingNode { .. })),
+                "expected missing-node error, got {:?}",
+                result
+            );
+        }
+    }
+
+    mod roots {
+        use super::*;
+
+        #[test]
+        fn returns_sorted_roots_for_disconnected_nodes() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            builder.add_node(2, Box::<str>::from("B"));
+            builder.add_node(3, Box::<str>::from("C"));
+            builder.add_parent(2, 1);
+
+            let dag = DagGraph::try_from(builder.build())
+                .expect("expected DAG to be valid");
+            assert_eq!(
+                dag.roots(),
+                &[1, 3],
+                "expected roots [1, 3], got {:?}",
+                dag.roots()
+            );
+        }
     }
 }

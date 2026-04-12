@@ -75,7 +75,11 @@ mod tests {
         let err = GraphError::CycleDetected {
             nodes: vec![1u8],
         };
-        assert_eq!(err.to_string(), "cycle detected in graph");
+        assert_eq!(
+            err.to_string(),
+            "cycle detected in graph",
+            "expected cycle error display"
+        );
     }
 
     #[test]
@@ -83,6 +87,20 @@ mod tests {
         let err = GraphError::MissingNode {
             id: 7u8,
         };
-        assert_eq!(err.to_string(), "node not found: 7");
+        assert_eq!(
+            err.to_string(),
+            "node not found: 7",
+            "expected missing-node display"
+        );
+    }
+
+    #[test]
+    fn not_directed_displays_message() {
+        let err: GraphError<u8> = GraphError::NotDirected;
+        assert_eq!(
+            err.to_string(),
+            "graph is not directed (bidirectional edge found)",
+            "expected not-directed display"
+        );
     }
 }

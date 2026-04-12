@@ -264,27 +264,7 @@ mod tests {
     use super::*;
     use crate::graph::DagGraph;
 
-    #[test]
-    fn builder_creates_empty_graph() {
-        let builder = GraphBuilder::<u8, ()>::new();
-        let graph = builder.build();
-        assert_eq!(graph.node_count(), 0);
-    }
-
-    #[test]
-    fn builder_normalizes_adjacency() {
-        let mut builder = GraphBuilder::new();
-        builder.add_node(1, Box::<str>::from("A"));
-        builder.add_node(2, Box::<str>::from("B"));
-        builder.add_parent(2, 1);
-        builder.add_parent(2, 1);
-
-        let graph = builder.build();
-        assert_eq!(graph.parents_of(2), &[1]);
-    }
-
-    #[test]
-    fn compute_depths_handles_multi_parent() {
+    fn sample_depths() -> HashMap<u8, NodeDepth> {
         let mut builder = GraphBuilder::new();
         builder.add_node(1, Box::<str>::from("A"));
         builder.add_node(2, Box::<str>::from("B"));
@@ -296,12 +276,181 @@ mod tests {
         builder.add_parent(4, 3);
 
         let graph = builder.build();
-        let dag = DagGraph::try_from(graph).unwrap();
-        let depths = dag.graph().compute_depths(dag.topo_order());
+        let dag =
+            DagGraph::try_from(graph).expect("expected sample DAG to be valid");
+        dag.graph().compute_depths(dag.topo_order())
+    }
 
-        assert_eq!(depths[&1].as_usize(), 0);
-        assert_eq!(depths[&2].as_usize(), 1);
-        assert_eq!(depths[&3].as_usize(), 1);
-        assert_eq!(depths[&4].as_usize(), 2);
+    mod builder {
+        use super::*;
+
+        #[test]
+        fn returns_empty_graph_when_no_nodes_added() {
+            let builder = GraphBuilder::<u8, ()>::new();
+            let graph = builder.build();
+            assert_eq!(
+                graph.node_count(),
+                0,
+                "expected empty graph, got {} nodes",
+                graph.node_count()
+            );
+        }
+
+        #[test]
+        fn dedups_parent_edges_when_duplicated() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            builder.add_node(2, Box::<str>::from("B"));
+            builder.add_parent(2, 1);
+            builder.add_parent(2, 1);
+
+            let graph = builder.build();
+            assert_eq!(
+                graph.parents_of(2),
+                &[1],
+                "expected parent list to be deduped, got {:?}",
+                graph.parents_of(2)
+            );
+        }
+    }
+
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn parents_of_returns_empty_slice_when_missing() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            let graph = builder.build();
+
+            assert_eq!(
+                graph.parents_of(1),
+                &[],
+                "expected no parents for root node"
+            );
+        }
+
+        #[test]
+        fn children_of_returns_empty_slice_when_missing() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            let graph = builder.build();
+
+            assert_eq!(
+                graph.children_of(1),
+                &[],
+                "expected no children for isolated node"
+            );
+        }
+
+        #[test]
+        fn get_returns_none_when_node_unknown() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            let graph = builder.build();
+
+            assert!(
+                graph.get(2).is_none(),
+                "expected missing node to return None"
+            );
+        }
+
+        #[test]
+        fn iter_returns_all_nodes() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            builder.add_node(2, Box::<str>::from("B"));
+            let graph = builder.build();
+
+            let count = graph.iter().count();
+            assert_eq!(
+                count, 2,
+                "expected iterator to yield 2 nodes, got {}",
+                count
+            );
+        }
+    }
+
+    mod compute_depths {
+        use super::*;
+
+        #[test]
+        fn returns_root_depth_as_zero() {
+            let depths = sample_depths();
+            assert_eq!(
+                depths[&1].as_usize(),
+                0,
+                "expected root depth 0, got {}",
+                depths[&1].as_usize()
+            );
+        }
+
+        #[test]
+        fn returns_single_parent_depth_as_one() {
+            let depths = sample_depths();
+            assert_eq!(
+                depths[&2].as_usize(),
+                1,
+                "expected depth 1 for single-parent node, got {}",
+                depths[&2].as_usize()
+            );
+        }
+
+        #[test]
+        fn returns_sibling_depth_as_one() {
+            let depths = sample_depths();
+            assert_eq!(
+                depths[&3].as_usize(),
+                1,
+                "expected depth 1 for sibling node, got {}",
+                depths[&3].as_usize()
+            );
+        }
+
+        #[test]
+        fn returns_max_parent_depth_plus_one_for_multi_parent() {
+            let depths = sample_depths();
+            assert_eq!(
+                depths[&4].as_usize(),
+                2,
+                "expected multi-parent depth 2, got {}",
+                depths[&4].as_usize()
+            );
+        }
+    }
+
+    mod update_depths {
+        use super::*;
+
+        #[test]
+        fn updates_existing_node_depth() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            let mut graph = builder.build();
+
+            let depths = HashMap::from([(1u8, NodeDepth::new(2))]);
+            graph.update_depths(depths);
+
+            let depth = match graph.get(1) {
+                Some(node) => node.depth().as_usize(),
+                None => panic!("expected node 1 to exist"),
+            };
+            assert_eq!(depth, 2, "expected updated depth 2, got {}", depth);
+        }
+
+        #[test]
+        fn ignores_missing_nodes_when_updating() {
+            let mut builder = GraphBuilder::new();
+            builder.add_node(1, Box::<str>::from("A"));
+            let mut graph = builder.build();
+
+            let depths = HashMap::from([(2u8, NodeDepth::new(3))]);
+            graph.update_depths(depths);
+
+            assert!(
+                graph.get(2).is_none(),
+                "expected missing node to stay absent after update"
+            );
+        }
     }
 }

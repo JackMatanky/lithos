@@ -134,3 +134,55 @@ impl<T> Node<T> {
         &mut self.payload
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod node_depth {
+        use super::*;
+
+        #[test]
+        fn root_is_zero() {
+            assert_eq!(
+                NodeDepth::ROOT.as_usize(),
+                0,
+                "expected ROOT depth to be zero"
+            );
+        }
+
+        #[test]
+        fn increment_saturates_at_max() {
+            let depth = NodeDepth::new(usize::MAX).increment();
+            assert_eq!(
+                depth.as_usize(),
+                usize::MAX,
+                "expected increment to saturate at usize::MAX"
+            );
+        }
+    }
+
+    mod node {
+        use super::*;
+
+        #[test]
+        fn new_sets_root_depth() {
+            let node = Node::new(Box::<str>::from("payload"));
+            assert_eq!(
+                node.depth(),
+                NodeDepth::ROOT,
+                "expected new node to start at root depth"
+            );
+        }
+
+        #[test]
+        fn payload_returns_reference() {
+            let node = Node::new(Box::<str>::from("payload"));
+            assert_eq!(
+                node.payload(),
+                "payload",
+                "expected payload to match original value"
+            );
+        }
+    }
+}

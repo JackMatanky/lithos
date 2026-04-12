@@ -148,38 +148,137 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn topo_sort_respects_dependencies() {
-        let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
-        let (order, roots) =
-            topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
+    mod topological_sort_with_nodes {
+        use super::*;
 
-        assert_eq!(roots, vec![1]);
+        #[test]
+        fn returns_root_for_linear_chain() {
+            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let (_order, roots) =
+                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
 
-        let pos: HashMap<_, _> =
-            order.iter().copied().enumerate().map(|(i, id)| (id, i)).collect();
+            assert_eq!(roots, vec![1], "expected root [1], got {:?}", roots);
+        }
 
-        assert!(pos[&1] < pos[&2]);
-        assert!(pos[&2] < pos[&3]);
-    }
+        #[test]
+        fn orders_parent_before_child_for_first_edge() {
+            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let (order, _roots) =
+                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
 
-    #[test]
-    fn topo_sort_detects_cycles() {
-        let parents = HashMap::from([(2, vec![1]), (3, vec![2]), (1, vec![3])]);
-        let result = topological_sort_with_nodes(&parents, [1, 2, 3]);
+            let pos: HashMap<_, _> = order
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, id)| (id, i))
+                .collect();
 
-        assert!(matches!(result, Err(GraphError::CycleDetected { .. })));
-    }
+            assert!(
+                pos[&1] < pos[&2],
+                "expected 1 before 2, positions: {:?}",
+                pos
+            );
+        }
 
-    #[test]
-    fn topo_sort_deterministic() {
-        let parents = HashMap::from([(2, vec![1]), (3, vec![1])]);
+        #[test]
+        fn orders_parent_before_child_for_second_edge() {
+            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let (order, _roots) =
+                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
 
-        let (order1, _) =
-            topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
-        let (order2, _) =
-            topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
+            let pos: HashMap<_, _> = order
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, id)| (id, i))
+                .collect();
 
-        assert_eq!(order1, order2);
+            assert!(
+                pos[&2] < pos[&3],
+                "expected 2 before 3, positions: {:?}",
+                pos
+            );
+        }
+
+        #[test]
+        fn returns_error_when_cycle_detected() {
+            let parents =
+                HashMap::from([(2, vec![1]), (3, vec![2]), (1, vec![3])]);
+            let result = topological_sort_with_nodes(&parents, [1, 2, 3]);
+
+            assert!(
+                matches!(&result, Err(GraphError::CycleDetected { .. })),
+                "expected cycle error, got {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn returns_error_when_parent_missing() {
+            let parents = HashMap::from([(2, vec![1])]);
+            let result = topological_sort_with_nodes(&parents, [2]);
+
+            assert!(
+                matches!(&result, Err(GraphError::MissingNode { .. })),
+                "expected missing-node error, got {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn includes_isolated_node_in_order() {
+            let parents: HashMap<u8, Vec<u8>> = HashMap::new();
+            let (order, _roots) =
+                topological_sort_with_nodes(&parents, [1, 2]).unwrap();
+
+            assert!(
+                order.contains(&2),
+                "expected order to include isolated node 2, got {:?}",
+                order
+            );
+        }
+
+        #[test]
+        fn includes_isolated_node_in_roots() {
+            let parents: HashMap<u8, Vec<u8>> = HashMap::new();
+            let (_order, roots) =
+                topological_sort_with_nodes(&parents, [1, 2]).unwrap();
+
+            assert!(
+                roots.contains(&2),
+                "expected roots to include isolated node 2, got {:?}",
+                roots
+            );
+        }
+
+        #[test]
+        fn returns_empty_order_for_empty_graph() {
+            let parents: HashMap<u8, Vec<u8>> = HashMap::new();
+            let (order, _roots) =
+                topological_sort_with_nodes(&parents, []).unwrap();
+
+            assert!(
+                order.is_empty(),
+                "expected empty order for empty graph, got {:?}",
+                order
+            );
+        }
+
+        #[test]
+        fn returns_deterministic_order_for_parallel_children() {
+            let parents =
+                HashMap::from([(2, vec![1]), (3, vec![1]), (4, vec![1])]);
+
+            let (order1, _roots) =
+                topological_sort_with_nodes(&parents, [1, 2, 3, 4]).unwrap();
+            let (order2, _roots) =
+                topological_sort_with_nodes(&parents, [1, 2, 3, 4]).unwrap();
+
+            assert_eq!(
+                order1, order2,
+                "expected deterministic order, got {:?} vs {:?}",
+                order1, order2
+            );
+        }
     }
 }
