@@ -20,9 +20,8 @@ use crate::{
         error::{NoteIngestError, NoteParseError},
         position::{SourceByteOffset, SourceByteRange},
         raw::{
-            RawFrontmatter, RawFrontmatterFormat, RawLink, RawLinkStyle,
-            RawList, RawListDepth, RawListKind, RawNote, RawSection,
-            RawSectionKind,
+            RawFrontmatter, RawLink, RawLinkStyle, RawList, RawListDepth,
+            RawListKind, RawNote, RawSection, RawSectionKind,
         },
         scanner::NoteScanner,
     },
@@ -775,17 +774,6 @@ impl LinkRefResolver {
         }
 
         normalized.into_boxed_str()
-    }
-}
-
-/// Converts a pulldown-cmark metadata block kind to a [`RawFrontmatterFormat`].
-impl From<pulldown_cmark::MetadataBlockKind> for RawFrontmatterFormat {
-    #[inline]
-    fn from(kind: pulldown_cmark::MetadataBlockKind) -> Self {
-        match kind {
-            pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
-            pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
-        }
     }
 }
 

@@ -14,7 +14,6 @@ pub(crate) mod value;
 pub type RawBlockRef<'source> = block_ref::RawBlockRef<'source>;
 pub type RawFieldValue<'source> = value::RawFieldValue<'source>;
 pub type RawFrontmatter<'source> = frontmatter::RawFrontmatter<'source>;
-pub type RawFrontmatterFormat = frontmatter::RawFrontmatterFormat;
 pub type RawHeading<'source> = heading::RawHeading<'source>;
 pub type RawInlineField<'source> = inline_field::RawInlineField<'source>;
 pub type RawInlineFieldToken<'source> =

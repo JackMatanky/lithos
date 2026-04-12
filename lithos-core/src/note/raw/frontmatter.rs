@@ -1,5 +1,6 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use pulldown_cmark::MetadataBlockKind;
 use regex::Regex;
 
 use crate::note::{
@@ -13,6 +14,18 @@ pub enum RawFrontmatterFormat {
     Yaml,
     /// TOML frontmatter block.
     Toml,
+}
+
+/// Converts a pulldown-cmark [`MetadataBlockKind`] to a
+/// [`RawFrontmatterFormat`].
+impl From<MetadataBlockKind> for RawFrontmatterFormat {
+    #[inline]
+    fn from(kind: MetadataBlockKind) -> Self {
+        match kind {
+            MetadataBlockKind::YamlStyle => Self::Yaml,
+            MetadataBlockKind::PlusesStyle => Self::Toml,
+        }
+    }
 }
 
 /// Raw frontmatter block captured from metadata events.
