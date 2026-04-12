@@ -252,15 +252,8 @@ impl TryFrom<Range<usize>> for SourceByteRange {
 
     #[inline]
     fn try_from(range: Range<usize>) -> Result<Self, Self::Error> {
-        let out_of_bounds =
-            |_: std::num::TryFromIntError| StructureError::OutOfBounds {
-                offset: SourceByteOffset::new(u32::MAX),
-                source_len: SourceByteOffset::new(u32::MAX),
-            };
-        let start =
-            SourceByteOffset::try_from(range.start).map_err(out_of_bounds)?;
-        let end =
-            SourceByteOffset::try_from(range.end).map_err(out_of_bounds)?;
+        let start = SourceByteOffset::try_from_usize(range.start)?;
+        let end = SourceByteOffset::try_from_usize(range.end)?;
         Self::new(start, end)
     }
 }
