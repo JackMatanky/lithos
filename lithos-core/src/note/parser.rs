@@ -37,10 +37,9 @@ use crate::{
 pub struct MarkdownParser<'source, 'cfg> {
     // Source and configuration
     ref_defs: LinkRefResolver,
-    pool: StringPool,
 
     // PDA state
-    stack: Vec<Block<'source>>,
+    stack: BlockStack<'source>,
     depth: u32,
     link: Option<RawLink<'source>>,
     list_kinds: Vec<RawListKind>,
@@ -115,7 +114,6 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         let extractor = crate::note::extractor::BlockExtractor::new(
             source, scanner, task_spec,
         );
-        let mut pool = StringPool::new();
         let out = RawNote::new(
             None,
             Vec::with_capacity(4),
@@ -127,14 +125,9 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             Vec::with_capacity(8),
             Vec::with_capacity(8),
         );
-        // Pre-warm the pool so early `take()` calls hit the fast path.
-        for _ in 0u8..4u8 {
-            pool.put(String::with_capacity(128));
-        }
         Self {
             ref_defs,
-            pool,
-            stack: Vec::with_capacity(4),
+            stack: BlockStack::new(4, 4),
             depth: 0,
             link: None,
             list_kinds: Vec::with_capacity(4),
@@ -180,16 +173,16 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         let start = to_offset(byte_start)?;
         match tag {
             pulldown_cmark::Tag::MetadataBlock(kind) => {
-                self.push_block(BlockKind::Metadata(kind), start);
+                self.stack.push(BlockKind::Metadata(kind), start);
             }
             pulldown_cmark::Tag::Heading {
                 level,
                 ..
             } => {
-                self.push_block(BlockKind::Heading(level_to_u8(level)), start);
+                self.stack.push(BlockKind::Heading(level_to_u8(level)), start);
             }
             pulldown_cmark::Tag::Paragraph => {
-                self.push_block(BlockKind::Paragraph, start);
+                self.stack.push(BlockKind::Paragraph, start);
             }
             pulldown_cmark::Tag::List(list_start) => {
                 let kind = match list_start {
@@ -201,7 +194,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     item_positions: Vec::new(),
                 });
                 self.depth = self.depth.saturating_add(1);
-                self.push_block(BlockKind::List, start);
+                self.stack.push(BlockKind::List, start);
             }
             pulldown_cmark::Tag::Item => {
                 let list_kind = self
@@ -219,7 +212,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     self.open_items.get(depth_index.saturating_sub(1)).copied()
                 };
                 self.record_open_item(start, depth_index);
-                self.push_block(
+                self.stack.push(
                     BlockKind::ListItem {
                         list_kind,
                         list_depth,
@@ -230,10 +223,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             }
             pulldown_cmark::Tag::BlockQuote(_) => {
                 self.depth = self.depth.saturating_add(1);
-                self.push_block(BlockKind::BlockQuote, start);
+                self.stack.push(BlockKind::BlockQuote, start);
             }
             pulldown_cmark::Tag::CodeBlock(_) => {
-                self.push_block(BlockKind::CodeBlock, start);
+                self.stack.push(BlockKind::CodeBlock, start);
             }
             pulldown_cmark::Tag::Link {
                 link_type,
@@ -280,18 +273,18 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             TagEnd::Link | TagEnd::Image => self.finalize_link(),
             TagEnd::MetadataBlock(_) => self.finalize_metadata(byte_end)?,
             TagEnd::Heading(_) => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 let range = block.range_to(byte_end)?;
                 self.extractor.finalize_heading(
                     block,
                     range,
                     self.depth,
                     &mut self.out,
-                    &mut self.pool,
+                    self.stack.pool_mut(),
                 )?;
             }
             TagEnd::Paragraph => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 // Propagate text to parent list item before moving block.
                 if let Some(parent) = self.stack.last_mut()
                     && matches!(parent.kind, BlockKind::ListItem { .. })
@@ -305,25 +298,25 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     range,
                     self.depth,
                     &mut self.out,
-                    &mut self.pool,
+                    self.stack.pool_mut(),
                 )?;
             }
             TagEnd::Item => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 let item_start = block.start;
                 let range = block.range_to(byte_end)?;
                 self.extractor.finalize_list_item(
                     block,
                     range,
                     &mut self.out,
-                    &mut self.pool,
+                    self.stack.pool_mut(),
                 )?;
                 if let Some(ctx) = self.list_ctxs.last_mut() {
                     ctx.item_positions.push(item_start);
                 }
             }
             TagEnd::List(_) => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 let range = block.range_to(byte_end)?;
                 self.depth = self.depth.saturating_sub(1);
                 if let (Some(ctx), Some(kind)) =
@@ -336,10 +329,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                         ctx.item_positions,
                     ));
                 }
-                self.pool.put(block.text);
+                self.stack.recycle(block.text);
             }
             TagEnd::BlockQuote(_) => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 let range = block.range_to(byte_end)?;
                 self.depth = self.depth.saturating_sub(1);
                 self.out.sections.push(RawSection::new(
@@ -347,17 +340,17 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                     range,
                     self.depth,
                 ));
-                self.pool.put(block.text);
+                self.stack.recycle(block.text);
             }
             TagEnd::CodeBlock => {
-                let block = pop_block(&mut self.stack)?;
+                let block = self.stack.pop()?;
                 let range = block.range_to(byte_end)?;
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::CodeBlock,
                     range,
                     self.depth,
                 ));
-                self.pool.put(block.text);
+                self.stack.recycle(block.text);
             }
             TagEnd::HtmlBlock
             | TagEnd::FootnoteDefinition
@@ -419,13 +412,13 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         &mut self,
         byte_end: usize,
     ) -> Result<(), NoteIngestError> {
-        let block = pop_block(&mut self.stack)?;
+        let block = self.stack.pop()?;
         let end = to_offset(byte_end)?;
         let block_range = SourceByteRange::new(block.start, end)
             .map_err(NoteIngestError::Domain)?;
         let BlockKind::Metadata(kind) = block.kind else {
             // Return text to pool if kind doesn't match (shouldn't happen).
-            self.pool.put(block.text);
+            self.stack.recycle(block.text);
             return Ok(());
         };
         self.out.sections.push(RawSection::new(
@@ -440,18 +433,6 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             block_range,
         ));
         Ok(())
-    }
-
-    // Private push helpers
-    fn push_block(&mut self, kind: BlockKind, start: SourceByteOffset) {
-        self.stack.push(Block {
-            kind,
-            start,
-            text: self.pool.take(),
-            scannable: Vec::with_capacity(4),
-            task_checked: None,
-            _marker: std::marker::PhantomData,
-        });
     }
 
     fn record_open_item(
@@ -673,23 +654,6 @@ pub(crate) fn normalize_breaks(event: Event<'_>) -> Event<'_> {
     }
 }
 
-/// Pops the top block from `stack`, returning an error on underflow.
-///
-/// Underflow indicates mismatched Start/End events, which pulldown-cmark
-/// guarantees do not occur for well-formed input.
-pub(crate) fn pop_block<'source>(
-    stack: &mut Vec<Block<'source>>,
-) -> Result<Block<'source>, NoteIngestError> {
-    stack.pop().ok_or_else(|| {
-        NoteParseError::Markdown {
-            line: 0,
-            column: 0,
-            reason: "block stack underflow: mismatched Start/End events".into(),
-        }
-        .into()
-    })
-}
-
 /// Converts a byte offset to [`SourceByteOffset`], mapping overflow to a
 /// [`NoteIngestError`].
 pub(crate) fn to_offset(
@@ -812,6 +776,81 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
             | pulldown_cmark::LinkType::Shortcut
             | pulldown_cmark::LinkType::ShortcutUnknown
     )
+}
+
+/// The parser's pushdown automaton stack, bundled with its backing string pool.
+///
+/// Owns both the frame vec and the [`StringPool`] that supplies text buffers
+/// to each pushed block. This coupling is intentional: the pool exists solely
+/// to back [`Block::text`], so the two naturally belong together.
+pub(crate) struct BlockStack<'source> {
+    frames: Vec<Block<'source>>,
+    pool: StringPool,
+}
+
+impl<'source> BlockStack<'source> {
+    /// Creates a new stack with `frame_cap` frame capacity, pre-warming the
+    /// pool with `prewarm` strings of 128-byte capacity.
+    fn new(frame_cap: usize, prewarm: u8) -> Self {
+        let mut pool = StringPool::new();
+        for _ in 0..prewarm {
+            pool.put(String::with_capacity(128));
+        }
+        Self {
+            frames: Vec::with_capacity(frame_cap),
+            pool,
+        }
+    }
+
+    /// Pushes a new block frame, taking a text buffer from the pool.
+    fn push(&mut self, kind: BlockKind, start: SourceByteOffset) {
+        self.frames.push(Block {
+            kind,
+            start,
+            text: self.pool.take(),
+            scannable: Vec::with_capacity(4),
+            task_checked: None,
+            _marker: std::marker::PhantomData,
+        });
+    }
+
+    /// Pops the top frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] on underflow (mismatched `Start`/`End`
+    /// events).
+    fn pop(&mut self) -> Result<Block<'source>, NoteIngestError> {
+        self.frames.pop().ok_or_else(|| {
+            NoteParseError::Markdown {
+                line: 0,
+                column: 0,
+                reason: "block stack underflow: mismatched Start/End events"
+                    .into(),
+            }
+            .into()
+        })
+    }
+
+    /// Returns a mutable reference to the top frame, or `None` if empty.
+    fn last_mut(&mut self) -> Option<&mut Block<'source>> {
+        self.frames.last_mut()
+    }
+
+    /// Returns `text` to the pool for reuse.
+    ///
+    /// Call this after popping a block whose text will not be moved elsewhere.
+    fn recycle(&mut self, text: String) {
+        self.pool.put(text);
+    }
+
+    /// Returns a mutable reference to the backing pool.
+    ///
+    /// Used to pass the pool to [`BlockExtractor`] methods that recycle block
+    /// text after extraction.
+    fn pool_mut(&mut self) -> &mut StringPool {
+        &mut self.pool
+    }
 }
 
 #[cfg(test)]
