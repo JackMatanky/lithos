@@ -200,15 +200,7 @@ impl NoteScanner {
             let Some(segment) = text.get(range.clone()) else {
                 continue;
             };
-            let base_offset =
-                SourceByteOffset::try_from(range.start).map_err(|_err| {
-                    let source_len = SourceByteOffset::try_from(text.len())
-                        .unwrap_or(SourceByteOffset::new(u32::MAX));
-                    crate::note::error::StructureError::OutOfBounds {
-                        offset: SourceByteOffset::new(u32::MAX),
-                        source_len,
-                    }
-                })?;
+            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
             cursor.reset(segment, base_offset);
             self.scan_cursor(&mut cursor, artifacts)?;
         }
