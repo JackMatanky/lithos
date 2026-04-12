@@ -469,6 +469,81 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
 
 // ── PDA stack types ──────────────────────────────────────────────────────────
 
+/// The parser's pushdown automaton stack, bundled with its backing string pool.
+///
+/// Owns both the frame vec and the [`StringPool`] that supplies text buffers
+/// to each pushed block. This coupling is intentional: the pool exists solely
+/// to back [`Block::text`], so the two naturally belong together.
+pub(crate) struct BlockStack<'source> {
+    frames: Vec<Block<'source>>,
+    pool: StringPool,
+}
+
+impl<'source> BlockStack<'source> {
+    /// Creates a new stack with `frame_cap` frame capacity, pre-warming the
+    /// pool with `prewarm` strings of 128-byte capacity.
+    fn new(frame_cap: usize, prewarm: u8) -> Self {
+        let mut pool = StringPool::new();
+        for _ in 0..prewarm {
+            pool.put(String::with_capacity(128));
+        }
+        Self {
+            frames: Vec::with_capacity(frame_cap),
+            pool,
+        }
+    }
+
+    /// Pushes a new block frame, taking a text buffer from the pool.
+    fn push(&mut self, kind: BlockKind, start: usize) {
+        self.frames.push(Block {
+            kind,
+            start,
+            text: self.pool.take(),
+            scannable: Vec::with_capacity(4),
+            task_checked: None,
+            _marker: std::marker::PhantomData,
+        });
+    }
+
+    /// Pops the top frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] on underflow (mismatched `Start`/`End`
+    /// events).
+    fn pop(&mut self) -> Result<Block<'source>, NoteIngestError> {
+        self.frames.pop().ok_or_else(|| {
+            NoteParseError::Markdown {
+                line: 0,
+                column: 0,
+                reason: "block stack underflow: mismatched Start/End events"
+                    .into(),
+            }
+            .into()
+        })
+    }
+
+    /// Returns a mutable reference to the top frame, or `None` if empty.
+    fn last_mut(&mut self) -> Option<&mut Block<'source>> {
+        self.frames.last_mut()
+    }
+
+    /// Returns `text` to the pool for reuse.
+    ///
+    /// Call this after popping a block whose text will not be moved elsewhere.
+    fn recycle(&mut self, text: String) {
+        self.pool.put(text);
+    }
+
+    /// Returns a mutable reference to the backing pool.
+    ///
+    /// Used to pass the pool to [`BlockExtractor`] methods that recycle block
+    /// text after extraction.
+    fn pool_mut(&mut self) -> &mut StringPool {
+        &mut self.pool
+    }
+}
+
 /// A block frame on the parser's pushdown stack.
 ///
 /// Each `Block` corresponds to one open markdown container or leaf element
@@ -760,81 +835,6 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
             | pulldown_cmark::LinkType::Shortcut
             | pulldown_cmark::LinkType::ShortcutUnknown
     )
-}
-
-/// The parser's pushdown automaton stack, bundled with its backing string pool.
-///
-/// Owns both the frame vec and the [`StringPool`] that supplies text buffers
-/// to each pushed block. This coupling is intentional: the pool exists solely
-/// to back [`Block::text`], so the two naturally belong together.
-pub(crate) struct BlockStack<'source> {
-    frames: Vec<Block<'source>>,
-    pool: StringPool,
-}
-
-impl<'source> BlockStack<'source> {
-    /// Creates a new stack with `frame_cap` frame capacity, pre-warming the
-    /// pool with `prewarm` strings of 128-byte capacity.
-    fn new(frame_cap: usize, prewarm: u8) -> Self {
-        let mut pool = StringPool::new();
-        for _ in 0..prewarm {
-            pool.put(String::with_capacity(128));
-        }
-        Self {
-            frames: Vec::with_capacity(frame_cap),
-            pool,
-        }
-    }
-
-    /// Pushes a new block frame, taking a text buffer from the pool.
-    fn push(&mut self, kind: BlockKind, start: usize) {
-        self.frames.push(Block {
-            kind,
-            start,
-            text: self.pool.take(),
-            scannable: Vec::with_capacity(4),
-            task_checked: None,
-            _marker: std::marker::PhantomData,
-        });
-    }
-
-    /// Pops the top frame.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] on underflow (mismatched `Start`/`End`
-    /// events).
-    fn pop(&mut self) -> Result<Block<'source>, NoteIngestError> {
-        self.frames.pop().ok_or_else(|| {
-            NoteParseError::Markdown {
-                line: 0,
-                column: 0,
-                reason: "block stack underflow: mismatched Start/End events"
-                    .into(),
-            }
-            .into()
-        })
-    }
-
-    /// Returns a mutable reference to the top frame, or `None` if empty.
-    fn last_mut(&mut self) -> Option<&mut Block<'source>> {
-        self.frames.last_mut()
-    }
-
-    /// Returns `text` to the pool for reuse.
-    ///
-    /// Call this after popping a block whose text will not be moved elsewhere.
-    fn recycle(&mut self, text: String) {
-        self.pool.put(text);
-    }
-
-    /// Returns a mutable reference to the backing pool.
-    ///
-    /// Used to pass the pool to [`BlockExtractor`] methods that recycle block
-    /// text after extraction.
-    fn pool_mut(&mut self) -> &mut StringPool {
-        &mut self.pool
-    }
 }
 
 #[cfg(test)]

@@ -247,7 +247,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
     ) -> Result<ScannedRawArtifacts<'source>, NoteIngestError> {
         let mut raw = self
             .scanner
-            .scan_ranges_raw(self.source, &block.scannable, false)
+            .scan_ranges(self.source, &block.scannable, false)
             .map_err(NoteIngestError::Domain)?;
 
         if raw.block_refs.is_empty() {
@@ -257,7 +257,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             {
                 let tail_raw = self
                     .scanner
-                    .scan_ranges_raw(
+                    .scan_ranges(
                         self.source,
                         std::slice::from_ref(&tail),
                         false,
@@ -269,7 +269,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         Ok(raw)
     }
 
-    /// Delegates to [`NoteScanner::scan_task_marker_first_line`].
+    /// Delegates to [`NoteScanner::scan_task_marker`].
     ///
     /// # Errors
     ///

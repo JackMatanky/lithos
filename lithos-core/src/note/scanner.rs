@@ -74,6 +74,41 @@ impl NoteScanner {
         Ok(artifacts)
     }
 
+    /// Scans multiple disjoint ranges within the same source text and returns
+    /// raw tokens grouped by type.
+    ///
+    /// This preserves cursor state across ranges to maintain word-boundary
+    /// semantics and line-start detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    #[inline]
+    pub(crate) fn scan_ranges<'source>(
+        &self,
+        text: &'source str,
+        ranges: &[std::ops::Range<usize>],
+        include_task_marker: bool,
+    ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
+        let mut artifacts = Vec::with_capacity(8);
+        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
+        for range in ranges {
+            if range.is_empty() {
+                continue;
+            }
+            let Some(segment) = text.get(range.clone()) else {
+                continue;
+            };
+            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
+            cursor.reset(segment, base_offset);
+            self.scan_cursor(&mut cursor, &mut artifacts)?;
+        }
+        Ok(ScannedRawArtifacts::from_scanned_artifacts(
+            artifacts,
+            include_task_marker,
+        ))
+    }
+
     /// Continues scanning from a provided [`Cursor`] state.
     ///
     /// This method allows the scanner to process disjoint segments of text
@@ -103,37 +138,6 @@ impl NoteScanner {
             }
         }
         Ok(())
-    }
-
-    /// Scans ranges and returns raw tokens grouped by type.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
-    #[inline]
-    pub(crate) fn scan_ranges_raw<'source>(
-        &self,
-        text: &'source str,
-        ranges: &[std::ops::Range<usize>],
-        include_task_marker: bool,
-    ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
-        let mut artifacts = Vec::with_capacity(8);
-        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
-        for range in ranges {
-            if range.is_empty() {
-                continue;
-            }
-            let Some(segment) = text.get(range.clone()) else {
-                continue;
-            };
-            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
-            cursor.reset(segment, base_offset);
-            self.scan_cursor(&mut cursor, &mut artifacts)?;
-        }
-        Ok(ScannedRawArtifacts::from_scanned_artifacts(
-            artifacts,
-            include_task_marker,
-        ))
     }
 
     /// Scans the first line of a block for a task status symbol.
@@ -198,31 +202,6 @@ impl NoteScanner {
         Ok(None)
     }
 
-    /// Handles triggers that only occur at the beginning of a line (tasks and
-    /// bare fields).
-    #[inline]
-    fn handle_line_start<'source>(
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<(), NoteError> {
-        cursor.skip_whitespace_on_line()?;
-
-        let Some(first) = cursor.peek_byte() else {
-            cursor.mode = ScanMode::InBody;
-            return Ok(());
-        };
-
-        if first == b'\n' || first == b'\r' {
-            cursor.mode = ScanMode::InBody;
-            return Ok(());
-        }
-
-        Self::run_line_start_rules(cursor, artifacts)?;
-
-        cursor.mode = ScanMode::InBody;
-        Ok(())
-    }
-
     /// Main dispatch loop for artifacts that can occur anywhere in a block.
     #[inline]
     fn handle_body<'source>(
@@ -257,6 +236,31 @@ impl NoteScanner {
             }
             None => {}
         }
+        Ok(())
+    }
+
+    /// Handles triggers that only occur at the beginning of a line (tasks and
+    /// bare fields).
+    #[inline]
+    fn handle_line_start<'source>(
+        cursor: &mut Cursor<'source>,
+        artifacts: &mut Vec<ScannedArtifact<'source>>,
+    ) -> Result<(), NoteError> {
+        cursor.skip_whitespace_on_line()?;
+
+        let Some(first) = cursor.peek_byte() else {
+            cursor.mode = ScanMode::InBody;
+            return Ok(());
+        };
+
+        if first == b'\n' || first == b'\r' {
+            cursor.mode = ScanMode::InBody;
+            return Ok(());
+        }
+
+        Self::run_line_start_rules(cursor, artifacts)?;
+
+        cursor.mode = ScanMode::InBody;
         Ok(())
     }
 
@@ -707,7 +711,7 @@ impl ScannedArtifact<'_> {
 
 /// Raw tokens extracted from a single scan pass, grouped by artifact type.
 ///
-/// Produced by [`NoteScanner::scan_ranges_raw`] and consumed by
+/// Produced by [`NoteScanner::scan_ranges`] and consumed by
 /// [`BlockExtractor`](crate::note::extractor::BlockExtractor) to populate
 /// [`RawNote`](crate::note::raw::RawNote) collections.
 #[derive(Debug, Default)]
@@ -1148,7 +1152,7 @@ mod tests {
         }
     }
 
-    mod scan_ranges_raw {
+    mod scan_ranges {
         use super::{super::*, scanner_fixture};
 
         #[test]
@@ -1158,9 +1162,8 @@ mod tests {
             let range = 0..text.len();
             let ranges = std::slice::from_ref(&range);
 
-            let raw_tokens = scanner
-                .scan_ranges_raw(text, ranges, true)
-                .expect("scan ranges raw");
+            let raw_tokens =
+                scanner.scan_ranges(text, ranges, true).expect("scan ranges");
 
             assert_eq!(raw_tokens.tags.len(), 1);
             assert_eq!(raw_tokens.inline_fields.len(), 1);

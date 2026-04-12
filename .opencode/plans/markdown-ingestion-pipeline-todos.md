@@ -172,10 +172,10 @@ These are module-level free functions (not methods):
 Implement in order (later methods depend on earlier ones):
 
 **`scan_block`** (private):
-- Calls `self.scanner.scan_ranges_raw(self.source, &block.scannable, false)`.
+- Calls `self.scanner.scan_ranges(self.source, &block.scannable, false)`.
 - If `raw.block_refs` is empty and the last scannable range ends at
   `block_range.end()`, calls `block_ref_tail_range` and does a second
-  `scan_ranges_raw` on the tail, extending `raw.block_refs`.
+  `scan_ranges` on the tail, extending `raw.block_refs`.
 - Returns `ScannedRawArtifacts<'s>`.
 
 **`scan_task_marker_first_line`** (private wrapper):

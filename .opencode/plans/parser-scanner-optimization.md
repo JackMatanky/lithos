@@ -315,8 +315,8 @@ pub fn scan_ranges<'source>(
 ```rust
 // parser.rs:769-783
 fn scan_block_artifacts(...) {
-    let raw_tokens = scanner
-        .scan_ranges_raw(source, scannable_ranges, include_task_marker)?;
+let raw_tokens = scanner
+         .scan_ranges(source, scannable_ranges, include_task_marker)?;
 
     let mut block_refs = raw_tokens.block_refs;
 
@@ -324,8 +324,8 @@ fn scan_block_artifacts(...) {
     if block_refs.is_empty()
         && let Some(tail_range) = Self::block_ref_tail_range(source, block_range)
     {
-        let tail_tokens = scanner
-            .scan_ranges_raw(source, std::slice::from_ref(&tail_range), false)?;
+let tail_tokens = scanner
+             .scan_ranges(source, std::slice::from_ref(&tail_range), false)?;
         block_refs.extend(tail_tokens.block_refs);
     }
     // ...

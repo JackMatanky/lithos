@@ -89,7 +89,7 @@ extraction. Rejected for four reasons:
    object-safe. The plan noted this but left the `harvest` mechanism unspecified.
 
 4. **TagFinalizer and FieldFinalizer as separate extractors double-scan.** The scanner
-   produces tags, fields, and block refs in a single pass via `scan_ranges_raw`.
+   produces tags, fields, and block refs in a single pass via `scan_ranges`.
    Separate extractors for each artifact type would call it multiple times.
 
 ### 2b. Revised two-trait plan (EventSink + BlockFinalizer)
@@ -482,7 +482,7 @@ impl<'s, 'cfg> BlockExtractor<'s, 'cfg> {
         block_range: SourceByteRange,
     ) -> Result<ScannedRawArtifacts<'s>, NoteIngestError> {
         let mut raw = self.scanner
-            .scan_ranges_raw(self.source, &block.scannable, false)
+            .scan_ranges(self.source, &block.scannable, false)
             .map_err(NoteIngestError::Domain)?;
 
         if raw.block_refs.is_empty() {
@@ -490,7 +490,7 @@ impl<'s, 'cfg> BlockExtractor<'s, 'cfg> {
             if last_end == Some(block_range.end().as_usize()) {
                 if let Some(tail) = block_ref_tail_range(self.source, block_range) {
                     let tail_raw = self.scanner
-                        .scan_ranges_raw(self.source, &[tail], false)
+                        .scan_ranges(self.source, &[tail], false)
                         .map_err(NoteIngestError::Domain)?;
                     raw.block_refs.extend(tail_raw.block_refs);
                 }
