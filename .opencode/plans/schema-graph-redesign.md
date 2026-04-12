@@ -47,10 +47,10 @@ Complete redesign based on comprehensive research of:
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Memory (1000 nodes) | ~5 MB | ~2.5 MB | **50% reduction** |
+| Memory (1000 nodes) | ~5 MB | ~5 MB base | **peak/churn reduction** |
 | Pipeline allocations | 5-8 full clones | 0 clones | **100% reduction** |
-| Code size | 1,153 LOC (3 files) | ~800 LOC (4 files) | **30% reduction** |
-| Graph types | 3 (Graph, ProcessedGraph, InheritanceGraph) | 1 (Graph) | **Unified** |
+| Code size | 1,153 LOC (3 files) | ~1,100 LOC (5 files) | **Simplified** |
+| Graph types | 3 (Graph, ProcessedGraph, InheritanceGraph) | 2 core types (Graph<Id, T> + DagGraph<Id, T>) + schema wrappers | **Unified** |
 | Construction APIs | 4 patterns | 1 (GraphBuilder) | **Consistent** |
 | Performance | Baseline | 25-35% faster | **Measured improvement** |
 
@@ -133,13 +133,26 @@ pub struct Vertex {
 
 ```rust
 #[derive(Archive, Serialize, Deserialize)]
-pub struct Graph<T: Archive> {
-    nodes: HashMap<SchemaId, Node<T>>,    // Efficient HashMap archive
-    parents: HashMap<SchemaId, Vec<SchemaId>>,  // Contiguous Vec archive
-    children: HashMap<SchemaId, Vec<SchemaId>>,
+pub struct Graph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord + Archive,
+    T: Archive,
+{
+    nodes: HashMap<Id, Node<T>>,    // Efficient HashMap archive
+    parents: HashMap<Id, Vec<Id>>,  // Contiguous Vec archive
+    children: HashMap<Id, Vec<Id>>,
+}
 
-    #[with(rkyv::with::Skip)]  // Don't serialize cached data
-    topo_order: Option<Vec<SchemaId>>,
+#[derive(Archive, Serialize, Deserialize)]
+pub struct DagGraph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord + Archive,
+    T: Archive,
+{
+    graph: Graph<Id, T>,
+
+    #[rkyv(with = rkyv::with::Skip)]  // Don't serialize cached data
+    topo_order: Vec<Id>,
 }
 ```
 
@@ -277,7 +290,7 @@ HashMap<(SchemaId, SchemaId), ProcessorEdge>
 - Compilation overhead
 - Confusing signatures
 
-**Fix**: Remove R parameter, use `Graph<T>`.
+**Fix**: Remove R parameter, use `Graph<Id, T>`.
 
 ### Flaw 6: Four Construction Patterns
 
@@ -367,7 +380,7 @@ InheritanceGraph { edges: Vec<InheritanceEdge>, ... }
 - `map_payload()` method needed
 - Confusing (same graph, different shapes)
 
-**Fix**: Single unified `Graph<T>` type.
+**Fix**: Two core types (`Graph<Id, T>` + `DagGraph<Id, T>`) plus schema wrappers.
 
 ### Flaw 10: Mutation API Asymmetry
 
@@ -390,14 +403,14 @@ graph.remove_node(id);        // Just ID (where's the payload?)
 
 ```rust
 // Always deserialize entire graph
-let graph: InheritanceGraph<T> = repository.get(...)?;
+let graph: SchemaGraph<T> = repository.get(...)?;
 ```
 
 **Missing**:
 
 ```rust
 // Zero-copy closure-based access
-repository.with_graph(|archived: &ArchivedGraph<T>| {
+repository.with_archived(|archived: &ArchivedGraph<SchemaId, T>| {
     archived.parents_of(id)  // Direct access, no deserialization!
 })?;
 ```
@@ -427,93 +440,76 @@ repository.with_graph(|archived: &ArchivedGraph<T>| {
 
 ````rust
 // ============================================================================
-//  UNIFIED GRAPH TYPE (schema/graph/core.rs)
+//  UNIFIED GRAPH TYPE (graph/core.rs)
 // ============================================================================
 
 use std::collections::HashMap;
+use std::hash::Hash;
 use rkyv::{Archive, Serialize, Deserialize};
-use crate::schema::aggregate::SchemaId;
 
-/// Directed acyclic graph for schema inheritance.
+/// Directed graph infrastructure (raw, may contain cycles).
 ///
 /// Design decisions:
 /// - ID stored in HashMap key only (no duplication)
 /// - Adjacency lists instead of Edge structs (cache-friendly)
-/// - Single type parameter T (no unused R generic)
-/// - Cached topological sort (computed once, not serialized)
+/// - Generic Id + payload (schema-agnostic infrastructure)
+/// - DAG validation provided by `DagGraph` wrapper
 /// - rkyv-native for zero-copy database storage
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[archive(check_bytes)]
-pub struct Graph<T>
+pub struct Graph<Id, T>
 where
+    Id: Copy + Eq + Hash + Ord + Archive,
     T: Archive,
 {
-    /// Nodes indexed by SchemaId (ID is key, not in value).
-    nodes: HashMap<SchemaId, Node<T>>,
+    /// Nodes indexed by Id (ID is key, not in value).
+    nodes: HashMap<Id, Node<T>>,
 
     /// Adjacency: child -> parents (for topological sort).
-    parents: HashMap<SchemaId, Vec<SchemaId>>,
+    parents: HashMap<Id, Vec<Id>>,
 
     /// Adjacency: parent -> children (for depth computation & traversal).
-    children: HashMap<SchemaId, Vec<SchemaId>>,
+    children: HashMap<Id, Vec<Id>>,
 
-    /// Cached topological order (computed once, skipped in serialization).
-    #[with(rkyv::with::Skip)]
-    topo_order: Option<Vec<SchemaId>>,
-
-    /// Cached root nodes (zero in-degree).
-    #[with(rkyv::with::Skip)]
-    roots: Option<Vec<SchemaId>>,
+    // No cached topology in raw graph.
 }
 
-impl<T> Graph<T>
+impl<Id, T> Graph<Id, T>
 where
+    Id: Copy + Eq + Hash + Ord + Archive,
     T: Archive,
 {
-    /// Returns nodes in topological order (caches result after first call).
-    ///
-    /// # Errors
-    /// Returns `CycleError` if graph contains cycles.
-    pub fn topo_order(&mut self) -> Result<&[SchemaId], CycleError> {
-        if self.topo_order.is_none() {
-            let (order, roots) = topological_sort(&self.parents)?;
-            self.topo_order = Some(order);
-            self.roots = Some(roots);
-        }
-        Ok(self.topo_order.as_ref().unwrap())
-    }
-
     /// Returns parent IDs for a node (empty slice if none).
     #[inline]
-    pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
+    pub fn parents_of(&self, id: Id) -> &[Id] {
         self.parents.get(&id).map_or(&[], Vec::as_slice)
     }
 
     /// Returns child IDs for a node (empty slice if none).
     #[inline]
-    pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
+    pub fn children_of(&self, id: Id) -> &[Id] {
         self.children.get(&id).map_or(&[], Vec::as_slice)
     }
 
     /// Returns node by ID.
     #[inline]
-    pub fn get(&self, id: SchemaId) -> Option<&Node<T>> {
+    pub fn get(&self, id: Id) -> Option<&Node<T>> {
         self.nodes.get(&id)
     }
 
     /// Returns mutable node by ID.
     #[inline]
-    pub fn get_mut(&mut self, id: SchemaId) -> Option<&mut Node<T>> {
+    pub fn get_mut(&mut self, id: Id) -> Option<&mut Node<T>> {
         self.nodes.get_mut(&id)
     }
 
     /// Iterates over all (id, node) pairs.
-    pub fn iter(&self) -> impl Iterator<Item = (SchemaId, &Node<T>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (Id, &Node<T>)> {
         self.nodes.iter().map(|(id, node)| (*id, node))
     }
 
     /// Iterates over all (id, node) pairs with mutable access.
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (SchemaId, &mut Node<T>)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Id, &mut Node<T>)> {
         self.nodes.iter_mut().map(|(id, node)| (*id, node))
     }
 
@@ -524,7 +520,7 @@ where
     }
 
     /// Computes depths for all nodes given topological order.
-    pub fn compute_depths(&self, order: &[SchemaId]) -> HashMap<SchemaId, NodeDepth> {
+    pub fn compute_depths(&self, order: &[Id]) -> HashMap<Id, NodeDepth> {
         let mut depths = HashMap::with_capacity(order.len());
 
         for &id in order {
@@ -548,33 +544,12 @@ where
     }
 
     /// Updates all node depths in-place.
-    pub fn update_depths(&mut self, depths: HashMap<SchemaId, NodeDepth>) {
+    pub fn update_depths(&mut self, depths: HashMap<Id, NodeDepth>) {
         for (id, depth) in depths {
             if let Some(node) = self.nodes.get_mut(&id) {
                 node.set_depth(depth);
             }
         }
-    }
-
-    /// Returns all nodes reachable from the given roots (affected subtree).
-    pub fn affected_subtree(&self, changed_ids: &HashSet<SchemaId>) -> HashSet<SchemaId> {
-        let mut affected = HashSet::new();
-        let mut queue = VecDeque::new();
-
-        for &id in changed_ids {
-            queue.push_back(id);
-            affected.insert(id);
-        }
-
-        while let Some(id) = queue.pop_front() {
-            for &child_id in self.children_of(id) {
-                if affected.insert(child_id) {
-                    queue.push_back(child_id);
-                }
-            }
-        }
-
-        affected
     }
 }
 
@@ -626,7 +601,7 @@ impl<T> Node<T> {
     }
 }
 
-/// Builder for constructing validated graphs.
+/// Builder for constructing graphs.
 ///
 /// # Example
 ///
@@ -637,12 +612,15 @@ impl<T> Node<T> {
 /// builder.add_parent(schema_b, schema_a);  // B extends A
 /// let graph = builder.build();
 /// ```
-pub struct GraphBuilder<T> {
-    nodes: HashMap<SchemaId, T>,
-    child_to_parents: HashMap<SchemaId, Vec<SchemaId>>,
+pub struct GraphBuilder<Id, T> {
+    nodes: HashMap<Id, T>,
+    child_to_parents: HashMap<Id, Vec<Id>>,
 }
 
-impl<T> GraphBuilder<T> {
+impl<Id, T> GraphBuilder<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord,
+{
     /// Creates a new graph builder.
     pub fn new() -> Self {
         Self {
@@ -660,18 +638,19 @@ impl<T> GraphBuilder<T> {
     }
 
     /// Adds a node to the graph.
-    pub fn add_node(&mut self, id: SchemaId, payload: T) {
+    pub fn add_node(&mut self, id: Id, payload: T) {
         self.nodes.insert(id, payload);
     }
 
     /// Adds a parent relationship (child extends parent).
-    pub fn add_parent(&mut self, child: SchemaId, parent: SchemaId) {
+    pub fn add_parent(&mut self, child: Id, parent: Id) {
         self.child_to_parents.entry(child).or_default().push(parent);
     }
 
     /// Builds the graph with normalized adjacency lists.
-    pub fn build(self) -> Graph<T>
+    pub fn build(self) -> Graph<Id, T>
     where
+        Id: Archive,
         T: Archive,
     {
         let mut parents = HashMap::with_capacity(self.child_to_parents.len());
@@ -704,39 +683,118 @@ impl<T> GraphBuilder<T> {
             nodes,
             parents,
             children,
-            topo_order: None,
-            roots: None,
         }
     }
 }
 
-impl<T> Default for GraphBuilder<T> {
+impl<Id, T> Default for GraphBuilder<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 ````
 
+````rust
+// ============================================================================
+//  DAG WRAPPER (graph/dag.rs)
+// ============================================================================
+
+/// Validated DAG wrapper that owns the graph and caches topology.
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[archive(check_bytes)]
+pub struct DagGraph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord + Archive,
+    T: Archive,
+{
+    graph: Graph<Id, T>,
+
+    #[rkyv(with = rkyv::with::Skip)]
+    topo_order: Vec<Id>,
+
+    #[rkyv(with = rkyv::with::Skip)]
+    roots: Vec<Id>,
+}
+
+impl<Id, T> TryFrom<Graph<Id, T>> for DagGraph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord + Archive,
+    T: Archive,
+{
+    type Error = GraphError<Id>;
+
+    fn try_from(graph: Graph<Id, T>) -> Result<Self, Self::Error> {
+        let (order, roots) = topological_sort_with_nodes(&graph.parents, graph.nodes.keys())?;
+        Ok(Self {
+            graph,
+            topo_order: order,
+            roots,
+        })
+    }
+}
+
+impl<Id, T> DagGraph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord + Archive,
+    T: Archive,
+{
+    pub fn topo_order(&self) -> &[Id] {
+        &self.topo_order
+    }
+
+    pub fn roots(&self) -> &[Id] {
+        &self.roots
+    }
+
+    pub fn graph(&self) -> &Graph<Id, T> {
+        &self.graph
+    }
+
+    pub fn into_graph(self) -> Graph<Id, T> {
+        self.graph
+    }
+}
+````
+
+````rust
+// ============================================================================
+//  SCHEMA WRAPPER (schema/inheritance.rs)
+// ============================================================================
+
+use crate::schema::aggregate::SchemaId;
+
+pub type SchemaGraph<T> = crate::graph::Graph<SchemaId, T>;
+pub type SchemaGraphBuilder<T> = crate::graph::GraphBuilder<SchemaId, T>;
+pub type SchemaDag<T> = crate::graph::DagGraph<SchemaId, T>;
+````
 ### Module Organization
 
 ```
+lithos-core/src/graph/
+├── mod.rs               (150 LOC) Public exports + module docs
+├── core.rs              (400 LOC) Graph<Id, T>, Node<T>, GraphBuilder<Id, T>
+├── dag.rs               (200 LOC) DagGraph<Id, T> wrapper and validation
+├── sorting.rs           (250 LOC) Topological sort (Kahn's algorithm)
+└── error.rs             (100 LOC) GraphError<Id> and related types
 lithos-core/src/schema/
-├── graph/
-│   ├── mod.rs           (150 LOC) Public exports + module docs
-│   ├── core.rs          (400 LOC) Graph<T>, Node<T>, GraphBuilder<T>
-│   ├── sorting.rs       (250 LOC) Topological sort (Kahn's algorithm)
-│   └── error.rs         (100 LOC) CycleError and related types
-├── inheritance.rs       (Updated to use new Graph<T>)
+├── inheritance.rs       (Schema wrappers + schema-specific extensions)
+├── error.rs             (TryFrom<GraphError> for schema error)
 ├── schema_processor.rs  (Updated for in-place payload updates)
 └── storage.rs           (Updated for single Graph type)
 ```
 
 **File responsibilities**:
 
-- **mod.rs**: Public API surface, comprehensive documentation
-- **core.rs**: Core data structures and implementations
-- **sorting.rs**: Topological sort algorithm and validation
-- **error.rs**: Error types (CycleError, etc.)
+- **graph/mod.rs**: Public API surface, comprehensive documentation
+- **graph/core.rs**: Core data structures and implementations
+- **graph/dag.rs**: DAG wrapper (owning, validated, caches topo/roots)
+- **graph/sorting.rs**: Topological sort algorithm and validation
+- **graph/error.rs**: Error types (GraphError<Id>)
+- **schema/inheritance.rs**: Schema wrappers + schema-specific extensions (affected subtree, inheritance helpers)
+- **schema/error.rs**: Schema error mapping via `TryFrom<GraphError>`
 
 ### Pipeline Payload Pattern
 
@@ -760,7 +818,7 @@ enum PipelinePayload {
 /// Pipeline state with single graph.
 struct PipelineState {
     /// Single graph, payloads updated in-place.
-    graph: Graph<PipelinePayload>,
+    graph: SchemaGraph<PipelinePayload>,
 
     /// Edge metadata (change tracking).
     edge_metadata: HashMap<(SchemaId, SchemaId), ExtendsChangeKind>,
@@ -814,55 +872,74 @@ impl PipelineState {
 #### Task 1.1: Create Module Structure (1 hour)
 
 ```bash
-cd lithos-core/src/schema
-mkdir graph_v2
-touch graph_v2/mod.rs
-touch graph_v2/core.rs
-touch graph_v2/sorting.rs
-touch graph_v2/error.rs
+cd lithos-core/src
+mkdir graph
+touch graph/mod.rs
+touch graph/core.rs
+touch graph/dag.rs
+touch graph/sorting.rs
+touch graph/error.rs
 ```
 
 **Deliverable**: Empty module skeleton.
 
 #### Task 1.2: Implement Error Types (1 hour)
 
-**File**: `graph_v2/error.rs`
+**File**: `graph/error.rs`
 
 ```rust
-use crate::schema::aggregate::SchemaId;
+use std::hash::Hash;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum GraphError {
-    #[error("Cycle detected in inheritance graph")]
+pub enum GraphError<Id>
+where
+    Id: Copy + Eq + Hash,
+{
+    #[error("Cycle detected in graph")]
     CycleDetected {
         /// IDs involved in cycle (if detectable).
-        schemas: Vec<SchemaId>,
+        nodes: Vec<Id>,
     },
 
     #[error("Graph is not directed (bidirectional edge found)")]
     NotDirected,
 
     #[error("Node not found: {id}")]
-    MissingNode { id: SchemaId },
+    MissingNode { id: Id },
 }
 
-pub type CycleError = GraphError;
+pub type CycleError<Id> = GraphError<Id>;
 ```
 
 **Tests**: Basic error construction and Display formatting.
 
+#### Task 1.2b: Schema Error Mapping (30 min)
+
+**File**: `schema/error.rs`
+
+Add `TryFrom<GraphError<SchemaId>> for SchemaError` to map graph infrastructure errors into schema-specific error variants.
+
+#### Task 1.2c: Schema Wrapper Types (30 min)
+
+**File**: `schema/inheritance.rs`
+
+Add schema wrapper aliases for the infrastructure graph types (`SchemaGraph`, `SchemaGraphBuilder`, `SchemaDag`).
+
 #### Task 1.3: Implement Core Types (4 hours)
 
-**File**: `graph_v2/core.rs`
+**File**: `graph/core.rs` and `graph/dag.rs`
 
 Implement:
 - `Node<T>` struct with payload and depth
-- `Graph<T>` struct with nodes, parents, children, cached order
-- `GraphBuilder<T>` with add_node, add_parent, build methods
+- `Graph<Id, T>` struct with nodes, parents, children
+- `GraphBuilder<Id, T>` with add_node, add_parent, build methods
+- `DagGraph<Id, T>` wrapper (in `graph/dag.rs`) with `TryFrom<Graph<Id, T>>` validation
 - All accessor methods (parents_of, children_of, get, iter, etc.)
 - compute_depths method
-- affected_subtree method
+
+**Schema extensions (in `schema/inheritance.rs`)**:
+- affected_subtree method (schema-specific traversal helpers)
 
 **Tests**:
 - Graph construction via builder
@@ -872,11 +949,12 @@ Implement:
 - Disconnected components
 - Parent/child queries
 - Depth computation correctness
-- Affected subtree BFS
+- Affected subtree BFS (schema/inheritance.rs)
+- DagGraph validation (acyclic vs cycle detection)
 
 #### Task 1.4: Implement Topological Sort (3 hours)
 
-**File**: `graph_v2/sorting.rs`
+**File**: `graph/sorting.rs`
 
 Implement:
 - Kahn's algorithm for topological sort
@@ -888,14 +966,19 @@ Implement:
 ///
 /// # Errors
 /// Returns `GraphError::CycleDetected` if graph has cycles.
-pub fn topological_sort(
-    parents: &HashMap<SchemaId, Vec<SchemaId>>,
-) -> Result<(Vec<SchemaId>, Vec<SchemaId>), GraphError> {
+pub fn topological_sort_with_nodes<Id>(
+    parents: &HashMap<Id, Vec<Id>>,
+    nodes: impl IntoIterator<Item = Id>,
+) -> Result<(Vec<Id>, Vec<Id>), GraphError<Id>>
+where
+    Id: Copy + Eq + Hash + Ord,
+{
     // 1. Compute in-degrees
-    // 2. Build queue with zero in-degree nodes (sorted)
-    // 3. Kahn's algorithm
-    // 4. Check if all nodes processed (else cycle)
-    // 5. Return (order, roots)
+    // 2. Include root-only and isolated nodes from `nodes`
+    // 3. Build queue with zero in-degree nodes (sorted)
+    // 4. Kahn's algorithm
+    // 5. Check if all nodes processed (else cycle)
+    // 6. Return (order, roots)
 }
 ```
 
@@ -910,32 +993,32 @@ pub fn topological_sort(
 
 #### Task 1.5: Public API & Documentation (2 hours)
 
-**File**: `graph_v2/mod.rs`
+**File**: `graph/mod.rs`
 
 ````rust
-//! Directed acyclic graph structures for schema inheritance.
+//! Directed graph infrastructure with optional DAG validation.
 //!
-//! This module provides a unified graph type with cached topological ordering
-//! and zero-copy serialization support.
+//! This module provides a raw graph plus a validated DAG wrapper with cached
+//! topological ordering and zero-copy serialization support.
 //!
 //! # Architecture
 //!
 //! The graph infrastructure uses a builder pattern for construction:
 //!
 //! ```text
-//! GraphBuilder<T>  (mutable, validates on build)
+//! GraphBuilder<Id, T>  (mutable)
 //!     ↓ build()
-//! Graph<T>         (immutable, cached topology)
-//!     ↓ topo_order()
-//! &[SchemaId]      (topological order, cached)
+//! Graph<Id, T>     (immutable, raw)
+//!     ↓ try_into()
+//! DagGraph<Id, T>  (validated, cached topology)
 //! ```
 //!
 //! # Design Decisions
 //!
 //! - **ID storage**: HashMap key only (not in Node)
 //! - **Edges**: Adjacency lists (no Edge struct)
-//! - **Generics**: Single parameter T (no R)
-//! - **Caching**: Topological order computed once
+//! - **Generics**: Id + payload T (no unused R)
+//! - **Caching**: Topological order computed once in `DagGraph`
 //! - **Serialization**: rkyv-native (skips cached data)
 //!
 //! # Examples
@@ -943,24 +1026,59 @@ pub fn topological_sort(
 //! Building a schema inheritance graph:
 //!
 //! ```ignore
-//! use lithos_core::schema::graph_v2::{GraphBuilder, Graph};
+//! use lithos_core::graph::{GraphBuilder, Graph, DagGraph};
 //!
 //! let mut builder = GraphBuilder::new();
 //! builder.add_node(schema_a_id, metadata_a);
 //! builder.add_node(schema_b_id, metadata_b);
 //! builder.add_parent(schema_b_id, schema_a_id);  // B extends A
 //!
-//! let mut graph = builder.build();
-//! let order = graph.topo_order()?;  // Validates DAG, caches result
+//! let graph = builder.build();
+//! let dag = DagGraph::try_from(graph)?;  // Validates DAG, caches result
+//! let order = dag.topo_order();
 //! ```
 
 mod core;
+mod dag;
 mod sorting;
 mod error;
 
 pub use core::{Graph, Node, GraphBuilder};
+pub use dag::DagGraph;
 pub use error::GraphError;
 pub(crate) use sorting::topological_sort;
+````
+
+````rust
+// ============================================================================
+//  SCHEMA WRAPPER (schema/inheritance.rs)
+// ============================================================================
+
+use crate::schema::aggregate::SchemaId;
+
+pub type SchemaGraph<T> = crate::graph::Graph<SchemaId, T>;
+pub type SchemaGraphBuilder<T> = crate::graph::GraphBuilder<SchemaId, T>;
+pub type SchemaDag<T> = crate::graph::DagGraph<SchemaId, T>;
+````
+
+````rust
+// ============================================================================
+//  SCHEMA ERROR MAPPING (schema/error.rs)
+// ============================================================================
+
+impl TryFrom<crate::graph::GraphError<SchemaId>> for SchemaError {
+    type Error = SchemaError;
+
+    fn try_from(err: crate::graph::GraphError<SchemaId>) -> Result<Self, Self::Error> {
+        match err {
+            crate::graph::GraphError::CycleDetected { nodes } => {
+                Ok(SchemaError::CycleDetected { schemas: nodes })
+            }
+            crate::graph::GraphError::NotDirected => Ok(SchemaError::NotDirected),
+            crate::graph::GraphError::MissingNode { id } => Ok(SchemaError::MissingNode { id }),
+        }
+    }
+}
 ````
 
 **Deliverable**: Comprehensive module documentation with examples.
@@ -1038,7 +1156,7 @@ struct PresentData {
 ```rust
 /// Unified pipeline state with single graph.
 struct PipelineState {
-    graph: Graph<PipelinePayload>,
+    graph: SchemaGraph<PipelinePayload>,
     edge_metadata: HashMap<(SchemaId, SchemaId), ExtendsChangeKind>,
     status_map: HashMap<SchemaId, NodeStatus>,  // Track node status
 }
@@ -1046,13 +1164,13 @@ struct PipelineState {
 impl PipelineState {
     fn new(capacity: usize) -> Self {
         Self {
-            graph: Graph::default(),
+            graph: SchemaGraphBuilder::with_capacity(capacity).build(),
             edge_metadata: HashMap::with_capacity(capacity),
             status_map: HashMap::with_capacity(capacity),
         }
     }
 
-    fn from_builder(builder: GraphBuilder<PipelinePayload>) -> Self {
+    fn from_builder(builder: SchemaGraphBuilder<PipelinePayload>) -> Self {
         Self {
             graph: builder.build(),
             edge_metadata: HashMap::new(),
@@ -1071,7 +1189,7 @@ let graph = InheritanceGraph<ProcessorNode<PresentPayload>>::...;
 
 **After**:
 ```rust
-let mut builder = GraphBuilder::new();
+let mut builder = SchemaGraphBuilder::new();
 for (id, found_payload) in found_schemas {
     builder.add_node(id, PipelinePayload::Present(found_payload));
 }
@@ -1121,7 +1239,7 @@ fn compare_stage(state: &mut PipelineState, source: &FsReader) -> Result<()> {
 ```rust
 fn build_graph_stage(state: &mut PipelineState, new_schemas: NewBatch) -> Result<()> {
     // Build new graph from parsed schemas
-    let mut builder = GraphBuilder::with_capacity(
+    let mut builder = SchemaGraphBuilder::with_capacity(
         state.graph.node_count() + new_schemas.len()
     );
 
@@ -1151,7 +1269,7 @@ fn build_graph_stage(state: &mut PipelineState, new_schemas: NewBatch) -> Result
 #### Task 2.7: Migrate Analysis Stage (2 hours)
 
 **Uses**:
-- `graph.affected_subtree(merge_roots)` for incremental processing
+- `schema::inheritance::affected_subtree(&graph, merge_roots)` for incremental processing
 - In-place payload updates (Inheritance → Analysis variants)
 
 **Tests**: Affected subtree computed correctly.
@@ -1159,17 +1277,18 @@ fn build_graph_stage(state: &mut PipelineState, new_schemas: NewBatch) -> Result
 #### Task 2.8: Migrate Construction Stage (2 hours)
 
 **Uses**:
-- `graph.topo_order()` for dependency-ordered iteration
-- `graph.parents_of(id)` for property merging
-- `graph.children_of(id)` for reference updates
+- `SchemaDag::try_from(graph)` for validation
+- `dag.topo_order()` for dependency-ordered iteration
+- `dag.graph().parents_of(id)` for property merging
+- `dag.graph().children_of(id)` for reference updates
 
 **Tests**: Schemas constructed in correct order.
 
 #### Task 2.9: Update Storage Layer (1 hour)
 
 **Changes**:
-- `save_topological_graph`: Accept `Graph<InheritanceNode>` instead of `InheritanceGraph<InheritanceNode>`
-- `get_topological_graph`: Return `Option<Graph<InheritanceNode>>`
+- `save_topological_graph`: Accept `SchemaDag<InheritanceNode>` instead of `InheritanceGraph<InheritanceNode>`
+- `get_topological_graph`: Return `Option<SchemaDag<InheritanceNode>>`
 
 **Tests**: Serialization round-trip works.
 
@@ -1189,16 +1308,12 @@ fn build_graph_stage(state: &mut PipelineState, new_schemas: NewBatch) -> Result
 
 **Goal**: Remove old code, finalize migration.
 
-#### Task 3.1: Rename graph_v2 → graph (1 hour)
+#### Task 3.1: Remove old schema-local graph (1 hour)
 
 ```bash
-cd lithos-core/src/schema
-rm -rf graph  # Remove old implementation
-mv graph_v2 graph
+# Remove old schema-local graph implementation (if present)
+# Ensure schema/inheritance.rs wrappers remain
 ```
-
-**Update imports**:
-- `use crate::schema::graph_v2::` → `use crate::schema::graph::`
 
 #### Task 3.2: Delete Old Files (30 min)
 
@@ -1206,17 +1321,17 @@ mv graph_v2 graph
 - Old `graph.rs` (if any legacy code remains)
 - Old `topo_sort.rs` (merged into graph/sorting.rs)
 - `ProcessedGraph` type
-- `InheritanceGraph` type (replaced by `Graph<InheritanceNode>`)
+- `InheritanceGraph` type (replaced by `SchemaGraph<InheritanceNode>`)
 
 #### Task 3.3: Update Public Exports (30 min)
 
 **File**: `schema/mod.rs`
 
 ```rust
-pub mod graph;
+pub mod inheritance;
 
-// Re-export commonly used types
-pub use graph::{Graph, GraphBuilder, GraphError};
+// Re-export commonly used schema graph types
+pub use inheritance::{SchemaGraph, SchemaGraphBuilder, SchemaDag};
 ```
 
 #### Task 3.4: Update Documentation (1 hour)
@@ -1344,14 +1459,14 @@ mod tests {
 
     #[test]
     fn builder_creates_empty_graph() {
-        let builder = GraphBuilder::<()>::new();
+        let builder = GraphBuilder::<SchemaId, ()>::new();
         let graph = builder.build();
         assert_eq!(graph.node_count(), 0);
     }
 
     #[test]
     fn builder_normalizes_adjacency() {
-        let mut builder = GraphBuilder::new();
+        let mut builder = GraphBuilder::<SchemaId, _>::new();
         builder.add_node(id_a, "A");
         builder.add_node(id_b, "B");
         builder.add_parent(id_b, id_a);
@@ -1366,7 +1481,7 @@ mod tests {
         // A(0) → B(1) → D(2)
         //   ↓      ↘
         // C(1) ───→ D(2)
-        let mut builder = GraphBuilder::new();
+        let mut builder = GraphBuilder::<SchemaId, _>::new();
         builder.add_node(id_a, "A");
         builder.add_node(id_b, "B");
         builder.add_node(id_c, "C");
@@ -1376,9 +1491,9 @@ mod tests {
         builder.add_parent(id_d, id_b);
         builder.add_parent(id_d, id_c);
 
-        let mut graph = builder.build();
-        let order = graph.topo_order().unwrap();
-        let depths = graph.compute_depths(order);
+        let graph = builder.build();
+        let dag = DagGraph::try_from(graph).unwrap();
+        let depths = dag.graph().compute_depths(dag.topo_order());
 
         assert_eq!(depths[&id_a].as_usize(), 0);
         assert_eq!(depths[&id_b].as_usize(), 1);
@@ -1391,12 +1506,12 @@ mod tests {
         // A → B → D
         //     ↓
         //     C → E
-        let mut builder = GraphBuilder::new();
+        let mut builder = GraphBuilder::<SchemaId, _>::new();
         // ... build graph
         let graph = builder.build();
 
         let changed = HashSet::from([id_b]);
-        let affected = graph.affected_subtree(&changed);
+        let affected = schema::inheritance::affected_subtree(&graph, &changed);
 
         assert!(affected.contains(&id_b));
         assert!(affected.contains(&id_c));
@@ -1422,7 +1537,7 @@ mod tests {
             (id_c, vec![id_b]),
         ]);
 
-        let (order, roots) = topological_sort(&parents).unwrap();
+        let (order, roots) = topological_sort_with_nodes(&parents, [id_a, id_b, id_c]).unwrap();
 
         assert_eq!(roots, vec![id_a]);
 
@@ -1444,7 +1559,7 @@ mod tests {
             (id_a, vec![id_c]),  // Cycle!
         ]);
 
-        let result = topological_sort(&parents);
+        let result = topological_sort_with_nodes(&parents, [id_a, id_b, id_c]);
         assert!(matches!(result, Err(GraphError::CycleDetected { .. })));
     }
 
@@ -1456,8 +1571,8 @@ mod tests {
             (id_c, vec![id_a]),
         ]);
 
-        let (order1, _) = topological_sort(&parents).unwrap();
-        let (order2, _) = topological_sort(&parents).unwrap();
+        let (order1, _) = topological_sort_with_nodes(&parents, [id_a, id_b, id_c]).unwrap();
+        let (order2, _) = topological_sort_with_nodes(&parents, [id_a, id_b, id_c]).unwrap();
 
         assert_eq!(order1, order2);
     }
@@ -1491,10 +1606,10 @@ fn graph_serialization_roundtrip() {
     let bytes = rkyv::to_bytes::<_, 256>(&graph).unwrap();
 
     // Deserialize
-    let archived = rkyv::check_archived_root::<Graph<TestPayload>>(&bytes).unwrap();
+    let archived = rkyv::check_archived_root::<Graph<SchemaId, TestPayload>>(&bytes).unwrap();
 
     // Verify
-    assert_eq!(archived.node_count(), graph.node_count());
+    assert_eq!(archived.nodes.len(), graph.node_count());
     // ... more checks
 }
 ```
@@ -1527,8 +1642,8 @@ fn bench_adjacency_queries(c: &mut Criterion) {
 
     c.bench_function("parents_of", |b| {
         b.iter(|| {
-            for id in graph.nodes().keys() {
-                black_box(graph.parents_of(*id));
+            for (id, _node) in graph.iter() {
+                black_box(graph.parents_of(id));
             }
         });
     });
@@ -1569,24 +1684,24 @@ proptest! {
 ### Functional Requirements
 
 - [ ] All existing tests pass
-- [ ] Graph supports topological sort with caching
+- [ ] DagGraph supports topological sort with caching
 - [ ] Cycle detection works correctly
 - [ ] Depth computation handles multi-parent DAGs
 - [ ] Adjacency queries are O(1)
 - [ ] rkyv serialization round-trips correctly
 - [ ] Affected subtree BFS traversal works
-- [ ] Builder pattern validates graphs on construction
+- [ ] DagGraph validates graphs on construction
 
 ### Performance Requirements
 
-- [ ] **Memory**: ≥40% reduction (profile with 1000 schemas)
+- [ ] **Memory (peak/churn)**: ≥35% reduction (profile with 1000 schemas)
 - [ ] **Pipeline**: ≥25% faster (benchmark full pipeline)
 - [ ] **Construction**: ≥10% faster (benchmark GraphBuilder)
 - [ ] **No regressions**: All operations ≤ old implementation
 
 ### Code Quality Requirements
 
-- [ ] Single `Graph<T>` type (no split types)
+- [ ] `Graph<Id, T>` + `DagGraph<Id, T>` with schema wrappers (no split types)
 - [ ] No ID duplication (HashMap key only)
 - [ ] No redundant storage (adjacency lists only)
 - [ ] Clear API (GraphBuilder for construction)
@@ -1596,8 +1711,8 @@ proptest! {
 
 ### Non-Functional Requirements
 
-- [ ] Code size reduced (~800 LOC vs 1,153 LOC)
-- [ ] Module organization clear (4 focused files)
+- [ ] Code size simplified (~1,100 LOC across 5 files)
+- [ ] Module organization clear (5 focused files)
 - [ ] ADR documented (design decisions)
 - [ ] Migration guide (for future reference)
 - [ ] Benchmarks baseline established
@@ -1700,10 +1815,10 @@ proptest! {
 |--------|-----------|------------|--------|
 | **Node storage** | `HashMap<SchemaId, Node<T>>` where Node has `id` field | `HashMap<SchemaId, Node<T>>` where Node has NO `id` | Remove ID field |
 | **Edge storage** | `Vec<Edge<R>>` + `AdjacencyMap` | `HashMap<SchemaId, Vec<SchemaId>>` (parents/children) | Remove Edge struct |
-| **Graph types** | `Graph<T,R>`, `ProcessedGraph<T,R>`, `InheritanceGraph<T>` | `Graph<T>` | Unify 3 → 1 |
-| **Type params** | `Graph<T, R>` | `Graph<T>` | Remove unused R |
-| **Construction** | 4 patterns | `GraphBuilder<T>` | Single API |
-| **Topology** | Stored in ProcessedGraph | Cached in Graph (Option) | Lazy compute |
+| **Graph types** | `Graph<T,R>`, `ProcessedGraph<T,R>`, `InheritanceGraph<T>` | `Graph<Id, T>` + `DagGraph<Id, T>` (+ schema wrappers) | Unify 3 → 2 |
+| **Type params** | `Graph<T, R>` | `Graph<Id, T>` | Remove unused R |
+| **Construction** | 4 patterns | `GraphBuilder<Id, T>` | Single API |
+| **Topology** | Stored in ProcessedGraph | Cached in DagGraph | Validated wrapper |
 
 ### Appendix B: Memory Layout Comparison
 
@@ -1735,7 +1850,7 @@ Total:             ~5.04 MB base + 24KB adjacency = ~5.06 MB
 - Zero graph reconstructions (was: 5-8 full clones = 25-40 MB allocations)
 - In-place updates (no intermediate HashMap allocations)
 
-**Total savings**: ~25-40 MB per pipeline run (memory churn reduction).
+**Total savings**: ~25-40 MB per pipeline run (peak memory and churn reduction).
 
 ### Appendix C: Performance Baseline
 
@@ -1748,7 +1863,7 @@ Total:             ~5.04 MB base + 24KB adjacency = ~5.06 MB
 | Depth computation | 1.8 ms | 1.6 ms | ✅ 11% faster |
 | Affected subtree | 0.8 ms | 0.7 ms | ✅ 12% faster |
 | Pipeline (full) | 45 ms | 32 ms | ✅ 29% faster |
-| Memory (peak) | 12.3 MB | 7.8 MB | ✅ 37% reduction |
+| Memory (peak) | 12.3 MB | 7.8 MB | ✅ 37% reduction (peak/churn) |
 
 ### Appendix D: Research References
 
@@ -1782,7 +1897,9 @@ Total:             ~5.04 MB base + 24KB adjacency = ~5.06 MB
 **Phase 1: Core Graph Implementation**
 - [ ] Task 1.1: Module structure created
 - [ ] Task 1.2: Error types implemented
-- [ ] Task 1.3: Core types implemented (Graph, Node, GraphBuilder)
+- [ ] Task 1.2b: Schema error mapping added
+- [ ] Task 1.2c: Schema wrapper types added
+- [ ] Task 1.3: Core types implemented (Graph, Node, GraphBuilder, DagGraph)
 - [ ] Task 1.4: Topological sort implemented
 - [ ] Task 1.5: Documentation complete
 - [ ] Task 1.6: Benchmarks baseline
@@ -1801,7 +1918,7 @@ Total:             ~5.04 MB base + 24KB adjacency = ~5.06 MB
 - [ ] Phase 2 checkpoint: Zero reconstructions verified
 
 **Phase 3: Cleanup**
-- [ ] Task 3.1: graph_v2 renamed to graph
+- [ ] Task 3.1: Remove old schema-local graph
 - [ ] Task 3.2: Old files deleted
 - [ ] Task 3.3: Public exports updated
 - [ ] Task 3.4: Documentation updated
