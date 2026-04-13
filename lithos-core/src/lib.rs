@@ -17,6 +17,7 @@ pub mod bounds;
 pub mod config;
 pub mod db;
 pub mod fs;
+pub mod graph;
 pub mod note;
 pub mod schema;
 pub mod template;

@@ -17,7 +17,7 @@
 //!
 //! # Design Decisions
 //!
-//! - **ID storage**: HashMap key only (not in Node)
+//! - **ID storage**: `HashMap` key only (not in Node)
 //! - **Edges**: Adjacency lists (no Edge struct)
 //! - **Generics**: Id + payload T (no unused R)
 //! - **Caching**: Topological order computed once in `DagGraph`
@@ -42,6 +42,13 @@
 //! # }
 //! ```
 
+#![allow(
+    clippy::pub_use,
+    clippy::module_name_repetitions,
+    reason = "This module intentionally re-exports a small public surface for \
+              ergonomic crate consumers"
+)]
+
 mod core;
 mod dag;
 mod error;
@@ -53,4 +60,3 @@ pub use core::{Graph, GraphBuilder};
 pub use dag::DagGraph;
 pub use error::{CycleError, GraphError};
 pub use node::{Node, NodeDepth};
-pub(crate) use sorting::topological_sort_with_nodes;

@@ -30,6 +30,7 @@ use thiserror::Error;
 /// assert_eq!(err.to_string(), "cycle detected in graph");
 /// ```
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GraphError<Id>
 where
     Id: Copy + Eq + Hash,
@@ -48,6 +49,7 @@ where
     /// Returned when a node referenced by an edge is missing.
     #[error("node not found: {id}")]
     MissingNode {
+        /// The ID of the missing node.
         id: Id,
     },
 }

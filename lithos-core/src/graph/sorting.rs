@@ -11,6 +11,9 @@ use std::{
 
 use crate::graph::GraphError;
 
+/// Topological sort result: (order, roots).
+type TopoResult<Id> = Result<(Vec<Id>, Vec<Id>), GraphError<Id>>;
+
 /// Computes topological order using Kahn's algorithm.
 ///
 /// # Errors
@@ -18,7 +21,7 @@ use crate::graph::GraphError;
 pub(crate) fn topological_sort_with_nodes<Id>(
     parents: &HashMap<Id, Vec<Id>>,
     nodes: impl IntoIterator<Item = Id>,
-) -> Result<(Vec<Id>, Vec<Id>), GraphError<Id>>
+) -> TopoResult<Id>
 where
     Id: Copy + Eq + Hash + Ord,
 {
@@ -53,6 +56,10 @@ where
         indegree.entry(id).or_insert(0);
     }
 
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Iteration order doesn't affect validation logic"
+    )]
     for (child, parent_ids) in parents {
         if !indegree.contains_key(child) {
             return Err(GraphError::MissingNode {
@@ -79,16 +86,25 @@ where
     Id: Copy + Eq + Hash + Ord,
 {
     let mut children: HashMap<Id, Vec<Id>> = HashMap::new();
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Iteration order doesn't affect adjacency list construction"
+    )]
     for (child, parent_ids) in parents {
-        let entry =
-            indegree.get_mut(child).expect("child IDs validated to exist");
-        *entry = entry.saturating_add(parent_ids.len());
+        // INVARIANT: child IDs validated in init_indegree
+        if let Some(entry) = indegree.get_mut(child) {
+            *entry = entry.saturating_add(parent_ids.len());
+        }
 
         for parent in parent_ids {
             children.entry(*parent).or_default().push(*child);
         }
     }
 
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Iteration order doesn't affect edge normalization"
+    )]
     for child_list in children.values_mut() {
         child_list.sort();
         child_list.dedup();
@@ -117,6 +133,11 @@ where
     Id: Copy + Eq + Hash + Ord,
 {
     let mut heap: BinaryHeap<Reverse<Id>> = BinaryHeap::new();
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Iteration order doesn't affect heap initialization (heap \
+                  re-sorts)"
+    )]
     for (id, degree) in &indegree {
         if *degree == 0 {
             heap.push(Reverse(*id));
@@ -128,15 +149,18 @@ where
 
     while let Some(Reverse(id)) = heap.pop() {
         order.push(id);
-        if let Some(children) = children.get(&id) {
-            for child in children {
-                let entry = indegree
-                    .get_mut(child)
-                    .expect("child IDs validated to exist");
-                *entry = entry.saturating_sub(1);
-                if *entry == 0 {
-                    heap.push(Reverse(*child));
-                }
+        let Some(children) = children.get(&id) else {
+            continue;
+        };
+
+        for child in children {
+            // INVARIANT: child IDs validated in init_indegree
+            let Some(entry) = indegree.get_mut(child) else {
+                continue;
+            };
+            *entry = entry.saturating_sub(1);
+            if *entry == 0 {
+                heap.push(Reverse(*child));
             }
         }
     }
@@ -145,6 +169,11 @@ where
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::shadow_unrelated,
+    reason = "Test code uses simplified patterns for clarity"
+)]
 mod tests {
     use super::*;
 
@@ -153,18 +182,22 @@ mod tests {
 
         #[test]
         fn returns_root_for_linear_chain() {
-            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let parents =
+                HashMap::from([(2i32, vec![1i32]), (3i32, vec![2i32])]);
             let (_order, roots) =
-                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32])
+                    .unwrap();
 
-            assert_eq!(roots, vec![1], "expected root [1], got {:?}", roots);
+            assert_eq!(roots, vec![1i32], "expected root [1], got {roots:?}");
         }
 
         #[test]
         fn orders_parent_before_child_for_first_edge() {
-            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let parents =
+                HashMap::from([(2i32, vec![1i32]), (3i32, vec![2i32])]);
             let (order, _roots) =
-                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32])
+                    .unwrap();
 
             let pos: HashMap<_, _> = order
                 .iter()
@@ -174,17 +207,18 @@ mod tests {
                 .collect();
 
             assert!(
-                pos[&1] < pos[&2],
-                "expected 1 before 2, positions: {:?}",
-                pos
+                pos[&1i32] < pos[&2i32],
+                "expected 1 before 2, positions: {pos:?}"
             );
         }
 
         #[test]
         fn orders_parent_before_child_for_second_edge() {
-            let parents = HashMap::from([(2, vec![1]), (3, vec![2])]);
+            let parents =
+                HashMap::from([(2i32, vec![1i32]), (3i32, vec![2i32])]);
             let (order, _roots) =
-                topological_sort_with_nodes(&parents, [1, 2, 3]).unwrap();
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32])
+                    .unwrap();
 
             let pos: HashMap<_, _> = order
                 .iter()
@@ -194,34 +228,35 @@ mod tests {
                 .collect();
 
             assert!(
-                pos[&2] < pos[&3],
-                "expected 2 before 3, positions: {:?}",
-                pos
+                pos[&2i32] < pos[&3i32],
+                "expected 2 before 3, positions: {pos:?}"
             );
         }
 
         #[test]
         fn returns_error_when_cycle_detected() {
-            let parents =
-                HashMap::from([(2, vec![1]), (3, vec![2]), (1, vec![3])]);
-            let result = topological_sort_with_nodes(&parents, [1, 2, 3]);
+            let parents = HashMap::from([
+                (2i32, vec![1i32]),
+                (3i32, vec![2i32]),
+                (1i32, vec![3i32]),
+            ]);
+            let result =
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32]);
 
             assert!(
                 matches!(&result, Err(GraphError::CycleDetected { .. })),
-                "expected cycle error, got {:?}",
-                result
+                "expected cycle error, got {result:?}"
             );
         }
 
         #[test]
         fn returns_error_when_parent_missing() {
-            let parents = HashMap::from([(2, vec![1])]);
-            let result = topological_sort_with_nodes(&parents, [2]);
+            let parents = HashMap::from([(2i32, vec![1i32])]);
+            let result = topological_sort_with_nodes(&parents, [2i32]);
 
             assert!(
                 matches!(&result, Err(GraphError::MissingNode { .. })),
-                "expected missing-node error, got {:?}",
-                result
+                "expected missing-node error, got {result:?}"
             );
         }
 
@@ -233,8 +268,7 @@ mod tests {
 
             assert!(
                 order.contains(&2),
-                "expected order to include isolated node 2, got {:?}",
-                order
+                "expected order to include isolated node 2, got {order:?}"
             );
         }
 
@@ -246,8 +280,7 @@ mod tests {
 
             assert!(
                 roots.contains(&2),
-                "expected roots to include isolated node 2, got {:?}",
-                roots
+                "expected roots to include isolated node 2, got {roots:?}"
             );
         }
 
@@ -259,25 +292,28 @@ mod tests {
 
             assert!(
                 order.is_empty(),
-                "expected empty order for empty graph, got {:?}",
-                order
+                "expected empty order for empty graph, got {order:?}"
             );
         }
 
         #[test]
         fn returns_deterministic_order_for_parallel_children() {
-            let parents =
-                HashMap::from([(2, vec![1]), (3, vec![1]), (4, vec![1])]);
+            let parents = HashMap::from([
+                (2i32, vec![1i32]),
+                (3i32, vec![1i32]),
+                (4i32, vec![1i32]),
+            ]);
 
             let (order1, _roots) =
-                topological_sort_with_nodes(&parents, [1, 2, 3, 4]).unwrap();
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32, 4i32])
+                    .unwrap();
             let (order2, _roots) =
-                topological_sort_with_nodes(&parents, [1, 2, 3, 4]).unwrap();
+                topological_sort_with_nodes(&parents, [1i32, 2i32, 3i32, 4i32])
+                    .unwrap();
 
             assert_eq!(
                 order1, order2,
-                "expected deterministic order, got {:?} vs {:?}",
-                order1, order2
+                "expected deterministic order, got {order1:?} vs {order2:?}"
             );
         }
     }

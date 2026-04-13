@@ -38,7 +38,7 @@ use crate::graph::{Graph, GraphError, sorting::topological_sort_with_nodes};
 /// assert_eq!(dag.topo_order(), &[1, 2]);
 /// ```
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[archive(check_bytes)]
+#[rkyv(bytecheck(bounds()))]
 pub struct DagGraph<Id, T>
 where
     Id: Copy + Eq + Hash + Ord + Archive,
@@ -60,6 +60,7 @@ where
 {
     type Error = GraphError<Id>;
 
+    #[inline]
     fn try_from(graph: Graph<Id, T>) -> Result<Self, Self::Error> {
         let (order, roots) =
             topological_sort_with_nodes(graph.parents(), graph.node_ids())?;
@@ -108,62 +109,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::GraphBuilder;
 
     mod try_from {
         use super::*;
+        use crate::graph::GraphBuilder;
 
         #[test]
         fn rejects_cycles() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1, Box::<str>::from("A"));
-            builder.add_node(2, Box::<str>::from("B"));
-            builder.add_parent(1, 2);
-            builder.add_parent(2, 1);
+            builder.add_node(1i32, Box::<str>::from("A"));
+            builder.add_node(2i32, Box::<str>::from("B"));
+            builder.add_parent(1i32, 2i32);
+            builder.add_parent(2i32, 1i32);
 
             let graph = builder.build();
             let result = DagGraph::try_from(graph);
 
             assert!(
                 matches!(&result, Err(GraphError::CycleDetected { .. })),
-                "expected cycle error, got {:?}",
-                result
+                "expected cycle error, got {result:?}",
             );
         }
 
         #[test]
         fn returns_missing_node_error_when_child_absent() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1, Box::<str>::from("A"));
-            builder.add_parent(2, 1);
+            builder.add_node(1i32, Box::<str>::from("A"));
+            builder.add_parent(2i32, 1i32);
 
             let graph = builder.build();
             let result = DagGraph::try_from(graph);
 
             assert!(
                 matches!(&result, Err(GraphError::MissingNode { .. })),
-                "expected missing-node error, got {:?}",
-                result
+                "expected missing-node error, got {result:?}"
             );
         }
     }
 
     mod roots {
         use super::*;
+        use crate::graph::GraphBuilder;
 
         #[test]
         fn returns_sorted_roots_for_disconnected_nodes() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1, Box::<str>::from("A"));
-            builder.add_node(2, Box::<str>::from("B"));
-            builder.add_node(3, Box::<str>::from("C"));
-            builder.add_parent(2, 1);
+            builder.add_node(1i32, Box::<str>::from("A"));
+            builder.add_node(2i32, Box::<str>::from("B"));
+            builder.add_node(3i32, Box::<str>::from("C"));
+            builder.add_parent(2i32, 1i32);
 
             let dag = DagGraph::try_from(builder.build())
                 .expect("expected DAG to be valid");
             assert_eq!(
                 dag.roots(),
-                &[1, 3],
+                &[1i32, 3i32],
                 "expected roots [1, 3], got {:?}",
                 dag.roots()
             );
