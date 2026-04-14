@@ -146,7 +146,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         match event {
             Event::Start(tag) => self.on_start(tag, range.start)?,
             Event::End(tag) => self.on_end(tag, range.end)?,
-            Event::Text(text) => self.on_text(&text, range),
+            Event::Text(text) => self.on_text(&text, range)?,
             Event::Code(text) => self.on_code(&text),
             Event::TaskListMarker(checked) => self.on_task_marker(checked),
             Event::InlineMath(_)
@@ -291,41 +291,38 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             TagEnd::Link | TagEnd::Image => self.finalize_link(),
             TagEnd::MetadataBlock(_) => self.finalize_metadata(byte_end)?,
             TagEnd::Heading(_) => {
-                let block = self.stack.pop()?;
-                let range = block.range_to(byte_end)?;
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
                 self.extractor.finalize_heading(
                     block,
-                    range,
                     self.depth,
                     &mut self.out,
                     self.stack.pool_mut(),
                 )?;
             }
             TagEnd::Paragraph => {
-                let block = self.stack.pop()?;
-                // Propagate text to parent list item before moving block.
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
+                // Propagate fragments to parent list item before moving block.
                 if let Some(parent) = self.stack.last_mut()
-                    && matches!(parent.kind, BlockKind::ListItem { .. })
-                    && parent.text.is_empty()
+                    && matches!(parent.kind, BlockKind::ListItem(..))
+                    && parent.fragments.is_empty()
                 {
-                    parent.text.push_str(block.text.trim());
+                    parent.fragments.extend(block.fragments.iter().cloned());
                 }
-                let range = block.range_to(byte_end)?;
                 self.extractor.finalize_paragraph(
                     block,
-                    range,
                     self.depth,
                     &mut self.out,
                     self.stack.pool_mut(),
                 )?;
             }
             TagEnd::Item => {
-                let block = self.stack.pop()?;
-                let item_start = block.start;
-                let range = block.range_to(byte_end)?;
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
+                let item_start = block.span.start;
                 self.extractor.finalize_list_item(
                     block,
-                    range,
                     &mut self.out,
                     self.stack.pool_mut(),
                 )?;
@@ -335,8 +332,9 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 }
             }
             TagEnd::List(_) => {
-                let block = self.stack.pop()?;
-                let range = block.range_to(byte_end)?;
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
+                let range = block.span.to_source_range()?;
                 self.depth = self.depth.saturating_sub(1);
                 if let (Some(ctx), Some(kind)) =
                     (self.list_ctxs.pop(), self.list_kinds.pop())
@@ -348,28 +346,30 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                         ctx.item_positions,
                     ));
                 }
-                self.stack.recycle(block.text);
+                self.stack.recycle(block.fragments);
             }
             TagEnd::BlockQuote(_) => {
-                let block = self.stack.pop()?;
-                let range = block.range_to(byte_end)?;
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
+                let range = block.span.to_source_range()?;
                 self.depth = self.depth.saturating_sub(1);
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::BlockQuote,
                     range,
                     self.depth,
                 ));
-                self.stack.recycle(block.text);
+                self.stack.recycle(block.fragments);
             }
             TagEnd::CodeBlock => {
-                let block = self.stack.pop()?;
-                let range = block.range_to(byte_end)?;
+                let mut block = self.stack.pop()?;
+                block.span.end = byte_end;
+                let range = block.span.to_source_range()?;
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::CodeBlock,
                     range,
                     self.depth,
                 ));
-                self.stack.recycle(block.text);
+                self.stack.recycle(block.fragments);
             }
             TagEnd::HtmlBlock
             | TagEnd::FootnoteDefinition
@@ -393,23 +393,24 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         &mut self,
         text: &CowStr<'source>,
         range: std::ops::Range<usize>,
-    ) {
+    ) -> Result<(), NoteIngestError> {
         if let Some(block) = self.stack.last_mut() {
-            block.text.push_str(text.as_ref());
-            if self.link.is_none() {
-                block.scannable.push(range);
-            }
+            let source_range = SourceByteRange::try_from(range)
+                .map_err(NoteIngestError::Domain)?;
+            block.fragments.push(TextFragment {
+                text: Cow::from(text.clone()),
+                range: source_range,
+                is_scannable: self.link.is_none(),
+            });
         }
         if let Some(ref mut raw) = self.link {
             raw.text.display.push_str(text.as_ref());
         }
+        Ok(())
     }
 
     fn on_code(&mut self, text: &CowStr<'source>) {
         // Inline code contributes to full text but NOT to scannable ranges.
-        if let Some(block) = self.stack.last_mut() {
-            block.text.push_str(text.as_ref());
-        }
         if let Some(ref mut raw) = self.link {
             raw.text.display.push_str(text.as_ref());
         }
@@ -433,11 +434,13 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         &mut self,
         byte_end: usize,
     ) -> Result<(), NoteIngestError> {
-        let block = self.stack.pop()?;
-        let block_range = block.range_to(byte_end)?;
+        let mut block = self.stack.pop()?;
+        block.span.end = byte_end;
+        let block_range = block.span.to_source_range()?;
         let BlockKind::Metadata(payload) = block.kind else {
-            // Return text to pool if kind doesn't match (shouldn't happen).
-            self.stack.recycle(block.text);
+            // Return fragments to pool if kind doesn't match (shouldn't
+            // happen).
+            self.stack.recycle(block.fragments);
             return Ok(());
         };
         self.out.sections.push(RawSection::new(
@@ -445,12 +448,16 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             block_range,
             0,
         ));
-        // block.text moves into RawFrontmatter; does not return to pool.
+        // Collect text from fragments into RawFrontmatter.
+        let text: String =
+            block.fragments.iter().map(|f| f.text.as_ref()).collect();
         self.out.frontmatter = Some(RawFrontmatter::new(
             payload.kind.into(),
-            block.text.into(),
+            text.into(),
             block_range,
         ));
+        // Fragments can now be recycled.
+        self.stack.recycle(block.fragments);
         Ok(())
     }
 
@@ -486,23 +493,24 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
 
 // ── PDA stack types ──────────────────────────────────────────────────────────
 
-/// The parser's pushdown automaton stack, bundled with its backing string pool.
+/// The parser's pushdown automaton stack, bundled with its backing fragment
+/// pool.
 ///
-/// Owns both the frame vec and the [`StringPool`] that supplies text buffers
-/// to each pushed block. This coupling is intentional: the pool exists solely
-/// to back [`Block::text`], so the two naturally belong together.
+/// Owns both the frame vec and the [`FragmentPool`] that supplies fragment
+/// buffers to each pushed block. This coupling is intentional: the pool exists
+/// solely to back [`Block::fragments`], so the two naturally belong together.
 pub(crate) struct BlockStack<'source> {
     frames: Vec<Block<'source>>,
-    pool: StringPool,
+    pool: FragmentPool<'source>,
 }
 
 impl<'source> BlockStack<'source> {
     /// Creates a new stack with `frame_cap` frame capacity, pre-warming the
-    /// pool with `prewarm` strings of 128-byte capacity.
+    /// pool with `prewarm` fragment buffers.
     fn new(frame_cap: usize, prewarm: u8) -> Self {
-        let mut pool = StringPool::new();
+        let mut pool = FragmentPool::new();
         for _ in 0..prewarm {
-            pool.put(String::with_capacity(128));
+            pool.put(Vec::with_capacity(4));
         }
         Self {
             frames: Vec::with_capacity(frame_cap),
@@ -510,13 +518,15 @@ impl<'source> BlockStack<'source> {
         }
     }
 
-    /// Pushes a new block frame, taking a text buffer from the pool.
+    /// Pushes a new block frame, taking a fragment buffer from the pool.
     fn push(&mut self, kind: BlockKind, start: usize) {
         self.frames.push(Block {
             kind,
-            start,
-            text: self.pool.take(),
-            scannable: Vec::with_capacity(4),
+            span: BlockSpan {
+                start,
+                end: 0,
+            },
+            fragments: self.pool.take(),
             _marker: std::marker::PhantomData,
         });
     }
@@ -544,18 +554,19 @@ impl<'source> BlockStack<'source> {
         self.frames.last_mut()
     }
 
-    /// Returns `text` to the pool for reuse.
+    /// Returns a fragment buffer to the pool for reuse.
     ///
-    /// Call this after popping a block whose text will not be moved elsewhere.
-    fn recycle(&mut self, text: String) {
-        self.pool.put(text);
+    /// Call this after popping a block whose fragments will not be moved
+    /// elsewhere.
+    fn recycle(&mut self, fragments: Vec<TextFragment<'source>>) {
+        self.pool.put(fragments);
     }
 
     /// Returns a mutable reference to the backing pool.
     ///
     /// Used to pass the pool to [`BlockExtractor`] methods that recycle block
-    /// text after extraction.
-    fn pool_mut(&mut self) -> &mut StringPool {
+    /// fragments after extraction.
+    fn pool_mut(&mut self) -> &mut FragmentPool<'source> {
         &mut self.pool
     }
 }
@@ -563,35 +574,52 @@ impl<'source> BlockStack<'source> {
 /// A block frame on the parser's pushdown stack.
 ///
 /// Each `Block` corresponds to one open markdown container or leaf element
-/// (heading, paragraph, list item, etc.). Text and scannable byte ranges
-/// accumulate here until the matching `End` event, at which point the block is
-/// popped and passed to [`BlockExtractor`] for artifact extraction.
+/// (heading, paragraph, list item, etc.). Text fragments accumulate here until
+/// the matching `End` event, at which point the block is popped and passed to
+/// [`BlockExtractor`] for artifact extraction.
 ///
 /// [`BlockExtractor`]: crate::note::extractor::BlockExtractor
 pub(crate) struct Block<'source> {
     pub kind: BlockKind,
-    pub start: usize,
-    /// Pool-backed text accumulator.
-    pub text: String,
-    /// Non-link text ranges within the source, used for scanning.
-    pub scannable: Vec<std::ops::Range<usize>>,
+    pub span: BlockSpan,
+    /// Pool-backed fragment accumulator.
+    pub fragments: Vec<TextFragment<'source>>,
     pub _marker: std::marker::PhantomData<&'source str>,
 }
 
-impl Block<'_> {
-    /// Computes the [`SourceByteRange`] from this block's start to `byte_end`.
+/// Source span for a block element, capturing both start and end positions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BlockSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl BlockSpan {
+    /// Converts this span to a [`SourceByteRange`].
     ///
     /// # Errors
     ///
-    /// Returns [`NoteIngestError`] if `byte_end` exceeds the supported offset
+    /// Returns [`NoteIngestError`] if the span exceeds the supported offset
     /// range or if the resulting range is invalid.
-    pub(crate) fn range_to(
-        &self,
-        byte_end: usize,
+    pub(crate) fn to_source_range(
+        self,
     ) -> Result<SourceByteRange, NoteIngestError> {
-        SourceByteRange::try_from(self.start..byte_end)
+        SourceByteRange::try_from(self.start..self.end)
             .map_err(NoteIngestError::Domain)
     }
+}
+
+/// A text fragment with its source position.
+///
+/// Represents a slice of text extracted from a block, preserving the exact
+/// source range for position mapping. The `is_scannable` flag indicates
+/// whether this fragment should be scanned for inline metadata (tags, fields,
+/// block refs).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TextFragment<'source> {
+    pub text: Cow<'source, str>,
+    pub range: SourceByteRange,
+    pub is_scannable: bool,
 }
 
 /// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
@@ -607,14 +635,14 @@ pub(crate) enum BlockKind {
     Heading(HeadingPayload),
     /// Bare paragraph block.
     Paragraph,
-    /// A single list item with its enclosing list context.
-    ListItem(ListItemPayload),
-    /// Ordered or unordered list container.
-    List,
     /// Block quote container.
     BlockQuote,
     /// Fenced or indented code block.
     CodeBlock,
+    /// Ordered or unordered list container.
+    List,
+    /// A single list item with its enclosing list context.
+    ListItem(ListItemPayload),
 }
 
 /// Payload for metadata blocks.
@@ -662,19 +690,19 @@ pub(crate) struct ListCtx {
     pub item_positions: Vec<SourceByteOffset>,
 }
 
-// ── String pool ──────────────────────────────────────────────────────────────
+// ── Fragment pool ────────────────────────────────────────────────────────────
 
-/// A pool of cleared `String` buffers reused across block frames.
+/// A pool of cleared fragment buffers reused across block frames.
 ///
-/// Instead of allocating a fresh `String` for each block frame, the parser
-/// returns used strings to this pool via [`put`](Self::put) and retrieves them
-/// via [`take`](Self::take). This eliminates per-block heap allocation in the
-/// common case once the pool has been pre-warmed.
-pub(crate) struct StringPool {
-    pool: Vec<String>,
+/// Instead of allocating a fresh `Vec<TextFragment>` for each block frame, the
+/// parser returns used buffers to this pool via [`put`](Self::put) and
+/// retrieves them via [`take`](Self::take). This eliminates per-block heap
+/// allocation in the common case once the pool has been pre-warmed.
+pub(crate) struct FragmentPool<'source> {
+    pool: Vec<Vec<TextFragment<'source>>>,
 }
 
-impl StringPool {
+impl<'source> FragmentPool<'source> {
     /// Creates a new pool with an initial backing capacity.
     pub(crate) fn new() -> Self {
         Self {
@@ -682,33 +710,33 @@ impl StringPool {
         }
     }
 
-    /// Removes and returns a cleared string from the pool.
+    /// Removes and returns a cleared fragment buffer from the pool.
     ///
-    /// Returns a freshly allocated `String` with 128-byte capacity when the
-    /// pool is empty.
+    /// Returns a freshly allocated `Vec` with 4-element capacity when the pool
+    /// is empty.
     #[expect(
         clippy::arithmetic_side_effects,
         reason = "metrics are user-controlled instrumentation"
     )]
-    pub(crate) fn take(&mut self) -> String {
-        STRING_POOL_METRICS.with(|cell| {
+    pub(crate) fn take(&mut self) -> Vec<TextFragment<'source>> {
+        FRAGMENT_POOL_METRICS.with(|cell| {
             let mut metrics = cell.borrow_mut();
             metrics.takes += 1;
             metrics.pool_size = self.pool.len();
             metrics.pool_capacity = self.pool.capacity();
         });
-        self.pool.pop().unwrap_or_else(|| String::with_capacity(128))
+        self.pool.pop().unwrap_or_else(|| Vec::with_capacity(4))
     }
 
-    /// Clears `s` and returns it to the pool for later reuse.
+    /// Clears `fragments` and returns it to the pool for later reuse.
     #[expect(
         clippy::arithmetic_side_effects,
         reason = "metrics are user-controlled instrumentation"
     )]
-    pub(crate) fn put(&mut self, mut s: String) {
-        s.clear();
-        self.pool.push(s);
-        STRING_POOL_METRICS.with(|cell| {
+    pub(crate) fn put(&mut self, mut fragments: Vec<TextFragment<'source>>) {
+        fragments.clear();
+        self.pool.push(fragments);
+        FRAGMENT_POOL_METRICS.with(|cell| {
             let mut metrics = cell.borrow_mut();
             metrics.puts += 1;
             metrics.pool_size = self.pool.len();
@@ -717,43 +745,43 @@ impl StringPool {
     }
 }
 
-// ── String pool instrumentation ──────────────────────────────────────────────
+// ── Fragment pool instrumentation ────────────────────────────────────────────
 
-/// Metrics collected during `StringPool` operations for benchmarking.
+/// Metrics collected during `FragmentPool` operations for benchmarking.
 #[derive(Default, Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct StringPoolMetrics {
-    /// Number of times `take()` was called (strings requested from pool).
+pub struct FragmentPoolMetrics {
+    /// Number of times `take()` was called (buffers requested from pool).
     pub takes: usize,
-    /// Number of times `put()` was called (strings returned to pool).
+    /// Number of times `put()` was called (buffers returned to pool).
     pub puts: usize,
-    /// Current number of strings held in the pool.
+    /// Current number of buffers held in the pool.
     pub pool_size: usize,
     /// Current capacity of the pool's internal vector.
     pub pool_capacity: usize,
 }
 
 thread_local! {
-    static STRING_POOL_METRICS: std::cell::RefCell<StringPoolMetrics> =
-        std::cell::RefCell::new(StringPoolMetrics::default());
+    static FRAGMENT_POOL_METRICS: std::cell::RefCell<FragmentPoolMetrics> =
+        std::cell::RefCell::new(FragmentPoolMetrics::default());
 }
 
-/// Retrieve the current `StringPool` metrics.
+/// Retrieve the current `FragmentPool` metrics.
 ///
 /// These metrics are accumulated during parsing operations.
 #[inline]
 #[must_use]
-pub fn get_string_pool_metrics() -> StringPoolMetrics {
-    STRING_POOL_METRICS.with(|cell| *cell.borrow())
+pub fn get_fragment_pool_metrics() -> FragmentPoolMetrics {
+    FRAGMENT_POOL_METRICS.with(|cell| *cell.borrow())
 }
 
-/// Reset `StringPool` metrics to zero.
+/// Reset `FragmentPool` metrics to zero.
 ///
 /// Call this before a benchmark iteration to start fresh metrics collection.
 #[inline]
-pub fn reset_string_pool_metrics() {
-    STRING_POOL_METRICS
-        .with(|cell| *cell.borrow_mut() = StringPoolMetrics::default());
+pub fn reset_fragment_pool_metrics() {
+    FRAGMENT_POOL_METRICS
+        .with(|cell| *cell.borrow_mut() = FragmentPoolMetrics::default());
 }
 
 // ── Shared pub(crate) free functions ─────────────────────────────────────────

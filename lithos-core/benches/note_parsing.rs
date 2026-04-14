@@ -223,7 +223,9 @@ use criterion::{
 use lithos_core::{
     config::task::TaskConfigSpec,
     fs::FsReader,
-    note::parser::{self, get_string_pool_metrics, reset_string_pool_metrics},
+    note::parser::{
+        self, get_fragment_pool_metrics, reset_fragment_pool_metrics,
+    },
 };
 
 fn task_spec_fixture() -> TaskConfigSpec {
@@ -529,11 +531,11 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     // Print one-time metrics summary before benchmarks run
     eprintln!("\n=== StringPool Metrics Summary ===");
 
-    reset_string_pool_metrics();
+    reset_fragment_pool_metrics();
     let _simple_outcome =
         parser::MarkdownParser::parse(samples.simple, &task_spec)
             .expect("extract markdown");
-    let simple_metrics = get_string_pool_metrics();
+    let simple_metrics = get_fragment_pool_metrics();
     eprintln!(
         "Simple ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
         samples.simple.len(),
@@ -543,11 +545,11 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
         simple_metrics.pool_capacity
     );
 
-    reset_string_pool_metrics();
+    reset_fragment_pool_metrics();
     let _medium_outcome =
         parser::MarkdownParser::parse(samples.medium, &task_spec)
             .expect("extract markdown");
-    let medium_metrics = get_string_pool_metrics();
+    let medium_metrics = get_fragment_pool_metrics();
     eprintln!(
         "Medium ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
         samples.medium.len(),
@@ -557,11 +559,11 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
         medium_metrics.pool_capacity
     );
 
-    reset_string_pool_metrics();
+    reset_fragment_pool_metrics();
     let _complex_outcome =
         parser::MarkdownParser::parse(samples.complex, &task_spec)
             .expect("extract markdown");
-    let complex_metrics = get_string_pool_metrics();
+    let complex_metrics = get_fragment_pool_metrics();
     eprintln!(
         "Complex ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
         samples.complex.len(),
@@ -575,36 +577,36 @@ fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
     // Reset before benchmarks
     pool_group.bench_function("parse_simple/string_pool_stats", |b| {
         b.iter(|| {
-            reset_string_pool_metrics();
+            reset_fragment_pool_metrics();
             let outcome =
                 parser::MarkdownParser::parse(samples.simple, &task_spec)
                     .expect("extract markdown");
             black_box(&outcome);
-            let metrics = get_string_pool_metrics();
+            let metrics = get_fragment_pool_metrics();
             black_box(metrics);
         });
     });
 
     pool_group.bench_function("parse_medium/string_pool_stats", |b| {
         b.iter(|| {
-            reset_string_pool_metrics();
+            reset_fragment_pool_metrics();
             let outcome =
                 parser::MarkdownParser::parse(samples.medium, &task_spec)
                     .expect("extract markdown");
             black_box(&outcome);
-            let metrics = get_string_pool_metrics();
+            let metrics = get_fragment_pool_metrics();
             black_box(metrics);
         });
     });
 
     pool_group.bench_function("parse_complex/string_pool_stats", |b| {
         b.iter(|| {
-            reset_string_pool_metrics();
+            reset_fragment_pool_metrics();
             let outcome =
                 parser::MarkdownParser::parse(samples.complex, &task_spec)
                     .expect("extract markdown");
             black_box(&outcome);
-            let metrics = get_string_pool_metrics();
+            let metrics = get_fragment_pool_metrics();
             black_box(metrics);
         });
     });

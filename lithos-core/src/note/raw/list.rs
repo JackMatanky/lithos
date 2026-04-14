@@ -3,136 +3,6 @@ use std::borrow::Cow;
 use super::{inline_field::RawInlineField, tag::RawTag};
 use crate::note::position::{SourceByteOffset, SourceByteRange};
 
-/// Raw task marker kind extracted from a list item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RawTaskMarker {
-    /// Unchecked task marker (typically `[ ]`).
-    Unchecked(char),
-    /// Checked task marker (typically `[x]`).
-    Checked(char),
-    /// Task marker with a non-standard symbol.
-    Other(char),
-}
-
-impl RawTaskMarker {
-    /// Create a raw task marker from a character.
-    #[inline]
-    #[must_use]
-    pub fn from_char(marker: char) -> Self {
-        match marker {
-            ' ' => Self::Unchecked(marker),
-            'x' | 'X' => Self::Checked(marker),
-            _ => Self::Other(marker),
-        }
-    }
-
-    /// Returns the raw marker character.
-    #[inline]
-    #[must_use]
-    pub const fn marker(self) -> char {
-        match self {
-            Self::Unchecked(marker)
-            | Self::Checked(marker)
-            | Self::Other(marker) => marker,
-        }
-    }
-}
-
-/// Raw task status symbol with source position.
-///
-/// This combines a [`RawTaskMarker`] classification with the exact source
-/// position where the marker character appears in the markdown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct RawTaskStatusSymbol {
-    /// The task marker classification.
-    pub marker: RawTaskMarker,
-    /// The absolute source position of the marker character.
-    pub position: SourceByteOffset,
-}
-
-impl RawTaskStatusSymbol {
-    /// Create a new raw task status symbol.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        marker: RawTaskMarker,
-        position: SourceByteOffset,
-    ) -> Self {
-        Self {
-            marker,
-            position,
-        }
-    }
-
-    /// Returns the raw marker character.
-    #[inline]
-    #[must_use]
-    pub const fn marker_char(self) -> char {
-        self.marker.marker()
-    }
-}
-
-/// Raw list type extracted from markdown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RawListKind {
-    Ordered(u64),
-    Unordered,
-}
-
-/// Raw list nesting depth.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RawListDepth {
-    Root,
-    Nested(u8),
-}
-
-impl RawListDepth {
-    /// Converts this depth to its u32 representation.
-    ///
-    /// [`Root`](RawListDepth::Root) maps to `0`;
-    /// [`Nested(n)`](RawListDepth::Nested) maps to `n` as a `u32`.
-    #[inline]
-    #[must_use]
-    pub const fn to_u32(self) -> u32 {
-        match self {
-            Self::Root => 0,
-            #[expect(
-                clippy::as_conversions,
-                reason = "u8 → u32 is always lossless; u32::from(u8) is not \
-                          const-stable"
-            )]
-            Self::Nested(n) => n as u32,
-        }
-    }
-}
-
-impl From<u32> for RawListDepth {
-    /// Converts a u32 nesting depth to [`RawListDepth`].
-    ///
-    /// `0` maps to [`Root`](RawListDepth::Root); values `1..=255` map to
-    /// [`Nested(n)`](RawListDepth::Nested). Values greater than `255` saturate
-    /// to [`Nested(u8::MAX)`](RawListDepth::Nested).
-    #[inline]
-    fn from(depth: u32) -> Self {
-        match depth {
-            0 => Self::Root,
-            1..=255 => Self::Nested(
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::as_conversions,
-                    reason = "range guard ensures depth fits in u8"
-                )]
-                (depth as u8),
-            ),
-            _ => Self::Nested(u8::MAX),
-        }
-    }
-}
-
 /// Raw list container extracted from markdown.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -243,6 +113,136 @@ impl RawListItem<'_> {
                 .into_iter()
                 .map(RawInlineField::into_owned)
                 .collect(),
+        }
+    }
+}
+
+/// Raw list type extracted from markdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawListKind {
+    Ordered(u64),
+    Unordered,
+}
+
+/// Raw list nesting depth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawListDepth {
+    Root,
+    Nested(u8),
+}
+
+impl RawListDepth {
+    /// Converts this depth to its u32 representation.
+    ///
+    /// [`Root`](RawListDepth::Root) maps to `0`;
+    /// [`Nested(n)`](RawListDepth::Nested) maps to `n` as a `u32`.
+    #[inline]
+    #[must_use]
+    pub const fn to_u32(self) -> u32 {
+        match self {
+            Self::Root => 0,
+            #[expect(
+                clippy::as_conversions,
+                reason = "u8 → u32 is always lossless; u32::from(u8) is not \
+                          const-stable"
+            )]
+            Self::Nested(n) => n as u32,
+        }
+    }
+}
+
+impl From<u32> for RawListDepth {
+    /// Converts a u32 nesting depth to [`RawListDepth`].
+    ///
+    /// `0` maps to [`Root`](RawListDepth::Root); values `1..=255` map to
+    /// [`Nested(n)`](RawListDepth::Nested). Values greater than `255` saturate
+    /// to [`Nested(u8::MAX)`](RawListDepth::Nested).
+    #[inline]
+    fn from(depth: u32) -> Self {
+        match depth {
+            0 => Self::Root,
+            1..=255 => Self::Nested(
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions,
+                    reason = "range guard ensures depth fits in u8"
+                )]
+                (depth as u8),
+            ),
+            _ => Self::Nested(u8::MAX),
+        }
+    }
+}
+
+/// Raw task status symbol with source position.
+///
+/// This combines a [`RawTaskMarker`] classification with the exact source
+/// position where the marker character appears in the markdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RawTaskStatusSymbol {
+    /// The task marker classification.
+    pub marker: RawTaskMarker,
+    /// The absolute source position of the marker character.
+    pub position: SourceByteOffset,
+}
+
+impl RawTaskStatusSymbol {
+    /// Create a new raw task status symbol.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        marker: RawTaskMarker,
+        position: SourceByteOffset,
+    ) -> Self {
+        Self {
+            marker,
+            position,
+        }
+    }
+
+    /// Returns the raw marker character.
+    #[inline]
+    #[must_use]
+    pub const fn marker_char(self) -> char {
+        self.marker.marker()
+    }
+}
+
+/// Raw task marker kind extracted from a list item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RawTaskMarker {
+    /// Unchecked task marker (typically `[ ]`).
+    Unchecked(char),
+    /// Checked task marker (typically `[x]`).
+    Checked(char),
+    /// Task marker with a non-standard symbol.
+    Other(char),
+}
+
+impl RawTaskMarker {
+    /// Create a raw task marker from a character.
+    #[inline]
+    #[must_use]
+    pub fn from_char(marker: char) -> Self {
+        match marker {
+            ' ' => Self::Unchecked(marker),
+            'x' | 'X' => Self::Checked(marker),
+            _ => Self::Other(marker),
+        }
+    }
+
+    /// Returns the raw marker character.
+    #[inline]
+    #[must_use]
+    pub const fn marker(self) -> char {
+        match self {
+            Self::Unchecked(marker)
+            | Self::Checked(marker)
+            | Self::Other(marker) => marker,
         }
     }
 }
