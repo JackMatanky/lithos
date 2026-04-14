@@ -172,13 +172,23 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     ) -> Result<(), NoteIngestError> {
         match tag {
             pulldown_cmark::Tag::MetadataBlock(kind) => {
-                self.stack.push(BlockKind::Metadata(kind), start);
+                self.stack.push(
+                    BlockKind::Metadata(MetadataPayload {
+                        kind,
+                    }),
+                    start,
+                );
             }
             pulldown_cmark::Tag::Heading {
                 level,
                 ..
             } => {
-                self.stack.push(BlockKind::Heading(level_to_u8(level)), start);
+                self.stack.push(
+                    BlockKind::Heading(HeadingPayload {
+                        level,
+                    }),
+                    start,
+                );
             }
             pulldown_cmark::Tag::Paragraph => {
                 self.stack.push(BlockKind::Paragraph, start);
@@ -196,33 +206,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
                 self.stack.push(BlockKind::List, start);
             }
             pulldown_cmark::Tag::Item => {
-                let list_kind = self
-                    .list_kinds
-                    .last()
-                    .copied()
-                    .unwrap_or(RawListKind::Unordered);
-                let list_depth =
-                    RawListDepth::from(self.depth.saturating_sub(1));
-                let depth_index =
-                    usize::try_from(self.depth).unwrap_or(0).saturating_sub(1);
-                let parent_pos = if self.depth <= 1 {
-                    None
-                } else {
-                    self.open_items
-                        .get(depth_index.saturating_sub(1))
-                        .copied()
-                        .map(SourceByteOffset::try_from_usize)
-                        .transpose()?
-                };
-                self.record_open_item(start, depth_index);
-                self.stack.push(
-                    BlockKind::ListItem {
-                        list_kind,
-                        list_depth,
-                        parent_pos,
-                    },
-                    start,
-                );
+                self.on_list_item_start(start)?;
             }
             pulldown_cmark::Tag::BlockQuote(_) => {
                 self.depth = self.depth.saturating_add(1);
@@ -264,6 +248,37 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             | pulldown_cmark::Tag::Superscript
             | pulldown_cmark::Tag::Subscript => {}
         }
+        Ok(())
+    }
+
+    fn on_list_item_start(
+        &mut self,
+        start: usize,
+    ) -> Result<(), NoteIngestError> {
+        let list_kind =
+            self.list_kinds.last().copied().unwrap_or(RawListKind::Unordered);
+        let list_depth = RawListDepth::from(self.depth.saturating_sub(1));
+        let depth_index =
+            usize::try_from(self.depth).unwrap_or(0).saturating_sub(1);
+        let parent_pos = if self.depth <= 1 {
+            None
+        } else {
+            self.open_items
+                .get(depth_index.saturating_sub(1))
+                .copied()
+                .map(SourceByteOffset::try_from_usize)
+                .transpose()?
+        };
+        self.record_open_item(start, depth_index);
+        self.stack.push(
+            BlockKind::ListItem(ListItemPayload {
+                kind: list_kind,
+                depth: list_depth,
+                parent_pos,
+                is_checkbox: None,
+            }),
+            start,
+        );
         Ok(())
     }
 
@@ -401,8 +416,10 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     }
 
     fn on_task_marker(&mut self, checked: bool) {
-        if let Some(block) = self.stack.last_mut() {
-            block.task_checked = Some(checked);
+        if let Some(block) = self.stack.last_mut()
+            && let BlockKind::ListItem(ref mut payload) = block.kind
+        {
+            payload.is_checkbox = Some(checked);
         }
     }
 
@@ -418,7 +435,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     ) -> Result<(), NoteIngestError> {
         let block = self.stack.pop()?;
         let block_range = block.range_to(byte_end)?;
-        let BlockKind::Metadata(kind) = block.kind else {
+        let BlockKind::Metadata(payload) = block.kind else {
             // Return text to pool if kind doesn't match (shouldn't happen).
             self.stack.recycle(block.text);
             return Ok(());
@@ -430,7 +447,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
         ));
         // block.text moves into RawFrontmatter; does not return to pool.
         self.out.frontmatter = Some(RawFrontmatter::new(
-            kind.into(),
+            payload.kind.into(),
             block.text.into(),
             block_range,
         ));
@@ -500,7 +517,6 @@ impl<'source> BlockStack<'source> {
             start,
             text: self.pool.take(),
             scannable: Vec::with_capacity(4),
-            task_checked: None,
             _marker: std::marker::PhantomData,
         });
     }
@@ -559,7 +575,6 @@ pub(crate) struct Block<'source> {
     pub text: String,
     /// Non-link text ranges within the source, used for scanning.
     pub scannable: Vec<std::ops::Range<usize>>,
-    pub task_checked: Option<bool>,
     pub _marker: std::marker::PhantomData<&'source str>,
 }
 
@@ -584,27 +599,59 @@ impl Block<'_> {
 /// Determines which finalisation path in
 /// [`BlockExtractor`](crate::note::extractor::BlockExtractor) or the `on_end`
 /// handler is taken when the matching `End` event is received.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum BlockKind {
     /// YAML or TOML frontmatter block.
-    Metadata(pulldown_cmark::MetadataBlockKind),
+    Metadata(MetadataPayload),
     /// ATX or setext heading at the given level (1–6).
-    Heading(u8),
+    Heading(HeadingPayload),
     /// Bare paragraph block.
     Paragraph,
     /// A single list item with its enclosing list context.
-    ListItem {
-        list_kind: RawListKind,
-        list_depth: RawListDepth,
-        /// Source position of the parent item, if nested.
-        parent_pos: Option<SourceByteOffset>,
-    },
+    ListItem(ListItemPayload),
     /// Ordered or unordered list container.
     List,
     /// Block quote container.
     BlockQuote,
     /// Fenced or indented code block.
     CodeBlock,
+}
+
+/// Payload for metadata blocks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct MetadataPayload {
+    pub kind: pulldown_cmark::MetadataBlockKind,
+}
+
+/// Payload for heading blocks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HeadingPayload {
+    pub level: pulldown_cmark::HeadingLevel,
+}
+
+impl HeadingPayload {
+    /// Converts the [`pulldown_cmark::HeadingLevel`] to its u8 representation.
+    pub(crate) fn to_u8(self) -> u8 {
+        match self.level {
+            pulldown_cmark::HeadingLevel::H1 => 1,
+            pulldown_cmark::HeadingLevel::H2 => 2,
+            pulldown_cmark::HeadingLevel::H3 => 3,
+            pulldown_cmark::HeadingLevel::H4 => 4,
+            pulldown_cmark::HeadingLevel::H5 => 5,
+            pulldown_cmark::HeadingLevel::H6 => 6,
+        }
+    }
+}
+
+/// Payload for list item blocks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ListItemPayload {
+    pub kind: RawListKind,
+    pub depth: RawListDepth,
+    /// Source position of the parent item, if nested.
+    pub parent_pos: Option<SourceByteOffset>,
+    /// Whether the item has a task checkbox.
+    pub is_checkbox: Option<bool>,
 }
 
 /// List context for the new [`MarkdownParser`] stateful struct.
@@ -797,17 +844,6 @@ impl LinkRefResolver {
         }
 
         normalized.into_boxed_str()
-    }
-}
-
-fn level_to_u8(level: pulldown_cmark::HeadingLevel) -> u8 {
-    match level {
-        pulldown_cmark::HeadingLevel::H1 => 1,
-        pulldown_cmark::HeadingLevel::H2 => 2,
-        pulldown_cmark::HeadingLevel::H3 => 3,
-        pulldown_cmark::HeadingLevel::H4 => 4,
-        pulldown_cmark::HeadingLevel::H5 => 5,
-        pulldown_cmark::HeadingLevel::H6 => 6,
     }
 }
 

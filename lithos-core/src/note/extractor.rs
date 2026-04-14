@@ -84,12 +84,12 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         out: &mut RawNote<'source>,
         pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
-        let BlockKind::Heading(level) = block.kind else {
+        let BlockKind::Heading(payload) = block.kind else {
             return Ok(());
         };
         let scan = self.scan_block(&block, block_range)?;
         out.headings.push(RawHeading::new(
-            level,
+            payload.to_u8(),
             Cow::Owned(block.text.trim().to_owned()),
             block_range,
             SourceByteOffset::try_from_usize(block.start)?,
@@ -157,12 +157,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         out: &mut RawNote<'source>,
         pool: &mut StringPool,
     ) -> Result<(), NoteIngestError> {
-        let BlockKind::ListItem {
-            list_kind,
-            list_depth,
-            parent_pos,
-        } = block.kind
-        else {
+        let BlockKind::ListItem(payload) = block.kind else {
             return Ok(());
         };
 
@@ -170,10 +165,10 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         out.sections.push(RawSection::new(
             RawSectionKind::List,
             block_range,
-            list_depth.to_u32(),
+            payload.depth.to_u32(),
         ));
 
-        let task_marker = if block.task_checked.is_some() {
+        let task_marker = if payload.is_checkbox.is_some() {
             self.scan_task_marker(block_range)?
         } else {
             None
@@ -198,14 +193,14 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             .collect();
 
         let item = RawListItem::new(
-            list_kind,
-            list_depth,
+            payload.kind,
+            payload.depth,
             Cow::Owned(raw_text),
-            block.task_checked,
+            payload.is_checkbox,
             task_marker,
             block_range,
             text_range,
-            parent_pos,
+            payload.parent_pos,
             tags,
             inline_fields,
         );
