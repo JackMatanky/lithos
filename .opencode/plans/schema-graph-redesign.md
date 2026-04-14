@@ -1,23 +1,48 @@
 # Schema Graph Module: Complete Redesign Plan
 
 **Date**: 2026-04-12
-**Status**: Approved - Ready for Implementation
+**Last Updated**: 2026-04-14 (Archive trait solution added)
+**Status**: In Progress - Phase 2 Blocked (3/4 files migrated)
 **Estimated Effort**: 25-40 hours
 **Priority**: High - Addresses fundamental architectural defects
+
+## Current Status (2026-04-14)
+
+**Completed**:
+- ✅ Phase 1: New `graph/` module fully implemented (1,337 LOC)
+- ✅ Phase 2 Partial: 3/4 schema files migrated (testing.rs, storage.rs, builder.rs, inheritance.rs)
+
+**Blocked**:
+- ❌ `schema_processor.rs` migration blocked by Archive trait conflict
+- ❌ Cannot commit partial work (pre-commit hooks require full compilation)
+
+**Blocking Issue Resolution**: Archive trait conflict solved via two-layer architecture:
+- Infrastructure layer (`graph/`) removes ALL Archive bounds
+- Domain layer (`schema/`) adds Archive via newtype wrappers where needed
+- `InheritanceGraph<T>` for persistence (requires Archive)
+- `ProcessingGraph<T>` for pipeline (no Archive requirement)
+
+**Next Steps**: Implement Archive trait solution, complete schema_processor.rs migration
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#executive-summary)
-2. [Research Findings](#research-findings)
-3. [Design Flaws Analysis](#design-flaws-analysis)
-4. [Target Architecture](#target-architecture)
-5. [Implementation Phases](#implementation-phases)
-6. [Testing Strategy](#testing-strategy)
-7. [Success Criteria](#success-criteria)
-8. [Risk Mitigation](#risk-mitigation)
-9. [Appendices](#appendices)
+1. [Current Status](#current-status-2026-04-14)
+2. [Executive Summary](#executive-summary)
+3. [Research Findings](#research-findings)
+4. [Design Flaws Analysis](#design-flaws-analysis)
+5. [Target Architecture](#target-architecture)
+   - [Two-Layer Design Philosophy](#two-layer-design-philosophy)
+   - [Archive Trait Decision (ADR)](#archive-trait-decision-adr)
+   - [Core Type System](#core-type-system)
+   - [Module Organization](#module-organization)
+   - [Pipeline Payload Pattern](#pipeline-payload-pattern)
+6. [Implementation Phases](#implementation-phases)
+7. [Testing Strategy](#testing-strategy)
+8. [Success Criteria](#success-criteria)
+9. [Risk Mitigation](#risk-mitigation)
+10. [Appendices](#appendices)
 
 ---
 
@@ -436,6 +461,58 @@ repository.with_archived(|archived: &ArchivedGraph<SchemaId, T>| {
 
 ## Target Architecture
 
+### Two-Layer Design Philosophy
+
+**Critical Decision**: The graph infrastructure is **pure infrastructure** and must not impose domain-specific constraints like serialization requirements.
+
+**Layer 1: Infrastructure** (`graph/` module)
+- Generic graph data structures (`Graph<Id, T>`, `DagGraph<Id, T>`)
+- **NO Archive bounds** on payload type `T`
+- Works with ANY payload type (including non-serializable types like `Raw*`)
+- Provides core graph algorithms (topological sort, traversal, validation)
+
+**Layer 2: Domain** (`schema/` module)
+- Schema-specific wrappers with domain constraints
+- `InheritanceGraph<T>` newtype enforces Archive when needed for persistence
+- `ProcessingGraph<T>` newtype allows ANY payload for pipeline stages
+- Type system enforces serialization requirements at domain level, not infrastructure level
+
+### Archive Trait Decision (ADR)
+
+**Problem**: Originally, `Graph<Id, T>` and `DagGraph<Id, T>` had `T: Archive` bounds to support rkyv serialization. This created a fundamental conflict because the schema processor uses `Raw*` types in intermediate pipeline stages that **intentionally do NOT derive Archive**.
+
+**Analysis**:
+1. Only `InheritanceGraph<()>` (the final validated DAG) actually gets persisted to the database
+2. All intermediate pipeline graphs with `ProcessorNode<T>` payloads are **never serialized** - they're purely transient
+3. Requiring Archive on infrastructure types violates separation of concerns (infrastructure should not impose domain constraints)
+
+**Decision**: Remove Archive bounds from graph infrastructure, add them at domain layer via newtype wrappers.
+
+**Implementation**:
+- `Graph<Id, T>` and `DagGraph<Id, T>` have **NO Archive bound** on `T`
+- Domain layer provides two wrappers:
+  - `InheritanceGraph<T> where T: Archive` - for persisted graphs (enforces serialization)
+  - `ProcessingGraph<T>` - for pipeline graphs (no serialization constraint)
+- Type system prevents accidentally trying to serialize non-Archive payloads
+
+**Benefits**:
+- Clean separation: infrastructure agnostic, domain enforces requirements
+- Type safety: compiler prevents serializing non-Archive types
+- Flexibility: pipeline can use ANY payload type (Raw*, ProcessorNode, etc.)
+- Clear intent: wrapper type indicates whether serialization is supported
+
+**Trade-offs**:
+- More types (two wrappers instead of one generic type)
+- Slightly more verbose (must choose correct wrapper)
+- **Accepted**: Type clarity is more valuable than brevity
+
+**Alternatives Considered**:
+1. Keep Archive everywhere, add dummy Archive derives to Raw* types → Violates design intent
+2. Conditional Archive with feature flags → Maintenance nightmare, confusing API
+3. Separate serializable/non-serializable graph hierarchies → Code duplication
+
+**Status**: Approved - implements separation of concerns principle
+
 ### Core Type System
 
 ````rust
@@ -445,7 +522,6 @@ repository.with_archived(|archived: &ArchivedGraph<SchemaId, T>| {
 
 use std::collections::HashMap;
 use std::hash::Hash;
-use rkyv::{Archive, Serialize, Deserialize};
 
 /// Directed graph infrastructure (raw, may contain cycles).
 ///
@@ -454,13 +530,11 @@ use rkyv::{Archive, Serialize, Deserialize};
 /// - Adjacency lists instead of Edge structs (cache-friendly)
 /// - Generic Id + payload (schema-agnostic infrastructure)
 /// - DAG validation provided by `DagGraph` wrapper
-/// - rkyv-native for zero-copy database storage
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[archive(check_bytes)]
+/// - **NO Archive bound** - this is pure infrastructure, not tied to serialization
+#[derive(Debug, Clone)]
 pub struct Graph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     /// Nodes indexed by Id (ID is key, not in value).
     nodes: HashMap<Id, Node<T>>,
@@ -476,8 +550,7 @@ where
 
 impl<Id, T> Graph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     /// Returns parent IDs for a node (empty slice if none).
     #[inline]
@@ -554,11 +627,8 @@ where
 }
 
 /// Node in the inheritance graph (NO id field - use HashMap key).
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-pub struct Node<T>
-where
-    T: Archive,
-{
+#[derive(Debug, Clone)]
+pub struct Node<T> {
     /// Inheritance depth (0 for roots, max(parent_depths) + 1 for children).
     depth: NodeDepth,
 
@@ -648,11 +718,7 @@ where
     }
 
     /// Builds the graph with normalized adjacency lists.
-    pub fn build(self) -> Graph<Id, T>
-    where
-        Id: Archive,
-        T: Archive,
-    {
+    pub fn build(self) -> Graph<Id, T> {
         let mut parents = HashMap::with_capacity(self.child_to_parents.len());
         let mut children = HashMap::new();
 
@@ -703,26 +769,22 @@ where
 // ============================================================================
 
 /// Validated DAG wrapper that owns the graph and caches topology.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[archive(check_bytes)]
+///
+/// **NO Archive bound** - this is infrastructure, not tied to serialization.
+/// Domain-specific wrappers (like `InheritanceGraph`) add Archive when needed.
+#[derive(Debug, Clone)]
 pub struct DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     graph: Graph<Id, T>,
-
-    #[rkyv(with = rkyv::with::Skip)]
     topo_order: Vec<Id>,
-
-    #[rkyv(with = rkyv::with::Skip)]
     roots: Vec<Id>,
 }
 
 impl<Id, T> TryFrom<Graph<Id, T>> for DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     type Error = GraphError<Id>;
 
@@ -738,8 +800,7 @@ where
 
 impl<Id, T> DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     pub fn topo_order(&self) -> &[Id] {
         &self.topo_order
@@ -761,14 +822,129 @@ where
 
 ````rust
 // ============================================================================
-//  SCHEMA WRAPPER (schema/inheritance.rs)
+//  SCHEMA DOMAIN WRAPPERS (schema/inheritance.rs)
 // ============================================================================
 
 use crate::schema::aggregate::SchemaId;
+use rkyv::{Archive, Serialize, Deserialize};
 
+// Raw infrastructure types (no serialization constraint)
 pub type SchemaGraph<T> = crate::graph::Graph<SchemaId, T>;
 pub type SchemaGraphBuilder<T> = crate::graph::GraphBuilder<SchemaId, T>;
-pub type SchemaDag<T> = crate::graph::DagGraph<SchemaId, T>;
+
+// ============================================================================
+//  INHERITANCE GRAPH (for persistence)
+// ============================================================================
+
+/// Schema inheritance graph with serialization support.
+///
+/// This newtype wrapper enforces Archive on the payload for persistence.
+/// Use this for the final validated DAG that gets saved to the database.
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[rkyv(check_bytes)]
+pub struct InheritanceGraph<T>
+where
+    T: Archive,
+{
+    inner: crate::graph::DagGraph<SchemaId, T>,
+}
+
+impl<T> InheritanceGraph<T>
+where
+    T: Archive,
+{
+    /// Returns the cached topological order.
+    #[inline]
+    pub fn topo_order(&self) -> &[SchemaId] {
+        self.inner.topo_order()
+    }
+
+    /// Returns the cached roots (nodes with no parents).
+    #[inline]
+    pub fn roots(&self) -> &[SchemaId] {
+        self.inner.roots()
+    }
+
+    /// Returns a reference to the underlying graph.
+    #[inline]
+    pub fn graph(&self) -> &SchemaGraph<T> {
+        self.inner.graph()
+    }
+
+    /// Consumes self and returns the underlying DagGraph.
+    #[inline]
+    pub fn into_dag(self) -> crate::graph::DagGraph<SchemaId, T> {
+        self.inner
+    }
+}
+
+impl<T> TryFrom<SchemaGraph<T>> for InheritanceGraph<T>
+where
+    T: Archive,
+{
+    type Error = crate::schema::error::SchemaInheritanceError;
+
+    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
+        let dag = crate::graph::DagGraph::try_from(graph)
+            .map_err(|e| crate::schema::error::SchemaInheritanceError::from(e))?;
+        Ok(Self { inner: dag })
+    }
+}
+
+// ============================================================================
+//  PROCESSING GRAPH (for pipeline - no serialization)
+// ============================================================================
+
+/// Schema graph wrapper for pipeline processing.
+///
+/// This wrapper allows using ANY payload type (including non-Archive types
+/// like Raw* schemas). Use this for intermediate pipeline stages where
+/// serialization is not needed.
+pub struct ProcessingGraph<T> {
+    inner: crate::graph::DagGraph<SchemaId, T>,
+}
+
+impl<T> ProcessingGraph<T> {
+    /// Returns the cached topological order.
+    #[inline]
+    pub fn topo_order(&self) -> &[SchemaId] {
+        self.inner.topo_order()
+    }
+
+    /// Returns the cached roots (nodes with no parents).
+    #[inline]
+    pub fn roots(&self) -> &[SchemaId] {
+        self.inner.roots()
+    }
+
+    /// Returns a reference to the underlying graph.
+    #[inline]
+    pub fn graph(&self) -> &SchemaGraph<T> {
+        self.inner.graph()
+    }
+
+    /// Returns a mutable reference to the underlying graph.
+    #[inline]
+    pub fn graph_mut(&mut self) -> &mut SchemaGraph<T> {
+        self.inner.graph_mut()
+    }
+
+    /// Consumes self and returns the underlying DagGraph.
+    #[inline]
+    pub fn into_dag(self) -> crate::graph::DagGraph<SchemaId, T> {
+        self.inner
+    }
+}
+
+impl<T> TryFrom<SchemaGraph<T>> for ProcessingGraph<T> {
+    type Error = crate::schema::error::SchemaInheritanceError;
+
+    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
+        let dag = crate::graph::DagGraph::try_from(graph)
+            .map_err(|e| crate::schema::error::SchemaInheritanceError::from(e))?;
+        Ok(Self { inner: dag })
+    }
+}
 ````
 ### Module Organization
 
@@ -818,7 +994,9 @@ enum PipelinePayload {
 /// Pipeline state with single graph.
 struct PipelineState {
     /// Single graph, payloads updated in-place.
-    graph: SchemaGraph<PipelinePayload>,
+    /// Uses ProcessingGraph (not InheritanceGraph) because PipelinePayload
+    /// does NOT derive Archive - it's purely transient.
+    graph: ProcessingGraph<PipelinePayload>,
 
     /// Edge metadata (change tracking).
     edge_metadata: HashMap<(SchemaId, SchemaId), ExtendsChangeKind>,
@@ -827,7 +1005,7 @@ struct PipelineState {
 impl PipelineState {
     fn compare_stage(&mut self) -> Result<(), Error> {
         // Update payloads in-place (NO graph reconstruction!)
-        for (_id, node) in self.graph.iter_mut() {
+        for (_id, node) in self.graph.graph_mut().iter_mut() {
             let PipelinePayload::Present(present_data) = node.payload() else {
                 continue;  // Skip non-Present nodes
             };
@@ -839,7 +1017,7 @@ impl PipelineState {
     }
 
     fn parse_stage(&mut self, source: &FsReader) -> Result<(), Error> {
-        for (_id, node) in self.graph.iter_mut() {
+        for (_id, node) in self.graph.graph_mut().iter_mut() {
             let PipelinePayload::Compared(compared_data) = node.payload() else {
                 continue;
             };
@@ -865,9 +1043,17 @@ impl PipelineState {
 
 ## Implementation Phases
 
+**Strategy**: Single atomic refactor (big bang approach) - all changes completed together before committing.
+
+**Rationale**:
+- Pre-commit hooks block partial migrations (compilation errors in schema_processor.rs prevent commits)
+- No backward compatibility needed (internal refactor, no public API)
+- Eliminates risk of inconsistent intermediate states
+- Faster overall completion (no time spent on compatibility layers)
+
 ### Phase 1: Core Graph Implementation (8-12 hours)
 
-**Goal**: Implement new graph data structures in parallel with existing code.
+**Goal**: Implement new graph data structures with NO Archive bounds.
 
 #### Task 1.1: Create Module Structure (1 hour)
 
@@ -920,26 +1106,33 @@ pub type CycleError<Id> = GraphError<Id>;
 
 Add `TryFrom<GraphError<SchemaId>> for SchemaError` to map graph infrastructure errors into schema-specific error variants.
 
-#### Task 1.2c: Schema Wrapper Types (30 min)
+#### Task 1.2c: Schema Wrapper Types (2 hours)
 
 **File**: `schema/inheritance.rs`
 
-Add schema wrapper aliases for the infrastructure graph types (`SchemaGraph`, `SchemaGraphBuilder`, `SchemaDag`).
+Add schema wrapper types for the infrastructure graph types:
+- `SchemaGraph<T>` and `SchemaGraphBuilder<T>` type aliases (no bounds)
+- `InheritanceGraph<T> where T: Archive` newtype (for persistence)
+- `ProcessingGraph<T>` newtype (for pipeline, no Archive bound)
+- Implement `TryFrom<SchemaGraph<T>>` for both wrappers
+- Implement delegation methods (topo_order, roots, graph access)
 
 #### Task 1.3: Implement Core Types (4 hours)
 
 **File**: `graph/core.rs` and `graph/dag.rs`
 
 Implement:
-- `Node<T>` struct with payload and depth
-- `Graph<Id, T>` struct with nodes, parents, children
+- `Node<T>` struct with payload and depth (**NO Archive bound**)
+- `Graph<Id, T>` struct with nodes, parents, children (**NO Archive bound**)
 - `GraphBuilder<Id, T>` with add_node, add_parent, build methods
-- `DagGraph<Id, T>` wrapper (in `graph/dag.rs`) with `TryFrom<Graph<Id, T>>` validation
+- `DagGraph<Id, T>` wrapper (in `graph/dag.rs`) with `TryFrom<Graph<Id, T>>` validation (**NO Archive bound**)
 - All accessor methods (parents_of, children_of, get, iter, etc.)
 - compute_depths method
+- Add `graph_mut()` method to `DagGraph` for in-place payload updates
 
 **Schema extensions (in `schema/inheritance.rs`)**:
 - affected_subtree method (schema-specific traversal helpers)
+- Helper methods on `InheritanceGraph` and `ProcessingGraph` wrappers
 
 **Tests**:
 - Graph construction via builder
@@ -1156,26 +1349,31 @@ struct PresentData {
 ```rust
 /// Unified pipeline state with single graph.
 struct PipelineState {
-    graph: SchemaGraph<PipelinePayload>,
+    /// Uses ProcessingGraph (not InheritanceGraph) because PipelinePayload
+    /// does NOT derive Archive - it's purely transient.
+    graph: ProcessingGraph<PipelinePayload>,
     edge_metadata: HashMap<(SchemaId, SchemaId), ExtendsChangeKind>,
     status_map: HashMap<SchemaId, NodeStatus>,  // Track node status
 }
 
 impl PipelineState {
-    fn new(capacity: usize) -> Self {
-        Self {
-            graph: SchemaGraphBuilder::with_capacity(capacity).build(),
+    fn new(capacity: usize) -> Result<Self, Error> {
+        let builder = SchemaGraphBuilder::<PipelinePayload>::with_capacity(capacity);
+        let graph = ProcessingGraph::try_from(builder.build())?;
+        Ok(Self {
+            graph,
             edge_metadata: HashMap::with_capacity(capacity),
             status_map: HashMap::with_capacity(capacity),
-        }
+        })
     }
 
-    fn from_builder(builder: SchemaGraphBuilder<PipelinePayload>) -> Self {
-        Self {
-            graph: builder.build(),
+    fn from_builder(builder: SchemaGraphBuilder<PipelinePayload>) -> Result<Self, Error> {
+        let graph = ProcessingGraph::try_from(builder.build())?;
+        Ok(Self {
+            graph,
             edge_metadata: HashMap::new(),
             status_map: HashMap::new(),
-        }
+        })
     }
 }
 ```
@@ -1213,7 +1411,8 @@ let graph = Graph::from_nodes_and_edges(&new_nodes, &adj, |n| n.clone());
 **After**:
 ```rust
 fn compare_stage(state: &mut PipelineState, source: &FsReader) -> Result<()> {
-    for (id, node) in state.graph.iter_mut() {
+    // Access mutable graph through ProcessingGraph wrapper
+    for (id, node) in state.graph.graph_mut().iter_mut() {
         let PipelinePayload::Present(present) = node.payload() else { continue };
 
         let compared = compare_timestamps(present, source)?;
@@ -1277,20 +1476,45 @@ fn build_graph_stage(state: &mut PipelineState, new_schemas: NewBatch) -> Result
 #### Task 2.8: Migrate Construction Stage (2 hours)
 
 **Uses**:
-- `SchemaDag::try_from(graph)` for validation
+- Convert `ProcessingGraph` to `InheritanceGraph` for final persistence
+- `InheritanceGraph<()>` is the final persisted type (unit payload, only structure)
 - `dag.topo_order()` for dependency-ordered iteration
 - `dag.graph().parents_of(id)` for property merging
 - `dag.graph().children_of(id)` for reference updates
 
-**Tests**: Schemas constructed in correct order.
+**Pattern**:
+```rust
+// Pipeline uses ProcessingGraph<PipelinePayload>
+let processing_graph: ProcessingGraph<PipelinePayload> = state.graph;
+
+// For final persistence, extract structure only (unit payload)
+let mut builder = SchemaGraphBuilder::<()>::new();
+for (id, _node) in processing_graph.graph().iter() {
+    builder.add_node(id, ());  // Unit payload - structure only
+}
+for (child, parents) in /* edge iteration */ {
+    for parent in parents {
+        builder.add_parent(child, parent);
+    }
+}
+
+// Convert to InheritanceGraph for persistence
+let persistence_graph = InheritanceGraph::try_from(builder.build())?;
+repository.save_topological_graph(&persistence_graph)?;
+```
+
+**Tests**: Schemas constructed in correct order, final graph persists correctly.
 
 #### Task 2.9: Update Storage Layer (1 hour)
 
 **Changes**:
-- `save_topological_graph`: Accept `SchemaDag<InheritanceNode>` instead of `InheritanceGraph<InheritanceNode>`
-- `get_topological_graph`: Return `Option<SchemaDag<InheritanceNode>>`
+- `save_topological_graph`: Accept `InheritanceGraph<()>` (unit payload, structure only)
+- `get_topological_graph`: Return `Option<InheritanceGraph<()>>`
+- Remove old `InheritanceNode` type (no longer needed - structure stored separately from domain data)
 
-**Tests**: Serialization round-trip works.
+**Rationale**: The persisted graph only needs to store the inheritance structure (which schemas extend which). Domain data (properties, etc.) is stored separately in the schema table. Using unit payload `()` makes this explicit and saves memory.
+
+**Tests**: Serialization round-trip works, graph structure preserved.
 
 #### Phase 2 Checkpoint
 
@@ -1701,10 +1925,12 @@ proptest! {
 
 ### Code Quality Requirements
 
-- [ ] `Graph<Id, T>` + `DagGraph<Id, T>` with schema wrappers (no split types)
+- [ ] `Graph<Id, T>` + `DagGraph<Id, T>` infrastructure with **NO Archive bounds**
+- [ ] Domain wrappers: `InheritanceGraph<T>` (with Archive) and `ProcessingGraph<T>` (no Archive)
 - [ ] No ID duplication (HashMap key only)
 - [ ] No redundant storage (adjacency lists only)
 - [ ] Clear API (GraphBuilder for construction)
+- [ ] Two-layer architecture enforced (infrastructure vs domain concerns)
 - [ ] Comprehensive documentation
 - [ ] No clippy warnings
 - [ ] Test coverage ≥90%
@@ -1892,7 +2118,105 @@ Total:             ~5.04 MB base + 24KB adjacency = ~5.06 MB
 - **Type-state pattern**: Using types to enforce state machine transitions at compile time
 - **Builder pattern**: Mutable construction, immutable result
 
-### Appendix F: Implementation Checklist
+### Appendix F: Archive Trait Solution Deep Dive
+
+**Problem Statement**:
+The schema processor pipeline uses intermediate graph types with `Raw*` payloads that **intentionally do not derive Archive** (they're transient data structures used only during parsing and validation). However, the final validated DAG needs Archive for database persistence.
+
+**Initial Approach** (Rejected):
+```rust
+// graph/core.rs - PROBLEM: Forces Archive on ALL uses
+#[derive(Archive, Serialize, Deserialize)]
+pub struct Graph<Id, T>
+where
+    T: Archive,  // ← Blocks Raw* types in pipeline!
+{
+    nodes: HashMap<Id, Node<T>>,
+    // ...
+}
+```
+
+**Final Solution** (Two-Layer Architecture):
+
+**Layer 1: Infrastructure (No Archive)**
+```rust
+// graph/core.rs - Pure infrastructure, no serialization constraint
+#[derive(Debug, Clone)]
+pub struct Graph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord,
+    // ← NO Archive bound on T!
+{
+    nodes: HashMap<Id, Node<T>>,
+    parents: HashMap<Id, Vec<Id>>,
+    children: HashMap<Id, Vec<Id>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DagGraph<Id, T>
+where
+    Id: Copy + Eq + Hash + Ord,
+    // ← NO Archive bound on T!
+{
+    graph: Graph<Id, T>,
+    topo_order: Vec<Id>,
+    roots: Vec<Id>,
+}
+```
+
+**Layer 2: Domain (Archive via Newtype)**
+```rust
+// schema/inheritance.rs - Domain layer adds Archive constraint
+
+/// For persistence - requires Archive
+#[derive(Archive, Serialize, Deserialize)]
+pub struct InheritanceGraph<T>
+where
+    T: Archive,  // ← Archive ONLY here!
+{
+    inner: crate::graph::DagGraph<SchemaId, T>,
+}
+
+/// For pipeline - NO Archive requirement
+pub struct ProcessingGraph<T> {
+    inner: crate::graph::DagGraph<SchemaId, T>,
+    // ← T can be ANY type, including Raw* schemas
+}
+```
+
+**Usage Pattern**:
+
+```rust
+// Pipeline stage: ProcessingGraph with Raw* payloads (NO Archive)
+let mut processing = ProcessingGraph::<PipelinePayload>::try_from(builder.build())?;
+
+// In-place updates (no reconstruction)
+for (id, node) in processing.graph_mut().iter_mut() {
+    let PipelinePayload::FileParsed(raw) = node.payload() else { continue };
+    // raw is RawSchema, which does NOT derive Archive - this is fine!
+    let analyzed = analyze(raw)?;
+    *node.payload_mut() = PipelinePayload::Analyzed(analyzed);
+}
+
+// Final persistence: InheritanceGraph with unit payload (HAS Archive)
+let mut persist_builder = SchemaGraphBuilder::<()>::new();
+for (id, _) in processing.graph().iter() {
+    persist_builder.add_node(id, ());  // Unit type always has Archive
+}
+let inheritance = InheritanceGraph::try_from(persist_builder.build())?;
+repository.save_topological_graph(&inheritance)?;  // Serialization works!
+```
+
+**Key Insights**:
+1. **Separation of concerns**: Infrastructure doesn't know about serialization
+2. **Type safety**: Compiler prevents serializing non-Archive types via `InheritanceGraph` type guard
+3. **Flexibility**: Pipeline can use ANY payload type
+4. **Zero overhead**: Newtypes are zero-cost abstractions
+
+**Alternative Considered**: Making Raw* types derive Archive with dummy implementations
+- **Rejected**: Violates design intent (Raw* are intentionally non-serializable to prevent persisting unvalidated data)
+
+### Appendix G: Implementation Checklist
 
 **Phase 1: Core Graph Implementation**
 - [ ] Task 1.1: Module structure created

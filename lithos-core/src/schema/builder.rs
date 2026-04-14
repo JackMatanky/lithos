@@ -16,7 +16,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         error::SchemaLoaderError,
-        inheritance::{InheritanceGraph, InheritanceNode},
+        inheritance::InheritanceGraph,
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
@@ -238,7 +238,7 @@ where
 
         Ok(match graph {
             Some(graph) => GraphContextBranch::Present {
-                graph,
+                graph: Box::new(graph),
             },
             None => GraphContextBranch::Missing,
         })
@@ -380,7 +380,7 @@ pub(crate) enum BankContextBranch {
 pub(crate) enum GraphContextBranch {
     Missing,
     Present {
-        graph: InheritanceGraph<InheritanceNode>,
+        graph: Box<InheritanceGraph<()>>,
     },
 }
 
@@ -396,7 +396,7 @@ mod tests {
         fs::FsReader,
         schema::{
             aggregate::SchemaId,
-            inheritance::{InheritanceGraph, InheritanceNode},
+            inheritance::{InheritanceGraph, SchemaGraphBuilder},
             testing::InMemoryRepository,
         },
     };
@@ -438,12 +438,10 @@ description = "Test schema"
 
         // Create minimal graph with one root node
         let id = SchemaId::new();
-        let node = InheritanceNode::new_root(id);
 
-        let mut raw_graph: crate::schema::graph::Graph<InheritanceNode, ()> =
-            crate::schema::graph::Graph::new();
-        raw_graph.add_node(id, node);
-        let graph = InheritanceGraph::try_from(raw_graph).unwrap();
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(id, ());
+        let graph = InheritanceGraph::try_from(builder.build()).unwrap();
 
         // Save graph to DB
         repo.save_topological_graph(&graph).unwrap();

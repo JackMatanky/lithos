@@ -49,12 +49,8 @@ pub mod property_bank_processor;
 #[doc(hidden)]
 pub mod schema_processor;
 
-/// DAG structures and algorithms for schema inheritance.
-pub mod graph;
 /// Core inheritance graph types.
 pub mod inheritance;
-/// Topological sort utilities.
-pub mod topo_sort;
 
 /// Schema index types for efficient lookups.
 pub(crate) mod index;
@@ -138,10 +134,10 @@ pub(crate) mod db_table {
     /// Topologically sorted inheritance graph singleton.
     ///
     /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
-    /// Value: rkyv-serialized `InheritanceGraph<InheritanceNode>`.
+    /// Value: rkyv-serialized `InheritanceGraph<()>`.
     ///
-    /// Contains DAG structure with `SchemaId` links, child lists, and depth
-    /// information. Rebuilt/patched when inheritance relationships change.
+    /// Contains DAG structure with `SchemaId` links and adjacency lists.
+    /// Rebuilt/patched when inheritance relationships change.
     pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_topological_graph");
 

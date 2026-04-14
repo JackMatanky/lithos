@@ -1,15 +1,18 @@
-//! Directed acyclic graph (DAG) core types for schema inheritance.
+//! Schema inheritance graph types and utilities.
 //!
-//! This module provides the foundational data structures for managing schema
-//! inheritance hierarchies with support for multiple parents.
+//! This module provides schema-specific wrappers around the generic graph
+//! infrastructure for managing schema inheritance hierarchies with support
+//! for multiple parents.
 //!
 //! # Architecture
 //!
-//! The module is organized around two core abstractions:
+//! The module wraps the generic graph infrastructure with schema-specific
+//! types:
 //!
-//! - **`InheritanceNode`**: Minimal storage representation (id + depth)
-//! - **`InheritanceGraph<T>`**: Container maintaining topological order and
-//!   graph invariants
+//! - **`SchemaGraph<T>`**: Type alias for `Graph<SchemaId, T>`
+//! - **`SchemaGraphBuilder<T>`**: Type alias for `GraphBuilder<SchemaId, T>`
+//! - **`InheritanceGraph<T>`**: Type alias for `DagGraph<SchemaId, T>`
+//!   (validated DAG)
 //!
 //! # DAG vs Tree
 //!
@@ -31,662 +34,564 @@
 //!
 //! # Usage
 //!
-//! Construction is handled by converting a raw `Graph<T, R>` using
-//! `TryFrom<Graph<T, R>>` or by using `InheritanceEditor` for scoped updates.
-//!
 //! ```rust
 //! use lithos_core::schema::{
 //!     aggregate::SchemaId,
-//!     graph::{NodeAccessor, NodeDepth},
-//!     inheritance::InheritanceNode,
+//!     inheritance::{InheritanceGraph, SchemaGraphBuilder},
 //! };
 //!
 //! let root_id = SchemaId::new();
 //! let child_id = SchemaId::new();
-//! let root = InheritanceNode::new_root(root_id);
-//! let child = InheritanceNode::new(child_id, NodeDepth::new(1));
-//! assert_eq!(root.depth(), NodeDepth::ROOT);
-//! assert_eq!(child.depth(), NodeDepth::new(1));
+//!
+//! let mut builder = SchemaGraphBuilder::new();
+//! builder.add_node(root_id, ());
+//! builder.add_node(child_id, ());
+//! builder.add_parent(child_id, root_id);
+//!
+//! let graph = builder.build();
+//! let dag = InheritanceGraph::try_from(graph).expect("acyclic graph");
+//!
+//! assert_eq!(dag.roots(), &[root_id]);
+//! assert_eq!(dag.topo_order().first(), Some(&root_id));
 //! ```
 
-#![allow(
-    clippy::exhaustive_structs,
-    reason = "rkyv derives emit archived structs without non_exhaustive"
-)]
+use std::collections::{HashSet, VecDeque};
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::schema::aggregate::SchemaId;
 
-use rkyv::{Archive, Deserialize, Serialize};
+/// Schema-specific graph for tracking inheritance relationships.
+///
+/// This is a type alias for the generic `Graph<SchemaId, T>` from the graph
+/// module. Use `SchemaGraphBuilder` to construct instances.
+pub type SchemaGraph<T> = crate::graph::Graph<SchemaId, T>;
 
-use crate::schema::{
-    aggregate::SchemaId,
-    error::{
-        SchemaError, SchemaInheritanceError, SchemaLoaderError,
-        SchemaResolutionError,
-    },
-    graph::{
-        AdjacencyMap, ChildParentsMap, Graph, NodeAccessor, NodeDepth,
-        NodeDepthMut,
-    },
-    topo_sort::{TopologicalOrder, TopologicalSorter},
-};
-
-type GraphParts<T> =
-    (HashMap<SchemaId, T>, Vec<InheritanceEdge>, Vec<SchemaId>, Vec<SchemaId>);
-type ScopedOrder =
-    (TopologicalOrder, Vec<SchemaId>, HashMap<SchemaId, NodeDepth>);
-
-/// Container for a topologically-ordered DAG.
+/// Builder for constructing a schema inheritance graph.
 ///
-/// **Invariants**:
-/// - `nodes` contains all nodes indexed by ID
-/// - `order` contains all node IDs in topological order (parents before
-///   children)
-/// - `roots` contains all nodes with no parents
-/// - All parent/child references are bidirectional and consistent
+/// This is a type alias for the generic `GraphBuilder<SchemaId, T>`.
 ///
-/// **Generic Parameter**:
-/// - `T = InheritanceNode` for storage
+/// # Example
 ///
-/// Ordering and roots are typically populated by [`GraphBuilder`] or
-/// [`GraphEditor`].
-///
-/// # Examples
-///
-/// Construction is typically handled internally by [`GraphBuilder`] and
-/// [`GraphEditor`] in `schema::graph`.
-///
-/// ```rust
-/// use lithos_core::schema::inheritance::{InheritanceGraph, InheritanceNode};
-///
-/// fn takes_graph(_graph: &InheritanceGraph<InheritanceNode>) {}
-///
-/// # fn example(graph: &InheritanceGraph<InheritanceNode>) {
-/// #     takes_graph(graph);
-/// # }
 /// ```
+/// use lithos_core::schema::{
+///     aggregate::SchemaId, inheritance::SchemaGraphBuilder,
+/// };
+///
+/// let mut builder = SchemaGraphBuilder::new();
+/// builder.add_node(SchemaId::new(), ());
+/// let graph = builder.build();
+/// ```
+pub type SchemaGraphBuilder<T> = crate::graph::GraphBuilder<SchemaId, T>;
 
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct InheritanceGraph<T> {
-    nodes: HashMap<SchemaId, T>,
-    edges: Vec<InheritanceEdge>,
-    order: Vec<SchemaId>,
+// ============================================================================
+//  INHERITANCE GRAPH (for persistence)
+// ============================================================================
+
+/// Internal serializable representation of the graph structure.
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[rkyv(bytecheck(bounds()))]
+struct SerializableGraph<T>
+where
+    T: rkyv::Archive,
+{
+    nodes: std::collections::HashMap<SchemaId, T>,
+    parents: std::collections::HashMap<SchemaId, Vec<SchemaId>>,
+    children: std::collections::HashMap<SchemaId, Vec<SchemaId>>,
+}
+
+/// Schema inheritance graph with serialization support.
+///
+/// This newtype wrapper enforces Archive on the payload for persistence.
+/// Use this for the final validated DAG that gets saved to the database.
+///
+/// # Example
+///
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::SchemaId,
+///     inheritance::{InheritanceGraph, SchemaGraphBuilder},
+/// };
+///
+/// let root = SchemaId::new();
+/// let child = SchemaId::new();
+///
+/// let mut builder = SchemaGraphBuilder::new();
+/// builder.add_node(root, ());
+/// builder.add_node(child, ());
+/// builder.add_parent(child, root);
+///
+/// let dag = InheritanceGraph::try_from(builder.build()).unwrap();
+/// assert_eq!(dag.roots(), &[root]);
+/// ```
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[rkyv(bytecheck(bounds()))]
+pub struct InheritanceGraph<T>
+where
+    T: rkyv::Archive,
+{
+    graph: SerializableGraph<T>,
+    #[rkyv(with = rkyv::with::Skip)]
+    topo_order: Vec<SchemaId>,
+    #[rkyv(with = rkyv::with::Skip)]
     roots: Vec<SchemaId>,
 }
 
-impl<T> InheritanceGraph<T> {
-    /// Returns the node map.
+impl<T> InheritanceGraph<T>
+where
+    T: rkyv::Archive,
+{
+    /// Returns the cached topological order.
     #[inline]
     #[must_use]
-    pub fn nodes(&self) -> &HashMap<SchemaId, T> {
-        &self.nodes
+    pub fn topo_order(&self) -> &[SchemaId] {
+        &self.topo_order
     }
 
-    /// Returns the edge list.
-    #[inline]
-    #[must_use]
-    pub fn edges(&self) -> &[InheritanceEdge] {
-        &self.edges
-    }
-
-    /// Returns node IDs in topological order.
-    #[inline]
-    #[must_use]
-    pub fn order(&self) -> &[SchemaId] {
-        &self.order
-    }
-
-    /// Returns the root node IDs.
+    /// Returns the cached roots (nodes with no parents).
     #[inline]
     #[must_use]
     pub fn roots(&self) -> &[SchemaId] {
         &self.roots
     }
 
+    /// Returns an iterator over node IDs and payloads.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (SchemaId, &T)> {
+        self.graph.nodes.iter().map(|(id, payload)| (*id, payload))
+    }
+
+    /// Returns parent IDs for a given node.
     #[inline]
     #[must_use]
-    pub(crate) fn into_parts(self) -> GraphParts<T> {
-        (self.nodes, self.edges, self.order, self.roots)
+    pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
+        self.graph.parents.get(&id).map_or(&[], Vec::as_slice)
     }
 
-    pub(crate) fn map_payload<U, F>(
-        &self,
-        mut f: F,
-    ) -> Result<InheritanceGraph<U>, SchemaInheritanceError>
-    where
-        F: FnMut(&T) -> U,
-        U: NodeDepthMut,
-    {
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            self.nodes.keys().copied(),
-            self.edges.iter().map(|edge| (edge.parent, edge.child)),
-        );
-        let raw_graph: Graph<U, ()> = Graph::<U, ()>::from_nodes_and_edges(
-            &self.nodes,
-            &adjacency,
-            |node| f(node),
-        );
-        InheritanceGraph::try_from(raw_graph)
-    }
-
-    #[must_use]
-    pub(crate) fn affected_subtree(
-        &self,
-        changed_ids: &HashSet<SchemaId>,
-    ) -> HashSet<SchemaId> {
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            self.nodes.keys().copied(),
-            self.edges.iter().map(|edge| (edge.parent, edge.child)),
-        );
-
-        let mut affected = HashSet::new();
-        let mut queue = VecDeque::new();
-
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "reachability traversal ignores iteration order"
-        )]
-        for &id in changed_ids {
-            queue.push_back(id);
-            affected.insert(id);
-        }
-
-        while let Some(id) = queue.pop_front() {
-            for &child_id in adjacency.children_of(id) {
-                if affected.insert(child_id) {
-                    queue.push_back(child_id);
-                }
-            }
-        }
-
-        affected
-    }
-}
-
-impl<T> InheritanceGraph<T>
-where
-    T: NodeAccessor,
-{
-    fn try_from_scoped<R>(
-        &self,
-        graph: &Graph<T, R>,
-        affected: &HashSet<SchemaId>,
-    ) -> Result<ScopedOrder, SchemaInheritanceError> {
-        let adjacency = AdjacencyMap::from_graph(graph);
-        let sorter = TopologicalSorter::try_new(
-            graph.nodes().keys().copied(),
-            &adjacency,
-        )
-        .map_err(|err| map_sorter_error(&err))?;
-        let affected_order = sorter
-            .sort_scoped(affected)
-            .map_err(|err| map_sorter_error(&err))?;
-
-        let depth_map = Graph::<T, R>::compute_depths(
-            self.nodes(),
-            affected,
-            affected_order.order(),
-            &adjacency,
-        );
-        let roots = sorter.sort().map_err(|err| map_sorter_error(&err))?;
-
-        Ok((affected_order, roots.roots().to_vec(), depth_map))
-    }
-}
-
-fn map_sorter_error(error: &SchemaResolutionError) -> SchemaInheritanceError {
-    match *error {
-        SchemaResolutionError::NotDirected => {
-            SchemaInheritanceError::NotDirected
-        }
-        SchemaResolutionError::CycleDetected {
-            ..
-        }
-        | SchemaResolutionError::DuplicateSchemaName {
-            ..
-        }
-        | SchemaResolutionError::MissingNode {
-            ..
-        }
-        | SchemaResolutionError::ParentNotFound {
-            ..
-        } => SchemaInheritanceError::CycleDetected {
-            nodes: Vec::new(),
-        },
-    }
-}
-
-impl<T, R> TryFrom<Graph<T, R>> for InheritanceGraph<T>
-where
-    T: NodeDepthMut,
-{
-    type Error = SchemaInheritanceError;
-
-    #[inline]
-    fn try_from(graph: Graph<T, R>) -> Result<Self, Self::Error> {
-        let (nodes, edges) = graph.into_parts();
-
-        for edge in &edges {
-            if !nodes.contains_key(&edge.from()) {
-                return Err(SchemaInheritanceError::MissingNode {
-                    id: edge.from(),
-                });
-            }
-            if !nodes.contains_key(&edge.to()) {
-                return Err(SchemaInheritanceError::MissingNode {
-                    id: edge.to(),
-                });
-            }
-        }
-
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            edges.iter().map(|edge| (edge.from(), edge.to())),
-        );
-        let sorter =
-            TopologicalSorter::try_new(nodes.keys().copied(), &adjacency)
-                .map_err(|err| map_sorter_error(&err))?;
-        let order = sorter.sort().map_err(|err| map_sorter_error(&err))?;
-
-        let depth_by_id = Graph::<T, R>::compute_depths::<InheritanceNode>(
-            &HashMap::new(),
-            &nodes.keys().copied().collect(),
-            order.order(),
-            &adjacency,
-        );
-
-        let mut nodes = nodes;
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "depth assignment ignores iteration order"
-        )]
-        for (id, depth) in &depth_by_id {
-            if let Some(node) = nodes.get_mut(id) {
-                node.set_depth(*depth);
-                node.payload_mut().set_depth(*depth);
-            }
-        }
-
-        let nodes: HashMap<SchemaId, T> = nodes
-            .into_iter()
-            .map(|(id, node)| (id, node.into_payload()))
-            .collect();
-
-        let edges = edges
-            .into_iter()
-            .map(|edge| InheritanceEdge {
-                parent: edge.from(),
-                child: edge.to(),
-            })
-            .collect();
-
-        Ok(Self {
-            nodes,
-            edges,
-            order: order.order().to_vec(),
-            roots: order.roots().to_vec(),
-        })
-    }
-}
-
-/// Minimal stored node for the inheritance graph.
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct InheritanceNode {
-    id: SchemaId,
-    depth: NodeDepth,
-}
-
-impl InheritanceNode {
-    /// Creates a new root node (depth 0).
+    /// Returns child IDs for a given node.
     #[inline]
     #[must_use]
-    pub fn new_root(id: SchemaId) -> Self {
-        Self {
-            id,
-            depth: NodeDepth::ROOT,
-        }
+    pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
+        self.graph.children.get(&id).map_or(&[], Vec::as_slice)
     }
 
-    /// Creates a new node with specific depth.
-    #[inline]
-    #[must_use]
-    pub fn new(id: SchemaId, depth: NodeDepth) -> Self {
-        Self {
-            id,
-            depth,
-        }
-    }
-}
-
-impl NodeAccessor for InheritanceNode {
-    /// Returns the node identifier.
-    #[inline]
-    fn id(&self) -> SchemaId {
-        self.id
-    }
-
-    /// Returns the node depth.
-    #[inline]
-    fn depth(&self) -> NodeDepth {
-        self.depth
-    }
-}
-
-impl NodeDepthMut for InheritanceNode {
-    #[inline]
-    fn set_depth(&mut self, depth: NodeDepth) {
-        self.depth = depth;
-    }
-}
-
-/// Directed edge in the inheritance graph.
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct InheritanceEdge {
-    parent: SchemaId,
-    child: SchemaId,
-}
-
-impl InheritanceEdge {
-    /// Returns the parent schema ID.
-    #[inline]
-    #[must_use]
-    pub fn parent(&self) -> SchemaId {
-        self.parent
-    }
-
-    /// Returns the child schema ID.
-    #[inline]
-    #[must_use]
-    pub fn child(&self) -> SchemaId {
-        self.child
-    }
-}
-
-// ============================================================================
-//  INHERITANCE EDITOR
-// ============================================================================
-
-/// Editor for scoped inheritance graph updates.
-pub struct InheritanceEditor<T> {
-    base: InheritanceGraph<T>,
-    nodes: HashMap<SchemaId, T>,
-    edges: Vec<InheritanceEdge>,
-    order: Vec<SchemaId>,
-    roots: Vec<SchemaId>,
-    changed_ids: HashSet<SchemaId>,
-    deleted_ids: HashSet<SchemaId>,
-}
-
-impl<T> InheritanceEditor<T>
-where
-    T: NodeAccessor + NodeDepthMut + Clone,
-{
-    /// Creates a new editor from a validated base graph.
-    #[must_use]
-    #[inline]
-    pub fn new(base: InheritanceGraph<T>) -> Self {
-        let (nodes, edges, order, roots) = base.clone().into_parts();
-        Self {
-            base,
-            nodes,
-            edges,
-            order,
-            roots,
-            changed_ids: HashSet::new(),
-            deleted_ids: HashSet::new(),
-        }
-    }
-
-    /// Inserts a node into the working set.
-    #[inline]
-    pub fn insert_node(&mut self, node: T) {
-        self.nodes.insert(node.id(), node);
-    }
-
-    /// Applies a parent list change to a node.
-    #[inline]
-    pub fn apply_change(&mut self, id: SchemaId, mut parents: Vec<SchemaId>) {
-        ChildParentsMap::normalize_parents(&mut parents);
-
-        self.edges.retain(|edge| edge.child != id);
-        for parent_id in parents {
-            self.edges.push(InheritanceEdge {
-                parent: parent_id,
-                child: id,
-            });
-            self.changed_ids.insert(parent_id);
-        }
-        self.changed_ids.insert(id);
-    }
-
-    /// Deletes a node and its edges from the working set.
-    #[inline]
-    pub fn delete_node(&mut self, id: SchemaId) {
-        self.nodes.remove(&id);
-        self.edges.retain(|edge| edge.parent != id && edge.child != id);
-        self.order.retain(|entry| *entry != id);
-        self.roots.retain(|entry| *entry != id);
-        self.deleted_ids.insert(id);
-        self.changed_ids.insert(id);
-    }
-
-    /// Applies all queued changes and returns the updated graph.
+    /// Converts to a transient `DagGraph` for processing.
+    /// Reconstructs a `DagGraph` from the serializable representation.
     ///
     /// # Errors
-    /// Returns a loader error if patching introduces a cycle or inconsistency.
+    ///
+    /// Returns an error if graph reconstruction fails (should never happen
+    /// as the graph was validated on construction).
     #[inline]
-    pub fn patch(self) -> Result<InheritanceGraph<T>, SchemaLoaderError> {
-        let mut nodes = self.nodes;
-        let edges = self.edges;
-        let base = self.base;
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Order not relevant for reconstruction"
+    )]
+    pub fn to_dag_graph(
+        &self,
+    ) -> Result<
+        crate::graph::DagGraph<SchemaId, T>,
+        crate::schema::error::SchemaInheritanceError,
+    >
+    where
+        T: Clone,
+    {
+        let mut builder = SchemaGraphBuilder::new();
+        for (id, payload) in &self.graph.nodes {
+            builder.add_node(*id, payload.clone());
+        }
+        for (child_id, parent_ids) in &self.graph.parents {
+            for &parent_id in parent_ids {
+                builder.add_parent(*child_id, parent_id);
+            }
+        }
+        crate::graph::DagGraph::try_from(builder.build()).map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
+                nodes: Vec::new(),
+            }
+        })
+    }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            edges.iter().map(|edge| (edge.parent, edge.child)),
-        );
-        let mut affected = HashSet::new();
-        let mut queue: VecDeque<SchemaId> = VecDeque::new();
+    /// For compatibility - returns a pseudo-graph interface.
+    #[inline]
+    #[must_use]
+    pub fn graph(&self) -> GraphView<'_, T> {
+        GraphView {
+            inner: self,
+        }
+    }
+}
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "reachability traversal ignores iteration order"
-        )]
-        for &id in &self.changed_ids {
-            affected.insert(id);
-            queue.push_back(id);
+/// View into the graph structure for compatibility.
+#[expect(
+    clippy::single_char_lifetime_names,
+    reason = "Standard lifetime name for view"
+)]
+pub struct GraphView<'a, T>
+where
+    T: rkyv::Archive,
+{
+    inner: &'a InheritanceGraph<T>,
+}
+
+impl<T> GraphView<'_, T>
+where
+    T: rkyv::Archive,
+{
+    /// Returns an iterator over all (ID, payload) pairs in the graph.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (SchemaId, &T)> {
+        self.inner.iter()
+    }
+
+    /// Returns the parent IDs for a given schema (empty slice if no parents).
+    #[inline]
+    #[must_use]
+    pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
+        self.inner.parents_of(id)
+    }
+
+    /// Returns the child IDs for a given schema (empty slice if no children).
+    #[inline]
+    #[must_use]
+    pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
+        self.inner.children_of(id)
+    }
+}
+
+impl<T> TryFrom<SchemaGraph<T>> for InheritanceGraph<T>
+where
+    T: rkyv::Archive + Clone,
+{
+    type Error = crate::schema::error::SchemaInheritanceError;
+
+    #[inline]
+    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
+        // Validate it's a DAG
+        let dag = crate::graph::DagGraph::try_from(graph).map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
+                nodes: Vec::new(),
+            }
+        })?;
+
+        // Extract topology before consuming
+        let topo_order = dag.topo_order().to_vec();
+        let roots = dag.roots().to_vec();
+
+        // Extract serializable representation by cloning payloads
+        let mut nodes = std::collections::HashMap::new();
+        let mut parents = std::collections::HashMap::new();
+        let mut children = std::collections::HashMap::new();
+
+        for (id, node) in dag.graph().iter() {
+            nodes.insert(id, node.payload().clone());
         }
 
-        while let Some(id) = queue.pop_front() {
-            for &child in adjacency.children_of(id) {
-                if affected.insert(child) {
-                    queue.push_back(child);
-                }
+        for (child_id, _) in dag.graph().iter() {
+            let parent_ids = dag.graph().parents_of(child_id);
+            if !parent_ids.is_empty() {
+                parents.insert(child_id, parent_ids.to_vec());
+            }
+            let child_ids = dag.graph().children_of(child_id);
+            if !child_ids.is_empty() {
+                children.insert(child_id, child_ids.to_vec());
             }
         }
 
-        if affected.is_empty() {
-            return Ok(InheritanceGraph {
+        Ok(Self {
+            graph: SerializableGraph {
                 nodes,
-                edges,
-                order: self.order,
-                roots: self.roots,
-            });
-        }
-
-        let raw_graph: Graph<T, ()> =
-            Graph::<T, ()>::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
-
-        let (affected_order, roots, depth_map) =
-            base.try_from_scoped(&raw_graph, &affected).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
-
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "depth assignment ignores iteration order"
-        )]
-        for (id, depth) in depth_map {
-            if let Some(node) = nodes.get_mut(&id) {
-                node.set_depth(depth);
-            }
-        }
-
-        let new_order = splice_order(
-            &self.order,
-            &affected_order,
-            &affected,
-            &adjacency,
-            nodes.len(),
-        )?;
-
-        Ok(InheritanceGraph {
-            nodes,
-            edges,
-            order: new_order,
+                parents,
+                children,
+            },
+            topo_order,
             roots,
         })
     }
 }
 
-fn splice_order(
-    existing: &[SchemaId],
-    affected_order: &TopologicalOrder,
-    affected: &HashSet<SchemaId>,
-    adjacency: &AdjacencyMap,
-    node_count: usize,
-) -> Result<Vec<SchemaId>, SchemaLoaderError> {
-    let mut anchor_map: HashMap<Option<SchemaId>, Vec<SchemaId>> =
-        HashMap::new();
+// ============================================================================
+//  PROCESSING GRAPH (for pipeline - no serialization)
+// ============================================================================
 
-    for &id in affected_order.order() {
-        let anchor = nearest_unaffected_ancestor(adjacency, id, affected);
-        anchor_map.entry(anchor).or_default().push(id);
+/// Schema graph wrapper for pipeline processing.
+///
+/// This wrapper allows using ANY payload type (including non-Archive types
+/// like Raw* schemas). Use this for intermediate pipeline stages where
+/// serialization is not needed.
+///
+/// # Example
+///
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::SchemaId,
+///     inheritance::{ProcessingGraph, SchemaGraphBuilder},
+/// };
+///
+/// let root = SchemaId::new();
+/// let child = SchemaId::new();
+///
+/// let mut builder = SchemaGraphBuilder::new();
+/// builder.add_node(root, "payload");
+/// builder.add_node(child, "payload");
+/// builder.add_parent(child, root);
+///
+/// let dag = ProcessingGraph::try_from(builder.build()).unwrap();
+/// assert_eq!(dag.roots(), &[root]);
+/// ```
+#[derive(Debug, Clone)]
+pub struct ProcessingGraph<T> {
+    inner: crate::graph::DagGraph<SchemaId, T>,
+}
+
+impl<T> ProcessingGraph<T> {
+    /// Returns the cached topological order.
+    #[inline]
+    #[must_use]
+    pub fn topo_order(&self) -> &[SchemaId] {
+        self.inner.topo_order()
     }
 
-    let mut new_order = Vec::with_capacity(node_count);
-    for id in existing.iter().copied().filter(|id| !affected.contains(id)) {
-        new_order.push(id);
-        if let Some(mut list) = anchor_map.remove(&Some(id)) {
-            new_order.append(&mut list);
-        }
-    }
-    if let Some(mut list) = anchor_map.remove(&None) {
-        new_order.append(&mut list);
-    }
-    for mut list in anchor_map.into_values() {
-        new_order.append(&mut list);
+    /// Returns the cached roots (nodes with no parents).
+    #[inline]
+    #[must_use]
+    pub fn roots(&self) -> &[SchemaId] {
+        self.inner.roots()
     }
 
-    if new_order.len() != node_count {
-        return Err(SchemaLoaderError::Resolution(SchemaError::Inheritance(
-            SchemaInheritanceError::CycleDetected {
+    /// Returns a reference to the underlying graph.
+    #[inline]
+    #[must_use]
+    pub fn graph(&self) -> &SchemaGraph<T> {
+        self.inner.graph()
+    }
+
+    /// Returns a mutable reference to the underlying graph.
+    ///
+    /// **Warning**: Mutating the graph structure (adding/removing nodes or
+    /// edges) will invalidate the cached topological order. Only use this
+    /// for in-place payload updates.
+    #[inline]
+    pub fn graph_mut(&mut self) -> &mut SchemaGraph<T> {
+        self.inner.graph_mut()
+    }
+
+    /// Consumes self and returns the underlying `DagGraph`.
+    #[inline]
+    #[must_use]
+    pub fn into_dag(self) -> crate::graph::DagGraph<SchemaId, T> {
+        self.inner
+    }
+}
+
+impl<T> TryFrom<SchemaGraph<T>> for ProcessingGraph<T> {
+    type Error = crate::schema::error::SchemaInheritanceError;
+
+    #[inline]
+    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
+        let dag = crate::graph::DagGraph::try_from(graph).map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
-            },
-        )));
+            }
+        })?;
+        Ok(Self {
+            inner: dag,
+        })
     }
-
-    Ok(new_order)
 }
 
-fn nearest_unaffected_ancestor(
-    adjacency: &AdjacencyMap,
-    id: SchemaId,
-    affected: &HashSet<SchemaId>,
-) -> Option<SchemaId> {
-    for &parent in adjacency.parents_of(id) {
-        if !affected.contains(&parent) {
-            return Some(parent);
-        }
-        if let Some(ancestor) =
-            nearest_unaffected_ancestor(adjacency, parent, affected)
-        {
-            return Some(ancestor);
+/// Computes the set of all schemas affected by changes to the given schemas.
+///
+/// Performs BFS traversal from changed nodes to find all descendants (children,
+/// grandchildren, etc.). This is useful for incremental processing where only
+/// affected schemas need to be reprocessed.
+///
+/// # Example
+///
+/// ```
+/// use std::collections::HashSet;
+///
+/// use lithos_core::schema::{
+///     aggregate::SchemaId,
+///     inheritance::{SchemaGraphBuilder, affected_subtree},
+/// };
+///
+/// let a = SchemaId::new();
+/// let b = SchemaId::new();
+/// let c = SchemaId::new();
+///
+/// let mut builder = SchemaGraphBuilder::new();
+/// builder.add_node(a, ());
+/// builder.add_node(b, ());
+/// builder.add_node(c, ());
+/// builder.add_parent(b, a); // B extends A
+/// builder.add_parent(c, b); // C extends B
+///
+/// let graph = builder.build();
+/// let changed = HashSet::from([a]); // A changed
+/// let affected = affected_subtree(&graph, &changed);
+///
+/// assert!(affected.contains(&a));
+/// assert!(affected.contains(&b)); // B is affected (child of A)
+/// assert!(affected.contains(&c)); // C is affected (grandchild of A)
+/// ```
+#[inline]
+#[must_use]
+#[expect(clippy::implicit_hasher, reason = "HashSet is appropriate here")]
+pub fn affected_subtree<T>(
+    graph: &SchemaGraph<T>,
+    changed_ids: &HashSet<SchemaId>,
+) -> HashSet<SchemaId> {
+    let mut affected = HashSet::with_capacity(changed_ids.len());
+    let mut queue = VecDeque::new();
+
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "BFS traversal does not rely on iteration order"
+    )]
+    for &id in changed_ids {
+        if affected.insert(id) {
+            queue.push_back(id);
         }
     }
-    None
+
+    while let Some(id) = queue.pop_front() {
+        for &child_id in graph.children_of(id) {
+            if affected.insert(child_id) {
+                queue.push_back(child_id);
+            }
+        }
+    }
+
+    affected
 }
+
+// ============================================================================
+//  TESTS
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
-
-    #[derive(Debug, Clone)]
-    struct TestNode {
-        id: SchemaId,
-        depth: NodeDepth,
-    }
-
-    impl NodeAccessor for TestNode {
-        fn id(&self) -> SchemaId {
-            self.id
-        }
-
-        fn depth(&self) -> NodeDepth {
-            self.depth
-        }
-    }
-
-    impl NodeDepthMut for TestNode {
-        fn set_depth(&mut self, depth: NodeDepth) {
-            self.depth = depth;
-        }
-    }
+    use crate::graph::NodeDepth;
 
     #[test]
-    fn try_from_computes_depths_and_roots() {
+    fn inheritance_graph_validates_dag() {
         let parent = SchemaId::new();
         let child = SchemaId::new();
 
-        let mut graph: Graph<TestNode, ()> = Graph::new();
-        graph.add_node(parent, TestNode {
-            id: parent,
-            depth: NodeDepth::ROOT,
-        });
-        graph.add_node(child, TestNode {
-            id: child,
-            depth: NodeDepth::ROOT,
-        });
-        graph.add_edge(parent, child);
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(parent, ());
+        builder.add_node(child, ());
+        builder.add_parent(child, parent);
 
-        let validated = InheritanceGraph::try_from(graph).expect("valid graph");
-        assert!(validated.order().starts_with(&[parent]));
-        assert!(validated.roots.contains(&parent));
+        let graph = builder.build();
+        let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
 
-        let nodes = validated.nodes();
-        assert_eq!(nodes.get(&parent).unwrap().depth(), NodeDepth::ROOT);
-        assert_eq!(nodes.get(&child).unwrap().depth(), NodeDepth::new(1));
+        assert_eq!(dag.roots(), &[parent]);
+        assert_eq!(dag.topo_order().first(), Some(&parent));
+        assert!(dag.topo_order().contains(&child));
     }
 
     #[test]
-    fn editor_recomputes_roots_for_removed_parent() {
+    fn inheritance_graph_computes_depths() {
         let parent = SchemaId::new();
         let child = SchemaId::new();
 
-        let mut raw_graph: Graph<TestNode, ()> = Graph::new();
-        raw_graph.add_node(parent, TestNode {
-            id: parent,
-            depth: NodeDepth::ROOT,
-        });
-        raw_graph.add_node(child, TestNode {
-            id: child,
-            depth: NodeDepth::ROOT,
-        });
-        raw_graph.add_edge(parent, child);
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(parent, ());
+        builder.add_node(child, ());
+        builder.add_parent(child, parent);
 
-        let graph = InheritanceGraph::try_from(raw_graph).expect("valid graph");
-        let mut editor = InheritanceEditor::new(graph);
-        editor.apply_change(child, Vec::new());
-        let updated = editor.patch().expect("patch graph");
+        let graph = builder.build();
+        let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
 
-        let mut roots = updated.roots.clone();
-        roots.sort();
-        let mut expected = vec![child, parent];
-        expected.sort();
-        assert_eq!(roots, expected);
+        let underlying_dag = dag.to_dag_graph().expect("valid DAG");
+        let depths =
+            underlying_dag.graph().compute_depths(underlying_dag.topo_order());
+
+        assert_eq!(depths.get(&parent), Some(&NodeDepth::ROOT));
+        assert_eq!(depths.get(&child), Some(&NodeDepth::new(1)));
+    }
+
+    #[test]
+    fn inheritance_graph_detects_cycles() {
+        let a = SchemaId::new();
+        let b = SchemaId::new();
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(a, ());
+        builder.add_node(b, ());
+        builder.add_parent(a, b);
+        builder.add_parent(b, a); // Cycle!
+
+        let graph = builder.build();
+        let result = InheritanceGraph::try_from(graph);
+
+        result.unwrap_err();
+    }
+
+    #[test]
+    #[expect(
+        clippy::many_single_char_names,
+        reason = "Test setup uses single-letter node names"
+    )]
+    fn affected_subtree_computes_all_descendants() {
+        let a = SchemaId::new();
+        let b = SchemaId::new();
+        let c = SchemaId::new();
+        let d = SchemaId::new();
+        let e = SchemaId::new();
+
+        // Graph structure:
+        //   A
+        //   └─ B
+        //      ├─ C
+        //      │  └─ E
+        //      └─ D
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(a, ());
+        builder.add_node(b, ());
+        builder.add_node(c, ());
+        builder.add_node(d, ());
+        builder.add_node(e, ());
+
+        builder.add_parent(b, a);
+        builder.add_parent(c, b);
+        builder.add_parent(d, b);
+        builder.add_parent(e, c);
+
+        let graph = builder.build();
+        let changed = HashSet::from([b]);
+        let affected = affected_subtree(&graph, &changed);
+
+        // B changed, so B, C, D, E are affected
+        assert!(affected.contains(&b));
+        assert!(affected.contains(&c));
+        assert!(affected.contains(&d));
+        assert!(affected.contains(&e));
+        // A is not affected (it's a parent, not a descendant)
+        assert!(!affected.contains(&a));
+    }
+
+    #[test]
+    fn affected_subtree_handles_multiple_roots() {
+        let a = SchemaId::new();
+        let b = SchemaId::new();
+        let c = SchemaId::new();
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(a, ());
+        builder.add_node(b, ());
+        builder.add_node(c, ());
+        builder.add_parent(c, a);
+
+        let graph = builder.build();
+        let changed = HashSet::from([a, b]); // Two separate roots
+        let affected = affected_subtree(&graph, &changed);
+
+        assert!(affected.contains(&a));
+        assert!(affected.contains(&b));
+        assert!(affected.contains(&c)); // Descendant of A
     }
 }

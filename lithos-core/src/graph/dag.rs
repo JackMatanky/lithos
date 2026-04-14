@@ -18,11 +18,12 @@
 
 use std::hash::Hash;
 
-use rkyv::{Archive, Deserialize, Serialize};
-
 use crate::graph::{Graph, GraphError, sorting::topological_sort_with_nodes};
 
 /// Validated DAG wrapper that owns the graph and caches topology.
+///
+/// **Pure infrastructure** - NO serialization constraint. Domain wrappers
+/// (like `schema::InheritanceGraph`) add Archive bounds when needed.
 ///
 /// # Examples
 ///
@@ -37,26 +38,19 @@ use crate::graph::{Graph, GraphError, sorting::topological_sort_with_nodes};
 /// let dag = DagGraph::try_from(builder.build()).unwrap();
 /// assert_eq!(dag.topo_order(), &[1, 2]);
 /// ```
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[rkyv(bytecheck(bounds()))]
+#[derive(Debug, Clone)]
 pub struct DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     graph: Graph<Id, T>,
-
-    #[rkyv(with = rkyv::with::Skip)]
     topo_order: Vec<Id>,
-
-    #[rkyv(with = rkyv::with::Skip)]
     roots: Vec<Id>,
 }
 
 impl<Id, T> TryFrom<Graph<Id, T>> for DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     type Error = GraphError<Id>;
 
@@ -74,8 +68,7 @@ where
 
 impl<Id, T> DagGraph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     /// Returns the cached topological order.
     #[inline]
@@ -96,6 +89,16 @@ where
     #[must_use]
     pub fn graph(&self) -> &Graph<Id, T> {
         &self.graph
+    }
+
+    /// Returns a mutable reference to the underlying raw graph.
+    ///
+    /// **Warning**: Mutating the graph structure (adding/removing nodes or
+    /// edges) will invalidate the cached topological order. Only use this
+    /// for in-place payload updates.
+    #[inline]
+    pub fn graph_mut(&mut self) -> &mut Graph<Id, T> {
+        &mut self.graph
     }
 
     /// Consumes the wrapper and returns the raw graph.

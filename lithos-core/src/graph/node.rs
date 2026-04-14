@@ -18,6 +18,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 /// A node in the graph.
 ///
+/// **Pure infrastructure** - NO serialization constraint. Domain wrappers
+/// add Archive bounds when needed for persistence.
+///
 /// # Examples
 ///
 /// ```
@@ -28,12 +31,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// node.set_depth(NodeDepth::new(1));
 /// assert_eq!(node.depth().as_usize(), 1);
 /// ```
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[rkyv(bytecheck(bounds()))]
-pub struct Node<T>
-where
-    T: Archive,
-{
+#[derive(Debug, Clone)]
+pub struct Node<T> {
     /// Inheritance depth (0 for roots, `max(parent_depths)` + 1 for children).
     depth: NodeDepth,
 
@@ -41,10 +40,7 @@ where
     payload: T,
 }
 
-impl<T> Node<T>
-where
-    T: Archive,
-{
+impl<T> Node<T> {
     /// Creates a new node with ROOT depth.
     #[inline]
     #[must_use]

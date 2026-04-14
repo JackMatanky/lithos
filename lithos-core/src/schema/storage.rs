@@ -18,7 +18,7 @@ use super::{
     bank::PropertyBank,
     error::{SchemaRepositoryError, SchemaStorageError},
     index::{NameIdPairs, PathIdPairs, SchemaIndex},
-    inheritance::{InheritanceGraph, InheritanceNode},
+    inheritance::InheritanceGraph,
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
@@ -56,7 +56,7 @@ pub trait BatchSchemaReader {
     /// Returns storage-specific error if the batch read fails.
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error>;
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
 }
 
 struct RedbBatchSchemaReader<'reader> {
@@ -82,13 +82,13 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
     #[inline]
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error> {
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
         use crate::schema::db_table::{
             SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
         };
 
         self.reader
-            .get_owned::<InheritanceGraph<InheritanceNode>>(
+            .get_owned::<InheritanceGraph<()>>(
                 SCHEMA_TOPOLOGICAL_GRAPH,
                 TOPOLOGICAL_GRAPH_KEY,
             )
@@ -385,7 +385,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error>;
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
 
     /// Saves the topological graph singleton.
     ///
@@ -394,7 +394,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the save fails.
     fn save_topological_graph(
         &self,
-        graph: &InheritanceGraph<InheritanceNode>,
+        graph: &InheritanceGraph<()>,
     ) -> Result<(), Self::Error>;
 
     // ========================================================================
@@ -902,7 +902,7 @@ impl Repository for RedbRepository {
     #[inline]
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<InheritanceNode>>, Self::Error> {
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
         use crate::schema::db_table::{
             SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
         };
@@ -915,7 +915,7 @@ impl Repository for RedbRepository {
     #[inline]
     fn save_topological_graph(
         &self,
-        graph: &InheritanceGraph<InheritanceNode>,
+        graph: &InheritanceGraph<()>,
     ) -> Result<(), Self::Error> {
         use crate::schema::db_table::{
             SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,

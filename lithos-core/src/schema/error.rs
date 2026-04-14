@@ -729,6 +729,35 @@ pub enum SchemaInheritanceError {
     },
 }
 
+impl TryFrom<crate::graph::GraphError<crate::schema::aggregate::SchemaId>>
+    for SchemaError
+{
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        err: crate::graph::GraphError<crate::schema::aggregate::SchemaId>,
+    ) -> Result<Self, Self::Error> {
+        let inheritance = match err {
+            crate::graph::GraphError::CycleDetected {
+                nodes,
+            } => SchemaInheritanceError::CycleDetected {
+                nodes,
+            },
+            crate::graph::GraphError::NotDirected => {
+                SchemaInheritanceError::NotDirected
+            }
+            crate::graph::GraphError::MissingNode {
+                id,
+            } => SchemaInheritanceError::MissingNode {
+                id,
+            },
+        };
+
+        Ok(SchemaError::Inheritance(inheritance))
+    }
+}
+
 /// Resolution errors not covered by other categories.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]

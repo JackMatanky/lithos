@@ -68,9 +68,10 @@ use crate::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
         },
-        graph::{AdjacencyMap, Graph, NodeAccessor, NodeDepth, NodeDepthMut},
         index::SchemaIndex,
-        inheritance::{InheritanceGraph, InheritanceNode},
+        inheritance::{
+            InheritanceGraph, ProcessingGraph, SchemaGraph, SchemaGraphBuilder,
+        },
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::{
@@ -211,25 +212,31 @@ pub(crate) enum NodeStatus {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessorNode<T> {
-    id: SchemaId,
-    depth: NodeDepth,
     status: NodeStatus,
     payload: T,
 }
 
-impl<T> NodeAccessor for ProcessorNode<T> {
-    fn id(&self) -> SchemaId {
-        self.id
+#[expect(dead_code, reason = "API reserved for future use")]
+impl<T> ProcessorNode<T> {
+    pub(crate) fn payload(&self) -> &T {
+        &self.payload
     }
 
-    fn depth(&self) -> NodeDepth {
-        self.depth
+    /// Returns mutable access to the payload.
+    pub(crate) fn payload_mut(&mut self) -> &mut T {
+        &mut self.payload
     }
-}
 
-impl<T> NodeDepthMut for ProcessorNode<T> {
-    fn set_depth(&mut self, depth: NodeDepth) {
-        self.depth = depth;
+    /// Returns the node status.
+    #[inline]
+    #[must_use]
+    pub(crate) fn status(&self) -> NodeStatus {
+        self.status
+    }
+
+    /// Sets the node status.
+    pub(crate) fn set_status(&mut self, status: NodeStatus) {
+        self.status = status;
     }
 }
 
@@ -238,13 +245,13 @@ pub(crate) struct ProcessorEdge {
     relation: ExtendsChangeKind,
 }
 
-fn extends_change_for(
+fn extends_change_for<T>(
     id: SchemaId,
-    adjacency: &AdjacencyMap,
+    graph: &SchemaGraph<T>,
     edge_relations: &HashMap<(SchemaId, SchemaId), ProcessorEdge>,
 ) -> ExtendsChangeKind {
     let mut change = ExtendsChangeKind::Unchanged;
-    for parent in adjacency.parents_of(id) {
+    for parent in graph.parents_of(id) {
         let Some(edge) = edge_relations.get(&(*parent, id)) else {
             continue;
         };
@@ -563,7 +570,7 @@ pub(crate) struct NewParsed {
 
 #[derive(Debug)]
 pub(crate) struct Present {
-    graph: InheritanceGraph<ProcessorNode<PresentPayload>>,
+    graph: ProcessingGraph<ProcessorNode<PresentPayload>>,
     new_schemas: NewBatch<InitialScan>,
     deleted_ids: Vec<SchemaId>,
 }
@@ -574,7 +581,7 @@ pub(crate) struct Present {
     reason = "ID vectors for incremental pipeline optimization"
 )]
 pub(crate) struct Compared {
-    graph: InheritanceGraph<ProcessorNode<ComparedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<ComparedPayload>>,
     new_schemas: NewBatch<InitialRead>,
     fresh: Vec<SchemaId>,
     stale_timestamps: Vec<SchemaId>,
@@ -585,21 +592,21 @@ pub(crate) struct Compared {
 
 #[derive(Debug)]
 pub(crate) struct Parsed {
-    graph: InheritanceGraph<ProcessorNode<FileParsedBranch>>,
+    graph: ProcessingGraph<ProcessorNode<FileParsedBranch>>,
     new_schemas: NewBatch<InitialParsed>,
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Graphed {
-    graph: InheritanceGraph<ProcessorNode<InheritanceBranch>>,
+    graph: ProcessingGraph<ProcessorNode<InheritanceBranch>>,
     deleted_ids: Vec<SchemaId>,
     edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Analyzed {
-    graph: InheritanceGraph<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
     refresh_ids: Vec<SchemaId>,
     rebuild_ids: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
@@ -608,7 +615,7 @@ pub(crate) struct Analyzed {
 
 #[derive(Debug)]
 pub(crate) struct Constructed {
-    graph: InheritanceGraph<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
     schemas: Vec<Arc<Schema>>,
     deleted_ids: Vec<SchemaId>,
     edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge>,
@@ -616,7 +623,7 @@ pub(crate) struct Constructed {
 
 #[derive(Debug)]
 pub(crate) struct NewBuild {
-    graph: InheritanceGraph<ProcessorNode<NewParsedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<NewParsedPayload>>,
 }
 
 #[derive(Debug)]
@@ -674,7 +681,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
 impl SchemaProcessor<Discovery, Review> {
     pub(crate) fn discover<R>(
         context: &FilesContext,
-        graph: &InheritanceGraph<InheritanceNode>,
+        graph: &InheritanceGraph<()>,
         repository: &R,
         source: &FsReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError>
@@ -745,7 +752,7 @@ impl SchemaProcessor<Discovery, Review> {
         files: &[PathBuf],
         views_by_path: &HashMap<PathBuf, RawSchemaView>,
         ids_by_path: &HashMap<PathBuf, SchemaId>,
-        graph: Option<&InheritanceGraph<InheritanceNode>>,
+        graph: Option<&InheritanceGraph<()>>,
         source: &FsReader,
     ) -> FileState {
         let mut missing = NewBatch::new();
@@ -777,7 +784,7 @@ impl SchemaProcessor<Discovery, Review> {
         let mut deleted_ids = Vec::new();
         if let Some(graph) = graph {
             let file_ids: HashSet<SchemaId> = found.keys().copied().collect();
-            for id in graph.order() {
+            for id in graph.topo_order() {
                 if !file_ids.contains(id) && !missing.contains_key(id) {
                     deleted_ids.push(*id);
                 }
@@ -788,25 +795,20 @@ impl SchemaProcessor<Discovery, Review> {
     }
 
     fn build_present_graph(
-        graph: &InheritanceGraph<InheritanceNode>,
+        graph: &InheritanceGraph<()>,
         found: &HashMap<SchemaId, FoundPayload>,
         deleted_ids: &[SchemaId],
-    ) -> Result<
-        InheritanceGraph<ProcessorNode<PresentPayload>>,
-        SchemaLoaderError,
-    > {
-        let mut nodes = HashMap::new();
+    ) -> Result<ProcessingGraph<ProcessorNode<PresentPayload>>, SchemaLoaderError>
+    {
         let deleted_set: HashSet<SchemaId> =
             deleted_ids.iter().copied().collect();
 
-        for id in graph.order() {
-            let Some(node) = graph.nodes().get(id) else {
-                continue;
-            };
+        let mut builder = SchemaGraphBuilder::new();
 
-            let payload = if let Some(found) = found.get(id) {
+        for (id, _node) in graph.graph().iter() {
+            let payload = if let Some(found) = found.get(&id) {
                 PresentPayload::Found(found.clone())
-            } else if deleted_set.contains(id) {
+            } else if deleted_set.contains(&id) {
                 PresentPayload::Deleted(DeletedPayload)
             } else {
                 continue;
@@ -817,23 +819,20 @@ impl SchemaProcessor<Discovery, Review> {
                 PresentPayload::Deleted(_) => NodeStatus::Deleted,
             };
 
-            nodes.insert(*id, ProcessorNode {
-                id: node.id(),
-                depth: node.depth(),
+            builder.add_node(id, ProcessorNode {
                 status,
                 payload,
             });
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            graph.edges().iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<PresentPayload>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
-        InheritanceGraph::try_from(raw_graph).map_err(|e| {
+        for (child_id, &()) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                builder.add_parent(child_id, parent_id);
+            }
+        }
+
+        let schema_graph = builder.build();
+        ProcessingGraph::try_from(schema_graph).map_err(|e| {
             SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
         })
     }
@@ -859,38 +858,42 @@ impl SchemaProcessor<Comparison, Present> {
             deleted_ids,
         } = self.status;
 
-        let (mut graph_nodes, graph_edges, graph_order, _graph_roots) =
-            graph.into_parts();
-        let mut nodes: HashMap<SchemaId, ProcessorNode<ComparedPayload>> =
-            HashMap::new();
-
         let mut fresh_ids = Vec::new();
         let mut stale_ts_ids = Vec::new();
         let mut stale_ref_ids = Vec::new();
         let mut stale_ids = Vec::new();
 
-        let bank_affected =
-            Self::collect_bank_affected_ids(&graph_nodes, property_bank_delta);
+        // First pass: collect bank-affected IDs
+        let mut bank_affected_ids = HashSet::new();
+        if let Some(delta) = property_bank_delta {
+            for (id, node) in graph.graph().iter() {
+                #[expect(
+                    clippy::pattern_type_mismatch,
+                    reason = "Explicit reference pattern for payload \
+                              extraction"
+                )]
+                let PresentPayload::Found(payload) = &node.payload().payload
+                else {
+                    continue;
+                };
+                if payload.view.current().is_some_and(|v| {
+                    v.bank_references().values().any(|p| delta.contains(p))
+                }) {
+                    bank_affected_ids.insert(id);
+                }
+            }
+        }
 
-        for graph_id in &graph_order {
-            let Some(node) = graph_nodes.remove(graph_id) else {
+        let mut builder = SchemaGraphBuilder::new();
+
+        for (id, node) in graph.graph().iter() {
+            let PresentPayload::Found(found_payload) =
+                node.payload().payload.clone()
+            else {
                 continue;
             };
 
-            let ProcessorNode {
-                id: node_id,
-                depth,
-                payload,
-                ..
-            } = node;
-
-            let PresentPayload::Found(found_payload) = payload else {
-                continue;
-            };
-
-            let is_bank_affected = bank_affected
-                .as_ref()
-                .is_some_and(|ids| ids.contains(&node_id));
+            let is_bank_affected = bank_affected_ids.contains(&id);
             let comparison_payload =
                 match Self::check_timestamps(found_payload, source)? {
                     TimestampBranch::Match(matched_payload) => {
@@ -958,22 +961,27 @@ impl SchemaProcessor<Comparison, Present> {
                 reason = "match on enum reference for ID tracking"
             )]
             match &comparison_payload {
-                ComparedPayload::Fresh(_) => fresh_ids.push(node_id),
+                ComparedPayload::Fresh(_) => fresh_ids.push(id),
                 ComparedPayload::StaleTimestamps(_) => {
-                    stale_ts_ids.push(node_id);
+                    stale_ts_ids.push(id);
                 }
                 ComparedPayload::StaleBankReferences(_) => {
-                    stale_ref_ids.push(node_id);
+                    stale_ref_ids.push(id);
                 }
-                ComparedPayload::Stale(_) => stale_ids.push(node_id),
+                ComparedPayload::Stale(_) => stale_ids.push(id),
             }
 
-            nodes.insert(node_id, ProcessorNode {
-                id: node_id,
-                depth,
+            builder.add_node(id, ProcessorNode {
                 status,
                 payload: comparison_payload,
             });
+        }
+
+        // Add edges
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                builder.add_parent(child_id, parent_id);
+            }
         }
 
         let mut new_reads = NewBatch::new();
@@ -994,16 +1002,9 @@ impl SchemaProcessor<Comparison, Present> {
             });
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            graph_edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<ComparedPayload>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
+        let schema_graph = builder.build();
         let next_graph =
-            InheritanceGraph::try_from(raw_graph).map_err(|e| {
+            ProcessingGraph::try_from(schema_graph).map_err(|e| {
                 SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
             })?;
 
@@ -1073,33 +1074,6 @@ impl SchemaProcessor<Comparison, Present> {
                 view: payload.view,
             })
         }
-    }
-
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "order irrelevant for bank delta scan"
-    )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "match ergonomics on borrowed payload"
-    )]
-    fn collect_bank_affected_ids(
-        nodes: &HashMap<SchemaId, ProcessorNode<PresentPayload>>,
-        property_bank_delta: Option<&HashSet<PropertyName>>,
-    ) -> Option<HashSet<SchemaId>> {
-        let delta = property_bank_delta?;
-        let mut affected = HashSet::new();
-        for (id, node) in nodes {
-            let PresentPayload::Found(payload) = &node.payload else {
-                continue;
-            };
-            if payload.view.current().is_some_and(|v| {
-                v.bank_references().values().any(|p| delta.contains(p))
-            }) {
-                affected.insert(*id);
-            }
-        }
-        Some(affected)
     }
 
     #[expect(
@@ -1189,10 +1163,6 @@ impl SchemaProcessor<FileParsed, Compared> {
             deleted_ids,
             ..
         } = self.status;
-        let mut nodes = HashMap::new();
-
-        let (graph_nodes, graph_edges, _graph_order, _graph_roots) =
-            graph.into_parts();
 
         let mut parsed_new = NewBatch::new();
         let mut new_entries: Vec<_> = new_schemas.into_iter().collect();
@@ -1220,10 +1190,13 @@ impl SchemaProcessor<FileParsed, Compared> {
             });
         }
 
-        let mut node_entries: Vec<_> = graph_nodes.into_iter().collect();
+        let mut builder = SchemaGraphBuilder::new();
+        let mut node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
         node_entries.sort_by_key(|entry| entry.0);
+
         for (id, node) in node_entries {
-            let next = match node.payload {
+            let next = match node.payload().payload.clone() {
                 ComparedPayload::Stale(payload) => {
                     let schema_name = source
                         .basename(&payload.path)
@@ -1240,8 +1213,6 @@ impl SchemaProcessor<FileParsed, Compared> {
                     .with_name(schema_name.into());
 
                     ProcessorNode {
-                        id: node.id,
-                        depth: node.depth,
                         status: NodeStatus::StaleParsed,
                         payload: FileParsedBranch::StaleParsed(
                             StaleParsedPayload {
@@ -1271,8 +1242,6 @@ impl SchemaProcessor<FileParsed, Compared> {
                     let content_hash = payload.content_hash;
 
                     ProcessorNode {
-                        id: node.id,
-                        depth: node.depth,
                         status: NodeStatus::StaleBankReferences,
                         payload: FileParsedBranch::StaleParsed(
                             StaleParsedPayload {
@@ -1286,32 +1255,28 @@ impl SchemaProcessor<FileParsed, Compared> {
                     }
                 }
                 ComparedPayload::Fresh(payload) => ProcessorNode {
-                    id: node.id,
-                    depth: node.depth,
                     status: NodeStatus::Fresh,
                     payload: FileParsedBranch::Fresh(payload),
                 },
                 ComparedPayload::StaleTimestamps(payload) => ProcessorNode {
-                    id: node.id,
-                    depth: node.depth,
                     status: NodeStatus::StaleTimestamps,
                     payload: FileParsedBranch::StaleTimestamps(payload),
                 },
             };
 
-            nodes.insert(id, next);
+            builder.add_node(id, next);
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            graph_edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<FileParsedBranch>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
+        // Add edges
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                builder.add_parent(child_id, parent_id);
+            }
+        }
+
+        let schema_graph = builder.build();
         let next_graph =
-            InheritanceGraph::try_from(raw_graph).map_err(|e| {
+            ProcessingGraph::try_from(schema_graph).map_err(|e| {
                 SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
             })?;
 
@@ -1323,10 +1288,6 @@ impl SchemaProcessor<FileParsed, Compared> {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  INHERITANCEGRAPHED STAGE IMPLEMENTATION
-// ═════════════════════════════════════════════════════════════════════════════
-
 impl SchemaProcessor<InheritanceGraphed, Parsed> {
     #[expect(
         clippy::too_many_lines,
@@ -1335,6 +1296,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
     #[expect(
         clippy::cognitive_complexity,
         reason = "graph construction mirrors pipeline decisions"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "match ergonomics keep structural checks concise"
     )]
     pub(crate) fn build_graph(
         self,
@@ -1347,57 +1312,52 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         } = self.status;
 
         let mut status_by_id: HashMap<SchemaId, NodeStatus> = HashMap::new();
-        for id in graph.order() {
-            let Some(node) = graph.nodes().get(id) else {
-                continue;
-            };
-            status_by_id.insert(*id, node.status);
+        for (id, node) in graph.graph().iter() {
+            status_by_id.insert(id, node.payload().status());
         }
 
-        let base_graph = graph
-            .map_payload(|node| ProcessorNode {
-                id: node.id,
-                depth: node.depth,
-                status: node.status,
-                payload: (),
-            })
-            .map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        // Collect old adjacency info before consuming graph
+        let mut old_parents: HashMap<SchemaId, Vec<SchemaId>> = HashMap::new();
+        for (id, _) in graph.graph().iter() {
+            let parents: Vec<SchemaId> = graph.graph().parents_of(id).to_vec();
+            old_parents.insert(id, parents);
+        }
 
         let mut name_index: HashMap<SchemaName, SchemaId> = HashMap::new();
         let mut parsed_payloads: HashMap<SchemaId, FileParsedBranch> =
             HashMap::new();
 
-        for id in graph.order() {
-            let Some(node) = graph.nodes().get(id) else {
+        let mut old_node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
+        old_node_entries.sort_by_key(|entry| entry.0);
+        for (id, node) in old_node_entries {
+            if deleted_ids.contains(&id) {
                 continue;
-            };
-            match node.payload.clone() {
+            }
+            let name = match node.payload().payload.clone() {
                 FileParsedBranch::Fresh(payload) => {
-                    let name = SchemaName::try_new(payload.view.name())
+                    let n = SchemaName::try_new(payload.view.name())
                         .map_err(SchemaLoaderError::Resolution)?;
-                    name_index.insert(name, *id);
                     parsed_payloads
-                        .insert(*id, FileParsedBranch::Fresh(payload));
+                        .insert(id, FileParsedBranch::Fresh(payload));
+                    n
                 }
                 FileParsedBranch::StaleTimestamps(payload) => {
-                    let name = SchemaName::try_new(payload.view.name())
+                    let n = SchemaName::try_new(payload.view.name())
                         .map_err(SchemaLoaderError::Resolution)?;
-                    name_index.insert(name, *id);
-                    parsed_payloads.insert(
-                        *id,
-                        FileParsedBranch::StaleTimestamps(payload),
-                    );
+                    parsed_payloads
+                        .insert(id, FileParsedBranch::StaleTimestamps(payload));
+                    n
                 }
                 FileParsedBranch::StaleParsed(payload) => {
-                    let name = SchemaName::try_new(payload.raw.name())
+                    let n = SchemaName::try_new(payload.raw.name())
                         .map_err(SchemaLoaderError::Resolution)?;
-                    name_index.insert(name, *id);
                     parsed_payloads
-                        .insert(*id, FileParsedBranch::StaleParsed(payload));
+                        .insert(id, FileParsedBranch::StaleParsed(payload));
+                    n
                 }
-            }
+            };
+            name_index.insert(name, id);
         }
 
         let mut new_ids: Vec<_> =
@@ -1414,70 +1374,49 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 
         let index = SchemaIndex::from_name_id_pairs(name_index.clone());
 
-        let mut editor =
-            crate::schema::inheritance::InheritanceEditor::new(base_graph);
-
-        for id in &deleted_ids {
-            editor.delete_node(*id);
-        }
-
-        for id in &new_ids {
-            let Some(new) = new_schemas.get(id) else {
-                continue;
-            };
-            editor.insert_node(ProcessorNode {
-                id: *id,
-                depth: NodeDepth::ROOT,
-                status: NodeStatus::New,
-                payload: (),
-            });
-            let mut parents = Vec::new();
-            if let Some(parent_id) =
-                new.raw.extends().and_then(|name| index.get_id_by_name(name))
-            {
-                parents.push(parent_id);
-            }
-            editor.apply_change(*id, parents);
-        }
-
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            graph.nodes().keys().copied(),
-            graph.edges().iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let deleted_set: HashSet<SchemaId> =
-            deleted_ids.iter().copied().collect();
+        let mut builder = SchemaGraphBuilder::new();
         let mut edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge> =
-            graph
-                .edges()
-                .iter()
-                .filter(|edge| {
-                    !deleted_set.contains(&edge.parent())
-                        && !deleted_set.contains(&edge.child())
-                })
-                .map(|edge| {
-                    ((edge.parent(), edge.child()), ProcessorEdge::default())
-                })
-                .collect();
-        for id in graph.order() {
-            let Some(payload) = parsed_payloads.get(id) else {
-                continue;
-            };
+            HashMap::new();
 
-            let old_parent = adjacency.parents_of(*id).first().copied();
+        let mut node_entries: Vec<_> =
+            parsed_payloads.keys().copied().collect();
+        node_entries.sort();
+        for id in node_entries {
+            if deleted_ids.contains(&id) {
+                continue;
+            }
 
             #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "match ergonomics keep structural checks concise"
+                clippy::expect_used,
+                reason = "payload existence is an internal invariant of \
+                          build_graph"
             )]
-            let new_parent = match payload {
+            let payload =
+                parsed_payloads.get(&id).expect("payload exists").clone();
+            let status = match &payload {
+                FileParsedBranch::StaleParsed(_) => status_by_id
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(NodeStatus::StaleParsed),
+                FileParsedBranch::Fresh(_) => NodeStatus::Fresh,
+                FileParsedBranch::StaleTimestamps(_) => {
+                    NodeStatus::StaleTimestamps
+                }
+            };
+
+            let new_parent = match &payload {
                 FileParsedBranch::StaleParsed(stale) => stale
                     .raw
                     .extends()
                     .and_then(|name| index.get_id_by_name(name)),
                 FileParsedBranch::Fresh(_)
-                | FileParsedBranch::StaleTimestamps(_) => old_parent,
+                | FileParsedBranch::StaleTimestamps(_) => {
+                    old_parents.get(&id).and_then(|p| p.first().copied())
+                }
             };
 
+            let old_parent =
+                old_parents.get(&id).and_then(|p| p.first().copied());
             let change_kind = match (old_parent, new_parent) {
                 (None, None) => ExtendsChangeKind::Unchanged,
                 (None, Some(_)) => ExtendsChangeKind::RootToChild,
@@ -1488,104 +1427,65 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 (Some(_), Some(_)) => ExtendsChangeKind::Rewired,
             };
 
-            if change_kind != ExtendsChangeKind::Unchanged {
-                let mut parents = Vec::new();
-                if let Some(p) = new_parent {
-                    parents.push(p);
+            let branch_payload = match payload {
+                FileParsedBranch::Fresh(p) => InheritanceBranch::Fresh(p),
+                FileParsedBranch::StaleTimestamps(p) => {
+                    InheritanceBranch::StaleTimestamps(p)
                 }
-                editor.apply_change(*id, parents);
-                if let Some(old_parent_id) = old_parent {
-                    edge_relations.remove(&(old_parent_id, *id));
+                FileParsedBranch::StaleParsed(p) => {
+                    InheritanceBranch::StaleParsed(p)
                 }
-                if let Some(parent_id) = new_parent {
-                    edge_relations.insert((parent_id, *id), ProcessorEdge {
-                        relation: change_kind,
-                    });
-                }
+            };
+
+            builder.add_node(id, ProcessorNode {
+                status,
+                payload: branch_payload,
+            });
+
+            if let Some(parent_id) = new_parent {
+                builder.add_parent(id, parent_id);
+                edge_relations.insert((parent_id, id), ProcessorEdge {
+                    relation: change_kind,
+                });
             }
         }
 
-        let finalized_graph = editor.patch()?;
-        let (final_nodes, final_edges, _final_order, _final_roots) =
-            finalized_graph.into_parts();
+        for id in &new_ids {
+            let Some(new) = new_schemas.get(id) else {
+                continue;
+            };
 
-        let mut nodes = HashMap::new();
-        let mut finalized_entries: Vec<_> = final_nodes.into_iter().collect();
-        finalized_entries.sort_by_key(|entry| entry.0);
-        for (id, node) in finalized_entries {
-            let payload = if let Some(new) = new_schemas.get(&id) {
-                InheritanceBranch::New(NewParsedPayload {
+            let new_parent =
+                new.raw.extends().and_then(|name| index.get_id_by_name(name));
+
+            builder.add_node(*id, ProcessorNode {
+                status: NodeStatus::New,
+                payload: InheritanceBranch::New(NewParsedPayload {
                     path: new.path.clone(),
                     times: new.times.clone(),
                     content_hash: new.content_hash,
                     raw: new.raw.clone(),
-                })
-            } else if let Some(existing) = parsed_payloads.get(&id) {
-                match existing.clone() {
-                    FileParsedBranch::Fresh(payload) => {
-                        InheritanceBranch::Fresh(payload)
-                    }
-                    FileParsedBranch::StaleTimestamps(payload) => {
-                        InheritanceBranch::StaleTimestamps(payload)
-                    }
-                    FileParsedBranch::StaleParsed(payload) => {
-                        InheritanceBranch::StaleParsed(payload)
-                    }
-                }
-            } else {
-                continue;
-            };
-
-            let (status, payload) = match payload {
-                InheritanceBranch::New(payload) => {
-                    (NodeStatus::New, InheritanceBranch::New(payload))
-                }
-                InheritanceBranch::StaleParsed(payload) => (
-                    NodeStatus::StaleParsed,
-                    InheritanceBranch::StaleParsed(payload),
-                ),
-                InheritanceBranch::Fresh(payload) => {
-                    (NodeStatus::Fresh, InheritanceBranch::Fresh(payload))
-                }
-                InheritanceBranch::StaleTimestamps(payload) => (
-                    NodeStatus::StaleTimestamps,
-                    InheritanceBranch::StaleTimestamps(payload),
-                ),
-            };
-            let status = if status == NodeStatus::StaleParsed {
-                status_by_id
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(NodeStatus::StaleParsed)
-            } else {
-                status
-            };
-
-            nodes.insert(id, ProcessorNode {
-                id: node.id,
-                depth: node.depth,
-                status,
-                payload,
+                }),
             });
+
+            if let Some(parent_id) = new_parent {
+                builder.add_parent(*id, parent_id);
+                edge_relations.insert((parent_id, *id), ProcessorEdge {
+                    relation: ExtendsChangeKind::Unchanged,
+                });
+            }
         }
 
-        let final_adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            final_edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<InheritanceBranch>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &final_adjacency, |node| {
-                node.clone()
-            });
-        let next_graph =
-            InheritanceGraph::try_from(raw_graph).map_err(|e| {
+        let schema_graph = builder.build();
+        let processed_graph =
+            ProcessingGraph::try_from(schema_graph).map_err(|e| {
                 SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
             })?;
 
         Ok(SchemaProcessor::<PropertyAnalysis, Graphed>::transition(
             PropertyAnalysis,
             Graphed {
-                graph: next_graph,
+                graph: processed_graph,
                 deleted_ids,
                 edge_relations,
             },
@@ -1602,18 +1502,6 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             new_schemas,
         } = self.status;
 
-        let mut raw_by_id: HashMap<SchemaId, &RawSchema> = HashMap::new();
-        let mut payloads: HashMap<SchemaId, NewParsedPayload> = HashMap::new();
-
-        let mut ids: Vec<_> = new_schemas.iter().map(|(id, _)| *id).collect();
-        ids.sort();
-        for id in ids {
-            let Some(parsed_schema) = new_schemas.get(&id) else {
-                continue;
-            };
-            raw_by_id.insert(id, &parsed_schema.raw);
-        }
-
         let index = SchemaIndex::from_name_id_pairs(
             new_schemas
                 .iter()
@@ -1625,71 +1513,41 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                 .collect::<Result<Vec<_>, SchemaLoaderError>>()?,
         );
 
-        let mut child_parents = crate::schema::graph::ChildParentsMap::new();
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "node insertion order is irrelevant for build"
-        )]
-        for (id, raw) in &raw_by_id {
-            let mut parents = Vec::new();
-            if let Some(parent_id) =
-                raw.extends().and_then(|extends| index.get_id_by_name(extends))
-            {
-                parents.push(parent_id);
-            }
-            child_parents.insert(*id, parents);
-        }
-        let inheritance_raw_graph: Graph<InheritanceNode, ()> =
-            Graph::from_child_parents_map(child_parents, |id, _parents| {
-                InheritanceNode::new_root(id)
-            });
-        let inheritance_graph =
-            InheritanceGraph::try_from(inheritance_raw_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(
-                    crate::schema::error::SchemaError::Inheritance(e),
-                )
-            })?;
-        let (graph_nodes, graph_edges, _graph_order, _graph_roots) =
-            inheritance_graph.into_parts();
+        let mut builder = SchemaGraphBuilder::new();
 
+        // First pass: add all nodes
+        let mut node_data: HashMap<SchemaId, NewParsedPayload> = HashMap::new();
         for (id, parsed) in new_schemas {
-            payloads.insert(id, NewParsedPayload {
+            let payload = NewParsedPayload {
                 path: parsed.path,
                 times: parsed.times,
                 content_hash: parsed.content_hash,
                 raw: parsed.raw,
-            });
-        }
-
-        let mut nodes = HashMap::new();
-        let mut graph_entries: Vec<_> = graph_nodes.into_iter().collect();
-        graph_entries.sort_by_key(|entry| entry.0);
-        for (id, node) in graph_entries {
-            let payload = payloads.remove(&id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: format!("schema {id} missing parsed payload")
-                            .into(),
-                    },
-                ))
-            })?;
-            nodes.insert(id, ProcessorNode {
-                id: node.id(),
-                depth: node.depth(),
+            };
+            node_data.insert(id, payload.clone());
+            builder.add_node(id, ProcessorNode {
                 status: NodeStatus::New,
                 payload,
             });
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            graph_edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let processor_raw_graph: Graph<ProcessorNode<NewParsedPayload>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
-        let next_graph = InheritanceGraph::try_from(processor_raw_graph)
+        // Second pass: add edges based on extends relationships
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Order not relevant for edge construction"
+        )]
+        for (id, payload) in &node_data {
+            if let Some(parent_id) = payload
+                .raw
+                .extends()
+                .and_then(|extends| index.get_id_by_name(extends))
+            {
+                builder.add_parent(*id, parent_id);
+            }
+        }
+
+        let schema_graph = builder.build();
+        let processing_graph = ProcessingGraph::try_from(schema_graph)
             .map_err(|e| {
                 SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
             })?;
@@ -1697,7 +1555,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
         Ok(SchemaProcessor::<Construction, NewBuild>::transition(
             Construction,
             NewBuild {
-                graph: next_graph,
+                graph: processing_graph,
             },
         ))
     }
@@ -1715,6 +1573,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
     #[expect(
         clippy::too_many_lines,
         reason = "analysis keeps branch logic in one place"
+    )]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "Pipeline stage complexity is acceptable"
     )]
     pub(crate) fn analyze_properties(
         self,
@@ -1740,7 +1602,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let affected: HashSet<SchemaId> = if merge_roots.is_empty() {
             HashSet::new()
         } else {
-            graph.affected_subtree(&merge_roots)
+            crate::schema::inheritance::affected_subtree(
+                graph.graph(),
+                &merge_roots,
+            )
         };
 
         let mut refresh_ids = Vec::new();
@@ -1748,12 +1613,14 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
         let mut analyzed_nodes = HashMap::new();
 
-        let (nodes, edges, order, _roots) = graph.into_parts();
-        let mut node_entries: Vec<_> = nodes.into_iter().collect();
+        // Collect nodes in deterministic order
+        let mut node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
         node_entries.sort_by_key(|entry| entry.0);
+
         for (id, node) in node_entries {
-            let node_status = node.status;
-            let (status, payload) = match node.payload {
+            let node_status = node.payload().status;
+            let (status, payload) = match node.payload().payload.clone() {
                 InheritanceBranch::Fresh(payload) => {
                     let times_for_raw = RawFileTimes {
                         created_at: source.created_at(&payload.path),
@@ -2008,29 +1875,36 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             };
 
             analyzed_nodes.insert(id, ProcessorNode {
-                id: node.id,
-                depth: node.depth,
                 status,
                 payload,
             });
         }
 
-        for id in &order {
+        for id in graph.topo_order() {
             if affected.contains(id) && !rebuild_ids.contains(id) {
                 rebuild_ids.push(*id);
             }
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            analyzed_nodes.keys().copied(),
-            edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<AnalysisBranch>, ()> =
-            Graph::from_nodes_and_edges(&analyzed_nodes, &adjacency, |node| {
-                node.clone()
-            });
+        // Rebuild graph with new payload types
+        let mut builder = SchemaGraphBuilder::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Order not relevant for graph construction"
+        )]
+        for (id, node) in &analyzed_nodes {
+            builder.add_node(*id, node.clone());
+        }
+
+        // Preserve edges from original graph
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                builder.add_parent(child_id, parent_id);
+            }
+        }
+
         let next_graph =
-            InheritanceGraph::try_from(raw_graph).map_err(|e| {
+            ProcessingGraph::try_from(builder.build()).map_err(|e| {
                 SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
             })?;
 
@@ -2101,14 +1975,14 @@ impl SchemaProcessor<Refresh, Analyzed> {
     {
         use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
 
-        let (mut nodes, edges, _order, _roots) = self.status.graph.into_parts();
-
+        // Mutate nodes in-place through the graph
         for id in &self.status.refresh_ids {
-            let Some(node) = nodes.get_mut(id) else {
+            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
 
-            let Some(payload) = node.payload.as_refresh_mut() else {
+            let Some(payload) = node.payload_mut().payload.as_refresh_mut()
+            else {
                 continue;
             };
 
@@ -2141,11 +2015,12 @@ impl SchemaProcessor<Refresh, Analyzed> {
         }
 
         for id in &self.status.rebuild_ids {
-            let Some(node) = nodes.get_mut(id) else {
+            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
 
-            let Some(payload) = node.payload.as_rebuild_mut() else {
+            let Some(payload) = node.payload_mut().payload.as_rebuild_mut()
+            else {
                 continue;
             };
 
@@ -2157,18 +2032,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
             )?;
         }
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            nodes.keys().copied(),
-            edges.iter().map(|edge| (edge.parent(), edge.child())),
-        );
-        let raw_graph: Graph<ProcessorNode<AnalysisBranch>, ()> =
-            Graph::from_nodes_and_edges(&nodes, &adjacency, |node| {
-                node.clone()
-            });
-        self.status.graph =
-            InheritanceGraph::try_from(raw_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        // Graph structure unchanged, only payloads mutated in-place
         Ok(Self::transition(Construction, self.status))
     }
 }
@@ -2198,19 +2062,14 @@ impl SchemaProcessor<Construction, Analyzed> {
             edge_relations,
         } = self.status;
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            graph.nodes().keys().copied(),
-            graph.edges().iter().map(|edge| (edge.parent(), edge.child())),
-        );
-
         let mut fetch_ids = refresh_ids.clone();
         let update_ids: Vec<SchemaId> = rebuild_ids
             .iter()
             .filter_map(|id| {
-                let node = graph.nodes().get(id)?;
+                let node = graph.graph().get(*id)?;
                 let extends_change =
-                    extends_change_for(*id, &adjacency, &edge_relations);
-                match node.payload.clone() {
+                    extends_change_for(*id, graph.graph(), &edge_relations);
+                match node.payload().payload.clone() {
                     AnalysisBranch::Rebuild(payload)
                         if payload.property_delta.is_some()
                             && extends_change
@@ -2243,8 +2102,8 @@ impl SchemaProcessor<Construction, Analyzed> {
         let expand_pairs: Vec<(SchemaId, RawSchema)> = rebuild_ids
             .iter()
             .filter_map(|id| {
-                let node = graph.nodes().get(id)?;
-                match node.payload.clone() {
+                let node = graph.graph().get(*id)?;
+                match node.payload().payload.clone() {
                     AnalysisBranch::Rebuild(payload) => {
                         Some((*id, payload.raw))
                     }
@@ -2283,8 +2142,8 @@ impl SchemaProcessor<Construction, Analyzed> {
         let mut changed_schemas = Vec::new();
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        for id in graph.order() {
-            let node = graph.nodes().get(id).ok_or_else(|| {
+        for &id in graph.topo_order() {
+            let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
                         reason: format!("schema {id} missing from graph")
@@ -2293,8 +2152,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                 ))
             })?;
 
-            let schema = if refresh_ids.contains(id) {
-                fetched_by_id.remove(id).ok_or_else(|| {
+            let schema = if refresh_ids.contains(&id) {
+                fetched_by_id.remove(&id).ok_or_else(|| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                         crate::schema::error::SchemaFileError::FileSystem {
                             reason: format!(
@@ -2304,13 +2163,13 @@ impl SchemaProcessor<Construction, Analyzed> {
                         },
                     ))
                 })?
-            } else if rebuild_ids.contains(id) {
-                let parents = adjacency.parents_of(*id);
-                let children = adjacency.children_of(*id);
+            } else if rebuild_ids.contains(&id) {
+                let parents = graph.graph().parents_of(id);
+                let children = graph.graph().children_of(id);
                 Self::construct_schema_incremental(
-                    *id,
-                    node,
-                    extends_change_for(*id, &adjacency, &edge_relations),
+                    id,
+                    node.payload(),
+                    extends_change_for(id, graph.graph(), &edge_relations),
                     parents,
                     children,
                     &expanded_by_id,
@@ -2319,7 +2178,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                 )?
             } else {
                 repository
-                    .find_schema_by_id(*id)
+                    .find_schema_by_id(id)
                     .map_err(|e| {
                         let repo_err: SchemaRepositoryError = e.into();
                         SchemaLoaderError::Repository(repo_err)
@@ -2338,10 +2197,10 @@ impl SchemaProcessor<Construction, Analyzed> {
                     })?
             };
 
-            let is_changed = rebuild_ids.contains(id);
+            let is_changed = rebuild_ids.contains(&id);
             let schema = Arc::new(schema);
 
-            constructed_cache.insert(*id, (*schema).clone());
+            constructed_cache.insert(id, (*schema).clone());
             if is_changed {
                 changed_schemas.push(schema);
             }
@@ -2595,18 +2454,13 @@ impl SchemaProcessor<Construction, NewBuild> {
             graph,
         } = self.status;
 
-        let adjacency = AdjacencyMap::from_nodes_and_edges(
-            graph.nodes().keys().copied(),
-            graph.edges().iter().map(|edge| (edge.parent(), edge.child())),
-        );
-
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
         let mut built = Vec::new();
         let expander = RefExpander::new(property_bank);
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        for id in graph.order() {
-            let node = graph.nodes().get(id).ok_or_else(|| {
+        for &id in graph.topo_order() {
+            let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
                         reason: format!("schema {id} missing from graph")
@@ -2614,21 +2468,21 @@ impl SchemaProcessor<Construction, NewBuild> {
                     },
                 ))
             })?;
-            let parsed = &node.payload;
+            let parsed = node.payload();
 
-            let refs = parsed.raw.properties().ref_entries();
+            let refs = parsed.payload.raw.properties().ref_entries();
             let mut expanded_props = expander
                 .expand_properties(&refs)
                 .map_err(SchemaLoaderError::Resolution)?;
-            let inline_entries = collect_inline_entries(&parsed.raw);
+            let inline_entries = collect_inline_entries(&parsed.payload.raw);
             if !inline_entries.is_empty() {
                 let inline_props = PropertyMap::try_from(inline_entries)
                     .map_err(SchemaLoaderError::Resolution)?;
                 expanded_props.extend(inline_props);
             }
 
-            let parents = adjacency.parents_of(*id);
-            let children = adjacency.children_of(*id);
+            let parents = graph.graph().parents_of(id);
+            let children = graph.graph().children_of(id);
             let parent_props = if parents.is_empty() {
                 PropertyMap::new()
             } else {
@@ -2642,35 +2496,39 @@ impl SchemaProcessor<Construction, NewBuild> {
             let merged = Merger::inherit_properties(
                 &parent_props,
                 &expanded_props,
-                parsed.raw.excludes(),
+                parsed.payload.raw.excludes(),
             );
-            let name = SchemaName::try_new(parsed.raw.name())
+            let name = SchemaName::try_new(parsed.payload.raw.name())
                 .map_err(SchemaLoaderError::Resolution)?;
             let schema = Schema::new(
-                *id,
+                id,
                 name,
                 parents.to_vec(),
                 children.to_vec(),
                 merged,
             );
 
-            let filename =
-                parsed.path.to_string_lossy().into_owned().into_boxed_str();
+            let filename = parsed
+                .payload
+                .path
+                .to_string_lossy()
+                .into_owned()
+                .into_boxed_str();
             let version =
                 SchemaProcessor::<PropertyAnalysis, Graphed>::build_version(
-                    &parsed.raw,
-                    parsed.content_hash,
+                    &parsed.payload.raw,
+                    parsed.payload.content_hash,
                 )?;
             let view = RawSchemaView::new(
                 crate::schema::views::Filename::new(filename),
                 version,
             );
-            repository.save_raw_schema_view(*id, &view).map_err(|e| {
+            repository.save_raw_schema_view(id, &view).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;
 
-            constructed_cache.insert(*id, schema.clone());
+            constructed_cache.insert(id, schema.clone());
             built.push(schema);
         }
 
@@ -2681,11 +2539,21 @@ impl SchemaProcessor<Construction, NewBuild> {
             })?;
         }
 
-        let inheritance_graph = graph
-            .map_payload(|node| InheritanceNode::new(node.id, node.depth))
-            .map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        // Build unit-payload graph for persistence (structure only)
+        let mut persist_builder = SchemaGraphBuilder::<()>::new();
+        for (id, _node) in graph.graph().iter() {
+            persist_builder.add_node(id, ()); // Unit payload
+        }
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                persist_builder.add_parent(child_id, parent_id);
+            }
+        }
+
+        let inheritance_graph =
+            InheritanceGraph::try_from(persist_builder.build()).map_err(
+                |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
+            )?;
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
             let repo_err: SchemaRepositoryError = e.into();
             SchemaLoaderError::Repository(repo_err)
@@ -2721,11 +2589,21 @@ impl SchemaProcessor<Construction, Constructed> {
             })?;
         }
 
-        let inheritance_graph = graph
-            .map_payload(|node| InheritanceNode::new(node.id, node.depth))
-            .map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        // Build unit-payload graph for persistence (structure only)
+        let mut persist_builder = SchemaGraphBuilder::<()>::new();
+        for (id, _node) in graph.graph().iter() {
+            persist_builder.add_node(id, ());
+        }
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
+                persist_builder.add_parent(child_id, parent_id);
+            }
+        }
+
+        let inheritance_graph =
+            InheritanceGraph::try_from(persist_builder.build()).map_err(
+                |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
+            )?;
 
         repository.save_topological_graph(&inheritance_graph).map_err(|e| {
             let repo_err: SchemaRepositoryError = e.into();

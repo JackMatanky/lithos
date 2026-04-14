@@ -20,11 +20,12 @@
 
 use std::{collections::HashMap, hash::Hash};
 
-use rkyv::{Archive, Deserialize, Serialize};
-
 use crate::graph::node::{Node, NodeDepth};
 
 /// Directed graph infrastructure (raw, may contain cycles).
+///
+/// **Pure infrastructure** - NO serialization constraint. Domain wrappers
+/// (like `schema::InheritanceGraph`) add Archive bounds when needed.
 ///
 /// # Examples
 ///
@@ -39,12 +40,10 @@ use crate::graph::node::{Node, NodeDepth};
 /// let graph = builder.build();
 /// assert_eq!(graph.parents_of(2), &[1]);
 /// ```
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
-#[rkyv(bytecheck(bounds()))]
+#[derive(Debug, Clone)]
 pub struct Graph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     /// Nodes indexed by Id (ID is key, not in value).
     nodes: HashMap<Id, Node<T>>,
@@ -58,8 +57,7 @@ where
 
 impl<Id, T> Graph<Id, T>
 where
-    Id: Copy + Eq + Hash + Ord + Archive,
-    T: Archive,
+    Id: Copy + Eq + Hash + Ord,
 {
     /// Returns node by ID.
     #[inline]
@@ -204,11 +202,7 @@ where
     /// Builds the graph with normalized adjacency lists.
     #[inline]
     #[must_use]
-    pub fn build(self) -> Graph<Id, T>
-    where
-        Id: Archive,
-        T: Archive,
-    {
+    pub fn build(self) -> Graph<Id, T> {
         let mut parents = HashMap::with_capacity(self.child_to_parents.len());
         let mut children: HashMap<Id, Vec<Id>> = HashMap::new();
 
