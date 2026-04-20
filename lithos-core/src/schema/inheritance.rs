@@ -9,12 +9,11 @@
 //! The module wraps the generic graph infrastructure with schema-specific
 //! types:
 //!
-//! - **`SchemaGraph<T>`**: Tuple newtype wrapper around `Graph<SchemaId, T>`
+//! - **`InheritanceGraph<T>`**: Serializable, persistence-focused DAG shape
+//! - **`ProcessingGraph<T>`**: Tuple newtype wrapper around `Graph<SchemaId,
+//!   T>` for transient processing
 //! - **`SchemaGraphBuilder<T>`**: Tuple newtype wrapper around
 //!   `GraphBuilder<SchemaId, T>`
-//! - **`ProcessingDag<T>`**: Tuple newtype wrapper around `DagGraph<SchemaId,
-//!   T>` for transient processing
-//! - **`InheritanceGraph<T>`**: Serializable, persistence-focused DAG shape
 //!
 //! # DAG vs Tree
 //!
@@ -59,186 +58,12 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::schema::aggregate::SchemaId;
-
-/// Schema-specific graph for tracking inheritance relationships.
-///
-/// This tuple newtype wraps `Graph<SchemaId, T>` to provide a schema-focused
-/// API boundary and allow schema-specific extensions.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct SchemaGraph<T>(crate::graph::Graph<SchemaId, T>);
-
-impl<T> SchemaGraph<T> {
-    /// Wraps a generic graph as a schema graph.
-    #[inline]
-    #[must_use]
-    pub fn from_inner(inner: crate::graph::Graph<SchemaId, T>) -> Self {
-        Self(inner)
-    }
-
-    /// Returns a shared reference to the inner graph.
-    #[inline]
-    #[must_use]
-    pub fn as_inner(&self) -> &crate::graph::Graph<SchemaId, T> {
-        &self.0
-    }
-
-    /// Returns a mutable reference to the inner graph.
-    #[inline]
-    pub fn as_inner_mut(&mut self) -> &mut crate::graph::Graph<SchemaId, T> {
-        &mut self.0
-    }
-
-    /// Consumes self and returns the inner graph.
-    #[inline]
-    #[must_use]
-    pub fn into_inner(self) -> crate::graph::Graph<SchemaId, T> {
-        self.0
-    }
-
-    /// Returns parent IDs for a node (empty slice if none).
-    #[inline]
-    #[must_use]
-    pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.0.parents_of(id)
-    }
-
-    /// Returns child IDs for a node (empty slice if none).
-    #[inline]
-    #[must_use]
-    pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.0.children_of(id)
-    }
-
-    /// Returns node by ID.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, id: SchemaId) -> Option<&crate::graph::Node<T>> {
-        self.0.get(id)
-    }
-
-    /// Returns mutable node by ID.
-    #[inline]
-    pub fn get_mut(
-        &mut self,
-        id: SchemaId,
-    ) -> Option<&mut crate::graph::Node<T>> {
-        self.0.get_mut(id)
-    }
-
-    /// Iterates over all (id, node) pairs.
-    #[inline]
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = (SchemaId, &crate::graph::Node<T>)> {
-        self.0.iter()
-    }
-
-    /// Iterates over all (id, node) pairs with mutable access.
-    #[inline]
-    pub fn iter_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (SchemaId, &mut crate::graph::Node<T>)> {
-        self.0.iter_mut()
-    }
-
-    /// Returns node count.
-    #[inline]
-    #[must_use]
-    pub fn node_count(&self) -> usize {
-        self.0.node_count()
-    }
-
-    /// Computes depths for all nodes using the provided topological order.
-    #[inline]
-    #[must_use]
-    pub fn compute_depths(
-        &self,
-        order: &[SchemaId],
-    ) -> HashMap<SchemaId, crate::graph::NodeDepth> {
-        self.0.compute_depths(order)
-    }
-}
-
-impl<T> From<crate::graph::Graph<SchemaId, T>> for SchemaGraph<T> {
-    #[inline]
-    fn from(value: crate::graph::Graph<SchemaId, T>) -> Self {
-        Self::from_inner(value)
-    }
-}
-
-impl<T> From<SchemaGraph<T>> for crate::graph::Graph<SchemaId, T> {
-    #[inline]
-    fn from(value: SchemaGraph<T>) -> Self {
-        value.into_inner()
-    }
-}
-
-/// Builder for constructing a schema inheritance graph.
-///
-/// # Example
-///
-/// ```
-/// use lithos_core::schema::{
-///     aggregate::SchemaId, inheritance::SchemaGraphBuilder,
-/// };
-///
-/// let mut builder = SchemaGraphBuilder::new();
-/// builder.add_node(SchemaId::new(), ());
-/// let graph = builder.build();
-/// ```
-#[non_exhaustive]
-pub struct SchemaGraphBuilder<T>(crate::graph::GraphBuilder<SchemaId, T>);
-
-impl<T> SchemaGraphBuilder<T> {
-    /// Creates a new graph builder.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(crate::graph::GraphBuilder::new())
-    }
-
-    /// Pre-allocates capacity for expected node count.
-    #[inline]
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(crate::graph::GraphBuilder::with_capacity(capacity))
-    }
-
-    /// Adds a node to the graph.
-    #[inline]
-    pub fn add_node(&mut self, id: SchemaId, payload: T) {
-        self.0.add_node(id, payload);
-    }
-
-    /// Adds a parent relationship (child extends parent).
-    #[inline]
-    pub fn add_parent(&mut self, child: SchemaId, parent: SchemaId) {
-        self.0.add_parent(child, parent);
-    }
-
-    /// Builds the graph with normalized adjacency lists.
-    #[inline]
-    #[must_use]
-    pub fn build(self) -> SchemaGraph<T> {
-        SchemaGraph::from_inner(self.0.build())
-    }
-
-    /// Consumes self and returns the inner builder.
-    #[inline]
-    #[must_use]
-    pub fn into_inner(self) -> crate::graph::GraphBuilder<SchemaId, T> {
-        self.0
-    }
-}
-
-impl<T> Default for SchemaGraphBuilder<T> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use crate::{
+    graph::{
+        DagGraph, Graph, GraphBuilder, sorting::topological_sort_with_nodes,
+    },
+    schema::aggregate::SchemaId,
+};
 
 // ============================================================================
 //  INHERITANCE GRAPH (for persistence)
@@ -336,7 +161,7 @@ where
     pub fn to_dag_graph(
         &self,
     ) -> Result<
-        crate::graph::DagGraph<SchemaId, T>,
+        DagGraph<SchemaId, T>,
         crate::schema::error::SchemaInheritanceError,
     >
     where
@@ -351,95 +176,50 @@ where
                 builder.add_parent(*child_id, parent_id);
             }
         }
-        crate::graph::DagGraph::try_from(builder.build().into_inner()).map_err(
-            |_e| crate::schema::error::SchemaInheritanceError::CycleDetected {
+        builder.build().try_into_dag().map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
-            },
-        )
-    }
-
-    /// For compatibility - returns a pseudo-graph interface.
-    #[inline]
-    #[must_use]
-    pub fn graph(&self) -> GraphView<'_, T> {
-        GraphView {
-            inner: self,
-        }
+            }
+        })
     }
 }
 
-/// View into the graph structure for compatibility.
-#[expect(
-    clippy::single_char_lifetime_names,
-    reason = "Standard lifetime name for view"
-)]
-pub struct GraphView<'a, T>
-where
-    T: rkyv::Archive,
-{
-    inner: &'a InheritanceGraph<T>,
-}
-
-impl<T> GraphView<'_, T>
-where
-    T: rkyv::Archive,
-{
-    /// Returns an iterator over all (ID, payload) pairs in the graph.
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = (SchemaId, &T)> {
-        self.inner.iter()
-    }
-
-    /// Returns the parent IDs for a given schema (empty slice if no parents).
-    #[inline]
-    #[must_use]
-    pub fn parents_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.inner.parents_of(id)
-    }
-
-    /// Returns the child IDs for a given schema (empty slice if no children).
-    #[inline]
-    #[must_use]
-    pub fn children_of(&self, id: SchemaId) -> &[SchemaId] {
-        self.inner.children_of(id)
-    }
-}
-
-impl<T> TryFrom<SchemaGraph<T>> for InheritanceGraph<T>
+impl<T> TryFrom<ProcessingGraph<T>> for InheritanceGraph<T>
 where
     T: rkyv::Archive + Clone,
 {
     type Error = crate::schema::error::SchemaInheritanceError;
 
     #[inline]
-    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
-        // Validate it's a DAG
-        let dag = crate::graph::DagGraph::try_from(graph.into_inner())
-            .map_err(|_e| {
-                crate::schema::error::SchemaInheritanceError::CycleDetected {
-                    nodes: Vec::new(),
-                }
-            })?;
+    fn try_from(graph: ProcessingGraph<T>) -> Result<Self, Self::Error> {
+        let dag = graph.try_into_dag().map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
+                nodes: Vec::new(),
+            }
+        })?;
 
-        // Extract topology before consuming
+        // Extract topology before consuming graph
         let topo_order = dag.topo_order().to_vec();
         let roots = dag.roots().to_vec();
+
+        let raw_graph = dag.into_graph();
 
         // Extract serializable representation by cloning payloads
         let mut nodes = std::collections::HashMap::new();
         let mut parents = std::collections::HashMap::new();
         let mut children = std::collections::HashMap::new();
 
-        for (id, node) in dag.graph().iter() {
+        for (id, node) in raw_graph.iter() {
             nodes.insert(id, node.payload().clone());
         }
 
-        for (child_id, _) in dag.graph().iter() {
-            let parent_ids = dag.graph().parents_of(child_id);
+        for (child_id, _) in raw_graph.iter() {
+            let parent_ids = raw_graph.parents_of(child_id);
             if !parent_ids.is_empty() {
                 parents.insert(child_id, parent_ids.to_vec());
             }
-            let child_ids = dag.graph().children_of(child_id);
+
+            let child_ids = raw_graph.children_of(child_id);
             if !child_ids.is_empty() {
                 children.insert(child_id, child_ids.to_vec());
             }
@@ -470,7 +250,7 @@ where
 /// ```
 /// use lithos_core::schema::{
 ///     aggregate::SchemaId,
-///     inheritance::{ProcessingDag, SchemaGraphBuilder},
+///     inheritance::{ProcessingGraph, SchemaGraphBuilder},
 /// };
 ///
 /// let root = SchemaId::new();
@@ -481,78 +261,127 @@ where
 /// builder.add_node(child, "payload");
 /// builder.add_parent(child, root);
 ///
-/// let dag = ProcessingDag::try_from(builder.build()).unwrap();
+/// let graph = builder.build();
+/// let dag = graph.try_into_dag().unwrap();
 /// assert_eq!(dag.roots(), &[root]);
 /// ```
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct ProcessingDag<T>(crate::graph::DagGraph<SchemaId, T>);
+pub struct ProcessingGraph<T>(Graph<SchemaId, T>);
 
-impl<T> ProcessingDag<T> {
-    /// Returns a shared reference to the underlying DAG.
+impl<T> ProcessingGraph<T> {
+    /// Wraps a graph for processing.
     #[inline]
     #[must_use]
-    pub fn as_inner(&self) -> &crate::graph::DagGraph<SchemaId, T> {
+    pub fn from_inner(inner: Graph<SchemaId, T>) -> Self {
+        Self(inner)
+    }
+
+    /// Returns a shared reference to the underlying graph.
+    #[inline]
+    #[must_use]
+    pub fn as_inner(&self) -> &Graph<SchemaId, T> {
         &self.0
     }
 
-    /// Returns a mutable reference to the underlying DAG.
+    /// Returns a mutable reference to the underlying graph.
     #[inline]
-    pub fn as_inner_mut(&mut self) -> &mut crate::graph::DagGraph<SchemaId, T> {
+    pub fn as_inner_mut(&mut self) -> &mut Graph<SchemaId, T> {
         &mut self.0
     }
 
-    /// Returns the cached topological order.
+    /// Consumes self and returns the underlying graph.
     #[inline]
     #[must_use]
-    pub fn topo_order(&self) -> &[SchemaId] {
-        self.0.topo_order()
+    pub fn into_inner(self) -> Graph<SchemaId, T> {
+        self.0
     }
 
-    /// Returns the cached roots (nodes with no parents).
+    /// Computes topological order for the current graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the graph has cycles or references missing nodes.
     #[inline]
-    #[must_use]
-    pub fn roots(&self) -> &[SchemaId] {
-        self.0.roots()
+    pub fn topo_order(
+        &self,
+    ) -> Result<Vec<SchemaId>, crate::schema::error::SchemaInheritanceError>
+    {
+        topological_sort_with_nodes(self.0.parents(), self.0.node_ids())
+            .map(|(order, _roots)| order)
+            .map_err(|_e| {
+                crate::schema::error::SchemaInheritanceError::CycleDetected {
+                    nodes: Vec::new(),
+                }
+            })
+    }
+
+    /// Computes roots (nodes with no parents) for the current graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the graph has cycles or references missing nodes.
+    #[inline]
+    pub fn roots(
+        &self,
+    ) -> Result<Vec<SchemaId>, crate::schema::error::SchemaInheritanceError>
+    {
+        topological_sort_with_nodes(self.0.parents(), self.0.node_ids())
+            .map(|(_order, roots)| roots)
+            .map_err(|_e| {
+                crate::schema::error::SchemaInheritanceError::CycleDetected {
+                    nodes: Vec::new(),
+                }
+            })
     }
 
     /// Returns a shared reference to the underlying schema graph.
     #[inline]
     #[must_use]
-    pub fn graph(&self) -> &crate::graph::Graph<SchemaId, T> {
-        self.0.graph()
+    pub fn graph(&self) -> &Graph<SchemaId, T> {
+        &self.0
     }
 
     /// Returns a mutable reference to the underlying schema graph.
     #[inline]
-    pub fn graph_mut(&mut self) -> &mut crate::graph::Graph<SchemaId, T> {
-        self.0.graph_mut()
+    pub fn graph_mut(&mut self) -> &mut Graph<SchemaId, T> {
+        &mut self.0
     }
 
-    /// Consumes self and returns the underlying `DagGraph`.
+    /// Validates and converts the processing graph into a `DagGraph`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the graph has cycles or missing-node references.
     #[inline]
-    #[must_use]
-    pub fn into_dag(self) -> crate::graph::DagGraph<SchemaId, T> {
-        self.0
+    pub fn try_into_dag(
+        self,
+    ) -> Result<
+        DagGraph<SchemaId, T>,
+        crate::schema::error::SchemaInheritanceError,
+    > {
+        DagGraph::try_from(self.0).map_err(|_e| {
+            crate::schema::error::SchemaInheritanceError::CycleDetected {
+                nodes: Vec::new(),
+            }
+        })
     }
 
-    /// Maps each node payload into a new DAG while preserving structure.
+    /// Maps each node payload into a new graph while preserving structure.
     ///
     /// The mapping runs in deterministic node-ID order to keep processing
     /// behavior stable across runs.
     ///
     /// # Errors
     ///
-    /// Returns an error from the mapping closure, or from DAG validation when
-    /// reconstructing the mapped graph.
+    /// Returns an error from the mapping closure.
     #[inline]
     pub fn map_payload<U, E, F>(
         &self,
         mut mapper: F,
-    ) -> Result<ProcessingDag<U>, E>
+    ) -> Result<ProcessingGraph<U>, E>
     where
         F: FnMut(SchemaId, &T) -> Result<U, E>,
-        E: From<crate::schema::error::SchemaInheritanceError>,
     {
         let mut builder =
             SchemaGraphBuilder::with_capacity(self.graph().node_count());
@@ -575,22 +404,90 @@ impl<T> ProcessingDag<T> {
             }
         }
 
-        ProcessingDag::try_from(builder.build()).map_err(E::from)
+        Ok(builder.build())
     }
 }
 
-impl<T> TryFrom<SchemaGraph<T>> for ProcessingDag<T> {
-    type Error = crate::schema::error::SchemaInheritanceError;
-
+impl<T> From<Graph<SchemaId, T>> for ProcessingGraph<T> {
     #[inline]
-    fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
-        let dag = crate::graph::DagGraph::try_from(graph.into_inner())
-            .map_err(|_e| {
-                crate::schema::error::SchemaInheritanceError::CycleDetected {
-                    nodes: Vec::new(),
-                }
-            })?;
-        Ok(Self(dag))
+    fn from(value: Graph<SchemaId, T>) -> Self {
+        Self::from_inner(value)
+    }
+}
+
+impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T> {
+    #[inline]
+    fn from(value: ProcessingGraph<T>) -> Self {
+        value.into_inner()
+    }
+}
+
+// ============================================================================
+//  SCHEMA GRAPH BUILDER
+// ============================================================================
+
+/// Builder for constructing a schema inheritance graph.
+///
+/// # Example
+///
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::SchemaId, inheritance::SchemaGraphBuilder,
+/// };
+///
+/// let mut builder = SchemaGraphBuilder::new();
+/// builder.add_node(SchemaId::new(), ());
+/// let graph = builder.build();
+/// ```
+#[non_exhaustive]
+pub struct SchemaGraphBuilder<T>(GraphBuilder<SchemaId, T>);
+
+impl<T> SchemaGraphBuilder<T> {
+    /// Creates a new graph builder.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(GraphBuilder::new())
+    }
+
+    /// Pre-allocates capacity for expected node count.
+    #[inline]
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(GraphBuilder::with_capacity(capacity))
+    }
+
+    /// Adds a node to the graph.
+    #[inline]
+    pub fn add_node(&mut self, id: SchemaId, payload: T) {
+        self.0.add_node(id, payload);
+    }
+
+    /// Adds a parent relationship (child extends parent).
+    #[inline]
+    pub fn add_parent(&mut self, child: SchemaId, parent: SchemaId) {
+        self.0.add_parent(child, parent);
+    }
+
+    /// Builds the graph with normalized adjacency lists.
+    #[inline]
+    #[must_use]
+    pub fn build(self) -> ProcessingGraph<T> {
+        ProcessingGraph::from(self.0.build())
+    }
+
+    /// Consumes self and returns the inner builder.
+    #[inline]
+    #[must_use]
+    pub fn into_inner(self) -> GraphBuilder<SchemaId, T> {
+        self.0
+    }
+}
+
+impl<T> Default for SchemaGraphBuilder<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -633,7 +530,7 @@ impl<T> TryFrom<SchemaGraph<T>> for ProcessingDag<T> {
 #[must_use]
 #[expect(clippy::implicit_hasher, reason = "HashSet is appropriate here")]
 pub fn affected_subtree<T>(
-    graph: &crate::graph::Graph<SchemaId, T>,
+    graph: &Graph<SchemaId, T>,
     changed_ids: &HashSet<SchemaId>,
 ) -> HashSet<SchemaId> {
     let mut affected = HashSet::with_capacity(changed_ids.len());

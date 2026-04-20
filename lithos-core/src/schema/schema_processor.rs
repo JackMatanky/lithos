@@ -69,7 +69,7 @@ use crate::{
             SchemaRepositoryError,
         },
         index::SchemaIndex,
-        inheritance::{InheritanceGraph, ProcessingDag, SchemaGraphBuilder},
+        inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::{
@@ -530,7 +530,7 @@ pub(crate) struct NewParsed {
 
 #[derive(Debug)]
 pub(crate) struct Present {
-    graph: ProcessingDag<ProcessorNode<PresentPayload>>,
+    graph: ProcessingGraph<ProcessorNode<PresentPayload>>,
     new_schemas: NewBatch<InitialScan>,
     deleted_ids: Vec<SchemaId>,
 }
@@ -541,7 +541,7 @@ pub(crate) struct Present {
     reason = "ID vectors for incremental pipeline optimization"
 )]
 pub(crate) struct Compared {
-    graph: ProcessingDag<ProcessorNode<ComparedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<ComparedPayload>>,
     new_schemas: NewBatch<InitialRead>,
     fresh: Vec<SchemaId>,
     stale_timestamps: Vec<SchemaId>,
@@ -552,21 +552,21 @@ pub(crate) struct Compared {
 
 #[derive(Debug)]
 pub(crate) struct Parsed {
-    graph: ProcessingDag<ProcessorNode<FileParsedBranch>>,
+    graph: ProcessingGraph<ProcessorNode<FileParsedBranch>>,
     new_schemas: NewBatch<InitialParsed>,
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Graphed {
-    graph: ProcessingDag<ProcessorNode<InheritanceBranch>>,
+    graph: ProcessingGraph<ProcessorNode<InheritanceBranch>>,
     deleted_ids: Vec<SchemaId>,
     relation: HashMap<SchemaId, ExtendsChangeKind>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Analyzed {
-    graph: ProcessingDag<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
     refresh_ids: Vec<SchemaId>,
     rebuild_ids: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
@@ -575,7 +575,7 @@ pub(crate) struct Analyzed {
 
 #[derive(Debug)]
 pub(crate) struct Constructed {
-    graph: ProcessingDag<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
     schemas: Vec<Arc<Schema>>,
     deleted_ids: Vec<SchemaId>,
     relation: HashMap<SchemaId, ExtendsChangeKind>,
@@ -583,7 +583,7 @@ pub(crate) struct Constructed {
 
 #[derive(Debug)]
 pub(crate) struct NewBuild {
-    graph: ProcessingDag<ProcessorNode<NewParsedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<NewParsedPayload>>,
 }
 
 #[derive(Debug)]
@@ -671,7 +671,7 @@ impl SchemaProcessor<Discovery, Review> {
             )))
         } else {
             let present_graph =
-                Self::build_present_graph(graph, &found, &deleted_ids)?;
+                Self::build_present_graph(graph, &found, &deleted_ids);
             Ok(DiscoveryBranch::HasPresent(Self::transition(
                 Comparison,
                 Present {
@@ -758,14 +758,13 @@ impl SchemaProcessor<Discovery, Review> {
         graph: &InheritanceGraph<()>,
         found: &HashMap<SchemaId, FoundPayload>,
         deleted_ids: &[SchemaId],
-    ) -> Result<ProcessingDag<ProcessorNode<PresentPayload>>, SchemaLoaderError>
-    {
+    ) -> ProcessingGraph<ProcessorNode<PresentPayload>> {
         let deleted_set: HashSet<SchemaId> =
             deleted_ids.iter().copied().collect();
 
         let mut builder = SchemaGraphBuilder::new();
 
-        for (id, _node) in graph.graph().iter() {
+        for (id, _node) in graph.iter() {
             let payload = if let Some(found) = found.get(&id) {
                 PresentPayload::Found(found.clone())
             } else if deleted_set.contains(&id) {
@@ -785,16 +784,13 @@ impl SchemaProcessor<Discovery, Review> {
             });
         }
 
-        for (child_id, &()) in graph.graph().iter() {
-            for &parent_id in graph.graph().parents_of(child_id) {
+        for (child_id, &()) in graph.iter() {
+            for &parent_id in graph.parents_of(child_id) {
                 builder.add_parent(child_id, parent_id);
             }
         }
 
-        let schema_graph = builder.build();
-        ProcessingDag::try_from(schema_graph).map_err(|e| {
-            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-        })
+        builder.build()
     }
 }
 
@@ -962,11 +958,7 @@ impl SchemaProcessor<Comparison, Present> {
             });
         }
 
-        let schema_graph = builder.build();
-        let next_graph =
-            ProcessingDag::try_from(schema_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        let next_graph = builder.build();
 
         Ok(Self::transition(FileParsed, Compared {
             graph: next_graph,
@@ -1433,11 +1425,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             relation.insert(*id, ExtendsChangeKind::Unchanged);
         }
 
-        let schema_graph = builder.build();
-        let processed_graph =
-            ProcessingDag::try_from(schema_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        let processed_graph = builder.build();
 
         Ok(SchemaProcessor::<PropertyAnalysis, Graphed>::transition(
             PropertyAnalysis,
@@ -1503,11 +1491,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             }
         }
 
-        let schema_graph = builder.build();
-        let processing_graph =
-            ProcessingDag::try_from(schema_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+        let processing_graph = builder.build();
 
         Ok(SchemaProcessor::<Construction, NewBuild>::transition(
             Construction,
@@ -1828,9 +1812,13 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             },
         )?;
 
-        for id in graph.topo_order() {
-            if affected.contains(id) && !rebuild_ids.contains(id) {
-                rebuild_ids.push(*id);
+        let topo_order = graph.topo_order().map_err(|e| {
+            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
+        })?;
+
+        for id in topo_order {
+            if affected.contains(&id) && !rebuild_ids.contains(&id) {
+                rebuild_ids.push(id);
             }
         }
 
@@ -2067,7 +2055,11 @@ impl SchemaProcessor<Construction, Analyzed> {
         let mut changed_schemas = Vec::new();
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        for &id in graph.topo_order() {
+        let topo_order = graph.topo_order().map_err(|e| {
+            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
+        })?;
+
+        for id in topo_order {
             let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
@@ -2368,6 +2360,10 @@ impl SchemaProcessor<Construction, Analyzed> {
 }
 
 impl SchemaProcessor<Construction, NewBuild> {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "new-schema construction keeps fetch/build flow in one place"
+    )]
     pub(crate) fn construct_new_schemas(
         self,
         repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
@@ -2384,7 +2380,11 @@ impl SchemaProcessor<Construction, NewBuild> {
         let expander = RefExpander::new(property_bank);
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        for &id in graph.topo_order() {
+        let topo_order = graph.topo_order().map_err(|e| {
+            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
+        })?;
+
+        for id in topo_order {
             let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {

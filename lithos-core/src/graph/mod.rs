@@ -53,7 +53,7 @@ mod core;
 mod dag;
 mod error;
 mod node;
-mod sorting;
+pub(crate) mod sorting;
 
 pub use core::{Graph, GraphBuilder};
 
