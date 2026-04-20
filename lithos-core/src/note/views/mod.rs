@@ -5,6 +5,11 @@
 //! cache" architectural principle - they can always be rebuilt from source
 //! data.
 
+#![expect(
+    clippy::pub_use,
+    reason = "Public API exposes ListView from note::views"
+)]
+
 pub mod list;
 
 // Re-exports for public API ergonomics.

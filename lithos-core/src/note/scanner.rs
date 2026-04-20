@@ -18,14 +18,18 @@ use crate::note::{
 
 // ── Primary public API types ─────────────────────────────────────────────────
 
+/// Configuration context for metadata scanning.
+#[derive(Debug)]
+pub(crate) struct ScannerContext {
+    /// Allowed emoji markers for inline fields.
+    pub emoji_markers: Box<[char]>,
+}
+
 /// A cursor-based scanner for extracting metadata artifacts from markdown.
-///
-/// `NoteScanner` manages the rules for what constitutes valid metadata
-/// (such as allowed emoji markers) while the [`Cursor`] tracks the progress
-/// through the text.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct NoteScanner {
-    emoji_markers: Box<[char]>,
+    context: ScannerContext,
+    rules: Vec<Box<dyn ScanRule>>,
 }
 
 impl NoteScanner {
@@ -33,32 +37,26 @@ impl NoteScanner {
     #[inline]
     #[must_use]
     pub fn new<T: Into<Box<[char]>>>(emoji_markers: T) -> Self {
-        Self {
+        let context = ScannerContext {
             emoji_markers: emoji_markers.into(),
+        };
+        let rules: Vec<Box<dyn ScanRule>> = vec![
+            Box::new(TagRule),
+            Box::new(DelimitedFieldRule),
+            Box::new(BlockRefRule),
+            Box::new(EmojiFieldRule),
+        ];
+        Self {
+            context,
+            rules,
         }
     }
 
     /// Scans a contiguous block of text for all metadata artifacts.
     ///
-    /// This is a convenience method that creates a temporary cursor and
-    /// collects all artifacts into a `Vec`.
-    ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if position calculation for an artifact exceeds
-    /// supported byte bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::note::scanner::NoteScanner;
-    /// # use lithos_core::note::position::SourceByteOffset;
-    /// let scanner = NoteScanner::new(vec!['📅']);
-    /// let artifacts = scanner
-    ///     .scan_block("#work [due:: tomorrow]", SourceByteOffset::new(0))
-    ///     .unwrap();
-    /// assert_eq!(artifacts.len(), 2);
-    /// ```
+    /// Returns [`NoteError`] if byte offset calculations overflow.
     #[inline]
     pub fn scan_block<'source>(
         &self,
@@ -71,15 +69,7 @@ impl NoteScanner {
         Ok(artifacts)
     }
 
-    /// Scans multiple disjoint ranges within the same source text and returns
-    /// raw tokens grouped by type.
-    ///
-    /// This preserves cursor state across ranges to maintain word-boundary
-    /// semantics and line-start detection.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] if any range offset exceeds supported bounds.
+    /// Scans multiple disjoint ranges within the same source text.
     #[inline]
     pub(crate) fn scan_ranges<'source>(
         &self,
@@ -105,16 +95,9 @@ impl NoteScanner {
 
     /// Continues scanning from a provided [`Cursor`] state.
     ///
-    /// This method allows the scanner to process disjoint segments of text
-    /// (e.g., text interrupted by links) while maintaining the state required
-    /// to correctly identify line-start triggers and alphanumeric boundaries.
-    ///
-    /// New artifacts are pushed onto the provided `artifacts` vector.
-    ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if position calculation for an artifact exceeds
-    /// supported byte bounds.
+    /// Returns [`NoteError`] if byte offset calculations overflow.
     #[inline]
     pub fn scan_cursor<'source>(
         &self,
@@ -124,7 +107,7 @@ impl NoteScanner {
         while !cursor.is_eof() {
             match cursor.mode {
                 ScanMode::AtLineStart => {
-                    Self::handle_line_start(cursor, artifacts)?;
+                    self.handle_line_start(cursor, artifacts)?;
                 }
                 ScanMode::InBody => {
                     self.handle_body(cursor, artifacts)?;
@@ -134,306 +117,26 @@ impl NoteScanner {
         Ok(())
     }
 
-    /// Scans for a tag (e.g., `#tag`) at the current cursor position.
-    pub(crate) fn scan_tag<'source>(
-        cursor: &mut Cursor<'source>,
-    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
-        if !cursor.rest.starts_with('#') {
-            return Ok(None);
-        }
-
-        let mut len: usize = 1;
-        let chars = cursor.rest.get(1..).unwrap_or("").chars();
-        let mut has_content = false;
-
-        for c in chars {
-            if c.is_alphanumeric() || matches!(c, '_' | '-' | '/') {
-                len = len.saturating_add(c.len_utf8());
-                has_content = true;
-            } else {
-                break;
-            }
-        }
-
-        if has_content {
-            let value = cursor.rest.get(0..len).unwrap_or("");
-            let range = SourceByteRange::new(
-                cursor.offset,
-                cursor.offset.add_offset(len)?,
-            )?;
-            cursor.advance(len)?;
-            Ok(Some(ScannedArtifact::Tag(RawTag::new(value.into(), range))))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Scans for a delimited field (e.g., `[key:: value]` or `(key:: value)`)
-    /// at the current cursor position.
-    pub(crate) fn scan_delimited_field<'source>(
-        cursor: &mut Cursor<'source>,
-    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
-        let opener = cursor.peek_byte();
-        let closer = match opener {
-            Some(b'[') => b']',
-            Some(b'(') => b')',
-            _ => return Ok(None),
-        };
-
-        let mut len: usize = 1;
-        let mut chars = cursor.rest.get(1..).unwrap_or("").chars();
-        let mut found_sep = false;
-        let mut sep_pos = 0;
-
-        while let Some(c) = chars.next() {
-            len = len.saturating_add(c.len_utf8());
-            let current_rest = cursor
-                .rest
-                .get(len.saturating_sub(c.len_utf8())..)
-                .unwrap_or("");
-            if !found_sep && current_rest.starts_with("::") {
-                found_sep = true;
-                sep_pos = len.saturating_sub(c.len_utf8());
-                len = len.saturating_add(1); // Skip second colon
-                chars.next(); // Consume second colon
-                continue;
-            }
-
-            if u32::from(c) == u32::from(closer) {
-                if !found_sep {
-                    break;
-                }
-
-                let key = cursor.rest.get(1..sep_pos).unwrap_or("").trim();
-                let value = cursor
-                    .rest
-                    .get(sep_pos.saturating_add(2)..len.saturating_sub(1))
-                    .unwrap_or("")
-                    .trim();
-
-                if key.is_empty() {
-                    break;
-                }
-
-                let range = SourceByteRange::new(
-                    cursor.offset,
-                    cursor.offset.add_offset(len)?,
-                )?;
-                cursor.advance(len)?;
-                return Ok(Some(ScannedArtifact::InlineField(
-                    RawInlineFieldToken::new(key.into(), value.into(), range),
-                )));
-            }
-
-            if c == '\n' {
-                break;
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Scans for a bare field (e.g., `key:: value`) at the start of a line.
-    pub(crate) fn scan_bare_field<'source>(
-        cursor: &mut Cursor<'source>,
-    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
-        let bytes = cursor.rest.as_bytes();
-        let mut key_len = 0usize;
-
-        while let Some(&b) = bytes.get(key_len) {
-            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-') {
-                key_len = key_len.saturating_add(1);
-            } else {
-                break;
-            }
-        }
-
-        if key_len > 0
-            && cursor.rest.get(key_len..).is_some_and(|s| s.starts_with("::"))
-        {
-            let key = cursor.rest.get(..key_len).unwrap_or("");
-            let after_colons =
-                cursor.rest.get(key_len.saturating_add(2)..).unwrap_or("");
-            let mut val_len = 0usize;
-            for ch in after_colons.chars() {
-                if ch == '\n' || ch == '\r' {
-                    break;
-                }
-                val_len = val_len.saturating_add(ch.len_utf8());
-            }
-
-            let value = after_colons.get(..val_len).unwrap_or("").trim();
-            if !value.is_empty() {
-                let start = cursor.offset;
-                let total_len =
-                    key_len.saturating_add(2).saturating_add(val_len);
-                let end = cursor.offset.add_offset(total_len)?;
-                let range = SourceByteRange::new(start, end)?;
-                cursor.advance(total_len)?;
-                return Ok(Some(ScannedArtifact::InlineField(
-                    RawInlineFieldToken::new(key.into(), value.into(), range),
-                )));
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Scans for an emoji-prefixed field (e.g., `📅 2024-03-20`).
-    pub(crate) fn scan_emoji_field<'source>(
-        cursor: &mut Cursor<'source>,
-    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
-        let mut chars = cursor.rest.chars();
-        let emoji = chars.next().ok_or(NoteError::UnexpectedEof)?;
-        let mut len = emoji.len_utf8();
-
-        // Optional whitespace after emoji
-        for c in chars {
-            if c.is_whitespace() && c != '\n' && c != '\r' {
-                len = len.saturating_add(c.len_utf8());
-            } else {
-                break;
-            }
-        }
-
-        // Value is the rest of the line
-        let value_start = len;
-        let mut value_len: usize = 0;
-        let value_chars = cursor.rest.get(value_start..).unwrap_or("").chars();
-        for c in value_chars {
-            if c == '\n' || c == '\r' {
-                break;
-            }
-            value_len = value_len.saturating_add(c.len_utf8());
-        }
-
-        if value_len > 0 {
-            let key = emoji.to_string();
-            let value = cursor
-                .rest
-                .get(value_start..value_start.saturating_add(value_len))
-                .unwrap_or("")
-                .trim();
-            let range = SourceByteRange::new(
-                cursor.offset,
-                cursor.offset.add_offset(len.saturating_add(value_len))?,
-            )?;
-            cursor.advance(len.saturating_add(value_len))?;
-            Ok(Some(ScannedArtifact::InlineField(RawInlineFieldToken::new(
-                key.into(),
-                value.into(),
-                range,
-            ))))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Scans for a block reference (e.g., `^ref-id`).
-    pub(crate) fn scan_block_ref<'source>(
-        cursor: &mut Cursor<'source>,
-    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
-        if !cursor.rest.starts_with('^') {
-            return Ok(None);
-        }
-
-        let mut len: usize = 1;
-        let chars = cursor.rest.get(1..).unwrap_or("").chars();
-        let mut has_content = false;
-
-        for c in chars {
-            if c.is_alphanumeric() || matches!(c, '-' | '_') {
-                len = len.saturating_add(c.len_utf8());
-                has_content = true;
-            } else {
-                break;
-            }
-        }
-
-        if has_content {
-            let remaining = cursor.rest.get(len..).unwrap_or("");
-            let mut tail_len = 0usize;
-            for ch in remaining.chars() {
-                if ch == '\n' || ch == '\r' {
-                    break;
-                }
-                if !ch.is_whitespace() {
-                    return Ok(None);
-                }
-                tail_len = tail_len.saturating_add(ch.len_utf8());
-            }
-
-            let id = cursor.rest.get(1..len).unwrap_or("");
-            let range = SourceByteRange::new(
-                cursor.offset,
-                cursor.offset.add_offset(len)?,
-            )?;
-            cursor.advance(len.saturating_add(tail_len))?;
-            Ok(Some(ScannedArtifact::BlockRef(RawBlockRef::new(
-                id.into(),
-                range.start(),
-            ))))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn handle_line_start<'source>(
+        &self,
         cursor: &mut Cursor<'source>,
         artifacts: &mut Vec<ScannedArtifact<'source>>,
     ) -> Result<(), NoteError> {
         cursor.skip_whitespace_on_line()?;
 
-        let Some(first) = cursor.peek_byte() else {
-            cursor.mode = ScanMode::InBody;
-            return Ok(());
-        };
-
-        if first == b'\n' || first == b'\r' {
+        if cursor.is_eof() {
             cursor.mode = ScanMode::InBody;
             return Ok(());
         }
 
-        Self::run_line_start_rules(cursor, artifacts)?;
+        // Bare fields only at line start
+        if let Some(artifact) = BareFieldRule::try_scan(&self.context, cursor)?
+        {
+            artifacts.push(artifact);
+        }
 
         cursor.mode = ScanMode::InBody;
         Ok(())
-    }
-
-    fn run_line_start_rules<'source>(
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        // We removed TaskRule as extraction is now a domain concern.
-        let bare_field_rule = BareFieldRule;
-        if bare_field_rule.try_scan(cursor, artifacts)? {
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    fn run_body_rules<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        let tag_rule = TagRule;
-        if tag_rule.try_scan(self, cursor, artifacts)? {
-            return Ok(true);
-        }
-        let delimited_field_rule = DelimitedFieldRule;
-        if delimited_field_rule.try_scan(self, cursor, artifacts)? {
-            return Ok(true);
-        }
-        let block_ref_rule = BlockRefRule;
-        if block_ref_rule.try_scan(self, cursor, artifacts)? {
-            return Ok(true);
-        }
-        let emoji_field_rule = EmojiFieldRule;
-        if emoji_field_rule.try_scan(self, cursor, artifacts)? {
-            return Ok(true);
-        }
-        Ok(false)
     }
 
     fn handle_body<'source>(
@@ -441,22 +144,27 @@ impl NoteScanner {
         cursor: &mut Cursor<'source>,
         artifacts: &mut Vec<ScannedArtifact<'source>>,
     ) -> Result<(), NoteError> {
-        match cursor.peek_byte() {
-            Some(b'\n' | b'\r') => {
+        if let Some(b) = cursor.peek_byte() {
+            if b == b'\n' || b == b'\r' {
                 cursor.advance(1)?;
                 cursor.mode = ScanMode::AtLineStart;
                 cursor.prev_alnum = false;
                 return Ok(());
             }
-            None => return Ok(()),
-            _ => {}
+
+            // Run body rules
+            for rule in &self.rules {
+                if rule.can_start_with(b)
+                    && let Some(artifact) =
+                        rule.try_scan(&self.context, cursor)?
+                {
+                    artifacts.push(artifact);
+                    return Ok(());
+                }
+            }
         }
 
-        if Self::run_body_rules(self, cursor, artifacts)? {
-            return Ok(());
-        }
-
-        // Advance cursor
+        // Advance cursor if no rule matched
         if let Some(c) = cursor.rest.chars().next() {
             cursor.prev_alnum = c.is_alphanumeric();
             cursor.advance(c.len_utf8())?;
@@ -640,122 +348,308 @@ pub(crate) enum ScanMode {
     InBody,
 }
 
-trait BodyRule {
+pub(crate) trait ScanRule: std::fmt::Debug + Send + Sync {
+    fn can_start_with(&self, byte: u8) -> bool;
+
     fn try_scan<'source>(
         &self,
-        scanner: &NoteScanner,
+        ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError>;
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError>;
 }
 
+#[derive(Debug)]
 struct TagRule;
 
-impl BodyRule for TagRule {
+impl ScanRule for TagRule {
     fn try_scan<'source>(
         &self,
-        _scanner: &NoteScanner,
+        _ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if matches!(cursor.peek_byte(), Some(b'#')) && !cursor.prev_alnum {
-            if let Some(tag) = NoteScanner::scan_tag(cursor)? {
-                artifacts.push(tag);
-                return Ok(true);
-            }
-            cursor.advance(1)?;
-            return Ok(true);
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        if cursor.prev_alnum || !cursor.rest.starts_with('#') {
+            return Ok(None);
         }
-        Ok(false)
+
+        let mut len: usize = 1;
+        let chars = cursor.rest.get(1..).unwrap_or("").chars();
+        let mut has_content = false;
+
+        for c in chars {
+            if c.is_alphanumeric() || matches!(c, '_' | '-' | '/') {
+                len = len.saturating_add(c.len_utf8());
+                has_content = true;
+            } else {
+                break;
+            }
+        }
+
+        if has_content {
+            let value = cursor.rest.get(0..len).unwrap_or("");
+            let range = SourceByteRange::new(
+                cursor.offset,
+                cursor.offset.add_offset(len)?,
+            )?;
+            cursor.advance(len)?;
+            Ok(Some(ScannedArtifact::Tag(RawTag::new(value.into(), range))))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn can_start_with(&self, byte: u8) -> bool {
+        byte == b'#'
     }
 }
 
+#[derive(Debug)]
 struct DelimitedFieldRule;
 
-impl BodyRule for DelimitedFieldRule {
+impl ScanRule for DelimitedFieldRule {
     fn try_scan<'source>(
         &self,
-        _scanner: &NoteScanner,
+        _ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if matches!(cursor.peek_byte(), Some(b'[' | b'(')) {
-            if let Some(field) = NoteScanner::scan_delimited_field(cursor)? {
-                artifacts.push(field);
-                return Ok(true);
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let opener = cursor.peek_byte();
+        let closer = match opener {
+            Some(b'[') => b']',
+            Some(b'(') => b')',
+            _ => return Ok(None),
+        };
+
+        let mut len: usize = 1;
+        let mut chars = cursor.rest.get(1..).unwrap_or("").chars();
+        let mut found_sep = false;
+        let mut sep_pos = 0;
+
+        while let Some(c) = chars.next() {
+            len = len.saturating_add(c.len_utf8());
+            let current_rest = cursor
+                .rest
+                .get(len.saturating_sub(c.len_utf8())..)
+                .unwrap_or("");
+            if !found_sep && current_rest.starts_with("::") {
+                found_sep = true;
+                sep_pos = len.saturating_sub(c.len_utf8());
+                len = len.saturating_add(1); // Skip second colon
+                chars.next(); // Consume second colon
+                continue;
             }
-            cursor.advance(1)?;
-            return Ok(true);
+
+            if u32::from(c) == u32::from(closer) {
+                if !found_sep {
+                    break;
+                }
+
+                let key = cursor.rest.get(1..sep_pos).unwrap_or("").trim();
+                let value = cursor
+                    .rest
+                    .get(sep_pos.saturating_add(2)..len.saturating_sub(1))
+                    .unwrap_or("")
+                    .trim();
+
+                if key.is_empty() {
+                    break;
+                }
+
+                let range = SourceByteRange::new(
+                    cursor.offset,
+                    cursor.offset.add_offset(len)?,
+                )?;
+                cursor.advance(len)?;
+                return Ok(Some(ScannedArtifact::InlineField(
+                    RawInlineFieldToken::new(key.into(), value.into(), range),
+                )));
+            }
+
+            if c == '\n' {
+                break;
+            }
         }
-        Ok(false)
+
+        Ok(None)
+    }
+
+    fn can_start_with(&self, byte: u8) -> bool {
+        byte == b'[' || byte == b'('
     }
 }
 
+#[derive(Debug)]
 struct BlockRefRule;
 
-impl BodyRule for BlockRefRule {
+impl ScanRule for BlockRefRule {
     fn try_scan<'source>(
         &self,
-        _scanner: &NoteScanner,
+        _ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if matches!(cursor.peek_byte(), Some(b'^')) && !cursor.prev_alnum {
-            if let Some(block_ref) = NoteScanner::scan_block_ref(cursor)? {
-                artifacts.push(block_ref);
-                return Ok(true);
-            }
-            cursor.advance(1)?;
-            return Ok(true);
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        if cursor.prev_alnum || !cursor.rest.starts_with('^') {
+            return Ok(None);
         }
-        Ok(false)
+
+        let mut len: usize = 1;
+        let chars = cursor.rest.get(1..).unwrap_or("").chars();
+        let mut has_content = false;
+
+        for c in chars {
+            if c.is_alphanumeric() || matches!(c, '-' | '_') {
+                len = len.saturating_add(c.len_utf8());
+                has_content = true;
+            } else {
+                break;
+            }
+        }
+
+        if has_content {
+            let remaining = cursor.rest.get(len..).unwrap_or("");
+            let mut tail_len = 0usize;
+            for ch in remaining.chars() {
+                if ch == '\n' || ch == '\r' {
+                    break;
+                }
+                if !ch.is_whitespace() {
+                    return Ok(None);
+                }
+                tail_len = tail_len.saturating_add(ch.len_utf8());
+            }
+
+            let id = cursor.rest.get(1..len).unwrap_or("");
+            let range = SourceByteRange::new(
+                cursor.offset,
+                cursor.offset.add_offset(len)?,
+            )?;
+            cursor.advance(len.saturating_add(tail_len))?;
+            Ok(Some(ScannedArtifact::BlockRef(RawBlockRef::new(
+                id.into(),
+                range.start(),
+            ))))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn can_start_with(&self, byte: u8) -> bool {
+        byte == b'^'
     }
 }
 
+#[derive(Debug)]
 struct EmojiFieldRule;
 
-impl BodyRule for EmojiFieldRule {
+impl ScanRule for EmojiFieldRule {
     fn try_scan<'source>(
         &self,
-        scanner: &NoteScanner,
+        ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
         let Some(ch) = cursor.rest.chars().next() else {
-            return Ok(false);
+            return Ok(None);
         };
-        if !scanner.emoji_markers.contains(&ch) {
-            return Ok(false);
+        if !ctx.emoji_markers.contains(&ch) {
+            return Ok(None);
         }
-        if let Some(field) = NoteScanner::scan_emoji_field(cursor)? {
-            artifacts.push(field);
-            return Ok(true);
+
+        let mut len = ch.len_utf8();
+        let chars = cursor.rest.get(len..).unwrap_or("").chars();
+
+        // Optional whitespace after emoji
+        for c in chars {
+            if c.is_whitespace() && c != '\n' && c != '\r' {
+                len = len.saturating_add(c.len_utf8());
+            } else {
+                break;
+            }
         }
-        cursor.advance(ch.len_utf8())?;
-        Ok(true)
+
+        // Value is the rest of the line
+        let value_start = len;
+        let mut value_len: usize = 0;
+        let value_chars = cursor.rest.get(value_start..).unwrap_or("").chars();
+        for c in value_chars {
+            if c == '\n' || c == '\r' {
+                break;
+            }
+            value_len = value_len.saturating_add(c.len_utf8());
+        }
+
+        if value_len > 0 {
+            let key = ch.to_string();
+            let value = cursor
+                .rest
+                .get(value_start..value_start.saturating_add(value_len))
+                .unwrap_or("")
+                .trim();
+            let range = SourceByteRange::new(
+                cursor.offset,
+                cursor.offset.add_offset(len.saturating_add(value_len))?,
+            )?;
+            cursor.advance(len.saturating_add(value_len))?;
+            Ok(Some(ScannedArtifact::InlineField(RawInlineFieldToken::new(
+                key.into(),
+                value.into(),
+                range,
+            ))))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn can_start_with(&self, byte: u8) -> bool {
+        // Emojis are multi-byte, so we can't reliably use a single byte check.
+        // However, we can check if it's NOT a common ASCII character.
+        byte >= 0x80 || byte.is_ascii_graphic()
     }
 }
 
-trait LineStartRule {
-    fn try_scan<'source>(
-        &self,
-        cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError>;
-}
-
+#[derive(Debug)]
 struct BareFieldRule;
 
-impl LineStartRule for BareFieldRule {
+impl BareFieldRule {
     fn try_scan<'source>(
-        &self,
+        _ctx: &ScannerContext,
         cursor: &mut Cursor<'source>,
-        artifacts: &mut Vec<ScannedArtifact<'source>>,
-    ) -> Result<bool, NoteError> {
-        if let Some(field) = NoteScanner::scan_bare_field(cursor)? {
-            artifacts.push(field);
-            return Ok(true);
+    ) -> Result<Option<ScannedArtifact<'source>>, NoteError> {
+        let bytes = cursor.rest.as_bytes();
+        let mut key_len = 0usize;
+
+        while let Some(&b) = bytes.get(key_len) {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-') {
+                key_len = key_len.saturating_add(1);
+            } else {
+                break;
+            }
         }
-        Ok(false)
+
+        if key_len > 0
+            && cursor.rest.get(key_len..).is_some_and(|s| s.starts_with("::"))
+        {
+            let key = cursor.rest.get(..key_len).unwrap_or("");
+            let after_colons =
+                cursor.rest.get(key_len.saturating_add(2)..).unwrap_or("");
+            let mut val_len = 0usize;
+            for ch in after_colons.chars() {
+                if ch == '\n' || ch == '\r' {
+                    break;
+                }
+                val_len = val_len.saturating_add(ch.len_utf8());
+            }
+
+            let value = after_colons.get(..val_len).unwrap_or("").trim();
+            if !value.is_empty() {
+                let start = cursor.offset;
+                let total_len =
+                    key_len.saturating_add(2).saturating_add(val_len);
+                let end = cursor.offset.add_offset(total_len)?;
+                let range = SourceByteRange::new(start, end)?;
+                cursor.advance(total_len)?;
+                return Ok(Some(ScannedArtifact::InlineField(
+                    RawInlineFieldToken::new(key.into(), value.into(), range),
+                )));
+            }
+        }
+
+        Ok(None)
     }
 }

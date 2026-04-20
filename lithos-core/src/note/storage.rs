@@ -20,8 +20,12 @@ use crate::{
 
 /// Unified repository trait for note storage and queries.
 #[expect(
-    clippy::multiple_bounds_in_separate_declarations,
-    reason = "Separate bounds needed for GAT"
+    clippy::arbitrary_source_item_ordering,
+    reason = "Repository trait groups operations by usage semantics"
+)]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "All trait methods return repository errors by contract"
 )]
 pub trait Repository: Send + Sync {
     /// Batch reader type for grouped read operations.
@@ -103,12 +107,7 @@ pub trait Repository: Send + Sync {
             Self::BatchReader<'reader>,
         ) -> Result<R, Self::Error>;
 
-    /// Executes many write operations within a single transaction.
-    ///
-    /// # Errors
     /// Retrieves a cached `ListView` for a note.
-    ///
-    /// # Errors
     /// Returns error if the note doesn't exist or database access fails.
     fn get_list_view(&self, note_id: NoteId) -> Result<ListView, Self::Error>;
 
@@ -124,6 +123,9 @@ pub trait Repository: Send + Sync {
     /// Returns error if database access fails.
     fn invalidate_list_view(&self, note_id: NoteId) -> Result<(), Self::Error>;
 
+    /// Executes many write operations within a single transaction.
+    ///
+    /// # Errors
     /// Returns a repository error if the transaction fails.
     fn with_batch_write<F>(&self, f: F) -> Result<(), Self::Error>
     where
