@@ -1146,10 +1146,6 @@ impl SchemaProcessor<FileParsed, AllMissing> {
 }
 
 impl SchemaProcessor<FileParsed, Compared> {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "kept linear to mirror staged parsing behavior"
-    )]
     pub(crate) fn parse(
         self,
         source: &FsReader,
@@ -1162,31 +1158,7 @@ impl SchemaProcessor<FileParsed, Compared> {
             ..
         } = self.status;
 
-        let mut parsed_new = NewBatch::new();
-        let mut new_entries: Vec<_> = new_schemas.into_iter().collect();
-        new_entries.sort_by_key(|entry| entry.0);
-        for (id, read) in new_entries {
-            let schema_name = source
-                .basename(&read.path)
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-            let times_for_raw = read.times.clone();
-            let raw = FsReader::parse_structured_from_str::<RawSchema>(
-                &read.path,
-                &read.content_str,
-            )
-            .map_err(SchemaIngestionError::from)
-            .map_err(SchemaLoaderError::Ingestion)?
-            .with_file_times(times_for_raw)
-            .with_name(schema_name.into());
-
-            parsed_new.insert(id, InitialParsed {
-                path: read.path,
-                times: read.times,
-                content_hash: read.content_hash,
-                raw,
-            });
-        }
+        let parsed_new = Self::parse_new(new_schemas, source)?;
 
         let next_graph =
             graph.map_payload(
@@ -1279,6 +1251,40 @@ impl SchemaProcessor<FileParsed, Compared> {
             new_schemas: parsed_new,
             deleted_ids,
         }))
+    }
+
+    fn parse_new(
+        new_schemas: NewBatch<InitialRead>,
+        source: &FsReader,
+    ) -> Result<NewBatch<InitialParsed>, SchemaLoaderError> {
+        let mut parsed_new = NewBatch::new();
+        let mut new_entries: Vec<_> = new_schemas.into_iter().collect();
+        new_entries.sort_by_key(|entry| entry.0);
+
+        for (id, read) in new_entries {
+            let schema_name = source
+                .basename(&read.path)
+                .map_err(SchemaIngestionError::from)
+                .map_err(SchemaLoaderError::Ingestion)?;
+            let times_for_raw = read.times.clone();
+            let raw = FsReader::parse_structured_from_str::<RawSchema>(
+                &read.path,
+                &read.content_str,
+            )
+            .map_err(SchemaIngestionError::from)
+            .map_err(SchemaLoaderError::Ingestion)?
+            .with_file_times(times_for_raw)
+            .with_name(schema_name.into());
+
+            parsed_new.insert(id, InitialParsed {
+                path: read.path,
+                times: read.times,
+                content_hash: read.content_hash,
+                raw,
+            });
+        }
+
+        Ok(parsed_new)
     }
 }
 
