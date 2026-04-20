@@ -57,10 +57,7 @@
 //! assert_eq!(dag.topo_order().first(), Some(&root_id));
 //! ```
 
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    ops::{Deref, DerefMut},
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::schema::aggregate::SchemaId;
 
@@ -70,9 +67,36 @@ use crate::schema::aggregate::SchemaId;
 /// API boundary and allow schema-specific extensions.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct SchemaGraph<T>(pub crate::graph::Graph<SchemaId, T>);
+pub struct SchemaGraph<T>(crate::graph::Graph<SchemaId, T>);
 
 impl<T> SchemaGraph<T> {
+    /// Wraps a generic graph as a schema graph.
+    #[inline]
+    #[must_use]
+    pub fn from_inner(inner: crate::graph::Graph<SchemaId, T>) -> Self {
+        Self(inner)
+    }
+
+    /// Returns a shared reference to the inner graph.
+    #[inline]
+    #[must_use]
+    pub fn as_inner(&self) -> &crate::graph::Graph<SchemaId, T> {
+        &self.0
+    }
+
+    /// Returns a mutable reference to the inner graph.
+    #[inline]
+    pub fn as_inner_mut(&mut self) -> &mut crate::graph::Graph<SchemaId, T> {
+        &mut self.0
+    }
+
+    /// Consumes self and returns the inner graph.
+    #[inline]
+    #[must_use]
+    pub fn into_inner(self) -> crate::graph::Graph<SchemaId, T> {
+        self.0
+    }
+
     /// Returns parent IDs for a node (empty slice if none).
     #[inline]
     #[must_use]
@@ -137,19 +161,17 @@ impl<T> SchemaGraph<T> {
     }
 }
 
-impl<T> Deref for SchemaGraph<T> {
-    type Target = crate::graph::Graph<SchemaId, T>;
-
+impl<T> From<crate::graph::Graph<SchemaId, T>> for SchemaGraph<T> {
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn from(value: crate::graph::Graph<SchemaId, T>) -> Self {
+        Self::from_inner(value)
     }
 }
 
-impl<T> DerefMut for SchemaGraph<T> {
+impl<T> From<SchemaGraph<T>> for crate::graph::Graph<SchemaId, T> {
     #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    fn from(value: SchemaGraph<T>) -> Self {
+        value.into_inner()
     }
 }
 
@@ -167,7 +189,7 @@ impl<T> DerefMut for SchemaGraph<T> {
 /// let graph = builder.build();
 /// ```
 #[non_exhaustive]
-pub struct SchemaGraphBuilder<T>(pub crate::graph::GraphBuilder<SchemaId, T>);
+pub struct SchemaGraphBuilder<T>(crate::graph::GraphBuilder<SchemaId, T>);
 
 impl<T> SchemaGraphBuilder<T> {
     /// Creates a new graph builder.
@@ -200,7 +222,14 @@ impl<T> SchemaGraphBuilder<T> {
     #[inline]
     #[must_use]
     pub fn build(self) -> SchemaGraph<T> {
-        SchemaGraph(self.0.build())
+        SchemaGraph::from_inner(self.0.build())
+    }
+
+    /// Consumes self and returns the inner builder.
+    #[inline]
+    #[must_use]
+    pub fn into_inner(self) -> crate::graph::GraphBuilder<SchemaId, T> {
+        self.0
     }
 }
 
@@ -322,11 +351,11 @@ where
                 builder.add_parent(*child_id, parent_id);
             }
         }
-        crate::graph::DagGraph::try_from(builder.build().0).map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
+        crate::graph::DagGraph::try_from(builder.build().into_inner()).map_err(
+            |_e| crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
-            }
-        })
+            },
+        )
     }
 
     /// For compatibility - returns a pseudo-graph interface.
@@ -385,11 +414,12 @@ where
     #[inline]
     fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
         // Validate it's a DAG
-        let dag = crate::graph::DagGraph::try_from(graph.0).map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
-                nodes: Vec::new(),
-            }
-        })?;
+        let dag = crate::graph::DagGraph::try_from(graph.into_inner())
+            .map_err(|_e| {
+                crate::schema::error::SchemaInheritanceError::CycleDetected {
+                    nodes: Vec::new(),
+                }
+            })?;
 
         // Extract topology before consuming
         let topo_order = dag.topo_order().to_vec();
@@ -456,9 +486,22 @@ where
 /// ```
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct ProcessingDag<T>(pub crate::graph::DagGraph<SchemaId, T>);
+pub struct ProcessingDag<T>(crate::graph::DagGraph<SchemaId, T>);
 
 impl<T> ProcessingDag<T> {
+    /// Returns a shared reference to the underlying DAG.
+    #[inline]
+    #[must_use]
+    pub fn as_inner(&self) -> &crate::graph::DagGraph<SchemaId, T> {
+        &self.0
+    }
+
+    /// Returns a mutable reference to the underlying DAG.
+    #[inline]
+    pub fn as_inner_mut(&mut self) -> &mut crate::graph::DagGraph<SchemaId, T> {
+        &mut self.0
+    }
+
     /// Returns the cached topological order.
     #[inline]
     #[must_use]
@@ -471,6 +514,19 @@ impl<T> ProcessingDag<T> {
     #[must_use]
     pub fn roots(&self) -> &[SchemaId] {
         self.0.roots()
+    }
+
+    /// Returns a shared reference to the underlying schema graph.
+    #[inline]
+    #[must_use]
+    pub fn graph(&self) -> &crate::graph::Graph<SchemaId, T> {
+        self.0.graph()
+    }
+
+    /// Returns a mutable reference to the underlying schema graph.
+    #[inline]
+    pub fn graph_mut(&mut self) -> &mut crate::graph::Graph<SchemaId, T> {
+        self.0.graph_mut()
     }
 
     /// Consumes self and returns the underlying `DagGraph`.
@@ -486,11 +542,12 @@ impl<T> TryFrom<SchemaGraph<T>> for ProcessingDag<T> {
 
     #[inline]
     fn try_from(graph: SchemaGraph<T>) -> Result<Self, Self::Error> {
-        let dag = crate::graph::DagGraph::try_from(graph.0).map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
-                nodes: Vec::new(),
-            }
-        })?;
+        let dag = crate::graph::DagGraph::try_from(graph.into_inner())
+            .map_err(|_e| {
+                crate::schema::error::SchemaInheritanceError::CycleDetected {
+                    nodes: Vec::new(),
+                }
+            })?;
         Ok(Self(dag))
     }
 }
@@ -524,7 +581,7 @@ impl<T> TryFrom<SchemaGraph<T>> for ProcessingDag<T> {
 ///
 /// let graph = builder.build();
 /// let changed = HashSet::from([a]); // A changed
-/// let affected = affected_subtree(&graph, &changed);
+/// let affected = affected_subtree(graph.as_inner(), &changed);
 ///
 /// assert!(affected.contains(&a));
 /// assert!(affected.contains(&b)); // B is affected (child of A)
@@ -660,7 +717,7 @@ mod tests {
 
         let graph = builder.build();
         let changed = HashSet::from([b]);
-        let affected = affected_subtree(&graph, &changed);
+        let affected = affected_subtree(graph.as_inner(), &changed);
 
         // B changed, so B, C, D, E are affected
         assert!(affected.contains(&b));
@@ -685,7 +742,7 @@ mod tests {
 
         let graph = builder.build();
         let changed = HashSet::from([a, b]); // Two separate roots
-        let affected = affected_subtree(&graph, &changed);
+        let affected = affected_subtree(graph.as_inner(), &changed);
 
         assert!(affected.contains(&a));
         assert!(affected.contains(&b));

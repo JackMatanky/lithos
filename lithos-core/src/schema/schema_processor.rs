@@ -864,7 +864,7 @@ impl SchemaProcessor<Comparison, Present> {
         // First pass: collect bank-affected IDs
         let mut bank_affected_ids = HashSet::new();
         if let Some(delta) = property_bank_delta {
-            for (id, node) in graph.0.graph().iter() {
+            for (id, node) in graph.graph().iter() {
                 #[expect(
                     clippy::pattern_type_mismatch,
                     reason = "Explicit reference pattern for payload \
@@ -884,7 +884,7 @@ impl SchemaProcessor<Comparison, Present> {
 
         let mut builder = SchemaGraphBuilder::new();
 
-        for (id, node) in graph.0.graph().iter() {
+        for (id, node) in graph.graph().iter() {
             let PresentPayload::Found(found_payload) =
                 node.payload().payload.clone()
             else {
@@ -976,8 +976,8 @@ impl SchemaProcessor<Comparison, Present> {
         }
 
         // Add edges
-        for (child_id, _) in graph.0.graph().iter() {
-            for &parent_id in graph.0.graph().parents_of(child_id) {
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
                 builder.add_parent(child_id, parent_id);
             }
         }
@@ -1189,12 +1189,8 @@ impl SchemaProcessor<FileParsed, Compared> {
         }
 
         let mut builder = SchemaGraphBuilder::new();
-        let mut node_entries: Vec<_> = graph
-            .0
-            .graph()
-            .iter()
-            .map(|(id, node)| (id, node.clone()))
-            .collect();
+        let mut node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
         node_entries.sort_by_key(|entry| entry.0);
 
         for (id, node) in node_entries {
@@ -1270,8 +1266,8 @@ impl SchemaProcessor<FileParsed, Compared> {
         }
 
         // Add edges
-        for (child_id, _) in graph.0.graph().iter() {
-            for &parent_id in graph.0.graph().parents_of(child_id) {
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
                 builder.add_parent(child_id, parent_id);
             }
         }
@@ -1314,15 +1310,14 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         } = self.status;
 
         let mut status_by_id: HashMap<SchemaId, NodeStatus> = HashMap::new();
-        for (id, node) in graph.0.graph().iter() {
+        for (id, node) in graph.graph().iter() {
             status_by_id.insert(id, node.payload().status());
         }
 
         // Collect old adjacency info before consuming graph
         let mut old_parents: HashMap<SchemaId, Vec<SchemaId>> = HashMap::new();
-        for (id, _) in graph.0.graph().iter() {
-            let parents: Vec<SchemaId> =
-                graph.0.graph().parents_of(id).to_vec();
+        for (id, _) in graph.graph().iter() {
+            let parents: Vec<SchemaId> = graph.graph().parents_of(id).to_vec();
             old_parents.insert(id, parents);
         }
 
@@ -1330,12 +1325,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         let mut parsed_payloads: HashMap<SchemaId, FileParsedBranch> =
             HashMap::new();
 
-        let mut old_node_entries: Vec<_> = graph
-            .0
-            .graph()
-            .iter()
-            .map(|(id, node)| (id, node.clone()))
-            .collect();
+        let mut old_node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
         old_node_entries.sort_by_key(|entry| entry.0);
         for (id, node) in old_node_entries {
             if deleted_ids.contains(&id) {
@@ -1610,7 +1601,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             HashSet::new()
         } else {
             crate::schema::inheritance::affected_subtree(
-                graph.0.graph(),
+                graph.graph(),
                 &merge_roots,
             )
         };
@@ -1621,12 +1612,8 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let mut analyzed_nodes = HashMap::new();
 
         // Collect nodes in deterministic order
-        let mut node_entries: Vec<_> = graph
-            .0
-            .graph()
-            .iter()
-            .map(|(id, node)| (id, node.clone()))
-            .collect();
+        let mut node_entries: Vec<_> =
+            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
         node_entries.sort_by_key(|entry| entry.0);
 
         for (id, node) in node_entries {
@@ -1908,8 +1895,8 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         }
 
         // Preserve edges from original graph
-        for (child_id, _) in graph.0.graph().iter() {
-            for &parent_id in graph.0.graph().parents_of(child_id) {
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
                 builder.add_parent(child_id, parent_id);
             }
         }
@@ -1988,8 +1975,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
 
         // Mutate nodes in-place through the graph
         for id in &self.status.refresh_ids {
-            let Some(node) = self.status.graph.0.graph_mut().get_mut(*id)
-            else {
+            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
 
@@ -2027,8 +2013,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         }
 
         for id in &self.status.rebuild_ids {
-            let Some(node) = self.status.graph.0.graph_mut().get_mut(*id)
-            else {
+            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
 
@@ -2079,9 +2064,9 @@ impl SchemaProcessor<Construction, Analyzed> {
         let update_ids: Vec<SchemaId> = rebuild_ids
             .iter()
             .filter_map(|id| {
-                let node = graph.0.graph().get(*id)?;
+                let node = graph.graph().get(*id)?;
                 let extends_change =
-                    extends_change_for(*id, graph.0.graph(), &edge_relations);
+                    extends_change_for(*id, graph.graph(), &edge_relations);
                 match node.payload().payload.clone() {
                     AnalysisBranch::Rebuild(payload)
                         if payload.property_delta.is_some()
@@ -2115,7 +2100,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         let expand_pairs: Vec<(SchemaId, RawSchema)> = rebuild_ids
             .iter()
             .filter_map(|id| {
-                let node = graph.0.graph().get(*id)?;
+                let node = graph.graph().get(*id)?;
                 match node.payload().payload.clone() {
                     AnalysisBranch::Rebuild(payload) => {
                         Some((*id, payload.raw))
@@ -2156,7 +2141,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
         for &id in graph.topo_order() {
-            let node = graph.0.graph().get(id).ok_or_else(|| {
+            let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
                         reason: format!("schema {id} missing from graph")
@@ -2177,12 +2162,12 @@ impl SchemaProcessor<Construction, Analyzed> {
                     ))
                 })?
             } else if rebuild_ids.contains(&id) {
-                let parents = graph.0.graph().parents_of(id);
-                let children = graph.0.graph().children_of(id);
+                let parents = graph.graph().parents_of(id);
+                let children = graph.graph().children_of(id);
                 Self::construct_schema_incremental(
                     id,
                     node.payload(),
-                    extends_change_for(id, graph.0.graph(), &edge_relations),
+                    extends_change_for(id, graph.graph(), &edge_relations),
                     parents,
                     children,
                     &expanded_by_id,
@@ -2473,7 +2458,7 @@ impl SchemaProcessor<Construction, NewBuild> {
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
         for &id in graph.topo_order() {
-            let node = graph.0.graph().get(id).ok_or_else(|| {
+            let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
                         reason: format!("schema {id} missing from graph")
@@ -2494,8 +2479,8 @@ impl SchemaProcessor<Construction, NewBuild> {
                 expanded_props.extend(inline_props);
             }
 
-            let parents = graph.0.graph().parents_of(id);
-            let children = graph.0.graph().children_of(id);
+            let parents = graph.graph().parents_of(id);
+            let children = graph.graph().children_of(id);
             let parent_props = if parents.is_empty() {
                 PropertyMap::new()
             } else {
@@ -2554,11 +2539,11 @@ impl SchemaProcessor<Construction, NewBuild> {
 
         // Build unit-payload graph for persistence (structure only)
         let mut persist_builder = SchemaGraphBuilder::<()>::new();
-        for (id, _node) in graph.0.graph().iter() {
+        for (id, _node) in graph.graph().iter() {
             persist_builder.add_node(id, ()); // Unit payload
         }
-        for (child_id, _) in graph.0.graph().iter() {
-            for &parent_id in graph.0.graph().parents_of(child_id) {
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
                 persist_builder.add_parent(child_id, parent_id);
             }
         }
@@ -2604,11 +2589,11 @@ impl SchemaProcessor<Construction, Constructed> {
 
         // Build unit-payload graph for persistence (structure only)
         let mut persist_builder = SchemaGraphBuilder::<()>::new();
-        for (id, _node) in graph.0.graph().iter() {
+        for (id, _node) in graph.graph().iter() {
             persist_builder.add_node(id, ());
         }
-        for (child_id, _) in graph.0.graph().iter() {
-            for &parent_id in graph.0.graph().parents_of(child_id) {
+        for (child_id, _) in graph.graph().iter() {
+            for &parent_id in graph.graph().parents_of(child_id) {
                 persist_builder.add_parent(child_id, parent_id);
             }
         }
