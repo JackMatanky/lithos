@@ -18,10 +18,7 @@
 use std::borrow::Cow;
 
 use super::value::RawFieldValue;
-use crate::{
-    config::task::TaskConfigSpec,
-    note::{inline_fields::InlineFieldKey, position::SourceByteRange},
-};
+use crate::note::position::SourceByteRange;
 
 /// Raw inline field token extracted from markdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,32 +129,4 @@ impl RawInlineFieldToken<'_> {
             range: self.range,
         }
     }
-}
-
-/// Converts a raw inline field token to a typed [`RawInlineField`], applying
-/// any date/temporal spec from the task configuration if the key matches.
-pub(crate) fn field_token_to_raw<'source>(
-    token: RawInlineFieldToken<'source>,
-    task_spec: &TaskConfigSpec,
-) -> RawInlineField<'source> {
-    let RawInlineFieldToken {
-        key,
-        value,
-        range,
-    } = token;
-    let normalized = InlineFieldKey::normalize(key.as_ref());
-    let date_spec = task_spec
-        .temporal_specs
-        .get(normalized.as_ref())
-        .map(|entry| entry.1.as_ref());
-    let typed_value = match value {
-        Cow::Borrowed(text) => {
-            RawFieldValue::from_str_with_spec(text, key.as_ref(), date_spec)
-        }
-        Cow::Owned(text) => {
-            RawFieldValue::from_str_with_spec(&text, key.as_ref(), date_spec)
-                .into_owned()
-        }
-    };
-    RawInlineField::new(key, typed_value, range)
 }

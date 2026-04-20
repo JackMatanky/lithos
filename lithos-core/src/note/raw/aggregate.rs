@@ -1,24 +1,8 @@
 //! Raw note aggregate and dual-write accumulator.
-//!
-//! This module contains [`RawNote`], the direct output of the markdown
-//! ingestion pipeline. It accumulates unvalidated, source-borrowed data
-//! extracted from a single markdown document: frontmatter, headings, sections,
-//! links, tags, lists, list items, inline fields, and block references.
-//!
-//! ## Dual-write invariant
-//!
-//! Tags and inline fields found inside list items are written to two places:
-//! the item itself (via [`RawListItem::tags`] / [`RawListItem::inline_fields`])
-//! and the global note-level collections ([`RawNote::tags`] /
-//! [`RawNote::inline_fields`]). This allows both item-scoped queries (e.g.,
-//! "what is the due date of this task?") and note-scoped queries (e.g., "what
-//! tags appear anywhere in this note?") to be answered without re-scanning.
-//!
-//! The invariant is enforced exclusively through [`RawNote::accept_list_item`].
 
 use super::{
-    RawBlockRef, RawFrontmatter, RawHeading, RawInlineField, RawLink, RawList,
-    RawListItem, RawSection, RawTag,
+    RawBlockRef, RawFrontmatter, RawHeading, RawInlineFieldToken, RawLink,
+    RawList, RawListItem, RawSection, RawTag,
 };
 
 /// Unvalidated extraction output for a single markdown note.
@@ -36,7 +20,7 @@ pub struct RawNote<'source> {
     pub tags: Vec<RawTag<'source>>,
     pub lists: Vec<RawList>,
     pub list_items: Vec<RawListItem<'source>>,
-    pub inline_fields: Vec<RawInlineField<'source>>,
+    pub inline_fields: Vec<RawInlineFieldToken<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
 }
 
@@ -56,7 +40,7 @@ impl<'source> RawNote<'source> {
         tags: Vec<RawTag<'source>>,
         lists: Vec<RawList>,
         list_items: Vec<RawListItem<'source>>,
-        inline_fields: Vec<RawInlineField<'source>>,
+        inline_fields: Vec<RawInlineFieldToken<'source>>,
         block_refs: Vec<RawBlockRef<'source>>,
     ) -> Self {
         Self {
@@ -107,7 +91,7 @@ impl<'source> RawNote<'source> {
             inline_fields: self
                 .inline_fields
                 .into_iter()
-                .map(RawInlineField::into_owned)
+                .map(RawInlineFieldToken::into_owned)
                 .collect(),
             block_refs: self
                 .block_refs

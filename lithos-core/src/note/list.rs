@@ -16,12 +16,9 @@
 //! 2. **Semantic ([`crate::note::task::Task`]):** A "promoted" entity that
 //!    represents a checkbox item with validated domain logic (e.g., due dates,
 //!    priorities).
-//!
-//! The [`TaskExt`] trait provides a bridge between these two worlds, allowing
-//! structural items to be queried for task-specific properties without
-//! necessarily being promoted to a full `Task` entity.
 
-#![expect(
+#![allow(
+    clippy::exhaustive_structs,
     clippy::exhaustive_enums,
     reason = "rkyv generates exhaustive archived variants for enums even if \
               the base type is non_exhaustive"
@@ -29,55 +26,128 @@
 
 use std::fmt;
 
+use uuid::Uuid;
+
 use super::{
     error::{ListError, NoteError},
     inline_fields::InlineField,
     position::{SourceByteOffset, SourceByteRange},
     tag::Tag,
-    task::TaskRef,
 };
 use crate::{
-    config::task::StatusSymbol,
-    note::raw::{RawListDepth, RawListItem, RawListKind},
+    config::task::TaskConfigSpec,
+    note::{
+        inline_fields::InlineFieldKey,
+        raw::{RawInlineFieldToken, RawListDepth, RawListItem, RawListKind},
+    },
 };
 
+/// Unique identifier for a list item (UUID v7).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug, PartialEq, Eq, Hash))]
+pub struct ListItemId(Uuid);
+
+impl ListItemId {
+    /// Creates a new random `ListItemId` (UUID v7).
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for ListItemId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for ListItemId {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Core structural metadata for any list-based item.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ListItemBase {
+    /// Unique identifier for the list item.
+    pub id: ListItemId,
+    /// Source byte range of the full list item.
+    pub range: SourceByteRange,
+    /// Raw text content of the list item.
+    pub text: Box<str>,
+    /// Metadata tags attached to the item.
+    pub tags: Box<[Tag]>,
+    /// Nesting depth of the item.
+    pub depth: ListDepth,
+    /// Type of list (ordered or unordered).
+    pub kind: ListKind,
+    /// Source position of the parent item, if nested.
+    pub parent: Option<SourceByteOffset>,
+    /// Whether the parser identified this as a checkbox (GFM).
+    pub is_checkbox: Option<bool>,
+}
+
+impl ListItemBase {
+    /// Create a new list item base.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Base metadata requires all components"
+    )]
+    pub fn new(
+        id: ListItemId,
+        range: SourceByteRange,
+        text: Box<str>,
+        tags: Box<[Tag]>,
+        depth: ListDepth,
+        kind: ListKind,
+        parent: Option<SourceByteOffset>,
+        is_checkbox: Option<bool>,
+    ) -> Self {
+        Self {
+            id,
+            range,
+            text,
+            tags,
+            depth,
+            kind,
+            parent,
+            is_checkbox,
+        }
+    }
+}
+
 /// A hierarchical collection of list items.
-///
-/// `List` serves as a container for [`ListItem`]s that share a common
-/// [`ListKind`] and are located at the same logical [`ListDepth`]. It tracks
-/// the source positions of its items to maintain document order.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::list::{List, ListItem, ListKind, ListDepth};
-/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
-/// let mut list = List::new(ListKind::Unordered);
-/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(10)).unwrap();
-///
-/// let item = ListItem::new(
-///     "Item 1".into(),
-///     range,
-///     range,
-///     ListKind::Unordered,
-///     ListDepth::root(),
-///     None,
-///     None,
-///     Box::new([]),
-///     Box::new([]),
-/// );
-///
-/// list.add_item(item);
-/// assert_eq!(list.list_kind(), ListKind::Unordered);
-/// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct List {
+    /// Type of list.
     kind: ListKind,
+    /// Collection of items in the list.
     items: Vec<ListItem>,
+    /// Nesting depth of the list.
     depth: ListDepth,
 }
 
@@ -254,224 +324,51 @@ impl<'list> Iterator for ListItems<'list> {
     }
 }
 
-/// A single structural unit within a markdown list.
-///
-/// `ListItem` represents every type of bullet point found in a note. It carries
-/// its own metadata (tags and inline fields) and maintains a link to its parent
-/// item to preserve hierarchy.
-///
-/// # Checkboxes and Tasks
-///
-/// If a list item has a checkbox (e.g., `- [ ]`), it will have a
-/// [`StatusSymbol`] assigned to its `status` field. Such items can be
-/// "promoted" to semantic [`crate::note::task::Task`] entities, at which point
-/// a [`TaskRef`] is attached.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::list::{ListItem, ListKind, ListDepth};
-/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
-/// # use lithos_core::config::task::StatusSymbol;
-/// let start = SourceByteOffset::new(0);
-/// let end = SourceByteOffset::new(13);
-/// let range = SourceByteRange::new(start, end).expect("valid range");
-///
-/// let item = ListItem::new(
-///     "Buy groceries".into(),
-///     range,
-///     range,
-///     ListKind::Unordered,
-///     ListDepth::root(),
-///     None,
-///     Some(StatusSymbol::try_new(' ').unwrap()),
-///     Box::new([]),
-///     Box::new([]),
-/// );
-///
-/// assert_eq!(item.text(), "Buy groceries");
-/// assert!(item.task_status().is_some());
-/// ```
+/// A structural bullet point or numbered item.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct ListItem {
-    /// Raw text content.
-    text: Box<str>,
-    /// Source byte range in the note.
-    range: SourceByteRange,
-    /// Source byte range for the text content.
-    text_range: SourceByteRange,
-    /// List kind (ordered or unordered).
-    kind: ListKind,
-    /// List nesting depth.
-    depth: ListDepth,
-    /// Parent list item position, if any.
-    parent: Option<SourceByteOffset>,
-    /// Checkbox status symbol, if this is a checkbox item.
-    status: Option<StatusSymbol>,
-    /// Task reference if promoted to a Task.
-    task_ref: Option<TaskRef>,
-    /// Metadata tags attached to this item.
-    tags: Box<[Tag]>,
-    /// Inline metadata fields attached to this item.
-    fields: Box<[InlineField]>,
+    /// Structural core metadata.
+    pub base: ListItemBase,
+    /// Typed metadata fields.
+    pub fields: Box<[InlineField]>,
 }
 
 impl ListItem {
-    /// Create a new list item.
+    /// Create a new structural list item.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "List items capture full structural context"
-    )]
-    pub fn new(
-        text: Box<str>,
-        range: SourceByteRange,
-        text_range: SourceByteRange,
-        kind: ListKind,
-        depth: ListDepth,
-        parent: Option<SourceByteOffset>,
-        status: Option<StatusSymbol>,
-        tags: Box<[Tag]>,
-        fields: Box<[InlineField]>,
-    ) -> Self {
+    pub fn new(base: ListItemBase, fields: Box<[InlineField]>) -> Self {
         Self {
-            text,
-            range,
-            text_range,
-            kind,
-            depth,
-            parent,
-            status,
-            task_ref: None,
-            tags,
+            base,
             fields,
         }
     }
 
-    /// Returns the source byte range of this list item.
-    #[inline]
-    #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.range
-    }
-
-    /// Returns the source byte range for the text content.
-    #[inline]
-    #[must_use]
-    pub const fn text_range(&self) -> SourceByteRange {
-        self.text_range
-    }
-
-    /// Returns the start source byte position of this list item.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.range.start()
-    }
-
-    /// Returns the list kind for this item.
-    #[inline]
-    #[must_use]
-    pub const fn list_kind(&self) -> ListKind {
-        self.kind
-    }
-
-    /// Returns the list depth for this item.
-    #[inline]
-    #[must_use]
-    pub const fn depth(&self) -> ListDepth {
-        self.depth
-    }
-
-    /// Returns the parent list item position, if any.
-    #[inline]
-    #[must_use]
-    pub const fn parent(&self) -> Option<SourceByteOffset> {
-        self.parent
-    }
-
-    /// Returns the text content of this list item.
-    #[inline]
-    #[must_use]
-    pub fn text(&self) -> &str {
-        self.text.as_ref()
-    }
-
-    /// Returns the checkbox status symbol if this is a checkbox item.
-    #[inline]
-    #[must_use]
-    pub const fn task_status(&self) -> Option<StatusSymbol> {
-        self.status
-    }
-
-    /// Returns the collection of metadata tags extracted from the list item.
-    #[inline]
-    #[must_use]
-    pub fn tags(&self) -> &[Tag] {
-        &self.tags
-    }
-
-    /// Returns the collection of inline metadata fields extracted from the
-    /// list item.
-    #[inline]
-    #[must_use]
-    pub fn fields(&self) -> &[InlineField] {
-        &self.fields
-    }
-
-    /// Returns the task reference if this checkbox was promoted.
-    #[inline]
-    #[must_use]
-    pub const fn promoted_task_ref(&self) -> Option<TaskRef> {
-        self.task_ref
-    }
-
-    /// Sets the task reference for a promoted checkbox item.
-    #[inline]
-    pub fn set_task_ref(&mut self, task_ref: TaskRef) {
-        self.task_ref = Some(task_ref);
-    }
-
-    /// Clears the task reference for a checkbox item.
-    #[inline]
-    pub fn clear_task_ref(&mut self) {
-        self.task_ref = None;
-    }
-}
-
-impl TryFrom<&RawListItem<'_>> for ListItem {
-    type Error = NoteError;
-
-    /// Attempts to convert a [`RawListItem`] into a validated domain
-    /// [`ListItem`].
+    /// Converts a [`RawListItem`] into a validated domain [`ListItem`].
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] if:
-    /// - The raw depth exceeds the maximum representable depth.
-    /// - A status symbol character is invalid (non-ASCII or non-printable).
-    /// - A tag found on the item is malformed.
+    /// Returns [`NoteError`] if list depth validation fails or tag creation
+    /// fails.
     #[inline]
-    fn try_from(raw: &RawListItem<'_>) -> Result<Self, Self::Error> {
+    pub fn from_raw(
+        raw: &RawListItem<'_>,
+        spec: &TaskConfigSpec,
+    ) -> Result<Self, NoteError> {
         let depth = match raw.depth {
             RawListDepth::Root => ListDepth::root(),
             RawListDepth::Nested(value) => {
                 ListDepth::try_new(usize::from(value))?
             }
         };
-        let kind = match raw.list_kind {
+        let kind = match raw.kind {
             RawListKind::Ordered(start) => ListKind::Ordered(start),
             RawListKind::Unordered => ListKind::Unordered,
         };
-        let status = raw
-            .task_marker
-            .map(|symbol| StatusSymbol::try_new(symbol.marker.marker()))
-            .transpose()?;
 
         let mut tags = Vec::with_capacity(raw.tags.len());
         for raw_tag in &raw.tags {
@@ -482,80 +379,121 @@ impl TryFrom<&RawListItem<'_>> for ListItem {
             }
         }
 
-        let fields = raw
-            .inline_fields
-            .iter()
-            .map(InlineField::from_raw)
-            .collect::<Vec<_>>();
+        // Type inference for fields
+        let mut fields = Vec::with_capacity(raw.inline_fields.len());
+        for token in &raw.inline_fields {
+            let field = InlineField::from_token(token, spec);
+            fields.push(field);
+        }
 
-        Ok(Self::new(
-            raw.text.as_ref().into(),
+        let base = ListItemBase::new(
+            ListItemId::new(),
             raw.range,
-            raw.text_range,
-            kind,
-            depth,
-            raw.parent,
-            status,
+            raw.text.text.as_ref().into(),
             tags.into_boxed_slice(),
-            fields.into_boxed_slice(),
-        ))
+            depth,
+            kind,
+            raw.parent,
+            raw.is_checkbox,
+        );
+
+        Ok(Self::new(base, fields.into_boxed_slice()))
+    }
+
+    /// Returns the raw text content of this list item.
+    #[inline]
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.base.text
+    }
+
+    /// Returns the source byte range of this list item.
+    #[inline]
+    #[must_use]
+    pub const fn range(&self) -> SourceByteRange {
+        self.base.range
+    }
+
+    /// Returns the collection of metadata tags extracted from the list item.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[Tag] {
+        &self.base.tags
+    }
+
+    /// Returns the collection of inline metadata fields extracted from the
+    /// list item.
+    #[inline]
+    #[must_use]
+    pub fn fields(&self) -> &[InlineField] {
+        &self.fields
+    }
+
+    /// Returns the start source byte position of this list item.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.base.range.start()
+    }
+
+    /// Returns the list kind for this item.
+    #[inline]
+    #[must_use]
+    pub const fn list_kind(&self) -> ListKind {
+        self.base.kind
+    }
+
+    /// Returns the list depth for this item.
+    #[inline]
+    #[must_use]
+    pub const fn depth(&self) -> ListDepth {
+        self.base.depth
+    }
+
+    /// Returns the parent list item position, if any.
+    #[inline]
+    #[must_use]
+    pub const fn parent(&self) -> Option<SourceByteOffset> {
+        self.base.parent
     }
 }
 
-/// Extension trait for list items providing task-specific capabilities.
-///
-/// This trait allows any [`ListItem`] to be queried for task metadata without
-/// requiring it to be a promoted [`crate::note::task::Task`] entity.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::list::{ListItem, TaskExt, ListKind, ListDepth};
-/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
-/// # use lithos_core::config::task::StatusSymbol;
-/// # let start = SourceByteOffset::new(0);
-/// # let end = SourceByteOffset::new(13);
-/// # let range = SourceByteRange::new(start, end).expect("valid range");
-/// let item = ListItem::new(
-///     "Test".into(),
-///     range,
-///     range,
-///     ListKind::Unordered,
-///     ListDepth::root(),
-///     None,
-///     Some(StatusSymbol::try_new('x').unwrap()),
-///     Box::new([]),
-///     Box::new([]),
-/// );
-///
-/// if item.is_checkbox() {
-///     assert_eq!(item.status().unwrap().value(), 'x');
-/// }
-/// ```
-pub trait TaskExt {
-    /// Returns true if this list item has a checkbox.
-    fn is_checkbox(&self) -> bool;
-
-    /// Returns the checkbox status symbol, if any.
-    fn status(&self) -> Option<StatusSymbol>;
-
-    /// Returns the task reference if this item was promoted.
-    fn task_ref(&self) -> Option<TaskRef>;
-}
-
-impl TaskExt for ListItem {
+impl InlineField {
+    /// Create a domain field from a raw token using task configuration.
     #[inline]
-    fn is_checkbox(&self) -> bool {
-        self.status.is_some()
-    }
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics are preferred for value references"
+    )]
+    pub fn from_token(
+        token: &RawInlineFieldToken<'_>,
+        spec: &TaskConfigSpec,
+    ) -> Self {
+        use crate::note::raw::value::RawFieldValue;
 
-    #[inline]
-    fn status(&self) -> Option<StatusSymbol> {
-        self.task_status()
-    }
+        let key = InlineFieldKey::new(token.key.as_ref());
+        let date_spec = spec
+            .temporal_specs
+            .get(key.as_kebab())
+            .map(|entry| entry.1.as_ref());
 
-    #[inline]
-    fn task_ref(&self) -> Option<TaskRef> {
-        self.promoted_task_ref()
+        let typed_value = match &token.value {
+            std::borrow::Cow::Borrowed(text) => {
+                RawFieldValue::from_str_with_spec(
+                    text,
+                    token.key.as_ref(),
+                    date_spec,
+                )
+            }
+            std::borrow::Cow::Owned(text) => RawFieldValue::from_str_with_spec(
+                text,
+                token.key.as_ref(),
+                date_spec,
+            )
+            .into_owned(),
+        };
+
+        Self::new(key, typed_value.into(), token.range)
     }
 }

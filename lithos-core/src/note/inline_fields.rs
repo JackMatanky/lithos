@@ -5,7 +5,9 @@
     reason = "Pattern matching style is clear in context"
 )]
 
-use super::{raw::RawInlineField, value::FieldValue};
+use std::fmt;
+
+use super::{raw::inline_field::RawInlineField, value::FieldValue};
 use crate::note::position::{SourceByteOffset, SourceByteRange};
 
 /// A normalized identifier for an inline field key.
@@ -104,6 +106,13 @@ impl From<&str> for InlineFieldKey {
     }
 }
 
+impl From<String> for InlineFieldKey {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self::new(&s)
+    }
+}
+
 impl From<Box<str>> for InlineFieldKey {
     #[inline]
     fn from(s: Box<str>) -> Self {
@@ -111,14 +120,17 @@ impl From<Box<str>> for InlineFieldKey {
     }
 }
 
-impl core::fmt::Display for InlineFieldKey {
+impl fmt::Display for InlineFieldKey {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&self.raw)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.raw)
     }
 }
 
-/// Inline field extracted from markdown and converted to domain types.
+/// A metadata field embedded within markdown text.
+///
+/// Inline fields use the syntax `[key:: value]` or `(key:: value)` and provide
+/// a way to attach structured data directly to note content or tasks.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -131,7 +143,7 @@ pub struct InlineField {
 }
 
 impl InlineField {
-    /// Create a new inline field entry.
+    /// Creates a new inline field.
     #[inline]
     #[must_use]
     pub fn new(
@@ -146,7 +158,7 @@ impl InlineField {
         }
     }
 
-    /// Return the normalized field key identifier.
+    /// Return the field key.
     #[inline]
     #[must_use]
     pub fn key(&self) -> &InlineFieldKey {
@@ -182,11 +194,11 @@ impl InlineField {
 
         let value = match &raw.value {
             RawFieldValue::String(s) => FieldValue::String(s.as_ref().into()),
-            RawFieldValue::Number(n) => FieldValue::Number(*n),
-            RawFieldValue::Date(d) => FieldValue::Date((*d).into()),
-            RawFieldValue::DateTime(dt) => FieldValue::DateTime((*dt).into()),
-            RawFieldValue::Time(t) => FieldValue::Time((*t).into()),
-            RawFieldValue::Boolean(b) => FieldValue::Boolean(*b),
+            &RawFieldValue::Number(n) => FieldValue::Number(n),
+            &RawFieldValue::Date(d) => FieldValue::Date(d.into()),
+            &RawFieldValue::DateTime(dt) => FieldValue::DateTime(dt.into()),
+            &RawFieldValue::Time(t) => FieldValue::Time(t.into()),
+            &RawFieldValue::Boolean(b) => FieldValue::Boolean(b),
             RawFieldValue::Array(values) => FieldValue::Array(
                 values
                     .iter()

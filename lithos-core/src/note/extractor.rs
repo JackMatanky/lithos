@@ -12,52 +12,35 @@ use std::borrow::Cow;
 
 use super::{
     parser::{Block, BlockKind, FragmentPool, TextFragment},
-    raw::inline_field::field_token_to_raw,
+    raw::RawListItemText,
 };
-use crate::{
-    config::task::TaskConfigSpec,
-    note::{
-        error::NoteIngestError,
-        position::{SourceByteOffset, SourceByteRange},
-        raw::{
-            RawHeading, RawListItem, RawNote, RawSection, RawSectionKind,
-            RawTaskStatusSymbol,
-        },
-        scanner::{NoteScanner, ScannedRawArtifacts},
-    },
+use crate::note::{
+    error::NoteIngestError,
+    position::{SourceByteOffset, SourceByteRange},
+    raw::{RawHeading, RawListItem, RawNote, RawSection, RawSectionKind},
+    scanner::{NoteScanner, ScannedRawArtifacts},
 };
 
-/// Extracts raw artifacts from completed parser blocks.
+/// Artifact extractor for note markdown blocks.
 ///
-/// Receives a [`Block`] with accumulated text and scannable ranges, runs
-/// [`NoteScanner`] on the appropriate ranges, and writes the resulting raw
-/// artifacts into [`RawNote`].
-///
-/// Orchestrator-level concerns (stack mutations, list context updates, text
-/// propagation to parent blocks) remain the caller's responsibility.
-pub(crate) struct BlockExtractor<'source, 'cfg> {
+/// Bundles a [`NoteScanner`] with the original source text to provide
+/// high-level block finalization methods. This avoids passing the scanner and
+/// source to every parser event handler.
+pub(crate) struct BlockExtractor<'source> {
     source: &'source str,
     scanner: NoteScanner,
-    task_spec: &'cfg TaskConfigSpec,
 }
 
-impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
-    /// Creates a new `BlockExtractor` bound to `source` and `task_spec`.
-    pub(crate) fn new(
-        source: &'source str,
-        scanner: NoteScanner,
-        task_spec: &'cfg TaskConfigSpec,
-    ) -> Self {
+impl<'source> BlockExtractor<'source> {
+    /// Creates a new extractor.
+    #[inline]
+    #[must_use]
+    pub fn new(source: &'source str, scanner: NoteScanner) -> Self {
         Self {
             source,
             scanner,
-            task_spec,
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Public: one method per scan-based block type
-    // -----------------------------------------------------------------------
 
     /// Finalises a heading block by recording the heading and its section.
     ///
@@ -94,7 +77,7 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             block_range,
             depth,
         ));
-        self.extend_output(scan, out);
+        Self::extend_output(scan, out);
         pool.put(block.fragments);
         Ok(())
     }
@@ -123,23 +106,20 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             block_range,
             depth,
         ));
-        self.extend_output(scan, out);
+        Self::extend_output(scan, out);
         pool.put(block.fragments);
         Ok(())
     }
 
     /// Finalises a list item block by building and appending a [`RawListItem`].
     ///
-    /// Scans the block for inline artifacts and the optional task marker,
-    /// computes the trimmed text range from fragments, applies task-spec date
-    /// typing to inline fields, and delegates to [`RawNote::accept_list_item`]
-    /// to enforce the dual-write invariant. Returns the block fragments to
-    /// `pool`.
+    /// Scans the block for inline artifacts, computes the text range from
+    /// fragments, and delegates to [`RawNote::accept_list_item`] to enforce the
+    /// dual-write invariant. Returns the block fragments to `pool`.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteIngestError`] if block scanning, task-marker scanning, or
-    /// text-range computation fails.
+    /// Returns [`NoteIngestError`] if range construction fails.
     pub(crate) fn finalize_list_item(
         &self,
         block: Block<'source>,
@@ -158,18 +138,11 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
             payload.depth.to_u32(),
         ));
 
-        let task_marker = if payload.is_checkbox.is_some() {
-            self.scan_task_marker(block_range)?
-        } else {
-            None
-        };
-
         // Destructure scan before consuming its parts separately.
         let ScannedRawArtifacts {
             tags,
             inline_fields,
             block_refs,
-            ..
         } = scan;
         // block_refs route directly; tags/fields go through accept_list_item
         out.block_refs.extend(block_refs);
@@ -177,20 +150,13 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
         let (raw_text, text_range) =
             fragments_to_text_and_range(&block.fragments)?;
 
-        let inline_fields = inline_fields
-            .into_iter()
-            .map(|t| field_token_to_raw(t, self.task_spec))
-            .collect();
-
         let item = RawListItem::new(
             payload.kind,
             payload.depth,
-            Cow::Owned(raw_text),
-            payload.is_checkbox,
-            task_marker,
-            block_range,
-            text_range,
             payload.parent_pos,
+            payload.is_checkbox,
+            RawListItemText::new(Cow::Owned(raw_text), text_range),
+            block_range,
             tags,
             inline_fields,
         );
@@ -208,16 +174,11 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
     /// Not used for list items — those go through [`RawNote::accept_list_item`]
     /// to enforce the dual-write invariant.
     fn extend_output(
-        &self,
         scan: ScannedRawArtifacts<'source>,
         out: &mut RawNote<'source>,
     ) {
         out.tags.extend(scan.tags);
-        out.inline_fields.extend(
-            scan.inline_fields
-                .into_iter()
-                .map(|t| field_token_to_raw(t, self.task_spec)),
-        );
+        out.inline_fields.extend(scan.inline_fields);
         out.block_refs.extend(scan.block_refs);
     }
 
@@ -236,20 +197,6 @@ impl<'source, 'cfg> BlockExtractor<'source, 'cfg> {
 
         self.scanner
             .scan_ranges(self.source, &scannable_ranges, false)
-            .map_err(NoteIngestError::Domain)
-    }
-
-    /// Delegates to [`NoteScanner::scan_task_marker`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] if offset calculation exceeds supported
-    /// bounds.
-    fn scan_task_marker(
-        &self,
-        block_range: SourceByteRange,
-    ) -> Result<Option<RawTaskStatusSymbol>, NoteIngestError> {
-        NoteScanner::scan_task_marker(self.source, block_range)
             .map_err(NoteIngestError::Domain)
     }
 }

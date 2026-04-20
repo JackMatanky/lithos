@@ -14,26 +14,24 @@ use std::{collections::HashSet, fmt, time::SystemTime};
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
-    note::{
-        error::NoteError,
-        frontmatter::Frontmatter,
-        heading::Heading,
-        inline_fields::InlineField,
-        link::{FrontmatterLink, Link},
-        list::{ListItem, TaskExt as _},
-        paths::NotePath,
-        raw::{
-            RawBlockRef, RawHeading, RawInlineField, RawLink, RawListItem,
-            RawNote, RawSection, RawTag,
-        },
-        structure::{BlockRef, Section},
-        tag::Tag,
-        task::{Task, TaskRef},
-        value::FieldValue,
+use super::{
+    error::NoteError,
+    frontmatter::Frontmatter,
+    heading::Heading,
+    inline_fields::InlineField,
+    link::{FrontmatterLink, Link},
+    list::ListItem,
+    paths::NotePath,
+    raw::{
+        RawBlockRef, RawHeading, RawInlineFieldToken, RawLink, RawListItem,
+        RawNote, RawSection, RawTag,
     },
+    structure::{BlockRef, Section},
+    tag::Tag,
+    task::Task,
+    value::FieldValue,
 };
+use crate::config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec};
 
 /// Stable identifier for a note.
 ///
@@ -471,34 +469,42 @@ impl Note {
 
     fn collect_list_items_from(
         raw_list_items: Vec<RawListItem<'_>>,
+        task_spec: &TaskConfigSpec,
     ) -> Result<Vec<ListItem>, NoteError> {
         let mut items = Vec::with_capacity(raw_list_items.len());
         for raw in raw_list_items {
-            items.push(ListItem::try_from(&raw)?);
+            items.push(ListItem::from_raw(&raw, task_spec)?);
         }
         items.sort_by_key(ListItem::position);
         Ok(items)
     }
 
     fn collect_tasks_from(
-        list_items: &mut [ListItem],
+        list_items: &[ListItem],
+        source: &str,
         task_spec: &TaskConfigSpec,
     ) -> Result<Vec<Task>, NoteError> {
         let mut tasks = Vec::new();
-        for item in list_items.iter_mut() {
-            if !item.is_checkbox() {
+        for item in list_items {
+            if !Self::is_task(item, source) {
                 continue;
             }
 
             if Self::should_promote_task(task_spec, item.tags()) {
-                let task = Task::promote(item, task_spec)?;
-                item.set_task_ref(TaskRef::new(task.range()));
+                let task = Task::promote(item.clone(), source, task_spec)?;
                 tasks.push(task);
             }
         }
 
         tasks.sort_by_key(|task| task.range().start());
         Ok(tasks)
+    }
+
+    fn is_task(item: &ListItem, source: &str) -> bool {
+        let segment = source
+            .get(item.range().start().as_usize()..item.range().end().as_usize())
+            .unwrap_or("");
+        segment.contains('[') && segment.contains(']')
     }
 
     fn should_promote_task(
@@ -521,12 +527,13 @@ impl Note {
     }
 
     fn collect_inline_fields_from(
-        raw_inline_fields: Vec<RawInlineField<'_>>,
+        raw_inline_fields: Vec<RawInlineFieldToken<'_>>,
         list_items: &[ListItem],
+        task_spec: &TaskConfigSpec,
     ) -> Vec<InlineField> {
         let mut inline_fields = raw_inline_fields
             .into_iter()
-            .map(|raw| InlineField::from_raw(&raw))
+            .map(|token| InlineField::from_token(&token, task_spec))
             .collect::<Vec<_>>();
 
         for item in list_items {
@@ -607,6 +614,7 @@ impl NoteWithFileTimes {
 impl<'source>
     TryFrom<(
         RawNote<'source>,
+        &'source str,
         &NotePath,
         NoteId,
         &FrontmatterConfigSpec,
@@ -617,8 +625,9 @@ impl<'source>
 
     #[inline]
     fn try_from(
-        (raw, path, id, frontmatter_spec, task_spec): (
+        (raw, source, path, id, frontmatter_spec, task_spec): (
             RawNote<'source>,
+            &'source str,
             &NotePath,
             NoteId,
             &FrontmatterConfigSpec,
@@ -644,10 +653,13 @@ impl<'source>
                 Frontmatter::try_from((raw_frontmatter, frontmatter_spec))
             })
             .transpose()?;
-        let mut list_items = Note::collect_list_items_from(list_items)?;
-        let tasks = Note::collect_tasks_from(&mut list_items, task_spec)?;
-        let inline_fields =
-            Note::collect_inline_fields_from(raw_inline_fields, &list_items);
+        let list_items = Note::collect_list_items_from(list_items, task_spec)?;
+        let tasks = Note::collect_tasks_from(&list_items, source, task_spec)?;
+        let inline_fields = Note::collect_inline_fields_from(
+            raw_inline_fields,
+            &list_items,
+            task_spec,
+        );
         let tags = Note::collect_tags_from_raw(
             &raw_tags,
             &list_items,
@@ -671,16 +683,15 @@ impl<'source>
             sections,
             links,
             block_refs,
-            list_items,
-            tasks,
-            inline_fields,
+            list_items.into_boxed_slice(),
+            tasks.into_boxed_slice(),
+            inline_fields.into_boxed_slice(),
         ))
     }
 }
 
 #[cfg(test)]
 #[expect(
-    clippy::pattern_type_mismatch,
     clippy::shadow_unrelated,
     reason = "Test code prioritizes readability"
 )]
@@ -699,10 +710,7 @@ mod tests {
         },
         note::{
             position::{SourceByteOffset, SourceByteRange},
-            raw::{
-                RawFieldValue, RawInlineField, RawTaskMarker,
-                RawTaskStatusSymbol,
-            },
+            raw::{RawListItem, RawListItemText, RawListKind},
             scanner::{NoteScanner, ScannedArtifact},
         },
     };
@@ -734,18 +742,18 @@ mod tests {
         let priority_field = task
             .fields()
             .iter()
-            .find(|(k, _)| k.as_str() == "priority")
-            .map(|(_, v)| v);
+            .find(|f| f.key().as_str() == "priority")
+            .map(super::super::inline_fields::InlineField::value);
         assert_eq!(
-            priority_field.and_then(super::super::value::FieldValue::as_number),
+            priority_field.and_then(crate::note::value::FieldValue::as_number),
             Some(2.0f64)
         );
 
         let project_field = task
             .fields()
             .iter()
-            .find(|(k, _)| k.as_str() == "project")
-            .map(|(_, v)| v);
+            .find(|f| f.key().as_str() == "project")
+            .map(super::super::inline_fields::InlineField::value);
         assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
@@ -823,18 +831,18 @@ mod tests {
         let priority_field = task
             .fields()
             .iter()
-            .find(|(k, _)| k.as_str() == "priority")
-            .map(|(_, v)| v);
+            .find(|f| f.key().as_str() == "priority")
+            .map(super::super::inline_fields::InlineField::value);
         assert_eq!(
-            priority_field.and_then(super::super::value::FieldValue::as_number),
+            priority_field.and_then(crate::note::value::FieldValue::as_number),
             Some(2.0f64)
         );
 
         let project_field = task
             .fields()
             .iter()
-            .find(|(k, _)| k.as_str() == "project")
-            .map(|(_, v)| v);
+            .find(|f| f.key().as_str() == "project")
+            .map(super::super::inline_fields::InlineField::value);
         assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
     }
 
@@ -844,14 +852,18 @@ mod tests {
 
     fn promote_task(
         promoted_text: &str,
-        task_spec: &TaskConfigSpec,
+        spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> Task {
-        let item = list_item_from_text(promoted_text, emoji_markers);
-        Task::promote(&item, task_spec).expect("task conversion")
+        let item = list_item_from_text(promoted_text, spec, emoji_markers);
+        Task::promote(item, promoted_text, spec).expect("task conversion")
     }
 
-    fn list_item_from_text(raw_text: &str, emoji_markers: &[char]) -> ListItem {
+    fn list_item_from_text(
+        raw_text: &str,
+        spec: &TaskConfigSpec,
+        emoji_markers: &[char],
+    ) -> ListItem {
         let scanner = NoteScanner::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
@@ -863,60 +875,38 @@ mod tests {
 
         let mut tags = Vec::new();
         let mut inline_fields = Vec::new();
-        let mut task_marker = None;
 
         for artifact in artifacts {
             match artifact {
                 ScannedArtifact::Tag(tag) => tags.push(tag),
                 ScannedArtifact::InlineField(field) => {
-                    let crate::note::raw::RawInlineFieldToken {
-                        key,
-                        value,
-                        range,
-                    } = field;
-                    let typed_value = RawFieldValue::from_str_with_spec(
-                        value.as_ref(),
-                        key.as_ref(),
-                        None,
-                    )
-                    .into_owned();
-                    inline_fields.push(RawInlineField::new(
-                        key,
-                        typed_value,
-                        range,
-                    ));
-                }
-                ScannedArtifact::TaskMarker(symbol) => {
-                    task_marker = Some(symbol);
+                    inline_fields.push(field);
                 }
                 ScannedArtifact::BlockRef(_) => {}
             }
         }
 
-        let mut is_checked = task_marker
-            .map(|marker| matches!(marker.marker, RawTaskMarker::Checked(_)));
-        if task_marker.is_none() {
-            task_marker = Some(RawTaskStatusSymbol::new(
-                RawTaskMarker::Unchecked(' '),
-                SourceByteOffset::new(0),
-            ));
-            is_checked = Some(false);
-        }
+        let is_checkbox =
+            if raw_text.contains("[x]") || raw_text.contains("[X]") {
+                Some(true)
+            } else if raw_text.contains("[ ]") {
+                Some(false)
+            } else {
+                None
+            };
 
         let raw = RawListItem::new(
-            crate::note::raw::RawListKind::Unordered,
+            RawListKind::Unordered,
             crate::note::raw::RawListDepth::Root,
-            raw_text.into(),
-            is_checked,
-            task_marker,
-            range,
-            range,
             None,
+            is_checkbox,
+            RawListItemText::new(raw_text.into(), range),
+            range,
             tags,
             inline_fields,
         );
 
-        ListItem::try_from(&raw).expect("valid list item")
+        ListItem::from_raw(&raw, spec).expect("valid list item")
     }
 
     fn test_config_with_task_tag() -> Config {

@@ -113,6 +113,14 @@ pub enum NoteError {
     /// Filesystem-level error or vault path boundary violation.
     #[error(transparent)]
     File(#[from] NoteFileError),
+
+    /// Internal structural error.
+    #[error("internal error: {0}")]
+    Internal(Box<str>),
+
+    /// Unexpected end of input during scanning.
+    #[error("unexpected end of input")]
+    UnexpectedEof,
 }
 
 /// Errors occurring during the transition from physical file to raw facts.

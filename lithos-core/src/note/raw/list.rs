@@ -1,118 +1,23 @@
 use std::borrow::Cow;
 
-use super::{inline_field::RawInlineField, tag::RawTag};
+use super::{inline_field::RawInlineFieldToken, tag::RawTag};
 use crate::note::position::{SourceByteOffset, SourceByteRange};
 
-/// Raw list container extracted from markdown.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct RawList {
-    pub kind: RawListKind,
-    pub depth: RawListDepth,
-    pub range: SourceByteRange,
-    pub item_positions: Vec<SourceByteOffset>,
-}
-
-impl RawList {
-    /// Create a new raw list container.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        kind: RawListKind,
-        depth: RawListDepth,
-        range: SourceByteRange,
-        item_positions: Vec<SourceByteOffset>,
-    ) -> Self {
-        Self {
-            kind,
-            depth,
-            range,
-            item_positions,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> RawList {
-        RawList {
-            kind: self.kind,
-            depth: self.depth,
-            range: self.range,
-            item_positions: self.item_positions,
-        }
-    }
-}
-
-/// Raw list item extracted from markdown.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct RawListItem<'source> {
-    pub list_kind: RawListKind,
-    pub depth: RawListDepth,
+/// Raw text content and its source range for a list item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawListItemText<'source> {
     pub text: Cow<'source, str>,
-    pub is_checked: Option<bool>,
-    pub task_marker: Option<RawTaskStatusSymbol>,
     pub range: SourceByteRange,
-    pub text_range: SourceByteRange,
-    pub parent: Option<SourceByteOffset>,
-    pub tags: Vec<RawTag<'source>>,
-    pub inline_fields: Vec<RawInlineField<'source>>,
 }
 
-impl<'source> RawListItem<'source> {
-    /// Create a new raw list item.
+impl<'source> RawListItemText<'source> {
+    /// Create a new raw list item text container.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Raw list items capture full source metadata"
-    )]
-    pub fn new(
-        list_kind: RawListKind,
-        depth: RawListDepth,
-        text: Cow<'source, str>,
-        is_checked: Option<bool>,
-        task_marker: Option<RawTaskStatusSymbol>,
-        range: SourceByteRange,
-        text_range: SourceByteRange,
-        parent: Option<SourceByteOffset>,
-        tags: Vec<RawTag<'source>>,
-        inline_fields: Vec<RawInlineField<'source>>,
-    ) -> Self {
+    pub const fn new(text: Cow<'source, str>, range: SourceByteRange) -> Self {
         Self {
-            list_kind,
-            depth,
             text,
-            is_checked,
-            task_marker,
             range,
-            text_range,
-            parent,
-            tags,
-            inline_fields,
-        }
-    }
-}
-
-impl RawListItem<'_> {
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> RawListItem<'static> {
-        RawListItem {
-            list_kind: self.list_kind,
-            depth: self.depth,
-            text: Cow::Owned(self.text.into_owned()),
-            is_checked: self.is_checked,
-            task_marker: self.task_marker,
-            range: self.range,
-            text_range: self.text_range,
-            parent: self.parent,
-            tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
-            inline_fields: self
-                .inline_fields
-                .into_iter()
-                .map(RawInlineField::into_owned)
-                .collect(),
         }
     }
 }
@@ -176,73 +81,111 @@ impl From<u32> for RawListDepth {
     }
 }
 
-/// Raw task status symbol with source position.
-///
-/// This combines a [`RawTaskMarker`] classification with the exact source
-/// position where the marker character appears in the markdown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Raw list container extracted from markdown.
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct RawTaskStatusSymbol {
-    /// The task marker classification.
-    pub marker: RawTaskMarker,
-    /// The absolute source position of the marker character.
-    pub position: SourceByteOffset,
+pub struct RawList {
+    pub kind: RawListKind,
+    pub depth: RawListDepth,
+    pub range: SourceByteRange,
+    pub item_positions: Vec<SourceByteOffset>,
 }
 
-impl RawTaskStatusSymbol {
-    /// Create a new raw task status symbol.
+impl RawList {
+    /// Create a new raw list container.
     #[inline]
     #[must_use]
-    pub const fn new(
-        marker: RawTaskMarker,
-        position: SourceByteOffset,
+    pub fn new(
+        kind: RawListKind,
+        depth: RawListDepth,
+        range: SourceByteRange,
+        item_positions: Vec<SourceByteOffset>,
     ) -> Self {
         Self {
-            marker,
-            position,
+            kind,
+            depth,
+            range,
+            item_positions,
         }
     }
 
-    /// Returns the raw marker character.
     #[inline]
     #[must_use]
-    pub const fn marker_char(self) -> char {
-        self.marker.marker()
+    pub fn into_owned(self) -> RawList {
+        RawList {
+            kind: self.kind,
+            depth: self.depth,
+            range: self.range,
+            item_positions: self.item_positions,
+        }
     }
 }
 
-/// Raw task marker kind extracted from a list item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Raw list item extracted from markdown.
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum RawTaskMarker {
-    /// Unchecked task marker (typically `[ ]`).
-    Unchecked(char),
-    /// Checked task marker (typically `[x]`).
-    Checked(char),
-    /// Task marker with a non-standard symbol.
-    Other(char),
+pub struct RawListItem<'source> {
+    pub kind: RawListKind,
+    pub depth: RawListDepth,
+    pub parent: Option<SourceByteOffset>,
+    pub is_checkbox: Option<bool>,
+    pub text: RawListItemText<'source>,
+    pub range: SourceByteRange,
+    pub tags: Vec<RawTag<'source>>,
+    pub inline_fields: Vec<RawInlineFieldToken<'source>>,
 }
 
-impl RawTaskMarker {
-    /// Create a raw task marker from a character.
+impl<'source> RawListItem<'source> {
+    /// Create a new raw list item.
     #[inline]
     #[must_use]
-    pub fn from_char(marker: char) -> Self {
-        match marker {
-            ' ' => Self::Unchecked(marker),
-            'x' | 'X' => Self::Checked(marker),
-            _ => Self::Other(marker),
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Raw list items capture full structural metadata"
+    )]
+    pub fn new(
+        kind: RawListKind,
+        depth: RawListDepth,
+        parent: Option<SourceByteOffset>,
+        is_checkbox: Option<bool>,
+        text: RawListItemText<'source>,
+        range: SourceByteRange,
+        tags: Vec<RawTag<'source>>,
+        inline_fields: Vec<RawInlineFieldToken<'source>>,
+    ) -> Self {
+        Self {
+            kind,
+            depth,
+            parent,
+            is_checkbox,
+            text,
+            range,
+            tags,
+            inline_fields,
         }
     }
+}
 
-    /// Returns the raw marker character.
+impl RawListItem<'_> {
     #[inline]
     #[must_use]
-    pub const fn marker(self) -> char {
-        match self {
-            Self::Unchecked(marker)
-            | Self::Checked(marker)
-            | Self::Other(marker) => marker,
+    pub fn into_owned(self) -> RawListItem<'static> {
+        RawListItem {
+            kind: self.kind,
+            depth: self.depth,
+            parent: self.parent,
+            is_checkbox: self.is_checkbox,
+            text: RawListItemText {
+                text: Cow::Owned(self.text.text.into_owned()),
+                range: self.text.range,
+            },
+            range: self.range,
+            tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
+            inline_fields: self
+                .inline_fields
+                .into_iter()
+                .map(RawInlineFieldToken::into_owned)
+                .collect(),
         }
     }
 }

@@ -34,7 +34,7 @@ use crate::{
 /// This is a stateful pushdown automaton. Callers use only the static
 /// [`MarkdownParser::parse`] entry point; the struct itself is an
 /// internal implementation detail.
-pub struct MarkdownParser<'source, 'cfg> {
+pub struct MarkdownParser<'source> {
     // Source and configuration
     ref_defs: LinkRefResolver,
 
@@ -47,11 +47,11 @@ pub struct MarkdownParser<'source, 'cfg> {
     open_items: Vec<usize>,
 
     // Components
-    extractor: crate::note::extractor::BlockExtractor<'source, 'cfg>,
+    extractor: crate::note::extractor::BlockExtractor<'source>,
     out: RawNote<'source>,
 }
 
-impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
+impl<'source> MarkdownParser<'source> {
     /// Parses markdown into a minimal AST and extracts raw note artifacts.
     ///
     /// # Errors
@@ -63,7 +63,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
     #[inline]
     pub fn parse(
         source: &'source str,
-        task_spec: &'cfg TaskConfigSpec,
+        task_spec: &TaskConfigSpec,
     ) -> Result<RawNote<'source>, NoteIngestError> {
         let base = Parser::new_ext(source, Self::extension_options());
         let offset_iter = base.into_offset_iter();
@@ -102,7 +102,7 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
 
     fn new(
         source: &'source str,
-        task_spec: &'cfg TaskConfigSpec,
+        task_spec: &TaskConfigSpec,
         ref_defs: LinkRefResolver,
     ) -> Self {
         let emoji_markers = if task_spec.use_emoji {
@@ -111,9 +111,8 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
             Box::new([])
         };
         let scanner = NoteScanner::new(emoji_markers);
-        let extractor = crate::note::extractor::BlockExtractor::new(
-            source, scanner, task_spec,
-        );
+        let extractor =
+            crate::note::extractor::BlockExtractor::new(source, scanner);
         let out = RawNote::new(
             None,
             Vec::with_capacity(4),
@@ -493,6 +492,41 @@ impl<'source, 'cfg> MarkdownParser<'source, 'cfg> {
 
 // ── PDA stack types ──────────────────────────────────────────────────────────
 
+/// Source span for a block element, capturing both start and end positions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BlockSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl BlockSpan {
+    /// Converts this span to a [`SourceByteRange`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteIngestError`] if the span exceeds the supported offset
+    /// range or if the resulting range is invalid.
+    pub(crate) fn to_source_range(
+        self,
+    ) -> Result<SourceByteRange, NoteIngestError> {
+        SourceByteRange::try_from(self.start..self.end)
+            .map_err(NoteIngestError::Domain)
+    }
+}
+
+/// A text fragment with its source position.
+///
+/// Represents a slice of text extracted from a block, preserving the exact
+/// source range for position mapping. The `is_scannable` flag indicates
+/// whether this fragment should be scanned for inline metadata (tags, fields,
+/// block refs).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TextFragment<'source> {
+    pub text: Cow<'source, str>,
+    pub range: SourceByteRange,
+    pub is_scannable: bool,
+}
+
 /// The parser's pushdown automaton stack, bundled with its backing fragment
 /// pool.
 ///
@@ -587,41 +621,6 @@ pub(crate) struct Block<'source> {
     pub _marker: std::marker::PhantomData<&'source str>,
 }
 
-/// Source span for a block element, capturing both start and end positions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BlockSpan {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl BlockSpan {
-    /// Converts this span to a [`SourceByteRange`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteIngestError`] if the span exceeds the supported offset
-    /// range or if the resulting range is invalid.
-    pub(crate) fn to_source_range(
-        self,
-    ) -> Result<SourceByteRange, NoteIngestError> {
-        SourceByteRange::try_from(self.start..self.end)
-            .map_err(NoteIngestError::Domain)
-    }
-}
-
-/// A text fragment with its source position.
-///
-/// Represents a slice of text extracted from a block, preserving the exact
-/// source range for position mapping. The `is_scannable` flag indicates
-/// whether this fragment should be scanned for inline metadata (tags, fields,
-/// block refs).
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TextFragment<'source> {
-    pub text: Cow<'source, str>,
-    pub range: SourceByteRange,
-    pub is_scannable: bool,
-}
-
 /// Discriminant for [`Block`] stack frames, carrying per-kind metadata.
 ///
 /// Determines which finalisation path in
@@ -635,14 +634,14 @@ pub(crate) enum BlockKind {
     Heading(HeadingPayload),
     /// Bare paragraph block.
     Paragraph,
+    /// A single list item with its enclosing list context.
+    ListItem(ListItemPayload),
+    /// Ordered or unordered list container.
+    List,
     /// Block quote container.
     BlockQuote,
     /// Fenced or indented code block.
     CodeBlock,
-    /// Ordered or unordered list container.
-    List,
-    /// A single list item with its enclosing list context.
-    ListItem(ListItemPayload),
 }
 
 /// Payload for metadata blocks.
@@ -904,10 +903,7 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        config::task::TaskConfigSpec,
-        note::raw::{RawFieldValue, RawTaskMarker},
-    };
+    use crate::config::task::TaskConfigSpec;
 
     fn task_spec_fixture() -> TaskConfigSpec {
         TaskConfigSpec {
@@ -976,7 +972,7 @@ mod tests {
         let raw = parse_raw(md);
         let field = raw.inline_fields.first().expect("field exists");
         assert_eq!(field.key, "bare_key");
-        assert_eq!(field.value, RawFieldValue::String("bare_val".into()));
+        assert_eq!(field.value, "bare_val");
     }
 
     #[test]
@@ -1003,11 +999,7 @@ mod tests {
         let md = "- [x] Done";
         let raw = parse_raw(md);
         let item = raw.list_items.first().expect("list item exists");
-        assert_eq!(item.is_checked, Some(true));
-        assert!(matches!(
-            item.task_marker.map(|s| s.marker),
-            Some(RawTaskMarker::Checked('x'))
-        ));
+        assert_eq!(item.is_checkbox, Some(true));
     }
 
     #[test]

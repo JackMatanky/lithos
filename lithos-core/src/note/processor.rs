@@ -111,6 +111,7 @@ pub struct Suspect {
 pub struct New {
     raw: RawNote<'static>,
     path: NotePath,
+    source: Box<str>,
 }
 
 /// Status for parsed raw note in the update path.
@@ -118,6 +119,7 @@ pub struct New {
 pub struct Changed {
     raw: RawNote<'static>,
     path: NotePath,
+    source: Box<str>,
 }
 
 /// Terminal status for completed processing.
@@ -453,11 +455,13 @@ impl NoteProcessor<Analysis, Suspect> {
         let raw = MarkdownParser::parse(&self.status.content, task_spec)
             .map(RawNote::into_owned)?;
         let path = self.status.info.path.clone();
+        let source = self.status.content.into_boxed_str();
 
         if self.status.is_new {
             Ok(AnalysisBranch::New(Self::transition(Construction, New {
                 raw,
                 path,
+                source,
             })))
         } else {
             Ok(AnalysisBranch::Changed(Self::transition(
@@ -465,6 +469,7 @@ impl NoteProcessor<Analysis, Suspect> {
                 Changed {
                     raw,
                     path,
+                    source,
                 },
             )))
         }
@@ -485,6 +490,7 @@ impl NoteProcessor<Construction, New> {
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
+            self.status.source.as_ref(),
             &path,
             note_id,
             frontmatter_spec,
@@ -514,6 +520,7 @@ impl NoteProcessor<Construction, Changed> {
             .map_or_else(NoteId::new, |note| note.id());
         let facts = Note::try_from((
             self.status.raw,
+            self.status.source.as_ref(),
             &path,
             note_id,
             frontmatter_spec,

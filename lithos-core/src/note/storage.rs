@@ -575,6 +575,7 @@ mod tests {
         let task_spec = config.to_task_spec();
         let facts = Note::try_from((
             raw,
+            "", // Add empty source for tests
             &path,
             NoteId::new(),
             &frontmatter_spec,
@@ -617,6 +618,7 @@ mod tests {
         let task_spec = config.to_task_spec();
         let facts = Note::try_from((
             raw,
+            "", // Add empty source for tests
             &path,
             NoteId::new(),
             &frontmatter_spec,
