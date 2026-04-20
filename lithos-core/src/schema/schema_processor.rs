@@ -238,51 +238,13 @@ impl<T> ProcessorNode<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProcessorEdge {
-    relation: ExtendsChangeKind,
-}
-
-fn extends_change_for<T>(
+#[inline]
+#[must_use]
+fn relation_for(
     id: SchemaId,
-    graph: &crate::graph::Graph<SchemaId, T>,
-    edge_relations: &HashMap<(SchemaId, SchemaId), ProcessorEdge>,
+    relation: &HashMap<SchemaId, ExtendsChangeKind>,
 ) -> ExtendsChangeKind {
-    let mut change = ExtendsChangeKind::Unchanged;
-    for parent in graph.parents_of(id) {
-        let Some(edge) = edge_relations.get(&(*parent, id)) else {
-            continue;
-        };
-        change = match (change, edge.relation()) {
-            (ExtendsChangeKind::Rewired, _)
-            | (_, ExtendsChangeKind::Rewired) => ExtendsChangeKind::Rewired,
-            (ExtendsChangeKind::RootToChild, _)
-            | (_, ExtendsChangeKind::RootToChild) => {
-                ExtendsChangeKind::RootToChild
-            }
-            (ExtendsChangeKind::ChildToRoot, _)
-            | (_, ExtendsChangeKind::ChildToRoot) => {
-                ExtendsChangeKind::ChildToRoot
-            }
-            _ => ExtendsChangeKind::Unchanged,
-        };
-    }
-    change
-}
-
-impl Default for ProcessorEdge {
-    fn default() -> Self {
-        Self {
-            relation: ExtendsChangeKind::Unchanged,
-        }
-    }
-}
-
-impl ProcessorEdge {
-    #[inline]
-    pub(crate) fn relation(self) -> ExtendsChangeKind {
-        self.relation
-    }
+    relation.get(&id).copied().unwrap_or(ExtendsChangeKind::Unchanged)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -599,7 +561,7 @@ pub(crate) struct Parsed {
 pub(crate) struct Graphed {
     graph: ProcessingDag<ProcessorNode<InheritanceBranch>>,
     deleted_ids: Vec<SchemaId>,
-    edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge>,
+    relation: HashMap<SchemaId, ExtendsChangeKind>,
 }
 
 #[derive(Debug)]
@@ -608,7 +570,7 @@ pub(crate) struct Analyzed {
     refresh_ids: Vec<SchemaId>,
     rebuild_ids: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
-    edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge>,
+    relation: HashMap<SchemaId, ExtendsChangeKind>,
 }
 
 #[derive(Debug)]
@@ -616,7 +578,7 @@ pub(crate) struct Constructed {
     graph: ProcessingDag<ProcessorNode<AnalysisBranch>>,
     schemas: Vec<Arc<Schema>>,
     deleted_ids: Vec<SchemaId>,
-    edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge>,
+    relation: HashMap<SchemaId, ExtendsChangeKind>,
 }
 
 #[derive(Debug)]
@@ -1375,8 +1337,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         let index = SchemaIndex::from_name_id_pairs(name_index.clone());
 
         let mut builder = SchemaGraphBuilder::new();
-        let mut edge_relations: HashMap<(SchemaId, SchemaId), ProcessorEdge> =
-            HashMap::new();
+        let mut relation: HashMap<SchemaId, ExtendsChangeKind> = HashMap::new();
 
         let mut node_entries: Vec<_> =
             parsed_payloads.keys().copied().collect();
@@ -1444,10 +1405,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 
             if let Some(parent_id) = new_parent {
                 builder.add_parent(id, parent_id);
-                edge_relations.insert((parent_id, id), ProcessorEdge {
-                    relation: change_kind,
-                });
             }
+            relation.insert(id, change_kind);
         }
 
         for id in &new_ids {
@@ -1470,10 +1429,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 
             if let Some(parent_id) = new_parent {
                 builder.add_parent(*id, parent_id);
-                edge_relations.insert((parent_id, *id), ProcessorEdge {
-                    relation: ExtendsChangeKind::Unchanged,
-                });
             }
+            relation.insert(*id, ExtendsChangeKind::Unchanged);
         }
 
         let schema_graph = builder.build();
@@ -1487,7 +1444,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             Graphed {
                 graph: processed_graph,
                 deleted_ids,
-                edge_relations,
+                relation,
             },
         ))
     }
@@ -1582,7 +1539,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let Graphed {
             graph,
             deleted_ids,
-            edge_relations,
+            relation,
         } = self.status;
 
         let mut merge_roots: HashSet<SchemaId> = HashSet::new();
@@ -1590,9 +1547,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             clippy::iter_over_hash_type,
             reason = "merge root collection ignores iteration order"
         )]
-        for (&(_, child), edge) in &edge_relations {
-            if edge.relation().requires_merge() {
-                merge_roots.insert(child);
+        for (&id, change) in &relation {
+            if change.requires_merge() {
+                merge_roots.insert(id);
             }
         }
         let affected: HashSet<SchemaId> = if merge_roots.is_empty() {
@@ -1882,7 +1839,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             refresh_ids,
             rebuild_ids,
             deleted_ids,
-            edge_relations,
+            relation,
         }))
     }
 
@@ -2028,7 +1985,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             refresh_ids,
             rebuild_ids,
             deleted_ids,
-            edge_relations,
+            relation,
         } = self.status;
 
         let mut fetch_ids = refresh_ids.clone();
@@ -2036,8 +1993,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             .iter()
             .filter_map(|id| {
                 let node = graph.graph().get(*id)?;
-                let extends_change =
-                    extends_change_for(*id, graph.graph(), &edge_relations);
+                let extends_change = relation_for(*id, &relation);
                 match node.payload().payload.clone() {
                     AnalysisBranch::Rebuild(payload)
                         if payload.property_delta.is_some()
@@ -2138,7 +2094,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                 Self::construct_schema_incremental(
                     id,
                     node.payload(),
-                    extends_change_for(id, graph.graph(), &edge_relations),
+                    relation_for(id, &relation),
                     parents,
                     children,
                     &expanded_by_id,
@@ -2179,7 +2135,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             graph,
             schemas: changed_schemas,
             deleted_ids,
-            edge_relations,
+            relation,
         }))
     }
 
@@ -2546,7 +2502,7 @@ impl SchemaProcessor<Construction, Constructed> {
             graph,
             schemas,
             deleted_ids,
-            edge_relations,
+            relation,
         } = self.status;
 
         let owned_schemas: Vec<Schema> =
@@ -2583,7 +2539,7 @@ impl SchemaProcessor<Construction, Constructed> {
             graph,
             schemas,
             deleted_ids,
-            edge_relations,
+            relation,
         }))
     }
 }
