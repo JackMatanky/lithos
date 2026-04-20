@@ -72,6 +72,8 @@ pub mod structure;
 pub mod tag;
 /// Task value object.
 pub mod task;
+/// Query-optimized view projections.
+pub mod views;
 
 /// Note errors.
 pub mod error;
@@ -98,3 +100,10 @@ pub(crate) const NOTES_BY_ID: redb::TableDefinition<&str, &[u8]> =
 /// note paths.
 pub(crate) const NOTE_ID_BY_PATH: redb::TableDefinition<&str, &[u8]> =
     redb::TableDefinition::new("note_id_by_path");
+
+/// `LIST_VIEWS_BY_NOTE_ID` stores serialized
+/// [`ListView`][crate::note::views::ListView] projections keyed by note UUID
+/// strings. This is a rebuildable cache of query-optimized hierarchical list
+/// representations.
+pub(crate) const LIST_VIEWS_BY_NOTE_ID: redb::TableDefinition<&str, &[u8]> =
+    redb::TableDefinition::new("list_views_by_note_id");

@@ -10,14 +10,19 @@ use uuid::Uuid;
 use crate::{
     db::{BatchReader, BatchWriter, Database, DbError},
     note::{
-        NOTE_ID_BY_PATH, NOTES_BY_ID,
+        LIST_VIEWS_BY_NOTE_ID, NOTE_ID_BY_PATH, NOTES_BY_ID,
         aggregate::{Note, NoteId},
         error::NoteRepositoryError,
         paths::NotePath,
+        views::ListView,
     },
 };
 
 /// Unified repository trait for note storage and queries.
+#[expect(
+    clippy::multiple_bounds_in_separate_declarations,
+    reason = "Separate bounds needed for GAT"
+)]
 pub trait Repository: Send + Sync {
     /// Batch reader type for grouped read operations.
     type BatchReader<'reader>;
@@ -101,6 +106,24 @@ pub trait Repository: Send + Sync {
     /// Executes many write operations within a single transaction.
     ///
     /// # Errors
+    /// Retrieves a cached `ListView` for a note.
+    ///
+    /// # Errors
+    /// Returns error if the note doesn't exist or database access fails.
+    fn get_list_view(&self, note_id: NoteId) -> Result<ListView, Self::Error>;
+
+    /// Caches a `ListView` projection in the database.
+    ///
+    /// # Errors
+    /// Returns error if serialization or database write fails.
+    fn cache_list_view(&self, view: &ListView) -> Result<(), Self::Error>;
+
+    /// Removes a cached `ListView` from the database.
+    ///
+    /// # Errors
+    /// Returns error if database access fails.
+    fn invalidate_list_view(&self, note_id: NoteId) -> Result<(), Self::Error>;
+
     /// Returns a repository error if the transaction fails.
     fn with_batch_write<F>(&self, f: F) -> Result<(), Self::Error>
     where
@@ -222,6 +245,36 @@ impl<'writer> RedbBatchNoteWriter<'writer> {
         let id_str: &str = id_str;
         self.writer
             .delete(NOTES_BY_ID, id_str)
+            .map_err(NoteRepositoryError::Storage)?;
+        Ok(())
+    }
+
+    /// Persists a `ListView` in the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if persistence fails.
+    #[inline]
+    pub fn put_list_view(
+        &mut self,
+        id_str: &str,
+        view: &ListView,
+    ) -> Result<(), NoteRepositoryError> {
+        self.writer
+            .put(LIST_VIEWS_BY_NOTE_ID, id_str, view)
+            .map_err(NoteRepositoryError::Storage)
+    }
+
+    /// Removes a `ListView` from the batch transaction.
+    ///
+    /// # Errors
+    /// Returns a repository error if removal fails.
+    #[inline]
+    pub fn remove_list_view(
+        &mut self,
+        id_str: &str,
+    ) -> Result<(), NoteRepositoryError> {
+        self.writer
+            .delete(LIST_VIEWS_BY_NOTE_ID, id_str)
             .map_err(NoteRepositoryError::Storage)?;
         Ok(())
     }
@@ -500,6 +553,38 @@ impl Repository for RedbRepository<'_> {
             })
             .map_err(NoteRepositoryError::Storage)
     }
+
+    #[inline]
+    fn get_list_view(&self, note_id: NoteId) -> Result<ListView, Self::Error> {
+        let id = Uuid::from(note_id);
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+
+        self.db
+            .get_owned::<ListView>(LIST_VIEWS_BY_NOTE_ID, id_str)
+            .map_err(NoteRepositoryError::Storage)?
+            .ok_or(NoteRepositoryError::NotFound {
+                id: note_id,
+            })
+    }
+
+    #[inline]
+    fn cache_list_view(&self, view: &ListView) -> Result<(), Self::Error> {
+        let id = Uuid::from(view.note_id());
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+
+        self.with_batch_write(|writer| writer.put_list_view(id_str, view))
+    }
+
+    #[inline]
+    fn invalidate_list_view(&self, note_id: NoteId) -> Result<(), Self::Error> {
+        let id = Uuid::from(note_id);
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+
+        self.with_batch_write(|writer| writer.remove_list_view(id_str))
+    }
 }
 
 #[cfg(test)]
@@ -539,7 +624,6 @@ mod tests {
     fn raw_note(_path: NotePath) -> RawNote<'static> {
         RawNote::new(
             None,
-            Vec::new(),
             Vec::new(),
             Vec::new(),
             Vec::new(),

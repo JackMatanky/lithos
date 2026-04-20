@@ -34,6 +34,7 @@ use crate::{
         paths::NotePath,
         raw::RawNote,
         storage::Repository,
+        views::ListView,
     },
 };
 
@@ -337,6 +338,8 @@ impl NoteProcessor<Discovery, Unknown> {
         let stored = repository.find_by_path(path)?;
         if let Some(note) = stored {
             repository.delete_note(note.id())?;
+            // Invalidate the cached ListView (intentionally fire-and-forget)
+            drop(repository.invalidate_list_view(note.id()));
             return Ok(NoteProcessReport {
                 note_id: Some(note.id()),
                 path: path.clone(),
@@ -497,6 +500,15 @@ impl NoteProcessor<Construction, New> {
             task_spec,
         ))?;
         let saved_id = repository.save(&facts)?;
+
+        // Build and cache the ListView projection
+        // Build and cache the ListView projection (intentionally
+        // fire-and-forget)
+        drop(repository.cache_list_view(&ListView::from_note_items(
+            saved_id,
+            facts.list_items(),
+        )));
+
         Ok(NoteProcessReport {
             note_id: Some(saved_id),
             path,
@@ -527,6 +539,14 @@ impl NoteProcessor<Construction, Changed> {
             task_spec,
         ))?;
         let saved_id = repository.save(&facts)?;
+
+        // Build and cache the ListView projection (intentionally
+        // fire-and-forget)
+        drop(repository.cache_list_view(&ListView::from_note_items(
+            saved_id,
+            facts.list_items(),
+        )));
+
         Ok(NoteProcessReport {
             note_id: Some(saved_id),
             path,

@@ -81,46 +81,6 @@ impl From<u32> for RawListDepth {
     }
 }
 
-/// Raw list container extracted from markdown.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct RawList {
-    pub kind: RawListKind,
-    pub depth: RawListDepth,
-    pub range: SourceByteRange,
-    pub item_positions: Vec<SourceByteOffset>,
-}
-
-impl RawList {
-    /// Create a new raw list container.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        kind: RawListKind,
-        depth: RawListDepth,
-        range: SourceByteRange,
-        item_positions: Vec<SourceByteOffset>,
-    ) -> Self {
-        Self {
-            kind,
-            depth,
-            range,
-            item_positions,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn into_owned(self) -> RawList {
-        RawList {
-            kind: self.kind,
-            depth: self.depth,
-            range: self.range,
-            item_positions: self.item_positions,
-        }
-    }
-}
-
 /// Raw list item extracted from markdown.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

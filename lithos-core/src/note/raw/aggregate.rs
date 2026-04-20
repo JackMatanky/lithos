@@ -2,7 +2,7 @@
 
 use super::{
     RawBlockRef, RawFrontmatter, RawHeading, RawInlineFieldToken, RawLink,
-    RawList, RawListItem, RawSection, RawTag,
+    RawListItem, RawSection, RawTag,
 };
 
 /// Unvalidated extraction output for a single markdown note.
@@ -18,7 +18,6 @@ pub struct RawNote<'source> {
     pub sections: Vec<RawSection>,
     pub links: Vec<RawLink<'source>>,
     pub tags: Vec<RawTag<'source>>,
-    pub lists: Vec<RawList>,
     pub list_items: Vec<RawListItem<'source>>,
     pub inline_fields: Vec<RawInlineFieldToken<'source>>,
     pub block_refs: Vec<RawBlockRef<'source>>,
@@ -38,7 +37,6 @@ impl<'source> RawNote<'source> {
         sections: Vec<RawSection>,
         links: Vec<RawLink<'source>>,
         tags: Vec<RawTag<'source>>,
-        lists: Vec<RawList>,
         list_items: Vec<RawListItem<'source>>,
         inline_fields: Vec<RawInlineFieldToken<'source>>,
         block_refs: Vec<RawBlockRef<'source>>,
@@ -49,7 +47,6 @@ impl<'source> RawNote<'source> {
             sections,
             links,
             tags,
-            lists,
             list_items,
             inline_fields,
             block_refs,
@@ -82,7 +79,6 @@ impl<'source> RawNote<'source> {
             sections: self.sections,
             links: self.links.into_iter().map(RawLink::into_owned).collect(),
             tags: self.tags.into_iter().map(RawTag::into_owned).collect(),
-            lists: self.lists.into_iter().map(RawList::into_owned).collect(),
             list_items: self
                 .list_items
                 .into_iter()

@@ -640,11 +640,9 @@ impl<'source>
             sections,
             links,
             tags: raw_tags,
-            lists: _lists,
             list_items,
             inline_fields: raw_inline_fields,
             block_refs,
-            ..
         } = raw;
         let path = path.clone();
 

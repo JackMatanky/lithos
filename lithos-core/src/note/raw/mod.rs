@@ -19,7 +19,6 @@ pub type RawInlineFieldToken<'source> =
     inline_field::RawInlineFieldToken<'source>;
 pub type RawLink<'source> = link::RawLink<'source>;
 pub type RawLinkStyle = link::RawLinkStyle;
-pub type RawList = list::RawList;
 pub type RawListDepth = list::RawListDepth;
 pub type RawListItem<'source> = list::RawListItem<'source>;
 pub type RawListItemText<'source> = list::RawListItemText<'source>;

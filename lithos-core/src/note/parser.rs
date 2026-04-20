@@ -20,8 +20,8 @@ use crate::{
         error::{NoteIngestError, NoteParseError},
         position::{SourceByteOffset, SourceByteRange},
         raw::{
-            RawFrontmatter, RawLink, RawLinkStyle, RawList, RawListDepth,
-            RawListKind, RawNote, RawSection, RawSectionKind,
+            RawFrontmatter, RawLink, RawLinkStyle, RawListDepth, RawListKind,
+            RawNote, RawSection, RawSectionKind,
         },
         scanner::NoteScanner,
     },
@@ -43,7 +43,6 @@ pub struct MarkdownParser<'source> {
     depth: u32,
     link: Option<RawLink<'source>>,
     list_kinds: Vec<RawListKind>,
-    list_ctxs: Vec<ListCtx>,
     open_items: Vec<usize>,
 
     // Components
@@ -119,7 +118,6 @@ impl<'source> MarkdownParser<'source> {
             Vec::with_capacity(8),
             Vec::with_capacity(8),
             Vec::with_capacity(8),
-            Vec::with_capacity(4),
             Vec::with_capacity(8),
             Vec::with_capacity(8),
             Vec::with_capacity(8),
@@ -130,7 +128,6 @@ impl<'source> MarkdownParser<'source> {
             depth: 0,
             link: None,
             list_kinds: Vec::with_capacity(4),
-            list_ctxs: Vec::with_capacity(4),
             open_items: Vec::with_capacity(8),
             extractor,
             out,
@@ -198,9 +195,6 @@ impl<'source> MarkdownParser<'source> {
                     None => RawListKind::Unordered,
                 };
                 self.list_kinds.push(kind);
-                self.list_ctxs.push(ListCtx {
-                    item_positions: Vec::new(),
-                });
                 self.depth = self.depth.saturating_add(1);
                 self.stack.push(BlockKind::List, start);
             }
@@ -319,32 +313,17 @@ impl<'source> MarkdownParser<'source> {
             TagEnd::Item => {
                 let mut block = self.stack.pop()?;
                 block.span.end = byte_end;
-                let item_start = block.span.start;
                 self.extractor.finalize_list_item(
                     block,
                     &mut self.out,
                     self.stack.pool_mut(),
                 )?;
-                if let Some(ctx) = self.list_ctxs.last_mut() {
-                    ctx.item_positions
-                        .push(SourceByteOffset::try_from_usize(item_start)?);
-                }
             }
             TagEnd::List(_) => {
                 let mut block = self.stack.pop()?;
                 block.span.end = byte_end;
-                let range = block.span.to_source_range()?;
                 self.depth = self.depth.saturating_sub(1);
-                if let (Some(ctx), Some(kind)) =
-                    (self.list_ctxs.pop(), self.list_kinds.pop())
-                {
-                    self.out.lists.push(RawList::new(
-                        kind,
-                        RawListDepth::from(self.depth),
-                        range,
-                        ctx.item_positions,
-                    ));
-                }
+                self.list_kinds.pop();
                 self.stack.recycle(block.fragments);
             }
             TagEnd::BlockQuote(_) => {
@@ -679,14 +658,6 @@ pub(crate) struct ListItemPayload {
     pub parent_pos: Option<SourceByteOffset>,
     /// Whether the item has a task checkbox.
     pub is_checkbox: Option<bool>,
-}
-
-/// List context for the new [`MarkdownParser`] stateful struct.
-///
-/// Tracks item start positions for the current open list, used to populate
-/// [`RawList::item_positions`] when the list is finalised.
-pub(crate) struct ListCtx {
-    pub item_positions: Vec<SourceByteOffset>,
 }
 
 // ── Fragment pool ────────────────────────────────────────────────────────────
