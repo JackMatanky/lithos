@@ -535,6 +535,48 @@ impl<T> ProcessingDag<T> {
     pub fn into_dag(self) -> crate::graph::DagGraph<SchemaId, T> {
         self.0
     }
+
+    /// Maps each node payload into a new DAG while preserving structure.
+    ///
+    /// The mapping runs in deterministic node-ID order to keep processing
+    /// behavior stable across runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error from the mapping closure, or from DAG validation when
+    /// reconstructing the mapped graph.
+    #[inline]
+    pub fn map_payload<U, E, F>(
+        &self,
+        mut mapper: F,
+    ) -> Result<ProcessingDag<U>, E>
+    where
+        F: FnMut(SchemaId, &T) -> Result<U, E>,
+        E: From<crate::schema::error::SchemaInheritanceError>,
+    {
+        let mut builder =
+            SchemaGraphBuilder::with_capacity(self.graph().node_count());
+
+        let mut node_ids: Vec<SchemaId> =
+            self.graph().iter().map(|(id, _)| id).collect();
+        node_ids.sort();
+
+        for id in &node_ids {
+            let Some(node) = self.graph().get(*id) else {
+                continue;
+            };
+            let mapped_payload = mapper(*id, node.payload())?;
+            builder.add_node(*id, mapped_payload);
+        }
+
+        for child_id in node_ids {
+            for &parent_id in self.graph().parents_of(child_id) {
+                builder.add_parent(child_id, parent_id);
+            }
+        }
+
+        ProcessingDag::try_from(builder.build()).map_err(E::from)
+    }
 }
 
 impl<T> TryFrom<SchemaGraph<T>> for ProcessingDag<T> {

@@ -188,6 +188,13 @@ pub enum SchemaLoaderError {
     Resolution(#[from] SchemaError),
 }
 
+impl From<SchemaInheritanceError> for SchemaLoaderError {
+    #[inline]
+    fn from(value: SchemaInheritanceError) -> Self {
+        Self::Resolution(SchemaError::Inheritance(value))
+    }
+}
+
 /// File-system and filename errors during ingestion.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

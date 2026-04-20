@@ -1188,95 +1188,91 @@ impl SchemaProcessor<FileParsed, Compared> {
             });
         }
 
-        let mut builder = SchemaGraphBuilder::new();
-        let mut node_entries: Vec<_> =
-            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
-        node_entries.sort_by_key(|entry| entry.0);
-
-        for (id, node) in node_entries {
-            let next = match node.payload().payload.clone() {
-                ComparedPayload::Stale(payload) => {
-                    let schema_name = source
-                        .basename(&payload.path)
-                        .map_err(SchemaIngestionError::from)
-                        .map_err(SchemaLoaderError::Ingestion)?;
-                    let times_for_raw = payload.times.clone();
-                    let raw = FsReader::parse_structured_from_str::<RawSchema>(
-                        &payload.path,
-                        &payload.content_str,
-                    )
-                    .map_err(SchemaIngestionError::from)
-                    .map_err(SchemaLoaderError::Ingestion)?
-                    .with_file_times(times_for_raw)
-                    .with_name(schema_name.into());
-
-                    ProcessorNode {
-                        status: NodeStatus::StaleParsed,
-                        payload: FileParsedBranch::StaleParsed(
-                            StaleParsedPayload {
-                                path: payload.path,
-                                times: payload.times,
-                                content_hash: payload.content_hash,
-                                raw,
-                                view: payload.view,
-                            },
-                        ),
-                    }
-                }
-                ComparedPayload::StaleBankReferences(payload) => {
-                    let schema_name = source
-                        .basename(&payload.path)
-                        .map_err(SchemaIngestionError::from)
-                        .map_err(SchemaLoaderError::Ingestion)?;
-                    let times_for_raw = payload.times.clone();
-                    let raw = FsReader::parse_structured_from_str::<RawSchema>(
-                        &payload.path,
-                        &payload.content_str,
-                    )
-                    .map_err(SchemaIngestionError::from)
-                    .map_err(SchemaLoaderError::Ingestion)?
-                    .with_file_times(times_for_raw)
-                    .with_name(schema_name.into());
-                    let content_hash = payload.content_hash;
-
-                    ProcessorNode {
-                        status: NodeStatus::StaleBankReferences,
-                        payload: FileParsedBranch::StaleParsed(
-                            StaleParsedPayload {
-                                path: payload.path,
-                                times: payload.times,
-                                content_hash,
-                                raw,
-                                view: payload.view,
-                            },
-                        ),
-                    }
-                }
-                ComparedPayload::Fresh(payload) => ProcessorNode {
-                    status: NodeStatus::Fresh,
-                    payload: FileParsedBranch::Fresh(payload),
-                },
-                ComparedPayload::StaleTimestamps(payload) => ProcessorNode {
-                    status: NodeStatus::StaleTimestamps,
-                    payload: FileParsedBranch::StaleTimestamps(payload),
-                },
-            };
-
-            builder.add_node(id, next);
-        }
-
-        // Add edges
-        for (child_id, _) in graph.graph().iter() {
-            for &parent_id in graph.graph().parents_of(child_id) {
-                builder.add_parent(child_id, parent_id);
-            }
-        }
-
-        let schema_graph = builder.build();
         let next_graph =
-            ProcessingDag::try_from(schema_graph).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
+            graph.map_payload(
+                |_id,
+                 node|
+                 -> Result<
+                    ProcessorNode<FileParsedBranch>,
+                    SchemaLoaderError,
+                > {
+                    let next = match node.payload().clone() {
+                        ComparedPayload::Stale(payload) => {
+                            let schema_name = source
+                                .basename(&payload.path)
+                                .map_err(SchemaIngestionError::from)
+                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let times_for_raw = payload.times.clone();
+                            let raw = FsReader::parse_structured_from_str::<
+                                RawSchema,
+                            >(
+                                &payload.path, &payload.content_str
+                            )
+                            .map_err(SchemaIngestionError::from)
+                            .map_err(SchemaLoaderError::Ingestion)?
+                            .with_file_times(times_for_raw)
+                            .with_name(schema_name.into());
+
+                            ProcessorNode {
+                                status: NodeStatus::StaleParsed,
+                                payload: FileParsedBranch::StaleParsed(
+                                    StaleParsedPayload {
+                                        path: payload.path,
+                                        times: payload.times,
+                                        content_hash: payload.content_hash,
+                                        raw,
+                                        view: payload.view,
+                                    },
+                                ),
+                            }
+                        }
+                        ComparedPayload::StaleBankReferences(payload) => {
+                            let schema_name = source
+                                .basename(&payload.path)
+                                .map_err(SchemaIngestionError::from)
+                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let times_for_raw = payload.times.clone();
+                            let raw = FsReader::parse_structured_from_str::<
+                                RawSchema,
+                            >(
+                                &payload.path, &payload.content_str
+                            )
+                            .map_err(SchemaIngestionError::from)
+                            .map_err(SchemaLoaderError::Ingestion)?
+                            .with_file_times(times_for_raw)
+                            .with_name(schema_name.into());
+                            let content_hash = payload.content_hash;
+
+                            ProcessorNode {
+                                status: NodeStatus::StaleBankReferences,
+                                payload: FileParsedBranch::StaleParsed(
+                                    StaleParsedPayload {
+                                        path: payload.path,
+                                        times: payload.times,
+                                        content_hash,
+                                        raw,
+                                        view: payload.view,
+                                    },
+                                ),
+                            }
+                        }
+                        ComparedPayload::Fresh(payload) => ProcessorNode {
+                            status: NodeStatus::Fresh,
+                            payload: FileParsedBranch::Fresh(payload),
+                        },
+                        ComparedPayload::StaleTimestamps(payload) => {
+                            ProcessorNode {
+                                status: NodeStatus::StaleTimestamps,
+                                payload: FileParsedBranch::StaleTimestamps(
+                                    payload,
+                                ),
+                            }
+                        }
+                    };
+
+                    Ok(next)
+                },
+            )?;
 
         Ok(Self::transition(InheritanceGraphed, Parsed {
             graph: next_graph,
@@ -1572,10 +1568,6 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         clippy::too_many_lines,
         reason = "analysis keeps branch logic in one place"
     )]
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "Pipeline stage complexity is acceptable"
-    )]
     pub(crate) fn analyze_properties(
         self,
         source: &FsReader,
@@ -1609,190 +1601,164 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let mut refresh_ids = Vec::new();
         let mut rebuild_ids = Vec::new();
 
-        let mut analyzed_nodes = HashMap::new();
-
-        // Collect nodes in deterministic order
-        let mut node_entries: Vec<_> =
-            graph.graph().iter().map(|(id, node)| (id, node.clone())).collect();
-        node_entries.sort_by_key(|entry| entry.0);
-
-        for (id, node) in node_entries {
-            let node_status = node.payload().status;
-            let (status, payload) = match node.payload().payload.clone() {
-                InheritanceBranch::Fresh(payload) => {
-                    let times_for_raw = RawFileTimes {
-                        created_at: source.created_at(&payload.path),
-                        modified_at: source.modified_at(&payload.path),
-                    };
-                    let bank_changed =
-                        Self::bank_changed(&payload.view, property_bank_delta);
-
-                    if bank_changed {
-                        let content = source
-                            .read_to_string(&payload.path)
-                            .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?;
-                        let content_hash =
-                            *blake3::hash(content.as_bytes()).as_bytes();
-                        let schema_name =
-                            Self::schema_stem(source, &payload.path)?;
-                        let raw = FsReader::parse_structured_from_str::<
-                            RawSchema,
-                        >(
-                            &payload.path, &content
-                        )
-                        .map_err(SchemaIngestionError::from)
-                        .map_err(SchemaLoaderError::Ingestion)?
-                        .with_file_times(times_for_raw.clone())
-                        .with_name(schema_name);
-
-                        let mut view = payload.view;
-                        let version = Self::build_version(&raw, content_hash)?;
-                        view.add_version(version);
-
-                        let rebuild = RebuildNodePayload {
-                            path: payload.path,
-                            times: times_for_raw,
-                            content_hash,
-                            raw,
-                            view,
-                            excludes_delta: None,
-                            property_delta: None,
-                        };
-                        rebuild_ids.push(id);
-                        (
-                            NodeStatus::StaleBankReferences,
-                            AnalysisBranch::Rebuild(rebuild),
-                        )
-                    } else {
-                        let content_hash = payload.view.current().map_or_else(
-                            || [0u8; 32],
-                            |v| *v.hashes().content(),
-                        );
-                        let times = RawFileTimes {
+        let next_graph = graph.map_payload(
+            |id, node| -> Result<ProcessorNode<AnalysisBranch>, SchemaLoaderError> {
+                let node_status = node.status();
+                let (status, payload) = match node.payload().clone() {
+                    InheritanceBranch::Fresh(payload) => {
+                        let times_for_raw = RawFileTimes {
                             created_at: source.created_at(&payload.path),
                             modified_at: source.modified_at(&payload.path),
                         };
-                        refresh_ids.push(id);
-                        (
-                            NodeStatus::Fresh,
-                            AnalysisBranch::Refresh(RefreshNodePayload {
-                                path: payload.path,
-                                times,
-                                content_hash,
-                                view: payload.view,
-                            }),
-                        )
-                    }
-                }
-                InheritanceBranch::StaleTimestamps(payload) => {
-                    let times_for_raw = payload.times.clone();
-                    let bank_changed =
-                        Self::bank_changed(&payload.view, property_bank_delta);
+                        let bank_changed =
+                            Self::bank_changed(&payload.view, property_bank_delta);
 
-                    if bank_changed {
-                        let content = source
-                            .read_to_string(&payload.path)
+                        if bank_changed {
+                            let content = source
+                                .read_to_string(&payload.path)
+                                .map_err(SchemaIngestionError::from)
+                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let content_hash =
+                                *blake3::hash(content.as_bytes()).as_bytes();
+                            let schema_name =
+                                Self::schema_stem(source, &payload.path)?;
+                            let raw = FsReader::parse_structured_from_str::<
+                                RawSchema,
+                            >(
+                                &payload.path, &content
+                            )
                             .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?;
-                        let content_hash =
-                            *blake3::hash(content.as_bytes()).as_bytes();
-                        let schema_name =
-                            Self::schema_stem(source, &payload.path)?;
-                        let raw = FsReader::parse_structured_from_str::<
-                            RawSchema,
-                        >(
-                            &payload.path, &content
-                        )
-                        .map_err(SchemaIngestionError::from)
-                        .map_err(SchemaLoaderError::Ingestion)?
-                        .with_file_times(times_for_raw)
-                        .with_name(schema_name);
+                            .map_err(SchemaLoaderError::Ingestion)?
+                            .with_file_times(times_for_raw.clone())
+                            .with_name(schema_name);
 
-                        let mut view = payload.view;
-                        let version = Self::build_version(&raw, content_hash)?;
-                        view.add_version(version);
+                            let mut view = payload.view;
+                            let version = Self::build_version(&raw, content_hash)?;
+                            view.add_version(version);
 
-                        let rebuild = RebuildNodePayload {
-                            path: payload.path,
-                            times: payload.times,
-                            content_hash,
-                            raw,
-                            view,
-                            excludes_delta: None,
-                            property_delta: None,
-                        };
-                        rebuild_ids.push(id);
-                        (
-                            NodeStatus::StaleBankReferences,
-                            AnalysisBranch::Rebuild(rebuild),
-                        )
-                    } else {
-                        let content_hash = payload.view.current().map_or_else(
-                            || [0u8; 32],
-                            |v| *v.hashes().content(),
-                        );
-                        refresh_ids.push(id);
-                        (
-                            NodeStatus::StaleTimestamps,
-                            AnalysisBranch::Refresh(RefreshNodePayload {
+                            let rebuild = RebuildNodePayload {
+                                path: payload.path,
+                                times: times_for_raw,
+                                content_hash,
+                                raw,
+                                view,
+                                excludes_delta: None,
+                                property_delta: None,
+                            };
+                            rebuild_ids.push(id);
+                            (
+                                NodeStatus::StaleBankReferences,
+                                AnalysisBranch::Rebuild(rebuild),
+                            )
+                        } else {
+                            let content_hash = payload.view.current().map_or_else(
+                                || [0u8; 32],
+                                |v| *v.hashes().content(),
+                            );
+                            let times = RawFileTimes {
+                                created_at: source.created_at(&payload.path),
+                                modified_at: source.modified_at(&payload.path),
+                            };
+                            refresh_ids.push(id);
+                            (
+                                NodeStatus::Fresh,
+                                AnalysisBranch::Refresh(RefreshNodePayload {
+                                    path: payload.path,
+                                    times,
+                                    content_hash,
+                                    view: payload.view,
+                                }),
+                            )
+                        }
+                    }
+                    InheritanceBranch::StaleTimestamps(payload) => {
+                        let times_for_raw = payload.times.clone();
+                        let bank_changed =
+                            Self::bank_changed(&payload.view, property_bank_delta);
+
+                        if bank_changed {
+                            let content = source
+                                .read_to_string(&payload.path)
+                                .map_err(SchemaIngestionError::from)
+                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let content_hash =
+                                *blake3::hash(content.as_bytes()).as_bytes();
+                            let schema_name =
+                                Self::schema_stem(source, &payload.path)?;
+                            let raw = FsReader::parse_structured_from_str::<
+                                RawSchema,
+                            >(
+                                &payload.path, &content
+                            )
+                            .map_err(SchemaIngestionError::from)
+                            .map_err(SchemaLoaderError::Ingestion)?
+                            .with_file_times(times_for_raw)
+                            .with_name(schema_name);
+
+                            let mut view = payload.view;
+                            let version = Self::build_version(&raw, content_hash)?;
+                            view.add_version(version);
+
+                            let rebuild = RebuildNodePayload {
                                 path: payload.path,
                                 times: payload.times,
                                 content_hash,
-                                view: payload.view,
-                            }),
-                        )
+                                raw,
+                                view,
+                                excludes_delta: None,
+                                property_delta: None,
+                            };
+                            rebuild_ids.push(id);
+                            (
+                                NodeStatus::StaleBankReferences,
+                                AnalysisBranch::Rebuild(rebuild),
+                            )
+                        } else {
+                            let content_hash = payload.view.current().map_or_else(
+                                || [0u8; 32],
+                                |v| *v.hashes().content(),
+                            );
+                            refresh_ids.push(id);
+                            (
+                                NodeStatus::StaleTimestamps,
+                                AnalysisBranch::Refresh(RefreshNodePayload {
+                                    path: payload.path,
+                                    times: payload.times,
+                                    content_hash,
+                                    view: payload.view,
+                                }),
+                            )
+                        }
                     }
-                }
-                InheritanceBranch::New(payload) => {
-                    let filename = payload
-                        .path
-                        .to_string_lossy()
-                        .into_owned()
-                        .into_boxed_str();
-                    let property_hashes =
-                        crate::schema::views::HashMetadata::compute_property_hashes(
-                            payload.raw.properties(),
-                        );
-                    let file_times =
-                        crate::schema::views::FileTimesMetadata::new(
-                            payload.raw.file_times().created_at,
-                            payload.raw.file_times().modified_at,
-                        );
-                    let hashes = crate::schema::views::HashMetadata::new(
-                        payload.content_hash,
-                        property_hashes,
-                    );
-                    let version = crate::schema::views::SchemaVersion::new(
-                        file_times,
-                        hashes,
-                        &payload.raw,
-                    )
-                    .map_err(SchemaLoaderError::Ingestion)?;
-                    let view = RawSchemaView::new(
-                        crate::schema::views::Filename::new(filename),
-                        version,
-                    );
-                    let rebuild = RebuildNodePayload {
-                        path: payload.path,
-                        times: payload.times,
-                        content_hash: payload.content_hash,
-                        raw: payload.raw,
-                        view,
-                        excludes_delta: None,
-                        property_delta: None,
-                    };
-                    rebuild_ids.push(id);
-                    (NodeStatus::New, AnalysisBranch::Rebuild(rebuild))
-                }
-                InheritanceBranch::StaleParsed(payload) => {
-                    if node_status == NodeStatus::StaleBankReferences {
-                        let mut view = payload.view;
-                        let version = Self::build_version(
-                            &payload.raw,
+                    InheritanceBranch::New(payload) => {
+                        let filename = payload
+                            .path
+                            .to_string_lossy()
+                            .into_owned()
+                            .into_boxed_str();
+                        let property_hashes =
+                            crate::schema::views::HashMetadata::compute_property_hashes(
+                                payload.raw.properties(),
+                            );
+                        let file_times =
+                            crate::schema::views::FileTimesMetadata::new(
+                                payload.raw.file_times().created_at,
+                                payload.raw.file_times().modified_at,
+                            );
+                        let hashes = crate::schema::views::HashMetadata::new(
                             payload.content_hash,
-                        )?;
-                        view.add_version(version);
+                            property_hashes,
+                        );
+                        let version = crate::schema::views::SchemaVersion::new(
+                            file_times,
+                            hashes,
+                            &payload.raw,
+                        )
+                        .map_err(SchemaLoaderError::Ingestion)?;
+                        let view = RawSchemaView::new(
+                            crate::schema::views::Filename::new(filename),
+                            version,
+                        );
                         let rebuild = RebuildNodePayload {
                             path: payload.path,
                             times: payload.times,
@@ -1803,31 +1769,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             property_delta: None,
                         };
                         rebuild_ids.push(id);
-                        (
-                            NodeStatus::StaleBankReferences,
-                            AnalysisBranch::Rebuild(rebuild),
-                        )
-                    } else {
-                        let excludes_delta = diff_excludes(
-                            payload
-                                .view
-                                .current()
-                                .map_or(&[], crate::schema::views::version::SchemaVersion::excludes),
-                            payload.raw.excludes(),
-                        );
-
-                        let empty_hashes = HashMap::new();
-                        let old_property_hashes = payload
-                            .view
-                            .current()
-                            .map_or(&empty_hashes, |v| v.hashes().properties());
-                        let property_delta =
-                            diff_properties(&payload.raw, old_property_hashes);
-
-                        let needs_rebuild = !excludes_delta.is_empty()
-                            || !property_delta.is_empty();
-
-                        if needs_rebuild {
+                        (NodeStatus::New, AnalysisBranch::Rebuild(rebuild))
+                    }
+                    InheritanceBranch::StaleParsed(payload) => {
+                        if node_status == NodeStatus::StaleBankReferences {
                             let mut view = payload.view;
                             let version = Self::build_version(
                                 &payload.raw,
@@ -1840,71 +1785,91 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 content_hash: payload.content_hash,
                                 raw: payload.raw,
                                 view,
-                                excludes_delta: if excludes_delta.is_empty() {
-                                    None
-                                } else {
-                                    Some(excludes_delta)
-                                },
-                                property_delta: if property_delta.is_empty() {
-                                    None
-                                } else {
-                                    Some(property_delta)
-                                },
+                                excludes_delta: None,
+                                property_delta: None,
                             };
                             rebuild_ids.push(id);
                             (
-                                NodeStatus::Stale,
+                                NodeStatus::StaleBankReferences,
                                 AnalysisBranch::Rebuild(rebuild),
                             )
                         } else {
-                            refresh_ids.push(id);
-                            (
-                                NodeStatus::StaleContent,
-                                AnalysisBranch::Refresh(RefreshNodePayload {
+                            let excludes_delta = diff_excludes(
+                                payload
+                                    .view
+                                    .current()
+                                    .map_or(&[], crate::schema::views::version::SchemaVersion::excludes),
+                                payload.raw.excludes(),
+                            );
+
+                            let empty_hashes = HashMap::new();
+                            let old_property_hashes = payload
+                                .view
+                                .current()
+                                .map_or(&empty_hashes, |v| v.hashes().properties());
+                            let property_delta =
+                                diff_properties(&payload.raw, old_property_hashes);
+
+                            let needs_rebuild = !excludes_delta.is_empty()
+                                || !property_delta.is_empty();
+
+                            if needs_rebuild {
+                                let mut view = payload.view;
+                                let version = Self::build_version(
+                                    &payload.raw,
+                                    payload.content_hash,
+                                )?;
+                                view.add_version(version);
+                                let rebuild = RebuildNodePayload {
                                     path: payload.path,
                                     times: payload.times,
                                     content_hash: payload.content_hash,
-                                    view: payload.view,
-                                }),
-                            )
+                                    raw: payload.raw,
+                                    view,
+                                    excludes_delta: if excludes_delta.is_empty() {
+                                        None
+                                    } else {
+                                        Some(excludes_delta)
+                                    },
+                                    property_delta: if property_delta.is_empty() {
+                                        None
+                                    } else {
+                                        Some(property_delta)
+                                    },
+                                };
+                                rebuild_ids.push(id);
+                                (
+                                    NodeStatus::Stale,
+                                    AnalysisBranch::Rebuild(rebuild),
+                                )
+                            } else {
+                                refresh_ids.push(id);
+                                (
+                                    NodeStatus::StaleContent,
+                                    AnalysisBranch::Refresh(RefreshNodePayload {
+                                        path: payload.path,
+                                        times: payload.times,
+                                        content_hash: payload.content_hash,
+                                        view: payload.view,
+                                    }),
+                                )
+                            }
                         }
                     }
-                }
-            };
+                };
 
-            analyzed_nodes.insert(id, ProcessorNode {
-                status,
-                payload,
-            });
-        }
+                Ok(ProcessorNode {
+                    status,
+                    payload,
+                })
+            },
+        )?;
 
         for id in graph.topo_order() {
             if affected.contains(id) && !rebuild_ids.contains(id) {
                 rebuild_ids.push(*id);
             }
         }
-
-        // Rebuild graph with new payload types
-        let mut builder = SchemaGraphBuilder::new();
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Order not relevant for graph construction"
-        )]
-        for (id, node) in &analyzed_nodes {
-            builder.add_node(*id, node.clone());
-        }
-
-        // Preserve edges from original graph
-        for (child_id, _) in graph.graph().iter() {
-            for &parent_id in graph.graph().parents_of(child_id) {
-                builder.add_parent(child_id, parent_id);
-            }
-        }
-
-        let next_graph =
-            ProcessingDag::try_from(builder.build()).map_err(|e| {
-                SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-            })?;
 
         Ok(Self::transition(Refresh, Analyzed {
             graph: next_graph,
