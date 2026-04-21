@@ -289,14 +289,14 @@ impl PropertyBankDelta {
 
     /// Consumes self and returns the union of changed names as a new set.
     ///
-    /// This takes ownership to avoid cloning the upsert keys.
+    /// This takes ownership to avoid cloning the upsert map's keys.
     #[inline]
     #[must_use]
     pub(crate) fn into_changed_name_set(self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
         );
-        names.extend(self.upserts.keys().cloned());
+        names.extend(self.upserts.into_keys());
         names.extend(self.removals.iter().cloned());
         names
     }

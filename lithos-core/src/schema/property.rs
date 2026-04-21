@@ -132,6 +132,12 @@ impl PropertyMap {
         self.0.remove(name)
     }
 
+    /// Returns an iterator that consumes the map and yields keys.
+    #[inline]
+    pub fn into_keys(self) -> impl Iterator<Item = PropertyName> {
+        self.0.into_keys()
+    }
+
     /// Returns an iterator over property values.
     #[inline]
     pub fn values(&self) -> impl Iterator<Item = &Property> {
