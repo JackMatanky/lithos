@@ -25,9 +25,9 @@ use crate::schema::{
 };
 
 type PropertyHashes = HashMap<PropertyName, [u8; 32]>;
-type PropertyDiffParts<T> =
+type PropertyChangeSetParts<T> =
     (HashMap<PropertyName, T>, Vec<PropertyName>, PropertyHashes);
-type PropertyBankDiffResult =
+type PropertyBankDeltaResult =
     Result<(PropertyBankDelta, PropertyHashes), SchemaLoaderError>;
 
 /// Delta for schema-level `excludes` lists.
@@ -277,7 +277,7 @@ impl PropertyBankDelta {
     /// This allocates a new `HashSet` on each call.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
     pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
@@ -302,16 +302,16 @@ impl PropertyBankDelta {
     }
 }
 
-/// Generic differ over a raw property map and previous hash snapshot.
+/// Generic delta engine over a raw property map and previous hash snapshot.
 ///
 /// This is the core engine used by both schema and property-bank delta flows.
-pub(crate) struct PropertyDiffer<'data, T> {
+pub(crate) struct PropertyDeltaEngine<'data, T> {
     properties: &'data RawPropertyMap<T>,
     previous_hashes: &'data PropertyHashes,
 }
 
-impl<'data, T> PropertyDiffer<'data, T> {
-    /// Creates a differ from any raw property map.
+impl<'data, T> PropertyDeltaEngine<'data, T> {
+    /// Creates an engine from any raw property map.
     #[inline]
     #[must_use]
     fn for_map(
@@ -325,8 +325,8 @@ impl<'data, T> PropertyDiffer<'data, T> {
     }
 }
 
-impl<'data> PropertyDiffer<'data, RawProperty> {
-    /// Creates a differ for a raw schema's properties.
+impl<'data> PropertyDeltaEngine<'data, RawProperty> {
+    /// Creates an engine for a raw schema's properties.
     #[inline]
     #[must_use]
     pub(crate) fn for_schema(
@@ -344,8 +344,8 @@ impl<'data> PropertyDiffer<'data, RawProperty> {
         reason = "hash iteration order does not affect delta semantics"
     )]
     pub(crate) fn diff_schema(&self) -> SchemaPropertyDelta {
-        let property_diff = self.diff();
-        let (upserts, removals, _current_hashes) = property_diff.into_parts();
+        let change_set = self.compute_change_set();
+        let (upserts, removals, _current_hashes) = change_set.into_parts();
         let mut typed_upserts = SchemaPropertyUpserts::default();
 
         for (name, entry) in upserts {
@@ -363,8 +363,8 @@ impl<'data> PropertyDiffer<'data, RawProperty> {
     }
 }
 
-impl<'data> PropertyDiffer<'data, RawPropertyBankEntry> {
-    /// Creates a differ for a raw property bank's entries.
+impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
+    /// Creates an engine for a raw property bank's entries.
     #[inline]
     #[must_use]
     pub(crate) fn for_property_bank(
@@ -381,9 +381,9 @@ impl<'data> PropertyDiffer<'data, RawPropertyBankEntry> {
     /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
-    pub(crate) fn diff_property_bank(&self) -> PropertyBankDiffResult {
-        let property_diff = self.diff();
-        let (upserts, removals, property_hashes) = property_diff.into_parts();
+    pub(crate) fn diff_property_bank(&self) -> PropertyBankDeltaResult {
+        let change_set = self.compute_change_set();
+        let (upserts, removals, property_hashes) = change_set.into_parts();
 
         let upserts = PropertyMap::try_from(upserts).map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
@@ -396,35 +396,34 @@ impl<'data> PropertyDiffer<'data, RawPropertyBankEntry> {
     }
 }
 
-/// Internal generic diff payload used by the shared diff engine.
-#[derive(Debug, Clone, PartialEq)]
-struct PropertyDiff<T> {
+/// Internal generic change set used by the shared delta engine.
+struct PropertyChangeSet<T> {
     upserts: HashMap<PropertyName, T>,
-    removed: Vec<PropertyName>,
+    removals: Vec<PropertyName>,
     current_hashes: HashMap<PropertyName, [u8; 32]>,
 }
 
-impl<T> PropertyDiff<T> {
-    /// Consumes the diff and returns all computed parts.
+impl<T> PropertyChangeSet<T> {
+    /// Consumes the change set and returns all computed parts.
     #[inline]
     #[must_use]
-    fn into_parts(self) -> PropertyDiffParts<T> {
-        (self.upserts, self.removed, self.current_hashes)
+    fn into_parts(self) -> PropertyChangeSetParts<T> {
+        (self.upserts, self.removals, self.current_hashes)
     }
 }
 
-impl<T> PropertyDiffer<'_, T>
+impl<T> PropertyDeltaEngine<'_, T>
 where
     T: Clone + serde::Serialize + std::fmt::Debug,
 {
-    /// Computes generic map-level diff results.
+    /// Computes generic map-level change set results.
     ///
     /// Algorithm:
     /// 1. hash current entries,
     /// 2. record new/changed entries as upserts,
     /// 3. compute removed names from previous hash keys,
     /// 4. sort removals deterministically.
-    fn diff(&self) -> PropertyDiff<T> {
+    fn compute_change_set(&self) -> PropertyChangeSet<T> {
         let mut current_hashes = HashMap::with_capacity(
             self.properties.len().max(self.previous_hashes.len()),
         );
@@ -438,17 +437,17 @@ where
             }
         }
 
-        let mut removed = self
+        let mut removals = self
             .previous_hashes
             .keys()
             .filter(|name| !current_hashes.contains_key(*name))
             .cloned()
             .collect::<Vec<_>>();
-        removed.sort();
+        removals.sort();
 
-        PropertyDiff {
+        PropertyChangeSet {
             upserts,
-            removed,
+            removals,
             current_hashes,
         }
     }
@@ -511,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn property_differ_supports_raw_property_map() {
+    fn property_delta_engine_supports_raw_property_map() {
         let map: RawPropertyMap<RawProperty> = serde_json::from_str(
             r##"{
               "flag": {"type": "bool"},
@@ -521,15 +520,16 @@ mod tests {
         .expect("valid raw property map");
 
         let previous_hashes = HashMap::new();
-        let diff = PropertyDiffer::for_map(&map, &previous_hashes).diff();
-        let (upserts, removed, hashes) = diff.into_parts();
+        let change_set = PropertyDeltaEngine::for_map(&map, &previous_hashes)
+            .compute_change_set();
+        let (upserts, removals, hashes) = change_set.into_parts();
         assert_eq!(upserts.len(), 2);
-        assert!(removed.is_empty());
+        assert!(removals.is_empty());
         assert_eq!(hashes.len(), 2);
     }
 
     #[test]
-    fn property_differ_supports_raw_property_bank() {
+    fn property_delta_engine_supports_raw_property_bank() {
         let bank: RawPropertyBank =
             serde_json::from_value::<RawPropertyBank>(serde_json::json!({
                 "$version": "1.0",
@@ -544,16 +544,17 @@ mod tests {
             });
 
         let previous_hashes = HashMap::new();
-        let diff =
-            PropertyDiffer::for_property_bank(&bank, &previous_hashes).diff();
-        let (upserts, removed, hashes) = diff.into_parts();
+        let change_set =
+            PropertyDeltaEngine::for_property_bank(&bank, &previous_hashes)
+                .compute_change_set();
+        let (upserts, removals, hashes) = change_set.into_parts();
         assert_eq!(upserts.len(), 1);
-        assert!(removed.is_empty());
+        assert!(removals.is_empty());
         assert_eq!(hashes.len(), 1);
     }
 
     #[test]
-    fn diff_properties_reuses_property_differ_core() {
+    fn diff_properties_reuses_delta_engine_core() {
         let raw: RawSchema =
             serde_json::from_value::<RawSchema>(serde_json::json!({
                 "$version": "1.0",
@@ -574,8 +575,8 @@ mod tests {
             HashMetadata::hash_entry(&serde_json::json!({"type":"bool"})),
         );
 
-        let delta =
-            PropertyDiffer::for_schema(&raw, &previous_hashes).diff_schema();
+        let delta = PropertyDeltaEngine::for_schema(&raw, &previous_hashes)
+            .diff_schema();
         assert!(!delta.is_empty());
         assert_eq!(delta.upserts.inline.len(), 1);
         assert!(delta.upserts.refs.is_empty());

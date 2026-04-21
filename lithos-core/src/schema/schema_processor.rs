@@ -67,7 +67,7 @@ use crate::{
         aggregate::{Schema, SchemaId, SchemaName},
         bank::PropertyBank,
         builder::FilesContext,
-        delta::PropertyDiffer,
+        delta::PropertyDeltaEngine,
         error::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
@@ -1951,7 +1951,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .current()
                                 .map_or(&empty_hashes, |v| v.hashes().properties());
                             let property_delta =
-                                PropertyDiffer::for_schema(&payload.raw, old_property_hashes)
+                                PropertyDeltaEngine::for_schema(&payload.raw, old_property_hashes)
                                     .diff_schema();
 
                             let needs_rebuild =

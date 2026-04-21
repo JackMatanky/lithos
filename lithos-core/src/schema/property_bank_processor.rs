@@ -113,7 +113,7 @@ use crate::{
     fs::FsReader,
     schema::{
         bank::PropertyBank,
-        delta::{PropertyBankDelta, PropertyDiffer},
+        delta::{PropertyBankDelta, PropertyDeltaEngine},
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
             SchemaStorageError,
@@ -530,11 +530,13 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
             ));
         };
 
-        let Ok((delta, property_hashes)) = PropertyDiffer::for_property_bank(
-            raw,
-            version.hashes().properties(),
-        )
-        .diff_property_bank() else {
+        let Ok((delta, property_hashes)) =
+            PropertyDeltaEngine::for_property_bank(
+                raw,
+                version.hashes().properties(),
+            )
+            .diff_property_bank()
+        else {
             return AnalysisBranch::Corrupt(Self::transition(
                 Construction,
                 New {
