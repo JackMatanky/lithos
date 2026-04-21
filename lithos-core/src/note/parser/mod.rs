@@ -62,13 +62,13 @@
 //! be fully migrated to the new pipeline architecture.
 
 /// Configuration types for the event stream.
-pub mod config;
+pub(crate) mod config;
 /// Event wrappers for markdown tokens.
-pub mod event;
+pub(crate) mod event;
 /// Extracted reference link definitions.
-pub mod references;
+pub(crate) mod references;
 /// Event stream processing and normalization.
-pub mod stream;
+pub(crate) mod stream;
 
 use std::borrow::Cow;
 

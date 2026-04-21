@@ -18,10 +18,12 @@ use crate::note::position::SourceByteRange;
 ///
 /// # Examples
 ///
-/// ```
-/// # use lithos_core::note::parser::event::SpannedEvent;
-/// # use lithos_core::note::position::{SourceByteRange, SourceByteOffset};
-/// # use pulldown_cmark::{Event, CowStr};
+/// ```rust,ignore
+/// // Note: Cannot run doctest for pub(crate) types from external test crate
+/// use lithos_core::note::position::{SourceByteRange, SourceByteOffset};
+/// use pulldown_cmark::{Event, CowStr};
+/// use lithos_core::note::parser::event::SpannedEvent;
+///
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(5);
 /// let span = SourceByteRange::new(start, end).unwrap();
@@ -35,18 +37,29 @@ use crate::note::position::SourceByteRange;
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct SpannedEvent<'source> {
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "Internal event fields are accessible within the crate"
+)]
+pub(crate) struct SpannedEvent<'source> {
     /// The underlying markdown event emitted by the parser.
-    pub event: Event<'source>,
+    pub(crate) event: Event<'source>,
     /// The exact source byte range covering the parsed text for this event.
-    pub span: SourceByteRange,
+    pub(crate) span: SourceByteRange,
 }
 
 impl<'source> SpannedEvent<'source> {
     /// Creates a new `SpannedEvent`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `NoteIngestError` if the provided span is invalid.
     #[must_use]
     #[inline]
-    pub const fn new(event: Event<'source>, span: SourceByteRange) -> Self {
+    pub(crate) const fn new(
+        event: Event<'source>,
+        span: SourceByteRange,
+    ) -> Self {
         Self {
             event,
             span,

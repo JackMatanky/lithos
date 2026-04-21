@@ -19,104 +19,37 @@ use super::{
 };
 use crate::note::{error::NoteIngestError, position::SourceByteRange};
 
-/// An iterator that adapts and normalizes pulldown-cmark events.
-///
-/// This iterator executes standard pipeline transformations, such as
-/// normalizing implicit `SoftBreak`s and `HardBreak`s into standard text
-/// tokens. Because it operates on the raw `(Event<'a>, Range<usize>)` tuple, it
-/// can safely be composed within `pulldown-cmark`'s `TextMergeWithOffset`
-/// utility.
-pub struct EventAdapterIter<'source> {
-    inner: OffsetIter<'source, pulldown_cmark::DefaultBrokenLinkCallback>,
-    policy: BreakPolicy,
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Implementing all iterator methods is unnecessary for this \
-              internal wrapper"
-)]
-impl<'source> Iterator for EventAdapterIter<'source> {
-    type Item = (Event<'source>, Range<usize>);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(event, range)| {
-            let new_event = match (event, self.policy) {
-                (
-                    Event::SoftBreak,
-                    BreakPolicy::SoftAsSpace | BreakPolicy::NormalizeAsText,
-                ) => Event::Text(CowStr::Borrowed(" ")),
-                (
-                    Event::HardBreak,
-                    BreakPolicy::HardAsNewLine | BreakPolicy::NormalizeAsText,
-                ) => Event::Text(CowStr::Borrowed("\n")),
-                // Add future event adaptations here
-                (other, _) => other,
-            };
-            (new_event, range)
-        })
-    }
-}
-
-/// Inner state of the event stream, supporting merged and unmerged text.
-#[non_exhaustive]
-pub enum StreamState<'source> {
-    /// Text events are dynamically merged together.
-    Merged(TextMergeWithOffset<'source, EventAdapterIter<'source>>),
-    /// Text events remain separated.
-    Unmerged(EventAdapterIter<'source>),
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Implementing all iterator methods is unnecessary for this \
-              internal wrapper"
-)]
-impl<'source> Iterator for StreamState<'source> {
-    type Item = (Event<'source>, Range<usize>);
-
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Ergonomics for mutable reference match"
-    )]
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            StreamState::Merged(iter) => iter.next(),
-            StreamState::Unmerged(iter) => iter.next(),
-        }
-    }
-}
-
 /// A normalized stream of markdown events with unified spans and reference
 /// handling.
 ///
 /// This acts as the facade adapter between the raw `pulldown-cmark` library
 /// and the internal `Lithos` parsing pipeline. It yields `SpannedEvent`
 /// structures instead of raw tuples.
-pub struct MarkdownEventStream<'source> {
+pub(crate) struct MarkdownEventStream<'source> {
     state: StreamState<'source>,
     references: ReferenceDefinitions,
 }
 
+#[expect(dead_code, reason = "New adapter layer not yet integrated")]
 impl<'source> MarkdownEventStream<'source> {
     /// Creates a new event stream with the provided configuration.
     ///
     /// # Examples
     ///
-    /// ```
-    /// # use lithos_core::note::parser::stream::MarkdownEventStream;
-    /// # use lithos_core::note::parser::config::EventStreamConfig;
+    /// ```rust,ignore
+    /// // Note: Cannot run doctest for pub(crate) types from external test crate
+    /// use lithos_core::note::parser::stream::MarkdownEventStream;
+    /// use lithos_core::note::parser::config::EventStreamConfig;
+    ///
     /// let source = "Here is some markdown text.";
     /// let config = EventStreamConfig::default();
-    /// let mut stream = MarkdownEventStream::new(source, &config);
+    /// let mut stream = MarkdownEventStream::new(source, config);
     ///
     /// assert!(stream.next().is_some());
     /// ```
     #[must_use]
     #[inline]
-    pub fn new(source: &'source str, config: &EventStreamConfig) -> Self {
+    pub(crate) fn new(source: &'source str, config: EventStreamConfig) -> Self {
         let parser = Parser::new_ext(source, config.options);
 
         let raw_refs = parser
@@ -150,19 +83,21 @@ impl<'source> MarkdownEventStream<'source> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// # use lithos_core::note::parser::stream::MarkdownEventStream;
-    /// # use lithos_core::note::parser::config::EventStreamConfig;
+    /// ```rust,ignore
+    /// // Note: Cannot run doctest for pub(crate) types from external test crate
+    /// use lithos_core::note::parser::stream::MarkdownEventStream;
+    /// use lithos_core::note::parser::config::EventStreamConfig;
+    ///
     /// let source = "[foo]: /url\n[foo][]";
     /// let config = EventStreamConfig::default();
-    /// let stream = MarkdownEventStream::new(source, &config);
+    /// let stream = MarkdownEventStream::new(source, config);
     ///
     /// let defs = stream.references();
     /// assert_eq!(defs.resolve("foo"), Some("/url"));
     /// ```
     #[must_use]
     #[inline]
-    pub fn references(&self) -> &ReferenceDefinitions {
+    pub(crate) fn references(&self) -> &ReferenceDefinitions {
         &self.references
     }
 }
@@ -181,6 +116,89 @@ impl<'source> Iterator for MarkdownEventStream<'source> {
             let span = SourceByteRange::try_from(range)
                 .map_err(NoteIngestError::Domain)?;
             Ok(SpannedEvent::new(event, span))
+        })
+    }
+}
+
+/// Inner state of the event stream, supporting merged and unmerged text.
+#[non_exhaustive]
+pub(crate) enum StreamState<'source> {
+    /// Text events are dynamically merged together.
+    Merged(TextMergeWithOffset<'source, EventAdapterIter<'source>>),
+    /// Text events remain separated.
+    Unmerged(EventAdapterIter<'source>),
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Implementing all iterator methods is unnecessary for this \
+              internal wrapper"
+)]
+impl<'source> Iterator for StreamState<'source> {
+    type Item = (Event<'source>, Range<usize>);
+
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Ergonomics for mutable reference match"
+    )]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            StreamState::Merged(iter) => iter.next(),
+            StreamState::Unmerged(iter) => iter.next(),
+        }
+    }
+}
+
+/// An iterator that adapts and normalizes pulldown-cmark events.
+pub(crate) struct EventAdapterIter<'source> {
+    inner: OffsetIter<'source, pulldown_cmark::DefaultBrokenLinkCallback>,
+    policy: BreakPolicy,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Implementing all iterator methods is unnecessary for this \
+              internal wrapper"
+)]
+impl<'source> Iterator for EventAdapterIter<'source> {
+    type Item = (Event<'source>, Range<usize>);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(event, range)| {
+            let new_event = match event {
+                Event::SoftBreak => {
+                    if let Some(replacement) =
+                        self.policy.soft_break_replacement()
+                    {
+                        Event::Text(CowStr::Borrowed(replacement))
+                    } else {
+                        event
+                    }
+                }
+                Event::HardBreak => {
+                    if let Some(replacement) =
+                        self.policy.hard_break_replacement()
+                    {
+                        Event::Text(CowStr::Borrowed(replacement))
+                    } else {
+                        event
+                    }
+                }
+                other @ (Event::Start(_)
+                | Event::End(_)
+                | Event::Text(_)
+                | Event::Code(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Html(_)
+                | Event::InlineHtml(_)
+                | Event::FootnoteReference(_)
+                | Event::Rule
+                | Event::TaskListMarker(_)) => other,
+            };
+            (new_event, range)
         })
     }
 }
