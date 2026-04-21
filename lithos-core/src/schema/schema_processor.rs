@@ -58,12 +58,16 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+pub(crate) use crate::schema::delta::SchemaPropertyUpserts;
+pub(crate) use crate::schema::delta::{ExcludesDelta, SchemaPropertyDelta};
 use crate::{
     fs::FsReader,
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
         bank::PropertyBank,
         builder::FilesContext,
+        delta::PropertyDiffer,
         error::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
@@ -72,10 +76,7 @@ use crate::{
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,
         property::{PropertyMap, PropertyName},
-        raw::{
-            RawFileTimes, RawSchema,
-            property::{RawPropertyInline, RawPropertyRef},
-        },
+        raw::{RawFileTimes, RawSchema},
         storage::Repository,
         views::RawSchemaView,
     },
@@ -108,46 +109,6 @@ pub(crate) struct Construction;
 
 #[derive(Debug)]
 pub(crate) struct Completed;
-
-// ═════════════════════════════════════════════════════════════════════════════
-//  DELTA STRUCTS
-// ═════════════════════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ExcludesDelta {
-    added: Vec<PropertyName>,
-    removed: Vec<PropertyName>,
-}
-
-impl ExcludesDelta {
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.added.is_empty() && self.removed.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct SchemaPropertyDelta {
-    upserts: SchemaPropertyUpserts,
-    removed: Vec<PropertyName>,
-}
-
-impl SchemaPropertyDelta {
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.upserts.inline.is_empty()
-            && self.upserts.refs.is_empty()
-            && self.removed.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct SchemaPropertyUpserts {
-    inline: HashMap<PropertyName, RawPropertyInline>,
-    refs: HashMap<PropertyName, RawPropertyRef>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExtendsChangeKind {
@@ -446,9 +407,51 @@ impl PipelinePayload {
             | Self::Deleted(_) => None,
         }
     }
+
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "const match ergonomics keep payload access concise"
+    )]
+    pub(crate) const fn as_analysis(&self) -> Option<&AnalysisBranch> {
+        match self {
+            Self::Analysis(payload) => Some(payload),
+            Self::Present(_)
+            | Self::Compared(_)
+            | Self::FileParsed(_)
+            | Self::Inheritance(_)
+            | Self::NewParsed(_)
+            | Self::Deleted(_) => None,
+        }
+    }
 }
 
 impl AnalysisBranch {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "match ergonomics on &self keep accessors concise"
+    )]
+    fn as_rebuild(&self) -> Option<&RebuildNodePayload> {
+        match self {
+            Self::Rebuild(payload) => Some(payload),
+            Self::Refresh(_) | Self::Update(_) => None,
+        }
+    }
+
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "match ergonomics on &self keep accessors concise"
+    )]
+    fn as_update(&self) -> Option<&UpdateNodePayload> {
+        match self {
+            Self::Update(payload) => Some(payload),
+            Self::Refresh(_) | Self::Rebuild(_) => None,
+        }
+    }
+
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -670,6 +673,7 @@ pub(crate) struct Graphed {
 pub(crate) struct Analyzed {
     graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     refresh_ids: Vec<SchemaId>,
+    stale_timestamp_ids: Vec<SchemaId>,
     rebuild_ids: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
 }
@@ -1745,6 +1749,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         };
 
         let mut refresh_ids = Vec::new();
+        let mut stale_timestamp_ids = Vec::new();
         let mut rebuild_ids = Vec::new();
 
         let next_graph = graph.map_payload(
@@ -1755,14 +1760,14 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                     PipelinePayload::Inheritance(InheritanceBranch::Fresh(
                         payload,
                     )) => {
-                        let times_for_raw = RawFileTimes {
-                            created_at: source.created_at(&payload.path),
-                            modified_at: source.modified_at(&payload.path),
-                        };
                         let bank_changed =
                             Self::bank_changed(&payload.view, property_bank_delta);
 
                         if bank_changed {
+                            let times_for_raw = RawFileTimes {
+                                created_at: source.created_at(&payload.path),
+                                modified_at: source.modified_at(&payload.path),
+                            };
                             let content = source
                                 .read_to_string(&payload.path)
                                 .map_err(SchemaIngestionError::from)
@@ -1800,24 +1805,13 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 AnalysisBranch::Rebuild(rebuild),
                             )
                         } else {
-                            let content_hash = payload.view.current().map_or_else(
-                                || [0u8; 32],
-                                |v| *v.hashes().content(),
-                            );
-                            let times = RawFileTimes {
-                                created_at: source.created_at(&payload.path),
-                                modified_at: source.modified_at(&payload.path),
-                            };
-                            refresh_ids.push(id);
-                            (
+                            return Ok(ProcessorNode::new(
                                 NodeStatus::Fresh,
-                                AnalysisBranch::Refresh(RefreshNodePayload {
-                                    path: payload.path,
-                                    times,
-                                    content_hash,
-                                    view: payload.view,
-                                }),
-                            )
+                                relation,
+                                PipelinePayload::Inheritance(
+                                    InheritanceBranch::Fresh(payload),
+                                ),
+                            ));
                         }
                     }
                     PipelinePayload::Inheritance(
@@ -1865,20 +1859,14 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 AnalysisBranch::Rebuild(rebuild),
                             )
                         } else {
-                            let content_hash = payload.view.current().map_or_else(
-                                || [0u8; 32],
-                                |v| *v.hashes().content(),
-                            );
-                            refresh_ids.push(id);
-                            (
+                            stale_timestamp_ids.push(id);
+                            return Ok(ProcessorNode::new(
                                 NodeStatus::StaleTimestamps,
-                                AnalysisBranch::Refresh(RefreshNodePayload {
-                                    path: payload.path,
-                                    times: payload.times,
-                                    content_hash,
-                                    view: payload.view,
-                                }),
-                            )
+                                relation,
+                                PipelinePayload::Inheritance(
+                                    InheritanceBranch::StaleTimestamps(payload),
+                                ),
+                            ));
                         }
                     }
                     PipelinePayload::Inheritance(InheritanceBranch::New(
@@ -1949,7 +1937,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 AnalysisBranch::Rebuild(rebuild),
                             )
                         } else {
-                            let excludes_delta = diff_excludes(
+                            let excludes_delta = ExcludesDelta::from_slices(
                                 payload
                                     .view
                                     .current()
@@ -1963,9 +1951,11 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .current()
                                 .map_or(&empty_hashes, |v| v.hashes().properties());
                             let property_delta =
-                                diff_properties(&payload.raw, old_property_hashes);
+                                PropertyDiffer::for_schema(&payload.raw, old_property_hashes)
+                                    .diff_schema();
 
-                            let needs_rebuild = !excludes_delta.is_empty()
+                            let needs_rebuild =
+                                !excludes_delta.changed_names().is_empty()
                                 || !property_delta.is_empty();
 
                             if needs_rebuild {
@@ -2049,6 +2039,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         Ok(Self::transition(Refresh, Analyzed {
             graph: next_graph,
             refresh_ids,
+            stale_timestamp_ids,
             rebuild_ids,
             deleted_ids,
         }))
@@ -2110,14 +2101,28 @@ impl SchemaProcessor<Refresh, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
+        Self::refresh_cached_views(&mut self.status, repository)?;
+        Self::refresh_stale_timestamp_views(&mut self.status, repository)?;
+        Self::refresh_rebuild_views(&mut self.status, repository)?;
+
+        // Graph structure unchanged, only payloads mutated in-place
+        Ok(Self::transition(Construction, self.status))
+    }
+
+    fn refresh_cached_views<R>(
+        status: &mut Analyzed,
+        repository: &R,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        R: Repository,
+        R::Error: Into<SchemaRepositoryError>,
+    {
         use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
 
-        // Mutate nodes in-place through the graph
-        for id in &self.status.refresh_ids {
-            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
+        for id in &status.refresh_ids {
+            let Some(node) = status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
-
             let Some(payload) = node
                 .payload_mut()
                 .payload
@@ -2126,7 +2131,6 @@ impl SchemaProcessor<Refresh, Analyzed> {
             else {
                 continue;
             };
-
             let current = payload.view.current().ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
@@ -2134,19 +2138,15 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     },
                 ))
             })?;
-
-            let property_hashes = current.hashes().properties().clone();
-
             let file_times = FileTimesMetadata::new(
                 payload.times.created_at,
                 payload.times.modified_at,
             );
-            let hashes =
-                HashMetadata::new(payload.content_hash, property_hashes);
-            let version = current.with_metadata(file_times, hashes);
-
-            payload.view.add_version(version);
-
+            let hashes = HashMetadata::new(
+                payload.content_hash,
+                current.hashes().properties().clone(),
+            );
+            payload.view.add_version(current.with_metadata(file_times, hashes));
             repository.save_raw_schema_view(*id, &payload.view).map_err(
                 |e| {
                     let repo_err: SchemaRepositoryError = e.into();
@@ -2154,12 +2154,105 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 },
             )?;
         }
+        Ok(())
+    }
 
-        for id in &self.status.rebuild_ids {
-            let Some(node) = self.status.graph.graph_mut().get_mut(*id) else {
+    fn refresh_stale_timestamp_views<R>(
+        status: &mut Analyzed,
+        repository: &R,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        R: Repository,
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
+
+        for id in &status.stale_timestamp_ids {
+            let Some(node) = status.graph.graph_mut().get_mut(*id) else {
                 continue;
             };
 
+            match node.payload_mut().payload {
+                PipelinePayload::Inheritance(
+                    InheritanceBranch::StaleTimestamps(ref mut payload),
+                ) => {
+                    let current = payload.view.current().ok_or_else(|| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: "missing schema metadata in cached view".into(),
+                            },
+                        ))
+                    })?;
+                    let file_times = FileTimesMetadata::new(
+                        payload.times.created_at,
+                        payload.times.modified_at,
+                    );
+                    let hashes = HashMetadata::new(
+                        *current.hashes().content(),
+                        current.hashes().properties().clone(),
+                    );
+                    payload
+                        .view
+                        .add_version(current.with_metadata(file_times, hashes));
+                    repository
+                        .save_raw_schema_view(*id, &payload.view)
+                        .map_err(|e| {
+                            let repo_err: SchemaRepositoryError = e.into();
+                            SchemaLoaderError::Repository(repo_err)
+                        })?;
+                }
+                PipelinePayload::Analysis(AnalysisBranch::Refresh(
+                    ref mut payload,
+                )) => {
+                    let current = payload.view.current().ok_or_else(|| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: "missing schema metadata in cached view".into(),
+                            },
+                        ))
+                    })?;
+                    let file_times = FileTimesMetadata::new(
+                        payload.times.created_at,
+                        payload.times.modified_at,
+                    );
+                    let hashes = HashMetadata::new(
+                        payload.content_hash,
+                        current.hashes().properties().clone(),
+                    );
+                    payload
+                        .view
+                        .add_version(current.with_metadata(file_times, hashes));
+                    repository
+                        .save_raw_schema_view(*id, &payload.view)
+                        .map_err(|e| {
+                            let repo_err: SchemaRepositoryError = e.into();
+                            SchemaLoaderError::Repository(repo_err)
+                        })?;
+                }
+                PipelinePayload::Present(_)
+                | PipelinePayload::Compared(_)
+                | PipelinePayload::FileParsed(_)
+                | PipelinePayload::Inheritance(_)
+                | PipelinePayload::Analysis(_)
+                | PipelinePayload::NewParsed(_)
+                | PipelinePayload::Deleted(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn refresh_rebuild_views<R>(
+        status: &mut Analyzed,
+        repository: &R,
+    ) -> Result<(), SchemaLoaderError>
+    where
+        R: Repository,
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        for id in &status.rebuild_ids {
+            let Some(node) = status.graph.graph_mut().get_mut(*id) else {
+                continue;
+            };
             let Some(payload) = node
                 .payload_mut()
                 .payload
@@ -2168,7 +2261,6 @@ impl SchemaProcessor<Refresh, Analyzed> {
             else {
                 continue;
             };
-
             repository.save_raw_schema_view(*id, &payload.view).map_err(
                 |e| {
                     let repo_err: SchemaRepositoryError = e.into();
@@ -2176,9 +2268,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 },
             )?;
         }
-
-        // Graph structure unchanged, only payloads mutated in-place
-        Ok(Self::transition(Construction, self.status))
+        Ok(())
     }
 }
 
@@ -2191,15 +2281,6 @@ impl SchemaProcessor<Construction, Analyzed> {
         clippy::too_many_lines,
         reason = "construction keeps fetch/rebuild logic together"
     )]
-    #[expect(
-        clippy::match_same_arms,
-        reason = "wildcard fallback intentionally treats non-rebuild variants \
-                  as unchanged"
-    )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "construction only handles relevant payload variants"
-    )]
     pub(crate) fn construct_schemas(
         self,
         repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
@@ -2211,32 +2292,37 @@ impl SchemaProcessor<Construction, Analyzed> {
         let Analyzed {
             graph,
             refresh_ids,
+            stale_timestamp_ids,
             rebuild_ids,
             deleted_ids,
         } = self.status;
 
         let mut fetch_ids = refresh_ids.clone();
+        for id in &stale_timestamp_ids {
+            if !fetch_ids.contains(id) {
+                fetch_ids.push(*id);
+            }
+        }
         let update_ids: Vec<SchemaId> = rebuild_ids
             .iter()
             .filter_map(|id| {
                 let node = graph.graph().get(*id)?;
                 let extends_change = node.payload().relation();
-                match node.payload().payload.clone() {
-                    PipelinePayload::Analysis(AnalysisBranch::Rebuild(
-                        payload,
-                    )) if payload.property_delta.is_some()
-                        && extends_change == ExtendsChangeKind::Unchanged =>
-                    {
-                        Some(*id)
-                    }
-                    PipelinePayload::Analysis(AnalysisBranch::Update(_)) => {
-                        Some(*id)
-                    }
-                    PipelinePayload::Analysis(
-                        AnalysisBranch::Rebuild(_) | AnalysisBranch::Refresh(_),
-                    )
-                    | PipelinePayload::Deleted(_) => None,
-                    _ => None,
+                let payload = node.payload().payload();
+                if let Some(payload) =
+                    payload.as_analysis().and_then(AnalysisBranch::as_rebuild)
+                    && payload.property_delta.is_some()
+                    && extends_change == ExtendsChangeKind::Unchanged
+                {
+                    Some(*id)
+                } else if payload
+                    .as_analysis()
+                    .and_then(AnalysisBranch::as_update)
+                    .is_some()
+                {
+                    Some(*id)
+                } else {
+                    None
                 }
             })
             .collect();
@@ -2255,49 +2341,46 @@ impl SchemaProcessor<Construction, Analyzed> {
             fetched_by_id = fetched.into_iter().map(|s| (*s.id(), s)).collect();
         }
 
-        let expand_pairs: Vec<(SchemaId, RawSchema)> = rebuild_ids
-            .iter()
-            .filter_map(|id| {
-                let node = graph.graph().get(*id)?;
-                match node.payload().payload.clone() {
-                    PipelinePayload::Analysis(AnalysisBranch::Rebuild(
-                        payload,
-                    )) => Some((*id, payload.raw)),
-                    PipelinePayload::Analysis(AnalysisBranch::Update(
-                        payload,
-                    )) => Some((*id, payload.raw)),
-                    PipelinePayload::Analysis(AnalysisBranch::Refresh(_))
-                    | PipelinePayload::Deleted(_) => None,
-                    _ => None,
+        let expanded_by_id: HashMap<SchemaId, PropertyMap> = if rebuild_ids
+            .is_empty()
+        {
+            HashMap::new()
+        } else {
+            let expander = RefExpander::new(property_bank);
+            let mut expanded_by_id = HashMap::new();
+            for id in &rebuild_ids {
+                let Some(node) = graph.graph().get(*id) else {
+                    continue;
+                };
+                let payload = node.payload().payload();
+                let raw = if let Some(payload) =
+                    payload.as_analysis().and_then(AnalysisBranch::as_rebuild)
+                {
+                    &payload.raw
+                } else if let Some(payload) =
+                    payload.as_analysis().and_then(AnalysisBranch::as_update)
+                {
+                    &payload.raw
+                } else {
+                    continue;
+                };
+
+                let refs = raw.properties().ref_entries();
+                let mut expanded_props = expander
+                    .expand_properties(&refs)
+                    .map_err(SchemaLoaderError::Resolution)?;
+
+                let inline_entries = raw.properties().inline_entries();
+                if !inline_entries.is_empty() {
+                    let inline_props = PropertyMap::try_from(inline_entries)
+                        .map_err(SchemaLoaderError::Resolution)?;
+                    expanded_props.extend(inline_props);
                 }
-            })
-            .collect();
 
-        let expanded_by_id: HashMap<SchemaId, PropertyMap> =
-            if expand_pairs.is_empty() {
-                HashMap::new()
-            } else {
-                let expander = RefExpander::new(property_bank);
-                expand_pairs
-                    .into_iter()
-                    .map(|(id, raw)| {
-                        let refs = raw.properties().ref_entries();
-                        let mut expanded_props = expander
-                            .expand_properties(&refs)
-                            .map_err(SchemaLoaderError::Resolution)?;
-
-                        let inline_entries = collect_inline_entries(&raw);
-                        if !inline_entries.is_empty() {
-                            let inline_props =
-                                PropertyMap::try_from(inline_entries)
-                                    .map_err(SchemaLoaderError::Resolution)?;
-                            expanded_props.extend(inline_props);
-                        }
-
-                        Ok((id, expanded_props))
-                    })
-                    .collect::<Result<_, SchemaLoaderError>>()?
-            };
+                expanded_by_id.insert(*id, expanded_props);
+            }
+            expanded_by_id
+        };
 
         let mut changed_schemas = Vec::new();
         let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
@@ -2317,7 +2400,9 @@ impl SchemaProcessor<Construction, Analyzed> {
             })?;
 
             let schema_id = *id;
-            let schema = if refresh_ids.contains(&schema_id) {
+            let schema = if refresh_ids.contains(&schema_id)
+                || stale_timestamp_ids.contains(&schema_id)
+            {
                 fetched_by_id.remove(&schema_id).ok_or_else(|| {
                     SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                         crate::schema::error::SchemaFileError::FileSystem {
@@ -2386,10 +2471,6 @@ impl SchemaProcessor<Construction, Analyzed> {
         clippy::too_many_arguments,
         reason = "incremental construction keeps inputs explicit"
     )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "stage invariant failures intentionally collapse to one error"
-    )]
     fn construct_schema_incremental(
         id: SchemaId,
         node: &ProcessorNode<PipelinePayload>,
@@ -2400,41 +2481,43 @@ impl SchemaProcessor<Construction, Analyzed> {
         fetched_by_id: &HashMap<SchemaId, Schema>,
         constructed_cache: &HashMap<SchemaId, Schema>,
     ) -> Result<Schema, SchemaLoaderError> {
-        let (raw, property_delta) = match node.payload.clone() {
-            PipelinePayload::Analysis(AnalysisBranch::Rebuild(payload)) => {
-                (payload.raw, payload.property_delta)
-            }
-            PipelinePayload::Analysis(AnalysisBranch::Update(payload)) => {
-                (payload.raw, Some(payload.property_delta))
-            }
-            PipelinePayload::Analysis(AnalysisBranch::Refresh(_)) => {
-                return Err(SchemaLoaderError::Ingestion(
-                    SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: "unexpected refresh node in rebuild path"
-                                .into(),
-                        },
-                    ),
-                ));
-            }
-            PipelinePayload::Deleted(_) => {
-                return Err(SchemaLoaderError::Ingestion(
-                    SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: "unexpected deleted node in rebuild path"
-                                .into(),
-                        },
-                    ),
-                ));
-            }
-            _ => {
-                return Err(stage_variant_error(
-                    "construct_schema_incremental",
-                    id,
-                    "Analysis",
-                    node.payload.variant_name(),
-                ));
-            }
+        let payload = &node.payload;
+        let (raw, property_delta) = if let Some(payload) =
+            payload.as_analysis().and_then(AnalysisBranch::as_rebuild)
+        {
+            (payload.raw.clone(), payload.property_delta.clone())
+        } else if let Some(payload) =
+            payload.as_analysis().and_then(AnalysisBranch::as_update)
+        {
+            (payload.raw.clone(), Some(payload.property_delta.clone()))
+        } else if matches!(
+            payload,
+            PipelinePayload::Analysis(AnalysisBranch::Refresh(_))
+        ) {
+            return Err(SchemaLoaderError::Ingestion(
+                SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::FileSystem {
+                        reason: "unexpected refresh node in rebuild path"
+                            .into(),
+                    },
+                ),
+            ));
+        } else if matches!(payload, PipelinePayload::Deleted(_)) {
+            return Err(SchemaLoaderError::Ingestion(
+                SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::FileSystem {
+                        reason: "unexpected deleted node in rebuild path"
+                            .into(),
+                    },
+                ),
+            ));
+        } else {
+            return Err(stage_variant_error(
+                "construct_schema_incremental",
+                id,
+                "Analysis",
+                node.payload.variant_name(),
+            ));
         };
 
         match (extends_change, property_delta) {
@@ -2469,13 +2552,11 @@ impl SchemaProcessor<Construction, Analyzed> {
 
                 let mut properties = schema.properties().clone();
                 for (name, prop) in expanded {
-                    if delta.upserts.inline.contains_key(name)
-                        || delta.upserts.refs.contains_key(name)
-                    {
+                    if delta.is_upsert_name(name) {
                         properties.insert(name.clone(), prop.clone());
                     }
                 }
-                for name in &delta.removed {
+                for name in delta.removed() {
                     properties.remove(name);
                 }
 
@@ -2687,7 +2768,7 @@ impl SchemaProcessor<Construction, NewBuild> {
             let mut expanded_props = expander
                 .expand_properties(&refs)
                 .map_err(SchemaLoaderError::Resolution)?;
-            let inline_entries = collect_inline_entries(&parsed.raw);
+            let inline_entries = parsed.raw.properties().inline_entries();
             if !inline_entries.is_empty() {
                 let inline_props = PropertyMap::try_from(inline_entries)
                     .map_err(SchemaLoaderError::Resolution)?;
@@ -2862,95 +2943,6 @@ fn stage_variant_error(
     ))
 }
 
-fn collect_inline_entries(
-    raw: &RawSchema,
-) -> HashMap<PropertyName, RawPropertyInline> {
-    let mut inline_entries = HashMap::new();
-    for (name, entry) in raw.properties() {
-        match entry.clone() {
-            crate::schema::raw::property::RawProperty::Inline(inline) => {
-                inline_entries.insert(name.clone(), inline);
-            }
-            crate::schema::raw::property::RawProperty::Ref(_) => {}
-        }
-    }
-    inline_entries
-}
-
-fn diff_excludes(
-    old_excludes: &[PropertyName],
-    new_excludes: &[PropertyName],
-) -> ExcludesDelta {
-    let old_set: HashSet<&PropertyName> = old_excludes.iter().collect();
-    let new_set: HashSet<&PropertyName> = new_excludes.iter().collect();
-
-    let added: Vec<PropertyName> =
-        new_set.difference(&old_set).map(|p| (*p).clone()).collect();
-    let removed: Vec<PropertyName> =
-        old_set.difference(&new_set).map(|p| (*p).clone()).collect();
-
-    ExcludesDelta {
-        added,
-        removed,
-    }
-}
-
-#[expect(
-    clippy::iter_over_hash_type,
-    reason = "hash diff order does not impact output"
-)]
-fn diff_properties(
-    raw: &RawSchema,
-    old_hashes: &HashMap<PropertyName, [u8; 32]>,
-) -> SchemaPropertyDelta {
-    use blake3;
-
-    let mut upserts = SchemaPropertyUpserts::default();
-    let mut removed: Vec<PropertyName> = Vec::new();
-
-    let mut current_hashes: HashMap<PropertyName, [u8; 32]> = HashMap::new();
-    for (name, prop) in raw.properties() {
-        let hash = *blake3::hash(
-            serde_json::to_string(prop).unwrap_or_default().as_bytes(),
-        )
-        .as_bytes();
-        current_hashes.insert(name.clone(), hash);
-    }
-
-    for (name, hash) in &current_hashes {
-        let Some(prop) = raw.properties().get(name) else {
-            continue;
-        };
-
-        let is_new = old_hashes.get(name).is_none();
-        let is_changed = old_hashes.get(name).is_some_and(|old| old != hash);
-        if !(is_new || is_changed) {
-            continue;
-        }
-
-        match prop.clone() {
-            crate::schema::raw::property::RawProperty::Inline(inline) => {
-                upserts.inline.insert(name.clone(), inline);
-            }
-            crate::schema::raw::property::RawProperty::Ref(r#ref) => {
-                upserts.refs.insert(name.clone(), r#ref);
-            }
-        }
-    }
-
-    for name in old_hashes.keys() {
-        if !current_hashes.contains_key(name) {
-            removed.push(name.clone());
-        }
-    }
-    removed.sort();
-
-    SchemaPropertyDelta {
-        upserts,
-        removed,
-    }
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
 //  TESTS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2993,10 +2985,9 @@ mod tests {
 
     #[test]
     fn excludes_delta_not_empty_when_added() {
-        let delta = ExcludesDelta {
-            added: vec![PropertyName::try_new("test").unwrap()],
-            removed: vec![],
-        };
+        let old = Vec::<PropertyName>::new();
+        let new = vec![PropertyName::try_new("test").unwrap()];
+        let delta = ExcludesDelta::from_slices(&old, &new);
         assert!(!delta.is_empty());
     }
 
@@ -3008,10 +2999,10 @@ mod tests {
 
     #[test]
     fn property_delta_not_empty_when_removed() {
-        let delta = SchemaPropertyDelta {
-            upserts: SchemaPropertyUpserts::default(),
-            removed: vec![PropertyName::try_new("test").unwrap()],
-        };
+        let delta = SchemaPropertyDelta::from_parts(
+            SchemaPropertyUpserts::default(),
+            vec![PropertyName::try_new("test").unwrap()],
+        );
         assert!(!delta.is_empty());
     }
 

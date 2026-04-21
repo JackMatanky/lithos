@@ -49,6 +49,11 @@ pub struct RawPropertyMap<T> {
     inner: HashMap<PropertyName, T>,
 }
 
+type SplitPropertyEntries = (
+    HashMap<PropertyName, RawPropertyInline>,
+    HashMap<PropertyName, RawPropertyRef>,
+);
+
 impl<T> RawPropertyMap<T> {
     /// Returns a reference to the inner map.
     ///
@@ -195,6 +200,23 @@ impl RawPropertyMap<RawProperty> {
     #[inline]
     #[must_use]
     pub fn ref_entries(&self) -> HashMap<PropertyName, RawPropertyRef> {
+        let (_, refs) = self.split_entries();
+        refs
+    }
+
+    /// Returns a `HashMap` containing only inline entries.
+    #[inline]
+    #[must_use]
+    pub fn inline_entries(&self) -> HashMap<PropertyName, RawPropertyInline> {
+        let (inline, _) = self.split_entries();
+        inline
+    }
+
+    /// Returns both inline and `$ref` entries in one pass.
+    #[inline]
+    #[must_use]
+    pub fn split_entries(&self) -> SplitPropertyEntries {
+        let mut inline = HashMap::new();
         let mut refs = HashMap::new();
         #[expect(
             clippy::iter_over_hash_type,
@@ -205,11 +227,16 @@ impl RawPropertyMap<RawProperty> {
                 clippy::pattern_type_mismatch,
                 reason = "Match ergonomics keeps ref extraction concise"
             )]
-            if let RawProperty::Ref(ref_entry) = entry {
-                refs.insert(name.clone(), ref_entry.clone());
+            match entry {
+                RawProperty::Ref(ref_entry) => {
+                    refs.insert(name.clone(), ref_entry.clone());
+                }
+                RawProperty::Inline(inline_entry) => {
+                    inline.insert(name.clone(), inline_entry.clone());
+                }
             }
         }
-        refs
+        (inline, refs)
     }
 }
 
@@ -586,6 +613,57 @@ mod tests {
             let inner = map.into_map();
 
             assert_eq!(inner.len(), 1, "Inner map should have 1 entry");
+        }
+
+        #[test]
+        fn ref_entries_returns_only_refs() {
+            let json = r##"{
+                "inline_prop": {"type": "bool"},
+                "ref_prop": {"$ref": "#property_bank/name"}
+            }"##;
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_str(json).unwrap();
+
+            let refs = map.ref_entries();
+
+            assert_eq!(refs.len(), 1);
+            assert!(
+                refs.contains_key(&PropertyName::try_new("ref_prop").unwrap())
+            );
+        }
+
+        #[test]
+        fn inline_entries_returns_only_inline() {
+            let json = r##"{
+                "inline_prop": {"type": "bool"},
+                "ref_prop": {"$ref": "#property_bank/name"}
+            }"##;
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_str(json).unwrap();
+
+            let inline = map.inline_entries();
+
+            assert_eq!(inline.len(), 1);
+            assert!(
+                inline.contains_key(
+                    &PropertyName::try_new("inline_prop").unwrap()
+                )
+            );
+        }
+
+        #[test]
+        fn split_entries_partitions_in_one_call() {
+            let json = r##"{
+                "inline_prop": {"type": "bool"},
+                "ref_prop": {"$ref": "#property_bank/name"}
+            }"##;
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_str(json).unwrap();
+
+            let (inline, refs) = map.split_entries();
+
+            assert_eq!(inline.len(), 1);
+            assert_eq!(refs.len(), 1);
         }
     }
 

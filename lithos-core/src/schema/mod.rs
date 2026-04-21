@@ -55,6 +55,8 @@ pub mod inheritance;
 /// Schema index types for efficient lookups.
 pub(crate) mod index;
 
+/// Shared delta computation utilities for schema ingestion.
+pub(crate) mod delta;
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
