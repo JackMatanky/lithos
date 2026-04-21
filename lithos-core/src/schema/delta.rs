@@ -36,7 +36,7 @@ pub(crate) struct ExcludesDelta {
     /// Property names present in the new excludes list but not the old list.
     added: Vec<PropertyName>,
     /// Property names present in the old excludes list but not the new list.
-    removed: Vec<PropertyName>,
+    removals: Vec<PropertyName>,
 }
 
 impl ExcludesDelta {
@@ -44,18 +44,44 @@ impl ExcludesDelta {
     #[inline]
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
-        self.added.is_empty() && self.removed.is_empty()
+        self.added.is_empty() && self.removals.is_empty()
     }
 
-    /// Returns the union of all changed exclude names.
+    /// Returns property names that were added to the excludes list.
     #[inline]
     #[must_use]
-    pub(crate) fn changed_names(&self) -> HashSet<PropertyName> {
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn added(&self) -> &[PropertyName] {
+        &self.added
+    }
+
+    /// Returns property names that were removed from the excludes list.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn removals(&self) -> &[PropertyName] {
+        &self.removals
+    }
+
+    /// Returns an iterator over all changed exclude names.
+    #[inline]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn iter_changed(&self) -> impl Iterator<Item = &PropertyName> {
+        self.added.iter().chain(self.removals.iter())
+    }
+
+    /// Returns the union of all changed exclude names as a new set.
+    ///
+    /// This allocates a new `HashSet` on each call.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
         let mut changed = HashSet::with_capacity(
-            self.added.len().saturating_add(self.removed.len()),
+            self.added.len().saturating_add(self.removals.len()),
         );
         changed.extend(self.added.iter().cloned());
-        changed.extend(self.removed.iter().cloned());
+        changed.extend(self.removals.iter().cloned());
         changed
     }
 
@@ -74,11 +100,11 @@ impl ExcludesDelta {
             new_excludes.iter().cloned().collect();
 
         let added = new_set.difference(&old_set).cloned().collect();
-        let removed = old_set.difference(&new_set).cloned().collect();
+        let removals = old_set.difference(&new_set).cloned().collect();
 
         Self {
             added,
-            removed,
+            removals,
         }
     }
 }
@@ -92,25 +118,71 @@ pub(crate) struct SchemaPropertyUpserts {
     refs: HashMap<PropertyName, RawPropertyRef>,
 }
 
+impl SchemaPropertyUpserts {
+    /// Returns `true` when no upserts exist.
+    #[inline]
+    #[must_use]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.inline.is_empty() && self.refs.is_empty()
+    }
+
+    /// Returns the inline property definitions.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    pub(crate) fn inline(&self) -> &HashMap<PropertyName, RawPropertyInline> {
+        &self.inline
+    }
+
+    /// Returns the property-bank references.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn refs(&self) -> &HashMap<PropertyName, RawPropertyRef> {
+        &self.refs
+    }
+
+    /// Returns `true` if the given name has an inline upsert.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    pub(crate) fn contains_inline(&self, name: &PropertyName) -> bool {
+        self.inline.contains_key(name)
+    }
+
+    /// Returns `true` if the given name has a ref upsert.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    pub(crate) fn contains_ref(&self, name: &PropertyName) -> bool {
+        self.refs.contains_key(name)
+    }
+}
+
 /// Delta for schema properties.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct SchemaPropertyDelta {
     /// New/changed properties split by raw variant.
     upserts: SchemaPropertyUpserts,
-    /// Removed property names.
-    removed: Vec<PropertyName>,
+    /// Removed property names (sorted deterministically).
+    removals: Vec<PropertyName>,
 }
 
 impl SchemaPropertyDelta {
+    /// Creates a new schema property delta with normalized removals.
+    ///
+    /// The `removals` vector will be sorted and deduplicated.
     #[inline]
     #[must_use]
-    pub(crate) fn from_parts(
+    pub(crate) fn new(
         upserts: SchemaPropertyUpserts,
-        removed: Vec<PropertyName>,
+        mut removals: Vec<PropertyName>,
     ) -> Self {
+        removals.sort();
+        removals.dedup();
         Self {
             upserts,
-            removed,
+            removals,
         }
     }
 
@@ -118,20 +190,28 @@ impl SchemaPropertyDelta {
     #[inline]
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
-        self.upserts.inline.is_empty()
-            && self.upserts.refs.is_empty()
-            && self.removed.is_empty()
+        self.upserts.is_empty() && self.removals.is_empty()
     }
 
+    /// Returns the property upserts.
     #[inline]
     #[must_use]
-    pub(crate) fn removed(&self) -> &[PropertyName] {
-        &self.removed
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn upserts(&self) -> &SchemaPropertyUpserts {
+        &self.upserts
     }
 
+    /// Returns removed property names.
     #[inline]
     #[must_use]
-    pub(crate) fn is_upsert_name(&self, name: &PropertyName) -> bool {
+    pub(crate) fn removals(&self) -> &[PropertyName] {
+        &self.removals
+    }
+
+    /// Returns `true` if the given name is an upsert (inline or ref).
+    #[inline]
+    #[must_use]
+    pub(crate) fn contains_upsert(&self, name: &PropertyName) -> bool {
         self.upserts.inline.contains_key(name)
             || self.upserts.refs.contains_key(name)
     }
@@ -142,14 +222,26 @@ impl SchemaPropertyDelta {
 pub(crate) struct PropertyBankDelta {
     /// New/changed property-bank entries.
     upserts: PropertyMap,
-    /// Names for changed entries (added/updated), retained for quick set
-    /// builds.
-    upsert_names: Vec<PropertyName>,
-    /// Removed property names.
+    /// Removed property names (sorted deterministically).
     removals: Vec<PropertyName>,
 }
 
 impl PropertyBankDelta {
+    /// Creates a new property bank delta.
+    #[inline]
+    #[must_use]
+    pub(crate) fn new(
+        upserts: PropertyMap,
+        mut removals: Vec<PropertyName>,
+    ) -> Self {
+        removals.sort();
+        removals.dedup();
+        Self {
+            upserts,
+            removals,
+        }
+    }
+
     /// Returns `true` when no property-bank changes exist.
     #[inline]
     #[must_use]
@@ -164,18 +256,6 @@ impl PropertyBankDelta {
         &self.upserts
     }
 
-    /// Returns the union of changed names (upserts + removals).
-    #[inline]
-    #[must_use]
-    pub(crate) fn changed_names(&self) -> HashSet<PropertyName> {
-        let mut names = HashSet::with_capacity(
-            self.upsert_names.len().saturating_add(self.removals.len()),
-        );
-        names.extend(self.upsert_names.iter().cloned());
-        names.extend(self.removals.iter().cloned());
-        names
-    }
-
     /// Returns removed property names.
     ///
     /// Names are sorted deterministically.
@@ -183,6 +263,42 @@ impl PropertyBankDelta {
     #[must_use]
     pub(crate) fn removals(&self) -> &[PropertyName] {
         &self.removals
+    }
+
+    /// Returns an iterator over changed names (upsert entries + removals).
+    #[inline]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn iter_changed(&self) -> impl Iterator<Item = &PropertyName> {
+        self.upserts.keys().chain(self.removals.iter())
+    }
+
+    /// Returns the union of changed names as a new set.
+    ///
+    /// This allocates a new `HashSet` on each call.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
+        let mut names = HashSet::with_capacity(
+            self.upserts.len().saturating_add(self.removals.len()),
+        );
+        names.extend(self.upserts.keys().cloned());
+        names.extend(self.removals.iter().cloned());
+        names
+    }
+
+    /// Consumes self and returns the union of changed names as a new set.
+    ///
+    /// This takes ownership to avoid cloning the upsert keys.
+    #[inline]
+    #[must_use]
+    pub(crate) fn into_changed_name_set(self) -> HashSet<PropertyName> {
+        let mut names = HashSet::with_capacity(
+            self.upserts.len().saturating_add(self.removals.len()),
+        );
+        names.extend(self.upserts.keys().cloned());
+        names.extend(self.removals.iter().cloned());
+        names
     }
 }
 
@@ -223,14 +339,16 @@ impl<'data> PropertyDiffer<'data, RawProperty> {
     /// Computes a schema-specific property delta.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "hash iteration order does not affect delta semantics"
+    )]
     pub(crate) fn diff_schema(&self) -> SchemaPropertyDelta {
         let property_diff = self.diff();
-        let (upserts, removed, _current_hashes) = property_diff.into_parts();
+        let (upserts, removals, _current_hashes) = property_diff.into_parts();
         let mut typed_upserts = SchemaPropertyUpserts::default();
 
-        let mut upsert_entries: Vec<_> = upserts.into_iter().collect();
-        upsert_entries.sort_by(|left, right| left.0.cmp(&right.0));
-        for (name, entry) in upsert_entries {
+        for (name, entry) in upserts {
             match entry {
                 RawProperty::Inline(inline) => {
                     typed_upserts.inline.insert(name, inline);
@@ -241,7 +359,7 @@ impl<'data> PropertyDiffer<'data, RawProperty> {
             }
         }
 
-        SchemaPropertyDelta::from_parts(typed_upserts, removed)
+        SchemaPropertyDelta::new(typed_upserts, removals)
     }
 }
 
@@ -266,7 +384,6 @@ impl<'data> PropertyDiffer<'data, RawPropertyBankEntry> {
     pub(crate) fn diff_property_bank(&self) -> PropertyBankDiffResult {
         let property_diff = self.diff();
         let (upserts, removals, property_hashes) = property_diff.into_parts();
-        let upsert_names = upserts.keys().cloned().collect::<Vec<_>>();
 
         let upserts = PropertyMap::try_from(upserts).map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
@@ -275,14 +392,7 @@ impl<'data> PropertyDiffer<'data, RawPropertyBankEntry> {
             })
         })?;
 
-        Ok((
-            PropertyBankDelta {
-                upserts,
-                upsert_names,
-                removals,
-            },
-            property_hashes,
-        ))
+        Ok((PropertyBankDelta::new(upserts, removals), property_hashes))
     }
 }
 
@@ -365,13 +475,39 @@ mod tests {
 
         let delta = ExcludesDelta::from_slices(&old, &new);
 
-        assert_eq!(delta.added.len(), 1);
-        assert_eq!(delta.removed.len(), 1);
-        assert_eq!(delta.added.first().map(PropertyName::as_str), Some("c"));
-        assert_eq!(delta.removed.first().map(PropertyName::as_str), Some("a"));
-        assert!(delta.changed_names().contains(
+        assert_eq!(delta.added().len(), 1);
+        assert_eq!(delta.removals().len(), 1);
+        assert_eq!(delta.added().first().map(PropertyName::as_str), Some("c"));
+        assert_eq!(
+            delta.removals().first().map(PropertyName::as_str),
+            Some("a")
+        );
+        assert!(delta.to_changed_name_set().contains(
             &PropertyName::try_new("a").expect("valid property name")
         ));
+    }
+
+    #[test]
+    fn excludes_delta_iter_changed_yields_all() {
+        let old = vec![PropertyName::try_new("a").expect("valid")];
+        let new = vec![PropertyName::try_new("b").expect("valid")];
+
+        let delta = ExcludesDelta::from_slices(&old, &new);
+        let changed: HashSet<_> =
+            delta.iter_changed().map(PropertyName::as_str).collect();
+        assert!(changed.contains("a"));
+        assert!(changed.contains("b"));
+    }
+
+    #[test]
+    fn excludes_delta_accessor_methods() {
+        let old = vec![PropertyName::try_new("a").expect("valid")];
+        let new = vec![PropertyName::try_new("b").expect("valid")];
+
+        let delta = ExcludesDelta::from_slices(&old, &new);
+        assert!(!delta.is_empty());
+        assert_eq!(delta.added().len(), 1);
+        assert_eq!(delta.removals().len(), 1);
     }
 
     #[test]
@@ -443,5 +579,131 @@ mod tests {
         assert!(!delta.is_empty());
         assert_eq!(delta.upserts.inline.len(), 1);
         assert!(delta.upserts.refs.is_empty());
+    }
+
+    #[test]
+    fn schema_property_delta_contains_upsert() {
+        let mut upserts = SchemaPropertyUpserts::default();
+        upserts.inline.insert(
+            PropertyName::try_new("title").expect("valid"),
+            serde_json::from_value::<RawPropertyInline>(
+                serde_json::json!({"type": "string"}),
+            )
+            .expect("valid"),
+        );
+
+        let delta = SchemaPropertyDelta::new(upserts, Vec::new());
+
+        assert!(
+            delta.contains_upsert(
+                &PropertyName::try_new("title").expect("valid")
+            )
+        );
+        assert!(!delta.contains_upsert(
+            &PropertyName::try_new("missing").expect("valid")
+        ));
+    }
+
+    #[test]
+    fn schema_property_delta_normalizes_removals() {
+        let upserts = SchemaPropertyUpserts::default();
+        let removals = vec![
+            PropertyName::try_new("b").expect("valid"),
+            PropertyName::try_new("a").expect("valid"),
+            PropertyName::try_new("b").expect("valid"),
+        ];
+
+        let delta = SchemaPropertyDelta::new(upserts, removals);
+        let removals_slice = delta.removals();
+        assert_eq!(removals_slice.len(), 2);
+        assert_eq!(removals_slice.first().map(PropertyName::as_str), Some("a"));
+        assert_eq!(removals_slice.get(1).map(PropertyName::as_str), Some("b"));
+    }
+
+    #[test]
+    fn schema_property_upserts_accessor_methods() {
+        let mut upserts = SchemaPropertyUpserts::default();
+        upserts.inline.insert(
+            PropertyName::try_new("title").expect("valid"),
+            serde_json::from_value::<RawPropertyInline>(
+                serde_json::json!({"type": "string"}),
+            )
+            .expect("valid"),
+        );
+
+        assert!(!upserts.is_empty());
+        assert!(!upserts.inline().is_empty());
+        assert!(upserts.refs().is_empty());
+
+        let delta = SchemaPropertyDelta::new(upserts, Vec::new());
+        assert!(!delta.upserts().is_empty());
+    }
+
+    #[test]
+    fn schema_property_upserts_contains_inline_ref() {
+        let mut upserts = SchemaPropertyUpserts::default();
+        upserts.inline.insert(
+            PropertyName::try_new("title").expect("valid"),
+            serde_json::from_value::<RawPropertyInline>(
+                serde_json::json!({"type": "string"}),
+            )
+            .expect("valid"),
+        );
+
+        assert!(
+            upserts.contains_inline(
+                &PropertyName::try_new("title").expect("valid")
+            )
+        );
+        assert!(
+            !upserts
+                .contains_ref(&PropertyName::try_new("title").expect("valid"))
+        );
+    }
+
+    #[test]
+    fn property_bank_delta_to_changed_name_set() {
+        use crate::schema::{
+            property::{Multiplicity, Optionality, Property, PropertyId},
+            property_spec::{PropertySpec, StringSpec},
+        };
+
+        let property = Property::new(
+            PropertyId::new(),
+            Optionality::Optional,
+            Multiplicity::Single,
+            PropertySpec::String(StringSpec::default()),
+        );
+        let mut map = HashMap::new();
+        map.insert(PropertyName::try_new("a").expect("valid"), property);
+        let upserts = PropertyMap::from(map);
+
+        let delta = PropertyBankDelta::new(upserts, Vec::new());
+        assert_eq!(delta.iter_changed().count(), 1);
+
+        let set = delta.to_changed_name_set();
+        assert!(set.contains(&PropertyName::try_new("a").expect("valid")));
+    }
+
+    #[test]
+    fn property_bank_delta_into_changed_name_set() {
+        use crate::schema::{
+            property::{Multiplicity, Optionality, Property, PropertyId},
+            property_spec::{PropertySpec, StringSpec},
+        };
+
+        let property = Property::new(
+            PropertyId::new(),
+            Optionality::Optional,
+            Multiplicity::Single,
+            PropertySpec::String(StringSpec::default()),
+        );
+        let mut map = HashMap::new();
+        map.insert(PropertyName::try_new("a").expect("valid"), property);
+        let upserts = PropertyMap::from(map);
+
+        let delta = PropertyBankDelta::new(upserts, Vec::new());
+        let set = delta.into_changed_name_set();
+        assert!(set.contains(&PropertyName::try_new("a").expect("valid")));
     }
 }

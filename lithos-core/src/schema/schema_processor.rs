@@ -1955,7 +1955,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                     .diff_schema();
 
                             let needs_rebuild =
-                                !excludes_delta.changed_names().is_empty()
+                                !excludes_delta.is_empty()
                                 || !property_delta.is_empty();
 
                             if needs_rebuild {
@@ -2552,11 +2552,11 @@ impl SchemaProcessor<Construction, Analyzed> {
 
                 let mut properties = schema.properties().clone();
                 for (name, prop) in expanded {
-                    if delta.is_upsert_name(name) {
+                    if delta.contains_upsert(name) {
                         properties.insert(name.clone(), prop.clone());
                     }
                 }
-                for name in delta.removed() {
+                for name in delta.removals() {
                     properties.remove(name);
                 }
 
@@ -2999,10 +2999,10 @@ mod tests {
 
     #[test]
     fn property_delta_not_empty_when_removed() {
-        let delta = SchemaPropertyDelta::from_parts(
-            SchemaPropertyUpserts::default(),
-            vec![PropertyName::try_new("test").unwrap()],
-        );
+        let delta =
+            SchemaPropertyDelta::new(SchemaPropertyUpserts::default(), vec![
+                PropertyName::try_new("test").unwrap(),
+            ]);
         assert!(!delta.is_empty());
     }
 

@@ -496,10 +496,6 @@ pub(crate) struct Analysis;
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "branching stores full state for typestate transitions"
-)]
 #[must_use = "branch outcomes must be handled"]
 pub(crate) enum AnalysisBranch {
     /// Content changed but properties did not.
@@ -786,7 +782,7 @@ impl PropertyBankProcessor<Construction, Changed> {
         self.persist(filename, repository, &bank)?;
         Ok(Self::transition(Completed, StaleReady {
             bank,
-            delta: self.status.delta.changed_names(),
+            delta: self.status.delta.into_changed_name_set(),
         }))
     }
 
