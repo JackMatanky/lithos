@@ -1463,7 +1463,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     },
                 ))
             })?;
-            let payload = match node.payload().payload.clone() {
+
+            // Match by reference first to extract metadata without cloning
+            let payload_ref = &node.payload().payload;
+            let file_parsed = match payload_ref {
                 PipelinePayload::FileParsed(payload) => payload,
                 PipelinePayload::Deleted(_) => continue,
                 unexpected => {
@@ -1475,7 +1478,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     ));
                 }
             };
-            let status = match &payload {
+
+            let status = match file_parsed {
                 FileParsedBranch::StaleParsed(_) => status_by_id
                     .get(&id)
                     .copied()
@@ -1486,7 +1490,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 }
             };
 
-            let new_parent = match &payload {
+            let new_parent = match file_parsed {
                 FileParsedBranch::StaleParsed(stale) => stale
                     .raw
                     .extends()
@@ -1509,7 +1513,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 (Some(_), Some(_)) => ExtendsChangeKind::Rewired,
             };
 
-            let branch_payload = match payload {
+            // Clone only once, right before consumption
+            let branch_payload = match file_parsed.clone() {
                 FileParsedBranch::Fresh(p) => InheritanceBranch::Fresh(p),
                 FileParsedBranch::StaleTimestamps(p) => {
                     InheritanceBranch::StaleTimestamps(p)
@@ -2383,7 +2388,8 @@ impl SchemaProcessor<Construction, Analyzed> {
         };
 
         let mut changed_schemas = Vec::new();
-        let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
+        let mut constructed_cache: HashMap<SchemaId, Arc<Schema>> =
+            HashMap::new();
 
         let topo_order = graph.topo_order().map_err(|e| {
             SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
@@ -2450,7 +2456,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             let is_changed = rebuild_ids.contains(&schema_id);
             let schema = Arc::new(schema);
 
-            constructed_cache.insert(schema_id, (*schema).clone());
+            constructed_cache.insert(schema_id, Arc::clone(&schema));
             if is_changed {
                 changed_schemas.push(schema);
             }
@@ -2479,7 +2485,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         children: &[SchemaId],
         expanded_by_id: &HashMap<SchemaId, PropertyMap>,
         fetched_by_id: &HashMap<SchemaId, Schema>,
-        constructed_cache: &HashMap<SchemaId, Schema>,
+        constructed_cache: &HashMap<SchemaId, Arc<Schema>>,
     ) -> Result<Schema, SchemaLoaderError> {
         let payload = &node.payload;
         let (raw, property_delta) = if let Some(payload) =
@@ -2524,8 +2530,8 @@ impl SchemaProcessor<Construction, Analyzed> {
             (ExtendsChangeKind::Unchanged, Some(delta)) => {
                 let schema = fetched_by_id
                     .get(&id)
-                    .or_else(|| constructed_cache.get(&id))
                     .cloned()
+                    .or_else(|| constructed_cache.get(&id).map(|s| (**s).clone()))
                     .ok_or_else(|| {
                         SchemaLoaderError::Ingestion(
                             SchemaIngestionError::File(
@@ -2640,12 +2646,11 @@ impl SchemaProcessor<Construction, Analyzed> {
             }
 
             (ExtendsChangeKind::Unchanged, None) => {
-                if let Some(schema) = fetched_by_id
-                    .get(&id)
-                    .or_else(|| constructed_cache.get(&id))
-                    .cloned()
-                {
+                if let Some(schema) = fetched_by_id.get(&id).cloned() {
                     return Ok(schema);
+                }
+                if let Some(schema_arc) = constructed_cache.get(&id) {
+                    return Ok((**schema_arc).clone());
                 }
 
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
@@ -2691,15 +2696,16 @@ impl SchemaProcessor<Construction, Analyzed> {
 
     fn collect_parent_properties(
         parent_ids: &[SchemaId],
-        constructed_cache: &HashMap<SchemaId, Schema>,
+        constructed_cache: &HashMap<SchemaId, Arc<Schema>>,
         fetched_by_id: &HashMap<SchemaId, Schema>,
     ) -> PropertyMap {
         let mut merged = PropertyMap::new();
         for parent_id in parent_ids {
-            if let Some(schema) = constructed_cache
+            let schema = constructed_cache
                 .get(parent_id)
-                .or_else(|| fetched_by_id.get(parent_id))
-            {
+                .map(std::convert::AsRef::as_ref)
+                .or_else(|| fetched_by_id.get(parent_id));
+            if let Some(schema) = schema {
                 for (name, prop) in schema.properties() {
                     merged.insert(name.clone(), prop.clone());
                 }
@@ -2733,7 +2739,8 @@ impl SchemaProcessor<Construction, NewBuild> {
             graph,
         } = self.status;
 
-        let mut constructed_cache: HashMap<SchemaId, Schema> = HashMap::new();
+        let mut constructed_cache: HashMap<SchemaId, Arc<Schema>> =
+            HashMap::new();
         let mut built = Vec::new();
         let expander = RefExpander::new(property_bank);
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
@@ -2819,8 +2826,9 @@ impl SchemaProcessor<Construction, NewBuild> {
                 SchemaLoaderError::Repository(repo_err)
             })?;
 
-            constructed_cache.insert(schema_id, schema.clone());
-            built.push(schema);
+            let schema = Arc::new(schema);
+            constructed_cache.insert(schema_id, Arc::clone(&schema));
+            built.push((*schema).clone());
         }
 
         if !built.is_empty() {
