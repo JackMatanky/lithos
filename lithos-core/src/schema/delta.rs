@@ -196,7 +196,7 @@ impl SchemaPropertyDelta {
     /// Returns the property upserts.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    #[expect(dead_code, reason = "Complete API surface for delta inspection")]
     pub(crate) fn upserts(&self) -> &SchemaPropertyUpserts {
         &self.upserts
     }
@@ -267,7 +267,7 @@ impl PropertyBankDelta {
 
     /// Returns an iterator over changed names (upsert entries + removals).
     #[inline]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    #[expect(dead_code, reason = "Complete API surface for delta inspection")]
     pub(crate) fn iter_changed(&self) -> impl Iterator<Item = &PropertyName> {
         self.upserts.keys().chain(self.removals.iter())
     }
@@ -277,7 +277,7 @@ impl PropertyBankDelta {
     /// This allocates a new `HashSet` on each call.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
     pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
@@ -456,255 +456,331 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{
-        raw::{RawFileTimes, RawPropertyBank},
-        views::HashMetadata,
-    };
 
-    #[test]
-    fn excludes_delta_is_deterministic_and_tracks_changes() {
-        let old = vec![
-            PropertyName::try_new("a").expect("valid property name"),
-            PropertyName::try_new("b").expect("valid property name"),
-        ];
-        let new = vec![
-            PropertyName::try_new("b").expect("valid property name"),
-            PropertyName::try_new("c").expect("valid property name"),
-        ];
+    mod fixtures {
+        use super::*;
+        use crate::schema::{
+            raw::RawPropertyBank, views::metadata::HashMetadata,
+        };
 
-        let delta = ExcludesDelta::from_slices(&old, &new);
+        pub(crate) fn name(s: &str) -> PropertyName {
+            PropertyName::try_new(s).expect("valid test property name")
+        }
 
-        assert_eq!(delta.added().len(), 1);
-        assert_eq!(delta.removals().len(), 1);
-        assert_eq!(delta.added().first().map(PropertyName::as_str), Some("c"));
-        assert_eq!(
-            delta.removals().first().map(PropertyName::as_str),
-            Some("a")
-        );
-        assert!(delta.to_changed_name_set().contains(
-            &PropertyName::try_new("a").expect("valid property name")
-        ));
-    }
+        pub(crate) fn inline_string() -> RawPropertyInline {
+            serde_json::from_value(serde_json::json!({"type": "string"}))
+                .expect("valid inline string")
+        }
 
-    #[test]
-    fn excludes_delta_iter_changed_yields_all() {
-        let old = vec![PropertyName::try_new("a").expect("valid")];
-        let new = vec![PropertyName::try_new("b").expect("valid")];
+        pub(crate) fn property_bank_fixture(
+            names: &[&str],
+        ) -> (RawPropertyBank, PropertyHashes) {
+            let mut properties = serde_json::Map::new();
+            let mut hashes = HashMap::new();
 
-        let delta = ExcludesDelta::from_slices(&old, &new);
-        let changed: HashSet<_> =
-            delta.iter_changed().map(PropertyName::as_str).collect();
-        assert!(changed.contains("a"));
-        assert!(changed.contains("b"));
-    }
+            for name_str in names {
+                let p_name = name(name_str);
+                let entry_value = serde_json::json!({"type": "string"});
+                let entry = RawPropertyBankEntry(inline_string());
+                hashes.insert(p_name.clone(), HashMetadata::hash_entry(&entry));
+                properties.insert((*name_str).to_owned(), entry_value);
+            }
 
-    #[test]
-    fn excludes_delta_accessor_methods() {
-        let old = vec![PropertyName::try_new("a").expect("valid")];
-        let new = vec![PropertyName::try_new("b").expect("valid")];
-
-        let delta = ExcludesDelta::from_slices(&old, &new);
-        assert!(!delta.is_empty());
-        assert_eq!(delta.added().len(), 1);
-        assert_eq!(delta.removals().len(), 1);
-    }
-
-    #[test]
-    fn property_delta_engine_supports_raw_property_map() {
-        let map: RawPropertyMap<RawProperty> = serde_json::from_str(
-            r##"{
-              "flag": {"type": "bool"},
-              "name": {"$ref": "#property_bank/name"}
-            }"##,
-        )
-        .expect("valid raw property map");
-
-        let previous_hashes = HashMap::new();
-        let change_set = PropertyDeltaEngine::for_map(&map, &previous_hashes)
-            .compute_change_set();
-        let (upserts, removals, hashes) = change_set.into_parts();
-        assert_eq!(upserts.len(), 2);
-        assert!(removals.is_empty());
-        assert_eq!(hashes.len(), 2);
-    }
-
-    #[test]
-    fn property_delta_engine_supports_raw_property_bank() {
-        let bank: RawPropertyBank =
-            serde_json::from_value::<RawPropertyBank>(serde_json::json!({
+            let bank_json = serde_json::json!({
                 "$version": "1.0",
-                "properties": {
-                    "title": {"type": "string"}
-                }
-            }))
-            .expect("valid property bank")
-            .with_file_times(RawFileTimes {
-                created_at: None,
-                modified_at: None,
+                "properties": properties
             });
+            let bank: RawPropertyBank =
+                serde_json::from_value(bank_json).expect("valid bank fixture");
 
-        let previous_hashes = HashMap::new();
-        let change_set =
-            PropertyDeltaEngine::for_property_bank(&bank, &previous_hashes)
-                .compute_change_set();
-        let (upserts, removals, hashes) = change_set.into_parts();
-        assert_eq!(upserts.len(), 1);
-        assert!(removals.is_empty());
-        assert_eq!(hashes.len(), 1);
+            (bank, hashes)
+        }
     }
 
-    #[test]
-    fn diff_properties_reuses_delta_engine_core() {
-        let raw: RawSchema =
-            serde_json::from_value::<RawSchema>(serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "title": {"type": "string"}
-                }
-            }))
-            .expect("valid schema")
-            .with_name("note".into())
-            .with_file_times(RawFileTimes {
-                created_at: None,
-                modified_at: None,
-            });
+    mod excludes_delta {
+        use super::{fixtures, *};
 
-        let mut previous_hashes = HashMap::new();
-        previous_hashes.insert(
-            PropertyName::try_new("title").expect("valid property name"),
-            HashMetadata::hash_entry(&serde_json::json!({"type":"bool"})),
-        );
+        #[test]
+        fn should_compute_diff_correctly_when_slices_overlap() {
+            let old = vec![fixtures::name("a"), fixtures::name("b")];
+            let new = vec![fixtures::name("b"), fixtures::name("c")];
 
-        let delta = PropertyDeltaEngine::for_schema(&raw, &previous_hashes)
-            .diff_schema();
-        assert!(!delta.is_empty());
-        assert_eq!(delta.upserts.inline.len(), 1);
-        assert!(delta.upserts.refs.is_empty());
+            let delta = ExcludesDelta::from_slices(&old, &new);
+
+            assert_eq!(
+                delta.added().len(),
+                1,
+                "Expected 1 added property, found {:?}",
+                delta.added()
+            );
+            assert_eq!(
+                delta.removals().len(),
+                1,
+                "Expected 1 removed property, found {:?}",
+                delta.removals()
+            );
+            assert_eq!(
+                delta
+                    .added()
+                    .first()
+                    .expect("added should have 1 element")
+                    .as_str(),
+                "c"
+            );
+            assert_eq!(
+                delta
+                    .removals()
+                    .first()
+                    .expect("removals should have 1 element")
+                    .as_str(),
+                "a"
+            );
+        }
+
+        #[test]
+        fn should_report_is_empty_when_no_changes_exist() {
+            let names = vec![fixtures::name("a")];
+            let delta = ExcludesDelta::from_slices(&names, &names);
+            assert!(
+                delta.is_empty(),
+                "Delta should be empty when slices match"
+            );
+        }
+
+        #[test]
+        fn should_iterate_all_changed_names() {
+            let old = vec![fixtures::name("removed")];
+            let new = vec![fixtures::name("added")];
+            let delta = ExcludesDelta::from_slices(&old, &new);
+
+            let changed: HashSet<_> = delta.iter_changed().collect();
+            assert!(
+                changed.contains(&fixtures::name("removed")),
+                "Iterator missing removal"
+            );
+            assert!(
+                changed.contains(&fixtures::name("added")),
+                "Iterator missing addition"
+            );
+        }
+
+        #[test]
+        fn should_convert_to_set_correctly() {
+            let old = vec![fixtures::name("a")];
+            let new = vec![fixtures::name("b")];
+            let delta = ExcludesDelta::from_slices(&old, &new);
+
+            let set = delta.to_changed_name_set();
+            assert_eq!(
+                set.len(),
+                2,
+                "Set should contain both added and removed"
+            );
+        }
     }
 
-    #[test]
-    fn schema_property_delta_contains_upsert() {
-        let mut upserts = SchemaPropertyUpserts::default();
-        upserts.inline.insert(
-            PropertyName::try_new("title").expect("valid"),
-            serde_json::from_value::<RawPropertyInline>(
-                serde_json::json!({"type": "string"}),
-            )
-            .expect("valid"),
-        );
+    mod schema_property_upserts {
+        use super::{fixtures, *};
 
-        let delta = SchemaPropertyDelta::new(upserts, Vec::new());
+        #[test]
+        fn should_detect_presence_of_inline_and_refs() {
+            let mut upserts = SchemaPropertyUpserts::default();
+            let name = fixtures::name("prop");
 
-        assert!(
-            delta.contains_upsert(
-                &PropertyName::try_new("title").expect("valid")
-            )
-        );
-        assert!(!delta.contains_upsert(
-            &PropertyName::try_new("missing").expect("valid")
-        ));
+            upserts.inline.insert(name.clone(), fixtures::inline_string());
+            assert!(upserts.contains_inline(&name));
+            assert!(!upserts.contains_ref(&name));
+            assert!(!upserts.is_empty());
+        }
+
+        #[test]
+        fn should_provide_access_to_underlying_maps() {
+            let upserts = SchemaPropertyUpserts::default();
+            assert!(upserts.inline().is_empty());
+            assert!(upserts.refs().is_empty());
+        }
     }
 
-    #[test]
-    fn schema_property_delta_normalizes_removals() {
-        let upserts = SchemaPropertyUpserts::default();
-        let removals = vec![
-            PropertyName::try_new("b").expect("valid"),
-            PropertyName::try_new("a").expect("valid"),
-            PropertyName::try_new("b").expect("valid"),
-        ];
+    mod schema_property_delta {
+        use super::{fixtures, *};
 
-        let delta = SchemaPropertyDelta::new(upserts, removals);
-        let removals_slice = delta.removals();
-        assert_eq!(removals_slice.len(), 2);
-        assert_eq!(removals_slice.first().map(PropertyName::as_str), Some("a"));
-        assert_eq!(removals_slice.get(1).map(PropertyName::as_str), Some("b"));
+        #[test]
+        fn should_normalize_removals_when_unsorted_or_duplicate() {
+            let upserts = SchemaPropertyUpserts::default();
+            let removals = vec![
+                fixtures::name("b"),
+                fixtures::name("a"),
+                fixtures::name("b"),
+            ];
+
+            let delta = SchemaPropertyDelta::new(upserts, removals);
+            let normalized = delta.removals();
+
+            assert_eq!(
+                normalized.len(),
+                2,
+                "Expected deduplicated removals, found {normalized:?}"
+            );
+            assert_eq!(
+                normalized
+                    .first()
+                    .expect("normalized should have 2 elements")
+                    .as_str(),
+                "a",
+                "Removals should be sorted"
+            );
+            assert_eq!(
+                normalized
+                    .get(1)
+                    .expect("normalized should have 2 elements")
+                    .as_str(),
+                "b",
+                "Removals should be sorted"
+            );
+        }
+
+        #[test]
+        fn should_detect_upsert_regardless_of_type() {
+            let mut upserts = SchemaPropertyUpserts::default();
+            let name = fixtures::name("prop");
+            upserts.inline.insert(name.clone(), fixtures::inline_string());
+
+            let delta = SchemaPropertyDelta::new(upserts, Vec::new());
+            assert!(delta.contains_upsert(&name));
+        }
     }
 
-    #[test]
-    fn schema_property_upserts_accessor_methods() {
-        let mut upserts = SchemaPropertyUpserts::default();
-        upserts.inline.insert(
-            PropertyName::try_new("title").expect("valid"),
-            serde_json::from_value::<RawPropertyInline>(
-                serde_json::json!({"type": "string"}),
-            )
-            .expect("valid"),
-        );
-
-        assert!(!upserts.is_empty());
-        assert!(!upserts.inline().is_empty());
-        assert!(upserts.refs().is_empty());
-
-        let delta = SchemaPropertyDelta::new(upserts, Vec::new());
-        assert!(!delta.upserts().is_empty());
-    }
-
-    #[test]
-    fn schema_property_upserts_contains_inline_ref() {
-        let mut upserts = SchemaPropertyUpserts::default();
-        upserts.inline.insert(
-            PropertyName::try_new("title").expect("valid"),
-            serde_json::from_value::<RawPropertyInline>(
-                serde_json::json!({"type": "string"}),
-            )
-            .expect("valid"),
-        );
-
-        assert!(
-            upserts.contains_inline(
-                &PropertyName::try_new("title").expect("valid")
-            )
-        );
-        assert!(
-            !upserts
-                .contains_ref(&PropertyName::try_new("title").expect("valid"))
-        );
-    }
-
-    #[test]
-    fn property_bank_delta_to_changed_name_set() {
+    mod property_bank_delta {
+        use super::{fixtures, *};
         use crate::schema::{
             property::{Multiplicity, Optionality, Property, PropertyId},
             property_spec::{PropertySpec, StringSpec},
         };
 
-        let property = Property::new(
-            PropertyId::new(),
-            Optionality::Optional,
-            Multiplicity::Single,
-            PropertySpec::String(StringSpec::default()),
-        );
-        let mut map = HashMap::new();
-        map.insert(PropertyName::try_new("a").expect("valid"), property);
-        let upserts = PropertyMap::from(map);
+        fn property_fixture() -> Property {
+            Property::new(
+                PropertyId::new(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::String(StringSpec::default()),
+            )
+        }
 
-        let delta = PropertyBankDelta::new(upserts, Vec::new());
-        assert_eq!(delta.iter_changed().count(), 1);
+        #[test]
+        fn should_support_borrowed_and_owned_set_conversion() {
+            let mut map = HashMap::new();
+            map.insert(fixtures::name("a"), property_fixture());
+            let upserts = PropertyMap::from(map);
+            let removals = vec![fixtures::name("b")];
 
-        let set = delta.to_changed_name_set();
-        assert!(set.contains(&PropertyName::try_new("a").expect("valid")));
+            let delta = PropertyBankDelta::new(upserts, removals);
+
+            assert!(delta.to_changed_name_set().contains(&fixtures::name("a")));
+            assert!(delta.to_changed_name_set().contains(&fixtures::name("b")));
+
+            let into_set = delta.into_changed_name_set();
+            assert!(into_set.contains(&fixtures::name("a")));
+            assert!(into_set.contains(&fixtures::name("b")));
+        }
     }
 
-    #[test]
-    fn property_bank_delta_into_changed_name_set() {
-        use crate::schema::{
-            property::{Multiplicity, Optionality, Property, PropertyId},
-            property_spec::{PropertySpec, StringSpec},
-        };
+    mod engine {
+        use super::{fixtures, *};
 
-        let property = Property::new(
-            PropertyId::new(),
-            Optionality::Optional,
-            Multiplicity::Single,
-            PropertySpec::String(StringSpec::default()),
-        );
-        let mut map = HashMap::new();
-        map.insert(PropertyName::try_new("a").expect("valid"), property);
-        let upserts = PropertyMap::from(map);
+        #[test]
+        fn should_detect_changed_entries_via_hash_mismatch() {
+            let map_raw = serde_json::json!({
+                "prop": {"type": "string"}
+            });
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_value(map_raw).expect("valid map");
 
-        let delta = PropertyBankDelta::new(upserts, Vec::new());
-        let set = delta.into_changed_name_set();
-        assert!(set.contains(&PropertyName::try_new("a").expect("valid")));
+            // Previous hash for same name but different content (bool type)
+            let old_hash = HashMetadata::hash_entry(&serde_json::json!({
+                "type": "bool"
+            }));
+            let mut previous_hashes = HashMap::new();
+            previous_hashes.insert(fixtures::name("prop"), old_hash);
+
+            let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
+            let change_set = engine.compute_change_set();
+
+            assert!(
+                change_set.upserts.contains_key(&fixtures::name("prop")),
+                "Changed property should be in upserts"
+            );
+            assert!(
+                change_set.removals.is_empty(),
+                "No properties were removed"
+            );
+        }
+
+        #[test]
+        fn should_identify_removals_when_keys_disappear() {
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_value(serde_json::json!({}))
+                    .expect("empty map");
+
+            let mut previous_hashes = HashMap::new();
+            previous_hashes.insert(fixtures::name("old"), [0u8; 32]);
+
+            let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
+            let change_set = engine.compute_change_set();
+
+            assert_eq!(change_set.removals.len(), 1);
+            assert_eq!(
+                change_set
+                    .removals
+                    .first()
+                    .expect("removals should have 1 element")
+                    .as_str(),
+                "old"
+            );
+        }
+
+        #[test]
+        fn should_ignore_entries_with_matching_hashes() {
+            let entry_json = serde_json::json!({"type": "string"});
+            let entry: RawProperty =
+                serde_json::from_value(entry_json.clone()).expect("valid");
+            let hash = HashMetadata::hash_entry(&entry);
+
+            let map_json = serde_json::json!({
+                "stable": entry_json
+            });
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_value(map_json).expect("valid map");
+
+            let mut previous_hashes = HashMap::new();
+            previous_hashes.insert(fixtures::name("stable"), hash);
+
+            let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
+            let change_set = engine.compute_change_set();
+
+            assert!(
+                change_set.upserts.is_empty(),
+                "Unchanged property should not be in upserts"
+            );
+        }
+
+        #[test]
+        fn should_convert_bank_entries_to_validated_properties() {
+            let (bank, hashes) = fixtures::property_bank_fixture(&["a"]);
+
+            // Force a change in "a" by providing an empty previous hash set
+            let empty_hashes = HashMap::new();
+            let engine =
+                PropertyDeltaEngine::for_property_bank(&bank, &empty_hashes);
+            let result =
+                engine.diff_property_bank().expect("diff should succeed");
+
+            let (delta, new_hashes) = result;
+            assert!(delta.upserts().has(&fixtures::name("a")));
+            assert!(new_hashes.contains_key(&fixtures::name("a")));
+            assert_eq!(
+                new_hashes.get(&fixtures::name("a")),
+                hashes.get(&fixtures::name("a"))
+            );
+        }
     }
 }
