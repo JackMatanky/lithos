@@ -272,7 +272,6 @@ impl<T> ProcessorNode<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PresentPayload {
     Found(FoundPayload),
-    Deleted(DeletedPayload),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -370,6 +369,83 @@ pub(crate) enum AnalysisBranch {
     Rebuild(RebuildNodePayload),
     #[expect(dead_code, reason = "reserved for incremental property updates")]
     Update(UpdateNodePayload),
+}
+
+// PipelinePayload migration rules:
+// - The graph payload type stays stable across stages.
+// - Stage transitions switch payload variants, not graph generic types.
+// - Deleted nodes may intentionally pass through selected stages.
+#[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "pipeline stages intentionally carry rich branch payloads"
+)]
+pub(crate) enum PipelinePayload {
+    Present(PresentPayload),
+    Compared(ComparedPayload),
+    FileParsed(FileParsedBranch),
+    Inheritance(InheritanceBranch),
+    Analysis(AnalysisBranch),
+    NewParsed(NewParsedPayload),
+    Deleted(DeletedPayload),
+}
+
+impl PipelinePayload {
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "const match ergonomics keep variant mapping concise"
+    )]
+    pub(crate) const fn variant_name(&self) -> &'static str {
+        match self {
+            Self::Present(_) => "Present",
+            Self::Compared(_) => "Compared",
+            Self::FileParsed(_) => "FileParsed",
+            Self::Inheritance(_) => "Inheritance",
+            Self::Analysis(_) => "Analysis",
+            Self::NewParsed(_) => "NewParsed",
+            Self::Deleted(_) => "Deleted",
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "const match ergonomics keep payload access concise"
+    )]
+    pub(crate) const fn as_analysis_mut(
+        &mut self,
+    ) -> Option<&mut AnalysisBranch> {
+        match self {
+            Self::Analysis(payload) => Some(payload),
+            Self::Present(_)
+            | Self::Compared(_)
+            | Self::FileParsed(_)
+            | Self::Inheritance(_)
+            | Self::NewParsed(_)
+            | Self::Deleted(_) => None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "const match ergonomics keep payload access concise"
+    )]
+    pub(crate) const fn as_present(&self) -> Option<&PresentPayload> {
+        match self {
+            Self::Present(payload) => Some(payload),
+            Self::Compared(_)
+            | Self::FileParsed(_)
+            | Self::Inheritance(_)
+            | Self::Analysis(_)
+            | Self::NewParsed(_)
+            | Self::Deleted(_) => None,
+        }
+    }
 }
 
 impl AnalysisBranch {
@@ -557,7 +633,7 @@ pub(crate) struct NewParsed {
 
 #[derive(Debug)]
 pub(crate) struct Present {
-    graph: ProcessingGraph<ProcessorNode<PresentPayload>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     new_schemas: NewBatch<InitialScan>,
     deleted_ids: Vec<SchemaId>,
 }
@@ -568,7 +644,7 @@ pub(crate) struct Present {
     reason = "ID vectors for incremental pipeline optimization"
 )]
 pub(crate) struct Compared {
-    graph: ProcessingGraph<ProcessorNode<ComparedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     new_schemas: NewBatch<InitialRead>,
     fresh: Vec<SchemaId>,
     stale_timestamps: Vec<SchemaId>,
@@ -579,20 +655,20 @@ pub(crate) struct Compared {
 
 #[derive(Debug)]
 pub(crate) struct Parsed {
-    graph: ProcessingGraph<ProcessorNode<FileParsedBranch>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     new_schemas: NewBatch<InitialParsed>,
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Graphed {
-    graph: ProcessingGraph<ProcessorNode<InheritanceBranch>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Analyzed {
-    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     refresh_ids: Vec<SchemaId>,
     rebuild_ids: Vec<SchemaId>,
     deleted_ids: Vec<SchemaId>,
@@ -600,14 +676,14 @@ pub(crate) struct Analyzed {
 
 #[derive(Debug)]
 pub(crate) struct Constructed {
-    graph: ProcessingGraph<ProcessorNode<AnalysisBranch>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
     schemas: Vec<Arc<Schema>>,
     deleted_ids: Vec<SchemaId>,
 }
 
 #[derive(Debug)]
 pub(crate) struct NewBuild {
-    graph: ProcessingGraph<ProcessorNode<NewParsedPayload>>,
+    graph: ProcessingGraph<ProcessorNode<PipelinePayload>>,
 }
 
 #[derive(Debug)]
@@ -782,7 +858,7 @@ impl SchemaProcessor<Discovery, Review> {
         graph: &InheritanceGraph<()>,
         found: &HashMap<SchemaId, FoundPayload>,
         deleted_ids: &[SchemaId],
-    ) -> ProcessingGraph<ProcessorNode<PresentPayload>> {
+    ) -> ProcessingGraph<ProcessorNode<PipelinePayload>> {
         let deleted_set: HashSet<SchemaId> =
             deleted_ids.iter().copied().collect();
 
@@ -790,16 +866,21 @@ impl SchemaProcessor<Discovery, Review> {
 
         for (id, _node) in graph.iter() {
             let payload = if let Some(found) = found.get(&id) {
-                PresentPayload::Found(found.clone())
+                PipelinePayload::Present(PresentPayload::Found(found.clone()))
             } else if deleted_set.contains(&id) {
-                PresentPayload::Deleted(DeletedPayload)
+                PipelinePayload::Deleted(DeletedPayload)
             } else {
                 continue;
             };
 
             let status = match payload {
-                PresentPayload::Found(_) => NodeStatus::Fresh,
-                PresentPayload::Deleted(_) => NodeStatus::Deleted,
+                PipelinePayload::Present(_) => NodeStatus::Fresh,
+                PipelinePayload::Deleted(_) => NodeStatus::Deleted,
+                PipelinePayload::Compared(_)
+                | PipelinePayload::FileParsed(_)
+                | PipelinePayload::Inheritance(_)
+                | PipelinePayload::Analysis(_)
+                | PipelinePayload::NewParsed(_) => NodeStatus::Corrupt,
             };
 
             builder.add_node(
@@ -828,8 +909,16 @@ impl SchemaProcessor<Discovery, Review> {
 
 impl SchemaProcessor<Comparison, Present> {
     #[expect(
+        clippy::excessive_nesting,
+        reason = "comparison branch matrix is intentionally explicit"
+    )]
+    #[expect(
         clippy::too_many_lines,
         reason = "comparison stage keeps pipeline steps linear"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
     )]
     pub(crate) fn compare(
         self,
@@ -847,16 +936,17 @@ impl SchemaProcessor<Comparison, Present> {
         let mut stale_ref_ids = Vec::new();
         let mut stale_ids = Vec::new();
 
-        // First pass: collect bank-affected IDs
+        // First pass: collect bank-affected IDs.
         let mut bank_affected_ids = HashSet::new();
         if let Some(delta) = property_bank_delta {
             for (id, node) in graph.graph().iter() {
                 #[expect(
                     clippy::pattern_type_mismatch,
-                    reason = "Explicit reference pattern for payload \
-                              extraction"
+                    reason = "matching borrowed payload keeps extraction \
+                              concise"
                 )]
-                let PresentPayload::Found(payload) = &node.payload().payload
+                let Some(PresentPayload::Found(payload)) =
+                    node.payload().payload.as_present()
                 else {
                     continue;
                 };
@@ -868,109 +958,119 @@ impl SchemaProcessor<Comparison, Present> {
             }
         }
 
-        let mut builder = SchemaGraphBuilder::new();
+        let next_graph = graph.map_payload(
+            |id,
+             node|
+             -> Result<ProcessorNode<PipelinePayload>, SchemaLoaderError> {
+                let relation = node.relation();
+                match node.payload {
+                    PipelinePayload::Present(PresentPayload::Found(
+                        found_payload,
+                    )) => {
+                        let is_bank_affected = bank_affected_ids.contains(&id);
+                        let comparison_payload =
+                            match Self::check_timestamps(found_payload, source)? {
+                                TimestampBranch::Match(matched_payload) => {
+                                    if is_bank_affected {
+                                        let content_str = source
+                                            .read_to_string(&matched_payload.path)
+                                            .map_err(SchemaIngestionError::from)
+                                            .map_err(SchemaLoaderError::Ingestion)?;
+                                        let content_hash = *blake3::hash(
+                                            content_str.as_bytes(),
+                                        )
+                                        .as_bytes();
+                                        ComparedPayload::StaleBankReferences(
+                                            StalePayload {
+                                                path: matched_payload.path,
+                                                times: matched_payload.times,
+                                                content_str: content_str.into(),
+                                                content_hash,
+                                                view: matched_payload.view,
+                                            },
+                                        )
+                                    } else {
+                                        ComparedPayload::Fresh(FreshPayload {
+                                            path: matched_payload.path,
+                                            view: matched_payload.view,
+                                        })
+                                    }
+                                }
+                                TimestampBranch::Mismatch(suspect_payload) => {
+                                    let content_branch =
+                                        Self::check_content(suspect_payload);
+                                    match content_branch {
+                                        ContentBranch::Match(content_payload)
+                                            if is_bank_affected =>
+                                        {
+                                            let content_hash = *blake3::hash(
+                                                content_payload.content_str.as_bytes(),
+                                            )
+                                            .as_bytes();
+                                            ComparedPayload::StaleBankReferences(
+                                                StalePayload {
+                                                    path: content_payload.path,
+                                                    times: content_payload.times,
+                                                    content_str: content_payload
+                                                        .content_str,
+                                                    content_hash,
+                                                    view: content_payload.view,
+                                                },
+                                            )
+                                        }
+                                        ContentBranch::Match(content_payload) => {
+                                            ComparedPayload::StaleTimestamps(
+                                                FoundPayload {
+                                                    path: content_payload.path,
+                                                    times: content_payload.times,
+                                                    view: content_payload.view,
+                                                },
+                                            )
+                                        }
+                                        ContentBranch::Mismatch(stale_payload) => {
+                                            ComparedPayload::Stale(stale_payload)
+                                        }
+                                    }
+                                }
+                            };
 
-        for (id, node) in graph.graph().iter() {
-            let PresentPayload::Found(found_payload) =
-                node.payload().payload.clone()
-            else {
-                continue;
-            };
-
-            let is_bank_affected = bank_affected_ids.contains(&id);
-            let comparison_payload =
-                match Self::check_timestamps(found_payload, source)? {
-                    TimestampBranch::Match(matched_payload) => {
-                        if is_bank_affected {
-                            let content_str = source
-                                .read_to_string(&matched_payload.path)
-                                .map_err(SchemaIngestionError::from)
-                                .map_err(SchemaLoaderError::Ingestion)?;
-                            let content_hash =
-                                *blake3::hash(content_str.as_bytes())
-                                    .as_bytes();
-                            ComparedPayload::StaleBankReferences(StalePayload {
-                                path: matched_payload.path,
-                                times: matched_payload.times,
-                                content_str: content_str.into(),
-                                content_hash,
-                                view: matched_payload.view,
-                            })
-                        } else {
-                            ComparedPayload::Fresh(FreshPayload {
-                                path: matched_payload.path,
-                                view: matched_payload.view,
-                            })
+                        #[expect(
+                            clippy::pattern_type_mismatch,
+                            reason = "match on enum reference for ID tracking"
+                        )]
+                        match &comparison_payload {
+                            ComparedPayload::Fresh(_) => fresh_ids.push(id),
+                            ComparedPayload::StaleTimestamps(_) => {
+                                stale_ts_ids.push(id);
+                            }
+                            ComparedPayload::StaleBankReferences(_) => {
+                                stale_ref_ids.push(id);
+                            }
+                            ComparedPayload::Stale(_) => stale_ids.push(id),
                         }
+
+                        let status =
+                            Self::status_for_payload(&comparison_payload);
+                        Ok(ProcessorNode::new(
+                            status,
+                            relation,
+                            PipelinePayload::Compared(comparison_payload),
+                        ))
                     }
-                    TimestampBranch::Mismatch(suspect_payload) => {
-                        let content_branch =
-                            Self::check_content(suspect_payload);
-                        match content_branch {
-                            ContentBranch::Match(content_payload)
-                                if is_bank_affected =>
-                            {
-                                let content_hash = *blake3::hash(
-                                    content_payload.content_str.as_bytes(),
-                                )
-                                .as_bytes();
-                                ComparedPayload::StaleBankReferences(
-                                    StalePayload {
-                                        path: content_payload.path,
-                                        times: content_payload.times,
-                                        content_str: content_payload
-                                            .content_str,
-                                        content_hash,
-                                        view: content_payload.view,
-                                    },
-                                )
-                            }
-                            ContentBranch::Match(content_payload) => {
-                                ComparedPayload::StaleTimestamps(FoundPayload {
-                                    path: content_payload.path,
-                                    times: content_payload.times,
-                                    view: content_payload.view,
-                                })
-                            }
-                            ContentBranch::Mismatch(stale_payload) => {
-                                ComparedPayload::Stale(stale_payload)
-                            }
-                        }
-                    }
-                };
-            let status = Self::status_for_payload(&comparison_payload);
-
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "match on enum reference for ID tracking"
-            )]
-            match &comparison_payload {
-                ComparedPayload::Fresh(_) => fresh_ids.push(id),
-                ComparedPayload::StaleTimestamps(_) => {
-                    stale_ts_ids.push(id);
+                    PipelinePayload::Deleted(payload) => Ok(ProcessorNode::new(
+                        NodeStatus::Deleted,
+                        relation,
+                        PipelinePayload::Deleted(payload),
+                    )),
+                    unexpected => Err(stage_variant_error(
+                        "compare",
+                        id,
+                        "Present or Deleted",
+                        unexpected.variant_name(),
+                    )),
                 }
-                ComparedPayload::StaleBankReferences(_) => {
-                    stale_ref_ids.push(id);
-                }
-                ComparedPayload::Stale(_) => stale_ids.push(id),
-            }
-
-            builder.add_node(
-                id,
-                ProcessorNode::new(
-                    status,
-                    ExtendsChangeKind::Unchanged,
-                    comparison_payload,
-                ),
-            );
-        }
-
-        // Add edges
-        for (child_id, _) in graph.graph().iter() {
-            for &parent_id in graph.graph().parents_of(child_id) {
-                builder.add_parent(child_id, parent_id);
-            }
-        }
+            },
+        )?;
 
         let mut new_reads = NewBatch::new();
         for (id, scan) in new_schemas.into_sorted_iter() {
@@ -987,8 +1087,6 @@ impl SchemaProcessor<Comparison, Present> {
                 content_str: content.into_boxed_str(),
             });
         }
-
-        let next_graph = builder.build();
 
         Ok(Self::transition(FileParsed, Compared {
             graph: next_graph,
@@ -1130,6 +1228,14 @@ impl SchemaProcessor<FileParsed, AllMissing> {
 }
 
 impl SchemaProcessor<FileParsed, Compared> {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "parse transition keeps branch conversion logic co-located"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
     pub(crate) fn parse(
         self,
         source: &FsReader,
@@ -1146,15 +1252,17 @@ impl SchemaProcessor<FileParsed, Compared> {
 
         let next_graph =
             graph.map_payload(
-                |_id,
+                |id,
                  node|
                  -> Result<
-                    ProcessorNode<FileParsedBranch>,
+                    ProcessorNode<PipelinePayload>,
                     SchemaLoaderError,
                 > {
                     let relation = node.relation();
                     let next = match node.payload {
-                        ComparedPayload::Stale(payload) => {
+                        PipelinePayload::Compared(ComparedPayload::Stale(
+                            payload,
+                        )) => {
                             let schema_name = source
                                 .basename(&payload.path)
                                 .map_err(SchemaIngestionError::from)
@@ -1173,18 +1281,22 @@ impl SchemaProcessor<FileParsed, Compared> {
                             ProcessorNode::new(
                                 NodeStatus::StaleParsed,
                                 relation,
-                                FileParsedBranch::StaleParsed(
-                                    StaleParsedPayload {
-                                        path: payload.path,
-                                        times: payload.times,
-                                        content_hash: payload.content_hash,
-                                        raw,
-                                        view: payload.view,
-                                    },
+                                PipelinePayload::FileParsed(
+                                    FileParsedBranch::StaleParsed(
+                                        StaleParsedPayload {
+                                            path: payload.path,
+                                            times: payload.times,
+                                            content_hash: payload.content_hash,
+                                            raw,
+                                            view: payload.view,
+                                        },
+                                    ),
                                 ),
                             )
                         }
-                        ComparedPayload::StaleBankReferences(payload) => {
+                        PipelinePayload::Compared(
+                            ComparedPayload::StaleBankReferences(payload),
+                        ) => {
                             let schema_name = source
                                 .basename(&payload.path)
                                 .map_err(SchemaIngestionError::from)
@@ -1204,28 +1316,51 @@ impl SchemaProcessor<FileParsed, Compared> {
                             ProcessorNode::new(
                                 NodeStatus::StaleBankReferences,
                                 relation,
-                                FileParsedBranch::StaleParsed(
-                                    StaleParsedPayload {
-                                        path: payload.path,
-                                        times: payload.times,
-                                        content_hash,
-                                        raw,
-                                        view: payload.view,
-                                    },
+                                PipelinePayload::FileParsed(
+                                    FileParsedBranch::StaleParsed(
+                                        StaleParsedPayload {
+                                            path: payload.path,
+                                            times: payload.times,
+                                            content_hash,
+                                            raw,
+                                            view: payload.view,
+                                        },
+                                    ),
                                 ),
                             )
                         }
-                        ComparedPayload::Fresh(payload) => ProcessorNode::new(
+                        PipelinePayload::Compared(ComparedPayload::Fresh(
+                            payload,
+                        )) => ProcessorNode::new(
                             NodeStatus::Fresh,
                             relation,
-                            FileParsedBranch::Fresh(payload),
+                            PipelinePayload::FileParsed(
+                                FileParsedBranch::Fresh(payload),
+                            ),
                         ),
-                        ComparedPayload::StaleTimestamps(payload) => {
-                            ProcessorNode::new(
-                                NodeStatus::StaleTimestamps,
-                                relation,
+                        PipelinePayload::Compared(
+                            ComparedPayload::StaleTimestamps(payload),
+                        ) => ProcessorNode::new(
+                            NodeStatus::StaleTimestamps,
+                            relation,
+                            PipelinePayload::FileParsed(
                                 FileParsedBranch::StaleTimestamps(payload),
+                            ),
+                        ),
+                        PipelinePayload::Deleted(payload) => {
+                            ProcessorNode::new(
+                                NodeStatus::Deleted,
+                                relation,
+                                PipelinePayload::Deleted(payload),
                             )
+                        }
+                        unexpected => {
+                            return Err(stage_variant_error(
+                                "parse",
+                                id,
+                                "Compared or Deleted",
+                                unexpected.variant_name(),
+                            ));
                         }
                     };
 
@@ -1282,6 +1417,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         clippy::pattern_type_mismatch,
         reason = "match ergonomics keep structural checks concise"
     )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
     pub(crate) fn build_graph(
         self,
     ) -> Result<SchemaProcessor<PropertyAnalysis, Graphed>, SchemaLoaderError>
@@ -1320,7 +1459,18 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     },
                 ))
             })?;
-            let payload = node.payload().payload.clone();
+            let payload = match node.payload().payload.clone() {
+                PipelinePayload::FileParsed(payload) => payload,
+                PipelinePayload::Deleted(_) => continue,
+                unexpected => {
+                    return Err(stage_variant_error(
+                        "build_graph",
+                        id,
+                        "FileParsed or Deleted",
+                        unexpected.variant_name(),
+                    ));
+                }
+            };
             let status = match &payload {
                 FileParsedBranch::StaleParsed(_) => status_by_id
                     .get(&id)
@@ -1367,7 +1517,11 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 
             builder.add_node(
                 id,
-                ProcessorNode::new(status, change_kind, branch_payload),
+                ProcessorNode::new(
+                    status,
+                    change_kind,
+                    PipelinePayload::Inheritance(branch_payload),
+                ),
             );
 
             if let Some(parent_id) = new_parent {
@@ -1388,12 +1542,14 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 ProcessorNode::new(
                     NodeStatus::New,
                     ExtendsChangeKind::Unchanged,
-                    InheritanceBranch::New(NewParsedPayload {
-                        path: new.path.clone(),
-                        times: new.times.clone(),
-                        content_hash: new.content_hash,
-                        raw: new.raw.clone(),
-                    }),
+                    PipelinePayload::Inheritance(InheritanceBranch::New(
+                        NewParsedPayload {
+                            path: new.path.clone(),
+                            times: new.times.clone(),
+                            content_hash: new.content_hash,
+                            raw: new.raw.clone(),
+                        },
+                    )),
                 ),
             );
 
@@ -1413,8 +1569,12 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         ))
     }
 
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
     fn build_resolution_index(
-        graph: &ProcessingGraph<ProcessorNode<FileParsedBranch>>,
+        graph: &ProcessingGraph<ProcessorNode<PipelinePayload>>,
         new_schemas: &NewBatch<InitialParsed>,
         deleted_ids: &[SchemaId],
     ) -> Result<SchemaIndex, SchemaLoaderError> {
@@ -1429,11 +1589,24 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 reason = "matching borrowed branch keeps expression concise"
             )]
             let name = match &node.payload().payload {
-                FileParsedBranch::Fresh(payload) => payload.view.name(),
-                FileParsedBranch::StaleTimestamps(payload) => {
-                    payload.view.name()
+                PipelinePayload::FileParsed(FileParsedBranch::Fresh(
+                    payload,
+                )) => payload.view.name(),
+                PipelinePayload::FileParsed(
+                    FileParsedBranch::StaleTimestamps(payload),
+                ) => payload.view.name(),
+                PipelinePayload::FileParsed(FileParsedBranch::StaleParsed(
+                    payload,
+                )) => payload.raw.name(),
+                PipelinePayload::Deleted(_) => continue,
+                unexpected => {
+                    return Err(stage_variant_error(
+                        "build_resolution_index",
+                        id,
+                        "FileParsed or Deleted",
+                        unexpected.variant_name(),
+                    ));
                 }
-                FileParsedBranch::StaleParsed(payload) => payload.raw.name(),
             };
             let name = SchemaName::try_new(name)
                 .map_err(SchemaLoaderError::Resolution)?;
@@ -1450,7 +1623,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
     }
 
     fn collect_old_parents(
-        graph: &ProcessingGraph<ProcessorNode<FileParsedBranch>>,
+        graph: &ProcessingGraph<ProcessorNode<PipelinePayload>>,
     ) -> HashMap<SchemaId, Vec<SchemaId>> {
         let mut old_parents = HashMap::new();
         for (id, _) in graph.graph().iter() {
@@ -1498,7 +1671,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                 ProcessorNode::new(
                     NodeStatus::New,
                     ExtendsChangeKind::Unchanged,
-                    payload,
+                    PipelinePayload::NewParsed(payload),
                 ),
             );
         }
@@ -1542,6 +1715,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         clippy::too_many_lines,
         reason = "analysis keeps branch logic in one place"
     )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
     pub(crate) fn analyze_properties(
         self,
         source: &FsReader,
@@ -1571,11 +1748,13 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let mut rebuild_ids = Vec::new();
 
         let next_graph = graph.map_payload(
-            |id, node| -> Result<ProcessorNode<AnalysisBranch>, SchemaLoaderError> {
+            |id, node| -> Result<ProcessorNode<PipelinePayload>, SchemaLoaderError> {
                 let relation = node.relation();
                 let node_status = node.status();
                 let (status, payload) = match node.payload {
-                    InheritanceBranch::Fresh(payload) => {
+                    PipelinePayload::Inheritance(InheritanceBranch::Fresh(
+                        payload,
+                    )) => {
                         let times_for_raw = RawFileTimes {
                             created_at: source.created_at(&payload.path),
                             modified_at: source.modified_at(&payload.path),
@@ -1641,7 +1820,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                         }
                     }
-                    InheritanceBranch::StaleTimestamps(payload) => {
+                    PipelinePayload::Inheritance(
+                        InheritanceBranch::StaleTimestamps(payload),
+                    ) => {
                         let times_for_raw = payload.times.clone();
                         let bank_changed =
                             Self::bank_changed(&payload.view, property_bank_delta);
@@ -1700,7 +1881,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                         }
                     }
-                    InheritanceBranch::New(payload) => {
+                    PipelinePayload::Inheritance(InheritanceBranch::New(
+                        payload,
+                    )) => {
                         let filename = payload
                             .path
                             .to_string_lossy()
@@ -1741,7 +1924,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         rebuild_ids.push(id);
                         (NodeStatus::New, AnalysisBranch::Rebuild(rebuild))
                     }
-                    InheritanceBranch::StaleParsed(payload) => {
+                    PipelinePayload::Inheritance(
+                        InheritanceBranch::StaleParsed(payload),
+                    ) => {
                         if node_status == NodeStatus::StaleBankReferences {
                             let mut view = payload.view;
                             let version = Self::build_version(
@@ -1826,9 +2011,28 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             }
                         }
                     }
+                    PipelinePayload::Deleted(payload) => {
+                        return Ok(ProcessorNode::new(
+                            NodeStatus::Deleted,
+                            relation,
+                            PipelinePayload::Deleted(payload),
+                        ));
+                    }
+                    unexpected => {
+                        return Err(stage_variant_error(
+                            "analyze_properties",
+                            id,
+                            "Inheritance or Deleted",
+                            unexpected.variant_name(),
+                        ));
+                    }
                 };
 
-                Ok(ProcessorNode::new(status, relation, payload))
+                Ok(ProcessorNode::new(
+                    status,
+                    relation,
+                    PipelinePayload::Analysis(payload),
+                ))
             },
         )?;
 
@@ -1914,7 +2118,11 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 continue;
             };
 
-            let Some(payload) = node.payload_mut().payload.as_refresh_mut()
+            let Some(payload) = node
+                .payload_mut()
+                .payload
+                .as_analysis_mut()
+                .and_then(AnalysisBranch::as_refresh_mut)
             else {
                 continue;
             };
@@ -1952,7 +2160,11 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 continue;
             };
 
-            let Some(payload) = node.payload_mut().payload.as_rebuild_mut()
+            let Some(payload) = node
+                .payload_mut()
+                .payload
+                .as_analysis_mut()
+                .and_then(AnalysisBranch::as_rebuild_mut)
             else {
                 continue;
             };
@@ -1979,6 +2191,15 @@ impl SchemaProcessor<Construction, Analyzed> {
         clippy::too_many_lines,
         reason = "construction keeps fetch/rebuild logic together"
     )]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "wildcard fallback intentionally treats non-rebuild variants \
+                  as unchanged"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "construction only handles relevant payload variants"
+    )]
     pub(crate) fn construct_schemas(
         self,
         repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
@@ -2001,17 +2222,21 @@ impl SchemaProcessor<Construction, Analyzed> {
                 let node = graph.graph().get(*id)?;
                 let extends_change = node.payload().relation();
                 match node.payload().payload.clone() {
-                    AnalysisBranch::Rebuild(payload)
-                        if payload.property_delta.is_some()
-                            && extends_change
-                                == ExtendsChangeKind::Unchanged =>
+                    PipelinePayload::Analysis(AnalysisBranch::Rebuild(
+                        payload,
+                    )) if payload.property_delta.is_some()
+                        && extends_change == ExtendsChangeKind::Unchanged =>
                     {
                         Some(*id)
                     }
-                    AnalysisBranch::Update(_) => Some(*id),
-                    AnalysisBranch::Rebuild(_) | AnalysisBranch::Refresh(_) => {
-                        None
+                    PipelinePayload::Analysis(AnalysisBranch::Update(_)) => {
+                        Some(*id)
                     }
+                    PipelinePayload::Analysis(
+                        AnalysisBranch::Rebuild(_) | AnalysisBranch::Refresh(_),
+                    )
+                    | PipelinePayload::Deleted(_) => None,
+                    _ => None,
                 }
             })
             .collect();
@@ -2035,11 +2260,15 @@ impl SchemaProcessor<Construction, Analyzed> {
             .filter_map(|id| {
                 let node = graph.graph().get(*id)?;
                 match node.payload().payload.clone() {
-                    AnalysisBranch::Rebuild(payload) => {
-                        Some((*id, payload.raw))
-                    }
-                    AnalysisBranch::Update(payload) => Some((*id, payload.raw)),
-                    AnalysisBranch::Refresh(_) => None,
+                    PipelinePayload::Analysis(AnalysisBranch::Rebuild(
+                        payload,
+                    )) => Some((*id, payload.raw)),
+                    PipelinePayload::Analysis(AnalysisBranch::Update(
+                        payload,
+                    )) => Some((*id, payload.raw)),
+                    PipelinePayload::Analysis(AnalysisBranch::Refresh(_))
+                    | PipelinePayload::Deleted(_) => None,
+                    _ => None,
                 }
             })
             .collect();
@@ -2157,9 +2386,13 @@ impl SchemaProcessor<Construction, Analyzed> {
         clippy::too_many_arguments,
         reason = "incremental construction keeps inputs explicit"
     )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
     fn construct_schema_incremental(
         id: SchemaId,
-        node: &ProcessorNode<AnalysisBranch>,
+        node: &ProcessorNode<PipelinePayload>,
         extends_change: ExtendsChangeKind,
         parents: &[SchemaId],
         children: &[SchemaId],
@@ -2168,13 +2401,13 @@ impl SchemaProcessor<Construction, Analyzed> {
         constructed_cache: &HashMap<SchemaId, Schema>,
     ) -> Result<Schema, SchemaLoaderError> {
         let (raw, property_delta) = match node.payload.clone() {
-            AnalysisBranch::Rebuild(payload) => {
+            PipelinePayload::Analysis(AnalysisBranch::Rebuild(payload)) => {
                 (payload.raw, payload.property_delta)
             }
-            AnalysisBranch::Update(payload) => {
+            PipelinePayload::Analysis(AnalysisBranch::Update(payload)) => {
                 (payload.raw, Some(payload.property_delta))
             }
-            AnalysisBranch::Refresh(_) => {
+            PipelinePayload::Analysis(AnalysisBranch::Refresh(_)) => {
                 return Err(SchemaLoaderError::Ingestion(
                     SchemaIngestionError::File(
                         crate::schema::error::SchemaFileError::FileSystem {
@@ -2182,6 +2415,24 @@ impl SchemaProcessor<Construction, Analyzed> {
                                 .into(),
                         },
                     ),
+                ));
+            }
+            PipelinePayload::Deleted(_) => {
+                return Err(SchemaLoaderError::Ingestion(
+                    SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: "unexpected deleted node in rebuild path"
+                                .into(),
+                        },
+                    ),
+                ));
+            }
+            _ => {
+                return Err(stage_variant_error(
+                    "construct_schema_incremental",
+                    id,
+                    "Analysis",
+                    node.payload.variant_name(),
                 ));
             }
         };
@@ -2382,6 +2633,14 @@ impl SchemaProcessor<Construction, NewBuild> {
         clippy::too_many_lines,
         reason = "new-schema construction keeps fetch/build flow in one place"
     )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "stage invariant failures intentionally collapse to one error"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "matching borrowed payload keeps parse extraction concise"
+    )]
     pub(crate) fn construct_new_schemas(
         self,
         repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
@@ -2411,13 +2670,24 @@ impl SchemaProcessor<Construction, NewBuild> {
                     },
                 ))
             })?;
-            let parsed = node.payload();
+            let parsed = match &node.payload().payload {
+                PipelinePayload::NewParsed(parsed) => parsed,
+                PipelinePayload::Deleted(_) => continue,
+                unexpected => {
+                    return Err(stage_variant_error(
+                        "construct_new_schemas",
+                        *id,
+                        "NewParsed or Deleted",
+                        unexpected.variant_name(),
+                    ));
+                }
+            };
 
-            let refs = parsed.payload.raw.properties().ref_entries();
+            let refs = parsed.raw.properties().ref_entries();
             let mut expanded_props = expander
                 .expand_properties(&refs)
                 .map_err(SchemaLoaderError::Resolution)?;
-            let inline_entries = collect_inline_entries(&parsed.payload.raw);
+            let inline_entries = collect_inline_entries(&parsed.raw);
             if !inline_entries.is_empty() {
                 let inline_props = PropertyMap::try_from(inline_entries)
                     .map_err(SchemaLoaderError::Resolution)?;
@@ -2440,9 +2710,9 @@ impl SchemaProcessor<Construction, NewBuild> {
             let merged = Merger::inherit_properties(
                 &parent_props,
                 &expanded_props,
-                parsed.payload.raw.excludes(),
+                parsed.raw.excludes(),
             );
-            let name = SchemaName::try_new(parsed.payload.raw.name())
+            let name = SchemaName::try_new(parsed.raw.name())
                 .map_err(SchemaLoaderError::Resolution)?;
             let schema = Schema::new(
                 schema_id,
@@ -2452,16 +2722,12 @@ impl SchemaProcessor<Construction, NewBuild> {
                 merged,
             );
 
-            let filename = parsed
-                .payload
-                .path
-                .to_string_lossy()
-                .into_owned()
-                .into_boxed_str();
+            let filename =
+                parsed.path.to_string_lossy().into_owned().into_boxed_str();
             let version =
                 SchemaProcessor::<PropertyAnalysis, Graphed>::build_version(
-                    &parsed.payload.raw,
-                    parsed.payload.content_hash,
+                    &parsed.raw,
+                    parsed.content_hash,
                 )?;
             let view = RawSchemaView::new(
                 crate::schema::views::Filename::new(filename),
@@ -2579,6 +2845,23 @@ impl SchemaProcessor<Completed, Constructed> {
 //  HELPER FUNCTIONS
 // ═════════════════════════════════════════════════════════════════════════════
 
+fn stage_variant_error(
+    stage: &'static str,
+    id: SchemaId,
+    expected: &'static str,
+    actual: &'static str,
+) -> SchemaLoaderError {
+    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+        crate::schema::error::SchemaFileError::FileSystem {
+            reason: format!(
+                "stage {stage}: schema {id} expected {expected} payload, got \
+                 {actual}"
+            )
+            .into(),
+        },
+    ))
+}
+
 fn collect_inline_entries(
     raw: &RawSchema,
 ) -> HashMap<PropertyName, RawPropertyInline> {
@@ -2674,6 +2957,8 @@ fn diff_properties(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -2728,5 +3013,158 @@ mod tests {
             removed: vec![PropertyName::try_new("test").unwrap()],
         };
         assert!(!delta.is_empty());
+    }
+
+    #[test]
+    fn pipeline_payload_variant_name_reports_expected() {
+        let payload = PipelinePayload::Deleted(DeletedPayload);
+        assert_eq!(payload.variant_name(), "Deleted");
+    }
+
+    #[test]
+    fn pipeline_payload_analysis_accessor_none_for_non_analysis() {
+        let mut payload = PipelinePayload::Deleted(DeletedPayload);
+        assert!(payload.as_analysis_mut().is_none());
+    }
+
+    #[test]
+    fn stage_variant_error_contains_stage_and_variant() {
+        let id = SchemaId::new();
+        let error = stage_variant_error("parse", id, "Compared", "Present");
+        let message = error.to_string();
+        assert!(message.contains("stage parse"));
+        assert!(message.contains("expected Compared payload"));
+        assert!(message.contains("got Present"));
+    }
+
+    fn make_raw_schema(name: &str) -> RawSchema {
+        serde_json::from_value::<RawSchema>(serde_json::json!({
+            "$version": "1.0",
+            "properties": {}
+        }))
+        .expect("valid raw schema fixture")
+        .with_name(name.into())
+        .with_file_times(RawFileTimes {
+            created_at: None,
+            modified_at: None,
+        })
+    }
+
+    fn make_view(name: &str, content_hash: [u8; 32]) -> RawSchemaView {
+        let raw = make_raw_schema(name);
+        let file_times =
+            crate::schema::views::FileTimesMetadata::new(None, None);
+        let hashes = crate::schema::views::HashMetadata::new(
+            content_hash,
+            HashMap::new(),
+        );
+        let version =
+            crate::schema::views::SchemaVersion::new(file_times, hashes, &raw)
+                .expect("valid schema view fixture");
+        RawSchemaView::new(
+            crate::schema::views::Filename::new(format!("{name}.toml").into()),
+            version,
+        )
+    }
+
+    #[test]
+    fn compare_transitions_present_to_compared_fresh_payload() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = FsReader::new(temp.path());
+        let id = SchemaId::new();
+        let path = PathBuf::from("schema.toml");
+
+        let view = make_view("schema", [7u8; 32]);
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(
+            id,
+            ProcessorNode::new(
+                NodeStatus::Fresh,
+                ExtendsChangeKind::Unchanged,
+                PipelinePayload::Present(PresentPayload::Found(FoundPayload {
+                    path,
+                    times: RawFileTimes {
+                        created_at: None,
+                        modified_at: None,
+                    },
+                    view,
+                })),
+            ),
+        );
+
+        let processor = SchemaProcessor::<Comparison, Present> {
+            status: Present {
+                graph: builder.build(),
+                new_schemas: NewBatch::new(),
+                deleted_ids: Vec::new(),
+            },
+            _stage: PhantomData,
+        };
+
+        let compared =
+            processor.compare(&source, None).expect("compare succeeds");
+        let compared_node = compared
+            .status
+            .graph
+            .graph()
+            .get(id)
+            .expect("node present after compare");
+
+        assert!(matches!(
+            &compared_node.payload().payload,
+            PipelinePayload::Compared(ComparedPayload::Fresh(_))
+        ));
+    }
+
+    #[test]
+    fn deleted_nodes_pass_through_compare_and_parse() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = FsReader::new(temp.path());
+        let deleted_id = SchemaId::new();
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(
+            deleted_id,
+            ProcessorNode::new(
+                NodeStatus::Deleted,
+                ExtendsChangeKind::Unchanged,
+                PipelinePayload::Deleted(DeletedPayload),
+            ),
+        );
+
+        let processor = SchemaProcessor::<Comparison, Present> {
+            status: Present {
+                graph: builder.build(),
+                new_schemas: NewBatch::new(),
+                deleted_ids: vec![deleted_id],
+            },
+            _stage: PhantomData,
+        };
+
+        let compared =
+            processor.compare(&source, None).expect("compare succeeds");
+        let compared_deleted = compared
+            .status
+            .graph
+            .graph()
+            .get(deleted_id)
+            .expect("deleted node present after compare");
+        assert!(matches!(
+            compared_deleted.payload().payload,
+            PipelinePayload::Deleted(_)
+        ));
+
+        let parsed = compared.parse(&source).expect("parse succeeds");
+        let parsed_deleted = parsed
+            .status
+            .graph
+            .graph()
+            .get(deleted_id)
+            .expect("deleted node present after parse");
+        assert!(matches!(
+            parsed_deleted.payload().payload,
+            PipelinePayload::Deleted(_)
+        ));
     }
 }
