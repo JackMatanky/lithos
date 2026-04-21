@@ -1,4 +1,4 @@
-//! Markdown parser and extraction.
+//! Markdown parsing pipeline and orchestration.
 //!
 //! This module provides the primary ingestion engine for Obsidian-compatible
 //! markdown files. It uses a single-pass event stream driven by
@@ -6,7 +6,69 @@
 //! lists) and specialized metadata (tags, inline fields, block references,
 //! frontmatter).
 //!
-//! The main entry point is [`MarkdownParser`].
+//! # Pipeline Architecture
+//!
+//! The parsing process follows a strict multi-stage, event-driven pipeline
+//! designed for modularity, zero-cost abstractions, and strong separation of
+//! concerns. The phases are:
+//!
+//! 1. **Adapter Layer** ([`stream::MarkdownEventStream`]): Wraps the core
+//!    `pulldown-cmark` parser. Normalizes soft and hard line breaks and merges
+//!    adjacent text nodes according to configurable policies.
+//! 2. **Structure Builder**: (TODO) Tracks block depth and nesting. Emits
+//!    completed leaf and container blocks without allocating text fragments for
+//!    container blocks.
+//! 3. **Lexical Metadata Scanner**: (TODO) Scans leaf text segments using
+//!    explicit rules to identify artifacts like tags, inline fields, and block
+//!    references.
+//! 4. **Semantic Validator**: (TODO) Enforces schema rules and standardizes the
+//!    metadata tokens.
+//! 5. **Artifact Assembler**: (TODO) Collects structural blocks and validated
+//!    metadata into the final domain [`RawNote`](crate::note::raw::RawNote),
+//!    applying routing policies (e.g., whether list-item tags are global).
+//!
+//! # Core Invariants
+//!
+//! - **Parser isolates grammar**: The parser does not depend on or import
+//!   domain types (e.g. `RawTag` or `RawNote`).
+//! - **Semantic rules are explicit**: Rules (like line break handling) are
+//!   passed as configuration data, not hidden in branching code.
+//! - **Memory efficiency**: No large AST allocations. Uses zero-cost iterator
+//!   adapters internally and only clones when extracting reference definitions.
+//!
+//! # Examples
+//!
+//! ```ignore
+//! // Conceptual usage of the parsing pipeline (Adapter Layer)
+//! use lithos_core::note::parser::{
+//!     config::EventStreamConfig,
+//!     stream::MarkdownEventStream
+//! };
+//!
+//! let source = "# Hello\n[link]: /url";
+//! let config = EventStreamConfig::default();
+//! let stream = MarkdownEventStream::new(source, config);
+//!
+//! // Extract reference definitions cleanly:
+//! assert_eq!(stream.references().resolve("link"), Some("/url"));
+//!
+//! // Iterate over normalized events:
+//! for event in stream {
+//!     // ...
+//! }
+//! ```
+//!
+//! The main entry point is currently the legacy [`MarkdownParser`] which will
+//! be fully migrated to the new pipeline architecture.
+
+/// Configuration types for the event stream.
+pub mod config;
+/// Event wrappers for markdown tokens.
+pub mod event;
+/// Extracted reference link definitions.
+pub mod references;
+/// Event stream processing and normalization.
+pub mod stream;
 
 use std::borrow::Cow;
 
