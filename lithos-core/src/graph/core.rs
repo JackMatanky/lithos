@@ -164,6 +164,38 @@ where
             }
         }
     }
+
+    /// Maps each node payload into a new graph while preserving structure.
+    ///
+    /// This is a high-performance, consuming transformation that reuses the
+    /// existing adjacency maps.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error from the mapping closure.
+    #[inline]
+    pub fn map_nodes<U, E, F>(self, mut f: F) -> Result<Graph<Id, U>, E>
+    where
+        F: FnMut(Id, T) -> Result<U, E>,
+    {
+        let mut new_nodes = HashMap::with_capacity(self.nodes.len());
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "graph transforms do not depend on HashMap order"
+        )]
+        for (id, node) in self.nodes {
+            let (payload, depth) = node.into_parts();
+            let new_payload = f(id, payload)?;
+            new_nodes.insert(id, Node::from_parts(new_payload, depth));
+        }
+
+        Ok(Graph {
+            nodes: new_nodes,
+            parents: self.parents,
+            children: self.children,
+        })
+    }
 }
 
 /// Builder for constructing graphs.

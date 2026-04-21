@@ -56,7 +56,10 @@
 //! assert_eq!(dag.topo_order().first(), Some(&root_id));
 //! ```
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::{
     graph::{
@@ -244,57 +247,45 @@ where
 /// This wrapper allows using ANY payload type (including non-Archive types
 /// like Raw* schemas). Use this for intermediate pipeline stages where
 /// serialization is not needed.
-///
-/// # Example
-///
-/// ```
-/// use lithos_core::schema::{
-///     aggregate::SchemaId,
-///     inheritance::{ProcessingGraph, SchemaGraphBuilder},
-/// };
-///
-/// let root = SchemaId::new();
-/// let child = SchemaId::new();
-///
-/// let mut builder = SchemaGraphBuilder::new();
-/// builder.add_node(root, "payload");
-/// builder.add_node(child, "payload");
-/// builder.add_parent(child, root);
-///
-/// let graph = builder.build();
-/// let dag = graph.try_into_dag().unwrap();
-/// assert_eq!(dag.roots(), &[root]);
-/// ```
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct ProcessingGraph<T>(Graph<SchemaId, T>);
+pub struct ProcessingGraph<T> {
+    inner: Graph<SchemaId, T>,
+    topo_cache: Option<Arc<[SchemaId]>>,
+}
 
 impl<T> ProcessingGraph<T> {
     /// Wraps a graph for processing.
     #[inline]
     #[must_use]
     pub fn from_inner(inner: Graph<SchemaId, T>) -> Self {
-        Self(inner)
+        Self {
+            inner,
+            topo_cache: None,
+        }
     }
 
     /// Returns a shared reference to the underlying graph.
     #[inline]
     #[must_use]
     pub fn as_inner(&self) -> &Graph<SchemaId, T> {
-        &self.0
+        &self.inner
     }
 
     /// Returns a mutable reference to the underlying graph.
+    ///
+    /// NOTE: Modifying the graph directly invalidates the topological cache.
     #[inline]
     pub fn as_inner_mut(&mut self) -> &mut Graph<SchemaId, T> {
-        &mut self.0
+        self.topo_cache = None;
+        &mut self.inner
     }
 
     /// Consumes self and returns the underlying graph.
     #[inline]
     #[must_use]
     pub fn into_inner(self) -> Graph<SchemaId, T> {
-        self.0
+        self.inner
     }
 
     /// Computes topological order for the current graph.
@@ -307,27 +298,8 @@ impl<T> ProcessingGraph<T> {
         &self,
     ) -> Result<Vec<SchemaId>, crate::schema::error::SchemaInheritanceError>
     {
-        topological_sort_with_nodes(self.0.parents(), self.0.node_ids())
+        topological_sort_with_nodes(self.inner.parents(), self.inner.node_ids())
             .map(|(order, _roots)| order)
-            .map_err(|_e| {
-                crate::schema::error::SchemaInheritanceError::CycleDetected {
-                    nodes: Vec::new(),
-                }
-            })
-    }
-
-    /// Computes roots (nodes with no parents) for the current graph.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the graph has cycles or references missing nodes.
-    #[inline]
-    pub fn roots(
-        &self,
-    ) -> Result<Vec<SchemaId>, crate::schema::error::SchemaInheritanceError>
-    {
-        topological_sort_with_nodes(self.0.parents(), self.0.node_ids())
-            .map(|(_order, roots)| roots)
             .map_err(|_e| {
                 crate::schema::error::SchemaInheritanceError::CycleDetected {
                     nodes: Vec::new(),
@@ -339,13 +311,16 @@ impl<T> ProcessingGraph<T> {
     #[inline]
     #[must_use]
     pub fn graph(&self) -> &Graph<SchemaId, T> {
-        &self.0
+        &self.inner
     }
 
     /// Returns a mutable reference to the underlying schema graph.
+    ///
+    /// NOTE: Modifying the graph directly invalidates the topological cache.
     #[inline]
     pub fn graph_mut(&mut self) -> &mut Graph<SchemaId, T> {
-        &mut self.0
+        self.topo_cache = None;
+        &mut self.inner
     }
 
     /// Validates and converts the processing graph into a `DagGraph`.
@@ -360,51 +335,43 @@ impl<T> ProcessingGraph<T> {
         DagGraph<SchemaId, T>,
         crate::schema::error::SchemaInheritanceError,
     > {
-        DagGraph::try_from(self.0).map_err(|_e| {
+        DagGraph::try_from(self.inner).map_err(|_e| {
             crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
             }
         })
     }
 
+    /// Returns node IDs sorted deterministically by UUID.
+    #[inline]
+    #[must_use]
+    pub fn node_ids_sorted(&self) -> Vec<SchemaId> {
+        let mut ids: Vec<SchemaId> = self.inner.node_ids().collect();
+        ids.sort();
+        ids
+    }
+
     /// Maps each node payload into a new graph while preserving structure.
     ///
-    /// The mapping runs in deterministic node-ID order to keep processing
-    /// behavior stable across runs.
+    /// This is a high-performance, consuming transformation that reuses the
+    /// existing adjacency maps and preserves the topological cache.
     ///
     /// # Errors
     ///
     /// Returns an error from the mapping closure.
     #[inline]
     pub fn map_payload<U, E, F>(
-        &self,
-        mut mapper: F,
+        self,
+        mapper: F,
     ) -> Result<ProcessingGraph<U>, E>
     where
-        F: FnMut(SchemaId, &T) -> Result<U, E>,
+        F: FnMut(SchemaId, T) -> Result<U, E>,
     {
-        let mut builder =
-            SchemaGraphBuilder::with_capacity(self.graph().node_count());
-
-        let mut node_ids: Vec<SchemaId> =
-            self.graph().iter().map(|(id, _)| id).collect();
-        node_ids.sort();
-
-        for id in &node_ids {
-            let Some(node) = self.graph().get(*id) else {
-                continue;
-            };
-            let mapped_payload = mapper(*id, node.payload())?;
-            builder.add_node(*id, mapped_payload);
-        }
-
-        for child_id in node_ids {
-            for &parent_id in self.graph().parents_of(child_id) {
-                builder.add_parent(child_id, parent_id);
-            }
-        }
-
-        Ok(builder.build())
+        let next_inner = self.inner.map_nodes(mapper)?;
+        Ok(ProcessingGraph {
+            inner: next_inner,
+            topo_cache: self.topo_cache,
+        })
     }
 }
 

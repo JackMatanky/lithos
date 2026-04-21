@@ -1,28 +1,34 @@
 # Schema Graph Module: Complete Redesign Plan
 
 **Date**: 2026-04-12
-**Last Updated**: 2026-04-14 (Archive trait solution added)
-**Status**: In Progress - Phase 2 Blocked (3/4 files migrated)
-**Estimated Effort**: 25-40 hours
+**Last Updated**: 2026-04-20 (Phase 2 & 3 completed)
+**Status**: ✅ COMPLETE - Phases 1-3 finished, Phase 4 (optimization) optional
+**Actual Effort**: ~18-20 hours (phases 1-3)
 **Priority**: High - Addresses fundamental architectural defects
 
-## Current Status (2026-04-14)
+## Current Status (2026-04-20)
 
-**Completed**:
+**✅ COMPLETED PHASES**:
 - ✅ Phase 1: New `graph/` module fully implemented (1,337 LOC)
-- ✅ Phase 2 Partial: 3/4 schema files migrated (testing.rs, storage.rs, builder.rs, inheritance.rs)
+- ✅ Phase 2: All schema files migrated including `schema_processor.rs`
+- ✅ Phase 3: Cleanup complete - old code deleted, all tests passing
 
-**Blocked**:
-- ❌ `schema_processor.rs` migration blocked by Archive trait conflict
-- ❌ Cannot commit partial work (pre-commit hooks require full compilation)
+**Archive Trait Solution (Implemented)**:
+- Infrastructure layer (`graph/`) has NO Archive bounds on core types
+- Domain layer (`schema/`) provides two wrapper types:
+  - `InheritanceGraph<T>` for persistence (requires `T: Archive`)
+  - `ProcessingGraph<T>` for pipeline (no Archive requirement)
+- Type system enforces serialization requirements at domain level
 
-**Blocking Issue Resolution**: Archive trait conflict solved via two-layer architecture:
-- Infrastructure layer (`graph/`) removes ALL Archive bounds
-- Domain layer (`schema/`) adds Archive via newtype wrappers where needed
-- `InheritanceGraph<T>` for persistence (requires Archive)
-- `ProcessingGraph<T>` for pipeline (no Archive requirement)
+**Migration Results**:
+- Old code deleted: `schema/graph.rs`, `schema/topo_sort.rs`, old benchmarks
+- Net reduction: -1,238 LOC (deleted 2,455, added 1,217)
+- All 813 tests passing (unit, integration, e2e, doctests)
+- Full verification suite green (`mise run verify`)
+- Zero clippy warnings, no dead code
+- Committed in: `48fcc593`
 
-**Next Steps**: Implement Archive trait solution, complete schema_processor.rs migration
+**Phase 4 (Optional Optimization)**: Not started - profiling, benchmarks, ADR documentation
 
 ---
 

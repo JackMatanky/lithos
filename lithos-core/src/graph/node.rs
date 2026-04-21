@@ -76,6 +76,23 @@ impl<T> Node<T> {
     pub fn payload_mut(&mut self) -> &mut T {
         &mut self.payload
     }
+
+    /// Consumes the node and returns the payload and depth.
+    #[inline]
+    #[must_use]
+    pub fn into_parts(self) -> (T, NodeDepth) {
+        (self.payload, self.depth)
+    }
+
+    /// Creates a node from payload and depth.
+    #[inline]
+    #[must_use]
+    pub fn from_parts(payload: T, depth: NodeDepth) -> Self {
+        Self {
+            depth,
+            payload,
+        }
+    }
 }
 
 /// Inheritance depth in a DAG (0-indexed for roots).
