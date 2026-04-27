@@ -92,6 +92,20 @@ impl From<String> for Filename {
     }
 }
 
+impl From<Filename> for Box<str> {
+    #[inline]
+    fn from(filename: Filename) -> Self {
+        filename.0
+    }
+}
+
+impl From<Filename> for String {
+    #[inline]
+    fn from(filename: Filename) -> Self {
+        filename.0.into_string()
+    }
+}
+
 impl AsRef<str> for Filename {
     #[inline]
     fn as_ref(&self) -> &str {
@@ -103,6 +117,31 @@ impl AsRef<Path> for Filename {
     #[inline]
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl TryFrom<&Path> for Filename {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let name = path
+            .file_name()
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path terminates in .. or is empty",
+                )
+            })?
+            .to_str()
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Path contains invalid UTF-8",
+                )
+            })?;
+
+        Ok(Self::new(name.into()))
     }
 }
 
@@ -138,5 +177,24 @@ mod tests {
     fn as_str_returns_full_filename() {
         let filename = Filename::new("note.toml".into());
         assert_eq!(filename.as_str(), "note.toml");
+    }
+
+    #[test]
+    fn try_from_path_extracts_filename() {
+        let path = Path::new("schemas/user.json");
+        let filename = Filename::try_from(path).unwrap();
+        assert_eq!(filename.as_str(), "user.json");
+        assert_eq!(filename.basename(), "user");
+    }
+
+    #[test]
+    fn try_from_path_rejects_empty_filename() {
+        let path = Path::new("schemas/..");
+        let result = Filename::try_from(path);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
     }
 }

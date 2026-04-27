@@ -80,7 +80,7 @@ fn loads_and_persists_property_bank() -> TestResult {
 
     let source2 = FsReader::new(vault_dir.path());
     let filename = source2.filename(&property_path)?;
-    let view = repository2.get_raw_property_bank_view(filename)?;
+    let view = repository2.get_raw_property_bank_view(filename.as_str())?;
     assert!(view.is_some(), "Expected raw view to be persisted");
 
     Ok(())

@@ -5,6 +5,7 @@ use std::{
 
 use super::{
     error::PathValidationError,
+    filename::Filename,
     stats::FileStats,
     types::{Binary, Json, Markdown, Toml, Yaml},
     validator::Validator,
@@ -306,32 +307,20 @@ impl Reader {
     ///
     /// Returns [`ParseError::Io`] if the path has no filename or the filename
     /// is not valid UTF-8.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use lithos_core::fs::FsReader;
-    /// use std::path::Path;
-    ///
-    /// let reader = FsReader::new("/vault");
-    /// let base = reader.basename(Path::new("schemas/user.json"))?;
-    /// assert_eq!(base, "user");
-    /// ```
     #[inline]
     pub fn basename<'path>(
         &self,
         path: &'path Path,
     ) -> Result<&'path str, ParseError> {
-        match path.file_stem().and_then(|s| s.to_str()) {
-            Some(stem) => Ok(stem),
-            None => Err(ParseError::Io {
+        path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+            ParseError::Io {
                 path: path.to_path_buf(),
                 source: std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "Path has no valid UTF-8 filename",
                 ),
-            }),
-        }
+            }
+        })
     }
 
     /// Extracts the filename (with extension) from a path.
@@ -342,32 +331,12 @@ impl Reader {
     ///
     /// Returns [`ParseError::Io`] if the path has no filename or the filename
     /// is not valid UTF-8.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use lithos_core::fs::FsReader;
-    /// use std::path::Path;
-    ///
-    /// let reader = FsReader::new("/vault");
-    /// let name = reader.filename(Path::new("schemas/user.json"))?;
-    /// assert_eq!(name, "user.json");
-    /// ```
     #[inline]
-    pub fn filename<'path>(
-        &self,
-        path: &'path Path,
-    ) -> Result<&'path str, ParseError> {
-        match path.file_name().and_then(|s| s.to_str()) {
-            Some(name) => Ok(name),
-            None => Err(ParseError::Io {
-                path: path.to_path_buf(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path has no valid UTF-8 filename",
-                ),
-            }),
-        }
+    pub fn filename(&self, path: &Path) -> Result<Filename, ParseError> {
+        Filename::try_from(path).map_err(|source| ParseError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
     }
 
     /// Validates a path using the internal validator.
