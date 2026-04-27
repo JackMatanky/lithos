@@ -16,7 +16,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
-#[rkyv(compare(PartialEq))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 pub struct Filename(Box<str>);
 
 impl Filename {

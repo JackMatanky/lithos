@@ -875,7 +875,7 @@ mod tests {
         fn cache_dir_rejects_empty() {
             // GIVEN: empty cache_dir
             use crate::config::paths::RelativePath;
-            let result = RelativePath::try_new(PathBuf::from(""));
+            let result = RelativePath::try_from(PathBuf::from(""));
 
             // THEN: validation fails for cache_dir
             assert!(
@@ -907,7 +907,7 @@ mod tests {
         #[test]
         fn templates_dir_rejects_absolute() {
             // GIVEN: invalid template dir (absolute)
-            let result = RelativePath::try_new(PathBuf::from("/abs"));
+            let result = RelativePath::try_from(PathBuf::from("/abs"));
 
             // THEN: it fails
             assert!(

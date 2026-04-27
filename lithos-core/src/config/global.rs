@@ -17,10 +17,11 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{AbsolutePath, PropertyBank, Schema, Template},
+    paths::{PropertyBank, Schema, Template},
     raw::RawTrustedVaults,
     task::Task,
 };
+use crate::fs::AbsolutePath;
 
 /// Global-level paths configuration (without cache).
 ///
@@ -497,7 +498,13 @@ impl TrustedVaultPath {
     /// # Errors
     /// Returns [`ConfigError`] if the path is not absolute or is empty.
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        Ok(Self(AbsolutePath::try_new(path)?))
+        let path = AbsolutePath::try_from(path).map_err(|e| {
+            ConfigError::ValidationFailed {
+                field: "trusted_vault_path".into(),
+                message: e.to_string().into(),
+            }
+        })?;
+        Ok(Self(path))
     }
 
     #[inline]

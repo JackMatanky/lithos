@@ -30,6 +30,7 @@ use rkyv::{Archive, Deserialize, Serialize};
     clippy::module_name_repetitions,
     reason = "Blake3Hash is descriptive and clear"
 )]
+#[rkyv(derive(Debug))]
 pub struct Blake3Hash([u8; 32]);
 
 impl Blake3Hash {

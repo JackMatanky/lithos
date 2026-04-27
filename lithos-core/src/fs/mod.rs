@@ -31,6 +31,8 @@
 pub mod error;
 /// Filename wrapper for vault-scoped files.
 pub mod filename;
+/// Validated path types.
+pub mod path;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
 /// Filesystem statistics for files.
@@ -95,6 +97,12 @@ pub type Filename = filename::Filename;
 
 /// Filesystem statistics for a file.
 pub type FileStats = stats::FileStats;
+
+/// A validated vault-relative path.
+pub type RelativePath = path::RelativePath;
+
+/// A validated absolute path.
+pub type AbsolutePath = path::AbsolutePath;
 
 /// File system timestamp type alias.
 ///
