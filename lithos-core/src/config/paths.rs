@@ -31,6 +31,15 @@ pub type RelativePath = crate::fs::RelativePath;
 /// Re-exported filename type from filesystem module.
 pub type Filename = crate::fs::Filename;
 
+#[expect(
+    clippy::expect_used,
+    reason = "Static defaults are compile-time literals expected to remain \
+              valid"
+)]
+fn default_relative_path(value: &'static str) -> RelativePath {
+    RelativePath::try_from(value).expect("default path literal must be valid")
+}
+
 // ----------------------------------------------------------- //
 //                   Resolved Path Aggregate                   //
 // ----------------------------------------------------------- //
@@ -194,7 +203,7 @@ impl Default for Schema {
     #[inline]
     fn default() -> Self {
         Self {
-            schemas_dir: RelativePath::from("schemas"),
+            schemas_dir: default_relative_path("schemas"),
         }
     }
 }
@@ -249,7 +258,7 @@ impl Default for Template {
     #[inline]
     fn default() -> Self {
         Self {
-            templates_dir: RelativePath::from("templates"),
+            templates_dir: default_relative_path("templates"),
         }
     }
 }
@@ -304,7 +313,7 @@ impl Default for Cache {
     #[inline]
     fn default() -> Self {
         Self {
-            cache_dir: RelativePath::from(".cache"),
+            cache_dir: default_relative_path(".cache"),
         }
     }
 }
