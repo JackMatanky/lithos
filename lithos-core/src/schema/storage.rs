@@ -22,7 +22,10 @@ use super::{
     property::PropertyName,
     views::{RawPropertyBankView, RawSchemaView},
 };
-use crate::db::{BatchReader, Database};
+use crate::{
+    db::{BatchReader, Database},
+    fs::{Filename, RelativePath},
+};
 
 fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
     SchemaRepositoryError::Storage(SchemaStorageError::Storage(error))
@@ -310,7 +313,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn get_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
     ) -> Result<Option<super::views::RawPropertyBankView>, Self::Error>;
 
     /// Saves the raw property bank view.
@@ -320,7 +323,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the save fails.
     fn save_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
         view: &super::views::RawPropertyBankView,
     ) -> Result<(), Self::Error>;
 
@@ -333,7 +336,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn find_raw_schema_view_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<super::views::RawSchemaView>, Self::Error>;
 
     /// Finds the `SchemaId` for a file path.
@@ -345,7 +348,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn find_schema_id_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<SchemaId>, Self::Error>;
 
     /// Finds multiple raw schema views by file paths (bulk query).
@@ -358,11 +361,8 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn find_raw_schema_views_by_paths(
         &self,
-        file_paths: &[std::path::PathBuf],
-    ) -> Result<
-        HashMap<std::path::PathBuf, super::views::RawSchemaView>,
-        Self::Error,
-    >;
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, super::views::RawSchemaView>, Self::Error>;
 
     /// Finds multiple schema IDs by file paths (bulk query).
     ///
@@ -375,8 +375,8 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn find_schema_ids_by_paths(
         &self,
-        file_paths: &[std::path::PathBuf],
-    ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error>;
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
 
     /// Gets the topological graph singleton.
     ///
@@ -549,9 +549,16 @@ impl Repository for RedbRepository {
             .map_err(map_db_error)?
             .into_iter()
             .map(|(path_str, id): (String, SchemaId)| {
-                (PathBuf::from(path_str), id)
+                RelativePath::try_from(PathBuf::from(path_str))
+                    .map(|path| (path, id))
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                SchemaRepositoryError::Storage(SchemaStorageError::Corruption {
+                    reason: format!("invalid schema path in index: {error}")
+                        .into(),
+                })
+            })?;
 
         Ok(pairs.into())
     }
@@ -677,8 +684,8 @@ impl Repository for RedbRepository {
                     batch.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
                 }
                 if let Some(view) = view.as_ref() {
-                    batch
-                        .delete(SCHEMA_ID_BY_PATH, view.file_path().as_str())?;
+                    let path_key = view.file_path().as_path().to_string_lossy();
+                    batch.delete(SCHEMA_ID_BY_PATH, path_key.as_ref())?;
                 }
                 Ok(())
             })
@@ -765,8 +772,9 @@ impl Repository for RedbRepository {
         let key = id.to_string();
         self.db
             .batch_write(|batch| {
+                let path_key = view.file_path().as_path().to_string_lossy();
                 batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
-                batch.put(SCHEMA_ID_BY_PATH, view.file_path().as_str(), &id)?;
+                batch.put(SCHEMA_ID_BY_PATH, path_key.as_ref(), &id)?;
                 Ok(())
             })
             .map_err(map_db_error)?;
@@ -777,39 +785,41 @@ impl Repository for RedbRepository {
     #[inline]
     fn get_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
         use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .get_owned(RAW_PROPERTY_BANK_VIEW, filename)
+            .get_owned(RAW_PROPERTY_BANK_VIEW, filename.as_str())
             .map_err(map_db_error)
     }
 
     #[inline]
     fn save_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
         use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .put(RAW_PROPERTY_BANK_VIEW, filename, view)
+            .put(RAW_PROPERTY_BANK_VIEW, filename.as_str(), view)
             .map_err(map_db_error)
     }
 
     #[inline]
     fn find_raw_schema_view_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<RawSchemaView>, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let path_key = file_path.as_path().to_string_lossy();
 
         // First lookup SchemaId by path
         let id = self
             .db
-            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, file_path)
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
             .map_err(map_db_error)?;
 
         match id {
@@ -821,23 +831,23 @@ impl Repository for RedbRepository {
     #[inline]
     fn find_schema_id_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<SchemaId>, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
+        let path_key = file_path.as_path().to_string_lossy();
+
         self.db
-            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, file_path)
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
             .map_err(map_db_error)
     }
 
     #[inline]
     fn find_raw_schema_views_by_paths(
         &self,
-        file_paths: &[std::path::PathBuf],
-    ) -> Result<
-        HashMap<std::path::PathBuf, super::views::RawSchemaView>,
-        Self::Error,
-    > {
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, super::views::RawSchemaView>, Self::Error>
+    {
         use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
 
         // Perform all queries in a single read transaction
@@ -846,7 +856,7 @@ impl Repository for RedbRepository {
                 let mut results = HashMap::new();
 
                 for path in file_paths {
-                    let path_key = path.to_string_lossy();
+                    let path_key = path.as_path().to_string_lossy();
 
                     // Step 1: Look up SchemaId by path
                     let Some(id) = reader.get_owned::<SchemaId>(
@@ -875,8 +885,8 @@ impl Repository for RedbRepository {
     #[inline]
     fn find_schema_ids_by_paths(
         &self,
-        file_paths: &[std::path::PathBuf],
-    ) -> Result<HashMap<std::path::PathBuf, SchemaId>, Self::Error> {
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
         use crate::schema::db_table::SCHEMA_ID_BY_PATH;
 
         // Perform all queries in a single read transaction
@@ -885,7 +895,7 @@ impl Repository for RedbRepository {
                 let mut results = HashMap::new();
 
                 for path in file_paths {
-                    let path_key = path.to_string_lossy();
+                    let path_key = path.as_path().to_string_lossy();
                     if let Some(id) = reader.get_owned::<SchemaId>(
                         SCHEMA_ID_BY_PATH,
                         path_key.as_ref(),
@@ -929,7 +939,7 @@ impl Repository for RedbRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, path::PathBuf};
+    use std::collections::HashMap;
 
     use tempfile::TempDir;
 
@@ -954,8 +964,8 @@ mod tests {
         let (_tmp, repo) = setup_test_repo();
 
         let paths = vec![
-            PathBuf::from("schemas/foo.json"),
-            PathBuf::from("schemas/bar.json"),
+            RelativePath::try_from("schemas/foo.json").unwrap(),
+            RelativePath::try_from("schemas/bar.json").unwrap(),
         ];
 
         let results = repo
@@ -970,8 +980,8 @@ mod tests {
         let (_tmp, repo) = setup_test_repo();
 
         let paths = vec![
-            PathBuf::from("schemas/foo.json"),
-            PathBuf::from("schemas/bar.json"),
+            RelativePath::try_from("schemas/foo.json").unwrap(),
+            RelativePath::try_from("schemas/bar.json").unwrap(),
         ];
 
         let results = repo
@@ -995,9 +1005,7 @@ mod tests {
     #[test]
     fn list_schema_path_id_pairs_includes_saved_view() {
         use crate::{
-            schema::views::{
-                FileTimesMetadata, Filename, HashMetadata, SchemaVersion,
-            },
+            schema::views::{FileTimesMetadata, HashMetadata, SchemaVersion},
             support::hash::Blake3Hash,
         };
 
@@ -1017,8 +1025,8 @@ mod tests {
         let version =
             SchemaVersion::new(file_times_meta, hashes, &raw).unwrap();
 
-        let filename = Filename::new("schemas/test.json".into());
-        let view = RawSchemaView::new(filename, version);
+        let schema_path = RelativePath::try_from("schemas/test.json").unwrap();
+        let view = RawSchemaView::new(schema_path.clone(), version);
         let schema_id = SchemaId::new();
         repo.save_raw_schema_view(schema_id, &view)
             .expect("save view should succeed");
@@ -1031,6 +1039,6 @@ mod tests {
         let (path, id) =
             results.first().cloned().expect("should have one entry");
         assert_eq!(id, schema_id);
-        assert_eq!(path, PathBuf::from("schemas/test.json"));
+        assert_eq!(path, schema_path);
     }
 }

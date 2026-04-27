@@ -14,15 +14,18 @@
 
 #![expect(dead_code, reason = "index methods used by downstream modules")]
 
-use std::{collections::HashMap, ops::Deref, path::PathBuf};
+use std::{collections::HashMap, ops::Deref};
 
-use crate::schema::aggregate::{SchemaId, SchemaName};
+use crate::{
+    fs::RelativePath,
+    schema::aggregate::{SchemaId, SchemaName},
+};
 
 /// A schema name-to-ID pair.
 pub type NameIdPair = (SchemaName, SchemaId);
 
 /// A schema path-to-ID pair.
-pub type PathIdPair = (PathBuf, SchemaId);
+pub type PathIdPair = (RelativePath, SchemaId);
 
 /// Bidirectional index for schema lookups.
 ///
@@ -46,7 +49,7 @@ pub type PathIdPair = (PathBuf, SchemaId);
 pub struct SchemaIndex {
     name_to_id: HashMap<SchemaName, SchemaId>,
     id_to_name: HashMap<SchemaId, SchemaName>,
-    path_to_id: HashMap<PathBuf, SchemaId>,
+    path_to_id: HashMap<RelativePath, SchemaId>,
 }
 
 impl SchemaIndex {
@@ -78,7 +81,7 @@ impl SchemaIndex {
     /// Derives `SchemaName` from path basename (file stem) for name→ID lookups.
     pub fn from_path_id_pairs<I>(pairs: I) -> Self
     where
-        I: IntoIterator<Item = (PathBuf, SchemaId)>,
+        I: IntoIterator<Item = (RelativePath, SchemaId)>,
     {
         let pairs: Vec<_> = pairs.into_iter().collect();
         let capacity = pairs.len();
@@ -88,7 +91,7 @@ impl SchemaIndex {
         let mut id_to_name = HashMap::with_capacity(capacity);
 
         for (path, id) in pairs {
-            if let Some(name) = path.file_stem().and_then(|s| {
+            if let Some(name) = path.as_path().file_stem().and_then(|s| {
                 SchemaName::try_new(s.to_string_lossy().as_ref()).ok()
             }) {
                 id_to_name.insert(id, name.clone());
@@ -108,7 +111,7 @@ impl SchemaIndex {
     pub fn from_pairs<I, J>(name_pairs: I, path_pairs: J) -> Self
     where
         I: IntoIterator<Item = (SchemaName, SchemaId)>,
-        J: IntoIterator<Item = (PathBuf, SchemaId)>,
+        J: IntoIterator<Item = (RelativePath, SchemaId)>,
     {
         let name_pairs: Vec<_> = name_pairs.into_iter().collect();
         let path_pairs: Vec<_> = path_pairs.into_iter().collect();
@@ -152,7 +155,7 @@ impl SchemaIndex {
     /// Get schema ID by path.
     #[inline]
     #[must_use]
-    pub fn get_id_by_path(&self, path: &PathBuf) -> Option<SchemaId> {
+    pub fn get_id_by_path(&self, path: &RelativePath) -> Option<SchemaId> {
         self.path_to_id.get(path).copied()
     }
 
@@ -164,7 +167,9 @@ impl SchemaIndex {
     }
 
     /// Iterate over path→ID pairs.
-    pub fn iter_path_id(&self) -> impl Iterator<Item = (&PathBuf, &SchemaId)> {
+    pub fn iter_path_id(
+        &self,
+    ) -> impl Iterator<Item = (&RelativePath, &SchemaId)> {
         self.path_to_id.iter()
     }
 
@@ -196,7 +201,7 @@ impl SchemaIndex {
     }
 
     /// Insert a path→ID mapping.
-    pub fn insert_path(&mut self, path: PathBuf, id: SchemaId) {
+    pub fn insert_path(&mut self, path: RelativePath, id: SchemaId) {
         self.path_to_id.insert(path, id);
     }
 }
@@ -205,7 +210,7 @@ impl SchemaIndex {
 pub type IndexMaps = (
     HashMap<SchemaName, SchemaId>,
     HashMap<SchemaId, SchemaName>,
-    HashMap<PathBuf, SchemaId>,
+    HashMap<RelativePath, SchemaId>,
 );
 
 /// Collection of name→ID pairs for schema lookups.
@@ -275,7 +280,7 @@ impl Deref for NameIdPairs {
 
 /// Collection of path→ID pairs for schema discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PathIdPairs(Vec<(PathBuf, SchemaId)>);
+pub struct PathIdPairs(Vec<(RelativePath, SchemaId)>);
 
 impl PathIdPairs {
     pub fn new() -> Self {
@@ -286,15 +291,15 @@ impl PathIdPairs {
         Self(Vec::with_capacity(capacity))
     }
 
-    pub fn push(&mut self, pair: (PathBuf, SchemaId)) {
+    pub fn push(&mut self, pair: (RelativePath, SchemaId)) {
         self.0.push(pair);
     }
 
-    pub fn into_vec(self) -> Vec<(PathBuf, SchemaId)> {
+    pub fn into_vec(self) -> Vec<(RelativePath, SchemaId)> {
         self.0
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &(PathBuf, SchemaId)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(RelativePath, SchemaId)> {
         self.0.iter()
     }
 
@@ -307,7 +312,7 @@ impl PathIdPairs {
     }
 
     /// Convert to a `HashMap` of path → id.
-    pub fn to_map(&self) -> HashMap<PathBuf, SchemaId> {
+    pub fn to_map(&self) -> HashMap<RelativePath, SchemaId> {
         self.0.iter().map(|pair| (pair.0.clone(), pair.1)).collect()
     }
 }
@@ -318,14 +323,14 @@ impl Default for PathIdPairs {
     }
 }
 
-impl From<Vec<(PathBuf, SchemaId)>> for PathIdPairs {
-    fn from(vec: Vec<(PathBuf, SchemaId)>) -> Self {
+impl From<Vec<(RelativePath, SchemaId)>> for PathIdPairs {
+    fn from(vec: Vec<(RelativePath, SchemaId)>) -> Self {
         Self(vec)
     }
 }
 
 impl Deref for PathIdPairs {
-    type Target = Vec<(PathBuf, SchemaId)>;
+    type Target = Vec<(RelativePath, SchemaId)>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -360,8 +365,8 @@ mod tests {
         let id2 = SchemaId::new();
 
         let index = SchemaIndex::from_path_id_pairs([
-            (PathBuf::from("schemas/user.json"), id1),
-            (PathBuf::from("schemas/task.json"), id2),
+            (RelativePath::try_from("schemas/user.json").unwrap(), id1),
+            (RelativePath::try_from("schemas/task.json").unwrap(), id2),
         ]);
 
         let name_user = SchemaName::try_new("user").unwrap();
@@ -395,8 +400,8 @@ mod tests {
         let id2 = SchemaId::new();
 
         let mut pairs = PathIdPairs::new();
-        pairs.push((PathBuf::from("schemas/user.json"), id1));
-        pairs.push((PathBuf::from("schemas/task.json"), id2));
+        pairs.push((RelativePath::try_from("schemas/user.json").unwrap(), id1));
+        pairs.push((RelativePath::try_from("schemas/task.json").unwrap(), id2));
 
         assert_eq!(pairs.len(), 2);
         assert!(!pairs.is_empty());
@@ -419,7 +424,8 @@ mod tests {
         let id1 = SchemaId::new();
 
         let pairs: PathIdPairs =
-            vec![(PathBuf::from("schemas/user.json"), id1)].into();
+            vec![(RelativePath::try_from("schemas/user.json").unwrap(), id1)]
+                .into();
         assert_eq!(pairs.len(), 1);
     }
 }

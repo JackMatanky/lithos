@@ -5,13 +5,13 @@
     reason = "builder context uses pub(crate) fields for tests"
 )]
 
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 use tracing::info;
 
 use crate::{
     config::aggregate::Config,
-    fs::FsReader,
+    fs::{Filename, FsReader, RelativePath},
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -134,11 +134,11 @@ where
         context: &PropertyBankContext,
     ) -> Result<PropertyBank, SchemaLoaderError> {
         let config_path = context.path.as_path();
-        let filename = context.filename.as_ref();
+        let filename = &context.filename;
 
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
-            filename,
+            filename.as_str(),
             &self.source,
             config_path,
             &self.repository,
@@ -170,7 +170,18 @@ where
 
         let bank_filename = self.resolve_property_bank_filename()?;
         let schema_dir = self.config.paths().schema.schemas_dir();
-        let property_bank_path = self.config.paths().property_bank_path();
+        let property_bank_path =
+            RelativePath::try_from(self.config.paths().property_bank_path())
+                .map_err(|error| {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: format!(
+                                "invalid property bank path in config: {error}"
+                            )
+                            .into(),
+                        },
+                    ))
+                })?;
 
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
         let all_files = self.source.list_files(&pattern).map_err(|e| {
@@ -182,7 +193,7 @@ where
             ))
         })?;
 
-        let mut files = Vec::new();
+        let mut files: Vec<RelativePath> = Vec::new();
         let mut has_property_bank = false;
 
         for path in all_files {
@@ -191,7 +202,7 @@ where
                 continue;
             };
 
-            if file_name == bank_filename.as_ref() {
+            if file_name == bank_filename.as_str() {
                 if has_property_bank {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
@@ -218,7 +229,18 @@ where
                 .iter()
                 .any(|allowed| ext.eq_ignore_ascii_case(allowed))
             {
-                files.push(path);
+                let relative =
+                    RelativePath::try_from(path).map_err(|error| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: format!(
+                                "invalid schema path discovered: {error}"
+                            )
+                            .into(),
+                        },
+                    ))
+                    })?;
+                files.push(relative);
             }
         }
 
@@ -247,38 +269,28 @@ where
 
     fn resolve_property_bank_filename(
         &self,
-    ) -> Result<Box<str>, SchemaLoaderError> {
-        if let Some(name) = self
-            .config
-            .paths()
-            .property_bank_path()
-            .file_name()
-            .and_then(|name| name.to_str())
-        {
-            return Ok(name.into());
-        }
-
+    ) -> Result<Filename, SchemaLoaderError> {
         self.source
             .filename(self.config.paths().property_bank_path().as_path())
-            .map(Into::into)
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
     }
 
     fn handle_missing(
         &self,
         processor: PropertyBankProcessor<Parsed, Missing>,
-        filename: &str,
+        filename: &Filename,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         let constructed = processor.parse(&self.source, config_path)?;
-        let completed = constructed.create(filename, &self.repository)?;
+        let completed =
+            constructed.create(filename.as_str(), &self.repository)?;
         Ok((completed.into_bank(), None))
     }
 
     fn handle_present(
         &self,
         processor: PropertyBankProcessor<Comparison, Present>,
-        filename: &str,
+        filename: &Filename,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_timestamps(&self.source, config_path)? {
@@ -292,7 +304,7 @@ where
     fn handle_content_mismatch(
         &self,
         processor: PropertyBankProcessor<Comparison, Suspect>,
-        filename: &str,
+        filename: &Filename,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_content() {
@@ -309,19 +321,21 @@ where
     fn handle_analysis_branch(
         &self,
         branch: AnalysisBranch,
-        filename: &str,
+        filename: &Filename,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(p) => {
                 Ok((self.sync_and_fetch_content(p)?, None))
             }
             AnalysisBranch::Delta(p) => {
-                let completed = p.update(filename, &self.repository)?;
+                let completed =
+                    p.update(filename.as_str(), &self.repository)?;
                 let (bank, delta) = completed.into_bank_with_changes();
                 Ok((bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(p) => {
-                let completed = p.create(filename, &self.repository)?;
+                let completed =
+                    p.create(filename.as_str(), &self.repository)?;
                 Ok((completed.into_bank(), None))
             }
         }
@@ -357,13 +371,13 @@ where
 
 #[derive(Debug, Clone)]
 pub(crate) struct FilesContext {
-    pub(crate) files: Vec<PathBuf>,
+    pub(crate) files: Vec<RelativePath>,
     pub(crate) has_property_bank: bool,
 }
 
 impl FilesContext {
     #[inline]
-    fn new(files: Vec<PathBuf>) -> Self {
+    fn new(files: Vec<RelativePath>) -> Self {
         if files.is_empty() {
             info!(
                 "No schema files found; schema processing skipped. Add a \
@@ -385,8 +399,8 @@ impl FilesContext {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyBankContext {
-    pub(crate) filename: Box<str>,
-    pub(crate) path: PathBuf,
+    pub(crate) filename: Filename,
+    pub(crate) path: RelativePath,
 }
 
 #[derive(Debug, Clone)]

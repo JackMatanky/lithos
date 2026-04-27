@@ -32,12 +32,14 @@ use crate::{
 pub trait RawView {
     /// Concrete version payload type.
     type Version: super::version::Version;
+    /// Concrete path/filename identifier type.
+    type FilePath;
 
     /// Maximum number of historical versions retained.
     const MAX_VERSIONS: usize = 5;
 
-    /// Returns the filename with extension.
-    fn file_path(&self) -> &crate::fs::Filename;
+    /// Returns the file identifier (path or filename).
+    fn file_path(&self) -> &Self::FilePath;
 
     /// Returns the most recent version, if any.
     fn current(&self) -> Option<&Self::Version>;
@@ -122,8 +124,8 @@ pub trait RawViewRead {
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
-    /// Filename with extension (e.g., "note.toml").
-    filename: crate::fs::Filename,
+    /// Vault-relative schema path (e.g., "schemas/note.toml").
+    path: crate::fs::RelativePath,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     ///
@@ -136,13 +138,13 @@ impl RawSchemaView {
     /// Creates a new schema view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(filename: crate::fs::Filename, version: SchemaVersion) -> Self {
+    pub fn new(path: crate::fs::RelativePath, version: SchemaVersion) -> Self {
         let mut versions =
             VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
-            filename,
+            path,
             versions,
         }
     }
@@ -150,8 +152,8 @@ impl RawSchemaView {
     /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &crate::fs::Filename {
-        &self.filename
+    pub fn file_path(&self) -> &crate::fs::RelativePath {
+        &self.path
     }
 
     /// Returns the schema name (derived from filename without extension).
@@ -167,7 +169,11 @@ impl RawSchemaView {
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
-        self.filename.basename()
+        self.path
+            .as_path()
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("")
     }
 
     /// Returns the parent schema name (`extends`) from current version, if any.
@@ -242,7 +248,7 @@ impl RawSchemaView {
     #[inline]
     pub fn try_from_with_content(
         raw: &super::super::raw::RawSchema,
-        filename: &str,
+        path: crate::fs::RelativePath,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
@@ -262,7 +268,7 @@ impl RawSchemaView {
 
         let version = SchemaVersion::new(file_times, hashes, raw)?;
 
-        Ok(Self::new(crate::fs::Filename::new(filename.into()), version))
+        Ok(Self::new(path, version))
     }
 }
 
@@ -271,11 +277,12 @@ impl RawSchemaView {
     reason = "Default trait methods are intentionally reused"
 )]
 impl RawView for RawSchemaView {
+    type FilePath = crate::fs::RelativePath;
     type Version = SchemaVersion;
 
     #[inline]
-    fn file_path(&self) -> &crate::fs::Filename {
-        &self.filename
+    fn file_path(&self) -> &Self::FilePath {
+        &self.path
     }
 
     #[inline]
@@ -472,7 +479,7 @@ impl RawPropertyBankView {
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
-        filename: &str,
+        filename: crate::fs::Filename,
         raw_hash: HashMetadata,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::FileTimesMetadata;
@@ -488,7 +495,7 @@ impl RawPropertyBankView {
             raw.version().as_str(),
         )?;
 
-        Ok(Self::new(crate::fs::Filename::new(filename.into()), version))
+        Ok(Self::new(filename, version))
     }
 }
 
@@ -497,10 +504,11 @@ impl RawPropertyBankView {
     reason = "Default trait methods are intentionally reused"
 )]
 impl RawView for RawPropertyBankView {
+    type FilePath = crate::fs::Filename;
     type Version = PropertyBankVersion;
 
     #[inline]
-    fn file_path(&self) -> &crate::fs::Filename {
+    fn file_path(&self) -> &Self::FilePath {
         &self.filename
     }
 
@@ -697,9 +705,10 @@ mod tests {
 
     #[test]
     fn schema_view_update_content_hash_clears_expanded_properties_cache() {
-        let filename = crate::fs::Filename::new("note.json".into());
+        let schema_path =
+            crate::fs::RelativePath::try_from("schemas/note.json").unwrap();
         let mut view = RawSchemaView::new(
-            filename,
+            schema_path,
             make_schema_version(Blake3Hash::new([1; 32])),
         );
 
@@ -746,7 +755,7 @@ mod tests {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &raw,
-            "property_bank.json",
+            crate::fs::Filename::new("property_bank.json".into()),
             HashMetadata::new(Blake3Hash::new([1; 32]), HashMap::new()),
         )
         .expect("view creation should succeed");
@@ -776,9 +785,10 @@ mod tests {
 
     #[test]
     fn archived_raw_schema_view_supports_zero_copy_staleness_checks() {
-        let filename = crate::fs::Filename::new("note.json".into());
+        let schema_path =
+            crate::fs::RelativePath::try_from("schemas/note.json").unwrap();
         let view = RawSchemaView::new(
-            filename,
+            schema_path,
             make_schema_version(Blake3Hash::new([5; 32])),
         );
 

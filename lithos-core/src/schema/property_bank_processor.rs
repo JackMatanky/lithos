@@ -224,8 +224,9 @@ impl PropertyBankProcessor<Discovery, Unknown> {
         R::Error: Into<SchemaRepositoryError>,
     {
         drop(self);
+        let filename = crate::fs::Filename::new(filename.into());
         let cached_view = repository
-            .get_raw_property_bank_view(filename)
+            .get_raw_property_bank_view(&filename)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         let times = RawFileTimes {
@@ -604,7 +605,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
 
         repository
             .save_raw_property_bank_view(
-                self.status.view.file_path().as_str(),
+                self.status.view.file_path(),
                 &self.status.view,
             )
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -642,7 +643,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
 
         repository
             .save_raw_property_bank_view(
-                self.status.view.file_path().as_str(),
+                self.status.view.file_path(),
                 &self.status.view,
             )
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -735,13 +736,15 @@ impl PropertyBankProcessor<Construction, New> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            filename,
+            crate::fs::Filename::new(filename.into()),
             raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
+        let filename = crate::fs::Filename::new(filename.into());
+
         repository
-            .save_raw_property_bank_view(filename, &view)
+            .save_raw_property_bank_view(&filename, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }
@@ -817,13 +820,15 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            filename,
+            crate::fs::Filename::new(filename.into()),
             self.status.raw_hash.clone(),
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
+        let filename = crate::fs::Filename::new(filename.into());
+
         repository
-            .save_raw_property_bank_view(filename, &view)
+            .save_raw_property_bank_view(&filename, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }

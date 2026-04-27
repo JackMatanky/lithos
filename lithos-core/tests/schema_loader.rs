@@ -628,9 +628,9 @@ mod incremental_loading {
 
         // VERIFY: Check that RawSchemaView was persisted
         let repository3 = setup_repository(&fresh_db);
-        let path = std::path::PathBuf::from("schemas/task.json");
-        let view = repository3
-            .find_raw_schema_view_by_path(&path.to_string_lossy())?;
+        let path =
+            lithos_core::fs::RelativePath::try_from("schemas/task.json")?;
+        let view = repository3.find_raw_schema_view_by_path(&path)?;
         assert!(view.is_some(), "RawSchemaView should be persisted");
 
         Ok(())

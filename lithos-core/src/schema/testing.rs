@@ -43,7 +43,6 @@
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{Arc, RwLock},
 };
 
@@ -56,6 +55,7 @@ use super::{
     storage::{Repository, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},
 };
+use crate::fs::{Filename, RelativePath};
 
 // ============================================================================
 // InMemoryRepository - For Pure Unit Tests
@@ -101,11 +101,11 @@ pub struct InMemoryRepository {
     raw_schema_views: Arc<RwLock<HashMap<SchemaId, RawSchemaView>>>,
 
     /// Path-to-ID lookup for raw views: file path → `SchemaId`
-    path_to_id: Arc<RwLock<HashMap<PathBuf, SchemaId>>>,
+    path_to_id: Arc<RwLock<HashMap<RelativePath, SchemaId>>>,
 
     /// Raw property bank views for staleness detection: filename →
     /// `RawPropertyBankView`
-    raw_bank_views: Arc<RwLock<HashMap<String, RawPropertyBankView>>>,
+    raw_bank_views: Arc<RwLock<HashMap<Filename, RawPropertyBankView>>>,
 
     /// Cached topological graph singleton.
     topological_graph: Arc<RwLock<Option<InheritanceGraph<()>>>>,
@@ -418,7 +418,7 @@ impl Repository for InMemoryRepository {
         })?;
 
         // Update path index
-        path_to_id.insert(view.file_path().as_path().to_owned(), id);
+        path_to_id.insert(view.file_path().clone(), id);
 
         // Save view
         views.insert(id, view.clone());
@@ -428,7 +428,7 @@ impl Repository for InMemoryRepository {
 
     fn get_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
         let views = self.raw_bank_views.read().map_err(|_| {
             InMemoryError::lock_poisoned("get_raw_property_bank_view")
@@ -439,21 +439,21 @@ impl Repository for InMemoryRepository {
 
     fn save_raw_property_bank_view(
         &self,
-        filename: &str,
+        filename: &Filename,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
         let mut views = self.raw_bank_views.write().map_err(|_| {
             InMemoryError::lock_poisoned("save_raw_property_bank_view")
         })?;
 
-        views.insert(filename.to_owned(), view.clone());
+        views.insert(filename.clone(), view.clone());
 
         Ok(())
     }
 
     fn find_raw_schema_view_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<RawSchemaView>, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned(
@@ -465,9 +465,7 @@ impl Repository for InMemoryRepository {
             InMemoryError::lock_poisoned("find_raw_schema_view_by_path (views)")
         })?;
 
-        let path = PathBuf::from(file_path);
-
-        if let Some(id) = path_to_id.get(&path) {
+        if let Some(id) = path_to_id.get(file_path) {
             Ok(views.get(id).cloned())
         } else {
             Ok(None)
@@ -476,20 +474,19 @@ impl Repository for InMemoryRepository {
 
     fn find_schema_id_by_path(
         &self,
-        file_path: &str,
+        file_path: &RelativePath,
     ) -> Result<Option<SchemaId>, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned("find_schema_id_by_path")
         })?;
 
-        let path = PathBuf::from(file_path);
-        Ok(path_to_id.get(&path).copied())
+        Ok(path_to_id.get(file_path).copied())
     }
 
     fn find_raw_schema_views_by_paths(
         &self,
-        file_paths: &[PathBuf],
-    ) -> Result<HashMap<PathBuf, RawSchemaView>, Self::Error> {
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned(
                 "find_raw_schema_views_by_paths (path_to_id)",
@@ -517,8 +514,8 @@ impl Repository for InMemoryRepository {
 
     fn find_schema_ids_by_paths(
         &self,
-        file_paths: &[PathBuf],
-    ) -> Result<HashMap<PathBuf, SchemaId>, Self::Error> {
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
             InMemoryError::lock_poisoned("find_schema_ids_by_paths")
         })?;
