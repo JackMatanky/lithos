@@ -3,7 +3,7 @@
 //! Provides a type-safe wrapper for filenames that ensures consistent
 //! extension handling and path validation.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -142,6 +142,15 @@ impl TryFrom<&Path> for Filename {
             })?;
 
         Ok(Self::new(name.into()))
+    }
+}
+
+impl TryFrom<PathBuf> for Filename {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+        Self::try_from(path.as_path())
     }
 }
 
