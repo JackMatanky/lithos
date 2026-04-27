@@ -1,7 +1,4 @@
-use rkyv::{
-    Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
-};
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 
 /// A 32-byte BLAKE3 hash.
 ///
@@ -19,8 +16,6 @@ use serde::{Deserialize, Serialize};
     Archive,
     Serialize,
     Deserialize,
-    RkyvSerialize,
-    RkyvDeserialize,
 )]
 #[expect(
     clippy::module_name_repetitions,
@@ -49,7 +44,9 @@ impl Blake3Hash {
     /// property types and variants.
     #[inline]
     #[must_use]
-    pub fn compute_json<T: Serialize + std::fmt::Debug>(value: &T) -> Self {
+    pub fn compute_json<T: serde::Serialize + std::fmt::Debug>(
+        value: &T,
+    ) -> Self {
         if let Ok(json) = serde_json::to_string(value) {
             Self::compute(json.as_bytes())
         } else {

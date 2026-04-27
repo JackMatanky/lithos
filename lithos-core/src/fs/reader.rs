@@ -5,6 +5,7 @@ use std::{
 
 use super::{
     error::PathValidationError,
+    stats::FileStats,
     types::{Binary, Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
@@ -227,6 +228,17 @@ impl Reader {
         f(path, &content)
     }
 
+    /// Returns the statistics for a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the file does not exist or metadata cannot
+    /// be read.
+    #[inline]
+    pub fn stats(&self, path: &Path) -> Result<FileStats, ParseError> {
+        self.metadata(path).map(FileStats::from)
+    }
+
     /// Returns the metadata for a file.
     ///
     /// # Errors
@@ -247,68 +259,42 @@ impl Reader {
 
     /// Returns the file's creation timestamp.
     ///
-    /// Uses the standard cross-platform `Metadata::created()` method.
-    ///
     /// Returns `None` if the metadata cannot be read or the creation time is
     /// not available on this platform. Failures are logged at debug level.
     #[inline]
+    #[must_use]
     pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
-        let metadata = match self.metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
+        let s = self
+            .stats(path)
+            .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
                     error = %e,
                     "Failed to read metadata for created_at"
                 );
-                return None;
-            }
-        };
-
-        match metadata.created() {
-            Ok(system_time) => Some(system_time),
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read created timestamp from metadata"
-                );
-                None
-            }
-        }
+            })
+            .ok()?;
+        s.created_at
     }
 
     /// Returns the file's modification timestamp.
     ///
-    /// Uses the standard cross-platform `Metadata::modified()` method.
-    ///
     /// Returns `None` if the metadata cannot be read or the modification time
     /// is not available on this platform. Failures are logged at debug level.
     #[inline]
+    #[must_use]
     pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
-        let metadata = match self.metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
+        let s = self
+            .stats(path)
+            .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
                     error = %e,
                     "Failed to read metadata for modified_at"
                 );
-                return None;
-            }
-        };
-
-        match metadata.modified() {
-            Ok(system_time) => Some(system_time),
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read modified timestamp from metadata"
-                );
-                None
-            }
-        }
+            })
+            .ok()?;
+        s.modified_at
     }
 
     /// Extracts the basename (filename without extension) from a path.

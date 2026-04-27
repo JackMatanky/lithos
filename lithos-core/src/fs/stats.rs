@@ -1,26 +1,16 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rkyv::{
-    Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+    Archive, Deserialize, Serialize,
     with::{AsUnixTime, Map},
 };
-use serde::{Deserialize, Serialize};
 
 /// Filesystem statistics for a file.
 ///
 /// Centralises file metadata retrieval (creation, modification, size)
 /// to ensure consistent policy across the project.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Archive,
-    Serialize,
-    Deserialize,
-    RkyvSerialize,
-    RkyvDeserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[non_exhaustive]
 #[expect(
