@@ -82,6 +82,13 @@ impl FileStats {
         self.size
     }
 
+    /// Checks if the provided size matches these statistics.
+    #[inline]
+    #[must_use]
+    pub fn is_size_match(&self, size: u64) -> bool {
+        self.size == size
+    }
+
     /// Checks if the provided timestamps match these statistics.
     ///
     /// Used for fast staleness detection before performing more expensive
@@ -133,6 +140,144 @@ impl From<std::fs::Metadata> for FileStats {
             created_at: meta.created().ok(),
             modified_at: meta.modified().ok(),
             size: meta.len(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod constructor {
+        use super::*;
+
+        #[test]
+        fn should_create_new_stats_with_provided_values() {
+            let now = SystemTime::now();
+            let stats = FileStats::new(Some(now), Some(now), 1024);
+
+            assert_eq!(stats.created_at(), Some(now), "Created time mismatch");
+            assert_eq!(
+                stats.modified_at(),
+                Some(now),
+                "Modified time mismatch"
+            );
+            assert_eq!(stats.size(), 1024, "Size mismatch");
+        }
+    }
+
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn is_timestamp_match_should_return_true_when_identical() {
+            let now = SystemTime::now();
+            let stats = FileStats::new(Some(now), Some(now), 1024);
+
+            assert!(
+                stats.is_timestamp_match(Some(now), Some(now)),
+                "Should match identical timestamps"
+            );
+        }
+
+        #[test]
+        fn is_timestamp_match_should_return_false_when_different() {
+            let now = SystemTime::now();
+            let later = now + std::time::Duration::from_secs(1);
+            let stats = FileStats::new(Some(now), Some(now), 1024);
+
+            assert!(
+                !stats.is_timestamp_match(Some(later), Some(now)),
+                "Should not match different created_at"
+            );
+            assert!(
+                !stats.is_timestamp_match(Some(now), Some(later)),
+                "Should not match different modified_at"
+            );
+        }
+
+        #[test]
+        fn is_size_match_should_return_true_when_identical() {
+            let stats = FileStats::new(None, None, 1024);
+
+            assert!(stats.is_size_match(1024), "Should match identical size");
+        }
+
+        #[test]
+        fn is_size_match_should_return_false_when_different() {
+            let stats = FileStats::new(None, None, 1024);
+
+            assert!(
+                !stats.is_size_match(2048),
+                "Should not match different size"
+            );
+        }
+    }
+
+    mod conversions {
+        use tempfile::NamedTempFile;
+
+        use super::*;
+
+        #[test]
+        fn should_create_from_metadata() {
+            let file =
+                NamedTempFile::new().expect("Failed to create temp file");
+            let metadata =
+                file.as_file().metadata().expect("Failed to get metadata");
+            let stats = FileStats::from(metadata.clone());
+
+            assert_eq!(
+                stats.size(),
+                metadata.len(),
+                "Size from metadata mismatch"
+            );
+            assert_eq!(
+                stats.modified_at(),
+                metadata.modified().ok(),
+                "Modified time from metadata mismatch"
+            );
+        }
+    }
+
+    mod borrowing {
+        use super::*;
+
+        #[test]
+        fn archived_should_match_identical_timestamps() {
+            let now = SystemTime::now();
+            // Round to seconds to match AsUnixTime precision
+            let secs = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
+            let rounded = UNIX_EPOCH + std::time::Duration::from_secs(secs);
+
+            let stats = FileStats::new(Some(rounded), Some(rounded), 1024);
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&stats)
+                .expect("Failed to serialize");
+            let archived =
+                rkyv::access::<ArchivedFileStats, rkyv::rancor::Error>(&bytes)
+                    .expect("Failed to access archived stats");
+
+            assert!(
+                archived.is_timestamp_match(Some(rounded), Some(rounded)),
+                "Archived stats should match identical timestamps"
+            );
+        }
+
+        #[test]
+        fn archived_should_not_match_different_timestamps() {
+            let now = SystemTime::now();
+            let later = now + std::time::Duration::from_secs(1);
+            let stats = FileStats::new(Some(now), Some(now), 1024);
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&stats)
+                .expect("Failed to serialize");
+            let archived =
+                rkyv::access::<ArchivedFileStats, rkyv::rancor::Error>(&bytes)
+                    .expect("Failed to access archived stats");
+
+            assert!(
+                !archived.is_timestamp_match(Some(later), Some(now)),
+                "Archived stats should not match different created_at"
+            );
         }
     }
 }

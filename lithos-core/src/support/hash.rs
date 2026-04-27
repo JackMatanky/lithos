@@ -104,3 +104,119 @@ impl AsRef<[u8; 32]> for Blake3Hash {
         &self.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod constructor {
+        use super::*;
+
+        #[test]
+        fn should_create_from_bytes() {
+            let bytes = [1u8; 32];
+            let hash = Blake3Hash::new(bytes);
+            assert_eq!(hash.as_bytes(), &bytes, "Hash bytes mismatch");
+        }
+    }
+
+    mod builders {
+        use super::*;
+
+        #[test]
+        fn should_compute_from_data() {
+            let data = b"hello world";
+            let hash = Blake3Hash::compute(data);
+            let expected = blake3::hash(data);
+            assert_eq!(
+                hash.as_bytes(),
+                expected.as_bytes(),
+                "Computed hash mismatch"
+            );
+        }
+
+        #[test]
+        fn should_compute_from_json() {
+            let value = vec![1i32, 2i32, 3i32];
+            let hash = Blake3Hash::compute_json(&value);
+
+            let json = serde_json::to_string(&value).unwrap();
+            let expected = Blake3Hash::compute(json.as_bytes());
+
+            assert_eq!(hash, expected, "JSON hash mismatch");
+        }
+    }
+
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn is_match_should_return_true_when_identical() {
+            let hash = Blake3Hash::compute(b"test");
+            assert!(hash.is_match(&hash), "Identical hashes should match");
+        }
+
+        #[test]
+        fn is_match_should_return_false_when_different() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            assert!(
+                !hash1.is_match(&hash2),
+                "Different hashes should not match"
+            );
+        }
+    }
+
+    mod borrowing {
+        use super::*;
+
+        #[test]
+        fn archived_is_match_should_return_true_when_identical() {
+            let hash = Blake3Hash::compute(b"test");
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash)
+                .expect("Failed to serialize");
+            let archived =
+                rkyv::access::<ArchivedBlake3Hash, rkyv::rancor::Error>(&bytes)
+                    .expect("Failed to access archived hash");
+
+            assert!(
+                archived.is_match(&hash),
+                "Archived hash should match identical source"
+            );
+        }
+
+        #[test]
+        fn archived_is_match_should_return_false_when_different() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash1)
+                .expect("Failed to serialize");
+            let archived =
+                rkyv::access::<ArchivedBlake3Hash, rkyv::rancor::Error>(&bytes)
+                    .expect("Failed to access archived hash");
+
+            assert!(
+                !archived.is_match(&hash2),
+                "Archived hash should not match different source"
+            );
+        }
+    }
+
+    mod conversions {
+        use super::*;
+
+        #[test]
+        fn should_convert_from_array() {
+            let bytes = [7u8; 32];
+            let hash: Blake3Hash = bytes.into();
+            assert_eq!(hash.as_bytes(), &bytes);
+        }
+
+        #[test]
+        fn should_support_as_ref_array() {
+            let hash = Blake3Hash::compute(b"test");
+            let bytes: &[u8; 32] = hash.as_ref();
+            assert_eq!(bytes, hash.as_bytes());
+        }
+    }
+}
