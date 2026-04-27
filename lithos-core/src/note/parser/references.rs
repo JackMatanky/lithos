@@ -24,7 +24,10 @@ pub(crate) struct ReferenceDefinitions(
     HashMap<ReferenceLabel, ReferenceTarget>,
 );
 
-#[expect(dead_code, reason = "New adapter layer not yet integrated")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "New adapter layer not yet integrated")
+)]
 impl ReferenceDefinitions {
     /// Creates a new set of reference definitions from raw pulldown-cmark refs.
     ///
@@ -99,6 +102,7 @@ impl ReferenceDefinitions {
             && !label.starts_with([' ', '\t'])
             && !label.ends_with([' ', '\t'])
             && !label.contains("  ")
+            && !label.chars().any(|c| c.is_whitespace() && c != ' ')
             && !label.contains('\\')
     }
 
@@ -159,7 +163,10 @@ impl ReferenceLabel {
     /// Returns the string slice of the label.
     #[must_use]
     #[inline]
-    #[expect(dead_code, reason = "New adapter layer not yet integrated")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "New adapter layer not yet integrated")
+    )]
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
@@ -175,5 +182,124 @@ impl ReferenceTarget {
     #[inline]
     pub(crate) fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module keeps imports and nested suites grouped for \
+              readability"
+)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    mod reference_definitions_new {
+        use super::*;
+
+        #[test]
+        fn collapses_duplicate_normalized_labels_to_single_entry() {
+            let raw =
+                map_from(&[("Foo   Bar", "/first"), (" foo bar ", "/second")]);
+
+            let defs = ReferenceDefinitions::new(raw);
+
+            assert_eq!(
+                defs.0.len(),
+                1,
+                "duplicate labels should normalize into a single stored entry"
+            );
+        }
+    }
+
+    mod reference_definitions_resolve {
+        use super::*;
+
+        #[test]
+        fn returns_none_when_label_is_missing() {
+            let defs =
+                ReferenceDefinitions::new(map_from(&[("known", "/url")]));
+
+            assert_eq!(
+                defs.resolve("unknown"),
+                None,
+                "resolve should return None for unknown reference labels"
+            );
+        }
+
+        #[test]
+        fn matches_labels_case_insensitively() {
+            let defs =
+                ReferenceDefinitions::new(map_from(&[("MiXeD", "/url")]));
+
+            assert_eq!(
+                defs.resolve("mixed"),
+                Some("/url"),
+                "resolve should treat labels as case-insensitive"
+            );
+        }
+
+        #[test]
+        fn collapses_internal_whitespace_and_trims_edges() {
+            let defs =
+                ReferenceDefinitions::new(map_from(&[("a\tb\nc", "/url")]));
+
+            assert_eq!(
+                defs.resolve("  a  b   c  "),
+                Some("/url"),
+                "resolve should normalize internal and edge whitespace"
+            );
+        }
+
+        #[test]
+        fn unescapes_backslash_sequences_in_labels() {
+            let defs =
+                ReferenceDefinitions::new(map_from(&[("Foo\\ Bar", "/url")]));
+
+            assert_eq!(
+                defs.resolve("foo bar"),
+                Some("/url"),
+                "resolve should normalize backslash-escaped label content"
+            );
+        }
+    }
+
+    mod reference_label {
+        use super::*;
+
+        #[test]
+        fn as_str_returns_inner_slice() {
+            let label = ReferenceLabel("normalized".into());
+
+            assert_eq!(
+                label.as_str(),
+                "normalized",
+                "label accessor should return the stored normalized slice"
+            );
+        }
+    }
+
+    mod reference_target {
+        use super::*;
+
+        #[test]
+        fn as_str_returns_inner_slice() {
+            let target = ReferenceTarget("/dest".into());
+
+            assert_eq!(
+                target.as_str(),
+                "/dest",
+                "target accessor should return the stored destination"
+            );
+        }
+    }
+
+    fn map_from(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|&(label, target)| (label.to_owned(), target.to_owned()))
+            .collect()
     }
 }

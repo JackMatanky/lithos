@@ -66,3 +66,53 @@ impl<'source> SpannedEvent<'source> {
         }
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module keeps imports and nested suites grouped for \
+              readability"
+)]
+mod tests {
+    use pulldown_cmark::CowStr;
+
+    use super::*;
+
+    mod spanned_event_new {
+        use super::*;
+        use crate::note::position::SourceByteOffset;
+
+        #[test]
+        fn preserves_text_event_payload() {
+            let span = SourceByteRange::new(
+                SourceByteOffset::new(0),
+                SourceByteOffset::new(5),
+            )
+            .expect("test span should be valid");
+
+            let event =
+                SpannedEvent::new(Event::Text(CowStr::Borrowed("hello")), span);
+
+            assert!(
+                matches!(&event.event, Event::Text(text) if text.as_ref() == "hello"),
+                "spanned event should preserve text payload"
+            );
+        }
+
+        #[test]
+        fn preserves_source_span() {
+            let span = SourceByteRange::new(
+                SourceByteOffset::new(10),
+                SourceByteOffset::new(17),
+            )
+            .expect("test span should be valid");
+
+            let event = SpannedEvent::new(Event::Rule, span);
+
+            assert_eq!(
+                event.span, span,
+                "spanned event should preserve original source range"
+            );
+        }
+    }
+}

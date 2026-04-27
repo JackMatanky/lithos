@@ -30,7 +30,10 @@ pub(crate) struct MarkdownEventStream<'source> {
     references: ReferenceDefinitions,
 }
 
-#[expect(dead_code, reason = "New adapter layer not yet integrated")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "New adapter layer not yet integrated")
+)]
 impl<'source> MarkdownEventStream<'source> {
     /// Creates a new event stream with the provided configuration.
     ///
@@ -200,5 +203,173 @@ impl<'source> Iterator for EventAdapterIter<'source> {
             };
             (new_event, range)
         })
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module keeps imports and nested suites grouped for \
+              readability"
+)]
+mod tests {
+    use pulldown_cmark::Options;
+
+    use super::*;
+
+    mod markdown_event_stream_references {
+        use super::*;
+
+        #[test]
+        fn extracts_reference_definitions_from_source() {
+            let source = "[foo]: /url\n\n[foo][]";
+            let stream =
+                MarkdownEventStream::new(source, EventStreamConfig::default());
+
+            assert_eq!(
+                stream.references().resolve("foo"),
+                Some("/url"),
+                "stream should expose normalized reference definitions"
+            );
+        }
+    }
+
+    mod markdown_event_stream_merging {
+        use super::*;
+
+        #[test]
+        fn merge_text_true_combines_soft_break_text_fragments() {
+            let events = collect_events(
+                "a\nb",
+                test_config(BreakPolicy::NormalizeAsText, true),
+            );
+
+            let texts = collect_text_payloads(&events);
+
+            assert_eq!(
+                texts,
+                vec!["a b".to_owned()],
+                "merged stream should coalesce normalized soft breaks into \
+                 one text event"
+            );
+        }
+
+        #[test]
+        fn merge_text_false_keeps_soft_break_text_fragments_separate() {
+            let events = collect_events(
+                "a\nb",
+                test_config(BreakPolicy::NormalizeAsText, false),
+            );
+
+            let texts = collect_text_payloads(&events);
+
+            assert_eq!(
+                texts,
+                vec!["a".to_owned(), " ".to_owned(), "b".to_owned()],
+                "unmerged stream should preserve separate text fragments"
+            );
+        }
+    }
+
+    mod event_adapter_iter_break_policy {
+        use super::*;
+
+        #[test]
+        fn preserve_policy_keeps_hard_break_events() {
+            let events = collect_events(
+                "a\\\nb",
+                test_config(BreakPolicy::Preserve, false),
+            );
+
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event.event, Event::HardBreak)),
+                "preserve policy should keep hard break events untouched"
+            );
+        }
+
+        #[test]
+        fn hard_as_newline_policy_rewrites_hard_break_to_text() {
+            let events = collect_events(
+                "a\\\nb",
+                test_config(BreakPolicy::HardAsNewLine, false),
+            );
+
+            assert!(
+                events.iter().any(|event| {
+                    matches!(&event.event, Event::Text(text) if text.as_ref() == "\n")
+                }),
+                "hard-as-newline policy should map hard breaks to newline text events"
+            );
+        }
+
+        #[test]
+        fn soft_as_space_policy_keeps_hard_break_events() {
+            let events = collect_events(
+                "a\\\nb",
+                test_config(BreakPolicy::SoftAsSpace, false),
+            );
+
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event.event, Event::HardBreak)),
+                "soft-as-space policy should not rewrite hard breaks"
+            );
+        }
+    }
+
+    mod markdown_event_stream_span_mapping {
+        use super::*;
+
+        #[test]
+        fn maps_all_events_to_valid_source_spans() {
+            let events = collect_events(
+                "# heading\n\ntext",
+                EventStreamConfig::default(),
+            );
+
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event.span.start() <= event.span.end()),
+                "all emitted events should map to valid source span ranges"
+            );
+        }
+    }
+
+    fn test_config(
+        break_policy: BreakPolicy,
+        merge_text: bool,
+    ) -> EventStreamConfig {
+        EventStreamConfig::new(Options::empty(), break_policy, merge_text)
+    }
+
+    fn collect_events(
+        source: &str,
+        config: EventStreamConfig,
+    ) -> Vec<SpannedEvent<'_>> {
+        MarkdownEventStream::new(source, config)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("event stream should not produce invalid spans")
+    }
+
+    fn collect_text_payloads(events: &[SpannedEvent<'_>]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|event| {
+                #[expect(
+                    clippy::pattern_type_mismatch,
+                    reason = "Matching borrowed enum payload inside iterator \
+                              adapter"
+                )]
+                if let Event::Text(text) = &event.event {
+                    Some(text.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }

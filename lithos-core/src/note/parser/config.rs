@@ -32,7 +32,10 @@ impl EventStreamConfig {
     /// Creates a new configuration with explicit values.
     #[must_use]
     #[inline]
-    #[expect(dead_code, reason = "New adapter layer not yet integrated")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "New adapter layer not yet integrated")
+    )]
     pub(crate) const fn new(
         options: Options,
         break_policy: BreakPolicy,
@@ -76,7 +79,10 @@ impl Default for EventStreamConfig {
 /// text nodes can be seamlessly merged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-#[expect(dead_code, reason = "New adapter layer not yet integrated")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "New adapter layer not yet integrated")
+)]
 pub(crate) enum BreakPolicy {
     /// Leave `SoftBreak` and `HardBreak` events exactly as they are.
     Preserve,
@@ -108,6 +114,140 @@ impl BreakPolicy {
         match self {
             Self::HardAsNewLine | Self::NormalizeAsText => Some("\n"),
             Self::Preserve | Self::SoftAsSpace => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod event_stream_config {
+        use super::*;
+
+        #[test]
+        fn default_enables_expected_markdown_extensions() {
+            let config = EventStreamConfig::default();
+
+            assert!(
+                config.options.contains(Options::ENABLE_TASKLISTS),
+                "default config should enable task lists"
+            );
+            assert!(
+                config.options.contains(Options::ENABLE_WIKILINKS),
+                "default config should enable wikilinks"
+            );
+            assert!(
+                config
+                    .options
+                    .contains(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS),
+                "default config should enable YAML metadata blocks"
+            );
+            assert!(
+                config
+                    .options
+                    .contains(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS),
+                "default config should enable plus-delimited metadata blocks"
+            );
+            assert!(
+                config.options.contains(Options::ENABLE_STRIKETHROUGH),
+                "default config should enable strikethrough"
+            );
+        }
+
+        #[test]
+        fn default_normalizes_breaks_and_merges_text() {
+            let config = EventStreamConfig::default();
+
+            assert_eq!(
+                config.break_policy,
+                BreakPolicy::NormalizeAsText,
+                "default config should normalize both soft and hard breaks"
+            );
+            assert!(
+                config.merge_text,
+                "default config should merge adjacent text events"
+            );
+        }
+    }
+
+    mod break_policy_soft_break_replacement {
+        use super::*;
+
+        #[test]
+        fn preserve_returns_none() {
+            assert_eq!(
+                BreakPolicy::Preserve.soft_break_replacement(),
+                None,
+                "preserve policy should not replace soft breaks"
+            );
+        }
+
+        #[test]
+        fn soft_as_space_returns_space() {
+            assert_eq!(
+                BreakPolicy::SoftAsSpace.soft_break_replacement(),
+                Some(" "),
+                "soft-as-space policy should map soft breaks to a single space"
+            );
+        }
+
+        #[test]
+        fn hard_as_newline_returns_none() {
+            assert_eq!(
+                BreakPolicy::HardAsNewLine.soft_break_replacement(),
+                None,
+                "hard-as-newline policy should not replace soft breaks"
+            );
+        }
+
+        #[test]
+        fn normalize_as_text_returns_space() {
+            assert_eq!(
+                BreakPolicy::NormalizeAsText.soft_break_replacement(),
+                Some(" "),
+                "normalize-as-text policy should map soft breaks to a space"
+            );
+        }
+    }
+
+    mod break_policy_hard_break_replacement {
+        use super::*;
+
+        #[test]
+        fn preserve_returns_none() {
+            assert_eq!(
+                BreakPolicy::Preserve.hard_break_replacement(),
+                None,
+                "preserve policy should not replace hard breaks"
+            );
+        }
+
+        #[test]
+        fn soft_as_space_returns_none() {
+            assert_eq!(
+                BreakPolicy::SoftAsSpace.hard_break_replacement(),
+                None,
+                "soft-as-space policy should not replace hard breaks"
+            );
+        }
+
+        #[test]
+        fn hard_as_newline_returns_newline() {
+            assert_eq!(
+                BreakPolicy::HardAsNewLine.hard_break_replacement(),
+                Some("\n"),
+                "hard-as-newline policy should map hard breaks to newlines"
+            );
+        }
+
+        #[test]
+        fn normalize_as_text_returns_newline() {
+            assert_eq!(
+                BreakPolicy::NormalizeAsText.hard_break_replacement(),
+                Some("\n"),
+                "normalize-as-text policy should map hard breaks to newlines"
+            );
         }
     }
 }
