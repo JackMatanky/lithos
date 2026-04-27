@@ -20,6 +20,7 @@ pub mod fs;
 pub mod graph;
 pub mod note;
 pub mod schema;
+pub mod support;
 pub mod template;
 
 /// Serialization utilities for rkyv integration.

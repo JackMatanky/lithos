@@ -33,6 +33,8 @@ pub mod error;
 pub mod filename;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
+/// Filesystem statistics for files.
+pub mod stats;
 /// Structured data parsers (TOML/JSON/YAML) — module-internal.
 pub(crate) mod types;
 /// Security-critical path validation utilities.
@@ -90,6 +92,9 @@ pub type PathValidationError = error::PathValidationError;
 
 /// Filename wrapper for vault-scoped files.
 pub type Filename = filename::Filename;
+
+/// Filesystem statistics for a file.
+pub type FileStats = stats::FileStats;
 
 /// File system timestamp type alias.
 ///
