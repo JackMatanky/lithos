@@ -15,8 +15,12 @@
 //! This keeps the parsing layer (Raw* types with serde) separate from the
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
+//!
+//! This keeps the parsing layer (Raw* types with serde) separate from the
+//! storage layer (version types with rkyv), while maintaining queryability of
+//! key metadata fields.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -164,6 +168,31 @@ impl SchemaVersion {
     #[must_use]
     pub fn bank_references(&self) -> &HashMap<PropertyName, PropertyName> {
         &self.bank_references
+    }
+
+    /// Compute schema properties affected by property bank changes.
+    ///
+    /// Returns property names that refer to any of the changed property names
+    /// in the provided `bank_delta`.
+    #[inline]
+    #[must_use]
+    pub fn changed_bank_references(
+        &self,
+        bank_delta: &HashSet<PropertyName>,
+    ) -> Vec<PropertyName> {
+        let mut changed = Vec::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is irrelevant for detecting affected references"
+        )]
+        for (prop_name, bank_name) in &self.bank_references {
+            if bank_delta.contains(bank_name) {
+                changed.push(prop_name.clone());
+            }
+        }
+
+        changed
     }
 
     /// Get cached expanded properties if available.
@@ -337,6 +366,44 @@ mod tests {
         let status_name = PropertyName::try_new("status").unwrap();
         let ref_name = PropertyName::try_new("referenced").unwrap();
         assert_eq!(refs.get(&ref_name), Some(&status_name));
+    }
+
+    #[test]
+    fn schema_version_detects_changed_bank_references() {
+        let json = serde_json::json!({
+            "$version": "1.0",
+            "properties": {
+                "title": { "$ref": "#property_bank/title_bank" },
+                "tags": { "$ref": "#property_bank/tags_bank" },
+                "inline": { "type": "bool" }
+            }
+        });
+        let raw: RawSchema = serde_json::from_value(json).unwrap();
+        let version = SchemaVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new([0; 32], HashMap::new()),
+            &raw,
+        )
+        .unwrap();
+
+        let mut delta = HashSet::new();
+        delta.insert(PropertyName::try_new("title_bank").unwrap());
+
+        let changed_single = version.changed_bank_references(&delta);
+        assert_eq!(changed_single.len(), 1);
+        assert_eq!(
+            changed_single.first().map(PropertyName::as_str),
+            Some("title")
+        );
+
+        // Multiple changes
+        delta.insert(PropertyName::try_new("tags_bank").unwrap());
+        let changed_multiple = version.changed_bank_references(&delta);
+        assert_eq!(changed_multiple.len(), 2);
+        let names: HashSet<_> =
+            changed_multiple.iter().map(PropertyName::as_str).collect();
+        assert!(names.contains("title"));
+        assert!(names.contains("tags"));
     }
 
     // Note: Property name validation now happens during RawPropertyMap

@@ -29,6 +29,8 @@
 
 /// Filesystem error types.
 pub mod error;
+/// Filename wrapper for vault-scoped files.
+pub mod filename;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
 /// Structured data parsers (TOML/JSON/YAML) — module-internal.
@@ -85,6 +87,9 @@ pub type PathValidator = validator::Validator;
 ///
 /// See [`error::PathValidationError`] for all variants.
 pub type PathValidationError = error::PathValidationError;
+
+/// Filename wrapper for vault-scoped files.
+pub type Filename = filename::Filename;
 
 /// File system timestamp type alias.
 ///

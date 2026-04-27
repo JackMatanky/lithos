@@ -612,6 +612,16 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
             _stage: PhantomData,
         }
     }
+
+    fn bank_changed(
+        view: &RawSchemaView,
+        property_bank_delta: Option<&HashSet<PropertyName>>,
+    ) -> bool {
+        property_bank_delta.is_some_and(|delta| {
+            view.current()
+                .is_some_and(|v| !v.changed_bank_references(delta).is_empty())
+        })
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -942,23 +952,18 @@ impl SchemaProcessor<Comparison, Present> {
 
         // First pass: collect bank-affected IDs.
         let mut bank_affected_ids = HashSet::new();
-        if let Some(delta) = property_bank_delta {
-            for (id, node) in graph.graph().iter() {
-                #[expect(
-                    clippy::pattern_type_mismatch,
-                    reason = "matching borrowed payload keeps extraction \
-                              concise"
-                )]
-                let Some(PresentPayload::Found(payload)) =
-                    node.payload().payload.as_present()
-                else {
-                    continue;
-                };
-                if payload.view.current().is_some_and(|v| {
-                    v.bank_references().values().any(|p| delta.contains(p))
-                }) {
-                    bank_affected_ids.insert(id);
-                }
+        for (id, node) in graph.graph().iter() {
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "matching borrowed payload keeps extraction concise"
+            )]
+            let Some(PresentPayload::Found(payload)) =
+                node.payload().payload.as_present()
+            else {
+                continue;
+            };
+            if Self::bank_changed(&payload.view, property_bank_delta) {
+                bank_affected_ids.insert(id);
             }
         }
 
@@ -2048,17 +2053,6 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             rebuild_ids,
             deleted_ids,
         }))
-    }
-
-    fn bank_changed(
-        view: &RawSchemaView,
-        property_bank_delta: Option<&HashSet<PropertyName>>,
-    ) -> bool {
-        property_bank_delta.is_some_and(|delta| {
-            view.current().is_some_and(|v| {
-                v.bank_references().values().any(|p| delta.contains(p))
-            })
-        })
     }
 
     fn schema_stem(

@@ -3,7 +3,7 @@
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
 
-use std::{collections::VecDeque, path::Path};
+use std::collections::VecDeque;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -25,7 +25,8 @@ const MAX_VERSIONS: usize = 5;
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::views::{RawSchemaView, Filename, SchemaVersion};
+/// use lithos_core::schema::views::{RawSchemaView, SchemaVersion};
+/// use lithos_core::fs::Filename;
 ///
 /// let filename = Filename::new("note.toml".into());
 /// let version = SchemaVersion::new(/* ... */)?;
@@ -35,7 +36,7 @@ const MAX_VERSIONS: usize = 5;
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
     /// Filename with extension (e.g., "note.toml").
-    filename: Filename,
+    filename: crate::fs::Filename,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     ///
@@ -48,7 +49,7 @@ impl RawSchemaView {
     /// Creates a new schema view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(filename: Filename, version: SchemaVersion) -> Self {
+    pub fn new(filename: crate::fs::Filename, version: SchemaVersion) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         versions.push_front(version);
 
@@ -61,7 +62,7 @@ impl RawSchemaView {
     /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &Filename {
+    pub fn file_path(&self) -> &crate::fs::Filename {
         &self.filename
     }
 
@@ -174,7 +175,7 @@ impl RawSchemaView {
 
         let version = SchemaVersion::new(file_times, hashes, raw)?;
 
-        Ok(Self::new(Filename::new(filename.into()), version))
+        Ok(Self::new(crate::fs::Filename::new(filename.into()), version))
     }
 }
 
@@ -193,7 +194,7 @@ impl RawSchemaView {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
     /// Filename with extension (e.g., "properties.yaml").
-    filename: Filename,
+    filename: crate::fs::Filename,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     versions: VecDeque<PropertyBankVersion>,
@@ -203,7 +204,10 @@ impl RawPropertyBankView {
     /// Creates a new property bank view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(filename: Filename, version: PropertyBankVersion) -> Self {
+    pub fn new(
+        filename: crate::fs::Filename,
+        version: PropertyBankVersion,
+    ) -> Self {
         let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
         versions.push_front(version);
 
@@ -216,7 +220,7 @@ impl RawPropertyBankView {
     /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &Filename {
+    pub fn file_path(&self) -> &crate::fs::Filename {
         &self.filename
     }
 
@@ -317,141 +321,9 @@ impl RawPropertyBankView {
             raw.version().as_str(),
         )?;
 
-        Ok(Self::new(Filename::new(filename.into()), version))
-    }
-}
-
-/// Filename for schema/property bank files with extension.
-///
-/// Stores only the filename (e.g., "note.toml"). The schema directory
-/// is always determined by configuration and is assumed to be flat.
-/// Provides methods to extract stem and extension without repeatedly
-/// parsing the filename.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-pub struct Filename(Box<str>);
-
-impl Filename {
-    /// Create a new filename.
-    #[inline]
-    #[must_use]
-    pub fn new(filename: Box<str>) -> Self {
-        Self(filename)
-    }
-
-    /// Get the filename as a string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Get the basename (filename without extension).
-    ///
-    /// Uses Obsidian terminology where "basename" means filename without
-    /// extension.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::views::Filename;
-    ///
-    /// let filename = Filename::new("note.toml".into());
-    /// assert_eq!(filename.basename(), "note");
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> &str {
-        Path::new(self.as_str())
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-    }
-
-    /// Get the file extension.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::views::Filename;
-    ///
-    /// let filename = Filename::new("note.toml".into());
-    /// assert_eq!(filename.extension(), Some("toml"));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn extension(&self) -> Option<&str> {
-        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
-    }
-
-    /// Get the underlying filename as a `Path`.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.as_str())
-    }
-}
-
-impl From<Box<str>> for Filename {
-    #[inline]
-    fn from(filename: Box<str>) -> Self {
-        Self::new(filename)
-    }
-}
-
-impl From<String> for Filename {
-    #[inline]
-    fn from(filename: String) -> Self {
-        Self::new(filename.into_boxed_str())
-    }
-}
-
-impl AsRef<str> for Filename {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl AsRef<Path> for Filename {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
+        Ok(Self::new(crate::fs::Filename::new(filename.into()), version))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    mod filename {
-        use super::super::Filename;
-
-        #[test]
-        fn basename_extracts_filename_without_extension() {
-            let filename = Filename::new("note.toml".into());
-            assert_eq!(filename.basename(), "note");
-        }
-
-        #[test]
-        fn basename_handles_hyphens() {
-            let filename = Filename::new("base-note.toml".into());
-            assert_eq!(filename.basename(), "base-note");
-        }
-
-        #[test]
-        fn extension_returns_file_extension() {
-            let filename = Filename::new("note.toml".into());
-            assert_eq!(filename.extension(), Some("toml"));
-        }
-
-        #[test]
-        fn extension_returns_none_for_no_extension() {
-            let filename = Filename::new("note".into());
-            assert_eq!(filename.extension(), None);
-        }
-
-        #[test]
-        fn as_str_returns_full_filename() {
-            let filename = Filename::new("note.toml".into());
-            assert_eq!(filename.as_str(), "note.toml");
-        }
-    }
-}
+mod tests {}

@@ -37,5 +37,7 @@ pub mod version;
 
 // Re-export commonly used types for ergonomic access
 pub use metadata::{FileTimesMetadata, HashMetadata};
-pub use raw::{Filename, RawPropertyBankView, RawSchemaView};
+pub use raw::{RawPropertyBankView, RawSchemaView};
 pub use version::{PropertyBankVersion, SchemaVersion};
+
+pub use crate::fs::Filename;
