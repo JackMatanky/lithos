@@ -11,7 +11,7 @@
 //! - Zero-copy access via closure-based methods
 //! - Concrete `RedbRepository` using redb for persistence
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
@@ -549,8 +549,7 @@ impl Repository for RedbRepository {
             .map_err(map_db_error)?
             .into_iter()
             .map(|(path_str, id): (String, SchemaId)| {
-                RelativePath::try_from(PathBuf::from(path_str))
-                    .map(|path| (path, id))
+                RelativePath::try_from(path_str.as_str()).map(|path| (path, id))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
