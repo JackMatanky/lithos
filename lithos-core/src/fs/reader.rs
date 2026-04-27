@@ -275,7 +275,7 @@ impl Reader {
                 );
             })
             .ok()?;
-        s.created_at
+        s.created_at()
     }
 
     /// Returns the file's modification timestamp.
@@ -295,7 +295,7 @@ impl Reader {
                 );
             })
             .ok()?;
-        s.modified_at
+        s.modified_at()
     }
 
     /// Extracts the filename (with extension) from a path.

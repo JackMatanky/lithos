@@ -1,9 +1,18 @@
+//! Centralised hashing utilities for the Lithos core library.
+//!
+//! Provides the [`Blake3Hash`] newtype wrapper around BLAKE3 hashes to ensure
+//! type-safe hashing policy and efficient zero-copy storage.
+
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// A 32-byte BLAKE3 hash.
 ///
 /// Newtype wrapper around `[u8; 32]` to provide type safety and
 /// centralised hashing policy across the project.
+///
+/// This type uses BLAKE3 for its performance and cryptographic strength,
+/// serving as the primary content-addressing and staleness detection
+/// primitive in Lithos.
 #[derive(
     Debug,
     Clone,
@@ -60,6 +69,13 @@ impl Blake3Hash {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// Checks if this hash matches another hash.
+    #[inline]
+    #[must_use]
+    pub fn is_match(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }
 
