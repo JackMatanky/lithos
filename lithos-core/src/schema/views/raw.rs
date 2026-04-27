@@ -3,19 +3,103 @@
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
 
+#![expect(
+    clippy::same_name_method,
+    reason = "Trait contracts intentionally mirror existing view API names"
+)]
+
 use std::collections::VecDeque;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     FileTimesMetadata, HashMetadata, PropertyBankVersion, SchemaVersion,
+    version::{Version as _, VersionRead as _},
 };
 use crate::schema::{
-    aggregate::SchemaName, property::PropertyName, raw::RawPropertyBank,
+    aggregate::SchemaName, error::SchemaStorageError, property::PropertyName,
+    raw::RawPropertyBank,
 };
 
-/// Maximum number of versions to retain per file.
-const MAX_VERSIONS: usize = 5;
+/// Shared behavior for raw file views with version history.
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Trait items are grouped by lifecycle semantics"
+)]
+pub trait RawView {
+    /// Concrete version payload type.
+    type Version: super::version::Version;
+
+    /// Maximum number of historical versions retained.
+    const MAX_VERSIONS: usize = 5;
+
+    /// Returns the filename with extension.
+    fn file_path(&self) -> &crate::fs::Filename;
+
+    /// Returns the most recent version, if any.
+    fn current(&self) -> Option<&Self::Version>;
+
+    /// Returns mutable access to the most recent version, if any.
+    fn current_mut(&mut self) -> Option<&mut Self::Version>;
+
+    /// Returns the number of tracked versions.
+    fn version_count(&self) -> usize;
+
+    /// Adds a new version, evicting the oldest if needed.
+    fn add_version(&mut self, version: Self::Version);
+
+    /// Returns true when filesystem timestamps match current version metadata.
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.current()
+            .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
+    }
+
+    /// Returns true when content hash matches current version metadata.
+    #[inline]
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        self.current().is_some_and(|v| v.is_content_match(content_hash))
+    }
+
+    /// Updates timestamps for the current version, if present.
+    #[inline]
+    fn update_timestamps(&mut self, file_times: FileTimesMetadata) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_times(file_times);
+        }
+    }
+
+    /// Adds a new version with updated content hash.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageError`] when the current version is unavailable
+    /// or when replacement metadata cannot be constructed.
+    fn update_content_hash(
+        &mut self,
+        content_hash: [u8; 32],
+    ) -> Result<(), SchemaStorageError>;
+}
+
+/// Zero-copy read contract for archived and owned raw views.
+pub trait RawViewRead {
+    /// Returns true when content hash matches current version metadata.
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool;
+
+    /// Returns true when filesystem timestamps match current version metadata.
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool;
+
+    /// Returns number of retained historical versions.
+    fn version_count(&self) -> usize;
+}
 
 /// Raw schema file with version history.
 ///
@@ -50,7 +134,8 @@ impl RawSchemaView {
     #[inline]
     #[must_use]
     pub fn new(filename: crate::fs::Filename, version: SchemaVersion) -> Self {
-        let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
+        let mut versions =
+            VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
@@ -130,7 +215,7 @@ impl RawSchemaView {
     /// Adds a new version (evicts oldest if at capacity).
     #[inline]
     pub fn add_version(&mut self, version: SchemaVersion) {
-        if self.versions.len() >= MAX_VERSIONS {
+        if self.versions.len() >= <Self as RawView>::MAX_VERSIONS {
             self.versions.pop_back(); // Remove oldest
         }
 
@@ -179,6 +264,78 @@ impl RawSchemaView {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default trait methods are intentionally reused"
+)]
+impl RawView for RawSchemaView {
+    type Version = SchemaVersion;
+
+    #[inline]
+    fn file_path(&self) -> &crate::fs::Filename {
+        &self.filename
+    }
+
+    #[inline]
+    fn current(&self) -> Option<&Self::Version> {
+        self.versions.front()
+    }
+
+    #[inline]
+    fn current_mut(&mut self) -> Option<&mut Self::Version> {
+        self.versions.front_mut()
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.versions.len()
+    }
+
+    #[inline]
+    fn add_version(&mut self, version: Self::Version) {
+        RawSchemaView::add_version(self, version);
+    }
+
+    #[inline]
+    fn update_content_hash(
+        &mut self,
+        content_hash: [u8; 32],
+    ) -> Result<(), SchemaStorageError> {
+        let current = self.current().ok_or(SchemaStorageError::NotFound {
+            name: "current schema version".into(),
+        })?;
+        let file_times = current.file_times().clone();
+        let hashes = HashMetadata::new(
+            content_hash,
+            current.hashes().properties().clone(),
+        );
+        let version = SchemaVersion::with_metadata(current, file_times, hashes);
+        self.add_version(version);
+        Ok(())
+    }
+}
+
+impl RawViewRead for RawSchemaView {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        RawView::is_timestamp_match(self, created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        RawView::is_content_match(self, content_hash)
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.version_count()
+    }
+}
+
 /// Raw property bank file with version history.
 ///
 /// Tracks up to 5 versions of the property bank file for staleness detection.
@@ -208,7 +365,8 @@ impl RawPropertyBankView {
         filename: crate::fs::Filename,
         version: PropertyBankVersion,
     ) -> Self {
-        let mut versions = VecDeque::with_capacity(MAX_VERSIONS);
+        let mut versions =
+            VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
@@ -231,6 +389,13 @@ impl RawPropertyBankView {
         self.versions.front()
     }
 
+    /// Returns mutable access to the most recent version, if any.
+    #[inline]
+    #[must_use]
+    pub fn current_mut(&mut self) -> Option<&mut PropertyBankVersion> {
+        self.versions.front_mut()
+    }
+
     /// Returns all tracked versions (newest first).
     #[inline]
     #[must_use]
@@ -248,7 +413,7 @@ impl RawPropertyBankView {
     /// Adds a new version (evicts oldest if at capacity).
     #[inline]
     pub fn add_version(&mut self, version: PropertyBankVersion) {
-        if self.versions.len() >= MAX_VERSIONS {
+        if self.versions.len() >= <Self as RawView>::MAX_VERSIONS {
             self.versions.pop_back(); // Remove oldest
         }
 
@@ -277,12 +442,9 @@ impl RawPropertyBankView {
     pub fn update_content_hash(
         &mut self,
         content_hash: [u8; 32],
-    ) -> Result<(), crate::schema::error::SchemaIngestionError> {
+    ) -> Result<(), SchemaStorageError> {
         let current =
-            self.current()
-                .ok_or(crate::schema::error::SchemaIngestionError::Storage(
-                crate::schema::error::SchemaStorageError::PropertyBankNotFound,
-            ))?;
+            self.current().ok_or(SchemaStorageError::PropertyBankNotFound)?;
         let file_times = current.file_times().clone();
 
         let hashes = HashMetadata::new(
@@ -290,7 +452,10 @@ impl RawPropertyBankView {
             current.hashes().properties().clone(),
         );
         let version =
-            PropertyBankVersion::new(file_times, hashes, current.version())?;
+            PropertyBankVersion::new(file_times, hashes, current.version())
+                .map_err(|_error| SchemaStorageError::Corruption {
+                    reason: "failed to rebuild property bank version".into(),
+                })?;
         self.add_version(version);
         Ok(())
     }
@@ -325,5 +490,295 @@ impl RawPropertyBankView {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default trait methods are intentionally reused"
+)]
+impl RawView for RawPropertyBankView {
+    type Version = PropertyBankVersion;
+
+    #[inline]
+    fn file_path(&self) -> &crate::fs::Filename {
+        &self.filename
+    }
+
+    #[inline]
+    fn current(&self) -> Option<&Self::Version> {
+        self.versions.front()
+    }
+
+    #[inline]
+    fn current_mut(&mut self) -> Option<&mut Self::Version> {
+        self.versions.front_mut()
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.versions.len()
+    }
+
+    #[inline]
+    fn add_version(&mut self, version: Self::Version) {
+        RawPropertyBankView::add_version(self, version);
+    }
+
+    #[inline]
+    fn update_content_hash(
+        &mut self,
+        content_hash: [u8; 32],
+    ) -> Result<(), SchemaStorageError> {
+        RawPropertyBankView::update_content_hash(self, content_hash)
+    }
+}
+
+impl RawViewRead for RawPropertyBankView {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        RawView::is_timestamp_match(self, created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        RawView::is_content_match(self, content_hash)
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.version_count()
+    }
+}
+
+impl RawViewRead for ArchivedRawSchemaView {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.versions.as_slice().first().is_some_and(|version| {
+            version.is_timestamp_match(created_at, modified_at)
+        })
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        self.versions
+            .as_slice()
+            .first()
+            .is_some_and(|version| version.is_content_match(content_hash))
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.versions.len()
+    }
+}
+
+impl RawViewRead for ArchivedRawPropertyBankView {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.versions.as_slice().first().is_some_and(|version| {
+            version.is_timestamp_match(created_at, modified_at)
+        })
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+        self.versions
+            .as_slice()
+            .first()
+            .is_some_and(|version| version.is_content_match(content_hash))
+    }
+
+    #[inline]
+    fn version_count(&self) -> usize {
+        self.versions.len()
+    }
+}
+
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::schema::{
+        property::{PropertyMap, PropertyName},
+        raw::{RawPropertyBank, RawSchema},
+    };
+
+    fn make_schema_version(content_hash: [u8; 32]) -> SchemaVersion {
+        let raw: RawSchema =
+            serde_json::from_value::<RawSchema>(serde_json::json!({
+                "$version": "1.0",
+                "properties": {}
+            }))
+            .expect("valid schema fixture")
+            .with_name("note".into());
+
+        SchemaVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new(content_hash, HashMap::new()),
+            &raw,
+        )
+        .expect("schema version should build")
+    }
+
+    fn make_property_bank_version(
+        content_hash: [u8; 32],
+    ) -> PropertyBankVersion {
+        let mut property_hashes = HashMap::new();
+        property_hashes.insert(
+            PropertyName::try_new("title").expect("valid property name"),
+            [9; 32],
+        );
+
+        PropertyBankVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new(content_hash, property_hashes),
+            "1.0",
+        )
+        .expect("property bank version should build")
+    }
+
+    #[test]
+    fn property_bank_view_rotation_uses_trait_max_versions() {
+        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let mut view = RawPropertyBankView::new(
+            filename,
+            make_property_bank_version([1; 32]),
+        );
+
+        for i in 2..=7 {
+            view.add_version(make_property_bank_version([i; 32]));
+        }
+
+        assert_eq!(
+            view.version_count(),
+            <RawPropertyBankView as RawView>::MAX_VERSIONS
+        );
+        assert_eq!(
+            view.current().map(|v| v.hashes().content()),
+            Some(&[7; 32])
+        );
+    }
+
+    #[test]
+    fn property_bank_update_content_hash_preserves_property_hashes() {
+        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let mut view = RawPropertyBankView::new(
+            filename,
+            make_property_bank_version([1; 32]),
+        );
+
+        let expected_properties = view
+            .current()
+            .map(|v| v.hashes().properties().clone())
+            .expect("current version should exist");
+
+        view.update_content_hash([2; 32])
+            .expect("content hash update should succeed");
+
+        let current = view.current().expect("new version should exist");
+        assert_eq!(current.hashes().content(), &[2; 32]);
+        assert_eq!(current.hashes().properties(), &expected_properties);
+    }
+
+    #[test]
+    fn schema_view_update_content_hash_clears_expanded_properties_cache() {
+        let filename = crate::fs::Filename::new("note.json".into());
+        let mut view =
+            RawSchemaView::new(filename, make_schema_version([1; 32]));
+
+        let expanded = PropertyMap::new();
+        view.current_mut()
+            .expect("current version should exist")
+            .set_expanded_properties(expanded);
+
+        <RawSchemaView as RawView>::update_content_hash(&mut view, [3; 32])
+            .expect("content hash update should succeed");
+
+        let current = view.current().expect("new version should exist");
+        assert_eq!(current.hashes().content(), &[3; 32]);
+        assert!(current.expanded_properties().is_none());
+    }
+
+    #[test]
+    fn property_bank_update_content_hash_errors_without_current_version() {
+        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let mut view = RawPropertyBankView::new(
+            filename,
+            make_property_bank_version([1; 32]),
+        );
+
+        view.versions.clear();
+
+        let err = view
+            .update_content_hash([4; 32])
+            .expect_err("missing version should error");
+
+        assert!(matches!(err, SchemaStorageError::PropertyBankNotFound));
+    }
+
+    #[test]
+    fn raw_property_bank_view_try_from_raw_with_hashes_builds_view() {
+        let raw: RawPropertyBank = serde_json::from_value(serde_json::json!({
+            "$version": "1.0",
+            "properties": {}
+        }))
+        .expect("valid property bank fixture");
+
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
+            &raw,
+            "property_bank.json",
+            HashMetadata::new([1; 32], HashMap::new()),
+        )
+        .expect("view creation should succeed");
+
+        assert_eq!(view.version_count(), 1);
+    }
+
+    #[test]
+    fn archived_raw_property_bank_view_supports_zero_copy_staleness_checks() {
+        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let view = RawPropertyBankView::new(
+            filename,
+            make_property_bank_version([9; 32]),
+        );
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view)
+            .expect("serialize test view");
+        let archived = rkyv::access::<
+            rkyv::Archived<RawPropertyBankView>,
+            rkyv::rancor::Error,
+        >(&bytes)
+        .expect("access archived view");
+
+        assert!(archived.is_content_match(&[9; 32]));
+        assert_eq!(archived.version_count(), 1);
+    }
+
+    #[test]
+    fn archived_raw_schema_view_supports_zero_copy_staleness_checks() {
+        let filename = crate::fs::Filename::new("note.json".into());
+        let view = RawSchemaView::new(filename, make_schema_version([5; 32]));
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view)
+            .expect("serialize test view");
+        let archived = rkyv::access::<
+            rkyv::Archived<RawSchemaView>,
+            rkyv::rancor::Error,
+        >(&bytes)
+        .expect("access archived view");
+
+        assert!(archived.is_content_match(&[5; 32]));
+        assert_eq!(archived.version_count(), 1);
+    }
+}

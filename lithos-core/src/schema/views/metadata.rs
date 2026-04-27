@@ -1,6 +1,9 @@
 //! Shared metadata types for schema and property bank versions.
 
-use std::{collections::HashMap, time::SystemTime};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
@@ -86,6 +89,37 @@ impl FileTimesMetadata {
         modified_at: Option<SystemTime>,
     ) -> bool {
         self.created_at == created_at && self.modified_at == modified_at
+    }
+
+    /// Convert a [`SystemTime`] into Unix seconds used by archived metadata.
+    #[inline]
+    #[must_use]
+    fn system_time_to_unix_seconds(time: SystemTime) -> Option<i64> {
+        let duration = time.duration_since(UNIX_EPOCH).ok()?;
+        i64::try_from(duration.as_secs()).ok()
+    }
+}
+
+impl ArchivedFileTimesMetadata {
+    /// Check whether archived timestamps match provided filesystem times.
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.created_at
+            .as_ref()
+            .and_then(|time| i64::try_from(time.as_secs()).ok())
+            == created_at
+                .and_then(FileTimesMetadata::system_time_to_unix_seconds)
+            && self
+                .modified_at
+                .as_ref()
+                .and_then(|time| i64::try_from(time.as_secs()).ok())
+                == modified_at
+                    .and_then(FileTimesMetadata::system_time_to_unix_seconds)
     }
 }
 
@@ -222,6 +256,15 @@ impl HashMetadata {
         }
 
         *hasher.finalize().as_bytes()
+    }
+}
+
+impl ArchivedHashMetadata {
+    /// Check if archived content hash matches (for zero-copy staleness checks).
+    #[inline]
+    #[must_use]
+    pub fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+        self.content.iter().zip(hash.iter()).all(|(left, right)| left == right)
     }
 }
 

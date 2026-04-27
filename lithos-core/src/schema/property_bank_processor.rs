@@ -122,7 +122,8 @@ use crate::{
         raw::{RawFileTimes, RawPropertyBank},
         storage::Repository,
         views::{
-            FileTimesMetadata, RawPropertyBankView, metadata::HashMetadata,
+            FileTimesMetadata, RawPropertyBankView, RawView as _,
+            metadata::HashMetadata,
         },
     },
 };
@@ -323,12 +324,10 @@ impl PropertyBankProcessor<Comparison, Present> {
         source: &FsReader,
         config_path: &std::path::Path,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
-        let timestamps_match = self.status.view.current().is_some_and(|v| {
-            v.file_times().is_timestamp_match(
-                self.status.times.created_at,
-                self.status.times.modified_at,
-            )
-        });
+        let timestamps_match = self.status.view.is_timestamp_match(
+            self.status.times.created_at,
+            self.status.times.modified_at,
+        );
 
         if timestamps_match {
             Ok(TimestampBranch::Match(Self::transition(Construction, Fresh)))
@@ -372,11 +371,7 @@ impl PropertyBankProcessor<Comparison, Suspect> {
         let content_hash =
             *blake3::hash(self.status.content.as_bytes()).as_bytes();
 
-        let content_match = self
-            .status
-            .view
-            .current()
-            .is_some_and(|v| v.hashes().is_content_match(&content_hash));
+        let content_match = self.status.view.is_content_match(&content_hash);
 
         if content_match {
             ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
@@ -643,7 +638,8 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(SchemaLoaderError::Ingestion)?;
+            .map_err(SchemaRepositoryError::Storage)
+            .map_err(SchemaLoaderError::Repository)?;
 
         repository
             .save_raw_property_bank_view(

@@ -6,10 +6,11 @@
 //!
 //! ## Module Structure
 //!
-//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`,
-//!   `Filename`)
+//! - `raw` - Raw file version views and read/update traits (`RawSchemaView`,
+//!   `RawPropertyBankView`, `RawView`, `RawViewRead`)
 //! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
-//! - `version` - Versioned content (`SchemaVersion`, `PropertyBankVersion`)
+//! - `version` - Version payloads and read/update traits (`SchemaVersion`,
+//!   `PropertyBankVersion`, `Version`, `VersionRead`)
 //!
 //! ## View Pattern
 //!
@@ -37,7 +38,7 @@ pub mod version;
 
 // Re-export commonly used types for ergonomic access
 pub use metadata::{FileTimesMetadata, HashMetadata};
-pub use raw::{RawPropertyBankView, RawSchemaView};
-pub use version::{PropertyBankVersion, SchemaVersion};
+pub use raw::{RawPropertyBankView, RawSchemaView, RawView, RawViewRead};
+pub use version::{PropertyBankVersion, SchemaVersion, Version, VersionRead};
 
 pub use crate::fs::Filename;

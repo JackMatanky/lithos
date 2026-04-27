@@ -78,7 +78,7 @@ use crate::{
         property::{PropertyMap, PropertyName},
         raw::{RawFileTimes, RawSchema},
         storage::Repository,
-        views::RawSchemaView,
+        views::{RawSchemaView, RawView as _},
     },
 };
 
@@ -1112,12 +1112,10 @@ impl SchemaProcessor<Comparison, Present> {
         payload: FoundPayload,
         source: &FsReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
-        let timestamps_match = payload.view.current().is_some_and(|v| {
-            v.file_times().is_timestamp_match(
-                payload.times.created_at,
-                payload.times.modified_at,
-            )
-        });
+        let timestamps_match = payload.view.is_timestamp_match(
+            payload.times.created_at,
+            payload.times.modified_at,
+        );
 
         if timestamps_match {
             Ok(TimestampBranch::Match(payload))
@@ -1142,10 +1140,7 @@ impl SchemaProcessor<Comparison, Present> {
     fn check_content(payload: SuspectPayload) -> ContentBranch {
         let content_hash =
             *blake3::hash(payload.content_str.as_bytes()).as_bytes();
-        let content_match = payload
-            .view
-            .current()
-            .is_some_and(|v| v.hashes().is_content_match(&content_hash));
+        let content_match = payload.view.is_content_match(&content_hash);
 
         if content_match {
             ContentBranch::Match(SuspectPayload {

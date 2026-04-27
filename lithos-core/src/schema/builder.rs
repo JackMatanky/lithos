@@ -19,8 +19,9 @@ use crate::{
         inheritance::InheritanceGraph,
         property::PropertyName,
         property_bank_processor::{
-            AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
-            Discovery, Missing, Parsed, Present, PropertyBankProcessor,
+            AnalysisBranch, Comparison, ComparisonBranch, Construction,
+            ContentBranch, Discovery, Fresh, Missing, Parsed, Present,
+            PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
             Suspect, TimestampBranch, Unknown,
         },
         storage::Repository,
@@ -281,10 +282,7 @@ where
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_timestamps(&self.source, config_path)? {
-            TimestampBranch::Match(p) => {
-                let completed = p.fetch(&self.repository)?;
-                Ok((completed.into_bank(), None))
-            }
+            TimestampBranch::Match(p) => Ok((self.fetch_fresh(p)?, None)),
             TimestampBranch::Mismatch(p) => {
                 self.handle_content_mismatch(p, filename, config_path)
             }
@@ -299,10 +297,7 @@ where
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_content() {
             ContentBranch::Match(p) => {
-                let completed = p
-                    .sync_metadata(&self.repository)?
-                    .fetch(&self.repository)?;
-                Ok((completed.into_bank(), None))
+                Ok((self.sync_and_fetch_timestamps(p)?, None))
             }
             ContentBranch::Mismatch(p) => {
                 let parsed = p.parse(config_path)?;
@@ -318,10 +313,7 @@ where
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(p) => {
-                let completed = p
-                    .sync_metadata(&self.repository)?
-                    .fetch(&self.repository)?;
-                Ok((completed.into_bank(), None))
+                Ok((self.sync_and_fetch_content(p)?, None))
             }
             AnalysisBranch::Delta(p) => {
                 let completed = p.update(filename, &self.repository)?;
@@ -333,6 +325,33 @@ where
                 Ok((completed.into_bank(), None))
             }
         }
+    }
+
+    #[inline]
+    fn fetch_fresh(
+        &self,
+        processor: PropertyBankProcessor<Construction, Fresh>,
+    ) -> Result<PropertyBank, SchemaLoaderError> {
+        let completed = processor.fetch(&self.repository)?;
+        Ok(completed.into_bank())
+    }
+
+    #[inline]
+    fn sync_and_fetch_timestamps(
+        &self,
+        processor: PropertyBankProcessor<Refresh, StaleTimestamps>,
+    ) -> Result<PropertyBank, SchemaLoaderError> {
+        let fresh = processor.sync_metadata(&self.repository)?;
+        self.fetch_fresh(fresh)
+    }
+
+    #[inline]
+    fn sync_and_fetch_content(
+        &self,
+        processor: PropertyBankProcessor<Refresh, StaleContent>,
+    ) -> Result<PropertyBank, SchemaLoaderError> {
+        let fresh = processor.sync_metadata(&self.repository)?;
+        self.fetch_fresh(fresh)
     }
 }
 

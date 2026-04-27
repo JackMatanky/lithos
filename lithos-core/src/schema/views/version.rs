@@ -15,6 +15,11 @@
 //! This keeps the parsing layer (Raw* types with serde) separate from the
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
+
+#![expect(
+    clippy::same_name_method,
+    reason = "Trait contracts intentionally mirror established version API"
+)]
 //!
 //! This keeps the parsing layer (Raw* types with serde) separate from the
 //! storage layer (version types with rkyv), while maintaining queryability of
@@ -31,6 +36,42 @@ use crate::schema::{
     property::{PropertyMap, PropertyName},
     raw::RawSchema,
 };
+
+/// Read-only access contract shared by version payloads.
+pub trait VersionRead {
+    /// Checks whether the content hash matches this version.
+    fn is_content_match(&self, hash: &[u8; 32]) -> bool;
+
+    /// Checks whether filesystem timestamps match this version's metadata.
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool;
+
+    /// Returns the format version string.
+    fn version(&self) -> &str;
+}
+
+/// Mutable version contract for persisted raw views.
+pub trait Version: VersionRead + Sized {
+    /// Returns file timestamp metadata.
+    fn file_times(&self) -> &FileTimesMetadata;
+
+    /// Returns hash metadata.
+    fn hashes(&self) -> &HashMetadata;
+
+    /// Updates file timestamp metadata in-place.
+    fn set_file_times(&mut self, file_times: FileTimesMetadata);
+
+    /// Clones this version with replacement metadata.
+    #[must_use]
+    fn with_metadata(
+        &self,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
+    ) -> Self;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  SchemaVersion
@@ -233,6 +274,53 @@ impl SchemaVersion {
     }
 }
 
+impl VersionRead for SchemaVersion {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.file_times().is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+        self.hashes().is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl Version for SchemaVersion {
+    #[inline]
+    fn file_times(&self) -> &FileTimesMetadata {
+        self.file_times()
+    }
+
+    #[inline]
+    fn hashes(&self) -> &HashMetadata {
+        self.hashes()
+    }
+
+    #[inline]
+    fn set_file_times(&mut self, file_times: FileTimesMetadata) {
+        self.file_times = file_times;
+    }
+
+    #[inline]
+    fn with_metadata(
+        &self,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
+    ) -> Self {
+        SchemaVersion::with_metadata(self, file_times, hashes)
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  PropertyBankVersion
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,6 +395,99 @@ impl PropertyBankVersion {
     #[must_use]
     pub fn version(&self) -> &str {
         &self.version
+    }
+}
+
+impl VersionRead for PropertyBankVersion {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.file_times().is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+        self.hashes().is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl VersionRead for ArchivedSchemaVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.file_times.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl VersionRead for ArchivedPropertyBankVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> bool {
+        self.file_times.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl Version for PropertyBankVersion {
+    #[inline]
+    fn file_times(&self) -> &FileTimesMetadata {
+        self.file_times()
+    }
+
+    #[inline]
+    fn hashes(&self) -> &HashMetadata {
+        self.hashes()
+    }
+
+    #[inline]
+    fn set_file_times(&mut self, file_times: FileTimesMetadata) {
+        self.file_times = file_times;
+    }
+
+    #[inline]
+    fn with_metadata(
+        &self,
+        file_times: FileTimesMetadata,
+        hashes: HashMetadata,
+    ) -> Self {
+        Self {
+            file_times,
+            hashes,
+            version: self.version.clone(),
+        }
     }
 }
 
@@ -404,6 +585,81 @@ mod tests {
             changed_multiple.iter().map(PropertyName::as_str).collect();
         assert!(names.contains("title"));
         assert!(names.contains("tags"));
+    }
+
+    #[test]
+    fn schema_version_set_file_times_updates_metadata() {
+        let raw = create_test_raw_schema();
+        let initial = FileTimesMetadata::new(None, None);
+        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let mut version = SchemaVersion::new(initial, hashes, &raw).unwrap();
+
+        let updated = FileTimesMetadata::new(Some(SystemTime::now()), None);
+        Version::set_file_times(&mut version, updated.clone());
+
+        assert_eq!(version.file_times(), &updated);
+    }
+
+    #[test]
+    fn property_bank_version_with_metadata_replaces_hash_and_timestamps() {
+        let original = PropertyBankVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new([1; 32], HashMap::new()),
+            "1.0",
+        )
+        .unwrap();
+
+        let replacement = Version::with_metadata(
+            &original,
+            FileTimesMetadata::new(Some(SystemTime::now()), None),
+            HashMetadata::new([2; 32], HashMap::new()),
+        );
+
+        assert_eq!(replacement.hashes().content(), &[2; 32]);
+        assert_eq!(replacement.version(), "1.0");
+    }
+
+    #[test]
+    fn archived_schema_version_supports_zero_copy_version_read() {
+        let raw = create_test_raw_schema();
+        let version = SchemaVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new([7; 32], HashMap::new()),
+            &raw,
+        )
+        .expect("schema version should build");
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&version)
+            .expect("serialize schema version");
+        let archived = rkyv::access::<
+            rkyv::Archived<SchemaVersion>,
+            rkyv::rancor::Error,
+        >(&bytes)
+        .expect("access archived schema version");
+
+        assert!(archived.is_content_match(&[7; 32]));
+        assert_eq!(archived.version(), "1.0");
+    }
+
+    #[test]
+    fn archived_property_bank_version_supports_zero_copy_version_read() {
+        let version = PropertyBankVersion::new(
+            FileTimesMetadata::new(None, None),
+            HashMetadata::new([3; 32], HashMap::new()),
+            "1.0",
+        )
+        .expect("property bank version should build");
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&version)
+            .expect("serialize property bank version");
+        let archived = rkyv::access::<
+            rkyv::Archived<PropertyBankVersion>,
+            rkyv::rancor::Error,
+        >(&bytes)
+        .expect("access archived property bank version");
+
+        assert!(archived.is_content_match(&[3; 32]));
+        assert_eq!(archived.version(), "1.0");
     }
 
     // Note: Property name validation now happens during RawPropertyMap
