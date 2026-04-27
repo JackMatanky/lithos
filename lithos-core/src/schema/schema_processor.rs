@@ -1206,7 +1206,8 @@ impl SchemaProcessor<FileParsed, AllMissing> {
             let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
 
             let schema_name = source
-                .basename(&path)
+                .filename(&path)
+                .map(|f| f.basename().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
@@ -1215,7 +1216,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
             .with_file_times(times_for_raw)
-            .with_name(schema_name.into());
+            .with_name(schema_name);
 
             parsed.insert(id, InitialParsed {
                 path,
@@ -1268,7 +1269,10 @@ impl SchemaProcessor<FileParsed, Compared> {
                             payload,
                         )) => {
                             let schema_name = source
-                                .basename(&payload.path)
+                                .filename(&payload.path)
+                                .map(|f| {
+                                    f.basename().to_owned().into_boxed_str()
+                                })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let times_for_raw = payload.times.clone();
@@ -1280,7 +1284,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
                             .with_file_times(times_for_raw)
-                            .with_name(schema_name.into());
+                            .with_name(schema_name);
 
                             ProcessorNode::new(
                                 NodeStatus::StaleParsed,
@@ -1302,7 +1306,10 @@ impl SchemaProcessor<FileParsed, Compared> {
                             ComparedPayload::StaleBankReferences(payload),
                         ) => {
                             let schema_name = source
-                                .basename(&payload.path)
+                                .filename(&payload.path)
+                                .map(|f| {
+                                    f.basename().to_owned().into_boxed_str()
+                                })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let times_for_raw = payload.times.clone();
@@ -1314,7 +1321,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
                             .with_file_times(times_for_raw)
-                            .with_name(schema_name.into());
+                            .with_name(schema_name);
                             let content_hash = payload.content_hash;
 
                             ProcessorNode::new(
@@ -1387,7 +1394,8 @@ impl SchemaProcessor<FileParsed, Compared> {
 
         for (id, read) in new_schemas.into_sorted_iter() {
             let schema_name = source
-                .basename(&read.path)
+                .filename(&read.path)
+                .map(|f| f.basename().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             let times_for_raw = read.times.clone();
@@ -1398,7 +1406,7 @@ impl SchemaProcessor<FileParsed, Compared> {
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
             .with_file_times(times_for_raw)
-            .with_name(schema_name.into());
+            .with_name(schema_name);
 
             parsed_new.insert(id, InitialParsed {
                 path: read.path,
@@ -2055,8 +2063,8 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         path: &std::path::Path,
     ) -> Result<Box<str>, SchemaLoaderError> {
         source
-            .basename(path)
-            .map(Into::into)
+            .filename(path)
+            .map(|f| f.basename().to_owned().into_boxed_str())
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)
     }

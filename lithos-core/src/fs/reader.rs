@@ -298,31 +298,6 @@ impl Reader {
         s.modified_at
     }
 
-    /// Extracts the basename (filename without extension) from a path.
-    ///
-    /// Returns the filename without its extension as a string reference.
-    /// This is useful for deriving names from file paths (e.g., schema names).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseError::Io`] if the path has no filename or the filename
-    /// is not valid UTF-8.
-    #[inline]
-    pub fn basename<'path>(
-        &self,
-        path: &'path Path,
-    ) -> Result<&'path str, ParseError> {
-        path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-            ParseError::Io {
-                path: path.to_path_buf(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path has no valid UTF-8 filename",
-                ),
-            }
-        })
-    }
-
     /// Extracts the filename (with extension) from a path.
     ///
     /// Returns the complete filename including its extension.
