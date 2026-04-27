@@ -126,6 +126,7 @@ use crate::{
             metadata::HashMetadata,
         },
     },
+    support::hash::Blake3Hash,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +291,7 @@ pub(crate) struct Suspect {
 pub(crate) struct Stale {
     times: RawFileTimes,
     content: String,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     view: RawPropertyBankView,
 }
 
@@ -366,10 +367,8 @@ impl PropertyBankProcessor<Comparison, Suspect> {
     ///
     /// Transitions to Parsed stage with Stale on mismatch.
     #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn check_content(self) -> ContentBranch {
-        let content_hash =
-            *blake3::hash(self.status.content.as_bytes()).as_bytes();
+        let content_hash = Blake3Hash::compute(self.status.content.as_bytes());
 
         let content_match = self.status.view.is_content_match(&content_hash);
 
@@ -406,7 +405,7 @@ pub(crate) struct Parsed;
 #[derive(Debug)]
 pub(crate) struct ParsedStale {
     raw: RawPropertyBank,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     view: RawPropertyBankView,
 }
 
@@ -437,7 +436,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         let raw = raw.with_file_times(self.status.times.clone());
-        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
+        let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition(Construction, New {
             raw,
@@ -578,7 +577,7 @@ pub(crate) struct StaleTimestamps {
 pub(crate) struct StaleContent {
     times: RawFileTimes,
     view: RawPropertyBankView,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
 }
 
 /// Refresh operations that sync only file timestamps.
@@ -664,7 +663,7 @@ pub(crate) struct Construction;
 #[derive(Debug)]
 pub(crate) struct New {
     raw: RawPropertyBank,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
 }
 
 /// Proven: property divergence detected; carries raw bank, delta, and raw

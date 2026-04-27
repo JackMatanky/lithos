@@ -16,9 +16,12 @@ use super::{
     FileTimesMetadata, HashMetadata, PropertyBankVersion, SchemaVersion,
     version::{Version as _, VersionRead as _},
 };
-use crate::schema::{
-    aggregate::SchemaName, error::SchemaStorageError, property::PropertyName,
-    raw::RawPropertyBank,
+use crate::{
+    schema::{
+        aggregate::SchemaName, error::SchemaStorageError,
+        property::PropertyName, raw::RawPropertyBank,
+    },
+    support::hash::Blake3Hash,
 };
 
 /// Shared behavior for raw file views with version history.
@@ -61,7 +64,7 @@ pub trait RawView {
 
     /// Returns true when content hash matches current version metadata.
     #[inline]
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.current().is_some_and(|v| v.is_content_match(content_hash))
     }
 
@@ -81,14 +84,14 @@ pub trait RawView {
     /// or when replacement metadata cannot be constructed.
     fn update_content_hash(
         &mut self,
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> Result<(), SchemaStorageError>;
 }
 
 /// Zero-copy read contract for archived and owned raw views.
 pub trait RawViewRead {
     /// Returns true when content hash matches current version metadata.
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool;
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool;
 
     /// Returns true when filesystem timestamps match current version metadata.
     fn is_timestamp_match(
@@ -244,8 +247,8 @@ impl RawSchemaView {
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
         use super::{FileTimesMetadata, HashMetadata};
 
-        // Compute content hash from raw file content (truncated to 128 bits)
-        let content_hash = blake3::hash(content.as_bytes());
+        // Compute content hash from raw file content
+        let content_hash = Blake3Hash::compute(content.as_bytes());
 
         // Compute per-property hashes
         let property_hashes =
@@ -255,8 +258,7 @@ impl RawSchemaView {
             raw.file_times().created_at,
             raw.file_times().modified_at,
         );
-        let hashes =
-            HashMetadata::new(*content_hash.as_bytes(), property_hashes);
+        let hashes = HashMetadata::new(content_hash, property_hashes);
 
         let version = SchemaVersion::new(file_times, hashes, raw)?;
 
@@ -299,7 +301,7 @@ impl RawView for RawSchemaView {
     #[inline]
     fn update_content_hash(
         &mut self,
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> Result<(), SchemaStorageError> {
         let current = self.current().ok_or(SchemaStorageError::NotFound {
             name: "current schema version".into(),
@@ -326,7 +328,7 @@ impl RawViewRead for RawSchemaView {
     }
 
     #[inline]
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         RawView::is_content_match(self, content_hash)
     }
 
@@ -441,7 +443,7 @@ impl RawPropertyBankView {
     #[inline]
     pub fn update_content_hash(
         &mut self,
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> Result<(), SchemaStorageError> {
         let current =
             self.current().ok_or(SchemaStorageError::PropertyBankNotFound)?;
@@ -525,7 +527,7 @@ impl RawView for RawPropertyBankView {
     #[inline]
     fn update_content_hash(
         &mut self,
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> Result<(), SchemaStorageError> {
         RawPropertyBankView::update_content_hash(self, content_hash)
     }
@@ -542,7 +544,7 @@ impl RawViewRead for RawPropertyBankView {
     }
 
     #[inline]
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         RawView::is_content_match(self, content_hash)
     }
 
@@ -565,7 +567,7 @@ impl RawViewRead for ArchivedRawSchemaView {
     }
 
     #[inline]
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.versions
             .as_slice()
             .first()
@@ -591,7 +593,7 @@ impl RawViewRead for ArchivedRawPropertyBankView {
     }
 
     #[inline]
-    fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.versions
             .as_slice()
             .first()
@@ -614,7 +616,7 @@ mod tests {
         raw::{RawPropertyBank, RawSchema},
     };
 
-    fn make_schema_version(content_hash: [u8; 32]) -> SchemaVersion {
+    fn make_schema_version(content_hash: Blake3Hash) -> SchemaVersion {
         let raw: RawSchema =
             serde_json::from_value::<RawSchema>(serde_json::json!({
                 "$version": "1.0",
@@ -632,12 +634,12 @@ mod tests {
     }
 
     fn make_property_bank_version(
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> PropertyBankVersion {
         let mut property_hashes = HashMap::new();
         property_hashes.insert(
             PropertyName::try_new("title").expect("valid property name"),
-            [9; 32],
+            Blake3Hash::new([9; 32]),
         );
 
         PropertyBankVersion::new(
@@ -653,11 +655,13 @@ mod tests {
         let filename = crate::fs::Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
-            make_property_bank_version([1; 32]),
+            make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
         for i in 2..=7 {
-            view.add_version(make_property_bank_version([i; 32]));
+            view.add_version(make_property_bank_version(Blake3Hash::new(
+                [i; 32],
+            )));
         }
 
         assert_eq!(
@@ -666,7 +670,7 @@ mod tests {
         );
         assert_eq!(
             view.current().map(|v| v.hashes().content()),
-            Some(&[7; 32])
+            Some(&Blake3Hash::new([7; 32]))
         );
     }
 
@@ -675,7 +679,7 @@ mod tests {
         let filename = crate::fs::Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
-            make_property_bank_version([1; 32]),
+            make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
         let expected_properties = view
@@ -683,30 +687,35 @@ mod tests {
             .map(|v| v.hashes().properties().clone())
             .expect("current version should exist");
 
-        view.update_content_hash([2; 32])
+        view.update_content_hash(Blake3Hash::new([2; 32]))
             .expect("content hash update should succeed");
 
         let current = view.current().expect("new version should exist");
-        assert_eq!(current.hashes().content(), &[2; 32]);
+        assert_eq!(current.hashes().content(), &Blake3Hash::new([2; 32]));
         assert_eq!(current.hashes().properties(), &expected_properties);
     }
 
     #[test]
     fn schema_view_update_content_hash_clears_expanded_properties_cache() {
         let filename = crate::fs::Filename::new("note.json".into());
-        let mut view =
-            RawSchemaView::new(filename, make_schema_version([1; 32]));
+        let mut view = RawSchemaView::new(
+            filename,
+            make_schema_version(Blake3Hash::new([1; 32])),
+        );
 
         let expanded = PropertyMap::new();
         view.current_mut()
             .expect("current version should exist")
             .set_expanded_properties(expanded);
 
-        <RawSchemaView as RawView>::update_content_hash(&mut view, [3; 32])
-            .expect("content hash update should succeed");
+        <RawSchemaView as RawView>::update_content_hash(
+            &mut view,
+            Blake3Hash::new([3; 32]),
+        )
+        .expect("content hash update should succeed");
 
         let current = view.current().expect("new version should exist");
-        assert_eq!(current.hashes().content(), &[3; 32]);
+        assert_eq!(current.hashes().content(), &Blake3Hash::new([3; 32]));
         assert!(current.expanded_properties().is_none());
     }
 
@@ -715,13 +724,13 @@ mod tests {
         let filename = crate::fs::Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
-            make_property_bank_version([1; 32]),
+            make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
         view.versions.clear();
 
         let err = view
-            .update_content_hash([4; 32])
+            .update_content_hash(Blake3Hash::new([4; 32]))
             .expect_err("missing version should error");
 
         assert!(matches!(err, SchemaStorageError::PropertyBankNotFound));
@@ -738,7 +747,7 @@ mod tests {
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &raw,
             "property_bank.json",
-            HashMetadata::new([1; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([1; 32]), HashMap::new()),
         )
         .expect("view creation should succeed");
 
@@ -750,7 +759,7 @@ mod tests {
         let filename = crate::fs::Filename::new("property_bank.json".into());
         let view = RawPropertyBankView::new(
             filename,
-            make_property_bank_version([9; 32]),
+            make_property_bank_version(Blake3Hash::new([9; 32])),
         );
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view)
@@ -761,14 +770,17 @@ mod tests {
         >(&bytes)
         .expect("access archived view");
 
-        assert!(archived.is_content_match(&[9; 32]));
+        assert!(archived.is_content_match(&Blake3Hash::new([9; 32])));
         assert_eq!(archived.version_count(), 1);
     }
 
     #[test]
     fn archived_raw_schema_view_supports_zero_copy_staleness_checks() {
         let filename = crate::fs::Filename::new("note.json".into());
-        let view = RawSchemaView::new(filename, make_schema_version([5; 32]));
+        let view = RawSchemaView::new(
+            filename,
+            make_schema_version(Blake3Hash::new([5; 32])),
+        );
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view)
             .expect("serialize test view");
@@ -778,7 +790,7 @@ mod tests {
         >(&bytes)
         .expect("access archived view");
 
-        assert!(archived.is_content_match(&[5; 32]));
+        assert!(archived.is_content_match(&Blake3Hash::new([5; 32])));
         assert_eq!(archived.version_count(), 1);
     }
 }

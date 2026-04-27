@@ -30,17 +30,20 @@ use std::collections::{HashMap, HashSet};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::metadata::{FileTimesMetadata, HashMetadata};
-use crate::schema::{
-    aggregate::SchemaName,
-    error::SchemaIngestionError,
-    property::{PropertyMap, PropertyName},
-    raw::RawSchema,
+use crate::{
+    schema::{
+        aggregate::SchemaName,
+        error::SchemaIngestionError,
+        property::{PropertyMap, PropertyName},
+        raw::RawSchema,
+    },
+    support::hash::Blake3Hash,
 };
 
 /// Read-only access contract shared by version payloads.
 pub trait VersionRead {
     /// Checks whether the content hash matches this version.
-    fn is_content_match(&self, hash: &[u8; 32]) -> bool;
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool;
 
     /// Checks whether filesystem timestamps match this version's metadata.
     fn is_timestamp_match(
@@ -285,7 +288,7 @@ impl VersionRead for SchemaVersion {
     }
 
     #[inline]
-    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.hashes().is_content_match(hash)
     }
 
@@ -409,7 +412,7 @@ impl VersionRead for PropertyBankVersion {
     }
 
     #[inline]
-    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.hashes().is_content_match(hash)
     }
 
@@ -421,7 +424,7 @@ impl VersionRead for PropertyBankVersion {
 
 impl VersionRead for ArchivedSchemaVersion {
     #[inline]
-    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.hashes.is_content_match(hash)
     }
 
@@ -442,7 +445,7 @@ impl VersionRead for ArchivedSchemaVersion {
 
 impl VersionRead for ArchivedPropertyBankVersion {
     #[inline]
-    fn is_content_match(&self, hash: &[u8; 32]) -> bool {
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.hashes.is_content_match(hash)
     }
 
@@ -515,7 +518,8 @@ mod tests {
             Some(SystemTime::now()),
             Some(SystemTime::now()),
         );
-        let hashes = HashMetadata::new([1u8; 32], HashMap::default());
+        let hashes =
+            HashMetadata::new(Blake3Hash::new([1u8; 32]), HashMap::default());
 
         let mut version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
@@ -539,7 +543,8 @@ mod tests {
         let raw: RawSchema = serde_json::from_value(json).unwrap();
 
         let file_times = FileTimesMetadata::new(None, None);
-        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let hashes =
+            HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
         let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
         let refs = version.bank_references();
@@ -562,7 +567,7 @@ mod tests {
         let raw: RawSchema = serde_json::from_value(json).unwrap();
         let version = SchemaVersion::new(
             FileTimesMetadata::new(None, None),
-            HashMetadata::new([0; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new()),
             &raw,
         )
         .unwrap();
@@ -591,7 +596,8 @@ mod tests {
     fn schema_version_set_file_times_updates_metadata() {
         let raw = create_test_raw_schema();
         let initial = FileTimesMetadata::new(None, None);
-        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let hashes =
+            HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
         let mut version = SchemaVersion::new(initial, hashes, &raw).unwrap();
 
         let updated = FileTimesMetadata::new(Some(SystemTime::now()), None);
@@ -604,7 +610,7 @@ mod tests {
     fn property_bank_version_with_metadata_replaces_hash_and_timestamps() {
         let original = PropertyBankVersion::new(
             FileTimesMetadata::new(None, None),
-            HashMetadata::new([1; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([1; 32]), HashMap::new()),
             "1.0",
         )
         .unwrap();
@@ -612,10 +618,10 @@ mod tests {
         let replacement = Version::with_metadata(
             &original,
             FileTimesMetadata::new(Some(SystemTime::now()), None),
-            HashMetadata::new([2; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([2; 32]), HashMap::new()),
         );
 
-        assert_eq!(replacement.hashes().content(), &[2; 32]);
+        assert_eq!(replacement.hashes().content(), &Blake3Hash::new([2; 32]));
         assert_eq!(replacement.version(), "1.0");
     }
 
@@ -624,7 +630,7 @@ mod tests {
         let raw = create_test_raw_schema();
         let version = SchemaVersion::new(
             FileTimesMetadata::new(None, None),
-            HashMetadata::new([7; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([7; 32]), HashMap::new()),
             &raw,
         )
         .expect("schema version should build");
@@ -637,7 +643,7 @@ mod tests {
         >(&bytes)
         .expect("access archived schema version");
 
-        assert!(archived.is_content_match(&[7; 32]));
+        assert!(archived.is_content_match(&Blake3Hash::new([7; 32])));
         assert_eq!(archived.version(), "1.0");
     }
 
@@ -645,7 +651,7 @@ mod tests {
     fn archived_property_bank_version_supports_zero_copy_version_read() {
         let version = PropertyBankVersion::new(
             FileTimesMetadata::new(None, None),
-            HashMetadata::new([3; 32], HashMap::new()),
+            HashMetadata::new(Blake3Hash::new([3; 32]), HashMap::new()),
             "1.0",
         )
         .expect("property bank version should build");
@@ -658,7 +664,7 @@ mod tests {
         >(&bytes)
         .expect("access archived property bank version");
 
-        assert!(archived.is_content_match(&[3; 32]));
+        assert!(archived.is_content_match(&Blake3Hash::new([3; 32])));
         assert_eq!(archived.version(), "1.0");
     }
 

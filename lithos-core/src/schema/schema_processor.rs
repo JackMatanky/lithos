@@ -80,6 +80,7 @@ use crate::{
         storage::Repository,
         views::{RawSchemaView, RawView as _},
     },
+    support::hash::Blake3Hash,
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -264,7 +265,7 @@ pub(crate) struct StalePayload {
     path: PathBuf,
     times: RawFileTimes,
     content_str: Box<str>,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     view: RawSchemaView,
 }
 
@@ -272,7 +273,7 @@ pub(crate) struct StalePayload {
 pub(crate) struct NewParsedPayload {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     raw: RawSchema,
 }
 
@@ -280,7 +281,7 @@ pub(crate) struct NewParsedPayload {
 pub(crate) struct StaleParsedPayload {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
 }
@@ -481,7 +482,7 @@ impl AnalysisBranch {
 pub(crate) struct RefreshNodePayload {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     view: RawSchemaView,
 }
 
@@ -489,7 +490,7 @@ pub(crate) struct RefreshNodePayload {
 pub(crate) struct RebuildNodePayload {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
     excludes_delta: Option<ExcludesDelta>,
@@ -500,7 +501,7 @@ pub(crate) struct RebuildNodePayload {
 pub(crate) struct UpdateNodePayload {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
     property_delta: SchemaPropertyDelta,
@@ -580,14 +581,14 @@ pub(crate) struct InitialRead {
     path: PathBuf,
     times: RawFileTimes,
     content_str: Box<str>,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
     path: PathBuf,
     times: RawFileTimes,
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
     raw: RawSchema,
 }
 
@@ -985,10 +986,8 @@ impl SchemaProcessor<Comparison, Present> {
                                             .read_to_string(&matched_payload.path)
                                             .map_err(SchemaIngestionError::from)
                                             .map_err(SchemaLoaderError::Ingestion)?;
-                                        let content_hash = *blake3::hash(
-                                            content_str.as_bytes(),
-                                        )
-                                        .as_bytes();
+                                        let content_hash =
+                                            Blake3Hash::compute(content_str.as_bytes());
                                         ComparedPayload::StaleBankReferences(
                                             StalePayload {
                                                 path: matched_payload.path,
@@ -1012,10 +1011,8 @@ impl SchemaProcessor<Comparison, Present> {
                                         ContentBranch::Match(content_payload)
                                             if is_bank_affected =>
                                         {
-                                            let content_hash = *blake3::hash(
-                                                content_payload.content_str.as_bytes(),
-                                            )
-                                            .as_bytes();
+                                            let content_hash =
+                                                Blake3Hash::compute(content_payload.content_str.as_bytes());
                                             ComparedPayload::StaleBankReferences(
                                                 StalePayload {
                                                     path: content_payload.path,
@@ -1087,7 +1084,7 @@ impl SchemaProcessor<Comparison, Present> {
                 .read_to_string(&scan.path)
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
-            let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
+            let content_hash = Blake3Hash::compute(content.as_bytes());
 
             new_reads.insert(id, InitialRead {
                 path: scan.path,
@@ -1138,8 +1135,7 @@ impl SchemaProcessor<Comparison, Present> {
     // ─────────────────────────────────────────────────────────────────────
 
     fn check_content(payload: SuspectPayload) -> ContentBranch {
-        let content_hash =
-            *blake3::hash(payload.content_str.as_bytes()).as_bytes();
+        let content_hash = Blake3Hash::compute(payload.content_str.as_bytes());
         let content_match = payload.view.is_content_match(&content_hash);
 
         if content_match {
@@ -1203,7 +1199,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
 
-            let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
+            let content_hash = Blake3Hash::compute(content.as_bytes());
 
             let schema_name = source
                 .filename(&path)
@@ -1785,8 +1781,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .read_to_string(&payload.path)
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let content_hash =
-                                *blake3::hash(content.as_bytes()).as_bytes();
+                            let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 Self::schema_stem(source, &payload.path)?;
                             let raw = FsReader::parse_structured_from_str::<
@@ -1839,8 +1834,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .read_to_string(&payload.path)
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let content_hash =
-                                *blake3::hash(content.as_bytes()).as_bytes();
+                            let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 Self::schema_stem(source, &payload.path)?;
                             let raw = FsReader::parse_structured_from_str::<
@@ -2071,7 +2065,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
     fn build_version(
         raw: &RawSchema,
-        content_hash: [u8; 32],
+        content_hash: Blake3Hash,
     ) -> Result<crate::schema::views::SchemaVersion, SchemaLoaderError> {
         let property_hashes =
             crate::schema::views::HashMetadata::compute_property_hashes(
@@ -3025,7 +3019,9 @@ mod tests {
 
     #[test]
     fn stage_variant_error_contains_stage_and_variant() {
+        let _view = make_view("schema", Blake3Hash::new([7u8; 32]));
         let id = SchemaId::new();
+
         let error = stage_variant_error("parse", id, "Compared", "Present");
         let message = error.to_string();
         assert!(message.contains("stage parse"));
@@ -3046,7 +3042,7 @@ mod tests {
         })
     }
 
-    fn make_view(name: &str, content_hash: [u8; 32]) -> RawSchemaView {
+    fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
         let file_times =
             crate::schema::views::FileTimesMetadata::new(None, None);
@@ -3070,7 +3066,7 @@ mod tests {
         let id = SchemaId::new();
         let path = PathBuf::from("schema.toml");
 
-        let view = make_view("schema", [7u8; 32]);
+        let view = make_view("schema", Blake3Hash::new([7u8; 32]));
 
         let mut builder = SchemaGraphBuilder::new();
         builder.add_node(

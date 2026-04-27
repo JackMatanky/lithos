@@ -11,20 +11,22 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::schema::{
-    error::{SchemaIngestionError, SchemaLoaderError},
-    property::{PropertyMap, PropertyName},
-    raw::{
-        RawPropertyBank, RawSchema,
-        property::{
-            RawProperty, RawPropertyBankEntry, RawPropertyInline,
-            RawPropertyMap, RawPropertyRef,
+use crate::{
+    schema::{
+        error::{SchemaIngestionError, SchemaLoaderError},
+        property::{PropertyMap, PropertyName},
+        raw::{
+            RawPropertyBank, RawSchema,
+            property::{
+                RawProperty, RawPropertyBankEntry, RawPropertyInline,
+                RawPropertyMap, RawPropertyRef,
+            },
         },
     },
-    views::metadata::HashMetadata,
+    support::hash::Blake3Hash,
 };
 
-type PropertyHashes = HashMap<PropertyName, [u8; 32]>;
+type PropertyHashes = HashMap<PropertyName, Blake3Hash>;
 type PropertyChangeSetParts<T> =
     (HashMap<PropertyName, T>, Vec<PropertyName>, PropertyHashes);
 type PropertyBankDeltaResult =
@@ -400,7 +402,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
 struct PropertyChangeSet<T> {
     upserts: HashMap<PropertyName, T>,
     removals: Vec<PropertyName>,
-    current_hashes: HashMap<PropertyName, [u8; 32]>,
+    current_hashes: PropertyHashes,
 }
 
 impl<T> PropertyChangeSet<T> {
@@ -430,7 +432,7 @@ where
         let mut upserts = HashMap::new();
 
         for (name, entry) in self.properties {
-            let hash = HashMetadata::hash_entry(entry);
+            let hash = Blake3Hash::compute_json(entry);
             current_hashes.insert(name.clone(), hash);
             if self.previous_hashes.get(name) != Some(&hash) {
                 upserts.insert(name.clone(), entry.clone());
@@ -459,9 +461,7 @@ mod tests {
 
     mod fixtures {
         use super::*;
-        use crate::schema::{
-            raw::RawPropertyBank, views::metadata::HashMetadata,
-        };
+        use crate::schema::raw::RawPropertyBank;
 
         pub(crate) fn name(s: &str) -> PropertyName {
             PropertyName::try_new(s).expect("valid test property name")
@@ -482,7 +482,7 @@ mod tests {
                 let p_name = name(name_str);
                 let entry_value = serde_json::json!({"type": "string"});
                 let entry = RawPropertyBankEntry(inline_string());
-                hashes.insert(p_name.clone(), HashMetadata::hash_entry(&entry));
+                hashes.insert(p_name.clone(), Blake3Hash::compute_json(&entry));
                 properties.insert((*name_str).to_owned(), entry_value);
             }
 
@@ -696,7 +696,7 @@ mod tests {
                 serde_json::from_value(map_raw).expect("valid map");
 
             // Previous hash for same name but different content (bool type)
-            let old_hash = HashMetadata::hash_entry(&serde_json::json!({
+            let old_hash = Blake3Hash::compute_json(&serde_json::json!({
                 "type": "bool"
             }));
             let mut previous_hashes = HashMap::new();
@@ -722,7 +722,8 @@ mod tests {
                     .expect("empty map");
 
             let mut previous_hashes = HashMap::new();
-            previous_hashes.insert(fixtures::name("old"), [0u8; 32]);
+            previous_hashes
+                .insert(fixtures::name("old"), Blake3Hash::new([0u8; 32]));
 
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
             let change_set = engine.compute_change_set();
@@ -743,7 +744,7 @@ mod tests {
             let entry_json = serde_json::json!({"type": "string"});
             let entry: RawProperty =
                 serde_json::from_value(entry_json.clone()).expect("valid");
-            let hash = HashMetadata::hash_entry(&entry);
+            let hash = Blake3Hash::compute_json(&entry);
 
             let map_json = serde_json::json!({
                 "stable": entry_json

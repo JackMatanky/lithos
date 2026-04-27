@@ -994,8 +994,11 @@ mod tests {
 
     #[test]
     fn list_schema_path_id_pairs_includes_saved_view() {
-        use crate::schema::views::{
-            FileTimesMetadata, Filename, HashMetadata, SchemaVersion,
+        use crate::{
+            schema::views::{
+                FileTimesMetadata, Filename, HashMetadata, SchemaVersion,
+            },
+            support::hash::Blake3Hash,
         };
 
         let (_tmp, repo) = setup_test_repo();
@@ -1009,7 +1012,8 @@ mod tests {
             .with_name("test".into());
 
         let file_times_meta = FileTimesMetadata::new(None, None);
-        let hashes = HashMetadata::new([0; 32], HashMap::new());
+        let hashes =
+            HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
         let version =
             SchemaVersion::new(file_times_meta, hashes, &raw).unwrap();
 

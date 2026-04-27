@@ -10,7 +10,10 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-use crate::schema::{property::PropertyName, raw::property::RawPropertyMap};
+use crate::{
+    schema::{property::PropertyName, raw::property::RawPropertyMap},
+    support::hash::Blake3Hash,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  FileTimesMetadata
@@ -135,10 +138,10 @@ impl ArchivedFileTimesMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct HashMetadata {
     /// Blake3 hash of file content for staleness detection.
-    content: [u8; 32],
+    content: Blake3Hash,
 
     /// Per-property Blake3 hashes for incremental updates/resolution.
-    properties: HashMap<PropertyName, [u8; 32]>,
+    properties: HashMap<PropertyName, Blake3Hash>,
 }
 
 impl HashMetadata {
@@ -146,8 +149,8 @@ impl HashMetadata {
     #[inline]
     #[must_use]
     pub fn new(
-        content: [u8; 32],
-        properties: HashMap<PropertyName, [u8; 32]>,
+        content: Blake3Hash,
+        properties: HashMap<PropertyName, Blake3Hash>,
     ) -> Self {
         Self {
             content,
@@ -158,22 +161,22 @@ impl HashMetadata {
     /// Get content hash.
     #[inline]
     #[must_use]
-    pub fn content(&self) -> &[u8; 32] {
+    pub fn content(&self) -> &Blake3Hash {
         &self.content
     }
 
     /// Get property hashes.
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &HashMap<PropertyName, [u8; 32]> {
+    pub fn properties(&self) -> &HashMap<PropertyName, Blake3Hash> {
         &self.properties
     }
 
     /// Check if content hash matches (for staleness detection).
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, hash: &[u8; 32]) -> bool {
-        self.content == *hash
+    pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.content.is_match(hash)
     }
 
     /// Compute property hashes from a validated property map.
@@ -184,11 +187,11 @@ impl HashMetadata {
     #[must_use]
     pub fn compute_property_hashes<T: serde::Serialize + std::fmt::Debug>(
         properties: &RawPropertyMap<T>,
-    ) -> HashMap<PropertyName, [u8; 32]> {
+    ) -> HashMap<PropertyName, Blake3Hash> {
         properties
             .iter()
             .map(|(name, prop)| {
-                let hash = Self::hash_entry(prop);
+                let hash = Blake3Hash::compute_json(prop);
                 (name.clone(), hash)
             })
             .collect()
@@ -204,7 +207,7 @@ impl HashMetadata {
     #[must_use]
     pub fn changed_properties(
         &self,
-        new_hashes: &HashMap<PropertyName, [u8; 32]>,
+        new_hashes: &HashMap<PropertyName, Blake3Hash>,
     ) -> Vec<PropertyName> {
         let mut changed = Vec::new();
 
@@ -234,37 +237,14 @@ impl HashMetadata {
 
         changed
     }
-
-    /// Hash a single property definition or bank entry.
-    ///
-    /// Uses JSON serialization to ensure consistent hashing across all
-    /// property types and variants.
-    pub(in crate::schema) fn hash_entry<
-        T: serde::Serialize + std::fmt::Debug,
-    >(
-        value: &T,
-    ) -> [u8; 32] {
-        let mut hasher = blake3::Hasher::new();
-
-        // Serialize to JSON for consistent hashing
-        // This is fine for metadata operations (not a hot path)
-        if let Ok(json) = serde_json::to_string(value) {
-            hasher.update(json.as_bytes());
-        } else {
-            // Fallback: use debug representation
-            hasher.update(format!("{value:?}").as_bytes());
-        }
-
-        *hasher.finalize().as_bytes()
-    }
 }
 
 impl ArchivedHashMetadata {
     /// Check if archived content hash matches (for zero-copy staleness checks).
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, hash: &[u8; 32]) -> bool {
-        self.content.iter().zip(hash.iter()).all(|(left, right)| left == right)
+    pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.content.is_match(hash)
     }
 }
 
@@ -291,19 +271,21 @@ mod tests {
 
     #[test]
     fn hash_metadata_content_matches() {
-        let hash = [1u8; 32];
+        let hash = Blake3Hash::compute(b"test");
         let metadata = HashMetadata::new(hash, HashMap::new());
 
         assert!(metadata.is_content_match(&hash));
-        assert!(!metadata.is_content_match(&[2u8; 32]));
+        assert!(!metadata.is_content_match(&Blake3Hash::compute(b"other")));
     }
 
     #[test]
     fn hash_metadata_changed_properties_detects_added() {
-        let current = HashMetadata::new([0u8; 32], HashMap::new());
+        let current =
+            HashMetadata::new(Blake3Hash::new([0u8; 32]), HashMap::new());
         let mut new_hashes = HashMap::new();
         let prop_name = PropertyName::try_new("title").unwrap();
-        new_hashes.insert(prop_name.clone(), [1u8; 32]);
+        let hash = Blake3Hash::new([1u8; 32]);
+        new_hashes.insert(prop_name.clone(), hash);
 
         let changed = current.changed_properties(&new_hashes);
 
@@ -315,8 +297,10 @@ mod tests {
     fn hash_metadata_changed_properties_detects_removed() {
         let mut current_hashes = HashMap::new();
         let prop_name = PropertyName::try_new("title").unwrap();
-        current_hashes.insert(prop_name.clone(), [1u8; 32]);
-        let current = HashMetadata::new([0u8; 32], current_hashes);
+        let hash = Blake3Hash::new([1u8; 32]);
+        current_hashes.insert(prop_name.clone(), hash);
+        let current =
+            HashMetadata::new(Blake3Hash::new([0u8; 32]), current_hashes);
 
         let changed = current.changed_properties(&HashMap::new());
 
@@ -328,11 +312,14 @@ mod tests {
     fn hash_metadata_changed_properties_detects_modified() {
         let prop_name = PropertyName::try_new("title").unwrap();
         let mut current_hashes = HashMap::new();
-        current_hashes.insert(prop_name.clone(), [1u8; 32]);
-        let current = HashMetadata::new([0u8; 32], current_hashes);
+        let hash1 = Blake3Hash::new([1u8; 32]);
+        current_hashes.insert(prop_name.clone(), hash1);
+        let current =
+            HashMetadata::new(Blake3Hash::new([0u8; 32]), current_hashes);
 
         let mut new_hashes = HashMap::new();
-        new_hashes.insert(prop_name.clone(), [2u8; 32]);
+        let hash2 = Blake3Hash::new([2u8; 32]);
+        new_hashes.insert(prop_name.clone(), hash2);
 
         let changed = current.changed_properties(&new_hashes);
 
