@@ -43,11 +43,38 @@ impl Blake3Hash {
         Self(*blake3::hash(data).as_bytes())
     }
 
+    /// Computes a BLAKE3 hash of the provided value as JSON.
+    ///
+    /// Uses JSON serialization to ensure consistent hashing across all
+    /// property types and variants.
+    #[inline]
+    #[must_use]
+    pub fn compute_json<T: Serialize + std::fmt::Debug>(value: &T) -> Self {
+        if let Ok(json) = serde_json::to_string(value) {
+            Self::compute(json.as_bytes())
+        } else {
+            // Fallback: use debug representation
+            Self::compute(format!("{value:?}").as_bytes())
+        }
+    }
+
     /// Returns the underlying bytes.
     #[inline]
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+}
+
+impl ArchivedBlake3Hash {
+    /// Check if archived hash matches (for zero-copy staleness checks).
+    #[inline]
+    #[must_use]
+    pub fn is_match(&self, hash: &Blake3Hash) -> bool {
+        self.0
+            .iter()
+            .zip(hash.as_bytes().iter())
+            .all(|(left, right)| left == right)
     }
 }
 
