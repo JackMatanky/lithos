@@ -95,76 +95,6 @@ impl<'source> TryFrom<(Event<'source>, Range<usize>)>
     }
 }
 
-#[cfg(test)]
-mod event_with_range_tests {
-    use pulldown_cmark::CowStr;
-
-    use super::*;
-    use crate::note::position::SourceByteOffset;
-
-    #[test]
-    fn new_preserves_text_event_payload() {
-        let range = SourceByteRange::new(
-            SourceByteOffset::new(0),
-            SourceByteOffset::new(5),
-        )
-        .expect("test range should be valid");
-
-        let event =
-            EventWithRange::new(Event::Text(CowStr::Borrowed("hello")), range);
-
-        assert!(
-            matches!(event.event(), Event::Text(text) if text.as_ref() == "hello"),
-            "event accessor should preserve text payload"
-        );
-    }
-
-    #[test]
-    fn new_preserves_source_range() {
-        let range = SourceByteRange::new(
-            SourceByteOffset::new(10),
-            SourceByteOffset::new(17),
-        )
-        .expect("test range should be valid");
-
-        let event = EventWithRange::new(Event::Rule, range);
-
-        assert_eq!(
-            event.range(),
-            range,
-            "range accessor should preserve original source range"
-        );
-    }
-
-    #[test]
-    fn try_from_converts_valid_tuple() {
-        let event = Event::Text(CowStr::Borrowed("test"));
-        let byte_range = 0..4;
-
-        let result = EventWithRange::try_from((event, byte_range));
-
-        assert!(result.is_ok(), "TryFrom should succeed for valid byte range");
-        let event_with_range = result.unwrap();
-        assert_eq!(event_with_range.range().start().as_usize(), 0);
-        assert_eq!(event_with_range.range().end().as_usize(), 4);
-    }
-
-    #[test]
-    fn try_from_rejects_invalid_range() {
-        let event = Event::Text(CowStr::Borrowed("test"));
-        // Explicitly construct invalid range to test error handling
-        #[expect(
-            clippy::reversed_empty_ranges,
-            reason = "Testing error handling for invalid ranges"
-        )]
-        let invalid_range = 10..5; // end before start
-
-        let result = EventWithRange::try_from((event, invalid_range));
-
-        assert!(result.is_err(), "TryFrom should fail for invalid byte range");
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // MARKDOWN EVENT STREAM - ITERATOR OVER EVENTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -354,6 +284,83 @@ mod tests {
     use pulldown_cmark::Options;
 
     use super::*;
+    use crate::note::position::SourceByteOffset;
+
+    mod event_with_range {
+        use pulldown_cmark::CowStr;
+
+        use super::*;
+
+        #[test]
+        fn new_preserves_text_event_payload() {
+            let range = SourceByteRange::new(
+                SourceByteOffset::new(0),
+                SourceByteOffset::new(5),
+            )
+            .expect("test range should be valid");
+
+            let event = EventWithRange::new(
+                Event::Text(CowStr::Borrowed("hello")),
+                range,
+            );
+
+            assert!(
+                matches!(event.event(), Event::Text(text) if text.as_ref() == "hello"),
+                "event accessor should preserve text payload"
+            );
+        }
+
+        #[test]
+        fn new_preserves_source_range() {
+            let range = SourceByteRange::new(
+                SourceByteOffset::new(10),
+                SourceByteOffset::new(17),
+            )
+            .expect("test range should be valid");
+
+            let event = EventWithRange::new(Event::Rule, range);
+
+            assert_eq!(
+                event.range(),
+                range,
+                "range accessor should preserve original source range"
+            );
+        }
+
+        #[test]
+        fn try_from_converts_valid_tuple() {
+            let event = Event::Text(CowStr::Borrowed("test"));
+            let byte_range = 0..4;
+
+            let result = EventWithRange::try_from((event, byte_range));
+
+            assert!(
+                result.is_ok(),
+                "TryFrom should succeed for valid byte range"
+            );
+            let event_with_range = result.unwrap();
+            assert_eq!(event_with_range.range().start().as_usize(), 0);
+            assert_eq!(event_with_range.range().end().as_usize(), 4);
+        }
+
+        #[test]
+        fn try_from_rejects_invalid_range() {
+            let event = Event::Text(CowStr::Borrowed("test"));
+            // Explicitly construct invalid range to test error handling
+            #[expect(
+                clippy::reversed_empty_ranges,
+                reason = "Testing error handling for invalid ranges"
+            )]
+            let invalid_range = 10..5; // end before start
+
+            let result = EventWithRange::try_from((event, invalid_range));
+
+            assert!(
+                result.is_err(),
+                "TryFrom should fail for invalid byte range"
+            );
+        }
+    }
 
     mod markdown_event_stream_references {
         use super::*;
