@@ -3104,6 +3104,54 @@ mod tests {
     }
 
     #[test]
+    fn compare_staleness_ignores_file_size_when_timestamps_match() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = FsReader::new(temp.path());
+        let id = SchemaId::new();
+        let path = crate::fs::RelativePath::try_from("schema.toml")
+            .expect("valid relative path");
+
+        let view = make_view("schema", Blake3Hash::new([9u8; 32]));
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(
+            id,
+            ProcessorNode::new(
+                NodeStatus::Fresh,
+                ExtendsChangeKind::Unchanged,
+                PipelinePayload::Present(PresentPayload::Found(FoundPayload {
+                    path,
+                    stats: RawFileStats::new(None, None, 9_999_999),
+                    view,
+                })),
+            ),
+        );
+
+        let processor = SchemaProcessor::<Comparison, Present> {
+            status: Present {
+                graph: builder.build(),
+                new_schemas: NewBatch::new(),
+                deleted_ids: Vec::new(),
+            },
+            _stage: PhantomData,
+        };
+
+        let compared =
+            processor.compare(&source, None).expect("compare succeeds");
+        let compared_node = compared
+            .status
+            .graph
+            .graph()
+            .get(id)
+            .expect("node present after compare");
+
+        assert!(matches!(
+            &compared_node.payload().payload,
+            PipelinePayload::Compared(ComparedPayload::Fresh(_))
+        ));
+    }
+
+    #[test]
     fn deleted_nodes_pass_through_compare_and_parse() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = FsReader::new(temp.path());

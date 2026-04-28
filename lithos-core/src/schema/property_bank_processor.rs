@@ -204,7 +204,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
 
     /// Initial entry point: checks the repository for an existing view.
     ///
-    /// This method gathers file times and queries the repository to decide
+    /// This method gathers file stats and queries the repository to decide
     /// whether the pipeline starts as a `Missing` (new ingestion) or a
     /// `Present` (incremental update) branch.
     ///
@@ -263,13 +263,13 @@ impl Default for PropertyBankProcessor<Discovery, Unknown> {
 #[derive(Debug)]
 pub(crate) struct Comparison;
 
-/// Proven: View does not exist in repository; carries file timestamps.
+/// Proven: View does not exist in repository; carries file stats.
 #[derive(Debug)]
 pub(crate) struct Missing {
     stats: RawFileStats,
 }
 
-/// Proven: View exists in repository; carries timestamps and cached view.
+/// Proven: View exists in repository; carries file stats and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
     stats: RawFileStats,
