@@ -24,10 +24,6 @@ pub(crate) struct ReferenceDefinitions(
     HashMap<ReferenceLabel, ReferenceTarget>,
 );
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "New adapter layer not yet integrated")
-)]
 impl ReferenceDefinitions {
     /// Creates a new set of reference definitions from raw pulldown-cmark refs.
     ///
@@ -52,7 +48,7 @@ impl ReferenceDefinitions {
     pub(crate) fn new(raw: HashMap<String, String>) -> Self {
         let mut normalized = HashMap::new();
         for (label, dest) in raw {
-            let key = Self::normalize_label(&label);
+            let key = ReferenceLabel::new(&label);
             normalized
                 .entry(key)
                 .or_insert_with(|| ReferenceTarget(dest.into_boxed_str()));
@@ -79,21 +75,53 @@ impl ReferenceDefinitions {
     #[must_use]
     #[inline]
     pub(crate) fn resolve(&self, label: &str) -> Option<&str> {
-        let normalized = Self::normalize_label(label);
+        let normalized = ReferenceLabel::new(label);
         self.0.get(&normalized).map(ReferenceTarget::as_str)
     }
+}
 
-    /// Orchestrates the normalization of a reference label.
-    fn normalize_label(label: &str) -> ReferenceLabel {
-        if Self::is_normalized(label) {
-            return ReferenceLabel(label.to_owned().into_boxed_str());
+/// A normalized reference link label.
+///
+/// Labels are case-insensitive and have internal whitespace collapsed according
+/// to the `CommonMark` specification. This type guarantees normalization
+/// through its constructor, implementing "parse, don't validate".
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ReferenceLabel(Box<str>);
+
+impl ReferenceLabel {
+    /// Creates a normalized reference label from a raw string.
+    ///
+    /// Applies `CommonMark` normalization rules:
+    /// - Case folding (lowercase ASCII)
+    /// - Whitespace collapsing (trim + collapse internal)
+    /// - Backslash escape removal
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::note::parser::references::ReferenceLabel;
+    ///
+    /// let label = ReferenceLabel::new("  Foo  BAR  ");
+    /// assert_eq!(label.as_str(), "foo bar");
+    /// ```
+    #[must_use]
+    pub(crate) fn new(raw_label: &str) -> Self {
+        if Self::is_normalized(raw_label) {
+            return Self(raw_label.to_owned().into_boxed_str());
         }
 
-        let unescaped = Self::unescape_label(label);
+        let unescaped = Self::unescape_label(raw_label);
         let folded = Self::fold_case(&unescaped);
         let collapsed = Self::collapse_whitespace(&folded);
 
-        ReferenceLabel(collapsed.into_boxed_str())
+        Self(collapsed.into_boxed_str())
+    }
+
+    /// Returns the string slice of the normalized label.
+    #[must_use]
+    #[inline]
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
     }
 
     /// Checks if a label is already normalized.
@@ -149,26 +177,6 @@ impl ReferenceDefinitions {
         }
 
         collapsed
-    }
-}
-
-/// A normalized reference link label.
-///
-/// Labels are case-insensitive and have internal whitespace collapsed according
-/// to the `CommonMark` specification.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ReferenceLabel(Box<str>);
-
-impl ReferenceLabel {
-    /// Returns the string slice of the label.
-    #[must_use]
-    #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "New adapter layer not yet integrated")
-    )]
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
     }
 }
 

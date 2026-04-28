@@ -63,12 +63,20 @@
 
 /// Configuration types for the event stream.
 pub(crate) mod config;
-/// Event wrappers for markdown tokens.
-pub(crate) mod event;
+/// Cached parsing context for markdown documents.
+pub(crate) mod context;
 /// Extracted reference link definitions.
 pub(crate) mod references;
 /// Event stream processing and normalization.
 pub(crate) mod stream;
+/// Block structure and AST types for markdown documents.
+pub(crate) mod structure;
+/// Block visitor trait for AST traversal.
+pub(crate) mod visitor;
+
+#[cfg(test)]
+#[path = "context_integration_test.rs"]
+mod context_integration_test;
 
 use std::borrow::Cow;
 

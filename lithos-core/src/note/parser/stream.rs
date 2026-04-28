@@ -1,10 +1,9 @@
 //! Event stream processing and normalization.
 //!
-//! This module provides the `MarkdownEventStream` component, which acts as
-//! a strict boundary between `pulldown-cmark` and the rest of the parsing
-//! pipeline. It is responsible for instantiating the underlying parser,
-//! managing the iterator state, handling event transformations (like break
-//! normalization), and extracting link reference definitions safely.
+//! This module provides the `MarkdownEventStream` component and the
+//! `EventWithRange` type. The stream acts as a facade adapter between
+//! `pulldown-cmark` and the rest of the parsing pipeline, handling event
+//! normalization and extracting link reference definitions.
 
 use std::ops::Range;
 
@@ -14,20 +13,172 @@ use pulldown_cmark::{
 
 use super::{
     config::{BreakPolicy, EventStreamConfig},
-    event::SpannedEvent,
     references::ReferenceDefinitions,
 };
 use crate::note::{error::NoteIngestError, position::SourceByteRange};
 
-/// A normalized stream of markdown events with unified spans and reference
-/// handling.
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENT WITH RANGE - MARKDOWN EVENT + SOURCE LOCATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A markdown event paired with its original source byte range.
+///
+/// This struct guarantees that every parsed token is strictly bound to its
+/// exact origin within the unparsed source document. This allows downstream
+/// scanners and compilers to report diagnostics that accurately highlight the
+/// original text rather than a normalized projection.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use lithos_core::note::position::{SourceByteRange, SourceByteOffset};
+/// use pulldown_cmark::{Event, CowStr};
+/// use lithos_core::note::parser::stream::EventWithRange;
+///
+/// let start = SourceByteOffset::new(0);
+/// let end = SourceByteOffset::new(5);
+/// let range = SourceByteRange::new(start, end).unwrap();
+///
+/// let event = EventWithRange::new(
+///     Event::Text(CowStr::Borrowed("hello")),
+///     range,
+/// );
+///
+/// assert_eq!(event.range().len(), 5);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EventWithRange<'source> {
+    event: Event<'source>,
+    range: SourceByteRange,
+}
+
+impl<'source> EventWithRange<'source> {
+    /// Creates a new event with its source range.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new(
+        event: Event<'source>,
+        range: SourceByteRange,
+    ) -> Self {
+        Self {
+            event,
+            range,
+        }
+    }
+
+    /// Returns a reference to the underlying markdown event.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn event(&self) -> &Event<'source> {
+        &self.event
+    }
+
+    /// Returns the source byte range for this event.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn range(&self) -> SourceByteRange {
+        self.range
+    }
+}
+
+impl<'source> TryFrom<(Event<'source>, Range<usize>)>
+    for EventWithRange<'source>
+{
+    type Error = NoteIngestError;
+
+    fn try_from(
+        (event, byte_range): (Event<'source>, Range<usize>),
+    ) -> Result<Self, Self::Error> {
+        let range = SourceByteRange::try_from(byte_range)
+            .map_err(NoteIngestError::Domain)?;
+        Ok(Self::new(event, range))
+    }
+}
+
+#[cfg(test)]
+mod event_with_range_tests {
+    use pulldown_cmark::CowStr;
+
+    use super::*;
+    use crate::note::position::SourceByteOffset;
+
+    #[test]
+    fn new_preserves_text_event_payload() {
+        let range = SourceByteRange::new(
+            SourceByteOffset::new(0),
+            SourceByteOffset::new(5),
+        )
+        .expect("test range should be valid");
+
+        let event =
+            EventWithRange::new(Event::Text(CowStr::Borrowed("hello")), range);
+
+        assert!(
+            matches!(event.event(), Event::Text(text) if text.as_ref() == "hello"),
+            "event accessor should preserve text payload"
+        );
+    }
+
+    #[test]
+    fn new_preserves_source_range() {
+        let range = SourceByteRange::new(
+            SourceByteOffset::new(10),
+            SourceByteOffset::new(17),
+        )
+        .expect("test range should be valid");
+
+        let event = EventWithRange::new(Event::Rule, range);
+
+        assert_eq!(
+            event.range(),
+            range,
+            "range accessor should preserve original source range"
+        );
+    }
+
+    #[test]
+    fn try_from_converts_valid_tuple() {
+        let event = Event::Text(CowStr::Borrowed("test"));
+        let byte_range = 0..4;
+
+        let result = EventWithRange::try_from((event, byte_range));
+
+        assert!(result.is_ok(), "TryFrom should succeed for valid byte range");
+        let event_with_range = result.unwrap();
+        assert_eq!(event_with_range.range().start().as_usize(), 0);
+        assert_eq!(event_with_range.range().end().as_usize(), 4);
+    }
+
+    #[test]
+    fn try_from_rejects_invalid_range() {
+        let event = Event::Text(CowStr::Borrowed("test"));
+        // Explicitly construct invalid range to test error handling
+        #[expect(
+            clippy::reversed_empty_ranges,
+            reason = "Testing error handling for invalid ranges"
+        )]
+        let invalid_range = 10..5; // end before start
+
+        let result = EventWithRange::try_from((event, invalid_range));
+
+        assert!(result.is_err(), "TryFrom should fail for invalid byte range");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKDOWN EVENT STREAM - ITERATOR OVER EVENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A normalized stream of markdown events.
 ///
 /// This acts as the facade adapter between the raw `pulldown-cmark` library
-/// and the internal `Lithos` parsing pipeline. It yields `SpannedEvent`
+/// and the internal `Lithos` parsing pipeline. It yields `EventWithRange`
 /// structures instead of raw tuples.
+///
+/// Reference definitions are extracted during construction and returned
+/// separately to avoid duplicate storage.
 pub(crate) struct MarkdownEventStream<'source> {
     state: StreamState<'source>,
-    references: ReferenceDefinitions,
 }
 
 #[cfg_attr(
@@ -36,6 +187,10 @@ pub(crate) struct MarkdownEventStream<'source> {
 )]
 impl<'source> MarkdownEventStream<'source> {
     /// Creates a new event stream with the provided configuration.
+    ///
+    /// Returns a tuple of `(stream, references)` to avoid duplicate storage of
+    /// reference definitions. The caller (typically `ParserContext`) owns the
+    /// references.
     ///
     /// # Examples
     ///
@@ -46,14 +201,17 @@ impl<'source> MarkdownEventStream<'source> {
     ///
     /// let source = "Here is some markdown text.";
     /// let config = EventStreamConfig::default();
-    /// let mut stream = MarkdownEventStream::new(source, config);
+    /// let (mut stream, references) = MarkdownEventStream::new(source, config);
     ///
     /// assert!(stream.next().is_some());
     /// ```
     #[must_use]
     #[inline]
-    pub(crate) fn new(source: &'source str, config: EventStreamConfig) -> Self {
-        let parser = Parser::new_ext(source, config.options);
+    pub(crate) fn new(
+        source: &'source str,
+        config: EventStreamConfig,
+    ) -> (Self, ReferenceDefinitions) {
+        let parser = Parser::new_ext(source, config.options());
 
         let raw_refs = parser
             .reference_definitions()
@@ -67,41 +225,21 @@ impl<'source> MarkdownEventStream<'source> {
         let offset_iter = parser.into_offset_iter();
         let normalized = EventAdapterIter {
             inner: offset_iter,
-            policy: config.break_policy,
+            policy: config.break_policy(),
         };
 
-        let state = if config.merge_text {
+        let state = if config.merge_text() {
             StreamState::Merged(TextMergeWithOffset::new(normalized))
         } else {
             StreamState::Unmerged(normalized)
         };
 
-        Self {
-            state,
+        (
+            Self {
+                state,
+            },
             references,
-        }
-    }
-
-    /// Returns the normalized reference link definitions.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// // Note: Cannot run doctest for pub(crate) types from external test crate
-    /// use lithos_core::note::parser::stream::MarkdownEventStream;
-    /// use lithos_core::note::parser::config::EventStreamConfig;
-    ///
-    /// let source = "[foo]: /url\n[foo][]";
-    /// let config = EventStreamConfig::default();
-    /// let stream = MarkdownEventStream::new(source, config);
-    ///
-    /// let defs = stream.references();
-    /// assert_eq!(defs.resolve("foo"), Some("/url"));
-    /// ```
-    #[must_use]
-    #[inline]
-    pub(crate) fn references(&self) -> &ReferenceDefinitions {
-        &self.references
+        )
     }
 }
 
@@ -111,14 +249,14 @@ impl<'source> MarkdownEventStream<'source> {
               public wrapper"
 )]
 impl<'source> Iterator for MarkdownEventStream<'source> {
-    type Item = Result<SpannedEvent<'source>, NoteIngestError>;
+    type Item = Result<EventWithRange<'source>, NoteIngestError>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.state.next().map(|(event, range)| {
-            let span = SourceByteRange::try_from(range)
+        self.state.next().map(|(event, byte_range)| {
+            let range = SourceByteRange::try_from(byte_range)
                 .map_err(NoteIngestError::Domain)?;
-            Ok(SpannedEvent::new(event, span))
+            Ok(EventWithRange::new(event, range))
         })
     }
 }
@@ -223,11 +361,11 @@ mod tests {
         #[test]
         fn extracts_reference_definitions_from_source() {
             let source = "[foo]: /url\n\n[foo][]";
-            let stream =
+            let (_stream, references) =
                 MarkdownEventStream::new(source, EventStreamConfig::default());
 
             assert_eq!(
-                stream.references().resolve("foo"),
+                references.resolve("foo"),
                 Some("/url"),
                 "stream should expose normalized reference definitions"
             );
@@ -333,8 +471,8 @@ mod tests {
             assert!(
                 events
                     .iter()
-                    .all(|event| event.span.start() <= event.span.end()),
-                "all emitted events should map to valid source span ranges"
+                    .all(|event| event.range().start() <= event.range().end()),
+                "all emitted events should map to valid source ranges"
             );
         }
     }
@@ -349,13 +487,14 @@ mod tests {
     fn collect_events(
         source: &str,
         config: EventStreamConfig,
-    ) -> Vec<SpannedEvent<'_>> {
-        MarkdownEventStream::new(source, config)
+    ) -> Vec<EventWithRange<'_>> {
+        let (stream, _references) = MarkdownEventStream::new(source, config);
+        stream
             .collect::<Result<Vec<_>, _>>()
             .expect("event stream should not produce invalid spans")
     }
 
-    fn collect_text_payloads(events: &[SpannedEvent<'_>]) -> Vec<String> {
+    fn collect_text_payloads(events: &[EventWithRange<'_>]) -> Vec<String> {
         events
             .iter()
             .filter_map(|event| {
