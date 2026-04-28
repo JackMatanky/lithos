@@ -7,7 +7,11 @@
 //! Separating identifiers from aggregates allows for cleaner dependency
 //! management and targeted indexing.
 
-use std::{borrow::Borrow, fmt::Display, sync::LazyLock};
+use std::{
+    borrow::Borrow,
+    fmt::Display,
+    sync::{Arc, LazyLock},
+};
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -165,7 +169,7 @@ impl Display for SchemaId {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 #[derive(serde::Serialize)]
-pub struct SchemaName(Box<str>);
+pub struct SchemaName(Arc<str>);
 
 impl SchemaName {
     /// Schema name validation pattern: lowercase letters, numbers, underscores,
@@ -195,7 +199,7 @@ impl SchemaName {
     #[inline]
     pub fn try_new(name: &str) -> Result<Self, SchemaError> {
         Self::validate(name)?;
-        Ok(Self(name.into()))
+        Ok(Self(Arc::from(name)))
     }
 
     #[inline]
@@ -270,7 +274,7 @@ impl Display for SchemaName {
 impl From<SchemaName> for String {
     #[inline]
     fn from(val: SchemaName) -> Self {
-        val.0.into()
+        val.0.to_string()
     }
 }
 
@@ -298,7 +302,46 @@ impl TryFrom<Box<str>> for SchemaName {
     #[inline]
     fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
         Self::validate(&value)?;
+        Ok(Self(Arc::from(value)))
+    }
+}
+
+impl TryFrom<Arc<str>> for SchemaName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Arc<str>) -> Result<Self, Self::Error> {
+        Self::validate(&value)?;
         Ok(Self(value))
+    }
+}
+
+impl TryFrom<&RelativePath> for SchemaName {
+    type Error = SchemaError;
+
+    /// Derives `SchemaName` from a path's file stem (basename without
+    /// extension).
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::{fs::RelativePath, schema::identifier::SchemaName};
+    ///
+    /// let path = RelativePath::try_from("schemas/user-profile.json").unwrap();
+    /// let name = SchemaName::try_from(&path).unwrap();
+    /// assert_eq!(name.as_str(), "user-profile");
+    /// ```
+    #[inline]
+    fn try_from(path: &RelativePath) -> Result<Self, Self::Error> {
+        let filename = path.filename().ok_or_else(|| {
+            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                SchemaNameError::InvalidFormat {
+                    name: format!("Path has no filename: {path}").into(),
+                },
+            ))
+        })?;
+
+        let name = filename.basename();
+        Self::try_new(name)
     }
 }
 
@@ -318,16 +361,7 @@ impl TryFrom<RelativePath> for SchemaName {
     /// ```
     #[inline]
     fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
-        let filename = path.filename().ok_or_else(|| {
-            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                SchemaNameError::InvalidFormat {
-                    name: format!("Path has no filename: {path}").into(),
-                },
-            ))
-        })?;
-
-        let name = filename.basename();
-        Self::try_new(name)
+        Self::try_from(&path)
     }
 }
 
@@ -341,7 +375,7 @@ impl<'de> serde::Deserialize<'de> for SchemaName {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = Box::<str>::deserialize(deserializer)?;
+        let s = Arc::<str>::deserialize(deserializer)?;
         Self::try_from(s).map_err(serde::de::Error::custom)
     }
 }

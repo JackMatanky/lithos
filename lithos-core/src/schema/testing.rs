@@ -285,10 +285,8 @@ impl Repository for InMemoryRepository {
     fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
         let name_pairs = self.list_schema_name_id_pairs()?;
         let path_pairs = self.list_schema_path_id_pairs()?;
-        Ok(SchemaIndex::from_pairs(
-            name_pairs.into_vec(),
-            path_pairs.into_vec(),
-        ))
+        SchemaIndex::from_pairs(name_pairs.into_vec(), path_pairs.into_vec())
+            .map_err(|e| InMemoryError::internal(e.to_string()))
     }
 
     // ========================================================================

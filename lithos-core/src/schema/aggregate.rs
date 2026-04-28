@@ -221,4 +221,25 @@ mod tests {
         assert_eq!(schema.name(), &name);
         assert_eq!(schema.parents(), &[parent_id]);
     }
+
+    #[test]
+    fn schema_roundtrips_rkyv() {
+        let id = SchemaId::new();
+        let name = SchemaName::try_new("test-schema").unwrap();
+        let schema = Schema::new(
+            id,
+            name.clone(),
+            vec![SchemaId::new()],
+            vec![],
+            PropertyMap::new(),
+        );
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&schema).unwrap();
+        let deserialized: Schema =
+            rkyv::from_bytes::<Schema, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(deserialized.id, schema.id);
+        assert_eq!(deserialized.name.as_str(), schema.name.as_str());
+        assert_eq!(deserialized.parents.len(), 1);
+    }
 }
