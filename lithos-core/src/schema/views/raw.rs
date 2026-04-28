@@ -758,6 +758,50 @@ mod tests {
     }
 
     #[test]
+    fn raw_schema_view_update_timestamps_preserves_existing_size() {
+        let schema_path =
+            crate::fs::RelativePath::try_from("schemas/note.json").unwrap();
+        let mut version = make_schema_version(Blake3Hash::new([1; 32]));
+        let created_at = Some(std::time::UNIX_EPOCH);
+        let modified_at =
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(5));
+        version.set_file_stats(FileStats::new(created_at, modified_at, 128));
+
+        let mut view = RawSchemaView::new(schema_path, version);
+
+        let next_created_at =
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(30));
+        let next_modified_at =
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(45));
+        view.update_timestamps(next_created_at, next_modified_at);
+
+        let current = view.current().expect("current version should exist");
+        assert_eq!(current.file_stats().created_at(), next_created_at);
+        assert_eq!(current.file_stats().modified_at(), next_modified_at);
+        assert_eq!(current.file_stats().size(), 128);
+    }
+
+    #[test]
+    fn raw_schema_view_update_file_stats_replaces_full_metadata() {
+        let schema_path =
+            crate::fs::RelativePath::try_from("schemas/note.json").unwrap();
+        let mut view = RawSchemaView::new(
+            schema_path,
+            make_schema_version(Blake3Hash::new([1; 32])),
+        );
+
+        let replacement = FileStats::new(
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(60)),
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(75)),
+            4096,
+        );
+        view.update_file_stats(replacement);
+
+        let current = view.current().expect("current version should exist");
+        assert_eq!(current.file_stats(), &replacement);
+    }
+
+    #[test]
     fn property_bank_update_content_hash_errors_without_current_version() {
         let filename = crate::fs::Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
