@@ -1,16 +1,17 @@
-//! View types for schema persistence.
+//! View types for schema staleness detection and version tracking.
 //!
-//! This module contains view types that provide specialized representations
-//! of schema data for specific use cases (staleness detection, inheritance
-//! tracking).
+//! This module provides specialized representations of schema data for
+//! staleness detection, incremental updates, and inheritance tracking.
 //!
 //! ## Module Structure
 //!
-//! - `contracts` - Shared traits (`RawView`, `RawViewRead`, `Version`,
-//!   `VersionRead`)
-//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`)
-//! - `hashes` - Hash records (`HashRecord`)
-//! - `snapshots` - Version payloads (`SchemaVersion`, `PropertyBankVersion`)
+//! - [`contracts`] - Shared traits ([`RawView`], [`RawViewRead`], [`Version`],
+//!   [`VersionRead`])
+//! - [`raw`] - Raw file version views ([`RawSchemaView`],
+//!   [`RawPropertyBankView`])
+//! - [`hashes`] - Hash records ([`HashRecord`])
+//! - [`snapshots`] - Version payloads ([`SchemaVersion`],
+//!   [`PropertyBankVersion`])
 //!
 //! ## View Pattern
 //!
@@ -21,11 +22,25 @@
 //! ## Staleness Detection
 //!
 //! Staleness detection is performed via metadata methods:
-//! - `FileStats::is_timestamp_match()` on each `*Version` - Fast timestamp-only
+//! - [`FileStats::is_timestamp_match`] on each `*Version` — Fast timestamp-only
 //!   check
-//! - `HashRecord::is_content_match()` - Accurate hash-based check
+//! - [`HashRecord::is_content_match`] — Accurate hash-based check
 //!
-//! Views provide `current()` to access the most recent version.
+//! Views provide [`RawView::current`] to access the most recent version.
+//!
+//! # Examples
+//!
+//! ```rust
+//! # use lithos_core::schema::views::*;
+//! # use lithos_core::fs::{FileStats, RelativePath};
+//! # use lithos_core::support::hash::Blake3Hash;
+//! # use std::time::SystemTime;
+//! #
+//! let path = RelativePath::try_from("schemas/note.json").unwrap();
+//! let stats = FileStats::new(Some(SystemTime::now()), None, 1024);
+//! let hash = Blake3Hash::compute(b"content");
+//! // Use RawSchemaView for staleness detection
+//! ```
 
 #![expect(
     clippy::pub_use,

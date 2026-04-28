@@ -1,4 +1,4 @@
-//! Contracts for schema persistence view types.
+//! Trait contracts for schema view persistence.
 //!
 //! This module defines trait boundaries used by the schema view layer:
 //! - [`VersionRead`] and [`Version`] for snapshot payloads,
@@ -7,6 +7,10 @@
 //! The contracts are shared by owned and archived (`rkyv`) representations so
 //! staleness checks and version-history behavior stay consistent across storage
 //! and runtime access paths.
+//!
+//! Types referenced by these traits:
+//! - [`FileStats`] — File timestamp and size metadata
+//! - [`Blake3Hash`] — Content hash for staleness detection
 
 use std::time::SystemTime;
 
@@ -17,7 +21,7 @@ use crate::{
 
 /// Mutable container contract for versioned raw-file views.
 ///
-/// Implemented by `RawSchemaView` and `RawPropertyBankView` to provide
+/// Implemented by [`RawSchemaView`] and [`RawPropertyBankView`] to provide
 /// consistent version rotation, staleness checks, and metadata refresh helpers.
 pub trait RawView {
     /// Maximum number of historical versions retained.
@@ -28,7 +32,10 @@ pub trait RawView {
     /// Concrete version payload type.
     type Version: Version;
 
-    /// Adds a new version, evicting the oldest if needed.
+    /// Adds a new version, evicting the oldest if at capacity.
+    ///
+    /// When the version history reaches [`Self::MAX_VERSIONS`], the oldest
+    /// version is removed to make room for the new one.
     fn add_version(&mut self, version: Self::Version);
 
     /// Returns the most recent version, if any.
@@ -40,13 +47,14 @@ pub trait RawView {
     /// Returns the file identifier (path or filename).
     fn file_path(&self) -> &Self::FilePath;
 
-    /// Returns true when content hash matches current version metadata.
+    /// Returns `true` if the content hash matches the current version metadata.
     #[inline]
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.current().is_some_and(|v| v.is_content_match(content_hash))
     }
 
-    /// Returns true when filesystem timestamps match current version metadata.
+    /// Returns `true` if filesystem timestamps match the current version
+    /// metadata.
     #[inline]
     fn is_timestamp_match(
         &self,
@@ -104,36 +112,41 @@ pub trait RawView {
 /// This keeps staleness checks available on zero-copy archived values without
 /// requiring mutable access or allocation.
 pub trait RawViewRead {
-    /// Returns true when content hash matches current version metadata.
+    /// Returns `true` if the content hash matches the current version metadata.
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool;
 
-    /// Returns true when filesystem timestamps match current version metadata.
+    /// Returns `true` if filesystem timestamps match the current version
+    /// metadata.
     fn is_timestamp_match(
         &self,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> bool;
 
-    /// Returns number of retained historical versions.
+    /// Returns the number of retained historical versions.
     fn version_count(&self) -> usize;
 }
+
 /// Mutable contract for persisted snapshot payloads.
 ///
-/// Implemented by `SchemaVersion` and `PropertyBankVersion`.
+/// Implemented by [`SchemaVersion`] and [`PropertyBankVersion`].
 pub trait Version: VersionRead + Sized {
-    /// Returns file statistics metadata.
+    /// Returns file statistics metadata for this version.
     fn file_stats(&self) -> &FileStats;
 
-    /// Returns hash metadata.
+    /// Returns hash metadata for staleness and incremental resolution.
     fn hashes(&self) -> &HashRecord;
 
-    /// Returns when this version was recorded.
+    /// Returns when this version was recorded in storage.
     fn recorded_at(&self) -> SystemTime;
 
     /// Updates file statistics metadata in-place.
     fn set_file_stats(&mut self, file_stats: FileStats);
 
     /// Clones this version with replacement metadata.
+    ///
+    /// Resets cached data (e.g., expanded properties) to maintain
+    /// consistency with the new metadata.
     #[must_use]
     fn with_metadata(&self, file_stats: FileStats, hashes: HashRecord) -> Self;
 }
@@ -143,16 +156,16 @@ pub trait Version: VersionRead + Sized {
 /// Exposes minimal staleness and format information needed by view containers
 /// and archived access paths.
 pub trait VersionRead {
-    /// Checks whether the content hash matches this version.
+    /// Returns `true` if the content hash matches this version.
     fn is_content_match(&self, hash: &Blake3Hash) -> bool;
 
-    /// Checks whether filesystem timestamps match this version's metadata.
+    /// Returns `true` if filesystem timestamps match this version's metadata.
     fn is_timestamp_match(
         &self,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> bool;
 
-    /// Returns the format version string.
+    /// Returns the format version string (e.g., `"1.0"`).
     fn version(&self) -> &str;
 }

@@ -2,6 +2,13 @@
 //!
 //! These types track version history for schemas and property banks,
 //! enabling staleness detection and incremental updates.
+//!
+//! Types defined in this module:
+//! - [`RawSchemaView`] — Versioned view of a schema file
+//! - [`RawPropertyBankView`] — Versioned view of a property bank file
+//!
+//! See [`FileStats`], [`SchemaVersion`], [`PropertyBankVersion`] for
+//! related metadata types.
 
 #![expect(
     clippy::same_name_method,
@@ -32,17 +39,10 @@ use crate::{
 /// Tracks up to 5 versions of a schema file. Each version includes inheritance
 /// metadata (`extends`, `excludes`) to enable incremental resolution.
 ///
-/// # Examples
+/// Raw schema file with version history.
 ///
-/// ```ignore
-/// use lithos_core::schema::views::{RawSchemaView, SchemaVersion};
-/// use lithos_core::fs::Filename;
-///
-/// let filename = Filename::new("note.toml".into());
-/// let version = SchemaVersion::new(/* ... */)?;
-/// let view = RawSchemaView::new(filename, version);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
+/// Tracks up to 5 versions of a schema file. Each version includes inheritance
+/// metadata (`extends`, `excludes`) to enable incremental resolution.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
     /// Vault-relative schema path (e.g., "schemas/note.toml").
@@ -70,23 +70,14 @@ impl RawSchemaView {
         }
     }
 
-    /// Returns the filename.
+    /// Returns the vault-relative schema path.
     #[inline]
     #[must_use]
     pub fn file_path(&self) -> &RelativePath {
         &self.path
     }
 
-    /// Returns the schema name (derived from filename without extension).
-    ///
-    /// # Examples
-    /// ```ignore
-    /// let view = RawSchemaView::new(
-    ///     Filename::new("note.toml".into()),
-    ///     version,
-    /// );
-    /// assert_eq!(view.name(), "note");
-    /// ```
+    /// Returns the schema name derived from filename without extension.
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
@@ -97,7 +88,9 @@ impl RawSchemaView {
             .unwrap_or("")
     }
 
-    /// Returns the parent schema name (`extends`) from current version, if any.
+    /// Returns the parent schema name from the current version, if any.
+    ///
+    /// Extracted from the `extends` field during schema ingestion.
     #[inline]
     #[must_use]
     pub fn extends(&self) -> Option<&SchemaName> {
@@ -105,7 +98,9 @@ impl RawSchemaView {
         v.extends()
     }
 
-    /// Returns the excluded property names from current version.
+    /// Returns excluded property names from the current version.
+    ///
+    /// Extracted from the `excludes` field during schema ingestion.
     #[inline]
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
@@ -152,20 +147,18 @@ impl RawSchemaView {
         self.versions.push_front(version);
     }
 
-    /// Creates a view from a raw schema with content.
+    /// Creates a view from a parsed schema and its file content.
     ///
-    /// This method bridges the old ingestor API with the new
-    /// SchemaVersion-based storage. It will be simplified in Phase 3 when
-    /// the ingestor is updated.
+    /// Computes the content hash from `content` and extracts metadata
+    /// from `raw` to build the initial [`SchemaVersion`].
     ///
     /// # Parameters
-    /// - `raw`: The parsed raw schema
-    /// - `filename`: The filename with extension (e.g., "note.toml")
-    /// - `content`: The uncompressed file content (unused - for API
-    ///   compatibility)
+    /// - `raw`: The parsed [`RawSchema`]
+    /// - `path`: The vault-relative path (e.g., `"schemas/note.json"`)
+    /// - `content`: The raw file content (used to compute content hash)
     ///
     /// # Errors
-    /// Returns error if metadata is missing or validation fails.
+    /// Returns [`SchemaIngestionError`] if metadata extraction fails.
     #[inline]
     pub fn try_from_with_content(
         raw: &RawSchema,
@@ -189,6 +182,7 @@ impl RawSchemaView {
     }
 }
 
+/// Implements [`RawView`] for [`RawSchemaView`].
 impl RawView for RawSchemaView {
     type FilePath = RelativePath;
     type Version = SchemaVersion;
@@ -256,6 +250,9 @@ impl RawView for RawSchemaView {
         }
     }
 
+    /// Adds a new version with updated content hash.
+    ///
+    /// Keeps property hashes from the current version.
     #[inline]
     fn update_content_hash(
         &mut self,
@@ -275,6 +272,7 @@ impl RawView for RawSchemaView {
     }
 }
 
+/// Implements [`RawViewRead`] for [`RawSchemaView`].
 impl RawViewRead for RawSchemaView {
     #[inline]
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
@@ -296,6 +294,7 @@ impl RawViewRead for RawSchemaView {
     }
 }
 
+/// Implements [`RawViewRead`] for [`ArchivedRawSchemaView`] (zero-copy).
 impl RawViewRead for ArchivedRawSchemaView {
     #[inline]
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
@@ -325,15 +324,6 @@ impl RawViewRead for ArchivedRawSchemaView {
 /// Raw property bank file with version history.
 ///
 /// Tracks up to 5 versions of the property bank file for staleness detection.
-///
-/// # Examples
-///
-/// ```ignore
-/// use lithos_core::schema::views::RawPropertyBankView;
-///
-/// let view = RawPropertyBankView::new(filename, version);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
     /// Filename with extension (e.g., "properties.yaml").
@@ -358,7 +348,7 @@ impl RawPropertyBankView {
         }
     }
 
-    /// Returns the filename.
+    /// Returns the property bank filename.
     #[inline]
     #[must_use]
     pub fn file_path(&self) -> &Filename {
@@ -482,6 +472,7 @@ impl RawPropertyBankView {
     }
 }
 
+/// Implements [`RawView`] for [`RawPropertyBankView`].
 impl RawView for RawPropertyBankView {
     type FilePath = Filename;
     type Version = PropertyBankVersion;
@@ -511,11 +502,13 @@ impl RawView for RawPropertyBankView {
         RawPropertyBankView::add_version(self, version);
     }
 
+    /// Checks content hash against the current version.
     #[inline]
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.current().is_some_and(|v| v.is_content_match(content_hash))
     }
 
+    /// Checks filesystem timestamps against the current version.
     #[inline]
     fn is_timestamp_match(
         &self,
@@ -526,6 +519,7 @@ impl RawView for RawPropertyBankView {
             .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
     }
 
+    /// Updates file stats on the current version, if present.
     #[inline]
     fn update_file_stats(&mut self, file_stats: FileStats) {
         if let Some(current) = self.current_mut() {
@@ -533,6 +527,7 @@ impl RawView for RawPropertyBankView {
         }
     }
 
+    /// Updates timestamps on the current version, preserving file size.
     #[inline]
     fn update_timestamps(
         &mut self,
@@ -549,6 +544,10 @@ impl RawView for RawPropertyBankView {
         }
     }
 
+    /// Adds a new version with updated content hash.
+    ///
+    /// Preserves property hashes from the current version.
+    /// Delegates to [`RawPropertyBankView::update_content_hash`].
     #[inline]
     fn update_content_hash(
         &mut self,

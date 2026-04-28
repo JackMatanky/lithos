@@ -1,7 +1,8 @@
 //! Version types for schema and property bank views.
 //!
-//! These types store validated, typed data extracted from Raw* types,
-//! avoiding the need to add rkyv serialization to the raw parsing layer.
+//! These types store validated, typed data extracted from [`super::RawSchema`]
+//! and [`super::RawPropertyBank`], avoiding the need to add rkyv
+//! serialization to the raw parsing layer.
 //!
 //! ## Hybrid Serialization Strategy
 //!
@@ -15,15 +16,15 @@
 //! This keeps the parsing layer (Raw* types with serde) separate from the
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
+//!
+//! Types defined here:
+//! - [`SchemaVersion`] — Version payload for schema files
+//! - [`PropertyBankVersion`] — Version payload for property bank files
 
 #![expect(
     clippy::same_name_method,
     reason = "Trait contracts intentionally mirror established version API"
 )]
-//!
-//! This keeps the parsing layer (Raw* types with serde) separate from the
-//! storage layer (version types with rkyv), while maintaining queryability of
-//! key metadata fields.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -66,24 +67,24 @@ use crate::{
 /// parsing types while maintaining queryability of inheritance metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
-    /// File statistics metadata.
+    /// File statistics metadata for staleness detection.
     file_stats: FileStats,
 
-    /// Hash metadata for staleness detection.
+    /// Hash metadata for staleness and incremental resolution.
     hashes: HashRecord,
 
-    /// Schema format version as simple string (e.g., "1.0").
+    /// Schema format version as simple string (e.g., `"1.0"`).
     ///
     /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
     /// rkyv derives on Raw* types.
     version: Box<str>,
 
-    /// Parent schema name (from `extends` field).
+    /// Parent schema name from the `extends` field, if any.
     ///
     /// Validated and stored as typed field for efficient querying.
     extends: Option<SchemaName>,
 
-    /// Property names to exclude from parent (from `excludes` field).
+    /// Property names excluded from the parent (from `excludes` field).
     ///
     /// Validated and stored as typed field for efficient querying.
     excludes: Vec<PropertyName>,
@@ -93,9 +94,9 @@ pub struct SchemaVersion {
     /// Extracted from `$ref` entries during ingestion.
     bank_references: HashMap<PropertyName, PropertyName>,
 
-    /// Cached expanded properties (from `RefExpander`).
+    /// Cached expanded properties from `RefExpander`.
     ///
-    /// Enables skipping expansion when `PropertyBank` is fresh.
+    /// Enables skipping expansion when [`PropertyBank`] is fresh.
     expanded_properties: Option<PropertyMap>,
 
     /// When this version was recorded in storage.
@@ -104,10 +105,14 @@ pub struct SchemaVersion {
 }
 
 impl SchemaVersion {
-    /// Create a new schema version from a `RawSchema`.
+    /// Creates a new schema version from a parsed [`RawSchema`].
+    ///
+    /// Extracts inheritance metadata (`extends`, `excludes`) and bank
+    /// references from the parsed schema.
     ///
     /// # Errors
-    /// This constructor is currently infallible; the `Result` is retained for
+    ///
+    /// This constructor is currently infallible; the [`Result`] is retained for
     /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
@@ -146,49 +151,49 @@ impl SchemaVersion {
         })
     }
 
-    /// Get file stats metadata.
+    /// Returns file statistics metadata for this version.
     #[inline]
     #[must_use]
     pub fn file_stats(&self) -> &FileStats {
         &self.file_stats
     }
 
-    /// Get database recording timestamp.
+    /// Returns when this version was recorded in storage.
     #[inline]
     #[must_use]
     pub fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 
-    /// Get hash metadata.
+    /// Returns hash metadata for staleness detection.
     #[inline]
     #[must_use]
     pub fn hashes(&self) -> &HashRecord {
         &self.hashes
     }
 
-    /// Get version string.
+    /// Returns the schema format version string (e.g., `"1.0"`).
     #[inline]
     #[must_use]
     pub fn version(&self) -> &str {
         &self.version
     }
 
-    /// Get parent schema name.
+    /// Returns the parent schema name from `extends`, if any.
     #[inline]
     #[must_use]
     pub fn extends(&self) -> Option<&SchemaName> {
         self.extends.as_ref()
     }
 
-    /// Get excluded property names.
+    /// Returns excluded property names from the `excludes` field.
     #[inline]
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
         &self.excludes
     }
 
-    /// Get bank property references.
+    /// Returns bank property references.
     ///
     /// Returns a map of schema property name to target bank property name.
     #[inline]
@@ -197,7 +202,7 @@ impl SchemaVersion {
         &self.bank_references
     }
 
-    /// Compute schema properties affected by property bank changes.
+    /// Returns schema properties affected by property bank changes.
     ///
     /// Returns property names that refer to any of the changed property names
     /// in the provided `bank_delta`.
@@ -222,22 +227,20 @@ impl SchemaVersion {
         changed
     }
 
-    /// Get cached expanded properties if available.
+    /// Returns cached expanded properties, if available.
     #[inline]
     #[must_use]
     pub fn expanded_properties(&self) -> Option<&PropertyMap> {
         self.expanded_properties.as_ref()
     }
 
-    /// Set cached expanded properties.
-    ///
-    /// Called after `RefExpander` processes the schema.
+    /// Caches expanded properties after [`RefExpander`] runs.
     #[inline]
     pub fn set_expanded_properties(&mut self, properties: PropertyMap) {
         self.expanded_properties = Some(properties);
     }
 
-    /// Clone the version with updated file times and hashes.
+    /// Clones this version with updated file stats and hashes.
     ///
     /// Resets cached expanded properties to keep refresh behavior consistent
     /// with raw-based reconstruction.
@@ -261,6 +264,7 @@ impl SchemaVersion {
     }
 }
 
+/// Implements [`Version`] for [`SchemaVersion`].
 impl Version for SchemaVersion {
     #[inline]
     fn file_stats(&self) -> &FileStats {
@@ -289,6 +293,7 @@ impl Version for SchemaVersion {
     }
 }
 
+/// Implements [`VersionRead`] for [`SchemaVersion`].
 impl VersionRead for SchemaVersion {
     #[inline]
     fn is_timestamp_match(
@@ -310,6 +315,7 @@ impl VersionRead for SchemaVersion {
     }
 }
 
+/// Implements [`VersionRead`] for [`ArchivedSchemaVersion`] (zero-copy).
 impl VersionRead for ArchivedSchemaVersion {
     #[inline]
     fn is_content_match(&self, hash: &Blake3Hash) -> bool {
@@ -343,18 +349,18 @@ impl VersionRead for ArchivedSchemaVersion {
 ///
 /// ## Design Rationale
 ///
-/// Similar to `SchemaVersion`, this uses a hybrid approach: metadata fields are
-/// stored as validated types, while the complex property tree remains in the
-/// Raw* parsing layer to avoid adding rkyv derives.
+/// Similar to [`SchemaVersion`], this uses a hybrid approach: metadata fields
+/// are stored as validated types, while the complex property tree remains in
+/// the Raw* parsing layer to avoid adding rkyv derives.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
-    /// File statistics metadata.
+    /// File statistics metadata for staleness detection.
     file_stats: FileStats,
 
-    /// Hash metadata for staleness detection.
+    /// Hash metadata for staleness and incremental resolution.
     hashes: HashRecord,
 
-    /// Property bank format version as simple string (e.g., "1.0").
+    /// Property bank format version as simple string (e.g., `"1.0"`).
     ///
     /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
     /// rkyv derives on Raw* types.
@@ -366,10 +372,11 @@ pub struct PropertyBankVersion {
 }
 
 impl PropertyBankVersion {
-    /// Create a new property bank version from a version string.
+    /// Creates a new property bank version from a version string.
     ///
     /// # Errors
-    /// This constructor is currently infallible; the `Result` is retained for
+    ///
+    /// This constructor is currently infallible; the [`Result`] is retained for
     /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
@@ -385,35 +392,35 @@ impl PropertyBankVersion {
         })
     }
 
-    /// Get file stats metadata.
+    /// Returns file statistics metadata for this version.
     #[inline]
     #[must_use]
     pub fn file_stats(&self) -> &FileStats {
         &self.file_stats
     }
 
-    /// Get database recording timestamp.
+    /// Returns when this version was recorded in storage.
     #[inline]
     #[must_use]
     pub fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 
-    /// Set file stats metadata.
+    /// Updates file statistics metadata in-place.
     #[inline]
     pub fn set_file_stats(&mut self, file_stats: FileStats) {
         self.file_stats = file_stats;
         self.recorded_at = SystemTime::now();
     }
 
-    /// Get hash metadata.
+    /// Returns hash metadata for staleness detection.
     #[inline]
     #[must_use]
     pub fn hashes(&self) -> &HashRecord {
         &self.hashes
     }
 
-    /// Get version string.
+    /// Returns the property bank format version string (e.g., `"1.0"`).
     #[inline]
     #[must_use]
     pub fn version(&self) -> &str {
@@ -421,6 +428,7 @@ impl PropertyBankVersion {
     }
 }
 
+/// Implements [`Version`] for [`PropertyBankVersion`].
 impl Version for PropertyBankVersion {
     #[inline]
     fn file_stats(&self) -> &FileStats {
@@ -454,6 +462,7 @@ impl Version for PropertyBankVersion {
     }
 }
 
+/// Implements [`VersionRead`] for [`PropertyBankVersion`].
 impl VersionRead for PropertyBankVersion {
     #[inline]
     fn is_timestamp_match(
@@ -475,6 +484,7 @@ impl VersionRead for PropertyBankVersion {
     }
 }
 
+/// Implements [`VersionRead`] for [`ArchivedPropertyBankVersion`] (zero-copy).
 impl VersionRead for ArchivedPropertyBankVersion {
     #[inline]
     fn is_content_match(&self, hash: &Blake3Hash) -> bool {

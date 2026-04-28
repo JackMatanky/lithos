@@ -1,4 +1,11 @@
-//! Shared metadata types for schema and property bank versions.
+//! Hash metadata for staleness detection and incremental resolution.
+//!
+//! [`HashRecord`] stores:
+//! - Content hash ([`Blake3Hash`]) for fast staleness checks
+//! - Per-property hashes for incremental updates and resolution
+//!
+//! Use [`HashRecord::is_content_match`] for efficient staleness detection
+//! without deserializing entire schema data.
 
 use std::collections::HashMap;
 
@@ -15,17 +22,41 @@ use crate::{schema::property::PropertyName, support::hash::Blake3Hash};
 ///
 /// Used for staleness detection (content hash) and incremental resolution
 /// (property hashes).
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::schema::views::HashRecord;
+/// # use lithos_core::support::hash::Blake3Hash;
+/// # use std::collections::HashMap;
+/// #
+/// let content_hash = Blake3Hash::compute(b"content");
+/// let property_hashes = HashMap::new();
+/// let record = HashRecord::new(content_hash, property_hashes);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct HashRecord {
-    /// Blake3 hash of file content for staleness detection.
+    /// Blake3 hash of content for staleness detection.
     content: Blake3Hash,
 
-    /// Per-property Blake3 hashes for incremental updates/resolution.
+    /// Per-property Blake3 hashes for incremental resolution.
     properties: HashMap<PropertyName, Blake3Hash>,
 }
 
 impl HashRecord {
-    /// Create new hash metadata.
+    /// Creates a new hash metadata record.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::HashRecord;
+    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use std::collections::HashMap;
+    /// #
+    /// let content_hash = Blake3Hash::compute(b"content");
+    /// let property_hashes = HashMap::new();
+    /// let record = HashRecord::new(content_hash, property_hashes);
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(
@@ -38,21 +69,26 @@ impl HashRecord {
         }
     }
 
-    /// Get content hash.
+    /// Returns the content hash ([`Blake3Hash`]) for staleness detection.
     #[inline]
     #[must_use]
     pub fn content(&self) -> &Blake3Hash {
         &self.content
     }
 
-    /// Get property hashes.
+    /// Returns per-property hashes for incremental resolution.
+    ///
+    /// Returns a map of [`PropertyName`] to [`Blake3Hash`] for properties
+    /// that need incremental updates.
     #[inline]
     #[must_use]
     pub fn properties(&self) -> &HashMap<PropertyName, Blake3Hash> {
         &self.properties
     }
 
-    /// Check if content hash matches (for staleness detection).
+    /// Returns `true` if the provided content hash matches this record.
+    ///
+    /// Used for fast staleness checks without deserializing the full schema.
     #[inline]
     #[must_use]
     pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
@@ -61,7 +97,9 @@ impl HashRecord {
 }
 
 impl ArchivedHashRecord {
-    /// Check if archived content hash matches (for zero-copy staleness checks).
+    /// Returns `true` if the archived content hash matches (zero-copy).
+    ///
+    /// Used for zero-copy staleness checks without deserialization.
     #[inline]
     #[must_use]
     pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
