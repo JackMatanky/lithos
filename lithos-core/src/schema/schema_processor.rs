@@ -397,24 +397,6 @@ impl PipelinePayload {
         clippy::pattern_type_mismatch,
         reason = "const match ergonomics keep payload access concise"
     )]
-    pub(crate) const fn as_present(&self) -> Option<&PresentPayload> {
-        match self {
-            Self::Present(payload) => Some(payload),
-            Self::Compared(_)
-            | Self::FileParsed(_)
-            | Self::Inheritance(_)
-            | Self::Analysis(_)
-            | Self::NewParsed(_)
-            | Self::Deleted(_) => None,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "const match ergonomics keep payload access concise"
-    )]
     pub(crate) const fn as_analysis(&self) -> Option<&AnalysisBranch> {
         match self {
             Self::Analysis(payload) => Some(payload),
@@ -772,7 +754,7 @@ impl SchemaProcessor<Discovery, Review> {
 
         let (missing, found, deleted_ids) = Self::classify_file_state(
             files,
-            &views_by_path,
+            views_by_path,
             &ids_by_path,
             Some(graph),
             source,
@@ -809,10 +791,8 @@ impl SchemaProcessor<Discovery, Review> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        let relative_files = files.to_vec();
-
         let views_by_path = repository
-            .find_raw_schema_views_by_paths(&relative_files)
+            .find_raw_schema_views_by_paths(files)
             .map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
@@ -821,7 +801,7 @@ impl SchemaProcessor<Discovery, Review> {
             .collect();
 
         let ids_by_path = repository
-            .find_schema_ids_by_paths(&relative_files)
+            .find_schema_ids_by_paths(files)
             .map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
@@ -834,7 +814,7 @@ impl SchemaProcessor<Discovery, Review> {
 
     fn classify_file_state(
         files: &[crate::fs::RelativePath],
-        views_by_path: &HashMap<RelativePath, RawSchemaView>,
+        mut views_by_path: HashMap<RelativePath, RawSchemaView>,
         ids_by_path: &HashMap<RelativePath, SchemaId>,
         graph: Option<&InheritanceGraph<()>>,
         source: &FsReader,
@@ -848,12 +828,12 @@ impl SchemaProcessor<Discovery, Review> {
             });
 
             if let (Some(view), Some(id)) =
-                (views_by_path.get(path), ids_by_path.get(path))
+                (views_by_path.remove(path), ids_by_path.get(path))
             {
                 found.insert(*id, FoundPayload {
                     path: path.clone(),
                     stats,
-                    view: view.clone(),
+                    view,
                 });
             } else {
                 let id = SchemaId::new();
@@ -866,9 +846,8 @@ impl SchemaProcessor<Discovery, Review> {
 
         let mut deleted_ids = Vec::new();
         if let Some(graph) = graph {
-            let file_ids: HashSet<SchemaId> = found.keys().copied().collect();
             for id in graph.topo_order() {
-                if !file_ids.contains(id) && !missing.contains_key(id) {
+                if !found.contains_key(id) && !missing.contains_key(id) {
                     deleted_ids.push(*id);
                 }
             }
@@ -882,15 +861,12 @@ impl SchemaProcessor<Discovery, Review> {
         found: &HashMap<SchemaId, FoundPayload>,
         deleted_ids: &[SchemaId],
     ) -> ProcessingGraph<ProcessorNode<PipelinePayload>> {
-        let deleted_set: HashSet<SchemaId> =
-            deleted_ids.iter().copied().collect();
-
         let mut builder = SchemaGraphBuilder::new();
 
         for (id, _node) in graph.iter() {
             let payload = if let Some(found) = found.get(&id) {
                 PipelinePayload::Present(PresentPayload::Found(found.clone()))
-            } else if deleted_set.contains(&id) {
+            } else if deleted_ids.contains(&id) {
                 PipelinePayload::Deleted(DeletedPayload)
             } else {
                 continue;
@@ -959,23 +935,6 @@ impl SchemaProcessor<Comparison, Present> {
         let mut stale_ref_ids = Vec::new();
         let mut stale_ids = Vec::new();
 
-        // First pass: collect bank-affected IDs.
-        let mut bank_affected_ids = HashSet::new();
-        for (id, node) in graph.graph().iter() {
-            #[expect(
-                clippy::pattern_type_mismatch,
-                reason = "matching borrowed payload keeps extraction concise"
-            )]
-            let Some(PresentPayload::Found(payload)) =
-                node.payload().payload.as_present()
-            else {
-                continue;
-            };
-            if Self::bank_changed(&payload.view, property_bank_delta) {
-                bank_affected_ids.insert(id);
-            }
-        }
-
         let next_graph = graph.map_payload(
             |id,
              node|
@@ -985,7 +944,8 @@ impl SchemaProcessor<Comparison, Present> {
                     PipelinePayload::Present(PresentPayload::Found(
                         found_payload,
                     )) => {
-                        let is_bank_affected = bank_affected_ids.contains(&id);
+                        let is_bank_affected =
+                            Self::bank_changed(&found_payload.view, property_bank_delta);
                         let comparison_payload =
                             match Self::check_timestamps(found_payload, source)? {
                                 TimestampBranch::Match(matched_payload) => {
@@ -2710,7 +2670,7 @@ impl SchemaProcessor<Construction, NewBuild> {
         self,
         repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
         property_bank: &PropertyBank,
-    ) -> Result<Vec<Schema>, SchemaLoaderError> {
+    ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
         use crate::schema::expander::RefExpander;
 
         let NewBuild {
@@ -2802,11 +2762,13 @@ impl SchemaProcessor<Construction, NewBuild> {
 
             let schema = Arc::new(schema);
             constructed_cache.insert(schema_id, Arc::clone(&schema));
-            built.push((*schema).clone());
+            built.push(schema);
         }
 
         if !built.is_empty() {
-            repository.save_schemas(&built).map_err(|e| {
+            let refs: Vec<&Schema> =
+                built.iter().map(std::convert::AsRef::as_ref).collect();
+            repository.save_schemas(&refs).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;
@@ -2852,10 +2814,10 @@ impl SchemaProcessor<Construction, Constructed> {
             deleted_ids,
         } = self.status;
 
-        let owned_schemas: Vec<Schema> =
-            schemas.iter().map(|s| (**s).clone()).collect();
-        if !owned_schemas.is_empty() {
-            repository.save_schemas(&owned_schemas).map_err(|e| {
+        if !schemas.is_empty() {
+            let refs: Vec<&Schema> =
+                schemas.iter().map(std::convert::AsRef::as_ref).collect();
+            repository.save_schemas(&refs).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;

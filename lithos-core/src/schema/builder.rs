@@ -5,7 +5,7 @@
     reason = "builder context uses pub(crate) fields for tests"
 )]
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use tracing::info;
 
@@ -57,7 +57,7 @@ where
     }
 
     /// Run the full ingestion pipeline.
-    pub fn load_all(&mut self) -> Result<Vec<Schema>, SchemaLoaderError> {
+    pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
         use super::schema_processor::{
             Discovery, DiscoveryBranch, NeverSeen, Review, SchemaProcessor,
         };
@@ -122,7 +122,7 @@ where
                     .construct_schemas(&self.repository, &property_bank)?;
                 let schemas =
                     constructed.complete(&self.repository)?.into_schemas();
-                Ok(schemas.into_iter().map(|arc| (*arc).clone()).collect())
+                Ok(schemas)
             }
         }
     }

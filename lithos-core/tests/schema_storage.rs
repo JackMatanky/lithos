@@ -142,7 +142,7 @@ mod roundtrip_tests {
         let schema_id = *schema.id();
 
         // Save
-        repository.save_schemas(&[schema])?;
+        repository.save_schemas(&[&schema])?;
 
         // Retrieve by ID
         let loaded = repository.find_schema_by_id(schema_id)?;
@@ -195,7 +195,7 @@ mod lookup_tests {
             PropertyMap::from(props),
         );
         let schema_id = *schema.id();
-        repository.save_schemas(&[schema])?;
+        repository.save_schemas(&[&schema])?;
 
         // Find by name
         let name = SchemaName::try_new("project")?;
@@ -256,7 +256,7 @@ mod lookup_tests {
             vec![],
             PropertyMap::from(note_props),
         );
-        repository.save_schemas(&[schema1, schema2])?;
+        repository.save_schemas(&[&schema1, &schema2])?;
 
         // List all
         let all = repository.list_schemas()?;
@@ -377,7 +377,7 @@ mod durability_tests {
         let schema_name = schema.name().clone();
 
         // Save schema
-        repository.save_schemas(&[schema])?;
+        repository.save_schemas(&[&schema])?;
 
         // Drop repository to release Arc reference before reopen
         drop(repository);
@@ -484,7 +484,7 @@ mod batch_operations {
         let id_c = *schema_c.id();
 
         // Save batch
-        repository.save_schemas(&[schema_a, schema_b, schema_c])?;
+        repository.save_schemas(&[&schema_a, &schema_b, &schema_c])?;
 
         // Verify ALL schemas were saved (atomic commit)
         let loaded_a = repository.find_schema_by_id(id_a)?;
@@ -566,7 +566,7 @@ mod regression_tests {
         let id2 = *schema2.id();
 
         // Save both in batch
-        repository.save_schemas(&[schema1, schema2])?;
+        repository.save_schemas(&[&schema1, &schema2])?;
 
         // List all schemas (this is where the bug manifested)
         let all_schemas = repository.list_schemas()?;
@@ -624,7 +624,7 @@ mod regression_tests {
             PropertyMap::from(schema1_props),
         );
         let id1 = *schema1.id();
-        repository.save_schemas(&[schema1])?;
+        repository.save_schemas(&[&schema1])?;
 
         // Verify schema 1 loads
         let loaded_schema1 = repository.find_schema_by_id(id1)?;
@@ -647,7 +647,7 @@ mod regression_tests {
             PropertyMap::from(schema2_props),
         );
         let id2 = *schema2.id();
-        repository.save_schemas(&[schema2])?;
+        repository.save_schemas(&[&schema2])?;
 
         // Verify both schemas can be listed
         let all_schemas = repository.list_schemas()?;

@@ -330,6 +330,59 @@ impl BatchReader {
         get_owned_tx(&self.tx, table, key)
     }
 
+    /// Zero-copy read using UUID as key within a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_by_uuid<V, F, R>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+        f: F,
+    ) -> Result<Option<R>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            >,
+        F: FnOnce(&rkyv::Archived<V>) -> R,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        read_archived_tx::<V, _, _>(&self.tx, table, key, f)
+    }
+
+    /// Full deserialization using UUID as key within a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_owned_by_uuid<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        get_owned_tx(&self.tx, table, key)
+    }
+
     /// Scan a table and return all owned values.
     ///
     /// # Errors

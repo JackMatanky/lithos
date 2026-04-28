@@ -182,7 +182,7 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
     /// ```
     #[inline]
     fn try_from(raw: RawPropertyBank) -> Result<Self, Self::Error> {
-        let properties = PropertyMap::try_from(raw.properties().clone())?;
+        let properties = PropertyMap::try_from(raw.into_properties())?;
         Ok(PropertyBank::from(properties))
     }
 }

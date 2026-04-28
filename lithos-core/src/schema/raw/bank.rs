@@ -85,6 +85,13 @@ impl RawPropertyBank {
         &self.properties
     }
 
+    /// Consumes the bank and returns the properties map.
+    #[inline]
+    #[must_use]
+    pub fn into_properties(self) -> RawPropertyMap<RawPropertyBankEntry> {
+        self.properties
+    }
+
     /// Returns the file stats.
     ///
     /// # Examples

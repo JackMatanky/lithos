@@ -77,9 +77,11 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
     ) -> Result<Option<RawSchemaView>, Self::Error> {
         use crate::schema::db_table::RAW_SCHEMA_VIEWS;
 
-        let key = id.to_string();
         self.reader
-            .get_owned::<RawSchemaView>(RAW_SCHEMA_VIEWS, key.as_str())
+            .get_owned_by_uuid::<RawSchemaView>(
+                RAW_SCHEMA_VIEWS,
+                id.into_uuid(),
+            )
             .map_err(map_db_error)
     }
 
@@ -259,7 +261,7 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns storage-specific error if the save fails.
-    fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error>;
 
     /// Saves the property bank singleton.
     ///
@@ -649,16 +651,18 @@ impl Repository for RedbRepository {
     // ========================================================================
 
     #[inline]
-    fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error> {
         use crate::schema::db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME};
 
         self.db
             .batch_write(|batch| {
                 for schema in schemas {
-                    let id_key = schema.id().to_string();
-
                     // Save schema by ID
-                    batch.put(SCHEMA_BY_ID, &id_key, schema)?;
+                    batch.put_by_uuid(
+                        SCHEMA_BY_ID,
+                        schema.id().into_uuid(),
+                        *schema,
+                    )?;
 
                     // Save name → ID mapping
                     batch.put(
@@ -700,12 +704,11 @@ impl Repository for RedbRepository {
 
         let schema = self.find_schema_by_id(id)?;
         let view = self.get_raw_schema_view(id)?;
-        let key = id.to_string();
 
         self.db
             .batch_write(|batch| {
-                batch.delete(SCHEMA_BY_ID, &key)?;
-                batch.delete(RAW_SCHEMA_VIEWS, &key)?;
+                batch.delete_by_uuid(SCHEMA_BY_ID, id.into_uuid())?;
+                batch.delete_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid())?;
                 if let Some(schema) = schema.as_ref() {
                     batch.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
                 }
@@ -783,8 +786,9 @@ impl Repository for RedbRepository {
     ) -> Result<Option<RawSchemaView>, Self::Error> {
         use crate::schema::db_table::RAW_SCHEMA_VIEWS;
 
-        let key = id.to_string();
-        self.db.get_owned(RAW_SCHEMA_VIEWS, key.as_str()).map_err(map_db_error)
+        self.db
+            .get_owned_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid())
+            .map_err(map_db_error)
     }
 
     #[inline]
@@ -795,11 +799,10 @@ impl Repository for RedbRepository {
     ) -> Result<(), Self::Error> {
         use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
 
-        let key = id.to_string();
         self.db
             .batch_write(|batch| {
                 let path_key = view.file_path().as_path().to_string_lossy();
-                batch.put(RAW_SCHEMA_VIEWS, &key, view)?;
+                batch.put_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid(), view)?;
                 batch.put(SCHEMA_ID_BY_PATH, path_key.as_ref(), &id)?;
                 Ok(())
             })
@@ -894,11 +897,12 @@ impl Repository for RedbRepository {
                     };
 
                     // Step 2: Look up RawSchemaView by ID
-                    let id_key = id.to_string();
-                    if let Some(view) = reader.get_owned::<RawSchemaView>(
-                        RAW_SCHEMA_VIEWS,
-                        id_key.as_str(),
-                    )? {
+                    if let Some(view) = reader
+                        .get_owned_by_uuid::<RawSchemaView>(
+                            RAW_SCHEMA_VIEWS,
+                            id.into_uuid(),
+                        )?
+                    {
                         results.insert(path.clone(), view);
                     }
                 }

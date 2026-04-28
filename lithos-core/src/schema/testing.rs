@@ -344,7 +344,7 @@ impl Repository for InMemoryRepository {
     // Write Operations
     // ========================================================================
 
-    fn save_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error> {
         let mut schemas_map = self.schemas.write().map_err(|_| {
             InMemoryError::lock_poisoned("save_schemas (schemas)")
         })?;
@@ -354,7 +354,7 @@ impl Repository for InMemoryRepository {
         })?;
 
         for schema in schemas {
-            schemas_map.insert(*schema.id(), schema.clone());
+            schemas_map.insert(*schema.id(), (*schema).clone());
             name_to_id_map.insert(schema.name().clone(), *schema.id());
         }
 
@@ -659,7 +659,7 @@ mod tests {
         let schema =
             Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 
-        repo.save_schemas(&[schema]).unwrap();
+        repo.save_schemas(&[&schema]).unwrap();
         assert_eq!(repo.schema_count(), 1);
 
         // Clear

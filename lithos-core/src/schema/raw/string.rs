@@ -259,13 +259,16 @@ fn serialize_ordered_map<S>(
 where
     S: serde::Serializer,
 {
+    use std::borrow::Cow;
+
     use serde::ser::SerializeMap as _;
 
     let mut map = serializer.serialize_map(Some(entries.len()))?;
     for entry in entries {
-        let key = entry
-            .order
-            .map_or_else(|| "0".to_owned(), |o| o.value().to_string());
+        let key = entry.order.map_or_else(
+            || Cow::Borrowed("0"),
+            |o| Cow::Owned(o.value().to_string()),
+        );
         map.serialize_entry(&key, &entry.value)?;
     }
     map.end()
