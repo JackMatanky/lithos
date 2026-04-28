@@ -1015,7 +1015,7 @@ mod tests {
             "$version": "1.0",
             "properties": {}
         }"#;
-        let raw: RawSchema = serde_json::from_str::<RawSchema>(raw_json)
+        let raw = serde_json::from_str::<RawSchema>(raw_json)
             .expect("valid schema should deserialize")
             .with_name("test".into());
 

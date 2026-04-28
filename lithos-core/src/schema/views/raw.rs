@@ -927,13 +927,12 @@ mod tests {
     };
 
     fn make_schema_version(content_hash: Blake3Hash) -> SchemaVersion {
-        let raw: RawSchema =
-            serde_json::from_value::<RawSchema>(serde_json::json!({
-                "$version": "1.0",
-                "properties": {}
-            }))
-            .expect("valid schema fixture")
-            .with_name("note".into());
+        let raw = serde_json::from_value::<RawSchema>(serde_json::json!({
+            "$version": "1.0",
+            "properties": {}
+        }))
+        .expect("valid schema fixture")
+        .with_name("note".into());
 
         SchemaVersion::new(
             FileStats::new(None, None, 0),

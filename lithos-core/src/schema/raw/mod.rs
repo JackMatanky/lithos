@@ -91,7 +91,9 @@
 
 #![expect(
     clippy::module_name_repetitions,
-    reason = "Raw* types follow naming conventions for input layer types"
+    clippy::pub_use,
+    reason = "Raw* types follow naming conventions; re-exports provide \
+              unified input layer API"
 )]
 
 pub mod bank;
@@ -106,77 +108,21 @@ pub mod version;
 mod aggregate;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Type Aliases (Re-exports)
+// Re-exports
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Raw schema definition loaded from vault files.
-pub type RawSchema = aggregate::RawSchema;
-
-/// Raw property bank loaded from vault files.
-pub type RawPropertyBank = bank::RawPropertyBank;
-
-/// Schema format version.
-pub type RawSchemaVersion = version::RawSchemaVersion;
-
-/// Raw property for schema properties map.
-pub type RawProperty = property::RawProperty;
-
-/// Entry in the raw property bank.
-pub type RawPropertyBankEntry = property::RawPropertyBankEntry;
-
-/// Inline variant of a raw property.
-pub type RawPropertyInline = property::RawPropertyInline;
-
-/// Raw boolean property definition.
-pub type RawBoolProperty = bool::RawBoolProperty;
-
-/// Raw string property definition.
-pub type RawStringProperty = string::RawStringProperty;
-
-/// Raw number property definition.
-pub type RawNumberProperty = number::RawNumberProperty;
-
-/// Raw date property definition.
-pub type RawDateProperty = date::RawDateProperty;
-
-/// Raw file property definition.
-pub type RawFileProperty = file::RawFileProperty;
-
-/// Reference variant of a raw property with optional overrides.
-pub type RawPropertyRef = property::RawPropertyRef;
-
-/// Validated property map that guarantees all keys are valid `PropertyNames`.
-pub type RawPropertyMap<T> = property::RawPropertyMap<T>;
-
-/// Validated reference path to a property bank entry.
-pub type RawPropertyRefPath = property::RawPropertyRefPath;
-
-/// Boolean property definition (marker type).
-pub type RawBoolSpec = bool::RawBoolSpec;
-
-/// Date property definition.
-pub type RawDateSpec = date::RawDateSpec;
-
-/// File property definition.
-pub type RawFileSpec = file::RawFileSpec;
-
-/// Number property definition.
-pub type RawNumberSpec = number::RawNumberSpec;
-
-/// String property definition.
-pub type RawStringSpec = string::RawStringSpec;
-
-/// Raw options definition supporting three formats.
-pub type RawOptions = string::RawOptions;
-
-/// A rich option entry with optional label and input order.
-pub type RawEntryValue = string::RawEntryValue;
-
-/// Input order position.
-pub type RawEntryInputOrder = string::RawEntryInputOrder;
-
-/// Named string format for common validation patterns.
-pub type RawStringFormat = string::RawStringFormat;
-
-/// Raw string pattern supporting both custom regex and predefined formats.
-pub type RawStringPattern = string::RawStringPattern;
+pub use aggregate::RawSchema;
+pub use bank::RawPropertyBank;
+pub use bool::{RawBoolProperty, RawBoolSpec};
+pub use date::{RawDateProperty, RawDateSpec};
+pub use file::{RawFileProperty, RawFileSpec};
+pub use number::{RawNumberProperty, RawNumberSpec};
+pub use property::{
+    RawProperty, RawPropertyBankEntry, RawPropertyInline, RawPropertyMap,
+    RawPropertyRef, RawPropertyRefPath,
+};
+pub use string::{
+    RawEntryInputOrder, RawEntryValue, RawOptions, RawStringFormat,
+    RawStringPattern, RawStringProperty, RawStringSpec,
+};
+pub use version::RawSchemaVersion;
