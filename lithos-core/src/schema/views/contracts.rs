@@ -1,16 +1,98 @@
 //! Trait contracts for schema view persistence.
 //!
-//! This module defines trait boundaries used by the schema view layer:
-//! - [`VersionRead`] and [`Version`] for snapshot payloads.
-//! - [`RawViewRead`] and [`RawView`] for versioned raw-file view containers.
+//! ## Purpose
 //!
-//! These contracts are shared by owned and archived (`rkyv`) representations so
-//! staleness checks and version-history behavior stay consistent across storage
-//! and runtime access paths.
+//! This module defines the trait boundaries that enable **polymorphic access**
+//! to view types in both their **owned** (runtime) and **archived** (storage)
+//! representations. This design ensures staleness detection, version history,
+//! and metadata queries work identically whether operating on deserialized
+//! views or zero-copy archived views directly from the database.
 //!
-//! Types referenced by these traits:
-//! - [`FileStats`] — File timestamp and size metadata.
-//! - [`Blake3Hash`] — Content hash for staleness detection.
+//! ## Design Philosophy
+//!
+//! ### Why Shared Traits Between Owned and Archived Types?
+//!
+//! Lithos uses `rkyv` for zero-copy deserialization, which generates separate
+//! `Archived*` types (e.g., `ArchivedRawSchemaView`) that live in mapped memory
+//! and cannot be modified. To avoid code duplication, we define shared trait
+//! boundaries:
+//!
+//! - **Read traits** ([`RawViewRead`], [`VersionRead`]): Implemented by
+//!   **both** owned types (e.g., `RawSchemaView`) and archived types (e.g.,
+//!   `ArchivedRawSchemaView`). Enable polymorphic read-only access for
+//!   staleness checks, metadata queries, and version traversal.
+//!
+//! - **Mutation traits** ([`RawView`], [`Version`]): Implemented **only** by
+//!   owned types. Provide version rotation ([`RawView::add_version`]), metadata
+//!   updates, and other mutation operations that require ownership.
+//!
+//! ### Zero-Copy Access Pattern
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  HOT PATH (Read-Only Queries)                               │
+//! │  • Staleness checks: view.is_content_match(&hash)           │
+//! │  • Metadata queries: view.extends(), view.file_path()       │
+//! │  • Version traversal: view.versions()                       │
+//! │                                                              │
+//! │  Uses: ArchivedRawSchemaView (zero-copy, no allocation)     │
+//! │  Trait: RawViewRead (shared read-only interface)            │
+//! └─────────────────────────────────────────────────────────────┘
+//!
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  COLD PATH (Mutations)                                       │
+//! │  • Add new version: view.add_version(version)               │
+//! │  • Update metadata: view.current_mut().set_expanded(...)    │
+//! │  • Ring buffer rotation (evict oldest when full)            │
+//! │                                                              │
+//! │  Uses: RawSchemaView (owned, heap-allocated)                │
+//! │  Trait: RawView (owned mutation interface)                  │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Trait Hierarchy
+//!
+//! - [`VersionRead`]: Read-only access to version snapshot metadata (hashes,
+//!   timestamps, recorded time). Implemented by [`SchemaVersion`],
+//!   [`PropertyBankVersion`], and their `Archived*` counterparts.
+//!
+//! - [`Version`]: Mutation operations for version snapshots. Extends
+//!   [`VersionRead`]. Implemented **only** by owned types.
+//!
+//! - [`RawViewRead`]: Read-only access to versioned view containers (file path,
+//!   version history, inheritance metadata). Implemented by [`RawSchemaView`],
+//!   [`RawPropertyBankView`], and their `Archived*` counterparts.
+//!
+//! - [`RawView`]: Mutation operations for versioned containers (add version,
+//!   update current). Extends [`RawViewRead`]. Implemented **only** by owned
+//!   types.
+//!
+//! ## Performance Implications
+//!
+//! By implementing read traits for both owned and archived types, we enable:
+//!
+//! 1. **Zero-copy staleness checks**: Compare hashes directly in mapped memory
+//!    without deserializing the full view structure.
+//!
+//! 2. **Lazy deserialization**: Only deserialize (allocate) when mutations are
+//!    required (e.g., adding a new version). Read-only operations stay in
+//!    mapped memory.
+//!
+//! 3. **Consistent API**: Code that queries view metadata works identically
+//!    whether operating on cached (owned) or database (archived) views.
+//!
+//! ## Types Referenced
+//!
+//! - [`FileStats`]: File timestamp and size metadata for fast staleness checks.
+//! - [`Blake3Hash`]: Cryptographic content hash for accurate staleness
+//!   detection.
+//! - [`HashRecord`]: Combined content hash + per-property hashes for
+//!   incremental resolution.
+//!
+//! [`RawSchemaView`]: super::raw::RawSchemaView
+//! [`RawPropertyBankView`]: super::raw::RawPropertyBankView
+//! [`SchemaVersion`]: super::snapshots::SchemaVersion
+//! [`PropertyBankVersion`]: super::snapshots::PropertyBankVersion
 
 use std::time::SystemTime;
 

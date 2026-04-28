@@ -1,11 +1,112 @@
-//! Hash metadata for staleness detection and incremental resolution.
+//! Hash-based content integrity tracking for staleness detection.
 //!
-//! [`HashRecord`] stores:
-//! - Content hash ([`Blake3Hash`]) for fast staleness checks
-//! - Per-property hashes for incremental updates and resolution
+//! ## Purpose
 //!
-//! Use [`HashRecord::is_content_match`] for efficient staleness detection
-//! without deserializing entire schema data.
+//! This module provides [`HashRecord`], a dual-level hashing structure that
+//! enables both **file-level staleness detection** (content hash) and
+//! **incremental property resolution** (per-property hashes). This design
+//! allows Lithos to answer two critical questions efficiently:
+//!
+//! 1. **"Has this file changed?"** (content hash comparison, O(1))
+//! 2. **"Which properties changed?"** (per-property hash diff, O(k) where k =
+//!    changed properties)
+//!
+//! ## Staleness Detection Strategy
+//!
+//! ### File-Level Staleness (Content Hash)
+//!
+//! The **content hash** ([`Blake3Hash`] of entire file contents) enables fast
+//! staleness detection without parsing:
+//!
+//! ```text
+//! Fast Path (file unchanged):
+//! 1. Compute Blake3Hash of file contents (fast: ~3µs for 1KB file)
+//! 2. Compare with stored content hash: record.is_content_match(&hash)
+//! 3. Match → skip parsing, use cached domain aggregate
+//! 4. Mismatch → proceed to slow path (re-parse + re-validate)
+//! ```
+//!
+//! **Why Blake3?** Chosen for:
+//! - **Speed**: 10x faster than SHA-256 on modern CPUs
+//! - **Cryptographic quality**: Collision-resistant (256-bit output)
+//! - **Streaming support**: Can hash files larger than RAM incrementally
+//! - **Standard**: Wide adoption in modern tools (Nix, IPFS)
+//!
+//! ### Property-Level Incremental Resolution (Per-Property Hashes)
+//!
+//! The **property hashes** (map of `PropertyName` → `Blake3Hash`) enable
+//! **incremental updates** when property bank changes:
+//!
+//! ```text
+//! Property Bank Update Scenario:
+//! 1. Property bank file changes (content hash mismatch)
+//! 2. Compare property_hashes maps:
+//!    old_record.properties vs. new_record.properties
+//! 3. Identify changed properties: diff.keys()
+//! 4. Query schemas: which reference changed properties?
+//! 5. Re-expand ONLY affected schemas (not all)
+//! ```
+//!
+//! **Example**:
+//! - Property bank has 100 properties
+//! - User edits 1 property definition
+//! - 10 schemas reference the changed property
+//! - **With per-property hashing**: Re-expand 10 schemas
+//! - **Without**: Re-expand all schemas using property bank (wasteful)
+//!
+//! ## Content Hash vs. Per-Property Hash
+//!
+//! ### When to Use Content Hash
+//!
+//! - **Staleness checks**: "Has this file changed at all?"
+//! - **Cache invalidation**: "Can I skip re-parsing?"
+//! - **First-level filter**: Fast rejection of unchanged files
+//!
+//! ### When to Use Per-Property Hashes
+//!
+//! - **Incremental resolution**: "Which properties need re-expansion?"
+//! - **Dependency tracking**: "Which schemas are affected by this change?"
+//! - **Second-level analysis**: After content hash confirms file changed
+//!
+//! ## Hash Computation Strategy
+//!
+//! ### For Schemas
+//!
+//! - **Content hash**: `Blake3Hash::compute(file_contents.as_bytes())`
+//! - **Property hashes**: Map each property definition to
+//!   `Blake3Hash::compute(property_toml.as_bytes())`
+//!
+//! ### For Property Banks
+//!
+//! - **Content hash**: `Blake3Hash::compute(file_contents.as_bytes())`
+//! - **Property hashes**: Map each registered property to
+//!   `Blake3Hash::compute(property_definition.as_bytes())`
+//!
+//! ## Performance Characteristics
+//!
+//! - **Hash computation**: ~3µs per 1KB file (Blake3 on modern CPU)
+//! - **Hash comparison**: O(1) memory comparison (32 bytes)
+//! - **Per-property diff**: O(k) where k = number of properties
+//! - **Zero-copy access**: Via `ArchivedHashRecord` (no deserialization
+//!   overhead)
+//!
+//! ## Zero-Copy Access
+//!
+//! [`HashRecord`] is stored via `rkyv` serialization, enabling zero-copy
+//! access in hot paths:
+//!
+//! ```rust,ignore
+//! // Hot path: zero-copy staleness check (no allocation)
+//! let archived: &ArchivedHashRecord = view.current().hashes();
+//! if archived.is_content_match(&current_hash) {
+//!     // File unchanged, use cached aggregate
+//! }
+//! ```
+//!
+//! The archived type ([`ArchivedHashRecord`]) implements the same API as the
+//! owned type, ensuring consistent behavior across runtime and storage.
+//!
+//! [`ArchivedHashRecord`]: hashes::ArchivedHashRecord
 
 use std::collections::HashMap;
 

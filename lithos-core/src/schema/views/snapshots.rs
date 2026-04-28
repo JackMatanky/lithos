@@ -1,25 +1,178 @@
-//! Version types for schema and property bank views.
+//! Version snapshot payloads for schema and property bank views.
 //!
-//! These types store validated, typed data extracted from [`super::RawSchema`]
-//! and [`super::RawPropertyBank`], avoiding the need to add rkyv
-//! serialization to the raw parsing layer.
+//! ## Purpose
+//!
+//! This module defines the **version payload types** ([`SchemaVersion`],
+//! [`PropertyBankVersion`]) that represent individual historical snapshots in
+//! the ring buffer maintained by [`RawSchemaView`] and [`RawPropertyBankView`].
+//! Each version captures file metadata, content hashes, and extracted business
+//! metadata at a specific point in time.
+//!
+//! ## Version Payload Structure
+//!
+//! ### What Gets Stored in a Version?
+//!
+//! Each version snapshot contains:
+//!
+//! 1. **File Metadata** ([`FileStats`]):
+//!    - Created timestamp (filesystem creation time)
+//!    - Modified timestamp (filesystem last modified time)
+//!    - File size in bytes
+//!    - **Purpose**: Fast timestamp-based staleness checks without hashing
+//!
+//! 2. **Content Integrity** ([`HashRecord`]):
+//!    - Content hash (Blake3 of entire file)
+//!    - Per-property hashes (Blake3 per property definition)
+//!    - **Purpose**: Accurate staleness detection and incremental resolution
+//!
+//! 3. **Business Metadata** (schema-specific):
+//!    - **[`SchemaVersion`]**: `version`, `extends`, `excludes`,
+//!      `bank_references`, optional `expanded_properties`
+//!    - **[`PropertyBankVersion`]**: `version` (semantic version string)
+//!    - **Purpose**: Enable queries without deserializing domain aggregates
+//!
+//! 4. **Recording Timestamp** ([`SystemTime`]):
+//!    - When this version was ingested (wall clock time)
+//!    - **Purpose**: Audit trail, debugging version rotation issues
+//!
+//! ### Why Not Store Full Domain Aggregates?
+//!
+//! Versions store **metadata only**, not full domain aggregates ([`Schema`],
+//! [`PropertyBank`]). This separation provides:
+//!
+//! - **Stability**: Version structure changes less frequently than domain logic
+//! - **Performance**: Smaller payloads (metadata-only) = faster queries
+//! - **Queryability**: Extract only what's needed for staleness/inheritance
+//!   checks
+//! - **Storage efficiency**: No duplication of full property trees across
+//!   versions
 //!
 //! ## Hybrid Serialization Strategy
 //!
-//! These types use a hybrid approach to avoid adding rkyv derives to Raw*
-//! types:
-//! - Metadata fields (`extends`, `excludes`, `version`) are stored as validated
-//!   types
-//! - Complex property trees remain in the Raw* layer
-//! - Version views store only validated metadata needed for staleness checks
+//! Version types implement Lithos's **three-layer serialization model**:
 //!
-//! This keeps the parsing layer (Raw* types with serde) separate from the
-//! storage layer (version types with rkyv), while maintaining queryability of
-//! key metadata fields.
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  RAW LAYER (serde only)                                      │
+//! │  RawSchema, RawPropertyBank                                  │
+//! │  • Tolerant parsing (Option<T> fields)                       │
+//! │  • Human-editable formats (YAML, JSON, TOML)                 │
+//! │  • Syntax validation only                                    │
+//! └───────────────────────┬─────────────────────────────────────┘
+//!                         │ TryFrom (semantic validation)
+//!                         ▼
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  DOMAIN LAYER (rkyv + optional serde)                        │
+//! │  Schema, PropertyBank                                        │
+//! │  • Invariant-preserving types                                │
+//! │  • Zero-copy storage via rkyv                                │
+//! │  • Business logic operations                                 │
+//! └───────────────────────┬─────────────────────────────────────┘
+//!                         │ Extract metadata
+//!                         ▼
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  VIEW LAYER (rkyv only) ← THIS MODULE                        │
+//! │  SchemaVersion, PropertyBankVersion                          │
+//! │  • Metadata-only snapshots                                   │
+//! │  • Zero-copy queries via ArchivedSchemaVersion               │
+//! │  • No human editing (internal storage format)                │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
 //!
-//! Types defined here:
-//! - [`SchemaVersion`] — Version payload for schema files
-//! - [`PropertyBankVersion`] — Version payload for property bank files
+//! **Why this separation?**
+//!
+//! - **Raw Layer**: Optimized for **parsing** (serde for human formats)
+//! - **Domain Layer**: Optimized for **business logic** (invariants,
+//!   validation)
+//! - **View Layer**: Optimized for **staleness detection** (metadata queries,
+//!   zero-copy access)
+//!
+//! Adding `rkyv` derives to `Raw*` types would pollute the parsing layer with
+//! storage concerns. Version types act as an **adapter layer**, extracting only
+//! what's needed for metadata queries.
+//!
+//! ## `SchemaVersion`: Inheritance Metadata Extraction
+//!
+//! [`SchemaVersion`] extracts inheritance metadata during ingestion:
+//!
+//! - **`extends`**: Optional parent schema name for property inheritance
+//! - **`excludes`**: Property names excluded from inheritance (validated)
+//! - **`bank_references`**: Map of properties using `$ref` to property bank
+//!   (enables incremental re-expansion)
+//!
+//! This metadata is stored in **every version** to enable:
+//!
+//! 1. **Inheritance graph construction**: Query `extends` without loading full
+//!    schemas
+//! 2. **Incremental resolution**: Identify which schemas need re-expansion when
+//!    property bank changes
+//! 3. **Zero-copy queries**: Access via `ArchivedSchemaVersion` without
+//!    deserialization
+//!
+//! ## `PropertyBankVersion`: Simplified Structure
+//!
+//! [`PropertyBankVersion`] has a simpler structure (no inheritance metadata):
+//!
+//! - **`version`**: Semantic version string (e.g., "1.0")
+//! - **`hashes`**: Content hash + per-property hashes
+//! - **`file_stats`**: Timestamps and file size
+//! - **`recorded_at`**: When ingested
+//!
+//! The property bank is a **singleton** (one per vault), so version tracking
+//! focuses on **staleness detection** and **per-property change tracking**.
+//!
+//! ## Expanded Properties Caching (Future Optimization)
+//!
+//! [`SchemaVersion`] includes an **optional** `expanded_properties` field:
+//!
+//! ```rust,ignore
+//! pub struct SchemaVersion {
+//!     // ...
+//!     /// Cached result of RefExpander (optional optimization).
+//!     expanded_properties: Option<PropertyMap>,
+//! }
+//! ```
+//!
+//! **Purpose**: Cache the output of `RefExpander` (property bank reference
+//! expansion) to avoid re-expanding on every load.
+//!
+//! **Current status**: Not yet implemented (placeholder for future
+//! optimization).
+//!
+//! **When to populate**: After first expansion, store result here. On
+//! subsequent loads, check if property bank hashes match—if so, use cached
+//! expanded properties.
+//!
+//! ## Zero-Copy Access
+//!
+//! Version types are stored via `rkyv` serialization, enabling zero-copy
+//! access:
+//!
+//! ```rust,ignore
+//! // Hot path: zero-copy metadata query (no allocation)
+//! let archived: &ArchivedSchemaVersion = view.current();
+//! if let Some(parent) = archived.extends() {
+//!     // Query inheritance without deserializing full schema
+//! }
+//! ```
+//!
+//! The archived types (`ArchivedSchemaVersion`, `ArchivedPropertyBankVersion`)
+//! implement the same traits ([`VersionRead`]) as owned types, ensuring
+//! consistent behavior.
+//!
+//! ## Types Defined
+//!
+//! - [`SchemaVersion`]: Version snapshot payload for schema files. Includes
+//!   inheritance metadata (`extends`, `excludes`), bank references, and
+//!   optional cached expanded properties.
+//!
+//! - [`PropertyBankVersion`]: Version snapshot payload for property bank files.
+//!   Includes version string, hashes, and file stats (no inheritance metadata).
+//!
+//! [`RawSchemaView`]: super::raw::RawSchemaView
+//! [`RawPropertyBankView`]: super::raw::RawPropertyBankView
+//! [`Schema`]: crate::schema::aggregate::Schema
+//! [`PropertyBank`]: crate::schema::bank::PropertyBank
 
 #![expect(
     clippy::same_name_method,

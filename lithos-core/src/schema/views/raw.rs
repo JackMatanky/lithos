@@ -1,14 +1,121 @@
-//! Raw schema and property bank views for persistence.
+//! Versioned metadata containers for raw schema and property bank files.
 //!
-//! These types track version history for schemas and property banks,
-//! enabling staleness detection and incremental updates.
+//! ## Purpose
 //!
-//! Types defined in this module:
-//! - [`RawSchemaView`] — Versioned view of a schema file
-//! - [`RawPropertyBankView`] — Versioned view of a property bank file
+//! This module provides the **primary view types** ([`RawSchemaView`],
+//! [`RawPropertyBankView`]) that serve as versioned metadata containers,
+//! tracking file identity, version history, and extracted inheritance metadata.
+//! These views are persisted alongside domain aggregates ([`Schema`],
+//! [`PropertyBank`]) to enable incremental updates and staleness detection.
 //!
-//! See [`FileStats`], [`SchemaVersion`], [`PropertyBankVersion`] for
-//! related metadata types.
+//! ## Container Responsibilities
+//!
+//! ### File Identity Tracking
+//!
+//! Each view maintains a stable file identifier:
+//! - [`RawSchemaView`][]: Vault-relative path (e.g., `"schemas/note.toml"`)
+//! - [`RawPropertyBankView`][]: Filename (e.g., `"property_bank.yaml"`)
+//!
+//! These identifiers enable lookup by file path without scanning all views.
+//!
+//! ### Version History (Ring Buffer)
+//!
+//! Both view types maintain a **ring buffer** of up to 5 historical versions
+//! using [`VecDeque`]:
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  RawSchemaView (ring buffer, max 5 versions)                │
+//! │                                                              │
+//! │  Front (newest)                             Back (oldest)   │
+//! │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │
+//! │  │   v5   │ │   v4   │ │   v3   │ │   v2   │ │   v1   │   │
+//! │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘   │
+//! │      ▲                                            │         │
+//! │      │                                            │         │
+//! │  add_version()                              evicted         │
+//! │  (push_front)                               (pop_back)      │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! **Ring buffer properties**:
+//! - **Newest first**: `current()` returns `versions.front()` (O(1) access)
+//! - **Automatic eviction**: When full (5 versions), `add_version()` evicts
+//!   oldest via `pop_back()`
+//! - **Efficient rotation**: `VecDeque::push_front()` + `pop_back()` for O(1)
+//!   amortized version rotation
+//!
+//! ### Inheritance Metadata Extraction
+//!
+//! [`RawSchemaView`] extracts inheritance metadata during ingestion:
+//! - **`extends`**: Parent schema name for property inheritance
+//! - **`excludes`**: Property names excluded from inheritance
+//!
+//! This metadata is stored in **every version** ([`SchemaVersion`]) and
+//! mirrored at the view level for zero-copy queries:
+//!
+//! ```rust,ignore
+//! // Zero-copy query via ArchivedRawSchemaView (no deserialization)
+//! if let Some(parent) = archived_view.extends() {
+//!     // Load parent schema before resolving child
+//! }
+//! ```
+//!
+//! ## Lifecycle Management
+//!
+//! ### Creation (New File Ingestion)
+//!
+//! When a new schema/property bank file is discovered:
+//!
+//! 1. Parse file to `RawSchema` or `RawPropertyBank` (syntax validation)
+//! 2. Compute [`HashRecord`] (content hash + per-property hashes)
+//! 3. Create initial version ([`SchemaVersion`] or [`PropertyBankVersion`])
+//! 4. Create view with single version: `RawSchemaView::new(path, version)`
+//! 5. Persist view alongside domain aggregate
+//!
+//! ### Update (File Modified)
+//!
+//! When an existing file changes (hash mismatch detected):
+//!
+//! 1. Re-parse file to `RawSchema` or `RawPropertyBank`
+//! 2. Compute new [`HashRecord`]
+//! 3. Create new version with updated metadata
+//! 4. Load existing view, add version: `view.add_version(new_version)`
+//! 5. Ring buffer automatically evicts oldest if at capacity (5 versions)
+//! 6. Persist updated view
+//!
+//! ### Query (Staleness Check)
+//!
+//! When checking if a file needs re-parsing:
+//!
+//! 1. Compute current file hash ([`Blake3Hash`])
+//! 2. Load view via zero-copy: `ArchivedRawSchemaView` (no allocation)
+//! 3. Compare hash: `view.is_content_match(&current_hash)`
+//! 4. **Match** → use cached domain aggregate (skip parsing)
+//! 5. **Mismatch** → re-parse file (update flow above)
+//!
+//! ## Types Defined
+//!
+//! - [`RawSchemaView`]: Versioned metadata container for schema files. Tracks
+//!   path, version history (ring buffer), and inheritance metadata (`extends`,
+//!   `excludes`) extracted from each version.
+//!
+//! - [`RawPropertyBankView`]: Versioned metadata container for property bank
+//!   files. Tracks filename and version history (ring buffer) with per-property
+//!   hashes for incremental resolution.
+//!
+//! ## Related Types
+//!
+//! - [`FileStats`]: File timestamp and size metadata for fast staleness checks.
+//! - [`SchemaVersion`]: Version snapshot payload for schemas (includes
+//!   inheritance metadata, bank references, hashes).
+//! - [`PropertyBankVersion`]: Version snapshot payload for property banks
+//!   (includes hashes, version string).
+//! - [`HashRecord`]: Combined content hash + per-property hashes for
+//!   incremental resolution.
+//!
+//! [`Schema`]: crate::schema::aggregate::Schema
+//! [`PropertyBank`]: crate::schema::bank::PropertyBank
 
 #![expect(
     clippy::same_name_method,

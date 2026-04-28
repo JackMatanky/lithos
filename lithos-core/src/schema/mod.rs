@@ -24,10 +24,15 @@ pub mod storage;
 #[cfg(test)]
 pub mod testing;
 
-/// View types for storage and queries.
+/// View types for staleness detection and versioned metadata tracking.
 ///
-/// **Migration Status**: Placeholder structure created.
-/// Raw file types currently re-exported from `storage.rs`.
+/// Provides versioned metadata containers ([`RawSchemaView`],
+/// [`RawPropertyBankView`]) that enable incremental updates by tracking content
+/// hashes, file timestamps, and version history. Views persist alongside domain
+/// aggregates to answer "Has this file changed?" without re-parsing.
+///
+/// [`RawSchemaView`]: views::RawSchemaView
+/// [`RawPropertyBankView`]: views::RawPropertyBankView
 pub mod views;
 
 /// PropertyBank domain aggregate for centralized property registration.
