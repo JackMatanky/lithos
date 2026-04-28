@@ -138,7 +138,7 @@ where
 
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
-            filename.as_str(),
+            filename,
             &self.source,
             config_path,
             &self.repository,
@@ -197,12 +197,11 @@ where
         let mut has_property_bank = false;
 
         for path in all_files {
-            let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-            else {
+            let Ok(file_name) = Filename::try_from(path.as_path()) else {
                 continue;
             };
 
-            if file_name == bank_filename.as_str() {
+            if file_name == bank_filename {
                 if has_property_bank {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
@@ -221,7 +220,7 @@ where
                 continue;
             }
 
-            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+            let Some(ext) = file_name.extension() else {
                 continue;
             };
 
@@ -282,8 +281,7 @@ where
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         let constructed = processor.parse(&self.source, config_path)?;
-        let completed =
-            constructed.create(filename.as_str(), &self.repository)?;
+        let completed = constructed.create(filename, &self.repository)?;
         Ok((completed.into_bank(), None))
     }
 
@@ -328,14 +326,12 @@ where
                 Ok((self.sync_and_fetch_content(p)?, None))
             }
             AnalysisBranch::Delta(p) => {
-                let completed =
-                    p.update(filename.as_str(), &self.repository)?;
+                let completed = p.update(filename, &self.repository)?;
                 let (bank, delta) = completed.into_bank_with_changes();
                 Ok((bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(p) => {
-                let completed =
-                    p.create(filename.as_str(), &self.repository)?;
+                let completed = p.create(filename, &self.repository)?;
                 Ok((completed.into_bank(), None))
             }
         }

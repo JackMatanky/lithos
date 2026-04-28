@@ -215,7 +215,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn discover<R: Repository>(
         self,
-        filename: &str,
+        filename: &crate::fs::Filename,
         source: &FsReader,
         config_path: &std::path::Path,
         repository: &R,
@@ -224,9 +224,8 @@ impl PropertyBankProcessor<Discovery, Unknown> {
         R::Error: Into<SchemaRepositoryError>,
     {
         drop(self);
-        let filename = crate::fs::Filename::new(filename.into());
         let cached_view = repository
-            .get_raw_property_bank_view(&filename)
+            .get_raw_property_bank_view(filename)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         let times = RawFileTimes {
@@ -694,7 +693,7 @@ impl PropertyBankProcessor<Construction, New> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn create<R: Repository>(
         self,
-        filename: &str,
+        filename: &crate::fs::Filename,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     where
@@ -718,7 +717,7 @@ impl PropertyBankProcessor<Construction, New> {
     #[inline]
     fn persist<R: Repository>(
         &self,
-        filename: &str,
+        filename: &crate::fs::Filename,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError>
@@ -736,15 +735,13 @@ impl PropertyBankProcessor<Construction, New> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            crate::fs::Filename::new(filename.into()),
+            filename.clone(),
             raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
-        let filename = crate::fs::Filename::new(filename.into());
-
         repository
-            .save_raw_property_bank_view(&filename, &view)
+            .save_raw_property_bank_view(filename, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }
@@ -763,7 +760,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn update<R: Repository>(
         self,
-        filename: &str,
+        filename: &crate::fs::Filename,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     where
@@ -807,7 +804,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[inline]
     fn persist<R: Repository>(
         &self,
-        filename: &str,
+        filename: &crate::fs::Filename,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError>
@@ -820,15 +817,13 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            crate::fs::Filename::new(filename.into()),
+            filename.clone(),
             self.status.raw_hash.clone(),
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
-        let filename = crate::fs::Filename::new(filename.into());
-
         repository
-            .save_raw_property_bank_view(&filename, &view)
+            .save_raw_property_bank_view(filename, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }
