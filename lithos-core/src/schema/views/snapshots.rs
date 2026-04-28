@@ -261,27 +261,6 @@ impl SchemaVersion {
     }
 }
 
-impl VersionRead for SchemaVersion {
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.file_stats().is_timestamp_match(created_at, modified_at)
-    }
-
-    #[inline]
-    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
-        self.hashes().is_content_match(hash)
-    }
-
-    #[inline]
-    fn version(&self) -> &str {
-        self.version.as_ref()
-    }
-}
-
 impl Version for SchemaVersion {
     #[inline]
     fn file_stats(&self) -> &FileStats {
@@ -307,6 +286,48 @@ impl Version for SchemaVersion {
     #[inline]
     fn with_metadata(&self, file_stats: FileStats, hashes: HashRecord) -> Self {
         SchemaVersion::with_metadata(self, file_stats, hashes)
+    }
+}
+
+impl VersionRead for SchemaVersion {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.file_stats().is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes().is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl VersionRead for ArchivedSchemaVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.file_stats.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
     }
 }
 
@@ -400,69 +421,6 @@ impl PropertyBankVersion {
     }
 }
 
-impl VersionRead for PropertyBankVersion {
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.file_stats().is_timestamp_match(created_at, modified_at)
-    }
-
-    #[inline]
-    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
-        self.hashes().is_content_match(hash)
-    }
-
-    #[inline]
-    fn version(&self) -> &str {
-        self.version.as_ref()
-    }
-}
-
-impl VersionRead for ArchivedSchemaVersion {
-    #[inline]
-    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
-        self.hashes.is_content_match(hash)
-    }
-
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.file_stats.is_timestamp_match(created_at, modified_at)
-    }
-
-    #[inline]
-    fn version(&self) -> &str {
-        self.version.as_ref()
-    }
-}
-
-impl VersionRead for ArchivedPropertyBankVersion {
-    #[inline]
-    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
-        self.hashes.is_content_match(hash)
-    }
-
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.file_stats.is_timestamp_match(created_at, modified_at)
-    }
-
-    #[inline]
-    fn version(&self) -> &str {
-        self.version.as_ref()
-    }
-}
-
 impl Version for PropertyBankVersion {
     #[inline]
     fn file_stats(&self) -> &FileStats {
@@ -493,6 +451,48 @@ impl Version for PropertyBankVersion {
             version: self.version.clone(),
             recorded_at: SystemTime::now(),
         }
+    }
+}
+
+impl VersionRead for PropertyBankVersion {
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.file_stats().is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes().is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+impl VersionRead for ArchivedPropertyBankVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.file_stats.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
     }
 }
 

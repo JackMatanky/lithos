@@ -243,6 +243,11 @@ impl RawView for RawSchemaView {
 
 impl RawViewRead for RawSchemaView {
     #[inline]
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        RawView::is_content_match(self, content_hash)
+    }
+
+    #[inline]
     fn is_timestamp_match(
         &self,
         created_at: Option<SystemTime>,
@@ -252,13 +257,34 @@ impl RawViewRead for RawSchemaView {
     }
 
     #[inline]
+    fn version_count(&self) -> usize {
+        self.version_count()
+    }
+}
+
+impl RawViewRead for ArchivedRawSchemaView {
+    #[inline]
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
-        RawView::is_content_match(self, content_hash)
+        self.versions
+            .as_slice()
+            .first()
+            .is_some_and(|version| version.is_content_match(content_hash))
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.versions.as_slice().first().is_some_and(|version| {
+            version.is_timestamp_match(created_at, modified_at)
+        })
     }
 
     #[inline]
     fn version_count(&self) -> usize {
-        self.version_count()
+        self.versions.len()
     }
 }
 
@@ -466,6 +492,11 @@ impl RawView for RawPropertyBankView {
 
 impl RawViewRead for RawPropertyBankView {
     #[inline]
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        RawView::is_content_match(self, content_hash)
+    }
+
+    #[inline]
     fn is_timestamp_match(
         &self,
         created_at: Option<SystemTime>,
@@ -475,44 +506,21 @@ impl RawViewRead for RawPropertyBankView {
     }
 
     #[inline]
-    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
-        RawView::is_content_match(self, content_hash)
-    }
-
-    #[inline]
     fn version_count(&self) -> usize {
         self.version_count()
     }
 }
 
-impl RawViewRead for ArchivedRawSchemaView {
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.versions.as_slice().first().is_some_and(|version| {
-            version.is_timestamp_match(created_at, modified_at)
-        })
-    }
-
-    #[inline]
-    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
-        self.versions
-            .as_slice()
-            .first()
-            .is_some_and(|version| version.is_content_match(content_hash))
-    }
-
-    #[inline]
-    fn version_count(&self) -> usize {
-        self.versions.len()
-    }
-}
-
 impl RawViewRead for ArchivedRawPropertyBankView {
     #[inline]
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        self.versions
+            .as_slice()
+            .first()
+            .is_some_and(|version| version.is_content_match(content_hash))
+    }
+
+    #[inline]
     fn is_timestamp_match(
         &self,
         created_at: Option<SystemTime>,
@@ -521,14 +529,6 @@ impl RawViewRead for ArchivedRawPropertyBankView {
         self.versions.as_slice().first().is_some_and(|version| {
             version.is_timestamp_match(created_at, modified_at)
         })
-    }
-
-    #[inline]
-    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
-        self.versions
-            .as_slice()
-            .first()
-            .is_some_and(|version| version.is_content_match(content_hash))
     }
 
     #[inline]
