@@ -61,7 +61,7 @@ use std::{
 pub(crate) use crate::schema::delta::SchemaPropertyUpserts;
 pub(crate) use crate::schema::delta::{ExcludesDelta, SchemaPropertyDelta};
 use crate::{
-    fs::{FsReader, RelativePath},
+    fs::{FileStats, FsReader, RelativePath},
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
         bank::PropertyBank,
@@ -75,7 +75,7 @@ use crate::{
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,
         property::{PropertyMap, PropertyName},
-        raw::{RawFileStats, RawSchema},
+        raw::RawSchema,
         storage::Repository,
         views::{RawSchemaView, RawView as _},
     },
@@ -238,7 +238,7 @@ pub(crate) enum PresentPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FoundPayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     view: RawSchemaView,
 }
 
@@ -254,7 +254,7 @@ pub(crate) struct FreshPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SuspectPayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_str: Box<str>,
     view: RawSchemaView,
 }
@@ -262,7 +262,7 @@ pub(crate) struct SuspectPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StalePayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_str: Box<str>,
     content_hash: Blake3Hash,
     view: RawSchemaView,
@@ -271,7 +271,7 @@ pub(crate) struct StalePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NewParsedPayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -279,7 +279,7 @@ pub(crate) struct NewParsedPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StaleParsedPayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -480,7 +480,7 @@ impl AnalysisBranch {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RefreshNodePayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     view: RawSchemaView,
 }
@@ -488,7 +488,7 @@ pub(crate) struct RefreshNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RebuildNodePayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -499,7 +499,7 @@ pub(crate) struct RebuildNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UpdateNodePayload {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -572,13 +572,13 @@ impl<T> IntoIterator for NewBatch<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialScan {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialRead {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_str: Box<str>,
     content_hash: Blake3Hash,
 }
@@ -586,7 +586,7 @@ pub(crate) struct InitialRead {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
     path: RelativePath,
-    stats: RawFileStats,
+    stats: FileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -3012,7 +3012,7 @@ mod tests {
         }))
         .expect("valid raw schema fixture")
         .with_name(name.into())
-        .with_file_stats(RawFileStats::new(None, None, 0))
+        .with_file_stats(FileStats::new(None, None, 0))
     }
 
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
@@ -3049,7 +3049,7 @@ mod tests {
                 ExtendsChangeKind::Unchanged,
                 PipelinePayload::Present(PresentPayload::Found(FoundPayload {
                     path,
-                    stats: RawFileStats::new(None, None, 0),
+                    stats: FileStats::new(None, None, 0),
                     view,
                 })),
             ),
@@ -3097,7 +3097,7 @@ mod tests {
                 ExtendsChangeKind::Unchanged,
                 PipelinePayload::Present(PresentPayload::Found(FoundPayload {
                     path,
-                    stats: RawFileStats::new(None, None, 9_999_999),
+                    stats: FileStats::new(None, None, 9_999_999),
                     view,
                 })),
             ),

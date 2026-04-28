@@ -1,10 +1,10 @@
 //! Raw property bank definitions.
 
 use super::{
-    metadata::RawFileStats,
     property::{RawPropertyBankEntry, RawPropertyMap},
     version::RawSchemaVersion,
 };
+use crate::fs::FileStats;
 
 /// Raw property bank loaded from vault files.
 ///
@@ -43,12 +43,12 @@ pub struct RawPropertyBank {
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip, default = "default_file_stats")]
-    file_stats: RawFileStats,
+    file_stats: FileStats,
 }
 
 #[inline]
-const fn default_file_stats() -> RawFileStats {
-    RawFileStats::new(None, None, 0)
+const fn default_file_stats() -> FileStats {
+    FileStats::new(None, None, 0)
 }
 
 impl RawPropertyBank {
@@ -96,7 +96,7 @@ impl RawPropertyBank {
     /// ```
     #[inline]
     #[must_use]
-    pub fn file_stats(&self) -> &RawFileStats {
+    pub fn file_stats(&self) -> &FileStats {
         &self.file_stats
     }
 
@@ -104,14 +104,15 @@ impl RawPropertyBank {
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::schema::raw::{RawFileStats, RawPropertyBank};
+    /// # use lithos_core::fs::FileStats;
+    /// # use lithos_core::schema::raw::RawPropertyBank;
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// # let file_stats: RawFileStats = unimplemented!();
+    /// # let file_stats: FileStats = unimplemented!();
     /// let bank = bank.with_file_stats(file_stats);
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_file_stats(self, file_stats: RawFileStats) -> Self {
+    pub fn with_file_stats(self, file_stats: FileStats) -> Self {
         Self {
             file_stats,
             ..self

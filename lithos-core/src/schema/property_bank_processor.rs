@@ -110,7 +110,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::FsReader,
+    fs::{FileStats, FsReader},
     schema::{
         bank::PropertyBank,
         delta::{PropertyBankDelta, PropertyDeltaEngine},
@@ -119,7 +119,7 @@ use crate::{
             SchemaStorageError,
         },
         property::PropertyName,
-        raw::{RawFileStats, RawPropertyBank},
+        raw::RawPropertyBank,
         storage::Repository,
         views::{HashRecord, RawPropertyBankView, RawView as _},
     },
@@ -263,20 +263,20 @@ pub(crate) struct Comparison;
 /// Proven: View does not exist in repository; carries file stats.
 #[derive(Debug)]
 pub(crate) struct Missing {
-    stats: RawFileStats,
+    stats: FileStats,
 }
 
 /// Proven: View exists in repository; carries file stats and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
-    stats: RawFileStats,
+    stats: FileStats,
     view: RawPropertyBankView,
 }
 
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
-    stats: RawFileStats,
+    stats: FileStats,
     view: RawPropertyBankView,
     content: String,
 }
@@ -285,7 +285,7 @@ pub(crate) struct Suspect {
 /// Transitions to Analysis.
 #[derive(Debug)]
 pub(crate) struct Stale {
-    stats: RawFileStats,
+    stats: FileStats,
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -564,14 +564,14 @@ pub(crate) struct Refresh;
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
-    stats: RawFileStats,
+    stats: FileStats,
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
-    stats: RawFileStats,
+    stats: FileStats,
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }

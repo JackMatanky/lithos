@@ -98,7 +98,6 @@ pub mod bank;
 pub mod bool;
 pub mod date;
 pub mod file;
-pub mod metadata;
 pub mod number;
 pub mod property;
 pub mod string;
@@ -115,9 +114,6 @@ pub type RawSchema = aggregate::RawSchema;
 
 /// Raw property bank loaded from vault files.
 pub type RawPropertyBank = bank::RawPropertyBank;
-
-/// Raw file stats for staleness detection.
-pub type RawFileStats = metadata::RawFileStats;
 
 /// Schema format version.
 pub type RawSchemaVersion = version::RawSchemaVersion;

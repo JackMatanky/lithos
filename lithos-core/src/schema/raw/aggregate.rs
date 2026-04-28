@@ -1,12 +1,15 @@
 //! Aggregate raw types for schema definitions.
 
 use super::{
-    metadata::RawFileStats,
     property::{RawProperty, RawPropertyMap},
     version::RawSchemaVersion,
 };
-use crate::schema::{
-    aggregate::SchemaName, error::SchemaIngestionError, property::PropertyName,
+use crate::{
+    fs::FileStats,
+    schema::{
+        aggregate::SchemaName, error::SchemaIngestionError,
+        property::PropertyName,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,12 +82,12 @@ pub struct RawSchema {
     ///
     /// Populated during ingestion. Not serialized to TOML.
     #[serde(skip, default = "default_file_stats")]
-    file_stats: RawFileStats,
+    file_stats: FileStats,
 }
 
 #[inline]
-const fn default_file_stats() -> RawFileStats {
-    RawFileStats::new(None, None, 0)
+const fn default_file_stats() -> FileStats {
+    FileStats::new(None, None, 0)
 }
 
 impl RawSchema {
@@ -128,7 +131,7 @@ impl RawSchema {
     /// Returns the file stats.
     #[inline]
     #[must_use]
-    pub fn file_stats(&self) -> &RawFileStats {
+    pub fn file_stats(&self) -> &FileStats {
         &self.file_stats
     }
 
@@ -147,7 +150,7 @@ impl RawSchema {
     /// Set file stats (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_file_stats(self, file_stats: RawFileStats) -> Self {
+    pub fn with_file_stats(self, file_stats: FileStats) -> Self {
         Self {
             file_stats,
             ..self
