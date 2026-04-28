@@ -3,10 +3,15 @@
 //! ## Purpose
 //!
 //! This module provides the **primary view types** ([`RawSchemaView`],
-//! [`RawPropertyBankView`]) that serve as versioned metadata containers,
-//! tracking file identity, version history, and extracted inheritance metadata.
-//! These views are persisted alongside domain aggregates ([`Schema`],
-//! [`PropertyBank`]) to enable incremental updates and staleness detection.
+//! [`RawPropertyBankView`]) that serve as **rkyv-serializable containers** for
+//! metadata extracted from **Raw\* types** ([`RawSchema`], [`RawPropertyBank`])
+//! which use **serde-only** serialization.
+//!
+//! **Critical architectural role**: Raw\* types do **not** have `rkyv` derives
+//! and **cannot be directly persisted**. View types bridge this gap by
+//! extracting file identity, version history, and inheritance metadata into
+//! rkyv-serializable containers, enabling staleness detection without
+//! re-parsing Raw\* from files.
 //!
 //! ## Container Responsibilities
 //!
@@ -26,11 +31,11 @@
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │  RawSchemaView (ring buffer, max 5 versions)                │
-//! │                                                              │
+//! │                                                             │
 //! │  Front (newest)                             Back (oldest)   │
-//! │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │
-//! │  │   v5   │ │   v4   │ │   v3   │ │   v2   │ │   v1   │   │
-//! │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘   │
+//! │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐     │
+//! │  │   v5   │ │   v4   │ │   v3   │ │   v2   │ │   v1   │     │
+//! │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘     │
 //! │      ▲                                            │         │
 //! │      │                                            │         │
 //! │  add_version()                              evicted         │
@@ -67,22 +72,26 @@
 //!
 //! When a new schema/property bank file is discovered:
 //!
-//! 1. Parse file to `RawSchema` or `RawPropertyBank` (syntax validation)
-//! 2. Compute [`HashRecord`] (content hash + per-property hashes)
-//! 3. Create initial version ([`SchemaVersion`] or [`PropertyBankVersion`])
-//! 4. Create view with single version: `RawSchemaView::new(path, version)`
-//! 5. Persist view alongside domain aggregate
+//! 1. Parse file to `RawSchema` or `RawPropertyBank` (serde, syntax validation)
+//! 2. **Extract metadata from Raw\***: Compute [`HashRecord`], extract
+//!    inheritance metadata (`extends`, `excludes`), file stats
+//! 3. Create initial version: `SchemaVersion::new(stats, hashes, &raw_schema)`
+//!    - Version types have rkyv derives (Raw\* do not)
+//! 4. Create view container: `RawSchemaView::new(path, version)`
+//! 5. Validate Raw\* → Domain: `Schema::try_from(raw_schema)`
+//! 6. Persist **both separately**: view (metadata) + domain (business logic)
 //!
 //! ### Update (File Modified)
 //!
 //! When an existing file changes (hash mismatch detected):
 //!
-//! 1. Re-parse file to `RawSchema` or `RawPropertyBank`
-//! 2. Compute new [`HashRecord`]
-//! 3. Create new version with updated metadata
+//! 1. Re-parse file to `RawSchema` or `RawPropertyBank` (serde, from file)
+//! 2. **Extract updated metadata from Raw\***: New hashes, inheritance metadata
+//! 3. Create new version: `SchemaVersion::new(stats, hashes, &raw_schema)`
 //! 4. Load existing view, add version: `view.add_version(new_version)`
 //! 5. Ring buffer automatically evicts oldest if at capacity (5 versions)
-//! 6. Persist updated view
+//! 6. Re-validate Raw\* → Domain: `Schema::try_from(raw_schema)`
+//! 7. Persist **both**: updated view + updated domain aggregate
 //!
 //! ### Query (Staleness Check)
 //!
@@ -91,8 +100,12 @@
 //! 1. Compute current file hash ([`Blake3Hash`])
 //! 2. Load view via zero-copy: `ArchivedRawSchemaView` (no allocation)
 //! 3. Compare hash: `view.is_content_match(&current_hash)`
-//! 4. **Match** → use cached domain aggregate (skip parsing)
-//! 5. **Mismatch** → re-parse file (update flow above)
+//! 4. **Match** → use cached [`Schema`] (skip parsing Raw\*)
+//! 5. **Mismatch** → re-parse `RawSchema`, extract metadata, update view
+//!
+//! **Critical insight**: Views enable staleness checks **without** ever
+//! deserializing Raw\* types from the database, because Raw\* types are
+//! **never persisted** (serde-only, no rkyv derives).
 //!
 //! ## Types Defined
 //!

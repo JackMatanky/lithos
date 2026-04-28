@@ -5,8 +5,12 @@
 //! This module defines the **version payload types** ([`SchemaVersion`],
 //! [`PropertyBankVersion`]) that represent individual historical snapshots in
 //! the ring buffer maintained by [`RawSchemaView`] and [`RawPropertyBankView`].
-//! Each version captures file metadata, content hashes, and extracted business
-//! metadata at a specific point in time.
+//!
+//! **Critical architectural role**: These types extract and store **metadata
+//! from Raw\* types** ([`RawSchema`], [`RawPropertyBank`]) which use
+//! **serde-only** serialization and **cannot be directly persisted**. Version
+//! types provide rkyv-serializable containers for this extracted metadata,
+//! enabling staleness detection without re-parsing files.
 //!
 //! ## Version Payload Structure
 //!
@@ -47,49 +51,74 @@
 //! - **Storage efficiency**: No duplication of full property trees across
 //!   versions
 //!
-//! ## Hybrid Serialization Strategy
+//! ## Why Version Types Exist: The Raw\* Serialization Gap
 //!
-//! Version types implement Lithos's **three-layer serialization model**:
+//! Version types solve a fundamental architectural constraint:
+//!
+//! **Raw\* types do NOT have rkyv derives** (serde-only by design):
 //!
 //! ```text
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │  RAW LAYER (serde only)                                      │
+//! ❌ PROBLEM:
+//!    Need to persist staleness metadata for RawSchema
+//!    └─ But RawSchema only has serde derives (parsing-only type)
+//!    └─ Cannot store in database (requires rkyv for zero-copy)
+//!
+//! ✅ SOLUTION:
+//!    Extract metadata from RawSchema → SchemaVersion (has rkyv)
+//!    └─ Store SchemaVersion in database
+//!    └─ Enable staleness checks without re-parsing RawSchema
+//! ```
+//!
+//! ## Hybrid Serialization Strategy
+//!
+//! Version types bridge the serialization gap between Raw\* and persistence:
+//!
+//! ```text
+//! ┌──────────────────────────────────────────────────────────────┐
+//! │  RAW LAYER (serde only) — NEVER PERSISTED                    │
 //! │  RawSchema, RawPropertyBank                                  │
 //! │  • Tolerant parsing (Option<T> fields)                       │
 //! │  • Human-editable formats (YAML, JSON, TOML)                 │
 //! │  • Syntax validation only                                    │
-//! └───────────────────────┬─────────────────────────────────────┘
-//!                         │ TryFrom (semantic validation)
-//!                         ▼
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │  DOMAIN LAYER (rkyv + optional serde)                        │
-//! │  Schema, PropertyBank                                        │
-//! │  • Invariant-preserving types                                │
-//! │  • Zero-copy storage via rkyv                                │
-//! │  • Business logic operations                                 │
-//! └───────────────────────┬─────────────────────────────────────┘
-//!                         │ Extract metadata
-//!                         ▼
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │  VIEW LAYER (rkyv only) ← THIS MODULE                        │
-//! │  SchemaVersion, PropertyBankVersion                          │
-//! │  • Metadata-only snapshots                                   │
-//! │  • Zero-copy queries via ArchivedSchemaVersion               │
-//! │  • No human editing (internal storage format)                │
-//! └─────────────────────────────────────────────────────────────┘
+//! │  • Transient (exists only during ingestion)                  │
+//! └───────────────────────┬──────────────────────────────────────┘
+//!                         │
+//!                         ├─── Extract metadata ────┐
+//!                         │                         │
+//!                         ▼                         ▼
+//! ┌────────────────────────────────┐  ┌──────────────────────────┐
+//! │  VIEW LAYER (rkyv only)        │  │  DOMAIN LAYER (rkyv)     │
+//! │  ← THIS MODULE                 │  │  Schema, PropertyBank    │
+//! │  SchemaVersion, etc.           │  │  • From RawSchema via    │
+//! │  • Metadata from RawSchema     │  │    TryFrom (validation)  │
+//! │  • File stats, hashes          │  │  • Business logic        │
+//! │  • Inheritance metadata        │  │  • Invariants            │
+//! │  • Zero-copy staleness checks  │  └──────────────────────────┘
+//! └────────────────────────────────┘
+//!          │                                     │
+//!          └────────── Both persisted ───────────┘
+//!                           │
+//!                           ▼
+//! ┌──────────────────────────────────────────────────────────────┐
+//! │  DATABASE (rkyv-only storage)                                │
+//! │  • RawSchemaView contains Vec<SchemaVersion> (metadata)      │
+//! │  • Schema aggregate (domain logic)                           │
+//! │  • Separate tables, separate concerns                        │
+//! └──────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! **Why this separation?**
 //!
-//! - **Raw Layer**: Optimized for **parsing** (serde for human formats)
-//! - **Domain Layer**: Optimized for **business logic** (invariants,
-//!   validation)
-//! - **View Layer**: Optimized for **staleness detection** (metadata queries,
-//!   zero-copy access)
+//! - **Raw Layer**: Optimized for **parsing** (serde only, no persistence)
+//! - **View Layer**: Bridges serialization gap (extracts rkyv-serializable
+//!   metadata from Raw\*)
+//! - **Domain Layer**: Optimized for **business logic** (validated via
+//!   `TryFrom<Raw*>`)
 //!
-//! Adding `rkyv` derives to `Raw*` types would pollute the parsing layer with
-//! storage concerns. Version types act as an **adapter layer**, extracting only
-//! what's needed for metadata queries.
+//! Adding `rkyv` derives to `Raw*` types would:
+//! - Violate separation of concerns (parsing vs. persistence)
+//! - Create dual serialization maintenance burden
+//! - Pollute parsing layer with storage artifacts
 //!
 //! ## `SchemaVersion`: Inheritance Metadata Extraction
 //!

@@ -70,17 +70,27 @@
 //!
 //! ## Hash Computation Strategy
 //!
+//! Hashes are computed from **file content** (before parsing to Raw\* types):
+//!
 //! ### For Schemas
 //!
 //! - **Content hash**: `Blake3Hash::compute(file_contents.as_bytes())`
-//! - **Property hashes**: Map each property definition to
-//!   `Blake3Hash::compute(property_toml.as_bytes())`
+//!   - Hash the **entire YAML/JSON/TOML file** as read from disk
+//! - **Property hashes**: After parsing to `RawSchema`, hash each property
+//!   - `Blake3Hash::compute(property_toml_string.as_bytes())`
+//!   - Enables incremental detection of which properties changed
 //!
 //! ### For Property Banks
 //!
 //! - **Content hash**: `Blake3Hash::compute(file_contents.as_bytes())`
-//! - **Property hashes**: Map each registered property to
-//!   `Blake3Hash::compute(property_definition.as_bytes())`
+//!   - Hash the **entire property bank file** as read from disk
+//! - **Property hashes**: After parsing to `RawPropertyBank`, hash each
+//!   registered property
+//!   - `Blake3Hash::compute(property_definition_string.as_bytes())`
+//!   - Enables targeted re-expansion when specific properties change
+//!
+//! **Note**: Hashes are computed **before** Raw\* → Domain validation, so
+//! staleness checks work even if domain validation would fail.
 //!
 //! ## Performance Characteristics
 //!

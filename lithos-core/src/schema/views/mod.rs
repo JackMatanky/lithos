@@ -2,14 +2,22 @@
 //!
 //! ## Purpose
 //!
-//! This module provides the metadata layer that enables **incremental schema
-//! updates** in Lithos's "files-as-source-of-truth" architecture. Views track
-//! content hashes, file timestamps, and version history to answer "Has this
-//! file changed?" **without re-parsing**, delivering massive performance wins
-//! for large vaults (1000+ schemas).
+//! This module provides **rkyv-serializable metadata containers** for tracking
+//! versions, hashes, and inheritance metadata extracted from **Raw\* types**
+//! ([`RawSchema`], [`RawPropertyBank`]) which use **serde-only** serialization.
 //!
-//! Views are **not optional** in the schema context—they solve critical
-//! architectural problems that cannot be deferred:
+//! **Primary architectural constraint**: Raw\* types do **not** have `rkyv`
+//! derives—they exist solely for **parsing** human-editable file formats
+//! (YAML, JSON, TOML). To persist staleness detection metadata alongside these
+//! parsed structures, we need separate view types that **do** support `rkyv`.
+//!
+//! Views enable **incremental schema updates** in Lithos's
+//! "files-as-source-of-truth" architecture by tracking content hashes, file
+//! timestamps, and version history to answer "Has this file changed?" **without
+//! re-parsing**, delivering massive performance wins for large vaults (1000+
+//! schemas).
+//!
+//! Views solve critical architectural problems that cannot be deferred:
 //!
 //! 1. **Staleness Detection**: O(1) hash comparison instead of O(n) file
 //!    parsing
@@ -33,32 +41,43 @@
 //!                         │ FsReader (security-validated access)
 //!                         ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │  PARSE: File → Raw* (syntax validation only)                │
+//! │  PARSE: File → Raw* (serde-only, syntax validation)         │
 //! │  serde::from_str() → RawSchema, RawPropertyBank             │
+//! │  (Raw* types do NOT have rkyv derives)                      │
 //! └───────────────────────┬─────────────────────────────────────┘
 //!                         │
-//!                         ▼
+//!                         ├─────────────────────────────────────┐
+//!                         │                                     │
+//!                         ▼                                     ▼
+//! ┌──────────────────────────────────┐  ┌─────────────────────────────┐
+//! │  EXTRACT METADATA (THIS MODULE)  │  │  VALIDATE: Raw* → Domain    │
+//! │  RawSchema → SchemaVersion       │  │  Schema::try_from(RawSchema)│
+//! │  • File stats, hashes            │  │  (Domain types have rkyv)   │
+//! │  • Inheritance metadata          │  └──────────┬──────────────────┘
+//! │  • Bank references               │             │
+//! │                                  │             │
+//! │  Wrap in versioned container:    │             │
+//! │  RawSchemaView (ring buffer)     │             │
+//! └──────────────────┬───────────────┘             │
+//!                    │                             │
+//!                    │  Both persisted separately  │
+//!                    ▼                             ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │  VIEWS: Staleness Detection Layer (THIS MODULE)             │
-//! │                                                              │
-//! │  • Compute Blake3 hashes (content + per-property)           │
-//! │  • Compare against stored hashes                            │
-//! │  • Decision: Fresh → use cache | Stale → re-parse           │
-//! │                                                              │
-//! │  Types: RawSchemaView, RawPropertyBankView                  │
-//! │         SchemaVersion, PropertyBankVersion, HashRecord      │
-//! └───────────────────────┬─────────────────────────────────────┘
-//!                         │ (if stale/new)
-//!                         ▼
+//! │  DATABASE (rkyv-only storage)                               │
+//! │  • Views: RawSchemaView, RawPropertyBankView (rkyv)         │
+//! │  • Domains: Schema, PropertyBank (rkyv)                     │
+//! │                                                             │
+//! │  Views enable staleness checks WITHOUT re-parsing Raw*      │
+//! └─────────────────────────────────────────────────────────────┘
+//!
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │  VALIDATE: Raw* → Domain (semantic validation)              │
-//! │  Schema::try_from(RawSchema) - refs exist, no cycles        │
-//! └───────────────────────┬─────────────────────────────────────┘
-//!                         │
-//!                         ▼
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │  DATABASE: Persist domain aggregates + views                │
-//! │  Repository::save(schema) + save_raw_schema_view(view)      │
+//! │  STALENESS CHECK (On Next Load)                             │
+//! │                                                             │
+//! │  1. Compute current file hash                               │
+//! │  2. Load RawSchemaView from database (zero-copy)            │
+//! │  3. Compare: view.is_content_match(&hash)                   │
+//! │  4. Match → use cached Schema (skip parsing)                │
+//! │  5. Mismatch → re-parse RawSchema, update view & domain     │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -124,24 +143,55 @@
 //!   Each version captures file stats, hashes, and extracted metadata at a
 //!   point in time.
 //!
+//! ## Why Views Exist: The Raw\* Serialization Constraint
+//!
+//! Views exist because **Raw\* types cannot be directly persisted**:
+//!
+//! ```text
+//! ❌ CANNOT DO THIS:
+//!    RawSchema (serde only) → Database (requires rkyv)
+//!    └─ No rkyv derives on Raw* types by design
+//!
+//! ✅ SOLUTION:
+//!    RawSchema (serde) → Extract metadata → SchemaVersion (rkyv) → Database
+//!    └─ Views bridge the serialization gap
+//! ```
+//!
+//! **Why don't Raw\* types have rkyv derives?**
+//!
+//! 1. **Separation of concerns**: Raw\* types are **parsing-only** artifacts
+//!    optimized for serde's tolerant parsing (`Option<T>` fields, better error
+//!    messages).
+//!
+//! 2. **Avoid dual serialization**: Adding rkyv to Raw\* types would create
+//!    maintenance burden (two serialization strategies on same type).
+//!
+//! 3. **Raw\* are transient**: They exist only during ingestion pipeline, then
+//!    convert to domain types ([`Schema`], [`PropertyBank`]) which **do** have
+//!    rkyv.
+//!
+//! **Views solve this by**:
+//! - Extracting **metadata-only** from Raw\* types during ingestion
+//! - Storing that metadata in **rkyv-serializable** containers
+//! - Enabling staleness checks **without re-parsing** Raw\* from files
+//!
 //! ## Hybrid Serialization Strategy
 //!
-//! Views follow Lithos's three-layer serialization model:
+//! Views sit between Raw\* types (serde-only) and the database (rkyv-only):
 //!
-//! 1. **Raw Layer** (serde only): [`RawSchema`], [`RawPropertyBank`] — Tolerant
-//!    parsing with `Option<T>` fields for better error messages.
+//! 1. **Raw Layer** (serde only): [`RawSchema`], [`RawPropertyBank`] — Parsed
+//!    from files, never persisted directly.
 //!
-//! 2. **Domain Layer** (rkyv + optional serde): [`Schema`], [`PropertyBank`] —
-//!    Validated aggregates with invariant-preserving types, zero-copy storage.
+//! 2. **View Layer** (rkyv only): [`RawSchemaView`], [`RawPropertyBankView`] —
+//!    Metadata extracted from Raw\*, persisted for staleness detection.
 //!
-//! 3. **View Layer** (rkyv only): [`RawSchemaView`], [`RawPropertyBankView`] —
-//!    Metadata-only representations optimized for staleness detection and
-//!    version tracking.
+//! 3. **Domain Layer** (rkyv + optional serde): [`Schema`], [`PropertyBank`] —
+//!    Validated aggregates created via `TryFrom<Raw*>`, persisted separately.
 //!
 //! Views use **rkyv exclusively** because:
 //! - No human editing required (internal storage format)
 //! - Zero-copy deserialization critical for performance (hot path queries)
-//! - Stability: View schema changes less frequently than domain aggregates
+//! - Stability: View schema changes less frequently than Raw\* types
 //!
 //! ## View Pattern Guidance
 //!
