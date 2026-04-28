@@ -12,20 +12,12 @@
 //! exists in the `SCHEMA_ID_BY_PATH` table. SchemaName is deterministically
 //! derived from the path basename (which follows the same validation pattern).
 
-#![expect(dead_code, reason = "index methods used by downstream modules")]
-
 use std::{collections::HashMap, ops::Deref};
 
 use crate::{
     fs::RelativePath,
     schema::identifier::{SchemaId, SchemaName},
 };
-
-/// A schema name-to-ID pair.
-pub type NameIdPair = (SchemaName, SchemaId);
-
-/// A schema path-to-ID pair.
-pub type PathIdPair = (RelativePath, SchemaId);
 
 /// Bidirectional index for schema lookups.
 ///
