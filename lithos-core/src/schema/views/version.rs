@@ -25,12 +25,16 @@
 //! storage layer (version types with rkyv), while maintaining queryability of
 //! key metadata fields.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::metadata::{FileTimesMetadata, HashMetadata};
+use super::metadata::HashMetadata;
 use crate::{
+    fs::FileStats,
     schema::{
         aggregate::SchemaName,
         error::SchemaIngestionError,
@@ -58,20 +62,23 @@ pub trait VersionRead {
 
 /// Mutable version contract for persisted raw views.
 pub trait Version: VersionRead + Sized {
-    /// Returns file timestamp metadata.
-    fn file_times(&self) -> &FileTimesMetadata;
+    /// Returns file statistics metadata.
+    fn file_stats(&self) -> &FileStats;
 
     /// Returns hash metadata.
     fn hashes(&self) -> &HashMetadata;
 
-    /// Updates file timestamp metadata in-place.
-    fn set_file_times(&mut self, file_times: FileTimesMetadata);
+    /// Returns when this version was recorded.
+    fn recorded_at(&self) -> SystemTime;
+
+    /// Updates file statistics metadata in-place.
+    fn set_file_stats(&mut self, file_stats: FileStats);
 
     /// Clones this version with replacement metadata.
     #[must_use]
     fn with_metadata(
         &self,
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
     ) -> Self;
 }
@@ -95,8 +102,12 @@ pub trait Version: VersionRead + Sized {
 /// parsing types while maintaining queryability of inheritance metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct SchemaVersion {
-    /// File timestamp metadata.
-    file_times: FileTimesMetadata,
+    /// File statistics metadata.
+    file_stats: FileStats,
+
+    /// When this version was recorded in storage.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,
 
     /// Hash metadata for staleness detection.
     hashes: HashMetadata,
@@ -136,7 +147,7 @@ impl SchemaVersion {
     /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
         raw: &RawSchema,
     ) -> Result<Self, SchemaIngestionError> {
@@ -160,7 +171,8 @@ impl SchemaVersion {
         }
 
         Ok(Self {
-            file_times,
+            file_stats,
+            recorded_at: SystemTime::now(),
             hashes,
             version: raw.version().as_str().into(),
             extends,
@@ -170,11 +182,18 @@ impl SchemaVersion {
         })
     }
 
-    /// Get file times metadata.
+    /// Get file stats metadata.
     #[inline]
     #[must_use]
-    pub fn file_times(&self) -> &FileTimesMetadata {
-        &self.file_times
+    pub fn file_stats(&self) -> &FileStats {
+        &self.file_stats
+    }
+
+    /// Get database recording timestamp.
+    #[inline]
+    #[must_use]
+    pub fn recorded_at(&self) -> SystemTime {
+        self.recorded_at
     }
 
     /// Get hash metadata.
@@ -262,11 +281,12 @@ impl SchemaVersion {
     #[must_use]
     pub fn with_metadata(
         &self,
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
     ) -> Self {
         Self {
-            file_times,
+            file_stats,
+            recorded_at: SystemTime::now(),
             hashes,
             version: self.version.clone(),
             extends: self.extends.clone(),
@@ -284,7 +304,7 @@ impl VersionRead for SchemaVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_times().is_timestamp_match(created_at, modified_at)
+        self.file_stats().is_timestamp_match(created_at, modified_at)
     }
 
     #[inline]
@@ -300,8 +320,13 @@ impl VersionRead for SchemaVersion {
 
 impl Version for SchemaVersion {
     #[inline]
-    fn file_times(&self) -> &FileTimesMetadata {
-        self.file_times()
+    fn file_stats(&self) -> &FileStats {
+        self.file_stats()
+    }
+
+    #[inline]
+    fn recorded_at(&self) -> SystemTime {
+        self.recorded_at()
     }
 
     #[inline]
@@ -310,17 +335,18 @@ impl Version for SchemaVersion {
     }
 
     #[inline]
-    fn set_file_times(&mut self, file_times: FileTimesMetadata) {
-        self.file_times = file_times;
+    fn set_file_stats(&mut self, file_stats: FileStats) {
+        self.file_stats = file_stats;
+        self.recorded_at = SystemTime::now();
     }
 
     #[inline]
     fn with_metadata(
         &self,
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
     ) -> Self {
-        SchemaVersion::with_metadata(self, file_times, hashes)
+        SchemaVersion::with_metadata(self, file_stats, hashes)
     }
 }
 
@@ -341,8 +367,12 @@ impl Version for SchemaVersion {
 /// Raw* parsing layer to avoid adding rkyv derives.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct PropertyBankVersion {
-    /// File timestamp metadata.
-    file_times: FileTimesMetadata,
+    /// File statistics metadata.
+    file_stats: FileStats,
+
+    /// When this version was recorded in storage.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,
 
     /// Hash metadata for staleness detection.
     hashes: HashMetadata,
@@ -362,28 +392,37 @@ impl PropertyBankVersion {
     /// pipeline compatibility if future validation is added.
     #[inline]
     pub fn new(
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
         version: &str,
     ) -> Result<Self, SchemaIngestionError> {
         Ok(Self {
-            file_times,
+            file_stats,
+            recorded_at: SystemTime::now(),
             hashes,
             version: version.into(),
         })
     }
 
-    /// Get file times metadata.
+    /// Get file stats metadata.
     #[inline]
     #[must_use]
-    pub fn file_times(&self) -> &FileTimesMetadata {
-        &self.file_times
+    pub fn file_stats(&self) -> &FileStats {
+        &self.file_stats
     }
 
-    /// Set file times metadata.
+    /// Get database recording timestamp.
     #[inline]
-    pub fn set_file_times(&mut self, file_times: FileTimesMetadata) {
-        self.file_times = file_times;
+    #[must_use]
+    pub fn recorded_at(&self) -> SystemTime {
+        self.recorded_at
+    }
+
+    /// Set file stats metadata.
+    #[inline]
+    pub fn set_file_stats(&mut self, file_stats: FileStats) {
+        self.file_stats = file_stats;
+        self.recorded_at = SystemTime::now();
     }
 
     /// Get hash metadata.
@@ -408,7 +447,7 @@ impl VersionRead for PropertyBankVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_times().is_timestamp_match(created_at, modified_at)
+        self.file_stats().is_timestamp_match(created_at, modified_at)
     }
 
     #[inline]
@@ -434,7 +473,7 @@ impl VersionRead for ArchivedSchemaVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_times.is_timestamp_match(created_at, modified_at)
+        self.file_stats.is_timestamp_match(created_at, modified_at)
     }
 
     #[inline]
@@ -455,7 +494,7 @@ impl VersionRead for ArchivedPropertyBankVersion {
         created_at: Option<std::time::SystemTime>,
         modified_at: Option<std::time::SystemTime>,
     ) -> bool {
-        self.file_times.is_timestamp_match(created_at, modified_at)
+        self.file_stats.is_timestamp_match(created_at, modified_at)
     }
 
     #[inline]
@@ -466,8 +505,13 @@ impl VersionRead for ArchivedPropertyBankVersion {
 
 impl Version for PropertyBankVersion {
     #[inline]
-    fn file_times(&self) -> &FileTimesMetadata {
-        self.file_times()
+    fn file_stats(&self) -> &FileStats {
+        self.file_stats()
+    }
+
+    #[inline]
+    fn recorded_at(&self) -> SystemTime {
+        self.recorded_at()
     }
 
     #[inline]
@@ -476,18 +520,20 @@ impl Version for PropertyBankVersion {
     }
 
     #[inline]
-    fn set_file_times(&mut self, file_times: FileTimesMetadata) {
-        self.file_times = file_times;
+    fn set_file_stats(&mut self, file_stats: FileStats) {
+        self.file_stats = file_stats;
+        self.recorded_at = SystemTime::now();
     }
 
     #[inline]
     fn with_metadata(
         &self,
-        file_times: FileTimesMetadata,
+        file_stats: FileStats,
         hashes: HashMetadata,
     ) -> Self {
         Self {
-            file_times,
+            file_stats,
+            recorded_at: SystemTime::now(),
             hashes,
             version: self.version.clone(),
         }
@@ -514,10 +560,8 @@ mod tests {
     #[test]
     fn schema_version_expanded_properties() {
         let raw = create_test_raw_schema();
-        let file_times = FileTimesMetadata::new(
-            Some(SystemTime::now()),
-            Some(SystemTime::now()),
-        );
+        let file_times =
+            FileStats::new(Some(SystemTime::now()), Some(SystemTime::now()), 0);
         let hashes =
             HashMetadata::new(Blake3Hash::new([1u8; 32]), HashMap::default());
 
@@ -542,7 +586,7 @@ mod tests {
         });
         let raw: RawSchema = serde_json::from_value(json).unwrap();
 
-        let file_times = FileTimesMetadata::new(None, None);
+        let file_times = FileStats::new(None, None, 0);
         let hashes =
             HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
         let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
@@ -566,7 +610,7 @@ mod tests {
         });
         let raw: RawSchema = serde_json::from_value(json).unwrap();
         let version = SchemaVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new()),
             &raw,
         )
@@ -593,23 +637,23 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_set_file_times_updates_metadata() {
+    fn schema_version_set_file_stats_updates_metadata() {
         let raw = create_test_raw_schema();
-        let initial = FileTimesMetadata::new(None, None);
+        let initial = FileStats::new(None, None, 0);
         let hashes =
             HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
         let mut version = SchemaVersion::new(initial, hashes, &raw).unwrap();
 
-        let updated = FileTimesMetadata::new(Some(SystemTime::now()), None);
-        Version::set_file_times(&mut version, updated.clone());
+        let updated = FileStats::new(Some(SystemTime::now()), None, 0);
+        Version::set_file_stats(&mut version, updated);
 
-        assert_eq!(version.file_times(), &updated);
+        assert_eq!(version.file_stats(), &updated);
     }
 
     #[test]
     fn property_bank_version_with_metadata_replaces_hash_and_timestamps() {
         let original = PropertyBankVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(Blake3Hash::new([1; 32]), HashMap::new()),
             "1.0",
         )
@@ -617,7 +661,7 @@ mod tests {
 
         let replacement = Version::with_metadata(
             &original,
-            FileTimesMetadata::new(Some(SystemTime::now()), None),
+            FileStats::new(Some(SystemTime::now()), None, 0),
             HashMetadata::new(Blake3Hash::new([2; 32]), HashMap::new()),
         );
 
@@ -629,7 +673,7 @@ mod tests {
     fn archived_schema_version_supports_zero_copy_version_read() {
         let raw = create_test_raw_schema();
         let version = SchemaVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(Blake3Hash::new([7; 32]), HashMap::new()),
             &raw,
         )
@@ -650,7 +694,7 @@ mod tests {
     #[test]
     fn archived_property_bank_version_supports_zero_copy_version_read() {
         let version = PropertyBankVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(Blake3Hash::new([3; 32]), HashMap::new()),
             "1.0",
         )

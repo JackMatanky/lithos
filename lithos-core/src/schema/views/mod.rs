@@ -8,7 +8,7 @@
 //!
 //! - `raw` - Raw file version views and read/update traits (`RawSchemaView`,
 //!   `RawPropertyBankView`, `RawView`, `RawViewRead`)
-//! - `metadata` - Version metadata (`FileTimesMetadata`, `HashMetadata`)
+//! - `metadata` - Hash metadata (`HashMetadata`)
 //! - `version` - Version payloads and read/update traits (`SchemaVersion`,
 //!   `PropertyBankVersion`, `Version`, `VersionRead`)
 //!
@@ -21,7 +21,8 @@
 //! ## Staleness Detection
 //!
 //! Staleness detection is performed via metadata methods:
-//! - `FileTimesMetadata::is_timestamp_match()` - Fast timestamp-only check
+//! - `FileStats::is_timestamp_match()` on each `*Version` - Fast timestamp-only
+//!   check
 //! - `HashMetadata::is_content_match()` - Accurate hash-based check
 //!
 //! Views provide `current()` to access the most recent version.
@@ -37,7 +38,7 @@ pub mod raw;
 pub mod version;
 
 // Re-export commonly used types for ergonomic access
-pub use metadata::{FileTimesMetadata, HashMetadata};
+pub use metadata::HashMetadata;
 pub use raw::{RawPropertyBankView, RawSchemaView, RawView, RawViewRead};
 pub use version::{PropertyBankVersion, SchemaVersion, Version, VersionRead};
 

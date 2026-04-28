@@ -1004,7 +1004,8 @@ mod tests {
     #[test]
     fn list_schema_path_id_pairs_includes_saved_view() {
         use crate::{
-            schema::views::{FileTimesMetadata, HashMetadata, SchemaVersion},
+            fs::FileStats,
+            schema::views::{HashMetadata, SchemaVersion},
             support::hash::Blake3Hash,
         };
 
@@ -1018,11 +1019,10 @@ mod tests {
             .expect("valid schema should deserialize")
             .with_name("test".into());
 
-        let file_times_meta = FileTimesMetadata::new(None, None);
+        let file_stats = FileStats::new(None, None, 0);
         let hashes =
             HashMetadata::new(Blake3Hash::new([0; 32]), HashMap::new());
-        let version =
-            SchemaVersion::new(file_times_meta, hashes, &raw).unwrap();
+        let version = SchemaVersion::new(file_stats, hashes, &raw).unwrap();
 
         let schema_path = RelativePath::try_from("schemas/test.json").unwrap();
         let view = RawSchemaView::new(schema_path.clone(), version);

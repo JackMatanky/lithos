@@ -13,10 +13,11 @@ use std::collections::VecDeque;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
-    FileTimesMetadata, HashMetadata, PropertyBankVersion, SchemaVersion,
+    HashMetadata, PropertyBankVersion, SchemaVersion,
     version::{Version as _, VersionRead as _},
 };
 use crate::{
+    fs::FileStats,
     schema::{
         aggregate::SchemaName, error::SchemaStorageError,
         property::PropertyName, raw::RawPropertyBank,
@@ -71,10 +72,29 @@ pub trait RawView {
     }
 
     /// Updates timestamps for the current version, if present.
+    ///
+    /// This preserves the current file size and refreshes recorded metadata.
     #[inline]
-    fn update_timestamps(&mut self, file_times: FileTimesMetadata) {
+    fn update_timestamps(
+        &mut self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) {
         if let Some(current) = self.current_mut() {
-            current.set_file_times(file_times);
+            let size = current.file_stats().size();
+            current.set_file_stats(FileStats::new(
+                created_at,
+                modified_at,
+                size,
+            ));
+        }
+    }
+
+    /// Updates complete file stats for the current version, if present.
+    #[inline]
+    fn update_file_stats(&mut self, file_stats: FileStats) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_stats(file_stats);
         }
     }
 
@@ -251,7 +271,7 @@ impl RawSchemaView {
         path: crate::fs::RelativePath,
         content: &str,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        use super::{FileTimesMetadata, HashMetadata};
+        use super::HashMetadata;
 
         // Compute content hash from raw file content
         let content_hash = Blake3Hash::compute(content.as_bytes());
@@ -260,13 +280,10 @@ impl RawSchemaView {
         let property_hashes =
             HashMetadata::compute_property_hashes(raw.properties());
 
-        let file_times = FileTimesMetadata::new(
-            raw.file_stats().created_at(),
-            raw.file_stats().modified_at(),
-        );
+        let file_stats = *raw.file_stats();
         let hashes = HashMetadata::new(content_hash, property_hashes);
 
-        let version = SchemaVersion::new(file_times, hashes, raw)?;
+        let version = SchemaVersion::new(file_stats, hashes, raw)?;
 
         Ok(Self::new(path, version))
     }
@@ -313,12 +330,12 @@ impl RawView for RawSchemaView {
         let current = self.current().ok_or(SchemaStorageError::NotFound {
             name: "current schema version".into(),
         })?;
-        let file_times = current.file_times().clone();
+        let file_stats = *current.file_stats();
         let hashes = HashMetadata::new(
             content_hash,
             current.hashes().properties().clone(),
         );
-        let version = SchemaVersion::with_metadata(current, file_times, hashes);
+        let version = SchemaVersion::with_metadata(current, file_stats, hashes);
         self.add_version(version);
         Ok(())
     }
@@ -430,13 +447,27 @@ impl RawPropertyBankView {
     }
 
     /// Update file timestamps of the current version.
-    ///
-    /// Takes a `FileTimesMetadata` to automatically get a fresh `recorded_at`
-    /// timestamp.
     #[inline]
-    pub fn update_timestamps(&mut self, file_times: FileTimesMetadata) {
+    pub fn update_timestamps(
+        &mut self,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) {
         if let Some(current) = self.versions.front_mut() {
-            current.set_file_times(file_times);
+            let size = current.file_stats().size();
+            current.set_file_stats(FileStats::new(
+                created_at,
+                modified_at,
+                size,
+            ));
+        }
+    }
+
+    /// Update full file stats of the current version.
+    #[inline]
+    pub fn update_file_stats(&mut self, file_stats: FileStats) {
+        if let Some(current) = self.versions.front_mut() {
+            current.set_file_stats(file_stats);
         }
     }
 
@@ -454,14 +485,14 @@ impl RawPropertyBankView {
     ) -> Result<(), SchemaStorageError> {
         let current =
             self.current().ok_or(SchemaStorageError::PropertyBankNotFound)?;
-        let file_times = current.file_times().clone();
+        let file_stats = *current.file_stats();
 
         let hashes = HashMetadata::new(
             content_hash,
             current.hashes().properties().clone(),
         );
         let version =
-            PropertyBankVersion::new(file_times, hashes, current.version())
+            PropertyBankVersion::new(file_stats, hashes, current.version())
                 .map_err(|_error| SchemaStorageError::Corruption {
                     reason: "failed to rebuild property bank version".into(),
                 })?;
@@ -482,15 +513,10 @@ impl RawPropertyBankView {
         filename: crate::fs::Filename,
         raw_hash: HashMetadata,
     ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        use super::FileTimesMetadata;
-
-        let file_times = FileTimesMetadata::new(
-            raw.file_stats().created_at(),
-            raw.file_stats().modified_at(),
-        );
+        let file_stats = *raw.file_stats();
 
         let version = PropertyBankVersion::new(
-            file_times,
+            file_stats,
             raw_hash,
             raw.version().as_str(),
         )?;
@@ -619,9 +645,12 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::schema::{
-        property::{PropertyMap, PropertyName},
-        raw::{RawPropertyBank, RawSchema},
+    use crate::{
+        fs::FileStats,
+        schema::{
+            property::{PropertyMap, PropertyName},
+            raw::{RawPropertyBank, RawSchema},
+        },
     };
 
     fn make_schema_version(content_hash: Blake3Hash) -> SchemaVersion {
@@ -634,7 +663,7 @@ mod tests {
             .with_name("note".into());
 
         SchemaVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(content_hash, HashMap::new()),
             &raw,
         )
@@ -651,7 +680,7 @@ mod tests {
         );
 
         PropertyBankVersion::new(
-            FileTimesMetadata::new(None, None),
+            FileStats::new(None, None, 0),
             HashMetadata::new(content_hash, property_hashes),
             "1.0",
         )

@@ -1892,17 +1892,13 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             crate::schema::views::HashMetadata::compute_property_hashes(
                                 payload.raw.properties(),
                             );
-                        let file_times =
-                            crate::schema::views::FileTimesMetadata::new(
-                                payload.raw.file_stats().created_at(),
-                                payload.raw.file_stats().modified_at(),
-                            );
+                        let file_stats = *payload.raw.file_stats();
                         let hashes = crate::schema::views::HashMetadata::new(
                             payload.content_hash,
                             property_hashes,
                         );
                         let version = crate::schema::views::SchemaVersion::new(
-                            file_times,
+                            file_stats,
                             hashes,
                             &payload.raw,
                         )
@@ -2072,15 +2068,12 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             crate::schema::views::HashMetadata::compute_property_hashes(
                 raw.properties(),
             );
-        let file_times = crate::schema::views::FileTimesMetadata::new(
-            raw.file_stats().created_at(),
-            raw.file_stats().modified_at(),
-        );
+        let file_stats = *raw.file_stats();
         let hashes = crate::schema::views::HashMetadata::new(
             content_hash,
             property_hashes,
         );
-        crate::schema::views::SchemaVersion::new(file_times, hashes, raw)
+        crate::schema::views::SchemaVersion::new(file_stats, hashes, raw)
             .map_err(SchemaLoaderError::Ingestion)
     }
 }
@@ -2114,7 +2107,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
+        use crate::schema::views::metadata::HashMetadata;
 
         for id in &status.refresh_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2135,15 +2128,12 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     },
                 ))
             })?;
-            let file_times = FileTimesMetadata::new(
-                payload.stats.created_at(),
-                payload.stats.modified_at(),
-            );
+            let file_stats = payload.stats;
             let hashes = HashMetadata::new(
                 payload.content_hash,
                 current.hashes().properties().clone(),
             );
-            payload.view.add_version(current.with_metadata(file_times, hashes));
+            payload.view.add_version(current.with_metadata(file_stats, hashes));
             repository.save_raw_schema_view(*id, &payload.view).map_err(
                 |e| {
                     let repo_err: SchemaRepositoryError = e.into();
@@ -2162,7 +2152,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        use crate::schema::views::metadata::{FileTimesMetadata, HashMetadata};
+        use crate::schema::views::metadata::HashMetadata;
 
         for id in &status.stale_timestamp_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2180,17 +2170,14 @@ impl SchemaProcessor<Refresh, Analyzed> {
                             },
                         ))
                     })?;
-                    let file_times = FileTimesMetadata::new(
-                        payload.stats.created_at(),
-                        payload.stats.modified_at(),
-                    );
+                    let file_stats = payload.stats;
                     let hashes = HashMetadata::new(
                         *current.hashes().content(),
                         current.hashes().properties().clone(),
                     );
                     payload
                         .view
-                        .add_version(current.with_metadata(file_times, hashes));
+                        .add_version(current.with_metadata(file_stats, hashes));
                     repository
                         .save_raw_schema_view(*id, &payload.view)
                         .map_err(|e| {
@@ -2208,17 +2195,14 @@ impl SchemaProcessor<Refresh, Analyzed> {
                             },
                         ))
                     })?;
-                    let file_times = FileTimesMetadata::new(
-                        payload.stats.created_at(),
-                        payload.stats.modified_at(),
-                    );
+                    let file_stats = payload.stats;
                     let hashes = HashMetadata::new(
                         payload.content_hash,
                         current.hashes().properties().clone(),
                     );
                     payload
                         .view
-                        .add_version(current.with_metadata(file_times, hashes));
+                        .add_version(current.with_metadata(file_stats, hashes));
                     repository
                         .save_raw_schema_view(*id, &payload.view)
                         .map_err(|e| {
@@ -3038,14 +3022,13 @@ mod tests {
 
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
-        let file_times =
-            crate::schema::views::FileTimesMetadata::new(None, None);
+        let file_stats = crate::fs::FileStats::new(None, None, 0);
         let hashes = crate::schema::views::HashMetadata::new(
             content_hash,
             HashMap::new(),
         );
         let version =
-            crate::schema::views::SchemaVersion::new(file_times, hashes, &raw)
+            crate::schema::views::SchemaVersion::new(file_stats, hashes, &raw)
                 .expect("valid schema view fixture");
         let path = format!("schemas/{name}.toml");
         RawSchemaView::new(

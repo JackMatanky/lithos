@@ -121,10 +121,7 @@ use crate::{
         property::PropertyName,
         raw::{RawFileStats, RawPropertyBank},
         storage::Repository,
-        views::{
-            FileTimesMetadata, RawPropertyBankView, RawView as _,
-            metadata::HashMetadata,
-        },
+        views::{RawPropertyBankView, RawView as _, metadata::HashMetadata},
     },
     support::hash::Blake3Hash,
 };
@@ -595,11 +592,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        let new_file_times = FileTimesMetadata::new(
-            self.status.stats.created_at(),
-            self.status.stats.modified_at(),
-        );
-        self.status.view.update_timestamps(new_file_times);
+        self.status.view.update_file_stats(self.status.stats);
 
         repository
             .save_raw_property_bank_view(
@@ -628,11 +621,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        let new_file_times = FileTimesMetadata::new(
-            self.status.stats.created_at(),
-            self.status.stats.modified_at(),
-        );
-        self.status.view.update_timestamps(new_file_times);
+        self.status.view.update_file_stats(self.status.stats);
         self.status
             .view
             .update_content_hash(self.status.content_hash)

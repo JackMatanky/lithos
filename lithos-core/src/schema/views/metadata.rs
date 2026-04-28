@@ -1,130 +1,13 @@
 //! Shared metadata types for schema and property bank versions.
 
-use std::{
-    collections::HashMap,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::HashMap;
 
-use rkyv::{
-    Archive, Deserialize, Serialize,
-    with::{AsUnixTime, Map},
-};
+use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
     schema::{property::PropertyName, raw::property::RawPropertyMap},
     support::hash::Blake3Hash,
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  FileTimesMetadata
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// File timestamp metadata shared by schema and property bank versions.
-///
-/// Tracks when the file was created, modified, and when this version
-/// was recorded in the database.
-#[expect(
-    clippy::struct_field_names,
-    reason = "Timestamp fields (created_at, modified_at, recorded_at) are \
-              semantically distinct"
-)]
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-#[rkyv(attr(expect(
-    clippy::struct_field_names,
-    reason = "Archived type mirrors source struct field names"
-)))]
-pub struct FileTimesMetadata {
-    /// File creation timestamp from filesystem.
-    #[rkyv(with = Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-
-    /// File modification timestamp from filesystem.
-    #[rkyv(with = Map<AsUnixTime>)]
-    modified_at: Option<SystemTime>,
-
-    /// When this version was recorded in the database.
-    #[rkyv(with = AsUnixTime)]
-    recorded_at: SystemTime,
-}
-
-impl FileTimesMetadata {
-    /// Create new file times metadata.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
-        Self {
-            created_at,
-            modified_at,
-            recorded_at: SystemTime::now(),
-        }
-    }
-
-    /// Get file creation timestamp.
-    #[inline]
-    #[must_use]
-    pub fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Get file modification timestamp.
-    #[inline]
-    #[must_use]
-    pub fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
-    }
-
-    /// Get database recording timestamp.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Check if timestamps match (for staleness detection).
-    #[inline]
-    #[must_use]
-    pub fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.created_at == created_at && self.modified_at == modified_at
-    }
-
-    /// Convert a [`SystemTime`] into Unix seconds used by archived metadata.
-    #[inline]
-    #[must_use]
-    fn system_time_to_unix_seconds(time: SystemTime) -> Option<i64> {
-        let duration = time.duration_since(UNIX_EPOCH).ok()?;
-        i64::try_from(duration.as_secs()).ok()
-    }
-}
-
-impl ArchivedFileTimesMetadata {
-    /// Check whether archived timestamps match provided filesystem times.
-    #[inline]
-    #[must_use]
-    pub fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        self.created_at
-            .as_ref()
-            .and_then(|time| i64::try_from(time.as_secs()).ok())
-            == created_at
-                .and_then(FileTimesMetadata::system_time_to_unix_seconds)
-            && self
-                .modified_at
-                .as_ref()
-                .and_then(|time| i64::try_from(time.as_secs()).ok())
-                == modified_at
-                    .and_then(FileTimesMetadata::system_time_to_unix_seconds)
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  HashMetadata
@@ -251,23 +134,6 @@ impl ArchivedHashMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn file_times_matches_same_timestamps() {
-        let now = SystemTime::now();
-        let metadata = FileTimesMetadata::new(Some(now), Some(now));
-
-        assert!(metadata.is_timestamp_match(Some(now), Some(now)));
-    }
-
-    #[test]
-    fn file_times_no_match_different_timestamps() {
-        let now = SystemTime::now();
-        let later = now + std::time::Duration::from_secs(1);
-        let metadata = FileTimesMetadata::new(Some(now), Some(now));
-
-        assert!(!metadata.is_timestamp_match(Some(later), Some(now)));
-    }
 
     #[test]
     fn hash_metadata_content_matches() {
