@@ -63,7 +63,7 @@ pub(crate) use crate::schema::delta::{ExcludesDelta, SchemaPropertyDelta};
 use crate::{
     fs::{FileStats, FsReader, RelativePath},
     schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::Schema,
         bank::PropertyBank,
         builder::FilesContext,
         delta::PropertyDeltaEngine,
@@ -71,6 +71,7 @@ use crate::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
         },
+        identifier::{SchemaId, SchemaName},
         index::SchemaIndex,
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,

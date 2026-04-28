@@ -37,7 +37,7 @@
 //!
 //! ```rust
 //! use lithos_core::schema::{
-//!     aggregate::SchemaId,
+//!     identifier::SchemaId,
 //!     inheritance::{InheritanceGraph, SchemaGraphBuilder},
 //! };
 //!
@@ -65,7 +65,7 @@ use crate::{
     graph::{
         DagGraph, Graph, GraphBuilder, sorting::topological_sort_with_nodes,
     },
-    schema::aggregate::SchemaId,
+    schema::identifier::SchemaId,
 };
 
 // ============================================================================
@@ -81,7 +81,7 @@ use crate::{
 ///
 /// ```
 /// use lithos_core::schema::{
-///     aggregate::SchemaId,
+///     identifier::SchemaId,
 ///     inheritance::{InheritanceGraph, SchemaGraphBuilder},
 /// };
 ///
@@ -399,7 +399,7 @@ impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T> {
 ///
 /// ```
 /// use lithos_core::schema::{
-///     aggregate::SchemaId, inheritance::SchemaGraphBuilder,
+///     identifier::SchemaId, inheritance::SchemaGraphBuilder,
 /// };
 ///
 /// let mut builder = SchemaGraphBuilder::new();
@@ -470,7 +470,7 @@ impl<T> Default for SchemaGraphBuilder<T> {
 /// use std::collections::HashSet;
 ///
 /// use lithos_core::schema::{
-///     aggregate::SchemaId,
+///     identifier::SchemaId,
 ///     inheritance::{SchemaGraphBuilder, affected_subtree},
 /// };
 ///

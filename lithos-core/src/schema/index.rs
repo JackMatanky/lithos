@@ -18,7 +18,7 @@ use std::{collections::HashMap, ops::Deref};
 
 use crate::{
     fs::RelativePath,
-    schema::aggregate::{SchemaId, SchemaName},
+    schema::identifier::{SchemaId, SchemaName},
 };
 
 /// A schema name-to-ID pair.
@@ -45,7 +45,7 @@ pub type PathIdPair = (RelativePath, SchemaId);
 ///     (SchemaName::try_new("task")?, id2),
 /// ]);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SchemaIndex {
     name_to_id: HashMap<SchemaName, SchemaId>,
     id_to_name: HashMap<SchemaId, SchemaName>,
@@ -53,18 +53,39 @@ pub struct SchemaIndex {
 }
 
 impl SchemaIndex {
+    /// Creates an empty `SchemaIndex`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Creates an empty `SchemaIndex` with the specified capacity.
+    #[inline]
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            name_to_id: HashMap::with_capacity(capacity),
+            id_to_name: HashMap::with_capacity(capacity),
+            path_to_id: HashMap::with_capacity(capacity),
+        }
+    }
+
     /// Create index from name→ID pairs (e.g., from repository's list method).
+    ///
+    /// This method builds both name→ID and ID→name mappings.
     pub fn from_name_id_pairs<I>(pairs: I) -> Self
     where
         I: IntoIterator<Item = (SchemaName, SchemaId)>,
     {
-        let pairs: Vec<_> = pairs.into_iter().collect();
-        let capacity = pairs.len();
+        let iter = pairs.into_iter();
+        let (low, high) = iter.size_hint();
+        let capacity = high.unwrap_or(low);
 
         let mut name_to_id = HashMap::with_capacity(capacity);
         let mut id_to_name = HashMap::with_capacity(capacity);
 
-        for (name, id) in pairs {
+        for (name, id) in iter {
             id_to_name.insert(id, name.clone());
             name_to_id.insert(name, id);
         }
@@ -76,6 +97,31 @@ impl SchemaIndex {
         }
     }
 
+    /// Create a name-to-ID index only.
+    ///
+    /// This is a performance optimization for hot paths that only need
+    /// forward resolution (e.g., inheritance).
+    pub fn from_name_id_pairs_only<I>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (SchemaName, SchemaId)>,
+    {
+        let iter = pairs.into_iter();
+        let (low, high) = iter.size_hint();
+        let capacity = high.unwrap_or(low);
+
+        let mut name_to_id = HashMap::with_capacity(capacity);
+
+        for (name, id) in iter {
+            name_to_id.insert(name, id);
+        }
+
+        Self {
+            name_to_id,
+            id_to_name: HashMap::new(),
+            path_to_id: HashMap::new(),
+        }
+    }
+
     /// Create index from path→ID pairs (e.g., from repository's list method).
     ///
     /// Derives `SchemaName` from path basename (file stem) for name→ID lookups.
@@ -83,17 +129,16 @@ impl SchemaIndex {
     where
         I: IntoIterator<Item = (RelativePath, SchemaId)>,
     {
-        let pairs: Vec<_> = pairs.into_iter().collect();
-        let capacity = pairs.len();
+        let iter = pairs.into_iter();
+        let (low, high) = iter.size_hint();
+        let capacity = high.unwrap_or(low);
 
         let mut path_to_id = HashMap::with_capacity(capacity);
         let mut name_to_id = HashMap::with_capacity(capacity);
         let mut id_to_name = HashMap::with_capacity(capacity);
 
-        for (path, id) in pairs {
-            if let Some(name) = path.as_path().file_stem().and_then(|s| {
-                SchemaName::try_new(s.to_string_lossy().as_ref()).ok()
-            }) {
+        for (path, id) in iter {
+            if let Ok(name) = SchemaName::try_from(path.clone()) {
                 id_to_name.insert(id, name.clone());
                 name_to_id.insert(name, id);
             }
@@ -113,21 +158,24 @@ impl SchemaIndex {
         I: IntoIterator<Item = (SchemaName, SchemaId)>,
         J: IntoIterator<Item = (RelativePath, SchemaId)>,
     {
-        let name_pairs: Vec<_> = name_pairs.into_iter().collect();
-        let path_pairs: Vec<_> = path_pairs.into_iter().collect();
-        let name_capacity = name_pairs.len();
-        let path_capacity = path_pairs.len();
+        let name_iter = name_pairs.into_iter();
+        let (n_low, n_high) = name_iter.size_hint();
+        let name_capacity = n_high.unwrap_or(n_low);
 
         let mut name_to_id = HashMap::with_capacity(name_capacity);
         let mut id_to_name = HashMap::with_capacity(name_capacity);
 
-        for (name, id) in name_pairs {
+        for (name, id) in name_iter {
             id_to_name.insert(id, name.clone());
             name_to_id.insert(name, id);
         }
 
+        let path_iter = path_pairs.into_iter();
+        let (p_low, p_high) = path_iter.size_hint();
+        let path_capacity = p_high.unwrap_or(p_low);
+
         let mut path_to_id = HashMap::with_capacity(path_capacity);
-        for (path, id) in path_pairs {
+        for (path, id) in path_iter {
             path_to_id.insert(path, id);
         }
 
@@ -427,5 +475,17 @@ mod tests {
             vec![(RelativePath::try_from("schemas/user.json").unwrap(), id1)]
                 .into();
         assert_eq!(pairs.len(), 1);
+    }
+
+    #[test]
+    fn from_name_id_pairs_only_works() {
+        let name1 = SchemaName::try_new("user").unwrap();
+        let id1 = SchemaId::new();
+
+        let index =
+            SchemaIndex::from_name_id_pairs_only([(name1.clone(), id1)]);
+
+        assert_eq!(index.get_id_by_name(&name1), Some(id1));
+        assert_eq!(index.get_name_by_id(&id1), None);
     }
 }

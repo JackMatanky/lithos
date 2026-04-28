@@ -47,8 +47,9 @@ use std::collections::HashMap;
 
 use common::*;
 use lithos_core::schema::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::Schema,
     bank::PropertyBank,
+    identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyMap},
     storage::Repository as _,
 };

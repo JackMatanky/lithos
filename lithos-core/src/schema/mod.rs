@@ -10,6 +10,8 @@
 
 /// Schema aggregate and identifier types.
 pub mod aggregate;
+/// Core identity types for the schema system.
+pub mod identifier;
 
 /// Unified repository trait and implementations for schema persistence.
 ///

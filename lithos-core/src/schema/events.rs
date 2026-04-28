@@ -41,8 +41,8 @@ use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 use tracing::{debug, error, info, warn};
 
 use super::{
-    aggregate::{SchemaId, SchemaName},
     error::SchemaError,
+    identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyName},
 };
 
@@ -55,8 +55,8 @@ use super::{
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaCreated,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
@@ -89,8 +89,8 @@ impl SchemaCreated {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaCreated,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -119,8 +119,8 @@ impl SchemaCreated {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaResolved,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -152,8 +152,8 @@ impl SchemaResolved {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaResolved,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -182,8 +182,8 @@ impl SchemaResolved {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaDeleted,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -215,8 +215,8 @@ impl SchemaDeleted {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaDeleted,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -359,8 +359,8 @@ impl PropertyBankLoaded {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::{Events, SchemaCreated},
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -1157,7 +1157,7 @@ impl SchemaEventHandler for EventCollector {
 #[cfg(test)]
 mod handler_tests {
     use super::*;
-    use crate::schema::aggregate::SchemaId;
+    use crate::schema::identifier::SchemaId;
 
     #[test]
     fn logging_handler_new() {

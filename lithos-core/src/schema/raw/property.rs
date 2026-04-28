@@ -34,7 +34,7 @@ use super::{
 };
 use crate::{
     schema::{
-        aggregate::SchemaName, error::SchemaError, property::PropertyName,
+        error::SchemaError, identifier::SchemaName, property::PropertyName,
     },
     support::hash::Blake3Hash,
 };

@@ -14,9 +14,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::Schema,
     bank::PropertyBank,
     error::{SchemaRepositoryError, SchemaStorageError},
+    identifier::{SchemaId, SchemaName},
     index::{NameIdPairs, PathIdPairs, SchemaIndex},
     inheritance::InheritanceGraph,
     property::PropertyName,

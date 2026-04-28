@@ -698,14 +698,14 @@ pub enum SchemaInheritanceError {
     #[error("missing schema node for id {id}")]
     MissingNode {
         /// Schema identifier.
-        id: crate::schema::aggregate::SchemaId,
+        id: crate::schema::identifier::SchemaId,
     },
 
     /// Returned when a cycle is detected in the inheritance graph.
     #[error("cycle detected in schema inheritance graph")]
     CycleDetected {
         /// Nodes involved in the cycle.
-        nodes: Vec<crate::schema::aggregate::SchemaId>,
+        nodes: Vec<crate::schema::identifier::SchemaId>,
     },
 
     /// Returned when the inheritance graph is not directed.
@@ -736,14 +736,14 @@ pub enum SchemaInheritanceError {
     },
 }
 
-impl TryFrom<crate::graph::GraphError<crate::schema::aggregate::SchemaId>>
+impl TryFrom<crate::graph::GraphError<crate::schema::identifier::SchemaId>>
     for SchemaError
 {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(
-        err: crate::graph::GraphError<crate::schema::aggregate::SchemaId>,
+        err: crate::graph::GraphError<crate::schema::identifier::SchemaId>,
     ) -> Result<Self, Self::Error> {
         let inheritance = match err {
             crate::graph::GraphError::CycleDetected {
@@ -780,23 +780,23 @@ pub enum SchemaResolutionError {
     #[error("schema node missing for id {id}")]
     MissingNode {
         /// Schema ID.
-        id: crate::schema::aggregate::SchemaId,
+        id: crate::schema::identifier::SchemaId,
     },
 
     /// Returned when a parent schema is not found.
     #[error("parent schema '{parent}' not found for schema '{child}'")]
     ParentNotFound {
         /// Child schema name.
-        child: crate::schema::aggregate::SchemaName,
+        child: crate::schema::identifier::SchemaName,
         /// Parent schema name.
-        parent: crate::schema::aggregate::SchemaName,
+        parent: crate::schema::identifier::SchemaName,
     },
 
     /// Returned when a cycle is detected in the inheritance graph.
     #[error("cycle detected in schema inheritance: {}", schemas.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", "))]
     CycleDetected {
         /// Schemas involved in the cycle.
-        schemas: Vec<crate::schema::aggregate::SchemaName>,
+        schemas: Vec<crate::schema::identifier::SchemaName>,
     },
 
     /// Returned when the graph is not directed.

@@ -7,7 +7,7 @@ use super::{
 use crate::{
     fs::FileStats,
     schema::{
-        aggregate::SchemaName, error::SchemaIngestionError,
+        error::SchemaIngestionError, identifier::SchemaName,
         property::PropertyName,
     },
 };

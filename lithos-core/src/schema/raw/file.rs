@@ -1,6 +1,6 @@
 //! File property override types.
 
-use crate::schema::aggregate::SchemaName;
+use crate::schema::identifier::SchemaName;
 
 /// Raw file property definition.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

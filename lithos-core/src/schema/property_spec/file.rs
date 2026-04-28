@@ -5,7 +5,7 @@ use std::path::{Component, Path};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::schema::{
-    aggregate::SchemaName, error::SchemaError, raw::file::RawFileProperty,
+    error::SchemaError, identifier::SchemaName, raw::file::RawFileProperty,
 };
 
 /// File property validation constraints.

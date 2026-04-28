@@ -222,8 +222,8 @@ use super::{
 use crate::{
     fs::FileStats,
     schema::{
-        aggregate::SchemaName,
         error::SchemaIngestionError,
+        identifier::SchemaName,
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
     },

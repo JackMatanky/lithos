@@ -146,8 +146,8 @@ use super::{
 use crate::{
     fs::{FileStats, Filename, RelativePath},
     schema::{
-        aggregate::SchemaName,
         error::{SchemaIngestionError, SchemaStorageError},
+        identifier::SchemaName,
         property::PropertyName,
         raw::{RawPropertyBank, RawSchema},
     },

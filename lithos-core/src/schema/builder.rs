@@ -424,7 +424,7 @@ mod tests {
         config::aggregate::Config,
         fs::FsReader,
         schema::{
-            aggregate::SchemaId,
+            identifier::SchemaId,
             inheritance::{InheritanceGraph, SchemaGraphBuilder},
             testing::InMemoryRepository,
         },
