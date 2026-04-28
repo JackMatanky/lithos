@@ -112,15 +112,6 @@ impl RelativePath {
     }
 }
 
-impl ArchivedRelativePath {
-    /// Return the inner path as a standard library [`Path`].
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.0.as_str())
-    }
-}
-
 impl TryFrom<PathBuf> for RelativePath {
     type Error = std::io::Error;
 
@@ -153,6 +144,15 @@ impl AsRef<Path> for RelativePath {
     #[inline]
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl ArchivedRelativePath {
+    /// Return the inner path as a standard library [`Path`].
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.0.as_str())
     }
 }
 
@@ -191,6 +191,26 @@ impl AbsolutePath {
         &self.0
     }
 
+    /// Returns the filename component of this path if it exists.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> Option<Filename> {
+        self.try_filename().ok().flatten()
+    }
+
+    /// Returns the filename component of this path if it exists.
+    ///
+    /// # Errors
+    /// Returns an error when a filename exists but cannot be represented as
+    /// valid UTF-8.
+    #[inline]
+    pub fn try_filename(&self) -> Result<Option<Filename>, std::io::Error> {
+        match self.0.file_name() {
+            Some(_) => Filename::try_from(self.0.as_path()).map(Some),
+            None => Ok(None),
+        }
+    }
+
     fn validate(path: &Path) -> Result<(), std::io::Error> {
         if path.as_os_str().is_empty() {
             return Err(std::io::Error::new(
@@ -224,6 +244,15 @@ impl TryFrom<&Path> for AbsolutePath {
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         Self::validate(path)?;
         Ok(Self(path.to_path_buf()))
+    }
+}
+
+impl TryFrom<&str> for AbsolutePath {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(Path::new(value))
     }
 }
 
@@ -343,6 +372,41 @@ mod tests {
         fn should_accept_valid_absolute() {
             let result = AbsolutePath::try_from(PathBuf::from("/a/b/c"));
             let _path = result.unwrap();
+        }
+
+        #[test]
+        fn should_support_try_from_str() {
+            let path = AbsolutePath::try_from("/a/b/file.txt").unwrap();
+            assert_eq!(path.as_path(), Path::new("/a/b/file.txt"));
+        }
+
+        #[test]
+        fn should_extract_filename() {
+            let path =
+                AbsolutePath::try_from(PathBuf::from("/a/b/file.txt")).unwrap();
+            let filename = path.filename().unwrap();
+            assert_eq!(filename.as_str(), "file.txt");
+        }
+
+        #[test]
+        fn try_filename_should_extract_filename() {
+            let path =
+                AbsolutePath::try_from(PathBuf::from("/a/b/file.txt")).unwrap();
+            let filename = path.try_filename().unwrap().unwrap();
+            assert_eq!(filename.as_str(), "file.txt");
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn try_filename_should_report_invalid_utf8() {
+            use std::os::unix::ffi::OsStringExt as _;
+
+            let path = PathBuf::from("/tmp")
+                .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
+
+            let absolute = AbsolutePath::try_from(path).unwrap();
+            let error = absolute.try_filename().unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         }
     }
 }
