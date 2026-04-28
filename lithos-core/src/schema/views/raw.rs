@@ -14,7 +14,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     HashRecord, PropertyBankVersion, RawView, RawViewRead, SchemaVersion,
-    VersionRead as _,
+    Version as _, VersionRead as _,
 };
 use crate::{
     fs::{FileStats, Filename, RelativePath},
@@ -189,10 +189,6 @@ impl RawSchemaView {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are intentionally reused"
-)]
 impl RawView for RawSchemaView {
     type FilePath = RelativePath;
     type Version = SchemaVersion;
@@ -220,6 +216,44 @@ impl RawView for RawSchemaView {
     #[inline]
     fn add_version(&mut self, version: Self::Version) {
         RawSchemaView::add_version(self, version);
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        self.current().is_some_and(|v| v.is_content_match(content_hash))
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.current()
+            .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
+    }
+
+    #[inline]
+    fn update_file_stats(&mut self, file_stats: FileStats) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_stats(file_stats);
+        }
+    }
+
+    #[inline]
+    fn update_timestamps(
+        &mut self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) {
+        if let Some(current) = self.current_mut() {
+            let size = current.file_stats().size();
+            current.set_file_stats(FileStats::new(
+                created_at,
+                modified_at,
+                size,
+            ));
+        }
     }
 
     #[inline]
@@ -448,10 +482,6 @@ impl RawPropertyBankView {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are intentionally reused"
-)]
 impl RawView for RawPropertyBankView {
     type FilePath = Filename;
     type Version = PropertyBankVersion;
@@ -479,6 +509,44 @@ impl RawView for RawPropertyBankView {
     #[inline]
     fn add_version(&mut self, version: Self::Version) {
         RawPropertyBankView::add_version(self, version);
+    }
+
+    #[inline]
+    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        self.current().is_some_and(|v| v.is_content_match(content_hash))
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.current()
+            .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
+    }
+
+    #[inline]
+    fn update_file_stats(&mut self, file_stats: FileStats) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_stats(file_stats);
+        }
+    }
+
+    #[inline]
+    fn update_timestamps(
+        &mut self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) {
+        if let Some(current) = self.current_mut() {
+            let size = current.file_stats().size();
+            current.set_file_stats(FileStats::new(
+                created_at,
+                modified_at,
+                size,
+            ));
+        }
     }
 
     #[inline]
