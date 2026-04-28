@@ -52,12 +52,12 @@ use crate::{
 //  SchemaVersion
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A single version of a schema file with validated, typed data.
+/// Represents a single version of a schema file with validated, typed data.
 ///
 /// Stores:
-/// - File and hash metadata for staleness detection
-/// - Schema format version, inheritance metadata (validated, queryable)
-/// - Cached expanded properties for incremental resolution
+/// - File and hash metadata for staleness detection.
+/// - Schema format version, inheritance metadata (validated, queryable).
+/// - Cached expanded properties for incremental resolution.
 ///
 /// ## Design Rationale
 ///
@@ -114,6 +114,20 @@ impl SchemaVersion {
     ///
     /// This constructor is currently infallible; the [`Result`] is retained for
     /// pipeline compatibility if future validation is added.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::SchemaVersion;
+    /// # use lithos_core::schema::raw::RawSchema;
+    /// # use lithos_core::fs::FileStats;
+    /// # use lithos_core::schema::views::HashRecord;
+    /// #
+    /// # let raw: RawSchema = todo!();
+    /// # let stats: FileStats = todo!();
+    /// # let hashes: HashRecord = todo!();
+    /// let version = SchemaVersion::new(stats, hashes, &raw).unwrap();
+    /// ```
     #[inline]
     pub fn new(
         file_stats: FileStats,
@@ -341,11 +355,12 @@ impl VersionRead for ArchivedSchemaVersion {
 //  PropertyBankVersion
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A single version of the property bank file with validated, typed data.
+/// Represents a single version of the property bank file with validated, typed
+/// data.
 ///
 /// Stores:
-/// - File and hash metadata for staleness detection
-/// - Property bank format version as simple string
+/// - File and hash metadata for staleness detection.
+/// - Property bank format version as simple string.
 ///
 /// ## Design Rationale
 ///
@@ -378,6 +393,18 @@ impl PropertyBankVersion {
     ///
     /// This constructor is currently infallible; the [`Result`] is retained for
     /// pipeline compatibility if future validation is added.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::PropertyBankVersion;
+    /// # use lithos_core::fs::FileStats;
+    /// # use lithos_core::schema::views::HashRecord;
+    /// #
+    /// # let stats: FileStats = todo!();
+    /// # let hashes: HashRecord = todo!();
+    /// let version = PropertyBankVersion::new(stats, hashes, "1.0").unwrap();
+    /// ```
     #[inline]
     pub fn new(
         file_stats: FileStats,

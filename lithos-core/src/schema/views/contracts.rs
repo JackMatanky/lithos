@@ -1,16 +1,16 @@
 //! Trait contracts for schema view persistence.
 //!
 //! This module defines trait boundaries used by the schema view layer:
-//! - [`VersionRead`] and [`Version`] for snapshot payloads,
+//! - [`VersionRead`] and [`Version`] for snapshot payloads.
 //! - [`RawViewRead`] and [`RawView`] for versioned raw-file view containers.
 //!
-//! The contracts are shared by owned and archived (`rkyv`) representations so
+//! These contracts are shared by owned and archived (`rkyv`) representations so
 //! staleness checks and version-history behavior stay consistent across storage
 //! and runtime access paths.
 //!
 //! Types referenced by these traits:
-//! - [`FileStats`] — File timestamp and size metadata
-//! - [`Blake3Hash`] — Content hash for staleness detection
+//! - [`FileStats`] — File timestamp and size metadata.
+//! - [`Blake3Hash`] — Content hash for staleness detection.
 
 use std::time::SystemTime;
 
@@ -19,17 +19,18 @@ use crate::{
     fs::FileStats, schema::error::SchemaStorageError, support::hash::Blake3Hash,
 };
 
-/// Mutable container contract for versioned raw-file views.
+/// Defines the mutable container contract for versioned raw-file views.
 ///
 /// Implemented by [`RawSchemaView`] and [`RawPropertyBankView`] to provide
 /// consistent version rotation, staleness checks, and metadata refresh helpers.
 pub trait RawView {
-    /// Maximum number of historical versions retained.
+    /// Represents the maximum number of historical versions retained.
     const MAX_VERSIONS: usize = 5;
 
-    /// Concrete path/filename identifier type.
+    /// Specifies the concrete path or filename identifier type.
     type FilePath;
-    /// Concrete version payload type.
+
+    /// Specifies the concrete version payload type.
     type Version: Version;
 
     /// Adds a new version, evicting the oldest if at capacity.
@@ -107,7 +108,7 @@ pub trait RawView {
     fn version_count(&self) -> usize;
 }
 
-/// Read-only contract for owned and archived raw-file views.
+/// Defines the read-only contract for owned and archived raw-file views.
 ///
 /// This keeps staleness checks available on zero-copy archived values without
 /// requiring mutable access or allocation.
@@ -127,7 +128,7 @@ pub trait RawViewRead {
     fn version_count(&self) -> usize;
 }
 
-/// Mutable contract for persisted snapshot payloads.
+/// Defines the mutable contract for persisted snapshot payloads.
 ///
 /// Implemented by [`SchemaVersion`] and [`PropertyBankVersion`].
 pub trait Version: VersionRead + Sized {
@@ -151,7 +152,7 @@ pub trait Version: VersionRead + Sized {
     fn with_metadata(&self, file_stats: FileStats, hashes: HashRecord) -> Self;
 }
 
-/// Read-only contract shared by snapshot payloads.
+/// Defines the read-only contract shared by snapshot payloads.
 ///
 /// Exposes minimal staleness and format information needed by view containers
 /// and archived access paths.

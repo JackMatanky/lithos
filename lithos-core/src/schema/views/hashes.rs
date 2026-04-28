@@ -33,6 +33,8 @@ use crate::{schema::property::PropertyName, support::hash::Blake3Hash};
 /// let content_hash = Blake3Hash::compute(b"content");
 /// let property_hashes = HashMap::new();
 /// let record = HashRecord::new(content_hash, property_hashes);
+///
+/// assert!(record.is_content_match(&content_hash));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct HashRecord {
@@ -70,6 +72,18 @@ impl HashRecord {
     }
 
     /// Returns the content hash ([`Blake3Hash`]) for staleness detection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::HashRecord;
+    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use std::collections::HashMap;
+    /// #
+    /// let content = Blake3Hash::compute(b"test");
+    /// let record = HashRecord::new(content, HashMap::new());
+    /// assert_eq!(record.content(), &content);
+    /// ```
     #[inline]
     #[must_use]
     pub fn content(&self) -> &Blake3Hash {
@@ -80,6 +94,17 @@ impl HashRecord {
     ///
     /// Returns a map of [`PropertyName`] to [`Blake3Hash`] for properties
     /// that need incremental updates.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::HashRecord;
+    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use std::collections::HashMap;
+    /// #
+    /// let record = HashRecord::new(Blake3Hash::compute(b"c"), HashMap::new());
+    /// assert!(record.properties().is_empty());
+    /// ```
     #[inline]
     #[must_use]
     pub fn properties(&self) -> &HashMap<PropertyName, Blake3Hash> {
@@ -89,6 +114,18 @@ impl HashRecord {
     /// Returns `true` if the provided content hash matches this record.
     ///
     /// Used for fast staleness checks without deserializing the full schema.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::HashRecord;
+    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use std::collections::HashMap;
+    /// #
+    /// let content = Blake3Hash::compute(b"test");
+    /// let record = HashRecord::new(content, HashMap::new());
+    /// assert!(record.is_content_match(&content));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
@@ -100,6 +137,24 @@ impl ArchivedHashRecord {
     /// Returns `true` if the archived content hash matches (zero-copy).
     ///
     /// Used for zero-copy staleness checks without deserialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::hashes::{HashRecord, ArchivedHashRecord};
+    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use std::collections::HashMap;
+    /// # use rkyv::access;
+    /// #
+    /// let hash = Blake3Hash::compute(b"test");
+    /// let record = HashRecord::new(hash, HashMap::new());
+    /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&record).unwrap();
+    /// let archived =
+    ///     rkyv::access::<ArchivedHashRecord, rkyv::rancor::Error>(&bytes)
+    ///         .unwrap();
+    ///
+    /// assert!(archived.is_content_match(&hash));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {

@@ -34,12 +34,7 @@ use crate::{
     support::hash::Blake3Hash,
 };
 
-/// Raw schema file with version history.
-///
-/// Tracks up to 5 versions of a schema file. Each version includes inheritance
-/// metadata (`extends`, `excludes`) to enable incremental resolution.
-///
-/// Raw schema file with version history.
+/// Represents a raw schema file with version history.
 ///
 /// Tracks up to 5 versions of a schema file. Each version includes inheritance
 /// metadata (`extends`, `excludes`) to enable incremental resolution.
@@ -56,7 +51,18 @@ pub struct RawSchemaView {
 }
 
 impl RawSchemaView {
-    /// Creates a new schema view with initial version.
+    /// Creates a new schema view with an initial version.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::{RawSchemaView, SchemaVersion};
+    /// # use lithos_core::fs::RelativePath;
+    /// #
+    /// # // Mock setup
+    /// # let path = RelativePath::try_from("schemas/note.json").unwrap();
+    /// # // let version = ...
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(path: RelativePath, version: SchemaVersion) -> Self {
@@ -71,13 +77,32 @@ impl RawSchemaView {
     }
 
     /// Returns the vault-relative schema path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// # use lithos_core::fs::RelativePath;
+    /// #
+    /// # // let view = ...
+    /// # // assert_eq!(view.file_path().as_str(), "schemas/note.json");
+    /// ```
     #[inline]
     #[must_use]
     pub fn file_path(&self) -> &RelativePath {
         &self.path
     }
 
-    /// Returns the schema name derived from filename without extension.
+    /// Returns the schema name derived from the filename without extension.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # // let view = ...
+    /// # // assert_eq!(view.name(), "note");
+    /// ```
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
@@ -91,6 +116,15 @@ impl RawSchemaView {
     /// Returns the parent schema name from the current version, if any.
     ///
     /// Extracted from the `extends` field during schema ingestion.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # // let view = ...
+    /// # // let parent = view.extends();
+    /// ```
     #[inline]
     #[must_use]
     pub fn extends(&self) -> Option<&SchemaName> {
@@ -101,6 +135,15 @@ impl RawSchemaView {
     /// Returns excluded property names from the current version.
     ///
     /// Extracted from the `excludes` field during schema ingestion.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # // let view = ...
+    /// # // let excluded = view.excludes();
+    /// ```
     #[inline]
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
@@ -108,6 +151,15 @@ impl RawSchemaView {
     }
 
     /// Returns the most recent version, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # // let view = ...
+    /// # // if let Some(current) = view.current() { ... }
+    /// ```
     #[inline]
     #[must_use]
     pub fn current(&self) -> Option<&SchemaVersion> {
@@ -116,7 +168,16 @@ impl RawSchemaView {
 
     /// Returns mutable access to the most recent version, if any.
     ///
-    /// Used for updating cached expanded properties after `RefExpander` runs.
+    /// Used for updating cached expanded properties after [`RefExpander`] runs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # // let mut view = ...
+    /// # // if let Some(current) = view.current_mut() { ... }
+    /// ```
     #[inline]
     #[must_use]
     pub fn current_mut(&mut self) -> Option<&mut SchemaVersion> {
@@ -124,6 +185,17 @@ impl RawSchemaView {
     }
 
     /// Returns all tracked versions (newest first).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # let view: RawSchemaView = todo!();
+    /// for version in view.versions() {
+    ///     // ...
+    /// }
+    /// ```
     #[inline]
     #[must_use]
     pub fn versions(&self) -> &VecDeque<SchemaVersion> {
@@ -131,13 +203,32 @@ impl RawSchemaView {
     }
 
     /// Returns the number of tracked versions.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawSchemaView;
+    /// #
+    /// # let view: RawSchemaView = todo!();
+    /// assert!(view.version_count() > 0);
+    /// ```
     #[inline]
     #[must_use]
     pub fn version_count(&self) -> usize {
         self.versions.len()
     }
 
-    /// Adds a new version (evicts oldest if at capacity).
+    /// Adds a new version, evicting the oldest if at capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::{RawSchemaView, SchemaVersion};
+    /// #
+    /// # // let mut view = ...
+    /// # // let new_version = ...
+    /// # // view.add_version(new_version);
+    /// ```
     #[inline]
     pub fn add_version(&mut self, version: SchemaVersion) {
         if self.versions.len() >= <Self as RawView>::MAX_VERSIONS {
@@ -153,11 +244,13 @@ impl RawSchemaView {
     /// from `raw` to build the initial [`SchemaVersion`].
     ///
     /// # Parameters
-    /// - `raw`: The parsed [`RawSchema`]
-    /// - `path`: The vault-relative path (e.g., `"schemas/note.json"`)
-    /// - `content`: The raw file content (used to compute content hash)
+    ///
+    /// - `raw`: The parsed [`RawSchema`].
+    /// - `path`: The vault-relative path (e.g., `"schemas/note.json"`).
+    /// - `content`: The raw file content (used to compute the content hash).
     ///
     /// # Errors
+    ///
     /// Returns [`SchemaIngestionError`] if metadata extraction fails.
     #[inline]
     pub fn try_from_with_content(
@@ -321,7 +414,7 @@ impl RawViewRead for ArchivedRawSchemaView {
     }
 }
 
-/// Raw property bank file with version history.
+/// Represents a raw property bank file with version history.
 ///
 /// Tracks up to 5 versions of the property bank file for staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -334,7 +427,18 @@ pub struct RawPropertyBankView {
 }
 
 impl RawPropertyBankView {
-    /// Creates a new property bank view with initial version.
+    /// Creates a new property bank view with an initial version.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::{RawPropertyBankView, PropertyBankVersion};
+    /// # use lithos_core::fs::Filename;
+    /// #
+    /// # // let filename = Filename::new("properties.yaml".into());
+    /// # // let version = ...
+    /// # // let view = RawPropertyBankView::new(filename, version);
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(filename: Filename, version: PropertyBankVersion) -> Self {
@@ -349,6 +453,15 @@ impl RawPropertyBankView {
     }
 
     /// Returns the property bank filename.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// #
+    /// # // let view = ...
+    /// # // assert_eq!(view.file_path().as_str(), "properties.yaml");
+    /// ```
     #[inline]
     #[must_use]
     pub fn file_path(&self) -> &Filename {
@@ -356,6 +469,17 @@ impl RawPropertyBankView {
     }
 
     /// Returns the most recent version, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// #
+    /// # let view: RawPropertyBankView = todo!();
+    /// if let Some(current) = view.current() {
+    ///     // ...
+    /// }
+    /// ```
     #[inline]
     #[must_use]
     pub fn current(&self) -> Option<&PropertyBankVersion> {
@@ -363,6 +487,17 @@ impl RawPropertyBankView {
     }
 
     /// Returns mutable access to the most recent version, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// #
+    /// # let mut view: RawPropertyBankView = todo!();
+    /// if let Some(current) = view.current_mut() {
+    ///     // ...
+    /// }
+    /// ```
     #[inline]
     #[must_use]
     pub fn current_mut(&mut self) -> Option<&mut PropertyBankVersion> {
@@ -370,6 +505,17 @@ impl RawPropertyBankView {
     }
 
     /// Returns all tracked versions (newest first).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// #
+    /// # let view: RawPropertyBankView = todo!();
+    /// for version in view.versions() {
+    ///     // ...
+    /// }
+    /// ```
     #[inline]
     #[must_use]
     pub fn versions(&self) -> &VecDeque<PropertyBankVersion> {
@@ -377,13 +523,32 @@ impl RawPropertyBankView {
     }
 
     /// Returns the number of tracked versions.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// #
+    /// # let view: RawPropertyBankView = todo!();
+    /// assert!(view.version_count() > 0);
+    /// ```
     #[inline]
     #[must_use]
     pub fn version_count(&self) -> usize {
         self.versions.len()
     }
 
-    /// Adds a new version (evicts oldest if at capacity).
+    /// Adds a new version, evicting the oldest if at capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::{RawPropertyBankView, PropertyBankVersion};
+    /// #
+    /// # let mut view: RawPropertyBankView = todo!();
+    /// # let new_version: PropertyBankVersion = todo!();
+    /// view.add_version(new_version);
+    /// ```
     #[inline]
     pub fn add_version(&mut self, version: PropertyBankVersion) {
         if self.versions.len() >= <Self as RawView>::MAX_VERSIONS {
@@ -393,7 +558,17 @@ impl RawPropertyBankView {
         self.versions.push_front(version);
     }
 
-    /// Update file timestamps of the current version.
+    /// Updates file timestamps of the current version.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// # use std::time::SystemTime;
+    /// #
+    /// # let mut view: RawPropertyBankView = todo!();
+    /// view.update_timestamps(Some(SystemTime::now()), None);
+    /// ```
     #[inline]
     pub fn update_timestamps(
         &mut self,
@@ -410,7 +585,18 @@ impl RawPropertyBankView {
         }
     }
 
-    /// Update full file stats of the current version.
+    /// Updates full file stats of the current version.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::schema::views::RawPropertyBankView;
+    /// # use lithos_core::fs::FileStats;
+    /// #
+    /// # let mut view: RawPropertyBankView = todo!();
+    /// # let stats = FileStats::new(None, None, 1024);
+    /// view.update_file_stats(stats);
+    /// ```
     #[inline]
     pub fn update_file_stats(&mut self, file_stats: FileStats) {
         if let Some(current) = self.versions.front_mut() {
@@ -418,13 +604,14 @@ impl RawPropertyBankView {
         }
     }
 
-    /// Update content hash while preserving property hashes.
+    /// Updates the content hash while preserving property hashes.
     ///
-    /// Adds a new version with updated content hash and existing file times.
+    /// Adds a new version with the updated content hash and existing file
+    /// times.
     ///
     /// # Errors
-    /// This method is currently infallible; the `Result` is retained for
-    /// pipeline compatibility if future validation is added.
+    ///
+    /// Returns [`SchemaStorageError`] if the current version is unavailable.
     #[inline]
     pub fn update_content_hash(
         &mut self,
@@ -453,7 +640,9 @@ impl RawPropertyBankView {
     /// versioned view for staleness checks.
     ///
     /// # Errors
-    /// Returns error if metadata is missing or validation fails.
+    ///
+    /// Returns [`SchemaIngestionError`] if metadata is missing or validation
+    /// fails.
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
