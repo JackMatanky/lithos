@@ -1,7 +1,7 @@
 //! Raw property bank definitions.
 
 use super::{
-    metadata::RawFileTimes,
+    metadata::RawFileStats,
     property::{RawPropertyBankEntry, RawPropertyMap},
     version::RawSchemaVersion,
 };
@@ -42,8 +42,13 @@ pub struct RawPropertyBank {
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip)]
-    file_times: RawFileTimes,
+    #[serde(skip, default = "default_file_stats")]
+    file_stats: RawFileStats,
+}
+
+#[inline]
+const fn default_file_stats() -> RawFileStats {
+    RawFileStats::new(None, None, 0)
 }
 
 impl RawPropertyBank {
@@ -80,35 +85,35 @@ impl RawPropertyBank {
         &self.properties
     }
 
-    /// Returns the file timestamps.
+    /// Returns the file stats.
     ///
     /// # Examples
     /// ```ignore
     /// # use lithos_core::schema::raw::RawPropertyBank;
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// let file_times = bank.file_times();
-    /// println!("Created: {:?}", file_times.created_at);
+    /// let file_stats = bank.file_stats();
+    /// println!("Created: {:?}", file_stats.created_at());
     /// ```
     #[inline]
     #[must_use]
-    pub fn file_times(&self) -> &RawFileTimes {
-        &self.file_times
+    pub fn file_stats(&self) -> &RawFileStats {
+        &self.file_stats
     }
 
-    /// Set file timestamps (called by Ingestor after deserialization).
+    /// Set file stats (called by Ingestor after deserialization).
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::schema::raw::{RawPropertyBank, RawFileTimes};
+    /// # use lithos_core::schema::raw::{RawFileStats, RawPropertyBank};
     /// # let bank: RawPropertyBank = unimplemented!();
-    /// # let file_times: RawFileTimes = unimplemented!();
-    /// let bank = bank.with_file_times(file_times);
+    /// # let file_stats: RawFileStats = unimplemented!();
+    /// let bank = bank.with_file_stats(file_stats);
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_file_times(self, file_times: RawFileTimes) -> Self {
+    pub fn with_file_stats(self, file_stats: RawFileStats) -> Self {
         Self {
-            file_times,
+            file_stats,
             ..self
         }
     }

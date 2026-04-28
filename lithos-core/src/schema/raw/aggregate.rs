@@ -1,7 +1,7 @@
 //! Aggregate raw types for schema definitions.
 
 use super::{
-    metadata::RawFileTimes,
+    metadata::RawFileStats,
     property::{RawProperty, RawPropertyMap},
     version::RawSchemaVersion,
 };
@@ -78,8 +78,13 @@ pub struct RawSchema {
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip)]
-    file_times: RawFileTimes,
+    #[serde(skip, default = "default_file_stats")]
+    file_stats: RawFileStats,
+}
+
+#[inline]
+const fn default_file_stats() -> RawFileStats {
+    RawFileStats::new(None, None, 0)
 }
 
 impl RawSchema {
@@ -120,11 +125,11 @@ impl RawSchema {
         &self.properties
     }
 
-    /// Returns the file timestamps.
+    /// Returns the file stats.
     #[inline]
     #[must_use]
-    pub fn file_times(&self) -> &RawFileTimes {
-        &self.file_times
+    pub fn file_stats(&self) -> &RawFileStats {
+        &self.file_stats
     }
 
     /// Set the schema name (called by Ingestor after deserialization).
@@ -139,12 +144,12 @@ impl RawSchema {
         }
     }
 
-    /// Set file timestamps (called by Ingestor after deserialization).
+    /// Set file stats (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_file_times(self, file_times: RawFileTimes) -> Self {
+    pub fn with_file_stats(self, file_stats: RawFileStats) -> Self {
         Self {
-            file_times,
+            file_stats,
             ..self
         }
     }

@@ -75,7 +75,7 @@ use crate::{
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,
         property::{PropertyMap, PropertyName},
-        raw::{RawFileTimes, RawSchema},
+        raw::{RawFileStats, RawSchema},
         storage::Repository,
         views::{RawSchemaView, RawView as _},
     },
@@ -238,7 +238,7 @@ pub(crate) enum PresentPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FoundPayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     view: RawSchemaView,
 }
 
@@ -254,7 +254,7 @@ pub(crate) struct FreshPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SuspectPayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_str: Box<str>,
     view: RawSchemaView,
 }
@@ -262,7 +262,7 @@ pub(crate) struct SuspectPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StalePayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_str: Box<str>,
     content_hash: Blake3Hash,
     view: RawSchemaView,
@@ -271,7 +271,7 @@ pub(crate) struct StalePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NewParsedPayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -279,7 +279,7 @@ pub(crate) struct NewParsedPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StaleParsedPayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -480,7 +480,7 @@ impl AnalysisBranch {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RefreshNodePayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     view: RawSchemaView,
 }
@@ -488,7 +488,7 @@ pub(crate) struct RefreshNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RebuildNodePayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -499,7 +499,7 @@ pub(crate) struct RebuildNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UpdateNodePayload {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -572,13 +572,13 @@ impl<T> IntoIterator for NewBatch<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialScan {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialRead {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_str: Box<str>,
     content_hash: Blake3Hash,
 }
@@ -586,7 +586,7 @@ pub(crate) struct InitialRead {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
     path: RelativePath,
-    times: RawFileTimes,
+    stats: RawFileStats,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -721,10 +721,6 @@ type ViewMaps =
     (HashMap<RelativePath, RawSchemaView>, HashMap<RelativePath, SchemaId>);
 
 impl SchemaProcessor<Discovery, NeverSeen> {
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "signature matches discovery variants with fallible paths"
-    )]
     pub(crate) fn discover(
         context: &FilesContext,
         source: &FsReader,
@@ -733,14 +729,14 @@ impl SchemaProcessor<Discovery, NeverSeen> {
         let mut missing = NewBatch::new();
 
         for path in files {
-            let times = RawFileTimes {
-                created_at: source.created_at(path.as_path()),
-                modified_at: source.modified_at(path.as_path()),
-            };
+            let stats = source
+                .stats(path.as_path())
+                .map_err(SchemaIngestionError::from)
+                .map_err(SchemaLoaderError::Ingestion)?;
             let id = SchemaId::new();
             missing.insert(id, InitialScan {
                 path: path.clone(),
-                times,
+                stats,
             });
         }
 
@@ -842,24 +838,23 @@ impl SchemaProcessor<Discovery, Review> {
         let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
 
         for path in files {
-            let times = RawFileTimes {
-                created_at: source.created_at(path.as_path()),
-                modified_at: source.modified_at(path.as_path()),
-            };
+            let stats = source.stats(path.as_path()).unwrap_or_else(|_error| {
+                crate::fs::FileStats::new(None, None, 0)
+            });
 
             if let (Some(view), Some(id)) =
                 (views_by_path.get(path), ids_by_path.get(path))
             {
                 found.insert(*id, FoundPayload {
                     path: path.clone(),
-                    times,
+                    stats,
                     view: view.clone(),
                 });
             } else {
                 let id = SchemaId::new();
                 missing.insert(id, InitialScan {
                     path: path.clone(),
-                    times,
+                    stats,
                 });
             }
         }
@@ -999,7 +994,7 @@ impl SchemaProcessor<Comparison, Present> {
                                         ComparedPayload::StaleBankReferences(
                                             StalePayload {
                                                 path: matched_payload.path,
-                                                times: matched_payload.times,
+                                                stats: matched_payload.stats,
                                                 content_str: content_str.into(),
                                                 content_hash,
                                                 view: matched_payload.view,
@@ -1024,7 +1019,7 @@ impl SchemaProcessor<Comparison, Present> {
                                             ComparedPayload::StaleBankReferences(
                                                 StalePayload {
                                                     path: content_payload.path,
-                                                    times: content_payload.times,
+                                                    stats: content_payload.stats,
                                                     content_str: content_payload
                                                         .content_str,
                                                     content_hash,
@@ -1036,7 +1031,7 @@ impl SchemaProcessor<Comparison, Present> {
                                             ComparedPayload::StaleTimestamps(
                                                 FoundPayload {
                                                     path: content_payload.path,
-                                                    times: content_payload.times,
+                                                    stats: content_payload.stats,
                                                     view: content_payload.view,
                                                 },
                                             )
@@ -1096,7 +1091,7 @@ impl SchemaProcessor<Comparison, Present> {
 
             new_reads.insert(id, InitialRead {
                 path: scan.path,
-                times: scan.times,
+                stats: scan.stats,
                 content_hash,
                 content_str: content.into_boxed_str(),
             });
@@ -1118,8 +1113,8 @@ impl SchemaProcessor<Comparison, Present> {
         source: &FsReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = payload.view.is_timestamp_match(
-            payload.times.created_at,
-            payload.times.modified_at,
+            payload.stats.created_at(),
+            payload.stats.modified_at(),
         );
 
         if timestamps_match {
@@ -1131,7 +1126,7 @@ impl SchemaProcessor<Comparison, Present> {
                 .map_err(SchemaLoaderError::Ingestion)?;
             Ok(TimestampBranch::Mismatch(SuspectPayload {
                 path: payload.path,
-                times: payload.times,
+                stats: payload.stats,
                 content_str: content_str.into(),
                 view: payload.view,
             }))
@@ -1149,14 +1144,14 @@ impl SchemaProcessor<Comparison, Present> {
         if content_match {
             ContentBranch::Match(SuspectPayload {
                 path: payload.path,
-                times: payload.times,
+                stats: payload.stats,
                 content_str: payload.content_str,
                 view: payload.view,
             })
         } else {
             ContentBranch::Mismatch(StalePayload {
                 path: payload.path,
-                times: payload.times,
+                stats: payload.stats,
                 content_str: payload.content_str,
                 content_hash,
                 view: payload.view,
@@ -1198,9 +1193,9 @@ impl SchemaProcessor<FileParsed, AllMissing> {
         for (id, missing) in new_schemas {
             let InitialScan {
                 path,
-                times,
+                stats,
             } = missing;
-            let times_for_raw = times.clone();
+            let stats_for_raw = stats;
 
             let content = source
                 .read_to_string(path.as_path())
@@ -1220,12 +1215,12 @@ impl SchemaProcessor<FileParsed, AllMissing> {
             )
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
-            .with_file_times(times_for_raw)
+            .with_file_stats(stats_for_raw)
             .with_name(schema_name);
 
             parsed.insert(id, InitialParsed {
                 path,
-                times,
+                stats,
                 content_hash,
                 raw,
             });
@@ -1280,7 +1275,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let times_for_raw = payload.times.clone();
+                            let stats_for_raw = payload.stats;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -1289,7 +1284,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_file_times(times_for_raw)
+                            .with_file_stats(stats_for_raw)
                             .with_name(schema_name);
 
                             ProcessorNode::new(
@@ -1299,7 +1294,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                     FileParsedBranch::StaleParsed(
                                         StaleParsedPayload {
                                             path: payload.path,
-                                            times: payload.times,
+                                            stats: payload.stats,
                                             content_hash: payload.content_hash,
                                             raw,
                                             view: payload.view,
@@ -1318,7 +1313,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let times_for_raw = payload.times.clone();
+                            let stats_for_raw = payload.stats;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -1327,7 +1322,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_file_times(times_for_raw)
+                            .with_file_stats(stats_for_raw)
                             .with_name(schema_name);
                             let content_hash = payload.content_hash;
 
@@ -1338,7 +1333,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                     FileParsedBranch::StaleParsed(
                                         StaleParsedPayload {
                                             path: payload.path,
-                                            times: payload.times,
+                                            stats: payload.stats,
                                             content_hash,
                                             raw,
                                             view: payload.view,
@@ -1405,19 +1400,19 @@ impl SchemaProcessor<FileParsed, Compared> {
                 .map(|f| f.basename().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
-            let times_for_raw = read.times.clone();
+            let stats_for_raw = read.stats;
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
                 read.path.as_path(),
                 &read.content_str,
             )
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
-            .with_file_times(times_for_raw)
+            .with_file_stats(stats_for_raw)
             .with_name(schema_name);
 
             parsed_new.insert(id, InitialParsed {
                 path: read.path,
-                times: read.times,
+                stats: read.stats,
                 content_hash: read.content_hash,
                 raw,
             });
@@ -1569,7 +1564,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     PipelinePayload::Inheritance(InheritanceBranch::New(
                         NewParsedPayload {
                             path: new.path.clone(),
-                            times: new.times.clone(),
+                            stats: new.stats,
                             content_hash: new.content_hash,
                             raw: new.raw.clone(),
                         },
@@ -1685,7 +1680,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
         for (id, parsed) in new_schemas {
             let payload = NewParsedPayload {
                 path: parsed.path,
-                times: parsed.times,
+                stats: parsed.stats,
                 content_hash: parsed.content_hash,
                 raw: parsed.raw,
             };
@@ -1784,10 +1779,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             Self::bank_changed(&payload.view, property_bank_delta);
 
                         if bank_changed {
-                            let times_for_raw = RawFileTimes {
-                                created_at: source.created_at(payload.path.as_path()),
-                                modified_at: source.modified_at(payload.path.as_path()),
-                            };
+                            let stats_for_raw = source
+                                .stats(payload.path.as_path())
+                                .map_err(SchemaIngestionError::from)
+                                .map_err(SchemaLoaderError::Ingestion)?;
                             let content = source
                                 .read_to_string(payload.path.as_path())
                                 .map_err(SchemaIngestionError::from)
@@ -1803,7 +1798,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_file_times(times_for_raw.clone())
+                            .with_file_stats(stats_for_raw)
                             .with_name(schema_name);
 
                             let mut view = payload.view;
@@ -1812,7 +1807,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                times: times_for_raw,
+                                stats: stats_for_raw,
                                 content_hash,
                                 raw,
                                 view,
@@ -1837,7 +1832,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                     PipelinePayload::Inheritance(
                         InheritanceBranch::StaleTimestamps(payload),
                     ) => {
-                        let times_for_raw = payload.times.clone();
+                        let stats_for_raw = payload.stats;
                         let bank_changed =
                             Self::bank_changed(&payload.view, property_bank_delta);
 
@@ -1857,7 +1852,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_file_times(times_for_raw)
+                            .with_file_stats(stats_for_raw)
                             .with_name(schema_name);
 
                             let mut view = payload.view;
@@ -1866,7 +1861,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                times: payload.times,
+                                stats: payload.stats,
                                 content_hash,
                                 raw,
                                 view,
@@ -1899,8 +1894,8 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             );
                         let file_times =
                             crate::schema::views::FileTimesMetadata::new(
-                                payload.raw.file_times().created_at,
-                                payload.raw.file_times().modified_at,
+                                payload.raw.file_stats().created_at(),
+                                payload.raw.file_stats().modified_at(),
                             );
                         let hashes = crate::schema::views::HashMetadata::new(
                             payload.content_hash,
@@ -1915,7 +1910,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         let view = RawSchemaView::new(path, version);
                         let rebuild = RebuildNodePayload {
                             path: payload.path,
-                            times: payload.times,
+                            stats: payload.stats,
                             content_hash: payload.content_hash,
                             raw: payload.raw,
                             view,
@@ -1937,7 +1932,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             view.add_version(version);
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                times: payload.times,
+                                stats: payload.stats,
                                 content_hash: payload.content_hash,
                                 raw: payload.raw,
                                 view,
@@ -1980,7 +1975,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 view.add_version(version);
                                 let rebuild = RebuildNodePayload {
                                     path: payload.path,
-                                    times: payload.times,
+                                    stats: payload.stats,
                                     content_hash: payload.content_hash,
                                     raw: payload.raw,
                                     view,
@@ -2006,7 +2001,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                     NodeStatus::StaleContent,
                                     AnalysisBranch::Refresh(RefreshNodePayload {
                                         path: payload.path,
-                                        times: payload.times,
+                                        stats: payload.stats,
                                         content_hash: payload.content_hash,
                                         view: payload.view,
                                     }),
@@ -2078,8 +2073,8 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                 raw.properties(),
             );
         let file_times = crate::schema::views::FileTimesMetadata::new(
-            raw.file_times().created_at,
-            raw.file_times().modified_at,
+            raw.file_stats().created_at(),
+            raw.file_stats().modified_at(),
         );
         let hashes = crate::schema::views::HashMetadata::new(
             content_hash,
@@ -2141,8 +2136,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 ))
             })?;
             let file_times = FileTimesMetadata::new(
-                payload.times.created_at,
-                payload.times.modified_at,
+                payload.stats.created_at(),
+                payload.stats.modified_at(),
             );
             let hashes = HashMetadata::new(
                 payload.content_hash,
@@ -2186,8 +2181,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         ))
                     })?;
                     let file_times = FileTimesMetadata::new(
-                        payload.times.created_at,
-                        payload.times.modified_at,
+                        payload.stats.created_at(),
+                        payload.stats.modified_at(),
                     );
                     let hashes = HashMetadata::new(
                         *current.hashes().content(),
@@ -2214,8 +2209,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         ))
                     })?;
                     let file_times = FileTimesMetadata::new(
-                        payload.times.created_at,
-                        payload.times.modified_at,
+                        payload.stats.created_at(),
+                        payload.stats.modified_at(),
                     );
                     let hashes = HashMetadata::new(
                         payload.content_hash,
@@ -3038,10 +3033,7 @@ mod tests {
         }))
         .expect("valid raw schema fixture")
         .with_name(name.into())
-        .with_file_times(RawFileTimes {
-            created_at: None,
-            modified_at: None,
-        })
+        .with_file_stats(RawFileStats::new(None, None, 0))
     }
 
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
@@ -3081,10 +3073,7 @@ mod tests {
                 ExtendsChangeKind::Unchanged,
                 PipelinePayload::Present(PresentPayload::Found(FoundPayload {
                     path,
-                    times: RawFileTimes {
-                        created_at: None,
-                        modified_at: None,
-                    },
+                    stats: RawFileStats::new(None, None, 0),
                     view,
                 })),
             ),

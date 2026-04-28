@@ -119,7 +119,7 @@ use crate::{
             SchemaStorageError,
         },
         property::PropertyName,
-        raw::{RawFileTimes, RawPropertyBank},
+        raw::{RawFileStats, RawPropertyBank},
         storage::Repository,
         views::{
             FileTimesMetadata, RawPropertyBankView, RawView as _,
@@ -228,22 +228,21 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             .get_raw_property_bank_view(filename)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        let times = RawFileTimes {
-            created_at: source.created_at(config_path),
-            modified_at: source.modified_at(config_path),
-        };
+        let stats = source
+            .stats(config_path)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         if let Some(view) = cached_view {
             Ok(ComparisonBranch::Present(Self::transition(
                 Comparison,
                 Present {
-                    times,
+                    stats,
                     view,
                 },
             )))
         } else {
             Ok(ComparisonBranch::Missing(Self::transition(Parsed, Missing {
-                times,
+                stats,
             })))
         }
     }
@@ -267,20 +266,20 @@ pub(crate) struct Comparison;
 /// Proven: View does not exist in repository; carries file timestamps.
 #[derive(Debug)]
 pub(crate) struct Missing {
-    times: RawFileTimes,
+    stats: RawFileStats,
 }
 
 /// Proven: View exists in repository; carries timestamps and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
-    times: RawFileTimes,
+    stats: RawFileStats,
     view: RawPropertyBankView,
 }
 
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
-    times: RawFileTimes,
+    stats: RawFileStats,
     view: RawPropertyBankView,
     content: String,
 }
@@ -289,7 +288,7 @@ pub(crate) struct Suspect {
 /// Transitions to Analysis.
 #[derive(Debug)]
 pub(crate) struct Stale {
-    times: RawFileTimes,
+    stats: RawFileStats,
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -326,8 +325,8 @@ impl PropertyBankProcessor<Comparison, Present> {
         config_path: &std::path::Path,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = self.status.view.is_timestamp_match(
-            self.status.times.created_at,
-            self.status.times.modified_at,
+            self.status.stats.created_at(),
+            self.status.stats.modified_at(),
         );
 
         if timestamps_match {
@@ -340,7 +339,7 @@ impl PropertyBankProcessor<Comparison, Present> {
             Ok(TimestampBranch::Mismatch(Self::transition(
                 Comparison,
                 Suspect {
-                    times: self.status.times,
+                    stats: self.status.stats,
                     view: self.status.view,
                     content,
                 },
@@ -374,12 +373,12 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 
         if content_match {
             ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
-                times: self.status.times,
+                stats: self.status.stats,
                 view: self.status.view,
             }))
         } else {
             ContentBranch::Mismatch(Self::transition(Parsed, Stale {
-                times: self.status.times,
+                stats: self.status.stats,
                 content: self.status.content,
                 content_hash,
                 view: self.status.view,
@@ -435,7 +434,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
             FsReader::parse_structured_from_str(config_path, &content)
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_file_times(self.status.times.clone());
+        let raw = raw.with_file_stats(self.status.stats);
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition(Construction, New {
@@ -468,7 +467,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_file_times(self.status.times.clone());
+        let raw = raw.with_file_stats(self.status.stats);
 
         Ok(Self::transition(Analysis, ParsedStale {
             raw,
@@ -543,7 +542,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
         if delta.is_empty() {
             AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
-                times: raw.file_times().clone(),
+                stats: *raw.file_stats(),
                 view,
                 content_hash,
             }))
@@ -568,14 +567,14 @@ pub(crate) struct Refresh;
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
-    times: RawFileTimes,
+    stats: RawFileStats,
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
-    times: RawFileTimes,
+    stats: RawFileStats,
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }
@@ -597,8 +596,8 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
         R::Error: Into<SchemaRepositoryError>,
     {
         let new_file_times = FileTimesMetadata::new(
-            self.status.times.created_at,
-            self.status.times.modified_at,
+            self.status.stats.created_at(),
+            self.status.stats.modified_at(),
         );
         self.status.view.update_timestamps(new_file_times);
 
@@ -630,8 +629,8 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         R::Error: Into<SchemaRepositoryError>,
     {
         let new_file_times = FileTimesMetadata::new(
-            self.status.times.created_at,
-            self.status.times.modified_at,
+            self.status.stats.created_at(),
+            self.status.stats.modified_at(),
         );
         self.status.view.update_timestamps(new_file_times);
         self.status
