@@ -68,6 +68,16 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 - **`Block`**: AST node type
 - **`BlockVisitor`**: Traversal trait
 
+### 1.1 Block Module Placement
+
+- **Decision**: Move all block-domain types to `lithos-core/src/note/parser/block.rs`.
+- **Scope**: `Block`, container/leaf block enums, `HeadingLevel`, `ListKind`, inline-bearing leaf payload types, and block helper methods (`text()`, `is_scannable()`).
+- **Rationale**: `structure.rs` currently mixes domain model + builder algorithm + tests; extracting block model improves cohesion and clarifies responsibilities.
+- **Boundary**:
+  - `block.rs` = pure domain model + helpers
+  - `structure.rs` = `StructureBuilder` / `Processing*` build-state + tree assembly algorithm
+  - `visitor.rs` = traversal contract and visitor implementations over `block.rs` types
+
 ### 2. Frontmatter Handling
 
 - **Decision**: Store as `BlockKind::Frontmatter { format, text }`
@@ -124,6 +134,15 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 
 - **Decision**: `Paragraph` and `Heading` blocks store `Vec<InlineWithRange<'source>>`.
 - **Rationale**: Sets up the lexical scanning layer to operate solely on inline streams without structural noise.
+
+### 11. Container vs Leaf Separation
+
+- **Decision**: Represent container and leaf blocks as separate types under a unified `Block` wrapper.
+- **Rationale**: Only container blocks can own child blocks; encoding this structurally (not by convention) improves type safety and simplifies depth/list bookkeeping in the builder.
+- **Planned Shape**:
+  - `Block = Container(ContainerBlock) | Leaf(LeafBlock)`
+  - `ContainerBlockKind = BlockQuote | List | ListItem`
+  - `LeafBlockKind = Paragraph | Heading | CodeBlock | Frontmatter | ThematicBreak`
 
 ---
 
@@ -193,11 +212,13 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 3. Update `EventWithRange` to wrap `ParserEvent`.
 4. Refactor `BlockKind` in `structure.rs` to use `InlineEvent`.
 5. Remove all `pulldown_cmark` imports from `structure.rs`, `context.rs`, and `visitor.rs`.
+6. Create `block.rs` and move block-domain types out of `structure.rs`.
 
 **Acceptance Criteria**:
 
 - [ ] `cargo test` passes for all 829+ tests.
 - [ ] `grep -r "pulldown_cmark" src/note/parser/` only shows results in `stream.rs` and `config.rs`.
+- [ ] `structure.rs` no longer defines block-domain types; it imports them from `block.rs`.
 
 **Estimated Effort**: 4-6 hours
 
@@ -213,7 +234,8 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 2. Implement `DocStructure::from_context()` with stack-based algorithm matching on `ParserEvent`.
 3. Handle all `ParserEvent` variants (`BlockStart`, `BlockEnd`, `Inline`).
 4. Track list depth and parent spans during building using internal `StructureBuilder`.
-5. Add comprehensive tests for nested structures.
+5. Add explicit builder-state types (`ProcessingBlockTree`, `ProcessingContainer`, `ProcessingLeaf`) and container/leaf finalize paths.
+6. Add comprehensive tests for nested structures.
 
 **Acceptance Criteria**:
 
@@ -224,6 +246,7 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 - [ ] Code blocks store language and flattened text.
 - [ ] Frontmatter at start of document is captured.
 - [ ] All existing integration tests pass.
+- [ ] Container and leaf finalize paths are separated in `StructureBuilder` and covered by tests.
 
 **Estimated Effort**: 4-6 hours
 
@@ -321,6 +344,28 @@ pub(crate) enum InlineEvent<'source> {
     TaskListMarker(bool),
 }
 ```
+
+### 3. `block.rs` Components (Post-Refactor)
+
+`block.rs` will contain the complete block-domain model:
+
+- `Block<'source>`
+- `ContainerBlock<'source>` and `ContainerBlockKind`
+- `LeafBlock<'source>` and `LeafBlockKind<'source>`
+- `HeadingLevel`, `ListKind`
+- helper methods: `text()`, `is_scannable()`
+
+`structure.rs` will no longer own these domain types; it will only assemble them.
+
+### 4. `structure.rs` Components (Post-Refactor)
+
+`structure.rs` will focus on build-time orchestration:
+
+- `DocStructure<'source>`
+- `StructureBuilder<'source>`
+- `ProcessingBlockTree<'source>`
+- `ProcessingContainer<'source>` / `ProcessingLeaf<'source>`
+- finalize and nesting/depth bookkeeping logic
 
 ---
 
