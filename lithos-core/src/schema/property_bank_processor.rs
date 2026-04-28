@@ -121,7 +121,7 @@ use crate::{
         property::PropertyName,
         raw::{RawFileStats, RawPropertyBank},
         storage::Repository,
-        views::{RawPropertyBankView, RawView as _, metadata::HashMetadata},
+        views::{HashRecord, RawPropertyBankView, RawView as _},
     },
     support::hash::Blake3Hash,
 };
@@ -535,7 +535,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
                 },
             ));
         };
-        let raw_hash = HashMetadata::new(content_hash, property_hashes);
+        let raw_hash = HashRecord::new(content_hash, property_hashes);
 
         if delta.is_empty() {
             AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
@@ -660,7 +660,7 @@ pub(crate) struct New {
 pub(crate) struct Changed {
     raw: RawPropertyBank,
     delta: PropertyBankDelta,
-    raw_hash: HashMetadata,
+    raw_hash: HashRecord,
 }
 
 /// Proven: identity is fully synchronized; bank can be fetched without rebuild.
@@ -716,10 +716,9 @@ impl PropertyBankProcessor<Construction, New> {
             .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        let property_hashes =
-            HashMetadata::compute_property_hashes(self.status.raw.properties());
+        let property_hashes = self.status.raw.properties().compute_hashes();
         let raw_hash =
-            HashMetadata::new(self.status.content_hash, property_hashes);
+            HashRecord::new(self.status.content_hash, property_hashes);
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,

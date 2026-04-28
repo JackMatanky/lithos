@@ -1889,11 +1889,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                     )) => {
                         let path = payload.path.clone();
                         let property_hashes =
-                            crate::schema::views::HashMetadata::compute_property_hashes(
-                                payload.raw.properties(),
-                            );
+                            payload.raw.properties().compute_hashes();
                         let file_stats = *payload.raw.file_stats();
-                        let hashes = crate::schema::views::HashMetadata::new(
+                        let hashes = crate::schema::views::HashRecord::new(
                             payload.content_hash,
                             property_hashes,
                         );
@@ -1945,7 +1943,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 payload
                                     .view
                                     .current()
-                                    .map_or(&[], crate::schema::views::version::SchemaVersion::excludes),
+                                    .map_or(&[], crate::schema::views::SchemaVersion::excludes),
                                 payload.raw.excludes(),
                             );
 
@@ -2064,12 +2062,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         raw: &RawSchema,
         content_hash: Blake3Hash,
     ) -> Result<crate::schema::views::SchemaVersion, SchemaLoaderError> {
-        let property_hashes =
-            crate::schema::views::HashMetadata::compute_property_hashes(
-                raw.properties(),
-            );
+        let property_hashes = raw.properties().compute_hashes();
         let file_stats = *raw.file_stats();
-        let hashes = crate::schema::views::HashMetadata::new(
+        let hashes = crate::schema::views::HashRecord::new(
             content_hash,
             property_hashes,
         );
@@ -2107,7 +2102,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        use crate::schema::views::metadata::HashMetadata;
+        use crate::schema::views::HashRecord;
 
         for id in &status.refresh_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2129,7 +2124,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 ))
             })?;
             let file_stats = payload.stats;
-            let hashes = HashMetadata::new(
+            let hashes = HashRecord::new(
                 payload.content_hash,
                 current.hashes().properties().clone(),
             );
@@ -2152,7 +2147,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         R: Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        use crate::schema::views::metadata::HashMetadata;
+        use crate::schema::views::HashRecord;
 
         for id in &status.stale_timestamp_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2171,7 +2166,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         ))
                     })?;
                     let file_stats = payload.stats;
-                    let hashes = HashMetadata::new(
+                    let hashes = HashRecord::new(
                         *current.hashes().content(),
                         current.hashes().properties().clone(),
                     );
@@ -2196,7 +2191,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         ))
                     })?;
                     let file_stats = payload.stats;
-                    let hashes = HashMetadata::new(
+                    let hashes = HashRecord::new(
                         payload.content_hash,
                         current.hashes().properties().clone(),
                     );
@@ -3023,10 +3018,8 @@ mod tests {
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
         let file_stats = crate::fs::FileStats::new(None, None, 0);
-        let hashes = crate::schema::views::HashMetadata::new(
-            content_hash,
-            HashMap::new(),
-        );
+        let hashes =
+            crate::schema::views::HashRecord::new(content_hash, HashMap::new());
         let version =
             crate::schema::views::SchemaVersion::new(file_stats, hashes, &raw)
                 .expect("valid schema view fixture");

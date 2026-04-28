@@ -6,11 +6,11 @@
 //!
 //! ## Module Structure
 //!
-//! - `raw` - Raw file version views and read/update traits (`RawSchemaView`,
-//!   `RawPropertyBankView`, `RawView`, `RawViewRead`)
-//! - `metadata` - Hash metadata (`HashMetadata`)
-//! - `version` - Version payloads and read/update traits (`SchemaVersion`,
-//!   `PropertyBankVersion`, `Version`, `VersionRead`)
+//! - `contracts` - Shared traits (`RawView`, `RawViewRead`, `Version`,
+//!   `VersionRead`)
+//! - `raw` - Raw file version views (`RawSchemaView`, `RawPropertyBankView`)
+//! - `hashes` - Hash records (`HashRecord`)
+//! - `snapshots` - Version payloads (`SchemaVersion`, `PropertyBankVersion`)
 //!
 //! ## View Pattern
 //!
@@ -23,7 +23,7 @@
 //! Staleness detection is performed via metadata methods:
 //! - `FileStats::is_timestamp_match()` on each `*Version` - Fast timestamp-only
 //!   check
-//! - `HashMetadata::is_content_match()` - Accurate hash-based check
+//! - `HashRecord::is_content_match()` - Accurate hash-based check
 //!
 //! Views provide `current()` to access the most recent version.
 
@@ -33,13 +33,13 @@
               submodules"
 )]
 
-pub mod metadata;
+pub mod contracts;
+pub mod hashes;
 pub mod raw;
-pub mod version;
+pub mod snapshots;
 
 // Re-export commonly used types for ergonomic access
-pub use metadata::HashMetadata;
-pub use raw::{RawPropertyBankView, RawSchemaView, RawView, RawViewRead};
-pub use version::{PropertyBankVersion, SchemaVersion, Version, VersionRead};
-
-pub use crate::fs::Filename;
+pub use contracts::{RawView, RawViewRead, Version, VersionRead};
+pub use hashes::HashRecord;
+pub use raw::{RawPropertyBankView, RawSchemaView};
+pub use snapshots::{PropertyBankVersion, SchemaVersion};

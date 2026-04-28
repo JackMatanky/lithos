@@ -8,123 +8,24 @@
     reason = "Trait contracts intentionally mirror existing view API names"
 )]
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
-    HashMetadata, PropertyBankVersion, SchemaVersion,
-    version::{Version as _, VersionRead as _},
+    HashRecord, PropertyBankVersion, RawView, RawViewRead, SchemaVersion,
+    VersionRead as _,
 };
 use crate::{
-    fs::FileStats,
+    fs::{FileStats, Filename, RelativePath},
     schema::{
-        aggregate::SchemaName, error::SchemaStorageError,
-        property::PropertyName, raw::RawPropertyBank,
+        aggregate::SchemaName,
+        error::{SchemaIngestionError, SchemaStorageError},
+        property::PropertyName,
+        raw::{RawPropertyBank, RawSchema},
     },
     support::hash::Blake3Hash,
 };
-
-/// Shared behavior for raw file views with version history.
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Trait items are grouped by lifecycle semantics"
-)]
-pub trait RawView {
-    /// Concrete version payload type.
-    type Version: super::version::Version;
-    /// Concrete path/filename identifier type.
-    type FilePath;
-
-    /// Maximum number of historical versions retained.
-    const MAX_VERSIONS: usize = 5;
-
-    /// Returns the file identifier (path or filename).
-    fn file_path(&self) -> &Self::FilePath;
-
-    /// Returns the most recent version, if any.
-    fn current(&self) -> Option<&Self::Version>;
-
-    /// Returns mutable access to the most recent version, if any.
-    fn current_mut(&mut self) -> Option<&mut Self::Version>;
-
-    /// Returns the number of tracked versions.
-    fn version_count(&self) -> usize;
-
-    /// Adds a new version, evicting the oldest if needed.
-    fn add_version(&mut self, version: Self::Version);
-
-    /// Returns true when filesystem timestamps match current version metadata.
-    #[inline]
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
-    ) -> bool {
-        self.current()
-            .is_some_and(|v| v.is_timestamp_match(created_at, modified_at))
-    }
-
-    /// Returns true when content hash matches current version metadata.
-    #[inline]
-    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
-        self.current().is_some_and(|v| v.is_content_match(content_hash))
-    }
-
-    /// Updates timestamps for the current version, if present.
-    ///
-    /// This preserves the current file size and refreshes recorded metadata.
-    #[inline]
-    fn update_timestamps(
-        &mut self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
-    ) {
-        if let Some(current) = self.current_mut() {
-            let size = current.file_stats().size();
-            current.set_file_stats(FileStats::new(
-                created_at,
-                modified_at,
-                size,
-            ));
-        }
-    }
-
-    /// Updates complete file stats for the current version, if present.
-    #[inline]
-    fn update_file_stats(&mut self, file_stats: FileStats) {
-        if let Some(current) = self.current_mut() {
-            current.set_file_stats(file_stats);
-        }
-    }
-
-    /// Adds a new version with updated content hash.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaStorageError`] when the current version is unavailable
-    /// or when replacement metadata cannot be constructed.
-    fn update_content_hash(
-        &mut self,
-        content_hash: Blake3Hash,
-    ) -> Result<(), SchemaStorageError>;
-}
-
-/// Zero-copy read contract for archived and owned raw views.
-pub trait RawViewRead {
-    /// Returns true when content hash matches current version metadata.
-    fn is_content_match(&self, content_hash: &Blake3Hash) -> bool;
-
-    /// Returns true when filesystem timestamps match current version metadata.
-    fn is_timestamp_match(
-        &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
-    ) -> bool;
-
-    /// Returns number of retained historical versions.
-    fn version_count(&self) -> usize;
-}
 
 /// Raw schema file with version history.
 ///
@@ -145,7 +46,7 @@ pub trait RawViewRead {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
     /// Vault-relative schema path (e.g., "schemas/note.toml").
-    path: crate::fs::RelativePath,
+    path: RelativePath,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     ///
@@ -158,7 +59,7 @@ impl RawSchemaView {
     /// Creates a new schema view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(path: crate::fs::RelativePath, version: SchemaVersion) -> Self {
+    pub fn new(path: RelativePath, version: SchemaVersion) -> Self {
         let mut versions =
             VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
@@ -172,7 +73,7 @@ impl RawSchemaView {
     /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &crate::fs::RelativePath {
+    pub fn file_path(&self) -> &RelativePath {
         &self.path
     }
 
@@ -208,7 +109,7 @@ impl RawSchemaView {
     #[inline]
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
-        self.current().map_or(&[], super::version::SchemaVersion::excludes)
+        self.current().map_or(&[], super::SchemaVersion::excludes)
     }
 
     /// Returns the most recent version, if any.
@@ -267,21 +168,20 @@ impl RawSchemaView {
     /// Returns error if metadata is missing or validation fails.
     #[inline]
     pub fn try_from_with_content(
-        raw: &super::super::raw::RawSchema,
-        path: crate::fs::RelativePath,
+        raw: &RawSchema,
+        path: RelativePath,
         content: &str,
-    ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
-        use super::HashMetadata;
+    ) -> Result<Self, SchemaIngestionError> {
+        use super::HashRecord;
 
         // Compute content hash from raw file content
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         // Compute per-property hashes
-        let property_hashes =
-            HashMetadata::compute_property_hashes(raw.properties());
+        let property_hashes = raw.properties().compute_hashes();
 
         let file_stats = *raw.file_stats();
-        let hashes = HashMetadata::new(content_hash, property_hashes);
+        let hashes = HashRecord::new(content_hash, property_hashes);
 
         let version = SchemaVersion::new(file_stats, hashes, raw)?;
 
@@ -294,7 +194,7 @@ impl RawSchemaView {
     reason = "Default trait methods are intentionally reused"
 )]
 impl RawView for RawSchemaView {
-    type FilePath = crate::fs::RelativePath;
+    type FilePath = RelativePath;
     type Version = SchemaVersion;
 
     #[inline]
@@ -331,7 +231,7 @@ impl RawView for RawSchemaView {
             name: "current schema version".into(),
         })?;
         let file_stats = *current.file_stats();
-        let hashes = HashMetadata::new(
+        let hashes = HashRecord::new(
             content_hash,
             current.hashes().properties().clone(),
         );
@@ -345,8 +245,8 @@ impl RawViewRead for RawSchemaView {
     #[inline]
     fn is_timestamp_match(
         &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> bool {
         RawView::is_timestamp_match(self, created_at, modified_at)
     }
@@ -377,7 +277,7 @@ impl RawViewRead for RawSchemaView {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
     /// Filename with extension (e.g., "properties.yaml").
-    filename: crate::fs::Filename,
+    filename: Filename,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     versions: VecDeque<PropertyBankVersion>,
@@ -387,10 +287,7 @@ impl RawPropertyBankView {
     /// Creates a new property bank view with initial version.
     #[inline]
     #[must_use]
-    pub fn new(
-        filename: crate::fs::Filename,
-        version: PropertyBankVersion,
-    ) -> Self {
+    pub fn new(filename: Filename, version: PropertyBankVersion) -> Self {
         let mut versions =
             VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
@@ -404,7 +301,7 @@ impl RawPropertyBankView {
     /// Returns the filename.
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &crate::fs::Filename {
+    pub fn file_path(&self) -> &Filename {
         &self.filename
     }
 
@@ -450,8 +347,8 @@ impl RawPropertyBankView {
     #[inline]
     pub fn update_timestamps(
         &mut self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) {
         if let Some(current) = self.versions.front_mut() {
             let size = current.file_stats().size();
@@ -487,7 +384,7 @@ impl RawPropertyBankView {
             self.current().ok_or(SchemaStorageError::PropertyBankNotFound)?;
         let file_stats = *current.file_stats();
 
-        let hashes = HashMetadata::new(
+        let hashes = HashRecord::new(
             content_hash,
             current.hashes().properties().clone(),
         );
@@ -510,9 +407,9 @@ impl RawPropertyBankView {
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
-        filename: crate::fs::Filename,
-        raw_hash: HashMetadata,
-    ) -> Result<Self, crate::schema::error::SchemaIngestionError> {
+        filename: Filename,
+        raw_hash: HashRecord,
+    ) -> Result<Self, SchemaIngestionError> {
         let file_stats = *raw.file_stats();
 
         let version = PropertyBankVersion::new(
@@ -530,7 +427,7 @@ impl RawPropertyBankView {
     reason = "Default trait methods are intentionally reused"
 )]
 impl RawView for RawPropertyBankView {
-    type FilePath = crate::fs::Filename;
+    type FilePath = Filename;
     type Version = PropertyBankVersion;
 
     #[inline]
@@ -571,8 +468,8 @@ impl RawViewRead for RawPropertyBankView {
     #[inline]
     fn is_timestamp_match(
         &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> bool {
         RawView::is_timestamp_match(self, created_at, modified_at)
     }
@@ -592,8 +489,8 @@ impl RawViewRead for ArchivedRawSchemaView {
     #[inline]
     fn is_timestamp_match(
         &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> bool {
         self.versions.as_slice().first().is_some_and(|version| {
             version.is_timestamp_match(created_at, modified_at)
@@ -618,8 +515,8 @@ impl RawViewRead for ArchivedRawPropertyBankView {
     #[inline]
     fn is_timestamp_match(
         &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> bool {
         self.versions.as_slice().first().is_some_and(|version| {
             version.is_timestamp_match(created_at, modified_at)
@@ -646,7 +543,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        fs::FileStats,
+        fs::{FileStats, Filename},
         schema::{
             property::{PropertyMap, PropertyName},
             raw::{RawPropertyBank, RawSchema},
@@ -664,7 +561,7 @@ mod tests {
 
         SchemaVersion::new(
             FileStats::new(None, None, 0),
-            HashMetadata::new(content_hash, HashMap::new()),
+            HashRecord::new(content_hash, HashMap::new()),
             &raw,
         )
         .expect("schema version should build")
@@ -681,7 +578,7 @@ mod tests {
 
         PropertyBankVersion::new(
             FileStats::new(None, None, 0),
-            HashMetadata::new(content_hash, property_hashes),
+            HashRecord::new(content_hash, property_hashes),
             "1.0",
         )
         .expect("property bank version should build")
@@ -689,7 +586,7 @@ mod tests {
 
     #[test]
     fn property_bank_view_rotation_uses_trait_max_versions() {
-        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let filename = Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
             make_property_bank_version(Blake3Hash::new([1; 32])),
@@ -713,7 +610,7 @@ mod tests {
 
     #[test]
     fn property_bank_update_content_hash_preserves_property_hashes() {
-        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let filename = Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
             make_property_bank_version(Blake3Hash::new([1; 32])),
@@ -734,8 +631,7 @@ mod tests {
 
     #[test]
     fn schema_view_update_content_hash_clears_expanded_properties_cache() {
-        let schema_path =
-            crate::fs::RelativePath::try_from("schemas/note.json").unwrap();
+        let schema_path = RelativePath::try_from("schemas/note.json").unwrap();
         let mut view = RawSchemaView::new(
             schema_path,
             make_schema_version(Blake3Hash::new([1; 32])),
@@ -765,7 +661,10 @@ mod tests {
         let created_at = Some(std::time::UNIX_EPOCH);
         let modified_at =
             Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(5));
-        version.set_file_stats(FileStats::new(created_at, modified_at, 128));
+        super::super::Version::set_file_stats(
+            &mut version,
+            FileStats::new(created_at, modified_at, 128),
+        );
 
         let mut view = RawSchemaView::new(schema_path, version);
 
@@ -803,7 +702,7 @@ mod tests {
 
     #[test]
     fn property_bank_update_content_hash_errors_without_current_version() {
-        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let filename = Filename::new("property_bank.json".into());
         let mut view = RawPropertyBankView::new(
             filename,
             make_property_bank_version(Blake3Hash::new([1; 32])),
@@ -828,8 +727,8 @@ mod tests {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &raw,
-            crate::fs::Filename::new("property_bank.json".into()),
-            HashMetadata::new(Blake3Hash::new([1; 32]), HashMap::new()),
+            Filename::new("property_bank.json".into()),
+            HashRecord::new(Blake3Hash::new([1; 32]), HashMap::new()),
         )
         .expect("view creation should succeed");
 
@@ -838,7 +737,7 @@ mod tests {
 
     #[test]
     fn archived_raw_property_bank_view_supports_zero_copy_staleness_checks() {
-        let filename = crate::fs::Filename::new("property_bank.json".into());
+        let filename = Filename::new("property_bank.json".into());
         let view = RawPropertyBankView::new(
             filename,
             make_property_bank_version(Blake3Hash::new([9; 32])),

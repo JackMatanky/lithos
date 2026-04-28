@@ -32,8 +32,11 @@ use super::{
     number::RawNumberProperty,
     string::{RawOptions, RawStringPattern, RawStringProperty},
 };
-use crate::schema::{
-    aggregate::SchemaName, error::SchemaError, property::PropertyName,
+use crate::{
+    schema::{
+        aggregate::SchemaName, error::SchemaError, property::PropertyName,
+    },
+    support::hash::Blake3Hash,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +195,21 @@ impl<T> RawPropertyMap<T> {
     #[inline]
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.inner.values()
+    }
+
+    /// Computes per-property hashes for the map values.
+    #[inline]
+    #[must_use]
+    pub fn compute_hashes(&self) -> HashMap<PropertyName, Blake3Hash>
+    where
+        T: serde::Serialize + std::fmt::Debug,
+    {
+        self.inner
+            .iter()
+            .map(|(name, value)| {
+                (name.clone(), Blake3Hash::compute_json(value))
+            })
+            .collect()
     }
 }
 
@@ -584,6 +602,24 @@ mod tests {
             assert_eq!(values.len(), 2);
             assert!(values.contains(&&"1".to_owned()));
             assert!(values.contains(&&"2".to_owned()));
+        }
+
+        #[test]
+        fn compute_hashes_returns_per_property_hashes() {
+            let map: RawPropertyMap<String> =
+                serde_json::from_str(r#"{"a":"1","b":"2"}"#).unwrap();
+
+            let hashes = map.compute_hashes();
+
+            assert_eq!(hashes.len(), 2);
+            assert_eq!(
+                hashes.get(&PropertyName::try_new("a").unwrap()),
+                Some(&Blake3Hash::compute_json(&"1".to_owned()))
+            );
+            assert_eq!(
+                hashes.get(&PropertyName::try_new("b").unwrap()),
+                Some(&Blake3Hash::compute_json(&"2".to_owned()))
+            );
         }
 
         #[test]
