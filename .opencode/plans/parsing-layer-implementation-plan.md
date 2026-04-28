@@ -12,10 +12,11 @@ This document provides a complete implementation roadmap for refactoring the Lit
 
 **Key Goals**:
 
-- Strict separation: Grammar recognition (parsing) vs Pattern matching (scanning) vs Domain validation
-- Zero-copy throughout: Borrow from source until storage layer
-- LSP-ready: Cache parsed results for incremental updates
-- Visitor pattern: Clean traversal API for metadata extraction
+- **Strict separation**: Grammar recognition (parsing) vs Pattern matching (scanning) vs Domain validation
+- **Zero-copy throughout**: Borrow from source until storage layer via `SourceByteRange`
+- **LSP-ready**: Cache parsed results for incremental updates
+- **Visitor pattern**: Clean traversal API for metadata extraction
+- **Thick Adapter**: Centralize `pulldown-cmark` dependency in a single module (`stream.rs`)
 
 ---
 
@@ -42,13 +43,19 @@ This document provides a complete implementation roadmap for refactoring the Lit
 │ 1. MetadataScanner (Pattern matching on InlineEvents)      │
 │ 2. MetadataExtractor (Visitor implementation)              │
 └─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ SEMANTIC VALIDATION LAYER (Already Exists)                 │
-├─────────────────────────────────────────────────────────────┤
-│ 1. Note::try_from(RawNote) ✅ EXISTS                        │
-└─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Terminology (CommonMark 0.31.2 Alignment)
+
+To ensure consistency, the parsing layer uses official CommonMark terminology:
+
+- **Block**: Structural elements of the document.
+  - **Container Block**: Blocks that can contain other blocks (e.g., `BlockQuote`, `List`, `Item`).
+  - **Leaf Block**: Blocks that contain inlines but not other blocks (e.g., `Paragraph`, `Heading`, `CodeBlock`, `ThematicBreak`).
+- **Inline**: Content within a Leaf Block (e.g., `Text`, `CodeSpan`, `Emphasis`, `Link`).
+- **Thick Adapter**: A design pattern where a wrapper module (`stream.rs`) translates external library events into internal domain events, ensuring the rest of the crate is decoupled from the library's API.
 
 ---
 
@@ -109,9 +116,14 @@ This document provides a complete implementation roadmap for refactoring the Lit
 ### 9. CommonMark 0.31.2 Taxonomy Alignment
 
 - **Container Block**: Recursive structural elements (List, BlockQuote). They define the "skeleton" of the document.
-- **Leaf Block**: Non-recursive terminal nodes (Paragraph, Heading). They hold the "meat" of the content.
-- **Inline**: Granular elements inside Leaf Blocks (Text, Link, Bold).
+- **Leaf Block**: Non-recursive terminal nodes (Paragraph, Heading). They hold the content and inline boundaries.
+- **Inline**: Granular elements inside Leaf Blocks (Text, Link, Emphasis, CodeSpan).
 - **Rationale**: Strict adherence to the spec prevents misunderstanding of component responsibilities.
+
+### 10. Structural Storage (`DocStructure`)
+
+- **Decision**: `Paragraph` and `Heading` blocks store `Vec<InlineWithRange<'source>>`.
+- **Rationale**: Sets up the lexical scanning layer to operate solely on inline streams without structural noise.
 
 ---
 
@@ -160,50 +172,32 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 ---
 
-## Implementation Phases
+## Implementation Phases (REVISED)
 
-### Phase 1: Foundation - ParserContext (Cache Layer)
+### Phase 1: Foundation (COMPLETED)
 
-**Goal**: Establish the caching infrastructure that will enable LSP features.
-
-**Tasks**:
-
-1. Create `lithos-core/src/note/parser/context.rs`
-2. Implement `ParserContext` struct with eager event caching
-3. Wire `MarkdownEventStream` into `ParserContext::new()`
-4. Add tests for event caching and reference extraction
-
-**Acceptance Criteria**:
-
-- [ ] `ParserContext::new()` successfully caches all events from a 1000+ line markdown file
-- [ ] `ParserContext::events()` returns borrowed slice without allocation
-- [ ] `ParserContext::references()` correctly resolves case-insensitive link refs
-- [ ] All existing parser tests still pass
-
-**Estimated Effort**: 2-3 hours
+- `ParserContext` eager caching implemented.
+- `DocStructure` and `BlockVisitor` foundations established.
+- `EventWithRange` moved to `stream.rs`.
 
 ---
 
-### Phase 2: IR Refactoring & Thick Adapter
+### Phase 2: IR Refactoring & Thick Adapter (NEXT)
 
-**Goal**: Decouple `structure.rs` and `context.rs` from `pulldown-cmark` using a domain-native IR.
+**Goal**: Decouple `structure.rs` and `context.rs` from `pulldown-cmark`.
 
 **Tasks**:
 
 1. Define `ParserEvent` and `InlineEvent` in `stream.rs`.
 2. Update `EventAdapterIter` to emit `ParserEvent` instead of `pulldown_cmark::Event`.
 3. Update `EventWithRange` to wrap `ParserEvent`.
-4. Refactor `BlockKind` and `Block` in `structure.rs` to use `InlineEvent`.
+4. Refactor `BlockKind` in `structure.rs` to use `InlineEvent`.
 5. Remove all `pulldown_cmark` imports from `structure.rs`, `context.rs`, and `visitor.rs`.
-6. Update helper methods (`text()`, `is_scannable()`) to work with `InlineEvent`.
 
 **Acceptance Criteria**:
 
-- [ ] `BlockKind` has variants for all CommonMark block types
-- [ ] `BlockKind::ListItem` stores depth and parent span
-- [ ] `BlockKind::Frontmatter` captures YAML/Pluses metadata
-- [ ] `Block::text()` correctly extracts text from `InlineEvent` sequence
-- [ ] No `pulldown_cmark` imports outside `stream.rs` and `config.rs`
+- [ ] `cargo test` passes for all 829+ tests.
+- [ ] `grep -r "pulldown_cmark" src/note/parser/` only shows results in `stream.rs` and `config.rs`.
 
 **Estimated Effort**: 4-6 hours
 
@@ -215,7 +209,7 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Implement `DocStructure` struct in `structure.rs`
+1. Implement `DocStructure` struct in `structure.rs`.
 2. Implement `DocStructure::from_context()` with stack-based algorithm matching on `ParserEvent`.
 3. Handle all `ParserEvent` variants (`BlockStart`, `BlockEnd`, `Inline`).
 4. Track list depth and parent spans during building using internal `StructureBuilder`.
@@ -223,13 +217,13 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Acceptance Criteria**:
 
-- [ ] Simple paragraph parses to `BlockKind::Paragraph { events: Vec<InlineEventWithRange> }`
-- [ ] Nested lists correctly track depth (0 for root, 1 for first level, etc.)
-- [ ] List items store parent span for nested items
-- [ ] Blockquotes correctly nest child blocks
-- [ ] Code blocks store language and flattened text
-- [ ] Frontmatter at start of document is captured
-- [ ] All existing integration tests pass
+- [ ] Simple paragraph parses to `BlockKind::Paragraph { events: Vec<InlineEventWithRange> }`.
+- [ ] Nested lists correctly track depth (0 for root, 1 for first level, etc.).
+- [ ] List items store parent span for nested items.
+- [ ] Blockquotes correctly nest child blocks.
+- [ ] Code blocks store language and flattened text.
+- [ ] Frontmatter at start of document is captured.
+- [ ] All existing integration tests pass.
 
 **Estimated Effort**: 4-6 hours
 
@@ -241,18 +235,18 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Create `lithos-core/src/note/parser/visitor.rs`
-2. Define `BlockVisitor` trait with `visit_*` methods
-3. Implement `DocStructure::walk()` method
-4. Add depth-tracking during traversal
-5. Add tests for visitor pattern
+1. Create `lithos-core/src/note/parser/visitor.rs`.
+2. Define `BlockVisitor` trait with `visit_*` methods.
+3. Implement `DocStructure::walk()` method.
+4. Add depth-tracking during traversal.
+5. Add tests for visitor pattern.
 
 **Acceptance Criteria**:
 
-- [ ] `BlockVisitor` has methods for all `BlockKind` variants
-- [ ] `DocStructure::walk()` correctly traverses nested structures
-- [ ] Visitor receives correct depth parameter
-- [ ] Test visitor can collect all block types and counts
+- [ ] `BlockVisitor` has methods for all `BlockKind` variants.
+- [ ] `DocStructure::walk()` correctly traverses nested structures.
+- [ ] Visitor receives correct depth parameter.
+- [ ] Test visitor can collect all block types and counts.
 
 **Estimated Effort**: 2-3 hours
 
@@ -264,16 +258,16 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Create compatibility adapter: `DocStructure` → `BlockExtractor` callback
-2. Update `MarkdownParser::parse()` to use `ParserContext` + `DocStructure`
-3. Run full test suite and fix regressions
-4. Update benchmarks to measure parsing vs extraction separately
+1. Create compatibility adapter: `DocStructure` -> `BlockExtractor` callback.
+2. Update `MarkdownParser::parse()` to use `ParserContext` + `DocStructure`.
+3. Run full test suite and fix regressions.
+4. Update benchmarks to measure parsing vs extraction separately.
 
 **Acceptance Criteria**:
 
-- [ ] All 1103 lines of existing parser tests pass
-- [ ] No performance regression (within 5% of baseline)
-- [ ] Benchmarks show clear phase separation
+- [ ] All 1103 lines of existing parser tests pass.
+- [ ] No performance regression (within 5% of baseline).
+- [ ] Benchmarks show clear phase separation.
 
 **Estimated Effort**: 3-4 hours
 
@@ -285,22 +279,67 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Delete `BlockSpan` (replaced by `SourceByteRange`)
-2. Delete `TextFragment` (replaced by `Vec<SpannedEvent>`)
-3. Delete `BlockFrame` (replaced by `StackFrame`)
-4. Delete `LeafKind` and `ContainerKind` (replaced by `BlockKind`)
-5. Delete `BlockStack` and `FragmentPool` (replaced by `DocStructure` internal stack)
-6. Delete `ArtifactSink` trait (replaced by `BlockVisitor`)
-7. Update module exports in `parser/mod.rs`
+1. Delete `BlockSpan` (replaced by `SourceByteRange`).
+2. Delete `TextFragment` (replaced by `Vec<SpannedEvent>`).
+3. Delete `BlockFrame` (replaced by `StackFrame`).
+4. Delete `LeafKind` and `ContainerKind` (replaced by `BlockKind`).
+5. Delete `BlockStack` and `FragmentPool` (replaced by `DocStructure` internal stack).
+6. Delete `ArtifactSink` trait (replaced by `BlockVisitor`).
+7. Update module exports in `parser/mod.rs`.
 
 **Acceptance Criteria**:
 
-- [ ] All legacy types removed from `parser/mod.rs`
-- [ ] No dead code warnings
-- [ ] All tests still pass
-- [ ] Documentation updated
+- [ ] All legacy types removed from `parser/mod.rs`.
+- [ ] No dead code warnings.
+- [ ] All tests still pass.
+- [ ] Documentation updated.
 
 **Estimated Effort**: 1-2 hours
+
+## Detailed Component Specification
+
+### 1. `ParserEvent` (The Chokepoint)
+
+```rust
+pub(crate) enum ParserEvent<'source> {
+    BlockStart(BlockType<'source>),
+    BlockEnd(BlockType<'source>),
+    Inline(InlineEvent<'source>),
+    ThematicBreak,
+}
+```
+
+### 2. `InlineEvent` (Content)
+
+```rust
+pub(crate) enum InlineEvent<'source> {
+    Start(InlineTag),
+    End(InlineTag),
+    Text(Cow<'source, str>),
+    CodeSpan(Cow<'source, str>),
+    Html(Cow<'source, str>),
+    TaskListMarker(bool),
+}
+```
+
+---
+
+## Dependencies & Interaction
+
+### pulldown-cmark Interaction
+
+- **`into_offset_iter()`**: Used to get absolute byte ranges for every event.
+- **`CowStr`**: Used for efficient string handling, but mapped to `std::borrow::Cow` in our IR to avoid library leakage.
+- **`Options`**: Defined in `config.rs` but passed solely to `Parser::new_ext` in `stream.rs`.
+
+---
+
+## Success Criteria (Updated)
+
+- [ ] **Zero Coupling**: No `pulldown_cmark` types in `structure.rs`.
+- [ ] **CommonMark Fidelity**: Nested lists and blockquotes correctly modeled via `ParserEvent::BlockStart/End`.
+- [ ] **Performance**: IR conversion overhead remains <2% of total parse time.
+- [ ] **Clean Pipeline**: `DocStructure::from_context` only matches on `ParserEvent`.
 
 ---
 
@@ -393,21 +432,17 @@ The IR "Chokepoint" design resolves previous confusion:
 
 ```markdown
 # Test: Nested Lists with Depth Tracking
-
 - Root item (depth=0)
   - Nested item (depth=1, parent=Root)
     - Deep item (depth=2, parent=Nested)
 
 # Test: Frontmatter Capture
-
 ---
-
-## tags: [test]
-
+tags: [test]
+---
 Content here
 
 # Test: Mixed Containers
-
 > Blockquote
 >
 > - List in quote
@@ -455,7 +490,7 @@ Content here
 
 1. **Review and approve this plan** ✅
 2. **Design IR Chokepoint & Thick Adapter** ✅
-3. **Implement Phase 1 (ParserContext)** ❌ (COMPLETED - Phase 1 done)
+3. **Implement Phase 1 (ParserContext)** ✅
 4. **Implement Phase 2 (IR Refactoring)** ⬅️ **NEXT**
 5. **Implement Phase 3 (DocStructure building)**
 6. **Continue through remaining phases**

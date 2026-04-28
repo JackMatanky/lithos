@@ -25,9 +25,11 @@
 
 use pulldown_cmark::{CowStr, Event, MetadataBlockKind, Tag, TagEnd};
 
-use super::stream::EventWithRange;
-use crate::note::position::SourceByteRange;
-use crate::note::error::{NoteIngestError, NoteParseError};
+use super::{context::ParserContext, stream::EventWithRange};
+use crate::note::{
+    error::{NoteIngestError, NoteParseError},
+    position::SourceByteRange,
+};
 
 /// A complete block in the markdown document tree.
 ///
@@ -390,8 +392,8 @@ impl<'source> DocStructure<'source> {
     /// assert_eq!(structure.blocks().len(), 2); // Heading + Paragraph
     /// ```
     pub(crate) fn from_context(
-        ctx: &super::context::ParserContext<'source>,
-    ) -> Result<Self, crate::note::error::NoteIngestError> {
+        ctx: &ParserContext<'source>,
+    ) -> Result<Self, NoteIngestError> {
         let mut builder = StructureBuilder::new();
 
         for spanned_event in ctx.events() {

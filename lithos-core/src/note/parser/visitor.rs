@@ -203,7 +203,6 @@ pub trait BlockVisitor<'source> {
     /// - `depth`: Nesting depth
     #[expect(unused_variables, reason = "default trait impl has empty body")]
     fn visit_thematic_break(&mut self, block: &Block<'source>, depth: u32) {}
-
 }
 
 #[cfg(test)]
