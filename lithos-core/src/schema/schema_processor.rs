@@ -72,7 +72,7 @@ use crate::{
             SchemaRepositoryError,
         },
         identifier::{SchemaId, SchemaName},
-        index::SchemaIndex,
+        index::{NameIdPairs, SchemaIndex},
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
         merger::Merger,
         property::{PropertyMap, PropertyName},
@@ -529,6 +529,10 @@ impl<T> NewBatch<T> {
 
     pub(crate) fn contains_key(&self, id: &SchemaId) -> bool {
         self.0.contains_key(id)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&SchemaId, &T)> {
@@ -1598,7 +1602,9 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         new_schemas: &NewBatch<InitialParsed>,
         deleted_ids: &[SchemaId],
     ) -> Result<SchemaIndex, SchemaLoaderError> {
-        let mut name_index = HashMap::new();
+        let mut pairs = NameIdPairs::with_capacity(
+            graph.graph().node_count().saturating_add(new_schemas.len()),
+        );
 
         for (id, node) in graph.graph().iter() {
             if deleted_ids.contains(&id) {
@@ -1630,16 +1636,16 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             };
             let name = SchemaName::try_new(name)
                 .map_err(SchemaLoaderError::Resolution)?;
-            name_index.insert(name, id);
+            pairs.push((name, id));
         }
 
         for (id, new) in new_schemas.iter() {
             let name = SchemaName::try_new(new.raw.name())
                 .map_err(SchemaLoaderError::Resolution)?;
-            name_index.insert(name, *id);
+            pairs.push((name, *id));
         }
 
-        Ok(SchemaIndex::from_name_id_pairs(name_index))
+        Ok(SchemaIndex::from_name_id_pairs_only(pairs))
     }
 
     fn collect_old_parents(
@@ -1663,7 +1669,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             new_schemas,
         } = self.status;
 
-        let index = SchemaIndex::from_name_id_pairs(
+        let index = SchemaIndex::from_name_id_pairs_only(
             new_schemas
                 .iter()
                 .map(|(id, parsed)| {
@@ -1671,7 +1677,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                         .map_err(SchemaLoaderError::Resolution)?;
                     Ok((name, *id))
                 })
-                .collect::<Result<Vec<_>, SchemaLoaderError>>()?,
+                .collect::<Result<NameIdPairs, SchemaLoaderError>>()?,
         );
 
         let mut builder = SchemaGraphBuilder::new();

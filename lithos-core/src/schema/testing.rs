@@ -283,9 +283,21 @@ impl Repository for InMemoryRepository {
     }
 
     fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
-        let name_pairs = self.list_schema_name_id_pairs()?;
-        let path_pairs = self.list_schema_path_id_pairs()?;
-        SchemaIndex::from_pairs(name_pairs.into_vec(), path_pairs.into_vec())
+        let name_to_id = self.name_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_schema_index (name_to_id)")
+        })?;
+
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_schema_index (path_to_id)")
+        })?;
+
+        let name_pairs: Vec<_> =
+            name_to_id.iter().map(|(n, id)| (n.clone(), *id)).collect();
+
+        let path_pairs: Vec<_> =
+            path_to_id.iter().map(|(p, id)| (p.clone(), *id)).collect();
+
+        SchemaIndex::from_pairs(name_pairs, path_pairs)
             .map_err(|e| InMemoryError::internal(e.to_string()))
     }
 

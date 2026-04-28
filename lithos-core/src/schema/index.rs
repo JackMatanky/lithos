@@ -86,20 +86,6 @@ impl SchemaIndexEntry {
 ///
 /// Provides efficient lookups by name, ID, and path. This type is designed
 /// to be built on-demand from repository data rather than persisted separately.
-///
-/// # Construction
-///
-/// ```ignore
-/// let index = SchemaIndex::from_path_id_pairs(repo.list_schema_path_id_pairs()?)?;
-/// ```
-///
-/// Or for testing:
-/// ```ignore
-/// let index = SchemaIndex::from_pairs([
-///     (SchemaName::try_new("user")?, id1),
-///     (SchemaName::try_new("task")?, id2),
-/// ]);
-/// ```
 #[derive(Debug, Clone, Default)]
 pub struct SchemaIndex {
     entries: Vec<SchemaIndexEntry>,
@@ -126,6 +112,14 @@ impl SchemaIndex {
             id_index: HashMap::with_capacity(capacity),
             path_index: HashMap::with_capacity(capacity),
         }
+    }
+
+    /// Shrinks the capacity of the index as much as possible.
+    pub fn shrink_to_fit(&mut self) {
+        self.entries.shrink_to_fit();
+        self.name_index.shrink_to_fit();
+        self.id_index.shrink_to_fit();
+        self.path_index.shrink_to_fit();
     }
 
     /// Create index from name→ID pairs (e.g., from repository's list method).
@@ -216,10 +210,14 @@ impl SchemaIndex {
         J: IntoIterator<Item = (RelativePath, SchemaId)>,
     {
         let name_iter = name_pairs.into_iter();
-        let (n_low, n_high) = name_iter.size_hint();
-        let name_capacity = n_high.unwrap_or(n_low);
+        let path_iter = path_pairs.into_iter();
 
-        let mut index = Self::with_capacity(name_capacity);
+        let (n_low, n_high) = name_iter.size_hint();
+        let (p_low, p_high) = path_iter.size_hint();
+        let capacity =
+            n_high.unwrap_or(n_low).saturating_add(p_high.unwrap_or(p_low));
+
+        let mut index = Self::with_capacity(capacity);
 
         // First, add all name-id pairs
         for (name, id) in name_iter {
@@ -227,11 +225,11 @@ impl SchemaIndex {
         }
 
         // Second, augment with paths
-        for (path, id) in path_pairs {
+        for (path, id) in path_iter {
             if let Some(&idx) = index.id_index.get(&id) {
                 if let Some(entry) = index.entries.get_mut(idx) {
-                    entry.path = Some(path.clone());
-                    index.path_index.insert(path, idx);
+                    index.path_index.insert(path.clone(), idx);
+                    entry.path = Some(path);
                 }
             } else {
                 // New entry with path only (derive name)
@@ -388,7 +386,7 @@ impl SchemaIndex {
 }
 
 /// Collection of name→ID pairs for schema lookups.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct NameIdPairs(Vec<(SchemaName, SchemaId)>);
 
 impl NameIdPairs {
@@ -433,12 +431,6 @@ impl NameIdPairs {
     }
 }
 
-impl Default for NameIdPairs {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl From<Vec<(SchemaName, SchemaId)>> for NameIdPairs {
     fn from(vec: Vec<(SchemaName, SchemaId)>) -> Self {
         Self(vec)
@@ -454,8 +446,29 @@ impl IntoIterator for NameIdPairs {
     }
 }
 
+impl FromIterator<(SchemaName, SchemaId)> for NameIdPairs {
+    fn from_iter<I: IntoIterator<Item = (SchemaName, SchemaId)>>(
+        iter: I,
+    ) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Delegate to inner Vec for performance-sensitive defaults"
+)]
+impl Extend<(SchemaName, SchemaId)> for NameIdPairs {
+    fn extend<I: IntoIterator<Item = (SchemaName, SchemaId)>>(
+        &mut self,
+        iter: I,
+    ) {
+        self.0.extend(iter);
+    }
+}
+
 /// Collection of path→ID pairs for schema discovery.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct PathIdPairs(Vec<(RelativePath, SchemaId)>);
 
 impl PathIdPairs {
@@ -500,9 +513,24 @@ impl PathIdPairs {
     }
 }
 
-impl Default for PathIdPairs {
-    fn default() -> Self {
-        Self::new()
+impl FromIterator<(RelativePath, SchemaId)> for PathIdPairs {
+    fn from_iter<I: IntoIterator<Item = (RelativePath, SchemaId)>>(
+        iter: I,
+    ) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Delegate to inner Vec for performance-sensitive defaults"
+)]
+impl Extend<(RelativePath, SchemaId)> for PathIdPairs {
+    fn extend<I: IntoIterator<Item = (RelativePath, SchemaId)>>(
+        &mut self,
+        iter: I,
+    ) {
+        self.0.extend(iter);
     }
 }
 
@@ -613,6 +641,20 @@ mod tests {
             vec![(RelativePath::try_from("schemas/user.json").unwrap(), id1)]
                 .into();
         assert_eq!(pairs.len(), 1);
+    }
+
+    #[test]
+    fn pairs_collect_works() {
+        let name1 = SchemaName::try_new("user").unwrap();
+        let id1 = SchemaId::new();
+
+        let pairs: NameIdPairs = vec![(name1, id1)].into_iter().collect();
+        assert_eq!(pairs.len(), 1);
+
+        let path1 = RelativePath::try_from("schemas/user.json").unwrap();
+        let id2 = SchemaId::new();
+        let p_pairs: PathIdPairs = vec![(path1, id2)].into_iter().collect();
+        assert_eq!(p_pairs.len(), 1);
     }
 
     #[test]

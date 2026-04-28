@@ -565,14 +565,38 @@ impl Repository for RedbRepository {
 
     #[inline]
     fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
-        let name_pairs = self.list_schema_name_id_pairs()?;
-        let path_pairs = self.list_schema_path_id_pairs()?;
-        SchemaIndex::from_pairs(name_pairs.into_vec(), path_pairs.into_vec())
-            .map_err(|e| {
-                SchemaRepositoryError::Storage(SchemaStorageError::Corruption {
-                    reason: format!("failed to build schema index: {e}").into(),
-                })
+        use crate::schema::db_table::{SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH};
+
+        self.db
+            .batch_read(|reader| {
+                let name_pairs: Vec<_> = reader
+                    .list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_NAME)?
+                    .into_iter()
+                    .map(|(name_str, id)| {
+                        SchemaName::try_new(&name_str)
+                            .map(|name| (name, id))
+                            .map_err(|e| {
+                                crate::db::DbError::Database(e.to_string())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let path_pairs: Vec<_> = reader
+                    .list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_PATH)?
+                    .into_iter()
+                    .map(|(path_str, id)| {
+                        RelativePath::try_from(path_str.as_str())
+                            .map(|path| (path, id))
+                            .map_err(|e| {
+                                crate::db::DbError::Database(e.to_string())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                SchemaIndex::from_pairs(name_pairs, path_pairs)
+                    .map_err(|e| crate::db::DbError::Database(e.to_string()))
             })
+            .map_err(map_db_error)
     }
 
     // ========================================================================
