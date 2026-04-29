@@ -137,6 +137,22 @@ pub(crate) mod db_table {
         TableDefinition::new("raw_property_bank_view");
 
     // ========================================================================
+    // Base Properties Storage (hydrated local properties)
+    // ========================================================================
+
+    /// Cached base properties for schema files.
+    ///
+    /// Stores the fully converted (hydrated) property map for each schema,
+    /// excluding any inherited properties. This enables skipping the
+    /// `RefExpander` when the property bank has not changed.
+    ///
+    /// Key: `SchemaId` as UUID string.
+    /// Value: rkyv-serialized `BasePropertiesView`.
+    #[expect(dead_code, reason = "Table will be used in future commits")]
+    pub(crate) const SCHEMA_BASE_PROPERTIES: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_base_properties");
+
+    // ========================================================================
     // Inheritance Tracking Tables
     // ========================================================================
 
@@ -153,8 +169,3 @@ pub(crate) mod db_table {
     /// Key for `InheritanceGraph` singleton table.
     pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 }
-
-// --- Public API ---
-// Use explicit paths like `schema::aggregate::Schema` or
-// `schema::storage::Repository` instead of re-exports to maintain clear module
-// boundaries

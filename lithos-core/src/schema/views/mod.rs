@@ -222,11 +222,13 @@
 
 pub mod contracts;
 pub mod hashes;
+pub mod properties;
 pub mod raw;
 pub mod snapshots;
 
 // Re-export commonly used types for ergonomic access
 pub use contracts::{RawView, RawViewRead, Version, VersionRead};
-pub use hashes::HashRecord;
+pub use hashes::{HashRecord, RawPropertyMapHash};
+pub use properties::BasePropertiesView;
 pub use raw::{RawPropertyBankView, RawSchemaView};
 pub use snapshots::{PropertyBankVersion, SchemaVersion};

@@ -273,6 +273,42 @@ impl ArchivedHashRecord {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  RawPropertyMapHash
+// ─────────────────────────────────────────────────────────────────────
+
+/// Per-property hash map computed from [`RawPropertyMap`].
+///
+/// Newtype wrapper around `HashMap<PropertyName, Blake3Hash>` for type safety.
+/// Used in [`HashRecord`] and [`BasePropertiesView`].
+///
+/// Computed via [`RawPropertyMap::compute_hashes()`] during ingestion.
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+pub struct RawPropertyMapHash(HashMap<PropertyName, Blake3Hash>);
+
+impl RawPropertyMapHash {
+    /// Returns a reference to the inner hash map.
+    #[inline]
+    #[must_use]
+    pub fn as_inner(&self) -> &HashMap<PropertyName, Blake3Hash> {
+        &self.0
+    }
+}
+
+impl Default for RawPropertyMapHash {
+    #[inline]
+    fn default() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl From<HashMap<PropertyName, Blake3Hash>> for RawPropertyMapHash {
+    #[inline]
+    fn from(map: HashMap<PropertyName, Blake3Hash>) -> Self {
+        Self(map)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
