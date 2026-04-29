@@ -339,101 +339,99 @@ impl<'source> StructureBuilder<'source> {
         block_type: &BlockType<'source>,
         span: SourceByteRange,
     ) {
+        let start = span.start().as_usize();
         match block_type {
             BlockType::Paragraph => {
-                self.tree.push_incomplete(ProcessingNode::Leaf(
-                    ProcessingLeaf::new(
-                        ProcessingLeafKind::Paragraph,
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                    ),
-                ));
+                self.push_leaf(ProcessingLeafKind::Paragraph, start);
             }
             BlockType::Heading {
                 level,
             } => {
-                self.tree.push_incomplete(ProcessingNode::Leaf(
-                    ProcessingLeaf::new(
-                        ProcessingLeafKind::Heading {
-                            level: (*level).into(),
-                        },
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                    ),
-                ));
+                self.push_leaf(
+                    ProcessingLeafKind::Heading {
+                        level: (*level).into(),
+                    },
+                    start,
+                );
             }
             BlockType::BlockQuote => {
-                self.tree.push_incomplete(ProcessingNode::Container(
-                    ProcessingContainer::new(
-                        ProcessingContainerKind::BlockQuote,
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                        None,
-                    ),
-                ));
+                self.push_container(
+                    ProcessingContainerKind::BlockQuote,
+                    start,
+                    None,
+                );
                 self.list_state.increase_depth();
             }
             BlockType::CodeBlock {
                 language,
             } => {
                 let language = language.as_ref().map(ToString::to_string);
-                self.tree.push_incomplete(ProcessingNode::Leaf(
-                    ProcessingLeaf::new(
-                        ProcessingLeafKind::CodeBlock {
-                            language,
-                        },
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                    ),
-                ));
+                self.push_leaf(
+                    ProcessingLeafKind::CodeBlock {
+                        language,
+                    },
+                    start,
+                );
             }
             BlockType::List {
-                start,
+                start: list_start,
             } => {
-                let kind = match start {
+                let kind = match list_start {
                     Some(n) => ListKind::Ordered {
                         start: *n,
                     },
                     None => ListKind::Unordered,
                 };
-                self.tree.push_incomplete(ProcessingNode::Container(
-                    ProcessingContainer::new(
-                        ProcessingContainerKind::List {
-                            kind,
-                        },
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                        None,
-                    ),
-                ));
+                self.push_container(
+                    ProcessingContainerKind::List {
+                        kind,
+                    },
+                    start,
+                    None,
+                );
                 self.list_state.increase_depth();
             }
             BlockType::Item => {
                 let parent_span = self.list_state.parent_span_for_next_item();
-
-                self.tree.push_incomplete(ProcessingNode::Container(
-                    ProcessingContainer::new(
-                        ProcessingContainerKind::ListItem,
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                        parent_span,
-                    ),
-                ));
+                self.push_container(
+                    ProcessingContainerKind::ListItem,
+                    start,
+                    parent_span,
+                );
             }
             BlockType::Frontmatter {
                 format: kind,
             } => {
-                self.tree.push_incomplete(ProcessingNode::Leaf(
-                    ProcessingLeaf::new(
-                        ProcessingLeafKind::Frontmatter {
-                            format: *kind,
-                        },
-                        span.start().as_usize(),
-                        self.list_state.depth(),
-                    ),
-                ));
+                self.push_leaf(
+                    ProcessingLeafKind::Frontmatter {
+                        format: *kind,
+                    },
+                    start,
+                );
             }
         }
+    }
+
+    fn push_leaf(&mut self, kind: ProcessingLeafKind, start: usize) {
+        self.tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
+            kind, start,
+        )));
+    }
+
+    fn push_container(
+        &mut self,
+        kind: ProcessingContainerKind,
+        start: usize,
+        parent_span: Option<SourceByteRange>,
+    ) {
+        self.tree.push_incomplete(ProcessingNode::Container(
+            ProcessingContainer::new(
+                kind,
+                start,
+                self.list_state.depth(),
+                parent_span,
+            ),
+        ));
     }
 
     #[expect(
@@ -456,29 +454,26 @@ impl<'source> StructureBuilder<'source> {
             | BlockType::Frontmatter {
                 ..
             } => {
-                let block = self.finalize_leaf(
+                self.finalize_and_attach_leaf(
                     span,
                     "stack underflow: End tag without matching Start",
                 )?;
-                self.tree.attach_completed(block);
             }
             BlockType::BlockQuote => {
-                let block = self.finalize_container(
+                self.finalize_and_attach_container(
                     span,
                     "stack underflow: End BlockQuote without Start",
                 )?;
                 self.list_state.decrease_depth();
-                self.tree.attach_completed(block);
             }
             BlockType::List {
                 ..
             } => {
-                let block = self.finalize_container(
+                self.finalize_and_attach_container(
                     span,
                     "stack underflow: End List without Start",
                 )?;
                 self.list_state.decrease_depth();
-                self.tree.attach_completed(block);
             }
             BlockType::Item => {
                 let block = self.finalize_container(
@@ -518,6 +513,16 @@ impl<'source> StructureBuilder<'source> {
         }
     }
 
+    fn finalize_and_attach_leaf(
+        &mut self,
+        span: SourceByteRange,
+        underflow_reason: &'static str,
+    ) -> Result<(), NoteIngestError> {
+        let block = self.finalize_leaf(span, underflow_reason)?;
+        self.tree.attach_completed(block);
+        Ok(())
+    }
+
     fn finalize_container(
         &mut self,
         span: SourceByteRange,
@@ -530,6 +535,16 @@ impl<'source> StructureBuilder<'source> {
             }
             ProcessingNode::Leaf(_) => Err(Self::role_mismatch_error()),
         }
+    }
+
+    fn finalize_and_attach_container(
+        &mut self,
+        span: SourceByteRange,
+        underflow_reason: &'static str,
+    ) -> Result<(), NoteIngestError> {
+        let block = self.finalize_container(span, underflow_reason)?;
+        self.tree.attach_completed(block);
+        Ok(())
     }
 
     fn role_mismatch_error() -> NoteIngestError {
@@ -686,7 +701,7 @@ struct ProcessingLeaf<'source> {
 }
 
 impl<'source> ProcessingLeaf<'source> {
-    fn new(kind: ProcessingLeafKind, start: usize, _depth: u32) -> Self {
+    fn new(kind: ProcessingLeafKind, start: usize) -> Self {
         Self {
             kind,
             start,
