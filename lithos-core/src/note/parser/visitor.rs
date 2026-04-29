@@ -46,7 +46,7 @@
 
 use pulldown_cmark::{CowStr, MetadataBlockKind};
 
-use super::structure::{Block, HeadingLevel, ListKind};
+use super::block::{Block, HeadingLevel, ListKind};
 
 /// Visitor trait for traversing the block AST.
 ///
@@ -206,6 +206,22 @@ pub trait BlockVisitor<'source> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "Small integer counters in tests are bounded and intentional"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Test assertions index fixed-shape collections for clarity"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "Depth-to-index conversion is bounded in test fixtures"
+)]
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Visitors override only methods required for each focused test"
+)]
 mod tests {
     use super::*;
     use crate::note::parser::{

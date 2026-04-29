@@ -15,17 +15,17 @@
 //! 1. **Adapter Layer** ([`stream::MarkdownEventStream`]): Wraps the core
 //!    `pulldown-cmark` parser. Normalizes soft and hard line breaks and merges
 //!    adjacent text nodes according to configurable policies.
-//! 2. **Structure Builder**: (TODO) Tracks block depth and nesting. Emits
-//!    completed leaf and container blocks without allocating text fragments for
-//!    container blocks.
-//! 3. **Lexical Metadata Scanner**: (TODO) Scans leaf text segments using
-//!    explicit rules to identify artifacts like tags, inline fields, and block
+//! 2. **Structure Builder**: Tracks block depth and nesting. Emits completed
+//!    leaf and container blocks without allocating text fragments for container
+//!    blocks.
+//! 3. **Lexical Metadata Scanner**: Scans leaf text segments using explicit
+//!    rules to identify artifacts like tags, inline fields, and block
 //!    references.
-//! 4. **Semantic Validator**: (TODO) Enforces schema rules and standardizes the
-//!    metadata tokens.
-//! 5. **Artifact Assembler**: (TODO) Collects structural blocks and validated
-//!    metadata into the final domain [`RawNote`](crate::note::raw::RawNote),
-//!    applying routing policies (e.g., whether list-item tags are global).
+//! 4. **Semantic Validator**: Enforces schema rules and standardizes metadata
+//!    tokens.
+//! 5. **Artifact Assembler**: Collects structural blocks and validated metadata
+//!    into the final domain [`RawNote`](crate::note::raw::RawNote), applying
+//!    routing policies (e.g., whether list-item tags are global).
 //!
 //! # Core Invariants
 //!
@@ -58,9 +58,11 @@
 //! }
 //! ```
 //!
-//! The main entry point is currently the legacy [`MarkdownParser`] which will
-//! be fully migrated to the new pipeline architecture.
+//! The current entry point is [`MarkdownParser`], which composes parser,
+//! structure, and scanning responsibilities while this module evolves.
 
+/// Block-domain types for parser AST.
+pub(crate) mod block;
 /// Configuration types for the event stream.
 pub(crate) mod config;
 /// Cached parsing context for markdown documents.
@@ -80,9 +82,7 @@ mod context_integration_test;
 
 use std::borrow::Cow;
 
-use pulldown_cmark::{
-    CowStr, Event, Options, Parser, TagEnd, utils::TextMergeWithOffset,
-};
+use pulldown_cmark::{CowStr, Options, TagEnd};
 
 use crate::{
     config::task::TaskConfigSpec,
@@ -107,7 +107,7 @@ where
     S: ArtifactSink<'source>,
 {
     // Source and configuration
-    ref_defs: LinkRefResolver,
+    ref_defs: references::ReferenceDefinitions,
 
     // PDA state
     stack: BlockStack<'source>,
@@ -135,26 +135,105 @@ where
         task_spec: &TaskConfigSpec,
         sink: S,
     ) -> Result<S, NoteIngestError> {
-        let base = Parser::new_ext(source, Self::extension_options());
-        let offset_iter = base.into_offset_iter();
-        let ref_defs = LinkRefResolver::new(
-            offset_iter
-                .reference_definitions()
-                .iter()
-                .map(|(label, link_def)| {
-                    (label.to_owned(), link_def.dest.to_string())
-                })
-                .collect(),
-        );
+        let stream_config = config::EventStreamConfig::default();
+        let (stream, ref_defs) =
+            stream::MarkdownEventStream::new(source, stream_config);
 
         let mut parser = Self::new(source, task_spec, ref_defs, sink);
 
-        let normalized = offset_iter.map(|(ev, r)| (normalize_breaks(ev), r));
-        for (event, range) in TextMergeWithOffset::new(normalized) {
-            parser.step(event, range)?;
+        for event in stream {
+            let event = event?;
+            parser.step_spanned(&event)?;
         }
 
         Ok(parser.sink)
+    }
+
+    fn step_spanned(
+        &mut self,
+        event: &stream::EventWithRange<'source>,
+    ) -> Result<(), NoteIngestError> {
+        let range = event.range();
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Pattern matching borrowed parser event variants"
+        )]
+        match event.event() {
+            stream::ParserEvent::BlockStart(block) => {
+                let tag = block.as_start_tag();
+                self.on_start(tag, range.start().as_usize())?;
+            }
+            stream::ParserEvent::BlockEnd(block) => {
+                let tag = block.as_end_tag();
+                self.on_end(tag, range.end().as_usize())?;
+            }
+            stream::ParserEvent::Inline(inline) => {
+                self.on_inline_event(inline, range)?;
+            }
+            stream::ParserEvent::TaskListMarker(checked) => {
+                self.on_task_marker(*checked);
+            }
+            stream::ParserEvent::ThematicBreak => {}
+        }
+        Ok(())
+    }
+
+    fn on_inline_event(
+        &mut self,
+        inline: &stream::InlineEvent<'source>,
+        range: SourceByteRange,
+    ) -> Result<(), NoteIngestError> {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Pattern matching borrowed inline parser variants"
+        )]
+        match inline {
+            stream::InlineEvent::Start(stream::InlineTag::Link {
+                link_type,
+                dest_url,
+                ..
+            }) => {
+                self.open_link(
+                    *link_type,
+                    dest_url.clone(),
+                    false,
+                    range.start().as_usize(),
+                )?;
+            }
+            stream::InlineEvent::Start(stream::InlineTag::Image {
+                link_type,
+                dest_url,
+                ..
+            }) => {
+                let is_embed = matches!(
+                    link_type,
+                    pulldown_cmark::LinkType::WikiLink { .. }
+                );
+                self.open_link(
+                    *link_type,
+                    dest_url.clone(),
+                    is_embed,
+                    range.start().as_usize(),
+                )?;
+            }
+            stream::InlineEvent::End(
+                stream::InlineTagEnd::Link | stream::InlineTagEnd::Image,
+            ) => {
+                self.finalize_link();
+            }
+            stream::InlineEvent::Text(text) => {
+                self.on_text(
+                    text,
+                    range.start().as_usize()..range.end().as_usize(),
+                )?;
+            }
+            stream::InlineEvent::CodeSpan(text) => self.on_code(text),
+            stream::InlineEvent::Start(_)
+            | stream::InlineEvent::End(_)
+            | stream::InlineEvent::Html(_) => {}
+        }
+
+        Ok(())
     }
 
     /// Returns the pulldown-cmark option set used for Obsidian-compatible
@@ -162,17 +241,13 @@ where
     #[inline]
     #[must_use]
     pub const fn extension_options() -> Options {
-        Options::ENABLE_TASKLISTS
-            .union(Options::ENABLE_WIKILINKS)
-            .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
-            .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
-            .union(Options::ENABLE_STRIKETHROUGH)
+        config::EventStreamConfig::default_options()
     }
 
     fn new(
         _source: &'source str,
         _task_spec: &TaskConfigSpec,
-        ref_defs: LinkRefResolver,
+        ref_defs: references::ReferenceDefinitions,
         sink: S,
     ) -> Self {
         Self {
@@ -184,26 +259,6 @@ where
             open_items: Vec::with_capacity(8),
             sink,
         }
-    }
-
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Unhandled pulldown events are intentionally ignored"
-    )]
-    fn step(
-        &mut self,
-        event: Event<'source>,
-        range: std::ops::Range<usize>,
-    ) -> Result<(), NoteIngestError> {
-        match event {
-            Event::Start(tag) => self.on_start(tag, range.start)?,
-            Event::End(tag) => self.on_end(tag, range.end)?,
-            Event::Text(text) => self.on_text(&text, range)?,
-            Event::Code(text) => self.on_code(&text),
-            Event::TaskListMarker(checked) => self.on_task_marker(checked),
-            _ => {}
-        }
-        Ok(())
     }
 
     #[expect(
@@ -316,10 +371,6 @@ where
         reason = "Symmetric frame finalization keeps tag handling explicit"
     )]
     #[expect(
-        clippy::too_many_lines,
-        reason = "End-tag handling keeps parser state transitions co-located"
-    )]
-    #[expect(
         clippy::wildcard_enum_match_arm,
         reason = "Unsupported markdown end-tags are intentionally ignored"
     )]
@@ -335,31 +386,10 @@ where
         match tag {
             TagEnd::Link | TagEnd::Image => self.finalize_link(),
             TagEnd::MetadataBlock(_) => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Leaf {
-                    kind,
-                    mut span,
-                    fragments,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.sink.on_leaf_complete(kind, span, &fragments, 0)?;
-                    self.stack.pool_mut().put(fragments);
-                }
+                self.finalize_leaf_frame(byte_end, 0)?;
             }
             TagEnd::Heading(_) => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Leaf {
-                    kind,
-                    mut span,
-                    fragments,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.sink
-                        .on_leaf_complete(kind, span, &fragments, self.depth)?;
-                    self.stack.pool_mut().put(fragments);
-                }
+                self.finalize_leaf_frame(byte_end, self.depth)?;
             }
             TagEnd::Paragraph => {
                 let mut frame = self.stack.pop()?;
@@ -393,56 +423,57 @@ where
             }
 
             TagEnd::Item => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Leaf {
-                    kind,
-                    mut span,
-                    fragments,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.sink
-                        .on_leaf_complete(kind, span, &fragments, self.depth)?;
-                    self.stack.pool_mut().put(fragments);
-                }
+                self.finalize_leaf_frame(byte_end, self.depth)?;
             }
             TagEnd::List(_) => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Container {
-                    kind,
-                    mut span,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.depth = self.depth.saturating_sub(1);
-                    self.list_kinds.pop();
-                    self.sink.on_container_complete(kind, span, self.depth)?;
-                }
+                self.depth = self.depth.saturating_sub(1);
+                self.list_kinds.pop();
+                self.finalize_container_frame(byte_end, self.depth)?;
             }
             TagEnd::BlockQuote(_) => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Container {
-                    kind,
-                    mut span,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.depth = self.depth.saturating_sub(1);
-                    self.sink.on_container_complete(kind, span, self.depth)?;
-                }
+                self.depth = self.depth.saturating_sub(1);
+                self.finalize_container_frame(byte_end, self.depth)?;
             }
             TagEnd::CodeBlock => {
-                let frame = self.stack.pop()?;
-                if let BlockFrame::Container {
-                    kind,
-                    mut span,
-                } = frame
-                {
-                    span.end = byte_end;
-                    self.sink.on_container_complete(kind, span, self.depth)?;
-                }
+                self.finalize_container_frame(byte_end, self.depth)?;
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn finalize_leaf_frame(
+        &mut self,
+        byte_end: usize,
+        depth: u32,
+    ) -> Result<(), NoteIngestError> {
+        let frame = self.stack.pop()?;
+        if let BlockFrame::Leaf {
+            kind,
+            mut span,
+            fragments,
+        } = frame
+        {
+            span.end = byte_end;
+            self.sink.on_leaf_complete(kind, span, &fragments, depth)?;
+            self.stack.pool_mut().put(fragments);
+        }
+        Ok(())
+    }
+
+    fn finalize_container_frame(
+        &mut self,
+        byte_end: usize,
+        depth: u32,
+    ) -> Result<(), NoteIngestError> {
+        let frame = self.stack.pop()?;
+        if let BlockFrame::Container {
+            kind,
+            mut span,
+        } = frame
+        {
+            span.end = byte_end;
+            self.sink.on_container_complete(kind, span, depth)?;
         }
         Ok(())
     }
@@ -520,7 +551,7 @@ where
     ) -> Result<(), NoteIngestError> {
         let style = RawLinkStyle::from(link_type);
         let target =
-            resolve_reference_target(link_type, dest_url, &mut self.ref_defs);
+            resolve_reference_target(link_type, dest_url, &self.ref_defs);
         self.link = Some(RawLink::new(
             style,
             is_embed,
@@ -809,101 +840,12 @@ pub fn reset_fragment_pool_metrics() {
         .with(|cell| *cell.borrow_mut() = FragmentPoolMetrics::default());
 }
 
-// ── Shared pub(crate) free functions ─────────────────────────────────────────
-
-/// Maps `SoftBreak`/`HardBreak` to `Text` events before merging.
-pub(crate) fn normalize_breaks(event: Event<'_>) -> Event<'_> {
-    match event {
-        Event::SoftBreak => Event::Text(CowStr::Borrowed(" ")),
-        Event::HardBreak => Event::Text(CowStr::Borrowed("\n")),
-        other @ (Event::Start(_)
-        | Event::End(_)
-        | Event::Text(_)
-        | Event::Code(_)
-        | Event::InlineMath(_)
-        | Event::DisplayMath(_)
-        | Event::Html(_)
-        | Event::InlineHtml(_)
-        | Event::FootnoteReference(_)
-        | Event::Rule
-        | Event::TaskListMarker(_)) => other,
-    }
-}
-
 // ── Private implementation details ───────────────────────────────────────────
-
-struct LinkRefResolver {
-    normalized: std::collections::HashMap<Box<str>, Box<str>>,
-}
-
-impl LinkRefResolver {
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Normalization chooses first-seen label order"
-    )]
-    fn new(raw: std::collections::HashMap<String, String>) -> Self {
-        let mut normalized = std::collections::HashMap::new();
-        for (label, dest) in raw {
-            let key = Self::normalize_label(&label);
-            normalized.entry(key).or_insert(dest.into_boxed_str());
-        }
-        Self {
-            normalized,
-        }
-    }
-
-    fn resolve(&self, label: &str) -> Option<&str> {
-        let normalized = Self::normalize_label(label);
-        self.normalized.get(normalized.as_ref()).map(AsRef::as_ref)
-    }
-
-    fn normalize_label(label: &str) -> Box<str> {
-        let needs_lowercase = label.chars().any(|c| c.is_ascii_uppercase());
-        let needs_whitespace_fix = label.starts_with([' ', '\t'])
-            || label.ends_with([' ', '\t'])
-            || label.contains("  ")
-            || label.contains('\\');
-
-        if !needs_lowercase && !needs_whitespace_fix {
-            return label.to_owned().into_boxed_str();
-        }
-
-        let mut normalized = String::with_capacity(label.len());
-        let mut last_was_space = false;
-        let mut chars = label.chars().peekable();
-
-        while let Some(ch) = chars.next() {
-            let ch = if ch == '\\' {
-                chars.next().unwrap_or('\\')
-            } else {
-                ch
-            };
-
-            if ch.is_whitespace() {
-                if normalized.is_empty() || last_was_space {
-                    continue;
-                }
-                normalized.push(' ');
-                last_was_space = true;
-                continue;
-            }
-
-            normalized.push(ch.to_ascii_lowercase());
-            last_was_space = false;
-        }
-
-        if last_was_space {
-            normalized.pop();
-        }
-
-        normalized.into_boxed_str()
-    }
-}
 
 fn resolve_reference_target<'source>(
     link_type: pulldown_cmark::LinkType,
     dest_url: CowStr<'source>,
-    ref_defs: &mut LinkRefResolver,
+    ref_defs: &references::ReferenceDefinitions,
 ) -> Cow<'source, str> {
     if is_reference_link_type(link_type)
         && let Some(resolved) = ref_defs.resolve(dest_url.as_ref())

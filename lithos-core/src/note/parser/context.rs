@@ -37,6 +37,11 @@
 //! assert_eq!(ctx.references().resolve("ref"), Some("/url"));
 //! ```
 
+#![cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Context cache API is consumed incrementally")
+)]
+
 use super::{
     config::EventStreamConfig,
     references::ReferenceDefinitions,
@@ -152,9 +157,8 @@ impl<'source> ParserContext<'source> {
               readability"
 )]
 mod tests {
-    use pulldown_cmark::Event;
-
     use super::*;
+    use crate::note::parser::stream::{InlineEvent, ParserEvent};
 
     mod parser_context_new {
         use super::*;
@@ -199,9 +203,23 @@ mod tests {
             let text_events: Vec<_> = ctx
                 .events()
                 .iter()
-                .filter_map(|e| match e.event() {
-                    Event::Text(s) => Some(s.as_ref()),
-                    _ => None,
+                .filter_map(|e| {
+                    #[expect(
+                        clippy::wildcard_enum_match_arm,
+                        reason = "Only inline text is relevant for this \
+                                  assertion"
+                    )]
+                    #[expect(
+                        clippy::pattern_type_mismatch,
+                        reason = "Pattern matching borrowed parser events in \
+                                  test"
+                    )]
+                    match e.event() {
+                        ParserEvent::Inline(InlineEvent::Text(s)) => {
+                            Some(s.as_ref())
+                        }
+                        _ => None,
+                    }
                 })
                 .collect();
 

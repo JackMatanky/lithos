@@ -6,6 +6,14 @@
 //! the parsing and extraction stages are kept decoupled from implicit branching
 //! logic.
 
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Parser configuration is consumed incrementally"
+    )
+)]
+
 use pulldown_cmark::Options;
 
 /// Configuration for the markdown event stream.
@@ -28,6 +36,18 @@ pub(crate) struct EventStreamConfig {
 }
 
 impl EventStreamConfig {
+    /// Canonical default parser options for note markdown parsing.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn default_options() -> Options {
+        Options::ENABLE_TASKLISTS
+            .union(Options::ENABLE_WIKILINKS)
+            .union(Options::ENABLE_MATH)
+            .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+            .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
+            .union(Options::ENABLE_STRIKETHROUGH)
+    }
+
     /// Creates a new configuration with explicit values.
     #[must_use]
     #[inline]
@@ -46,21 +66,21 @@ impl EventStreamConfig {
     /// Returns the pulldown-cmark options for this configuration.
     #[must_use]
     #[inline]
-    pub(crate) const fn options(&self) -> Options {
+    pub(crate) const fn options(self) -> Options {
         self.options
     }
 
     /// Returns the line break normalization policy.
     #[must_use]
     #[inline]
-    pub(crate) const fn break_policy(&self) -> BreakPolicy {
+    pub(crate) const fn break_policy(self) -> BreakPolicy {
         self.break_policy
     }
 
     /// Returns whether text merging is enabled.
     #[must_use]
     #[inline]
-    pub(crate) const fn merge_text(&self) -> bool {
+    pub(crate) const fn merge_text(self) -> bool {
         self.merge_text
     }
 }
@@ -75,11 +95,7 @@ impl Default for EventStreamConfig {
     #[inline]
     fn default() -> Self {
         Self {
-            options: Options::ENABLE_TASKLISTS
-                | Options::ENABLE_WIKILINKS
-                | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-                | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
-                | Options::ENABLE_STRIKETHROUGH,
+            options: Self::default_options(),
             break_policy: BreakPolicy::default(),
             merge_text: true,
         }
@@ -160,6 +176,10 @@ mod tests {
             assert!(
                 config.options().contains(Options::ENABLE_WIKILINKS),
                 "default config should enable wikilinks"
+            );
+            assert!(
+                config.options().contains(Options::ENABLE_MATH),
+                "default config should enable math"
             );
             assert!(
                 config

@@ -13,6 +13,11 @@
 //! 3. Later pipeline stages query [`ReferenceDefinitions::resolve`] to connect
 //!    link events with their target URLs.
 
+#![cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Reference store is consumed incrementally")
+)]
+
 use std::collections::HashMap;
 
 /// A collection of normalized reference link definitions.

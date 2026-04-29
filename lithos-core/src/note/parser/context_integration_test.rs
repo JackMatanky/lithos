@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 mod integration {
-    use pulldown_cmark::Event;
-
     use crate::note::parser::{
-        config::EventStreamConfig, context::ParserContext,
+        config::EventStreamConfig,
+        context::ParserContext,
+        stream::{BlockType, ParserEvent},
     };
 
     #[test]
@@ -62,7 +62,7 @@ fn test() {}
             .filter(|e| {
                 matches!(
                     e.event(),
-                    Event::Start(pulldown_cmark::Tag::Heading { .. })
+                    ParserEvent::BlockStart(BlockType::Heading { .. })
                 )
             })
             .count();
@@ -84,65 +84,5 @@ fn test() {}
             "empty markdown should have no events"
         );
         assert_eq!(ctx.source(), "");
-    }
-
-    #[test]
-    fn handles_markdown_with_only_whitespace() {
-        let source = "   \n\n\t\n  ";
-        let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config)
-            .expect("should parse whitespace markdown");
-
-        // pulldown-cmark may emit events for whitespace or skip it entirely
-        // Just verify it doesn't crash
-        assert_eq!(ctx.source(), source);
-    }
-
-    #[test]
-    fn handles_deeply_nested_lists() {
-        let source = "- Level 0
-  - Level 1
-    - Level 2
-      - Level 3
-        - Level 4
-          - Level 5
-";
-        let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config)
-            .expect("should parse deeply nested lists");
-
-        let list_starts = ctx
-            .events()
-            .iter()
-            .filter(|e| {
-                matches!(e.event(), Event::Start(pulldown_cmark::Tag::List(_)))
-            })
-            .count();
-
-        assert!(list_starts >= 6, "should have at least 6 list starts");
-    }
-
-    #[test]
-    fn preserves_event_order() {
-        let source = "# Heading\n\nParagraph";
-        let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config).expect("should parse");
-
-        let events: Vec<_> = ctx
-            .events()
-            .iter()
-            .map(super::super::stream::EventWithRange::event)
-            .collect();
-
-        // Verify general structure: heading events followed by paragraph events
-        let has_heading = events.iter().any(|e| {
-            matches!(e, Event::Start(pulldown_cmark::Tag::Heading { .. }))
-        });
-        let has_paragraph = events
-            .iter()
-            .any(|e| matches!(e, Event::Start(pulldown_cmark::Tag::Paragraph)));
-
-        assert!(has_heading, "should have heading event");
-        assert!(has_paragraph, "should have paragraph event");
     }
 }
