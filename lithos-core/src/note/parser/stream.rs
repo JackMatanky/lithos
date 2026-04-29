@@ -17,239 +17,6 @@ use super::{
 };
 use crate::note::{error::NoteIngestError, position::SourceByteRange};
 
-/// Parser-facing structural and inline event IR.
-///
-/// This enum is the boundary between `pulldown-cmark` and Lithos parser
-/// components. Downstream parser components consume this representation instead
-/// of raw `pulldown_cmark::Event` values.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ParserEvent<'source> {
-    /// Start of a block-level element.
-    BlockStart(BlockType<'source>),
-    /// End of a block-level element.
-    BlockEnd(BlockType<'source>),
-    /// Inline-level content.
-    Inline(InlineEvent<'source>),
-    /// Task list marker associated with current list item.
-    TaskListMarker(bool),
-    /// Standalone thematic break block.
-    ThematicBreak,
-}
-
-/// Inline payload type used by [`ParserEvent`].
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum InlineEvent<'source> {
-    Start(InlineTag<'source>),
-    End(InlineTagEnd),
-    Text(CowStr<'source>),
-    CodeSpan(CowStr<'source>),
-    Html(CowStr<'source>),
-}
-
-/// Inline boundary start tag used by [`InlineEvent`].
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum InlineTag<'source> {
-    Emphasis,
-    Strong,
-    Strikethrough,
-    Link {
-        link_type: pulldown_cmark::LinkType,
-        dest_url: CowStr<'source>,
-        title: CowStr<'source>,
-        id: CowStr<'source>,
-    },
-    Image {
-        link_type: pulldown_cmark::LinkType,
-        dest_url: CowStr<'source>,
-        title: CowStr<'source>,
-        id: CowStr<'source>,
-    },
-    Superscript,
-    Subscript,
-    _Marker(std::marker::PhantomData<&'source str>),
-}
-
-/// Inline boundary end tag used by [`InlineEvent`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum InlineTagEnd {
-    Emphasis,
-    Strong,
-    Strikethrough,
-    Link,
-    Image,
-    Superscript,
-    Subscript,
-}
-
-/// Block boundary type used by [`ParserEvent`].
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BlockType<'source> {
-    Frontmatter {
-        format: pulldown_cmark::MetadataBlockKind,
-    },
-    Heading {
-        level: pulldown_cmark::HeadingLevel,
-    },
-    Paragraph,
-    BlockQuote,
-    CodeBlock {
-        language: Option<CowStr<'source>>,
-    },
-    List {
-        start: Option<u64>,
-    },
-    Item,
-}
-
-impl<'source> BlockType<'source> {
-    /// Converts block IR into a pulldown-cmark start tag.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matching borrowed block variants"
-    )]
-    pub(crate) fn as_start_tag(&self) -> pulldown_cmark::Tag<'source> {
-        match self {
-            Self::Frontmatter {
-                format,
-            } => pulldown_cmark::Tag::MetadataBlock(*format),
-            Self::Heading {
-                level,
-            } => pulldown_cmark::Tag::Heading {
-                level: *level,
-                id: None,
-                classes: Vec::new(),
-                attrs: Vec::new(),
-            },
-            Self::Paragraph => pulldown_cmark::Tag::Paragraph,
-            Self::BlockQuote => pulldown_cmark::Tag::BlockQuote(None),
-            Self::CodeBlock {
-                language,
-            } => language.as_ref().map_or(
-                pulldown_cmark::Tag::CodeBlock(
-                    pulldown_cmark::CodeBlockKind::Indented,
-                ),
-                |info| {
-                    pulldown_cmark::Tag::CodeBlock(
-                        pulldown_cmark::CodeBlockKind::Fenced(info.clone()),
-                    )
-                },
-            ),
-            Self::List {
-                start,
-            } => pulldown_cmark::Tag::List(*start),
-            Self::Item => pulldown_cmark::Tag::Item,
-        }
-    }
-
-    /// Converts block IR into a pulldown-cmark end tag.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matching borrowed block variants"
-    )]
-    pub(crate) fn as_end_tag(&self) -> pulldown_cmark::TagEnd {
-        match self {
-            Self::Frontmatter {
-                format,
-            } => pulldown_cmark::TagEnd::MetadataBlock(*format),
-            Self::Heading {
-                level,
-            } => pulldown_cmark::TagEnd::Heading(*level),
-            Self::Paragraph => pulldown_cmark::TagEnd::Paragraph,
-            Self::BlockQuote => pulldown_cmark::TagEnd::BlockQuote(None),
-            Self::CodeBlock {
-                ..
-            } => pulldown_cmark::TagEnd::CodeBlock,
-            Self::List {
-                ..
-            } => pulldown_cmark::TagEnd::List(false),
-            Self::Item => pulldown_cmark::TagEnd::Item,
-        }
-    }
-}
-
-// ParserEvent mapping is owned by EventAdapterIter methods.
-
-// ═══════════════════════════════════════════════════════════════════════════
-// EVENT WITH RANGE - MARKDOWN EVENT + SOURCE LOCATION
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// A markdown event paired with its original source byte range.
-///
-/// This struct guarantees that every parsed token is strictly bound to its
-/// exact origin within the unparsed source document. This allows downstream
-/// scanners and compilers to report diagnostics that accurately highlight the
-/// original text rather than a normalized projection.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use lithos_core::note::position::{SourceByteRange, SourceByteOffset};
-/// use lithos_core::note::parser::stream::EventWithRange;
-/// use lithos_core::note::parser::stream::{InlineEvent, ParserEvent};
-/// use pulldown_cmark::CowStr;
-///
-/// let start = SourceByteOffset::new(0);
-/// let end = SourceByteOffset::new(5);
-/// let range = SourceByteRange::new(start, end).unwrap();
-///
-/// let event = EventWithRange::new(
-///     ParserEvent::Inline(InlineEvent::Text(CowStr::Borrowed("hello"))),
-///     range,
-/// );
-///
-/// assert_eq!(event.range().len(), 5);
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EventWithRange<'source> {
-    event: ParserEvent<'source>,
-    range: SourceByteRange,
-}
-
-impl<'source> EventWithRange<'source> {
-    /// Creates a new event with its source range.
-    #[must_use]
-    #[inline]
-    pub(crate) const fn new(
-        event: ParserEvent<'source>,
-        range: SourceByteRange,
-    ) -> Self {
-        Self {
-            event,
-            range,
-        }
-    }
-
-    /// Returns a reference to the underlying parser event.
-    #[must_use]
-    #[inline]
-    pub(crate) const fn event(&self) -> &ParserEvent<'source> {
-        &self.event
-    }
-
-    /// Returns the source byte range for this event.
-    #[must_use]
-    #[inline]
-    pub(crate) const fn range(&self) -> SourceByteRange {
-        self.range
-    }
-}
-
-impl<'source> TryFrom<(ParserEvent<'source>, Range<usize>)>
-    for EventWithRange<'source>
-{
-    type Error = NoteIngestError;
-
-    fn try_from(
-        (event, byte_range): (ParserEvent<'source>, Range<usize>),
-    ) -> Result<Self, Self::Error> {
-        let range = SourceByteRange::try_from(byte_range)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(Self::new(event, range))
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // MARKDOWN EVENT STREAM - ITERATOR OVER EVENTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -436,6 +203,36 @@ where
     I: Iterator<Item = (Event<'source>, Range<usize>)>,
 {
     inner: I,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Implementing all iterator methods is unnecessary for this \
+              internal wrapper"
+)]
+impl<'source, I> Iterator for EventAdapterIter<'source, I>
+where
+    I: Iterator<Item = (Event<'source>, Range<usize>)>,
+{
+    type Item = Result<EventWithRange<'source>, NoteIngestError>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        for (event, byte_range) in self.inner.by_ref() {
+            let Some(parser_event) = ParserEventMapper::try_from_event(&event)
+            else {
+                continue;
+            };
+
+            let range = match SourceByteRange::try_from(byte_range) {
+                Ok(range) => range,
+                Err(error) => return Some(Err(NoteIngestError::Domain(error))),
+            };
+
+            return Some(Ok(EventWithRange::new(parser_event, range)));
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -641,33 +438,193 @@ impl ParserEventMapper {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Implementing all iterator methods is unnecessary for this \
-              internal wrapper"
-)]
-impl<'source, I> Iterator for EventAdapterIter<'source, I>
-where
-    I: Iterator<Item = (Event<'source>, Range<usize>)>,
-{
-    type Item = Result<EventWithRange<'source>, NoteIngestError>;
+/// Block boundary type emitted by the event adapter.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BlockType<'source> {
+    Frontmatter {
+        format: pulldown_cmark::MetadataBlockKind,
+    },
+    Heading {
+        level: pulldown_cmark::HeadingLevel,
+    },
+    Paragraph,
+    BlockQuote,
+    CodeBlock {
+        language: Option<CowStr<'source>>,
+    },
+    List {
+        start: Option<u64>,
+    },
+    Item,
+}
 
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        for (event, byte_range) in self.inner.by_ref() {
-            let Some(parser_event) = ParserEventMapper::try_from_event(&event)
-            else {
-                continue;
-            };
-
-            let range = match SourceByteRange::try_from(byte_range) {
-                Ok(range) => range,
-                Err(error) => return Some(Err(NoteIngestError::Domain(error))),
-            };
-
-            return Some(Ok(EventWithRange::new(parser_event, range)));
+impl<'source> BlockType<'source> {
+    /// Converts block IR into a pulldown-cmark start tag.
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Pattern matching borrowed block variants"
+    )]
+    pub(crate) fn as_start_tag(&self) -> pulldown_cmark::Tag<'source> {
+        match self {
+            Self::Frontmatter {
+                format,
+            } => pulldown_cmark::Tag::MetadataBlock(*format),
+            Self::Heading {
+                level,
+            } => pulldown_cmark::Tag::Heading {
+                level: *level,
+                id: None,
+                classes: Vec::new(),
+                attrs: Vec::new(),
+            },
+            Self::Paragraph => pulldown_cmark::Tag::Paragraph,
+            Self::BlockQuote => pulldown_cmark::Tag::BlockQuote(None),
+            Self::CodeBlock {
+                language,
+            } => language.as_ref().map_or(
+                pulldown_cmark::Tag::CodeBlock(
+                    pulldown_cmark::CodeBlockKind::Indented,
+                ),
+                |info| {
+                    pulldown_cmark::Tag::CodeBlock(
+                        pulldown_cmark::CodeBlockKind::Fenced(info.clone()),
+                    )
+                },
+            ),
+            Self::List {
+                start,
+            } => pulldown_cmark::Tag::List(*start),
+            Self::Item => pulldown_cmark::Tag::Item,
         }
-        None
+    }
+
+    /// Converts block IR into a pulldown-cmark end tag.
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Pattern matching borrowed block variants"
+    )]
+    pub(crate) fn as_end_tag(&self) -> pulldown_cmark::TagEnd {
+        match self {
+            Self::Frontmatter {
+                format,
+            } => pulldown_cmark::TagEnd::MetadataBlock(*format),
+            Self::Heading {
+                level,
+            } => pulldown_cmark::TagEnd::Heading(*level),
+            Self::Paragraph => pulldown_cmark::TagEnd::Paragraph,
+            Self::BlockQuote => pulldown_cmark::TagEnd::BlockQuote(None),
+            Self::CodeBlock {
+                ..
+            } => pulldown_cmark::TagEnd::CodeBlock,
+            Self::List {
+                ..
+            } => pulldown_cmark::TagEnd::List(false),
+            Self::Item => pulldown_cmark::TagEnd::Item,
+        }
+    }
+}
+
+/// Parser-facing structural and inline event IR.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ParserEvent<'source> {
+    BlockStart(BlockType<'source>),
+    BlockEnd(BlockType<'source>),
+    Inline(InlineEvent<'source>),
+    TaskListMarker(bool),
+    ThematicBreak,
+}
+
+/// Inline payload type used by [`ParserEvent`].
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum InlineEvent<'source> {
+    Start(InlineTag<'source>),
+    End(InlineTagEnd),
+    Text(CowStr<'source>),
+    CodeSpan(CowStr<'source>),
+    Html(CowStr<'source>),
+}
+
+/// Inline boundary start tag used by [`InlineEvent`].
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum InlineTag<'source> {
+    Emphasis,
+    Strong,
+    Strikethrough,
+    Link {
+        link_type: pulldown_cmark::LinkType,
+        dest_url: CowStr<'source>,
+        title: CowStr<'source>,
+        id: CowStr<'source>,
+    },
+    Image {
+        link_type: pulldown_cmark::LinkType,
+        dest_url: CowStr<'source>,
+        title: CowStr<'source>,
+        id: CowStr<'source>,
+    },
+    Superscript,
+    Subscript,
+    _Marker(std::marker::PhantomData<&'source str>),
+}
+
+/// Inline boundary end tag used by [`InlineEvent`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InlineTagEnd {
+    Emphasis,
+    Strong,
+    Strikethrough,
+    Link,
+    Image,
+    Superscript,
+    Subscript,
+}
+
+/// A markdown event paired with its original source byte range.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EventWithRange<'source> {
+    event: ParserEvent<'source>,
+    range: SourceByteRange,
+}
+
+impl<'source> EventWithRange<'source> {
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new(
+        event: ParserEvent<'source>,
+        range: SourceByteRange,
+    ) -> Self {
+        Self {
+            event,
+            range,
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn event(&self) -> &ParserEvent<'source> {
+        &self.event
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn range(&self) -> SourceByteRange {
+        self.range
+    }
+}
+
+impl<'source> TryFrom<(ParserEvent<'source>, Range<usize>)>
+    for EventWithRange<'source>
+{
+    type Error = NoteIngestError;
+
+    fn try_from(
+        (event, byte_range): (ParserEvent<'source>, Range<usize>),
+    ) -> Result<Self, Self::Error> {
+        let range = SourceByteRange::try_from(byte_range)
+            .map_err(NoteIngestError::Domain)?;
+        Ok(Self::new(event, range))
     }
 }
 

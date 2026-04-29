@@ -487,6 +487,39 @@ impl<'source> StructureBuilder<'source> {
         Ok(())
     }
 
+    fn on_inline_event(&mut self, event: &EventWithRange<'source>) {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics on mutable borrowed stack node"
+        )]
+        if let Some(ProcessingNode::Leaf(current)) = self.tree.last_mut() {
+            current.push_event(event.clone());
+        }
+    }
+
+    fn on_task_marker(&mut self, checked: bool) {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Match ergonomics on mutable borrowed stack node"
+        )]
+        if let Some(ProcessingNode::Container(current)) = self.tree.last_mut() {
+            current.set_task_marker(checked);
+        }
+    }
+
+    fn finalize(self) -> Result<Vec<Block<'source>>, NoteIngestError> {
+        // Check that all blocks were closed
+        if !self.tree.is_empty() {
+            return Err(NoteParseError::Markdown {
+                line: 0,
+                column: 0,
+                reason: "unclosed blocks at end of document".into(),
+            }
+            .into());
+        }
+        Ok(self.tree.into_roots())
+    }
+
     fn pop_incomplete_or(
         &mut self,
         reason: &'static str,
@@ -554,39 +587,6 @@ impl<'source> StructureBuilder<'source> {
             reason: "builder role mismatch during block finalization".into(),
         }
         .into()
-    }
-
-    fn on_inline_event(&mut self, event: &EventWithRange<'source>) {
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Match ergonomics on mutable borrowed stack node"
-        )]
-        if let Some(ProcessingNode::Leaf(current)) = self.tree.last_mut() {
-            current.push_event(event.clone());
-        }
-    }
-
-    fn on_task_marker(&mut self, checked: bool) {
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Match ergonomics on mutable borrowed stack node"
-        )]
-        if let Some(ProcessingNode::Container(current)) = self.tree.last_mut() {
-            current.set_task_marker(checked);
-        }
-    }
-
-    fn finalize(self) -> Result<Vec<Block<'source>>, NoteIngestError> {
-        // Check that all blocks were closed
-        if !self.tree.is_empty() {
-            return Err(NoteParseError::Markdown {
-                line: 0,
-                column: 0,
-                reason: "unclosed blocks at end of document".into(),
-            }
-            .into());
-        }
-        Ok(self.tree.into_roots())
     }
 }
 
