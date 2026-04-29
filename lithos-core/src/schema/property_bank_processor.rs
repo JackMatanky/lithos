@@ -113,7 +113,7 @@ use crate::{
     fs::{FileStats, FsReader},
     schema::{
         bank::PropertyBank,
-        delta::{PropertyBankDelta, PropertyDeltaEngine},
+        delta::{PropertyDelta, PropertyDeltaEngine},
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
             SchemaStorageError,
@@ -659,7 +659,7 @@ pub(crate) struct New {
 #[derive(Debug)]
 pub(crate) struct Changed {
     raw: RawPropertyBank,
-    delta: PropertyBankDelta,
+    delta: PropertyDelta,
     raw_hash: HashRecord,
 }
 

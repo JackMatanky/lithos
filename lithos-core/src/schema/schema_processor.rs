@@ -57,9 +57,7 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(test)]
-pub(crate) use crate::schema::delta::SchemaPropertyUpserts;
-pub(crate) use crate::schema::delta::{ExcludesDelta, SchemaPropertyDelta};
+pub(crate) use crate::schema::delta::{ExcludesDelta, PropertyDelta};
 use crate::{
     fs::{FileStats, FsReader, RelativePath},
     schema::{
@@ -71,6 +69,7 @@ use crate::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
         },
+        expander::RefExpander,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, SchemaIndex},
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
@@ -338,10 +337,6 @@ pub(crate) enum AnalysisBranch {
 // - Stage transitions switch payload variants, not graph generic types.
 // - Deleted nodes may intentionally pass through selected stages.
 #[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "pipeline stages intentionally carry rich branch payloads"
-)]
 pub(crate) enum PipelinePayload {
     Present(PresentPayload),
     Compared(ComparedPayload),
@@ -476,7 +471,7 @@ pub(crate) struct RebuildNodePayload {
     raw: RawSchema,
     view: RawSchemaView,
     excludes_delta: Option<ExcludesDelta>,
-    property_delta: Option<SchemaPropertyDelta>,
+    property_delta: Option<PropertyDelta>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -486,7 +481,7 @@ pub(crate) struct UpdateNodePayload {
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
-    property_delta: SchemaPropertyDelta,
+    property_delta: PropertyDelta,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1708,6 +1703,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
     pub(crate) fn analyze_properties(
         self,
         source: &FsReader,
+        property_bank: &PropertyBank,
         property_bank_delta: Option<&HashSet<PropertyName>>,
     ) -> Result<SchemaProcessor<Refresh, Analyzed>, SchemaLoaderError> {
         let Graphed {
@@ -1919,9 +1915,12 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .view
                                 .current()
                                 .map_or(&empty_hashes, |v| v.hashes().properties());
+
+                            // Eagerly resolve refs during delta computation
+                            let expander = RefExpander::new(property_bank);
                             let property_delta =
                                 PropertyDeltaEngine::for_schema(&payload.raw, old_property_hashes)
-                                    .diff_schema();
+                                    .diff_schema(&expander)?;
 
                             let needs_rebuild =
                                 !excludes_delta.is_empty()
@@ -2936,16 +2935,16 @@ mod tests {
 
     #[test]
     fn property_delta_empty_when_no_changes() {
-        let delta = SchemaPropertyDelta::default();
+        let delta = PropertyDelta::default();
         assert!(delta.is_empty());
     }
 
     #[test]
     fn property_delta_not_empty_when_removed() {
-        let delta =
-            SchemaPropertyDelta::new(SchemaPropertyUpserts::default(), vec![
-                PropertyName::try_new("test").unwrap(),
-            ]);
+        let empty_upserts = PropertyMap::new();
+        let delta = PropertyDelta::new(empty_upserts, vec![
+            PropertyName::try_new("test").unwrap(),
+        ]);
         assert!(!delta.is_empty());
     }
 

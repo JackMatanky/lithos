@@ -12,6 +12,7 @@
 ### Current Behavior
 
 When property bank changes are detected (comparison stage, line 947):
+
 ```rust
 let is_bank_affected = Self::bank_changed(&found_payload.view, property_bank_delta);
 if is_bank_affected {
@@ -29,6 +30,7 @@ if is_bank_affected {
 ### Desired Behavior
 
 When bank changes detected:
+
 1. Compute **specific properties** affected (using `bank_references`)
 2. Add affected properties to **property delta**
 3. Use **delta expansion** strategy (not full re-expansion)
@@ -87,6 +89,7 @@ pub(crate) struct StaleBankReferencesPayload {
 ### Update ComparedPayload Enum
 
 **Current**:
+
 ```rust
 pub(crate) enum ComparedPayload {
     Fresh(FreshPayload),
@@ -97,6 +100,7 @@ pub(crate) enum ComparedPayload {
 ```
 
 **New**:
+
 ```rust
 pub(crate) enum ComparedPayload {
     Fresh(FreshPayload),
@@ -320,6 +324,7 @@ With property delta now populated for `StaleBankReferences`, the existing constr
 **Strategy**: DELTA_EXPAND_BASE
 
 **Code path** (lines 2468-2516):
+
 ```rust
 (ExtendsChangeKind::Unchanged, Some(delta)) => {
     // Fetch schema + cached base properties
@@ -453,6 +458,7 @@ pub(crate) struct StaleParsedPayload {
 **Scenario**: Bank property `color` deleted, schema has `bg_color → color`
 
 **Behavior**:
+
 1. Comparison: `affected_refs = {bg_color}`
 2. Analysis: `property_delta.upserts.refs = {bg_color}`
 3. Construction: Expand `bg_color` ref → **expansion fails** (bank property missing)
@@ -460,6 +466,7 @@ pub(crate) struct StaleParsedPayload {
 **Question**: How to handle missing bank property?
 
 **Options**:
+
 - **A**: Error (strict) - schema references non-existent bank property
 - **B**: Remove property (lenient) - treat as if property was removed from schema
 - **C**: Keep old value (cache) - schema keeps old expanded value until manually fixed
@@ -473,6 +480,7 @@ pub(crate) struct StaleParsedPayload {
 **Scenario**: Bank property `color` added, schema doesn't reference it yet
 
 **Behavior**:
+
 1. Comparison: `affected_refs = {}` (schema doesn't reference new property)
 2. Result: Schema stays `Fresh`
 
@@ -483,11 +491,13 @@ pub(crate) struct StaleParsedPayload {
 ### Edge Case 3: Bank Property Changed, Schema Has Local Override
 
 **Scenario**:
+
 - Bank property `color` changed
 - Schema has inline `color` property (overrides bank)
 - Schema also has `bg_color → color` (ref to bank)
 
 **Behavior**:
+
 1. Comparison: `affected_refs = {bg_color}` (only the ref, not the inline)
 2. Analysis: `property_delta.upserts.refs = {bg_color}`
 3. Construction: Re-expand `bg_color`, keep inline `color` unchanged
@@ -501,6 +511,7 @@ pub(crate) struct StaleParsedPayload {
 **Scenario**: 10 schemas reference bank property `color` (which changed)
 
 **Behavior**:
+
 1. Comparison: Each schema gets `StaleBankReferencesPayload` with `affected_refs = {their_prop}`
 2. Analysis: Each schema gets property delta
 3. Construction: Each schema delta-expands only affected props
@@ -604,6 +615,7 @@ fn bank_property_change_triggers_delta_expansion() {
 **Scenario**: Property bank has 100 properties, schema references 10 of them, 1 bank property changes
 
 **Construction**:
+
 1. Detect bank change → mark `StaleBankReferences`
 2. Full expand ALL 10 refs (even though only 1 changed)
 
@@ -616,6 +628,7 @@ fn bank_property_change_triggers_delta_expansion() {
 **Scenario**: Same as above
 
 **Construction**:
+
 1. Detect bank change → compute `affected_refs = {changed_prop}`
 2. Delta expand ONLY 1 affected ref
 3. Merge with cached base (other 9 refs unchanged)
@@ -644,6 +657,7 @@ fn bank_property_change_triggers_delta_expansion() {
 ### Phase 1: Add Payload Types
 
 **Changes**:
+
 - Add `StaleBankReferencesPayload` struct
 - Update `ComparedPayload` enum
 - Update `StaleParsedPayload` (add optional `affected_refs`)
@@ -655,6 +669,7 @@ fn bank_property_change_triggers_delta_expansion() {
 ### Phase 2: Implement Comparison Logic
 
 **Changes**:
+
 - Add `compute_affected_refs` method
 - Update comparison stage to create `StaleBankReferencesPayload`
 
@@ -665,6 +680,7 @@ fn bank_property_change_triggers_delta_expansion() {
 ### Phase 3: Implement Analysis Integration
 
 **Changes**:
+
 - Add `create_bank_affected_delta` method
 - Update analysis stage to create property delta
 
@@ -683,6 +699,7 @@ fn bank_property_change_triggers_delta_expansion() {
 ### Phase 5: Monitoring and Validation
 
 **Metrics**:
+
 - Track bank-affected schemas count
 - Track delta vs full expansion ratio
 - Track performance improvement
@@ -695,12 +712,12 @@ fn bank_property_change_triggers_delta_expansion() {
 
 ### Key Changes
 
-| Component         | Change                                       | Impact       |
-|-------------------|----------------------------------------------|--------------|
-| Payload Types     | Add `StaleBankReferencesPayload`             | Type safety  |
-| Comparison Stage  | Compute `affected_refs`                      | Optimization |
-| Analysis Stage    | Create property delta from `affected_refs`   | Optimization |
-| Construction      | Use delta expansion (already works)          | No change    |
+| Component        | Change                                     | Impact       |
+| ---------------- | ------------------------------------------ | ------------ |
+| Payload Types    | Add `StaleBankReferencesPayload`           | Type safety  |
+| Comparison Stage | Compute `affected_refs`                    | Optimization |
+| Analysis Stage   | Create property delta from `affected_refs` | Optimization |
+| Construction     | Use delta expansion (already works)        | No change    |
 
 ### Benefits
 

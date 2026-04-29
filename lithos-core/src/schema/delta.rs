@@ -14,24 +14,21 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::{
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
+        expander::RefExpander,
         property::{PropertyMap, PropertyName},
         raw::{
-            RawPropertyBank, RawSchema,
-            property::{
-                RawProperty, RawPropertyBankEntry, RawPropertyInline,
-                RawPropertyMap, RawPropertyRef,
-            },
+            RawPropertyBank, RawPropertyInline, RawPropertyMap, RawSchema,
+            property::{RawProperty, RawPropertyBankEntry},
         },
         views::RawPropertyMapHash,
     },
     support::hash::Blake3Hash,
 };
 
-type PropertyHashes = RawPropertyMapHash;
 type PropertyChangeSetParts<T> =
-    (HashMap<PropertyName, T>, Vec<PropertyName>, PropertyHashes);
-type PropertyBankDeltaResult =
-    Result<(PropertyBankDelta, PropertyHashes), SchemaLoaderError>;
+    (HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyMapHash);
+type PropertyDeltaResult =
+    Result<(PropertyDelta, RawPropertyMapHash), SchemaLoaderError>;
 
 /// Delta for schema-level `excludes` lists.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -112,73 +109,33 @@ impl ExcludesDelta {
     }
 }
 
-/// Typed property upserts for schema raw properties.
+/// Unified delta type for property changes in both schemas and property banks.
+///
+/// Stores resolved `PropertyMap` (domain types) for direct application.
+/// Enables true incremental updates without full property re-expansion.
+///
+/// # Design Rationale
+///
+/// - `PropertyBankDelta` and `SchemaPropertyDelta` are unified into this type.
+/// - Stores `PropertyMap` for direct application to existing schemas.
+/// - Enables true incremental update: apply changed properties without full
+///   re-expansion.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct SchemaPropertyUpserts {
-    /// Inline property definitions that are new or changed.
-    inline: HashMap<PropertyName, RawPropertyInline>,
-    /// Property-bank references that are new or changed.
-    refs: HashMap<PropertyName, RawPropertyRef>,
-}
-
-impl SchemaPropertyUpserts {
-    /// Returns `true` when no upserts exist.
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.inline.is_empty() && self.refs.is_empty()
-    }
-
-    /// Returns the inline property definitions.
-    #[inline]
-    #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
-    pub(crate) fn inline(&self) -> &HashMap<PropertyName, RawPropertyInline> {
-        &self.inline
-    }
-
-    /// Returns the property-bank references.
-    #[inline]
-    #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn refs(&self) -> &HashMap<PropertyName, RawPropertyRef> {
-        &self.refs
-    }
-
-    /// Returns `true` if the given name has an inline upsert.
-    #[inline]
-    #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
-    pub(crate) fn contains_inline(&self, name: &PropertyName) -> bool {
-        self.inline.contains_key(name)
-    }
-
-    /// Returns `true` if the given name has a ref upsert.
-    #[inline]
-    #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
-    pub(crate) fn contains_ref(&self, name: &PropertyName) -> bool {
-        self.refs.contains_key(name)
-    }
-}
-
-/// Delta for schema properties.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct SchemaPropertyDelta {
-    /// New/changed properties split by raw variant.
-    upserts: SchemaPropertyUpserts,
+pub(crate) struct PropertyDelta {
+    /// New/changed properties (resolved to domain types).
+    upserts: PropertyMap,
     /// Removed property names (sorted deterministically).
     removals: Vec<PropertyName>,
 }
 
-impl SchemaPropertyDelta {
-    /// Creates a new schema property delta with normalized removals.
+impl PropertyDelta {
+    /// Creates a new property delta with normalized removals.
     ///
     /// The `removals` vector will be sorted and deduplicated.
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        upserts: SchemaPropertyUpserts,
+        upserts: PropertyMap,
         mut removals: Vec<PropertyName>,
     ) -> Self {
         removals.sort();
@@ -196,91 +153,31 @@ impl SchemaPropertyDelta {
         self.upserts.is_empty() && self.removals.is_empty()
     }
 
-    /// Returns the property upserts.
-    #[inline]
-    #[must_use]
-    #[expect(dead_code, reason = "Complete API surface for delta inspection")]
-    pub(crate) fn upserts(&self) -> &SchemaPropertyUpserts {
-        &self.upserts
-    }
-
-    /// Returns removed property names.
-    #[inline]
-    #[must_use]
-    pub(crate) fn removals(&self) -> &[PropertyName] {
-        &self.removals
-    }
-
-    /// Returns `true` if the given name is an upsert (inline or ref).
-    #[inline]
-    #[must_use]
-    pub(crate) fn contains_upsert(&self, name: &PropertyName) -> bool {
-        self.upserts.inline.contains_key(name)
-            || self.upserts.refs.contains_key(name)
-    }
-}
-
-/// Delta for property-bank entries.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PropertyBankDelta {
-    /// New/changed property-bank entries.
-    upserts: PropertyMap,
-    /// Removed property names (sorted deterministically).
-    removals: Vec<PropertyName>,
-}
-
-impl PropertyBankDelta {
-    /// Creates a new property bank delta.
-    #[inline]
-    #[must_use]
-    pub(crate) fn new(
-        upserts: PropertyMap,
-        mut removals: Vec<PropertyName>,
-    ) -> Self {
-        removals.sort();
-        removals.dedup();
-        Self {
-            upserts,
-            removals,
-        }
-    }
-
-    /// Returns `true` when no property-bank changes exist.
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.upserts.is_empty() && self.removals.is_empty()
-    }
-
-    /// Returns changed/added entries.
+    /// Returns the upsert map.
     #[inline]
     #[must_use]
     pub(crate) fn upserts(&self) -> &PropertyMap {
         &self.upserts
     }
 
-    /// Returns removed property names.
-    ///
-    /// Names are sorted deterministically.
+    /// Returns removed property names (sorted deterministically).
     #[inline]
     #[must_use]
     pub(crate) fn removals(&self) -> &[PropertyName] {
         &self.removals
     }
 
-    /// Returns an iterator over changed names (upsert entries + removals).
-    #[inline]
-    #[expect(dead_code, reason = "Complete API surface for delta inspection")]
-    pub(crate) fn iter_changed(&self) -> impl Iterator<Item = &PropertyName> {
-        self.upserts.keys().chain(self.removals.iter())
-    }
-
-    /// Returns the union of changed names as a new set.
-    ///
-    /// This allocates a new `HashSet` on each call.
+    /// Returns `true` if the given name has an upsert.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "Used in tests"))]
+    pub(crate) fn contains_upsert(&self, name: &PropertyName) -> bool {
+        self.upserts.has(name)
+    }
+
+    /// Returns the union of changed names as a new set (test-only).
+    #[cfg(test)]
+    #[inline]
+    #[must_use]
     pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
@@ -300,7 +197,7 @@ impl PropertyBankDelta {
             self.upserts.len().saturating_add(self.removals.len()),
         );
         names.extend(self.upserts.into_keys());
-        names.extend(self.removals.iter().cloned());
+        names.extend(self.removals);
         names
     }
 }
@@ -310,7 +207,7 @@ impl PropertyBankDelta {
 /// This is the core engine used by both schema and property-bank delta flows.
 pub(crate) struct PropertyDeltaEngine<'data, T> {
     properties: &'data RawPropertyMap<T>,
-    previous_hashes: &'data PropertyHashes,
+    previous_hashes: &'data RawPropertyMapHash,
 }
 
 impl<'data, T> PropertyDeltaEngine<'data, T> {
@@ -319,7 +216,7 @@ impl<'data, T> PropertyDeltaEngine<'data, T> {
     #[must_use]
     fn for_map(
         properties: &'data RawPropertyMap<T>,
-        previous_hashes: &'data PropertyHashes,
+        previous_hashes: &'data RawPropertyMapHash,
     ) -> Self {
         Self {
             properties,
@@ -334,35 +231,63 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     #[must_use]
     pub(crate) fn for_schema(
         schema: &'data RawSchema,
-        previous_hashes: &'data PropertyHashes,
+        previous_hashes: &'data RawPropertyMapHash,
     ) -> Self {
         Self::for_map(schema.properties(), previous_hashes)
     }
 
-    /// Computes a schema-specific property delta.
+    /// Computes a schema-specific property delta using the given ref expander.
+    ///
+    /// This enables eager resolution of property references during delta
+    /// computation, avoiding the need for full property re-expansion during
+    /// application.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
+    /// into a validated [`PropertyMap`].
     #[inline]
-    #[must_use]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "hash iteration order does not affect delta semantics"
-    )]
-    pub(crate) fn diff_schema(&self) -> SchemaPropertyDelta {
+    pub(crate) fn diff_schema(
+        &self,
+        expander: &RefExpander,
+    ) -> Result<PropertyDelta, SchemaLoaderError> {
         let change_set = self.compute_change_set();
-        let (upserts, removals, _current_hashes) = change_set.into_parts();
-        let mut typed_upserts = SchemaPropertyUpserts::default();
+        let (raw_upserts, removals, _current_hashes) = change_set.into_parts();
 
-        for (name, entry) in upserts {
+        let mut resolved_upserts = PropertyMap::new();
+        let mut inline_map: std::collections::HashMap<
+            PropertyName,
+            RawPropertyInline,
+        > = std::collections::HashMap::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property map iteration order does not affect delta \
+                      semantics"
+        )]
+        for (name, entry) in raw_upserts {
             match entry {
                 RawProperty::Inline(inline) => {
-                    typed_upserts.inline.insert(name, inline);
+                    inline_map.insert(name.clone(), inline);
                 }
                 RawProperty::Ref(r#ref) => {
-                    typed_upserts.refs.insert(name, r#ref);
+                    let property = expander
+                        .expand_property(&r#ref)
+                        .map_err(SchemaLoaderError::Resolution)?;
+                    resolved_upserts.insert(name, property);
                 }
             }
         }
 
-        SchemaPropertyDelta::new(typed_upserts, removals)
+        if !inline_map.is_empty() {
+            let converted = PropertyMap::try_from(inline_map)
+                .map_err(SchemaLoaderError::Resolution)?;
+            for (name, property) in converted {
+                resolved_upserts.insert(name, property);
+            }
+        }
+
+        Ok(PropertyDelta::new(resolved_upserts, removals))
     }
 }
 
@@ -372,7 +297,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     #[must_use]
     pub(crate) fn for_property_bank(
         bank: &'data RawPropertyBank,
-        previous_hashes: &'data PropertyHashes,
+        previous_hashes: &'data RawPropertyMapHash,
     ) -> Self {
         Self::for_map(bank.properties(), previous_hashes)
     }
@@ -384,18 +309,18 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
-    pub(crate) fn diff_property_bank(&self) -> PropertyBankDeltaResult {
+    pub(crate) fn diff_property_bank(&self) -> PropertyDeltaResult {
         let change_set = self.compute_change_set();
-        let (upserts, removals, property_hashes) = change_set.into_parts();
+        let (raw_upserts, removals, property_hashes) = change_set.into_parts();
 
-        let upserts = PropertyMap::try_from(upserts).map_err(|error| {
+        let upserts = PropertyMap::try_from(raw_upserts).map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
                 path: std::path::PathBuf::from("property_bank"),
                 source: error,
             })
         })?;
 
-        Ok((PropertyBankDelta::new(upserts, removals), property_hashes))
+        Ok((PropertyDelta::new(upserts, removals), property_hashes))
     }
 }
 
@@ -403,7 +328,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
 struct PropertyChangeSet<T> {
     upserts: HashMap<PropertyName, T>,
     removals: Vec<PropertyName>,
-    current_hashes: PropertyHashes,
+    current_hashes: RawPropertyMapHash,
 }
 
 impl<T> PropertyChangeSet<T> {
@@ -474,7 +399,7 @@ mod tests {
 
         pub(crate) fn property_bank_fixture(
             names: &[&str],
-        ) -> (RawPropertyBank, PropertyHashes) {
+        ) -> (RawPropertyBank, RawPropertyMapHash) {
             let mut properties = serde_json::Map::new();
             let mut hashes = RawPropertyMapHash::default();
 
@@ -581,41 +506,23 @@ mod tests {
         }
     }
 
-    mod schema_property_upserts {
-        use super::{fixtures, *};
-
-        #[test]
-        fn should_detect_presence_of_inline_and_refs() {
-            let mut upserts = SchemaPropertyUpserts::default();
-            let name = fixtures::name("prop");
-
-            upserts.inline.insert(name.clone(), fixtures::inline_string());
-            assert!(upserts.contains_inline(&name));
-            assert!(!upserts.contains_ref(&name));
-            assert!(!upserts.is_empty());
-        }
-
-        #[test]
-        fn should_provide_access_to_underlying_maps() {
-            let upserts = SchemaPropertyUpserts::default();
-            assert!(upserts.inline().is_empty());
-            assert!(upserts.refs().is_empty());
-        }
-    }
-
     mod schema_property_delta {
         use super::{fixtures, *};
+        use crate::schema::{
+            property::{Multiplicity, Optionality, Property, PropertyId},
+            property_spec::{PropertySpec, StringSpec},
+        };
 
         #[test]
         fn should_normalize_removals_when_unsorted_or_duplicate() {
-            let upserts = SchemaPropertyUpserts::default();
+            let upserts = PropertyMap::new();
             let removals = vec![
                 fixtures::name("b"),
                 fixtures::name("a"),
                 fixtures::name("b"),
             ];
 
-            let delta = SchemaPropertyDelta::new(upserts, removals);
+            let delta = PropertyDelta::new(upserts, removals);
             let normalized = delta.removals();
 
             assert_eq!(
@@ -643,11 +550,17 @@ mod tests {
 
         #[test]
         fn should_detect_upsert_regardless_of_type() {
-            let mut upserts = SchemaPropertyUpserts::default();
+            let mut upserts = PropertyMap::new();
             let name = fixtures::name("prop");
-            upserts.inline.insert(name.clone(), fixtures::inline_string());
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::String(StringSpec::default()),
+            );
+            upserts.insert(name.clone(), property);
 
-            let delta = SchemaPropertyDelta::new(upserts, Vec::new());
+            let delta = PropertyDelta::new(upserts, Vec::new());
             assert!(delta.contains_upsert(&name));
         }
     }
@@ -675,7 +588,7 @@ mod tests {
             let upserts = PropertyMap::from(map);
             let removals = vec![fixtures::name("b")];
 
-            let delta = PropertyBankDelta::new(upserts, removals);
+            let delta = PropertyDelta::new(upserts, removals);
 
             assert!(delta.to_changed_name_set().contains(&fixtures::name("a")));
             assert!(delta.to_changed_name_set().contains(&fixtures::name("b")));

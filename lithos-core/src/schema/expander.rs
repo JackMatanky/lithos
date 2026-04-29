@@ -87,7 +87,8 @@ impl<'bank> RefExpander<'bank> {
     }
 
     /// Resolve a single raw property reference into a validated [`Property`].
-    fn expand_property(
+    #[inline]
+    pub(crate) fn expand_property(
         &self,
         entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {

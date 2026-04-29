@@ -115,6 +115,7 @@ where
                 let graphed = parsed.build_graph()?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
+                    &property_bank,
                     self.property_bank_delta.as_ref(),
                 )?;
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;

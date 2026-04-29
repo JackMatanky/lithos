@@ -23,18 +23,20 @@ The `SCHEMA_BASE_PROPERTIES` table stores cached, fully-expanded **own propertie
 
 **Primary Key**: `schema_id` (UUID)
 
-| Column        | Type              | Description                                      |
-|---------------|-------------------|--------------------------------------------------|
-| schema_id     | UUID              | Foreign key to schemas table                     |
-| properties    | BLOB (rkyv)       | Archived `PropertyMap` (fully expanded)          |
-| hash          | BLOB (rkyv)       | Archived `RawPropertyMapHash` (property hashes)  |
-| recorded_at   | INTEGER (unix ms) | When this cache entry was recorded               |
+| Column      | Type              | Description                                     |
+| ----------- | ----------------- | ----------------------------------------------- |
+| schema_id   | UUID              | Foreign key to schemas table                    |
+| properties  | BLOB (rkyv)       | Archived `PropertyMap` (fully expanded)         |
+| hash        | BLOB (rkyv)       | Archived `RawPropertyMapHash` (property hashes) |
+| recorded_at | INTEGER (unix ms) | When this cache entry was recorded              |
 
 **Indexes**:
+
 - Primary key on `schema_id` (implicit)
 - No additional indexes needed (always accessed by primary key)
 
 **Relationships**:
+
 - `schema_id` references `schemas(id)` ON DELETE CASCADE
 - `hash` must match `raw_schema_views.current().hashes().properties()` for validity
 
@@ -143,6 +145,7 @@ impl BasePropertiesView {
 **Action**: Detect if base properties cache needs invalidation
 
 **When**:
+
 - If property delta detected → cache will be updated in construction
 - If bank references changed → cache will be updated in construction
 - If only excludes changed → cache stays valid
@@ -156,6 +159,7 @@ impl BasePropertiesView {
 **Action**: Determine which construction path to use
 
 **Logic**:
+
 ```rust
 // In analyze_properties stage
 let base_cache_status = if let Some(base_view) = repo.find_base_properties(id)? {
@@ -182,6 +186,7 @@ AnalysisBranch::Rebuild(RebuildNodePayload {
 **Action**: Ensure base properties cache is saved for view updates
 
 **When**:
+
 - `StaleTimestamps`: Cache valid, no action needed
 - `StaleContent`: Cache valid (if no property changes), no action needed
 - `StaleBankReferences`: Cache will be updated in construction
@@ -203,6 +208,7 @@ AnalysisBranch::Rebuild(RebuildNodePayload {
 **Location**: Beginning of `construct_schema_incremental` or batch construction
 
 **Code**:
+
 ```rust
 // Fetch base properties if cache expected
 let base_props = if needs_base_properties(node) {
@@ -225,6 +231,7 @@ let base_props = if needs_base_properties(node) {
 **Location**: After determining delta expansion is needed
 
 **Code**:
+
 ```rust
 // In delta expansion path
 let mut base_props = fetch_cached_base_or_default(id, repo)?;
@@ -259,6 +266,7 @@ repo.save_base_properties(id, &base_view)?;
 **Location**: New schema or cache invalid
 
 **Code**:
+
 ```rust
 // In full expansion path
 let expander = RefExpander::new(property_bank);
@@ -297,6 +305,7 @@ repo.save_base_properties(id, &base_view)?;
 **When**: Schema deleted from disk
 
 **Code**:
+
 ```rust
 // In completion stage (lines 2806-2860)
 for id in &deleted_ids {
@@ -317,6 +326,7 @@ for id in &deleted_ids {
 **Reason**: Property hashes change when raw properties change (inline or refs)
 
 **Implementation**:
+
 ```rust
 impl BasePropertiesView {
     pub fn is_current(&self, raw_view: &RawSchemaView) -> bool {
@@ -334,6 +344,7 @@ impl BasePropertiesView {
 **Why**: Bank changes are detected via `bank_references` and added to property delta
 
 **Bank change flow**:
+
 1. Comparison stage: Detect bank change → mark as `StaleBankReferences`
 2. Comparison stage: Compute affected refs → store in `affected_refs`
 3. Analysis stage: Add `affected_refs` to property delta
@@ -350,10 +361,12 @@ impl BasePropertiesView {
 **When**: Construction stage needs base properties for multiple schemas
 
 **Benefits**:
+
 - Single DB query for all schemas in batch
 - Pre-populate cache for topological iteration
 
 **Implementation**:
+
 ```rust
 // Before topological iteration
 let base_props_batch = if !requires_base_props.is_empty() {
@@ -375,10 +388,12 @@ let base_props = base_props_batch.get(&id)
 **When**: Multiple schemas expanded in same construction run
 
 **Benefits**:
+
 - Reduce DB write overhead
 - Atomic batch transaction
 
 **Implementation**:
+
 ```rust
 // Accumulate during construction
 let mut base_props_to_save: HashMap<SchemaId, BasePropertiesView> = HashMap::new();
@@ -399,14 +414,17 @@ repository.save_base_properties_batch(&base_props_to_save)?;
 ### Cache Miss vs Error
 
 **Cache miss** (`None` returned):
+
 - Not an error - schema may be new or cache not yet populated
 - Fall back to full expansion
 
 **Database error** (I/O failure):
+
 - Propagate as `SchemaRepositoryError`
 - Abort pipeline
 
 **Cache corruption** (hash mismatch when expected valid):
+
 - Log warning
 - Treat as cache miss, re-expand
 
@@ -417,6 +435,7 @@ repository.save_base_properties_batch(&base_props_to_save)?;
 **Scenario**: Base properties exist but raw view missing
 
 **Detection**:
+
 ```rust
 let raw_view = repo.find_raw_schema_view(id)?.ok_or(...)?;
 let base_view = repo.find_base_properties(id)?;
@@ -435,6 +454,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Phase 1: Add Table and Repository Methods
 
 **Tasks**:
+
 1. Add `schema_base_properties` table to database schema
 2. Implement repository methods (`save`, `find`, `delete`)
 3. Add unit tests for repository methods
@@ -446,6 +466,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Phase 2: Populate Cache During Construction
 
 **Tasks**:
+
 1. Update construction stage to save base properties after expansion
 2. Update completion stage to delete base properties for deleted schemas
 3. Run full ingestion to populate cache for existing schemas
@@ -457,6 +478,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Phase 3: Enable Cache-Based Optimizations
 
 **Tasks**:
+
 1. Update analysis stage to check cache validity
 2. Update construction stage to use cached base properties
 3. Implement delta expansion strategy
@@ -469,6 +491,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Phase 4: Validation and Metrics
 
 **Tasks**:
+
 1. Add metrics for cache hit/miss rates
 2. Add validation checks for cache consistency
 3. Monitor performance improvements
@@ -482,6 +505,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Unit Tests
 
 **Test Cases**:
+
 1. `BasePropertiesView::is_current()` returns true when hash matches
 2. `BasePropertiesView::is_current()` returns false when hash differs
 3. Repository save/find round-trip works correctly
@@ -493,6 +517,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Integration Tests
 
 **Test Cases**:
+
 1. New schema → base properties created
 2. Property change → base properties updated
 3. Excludes-only change → base properties unchanged
@@ -504,6 +529,7 @@ if base_view.is_some() && !base_view.unwrap().is_current(&raw_view) {
 ### Performance Tests
 
 **Metrics**:
+
 - Cache hit rate (should be >70% for typical workloads)
 - Expansion time with cache vs without
 - Memory overhead of cache
@@ -538,6 +564,7 @@ impl BasePropertiesCacheMetrics {
 ### Debug Logging
 
 **Log Events**:
+
 - Cache hit: `debug!("Base properties cache HIT for schema {id}")`
 - Cache miss: `debug!("Base properties cache MISS for schema {id}, will expand")`
 - Cache save: `debug!("Saved base properties cache for schema {id}")`

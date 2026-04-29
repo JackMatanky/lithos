@@ -14,6 +14,7 @@
 **File**: `complete-construction-decision-tree.md`
 
 **Contents**:
+
 - **25 unique construction paths** mapped exhaustively
 - **4 base properties strategies** (skip, use cached, delta expand, full expand)
 - **6 schema construction strategies** (fetch, skip, incremental excludes, full merge, cascade merge, delete)
@@ -33,6 +34,7 @@
 **File**: `base-properties-integration-design.md`
 
 **Contents**:
+
 - Database schema for `SCHEMA_BASE_PROPERTIES` table
 - Repository trait extensions (`save`, `find`, `delete` methods)
 - Pipeline integration points (4 stages affected)
@@ -41,6 +43,7 @@
 - Testing strategy and metrics
 
 **Key Benefits**:
+
 - **50-80% reduction** in expansion overhead for incremental updates
 - Clear separation of own vs inherited properties
 - Enables cascade merge optimization (no re-expansion needed)
@@ -54,6 +57,7 @@
 **File**: `bank-reference-delta-implementation.md`
 
 **Contents**:
+
 - New payload type: `StaleBankReferencesPayload` with `affected_refs`
 - Comparison stage: `compute_affected_refs()` method
 - Analysis stage: `create_bank_affected_delta()` method
@@ -62,6 +66,7 @@
 - Testing strategy
 
 **Key Benefits**:
+
 - **90% reduction** in expansion overhead when few bank refs affected
 - Precision tracking of what actually changed
 - Reuses existing delta expansion path (no new construction logic)
@@ -93,6 +98,7 @@
 **Discovery**: `BasePropertiesView` validity is determined ONLY by hash match with `RawSchemaView.current().hashes().properties()`
 
 **Why bank changes don't invalidate cache directly**:
+
 - Bank changes are detected via `bank_references` map
 - Affected refs are added to property delta
 - Cache invalidation happens via normal property delta flow
@@ -104,6 +110,7 @@
 ### Insight 3: Excludes-Only Changes Can Be Incremental
 
 **Discovery**: When ONLY excludes change:
+
 ```rust
 final_props = base_props
   + (parent_props filtered by ExcludesDelta.removals())
@@ -119,6 +126,7 @@ final_props = base_props
 ### Insight 4: Cascade Rebuilds Don't Need Expansion
 
 **Discovery**: When parent changes but own properties unchanged:
+
 ```rust
 base_props = fetch_cached()  // No expansion!
 new_parent_props = collect_from_cache()  // Parents already rebuilt
@@ -136,6 +144,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Phase 1: Foundation (Immediate - Required for Optimization)
 
 **Tasks**:
+
 1. ✅ Complete analysis (DONE - Documents A, B, C)
 2. ⬜ Review analysis with team
 3. ⬜ Implement `SCHEMA_BASE_PROPERTIES` table (Document B, Phase 1)
@@ -150,6 +159,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Phase 2: Bank Delta Integration (High Value, Low Risk)
 
 **Tasks** (from Document C):
+
 1. ⬜ Add `StaleBankReferencesPayload` type
 2. ⬜ Implement `compute_affected_refs()` in comparison stage
 3. ⬜ Implement `create_bank_affected_delta()` in analysis stage
@@ -165,6 +175,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Phase 3: Base Properties Population (Enables All Optimizations)
 
 **Tasks** (from Document B, Phases 2-3):
+
 1. ⬜ Update construction stage to save base properties after expansion
 2. ⬜ Update analysis stage to check cache validity
 3. ⬜ Implement delta expansion using cached base
@@ -180,6 +191,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Phase 4: Incremental Excludes (Optional Polish)
 
 **Tasks**:
+
 1. ⬜ Implement `ExcludesChanged` status (reserved)
 2. ⬜ Implement incremental excludes strategy
 3. ⬜ Add name collision detection
@@ -194,6 +206,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Phase 5: Validation & Monitoring (Quality Assurance)
 
 **Tasks**:
+
 1. ⬜ Add cache hit/miss metrics
 2. ⬜ Add expansion timing metrics
 3. ⬜ Integration tests for all 25 paths
@@ -208,14 +221,14 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 
 ## Total Implementation Effort
 
-| Phase                   | Hours | Complexity | Risk   | Value  |
-|-------------------------|-------|------------|--------|--------|
-| Phase 1: Foundation     | 4-6   | Medium     | None   | High   |
-| Phase 2: Bank Delta     | 7     | Low        | Low    | High   |
-| Phase 3: Base Props     | 6-8   | High       | Medium | High   |
-| Phase 4: Incr. Excludes | 4-6   | Medium     | Low    | Low    |
-| Phase 5: Validation     | 4-6   | Low        | None   | Medium |
-| **TOTAL**               | **25-33** | - | - | - |
+| Phase                   | Hours     | Complexity | Risk   | Value  |
+| ----------------------- | --------- | ---------- | ------ | ------ |
+| Phase 1: Foundation     | 4-6       | Medium     | None   | High   |
+| Phase 2: Bank Delta     | 7         | Low        | Low    | High   |
+| Phase 3: Base Props     | 6-8       | High       | Medium | High   |
+| Phase 4: Incr. Excludes | 4-6       | Medium     | Low    | Low    |
+| Phase 5: Validation     | 4-6       | Low        | None   | Medium |
+| **TOTAL**               | **25-33** | -          | -      | -      |
 
 **Recommended Minimum**: Phases 1-3 + 5 = ~21-28 hours for core optimizations
 
@@ -266,6 +279,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Overall Expected Improvement
 
 **Workload mix**:
+
 - 60% unchanged (no construction)
 - 20% incremental property changes
 - 10% bank changes
@@ -273,6 +287,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 - 5% excludes/other
 
 **Weighted average**:
+
 - Before: 100% baseline
 - After: ~30-40% of baseline time
 
@@ -285,11 +300,13 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Q1: Should we implement all phases or subset?
 
 **Option A**: Minimum viable (Phases 1-3 + 5)
+
 - Core optimizations only
 - ~21-28 hours
 - 50-80% improvement
 
 **Option B**: Complete (All phases)
+
 - All optimizations
 - ~25-33 hours
 - 60-70% improvement
@@ -304,11 +321,13 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 **Alternative**: Batch-centric (separate batches per status, shared topology)
 
 **Pros of batch refactor**:
+
 - Clearer construction strategy separation
 - Better parallelization potential
 - Easier to add new strategies
 
 **Cons**:
+
 - Major refactor (~40-60 hours)
 - Risk of introducing bugs
 - Benefits unclear without implementation
@@ -322,6 +341,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 **Scenario**: Schema references bank property that was deleted
 
 **Options**:
+
 - **A**: Error (strict) - force user to fix schema
 - **B**: Remove property (lenient) - auto-fix schema
 - **C**: Keep old value (cached) - no change until manual fix
@@ -360,17 +380,20 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 **If approved**, start implementation:
 
 **Days 1-2**: Foundation (Phase 1)
+
 - Implement `SCHEMA_BASE_PROPERTIES` table
 - Add repository methods
 - Add cache validation method
 
 **Days 3-4**: Bank Delta (Phase 2)
+
 - Implement `StaleBankReferencesPayload`
 - Update comparison stage
 - Update analysis stage
 - Write unit tests
 
 **Day 5**: Testing & validation
+
 - Integration tests
 - Manual testing
 - Code review
@@ -380,12 +403,14 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Week 2: Base Properties Integration
 
 **Days 1-3**: Base Properties (Phase 3)
+
 - Update construction to save base properties
 - Update analysis to check cache
 - Implement delta expansion
 - Implement cascade merge
 
 **Days 4-5**: Validation (Phase 5)
+
 - Add metrics
 - Integration tests
 - Performance benchmarks
@@ -396,6 +421,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Week 3: Polish & Monitoring (Optional)
 
 **If time permits**:
+
 - Implement incremental excludes (Phase 4)
 - Additional edge case tests
 - Performance tuning
@@ -447,6 +473,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Risk 1: Cache Corruption
 
 **Mitigation**:
+
 - Hash-based validation on every cache read
 - Log warnings on hash mismatch
 - Fall back to full expansion on cache miss
@@ -456,6 +483,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Risk 2: Performance Regression
 
 **Mitigation**:
+
 - Benchmarks before/after each phase
 - Metrics tracking (cache hit rate, expansion time)
 - Rollback capability (feature flag)
@@ -465,6 +493,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Risk 3: Data Inconsistency
 
 **Mitigation**:
+
 - Base properties derive from raw + bank (deterministic)
 - Cache can be regenerated anytime
 - Integration tests verify consistency
@@ -474,6 +503,7 @@ merged = Merger::inherit_properties(new_parent_props, base_props, excludes)
 ### Risk 4: Breaking Changes
 
 **Mitigation**:
+
 - All changes are additive (new table, new fields)
 - Existing code paths still work
 - Gradual rollout (phase by phase)
@@ -526,13 +556,13 @@ We've completed a **comprehensive analysis** of the schema construction system, 
 
 ## Document Map
 
-| Document | File Name                                      | Purpose                              | Status |
-|----------|------------------------------------------------|--------------------------------------|--------|
-| A        | `complete-construction-decision-tree.md`       | All 25 construction paths            | ✅     |
-| B        | `base-properties-integration-design.md`        | Base properties table design         | ✅     |
-| C        | `bank-reference-delta-implementation.md`       | Bank delta integration               | ✅     |
-| D        | `batch-architecture-proposal.md`               | Batch-based pipeline (optional)      | ⬜     |
-| Summary  | `construction-analysis-summary.md` (this file) | Executive summary & next steps       | ✅     |
+| Document | File Name                                      | Purpose                         | Status |
+| -------- | ---------------------------------------------- | ------------------------------- | ------ |
+| A        | `complete-construction-decision-tree.md`       | All 25 construction paths       | ✅     |
+| B        | `base-properties-integration-design.md`        | Base properties table design    | ✅     |
+| C        | `bank-reference-delta-implementation.md`       | Bank delta integration          | ✅     |
+| D        | `batch-architecture-proposal.md`               | Batch-based pipeline (optional) | ⬜     |
+| Summary  | `construction-analysis-summary.md` (this file) | Executive summary & next steps  | ✅     |
 
 **Total Pages**: ~50 pages of detailed analysis and design
 
