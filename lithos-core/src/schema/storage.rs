@@ -969,8 +969,6 @@ impl Repository for RedbRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use super::*;
@@ -1036,7 +1034,7 @@ mod tests {
     fn list_schema_path_id_pairs_includes_saved_view() {
         use crate::{
             fs::FileStats,
-            schema::views::{HashRecord, SchemaVersion},
+            schema::views::{HashRecord, RawPropertyMapHash, SchemaVersion},
             support::hash::Blake3Hash,
         };
 
@@ -1051,7 +1049,10 @@ mod tests {
             .with_name("test".into());
 
         let file_stats = FileStats::new(None, None, 0);
-        let hashes = HashRecord::new(Blake3Hash::new([0; 32]), HashMap::new());
+        let hashes = HashRecord::new(
+            Blake3Hash::new([0; 32]),
+            RawPropertyMapHash::default(),
+        );
         let version = SchemaVersion::new(file_stats, hashes, &raw).unwrap();
 
         let schema_path = RelativePath::try_from("schemas/test.json").unwrap();

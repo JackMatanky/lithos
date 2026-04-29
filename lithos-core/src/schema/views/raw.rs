@@ -915,14 +915,13 @@ impl RawViewRead for ArchivedRawPropertyBankView {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
     use crate::{
         fs::{FileStats, Filename},
         schema::{
             property::{PropertyMap, PropertyName},
             raw::{RawPropertyBank, RawSchema},
+            views::RawPropertyMapHash,
         },
     };
 
@@ -936,7 +935,7 @@ mod tests {
 
         SchemaVersion::new(
             FileStats::new(None, None, 0),
-            HashRecord::new(content_hash, HashMap::new()),
+            HashRecord::new(content_hash, RawPropertyMapHash::default()),
             &raw,
         )
         .expect("schema version should build")
@@ -945,7 +944,7 @@ mod tests {
     fn make_property_bank_version(
         content_hash: Blake3Hash,
     ) -> PropertyBankVersion {
-        let mut property_hashes = HashMap::new();
+        let mut property_hashes = RawPropertyMapHash::default();
         property_hashes.insert(
             PropertyName::try_new("title").expect("valid property name"),
             Blake3Hash::new([9; 32]),
@@ -1103,7 +1102,10 @@ mod tests {
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &raw,
             Filename::new("property_bank.json".into()),
-            HashRecord::new(Blake3Hash::new([1; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([1; 32]),
+                RawPropertyMapHash::default(),
+            ),
         )
         .expect("view creation should succeed");
 

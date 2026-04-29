@@ -717,10 +717,10 @@ impl VersionRead for ArchivedPropertyBankVersion {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, time::SystemTime};
+    use std::time::SystemTime;
 
     use super::*;
-    use crate::schema::property::PropertyMap;
+    use crate::schema::{property::PropertyMap, views::RawPropertyMapHash};
 
     fn create_test_raw_schema() -> RawSchema {
         let json = serde_json::json!({
@@ -737,8 +737,10 @@ mod tests {
         let raw = create_test_raw_schema();
         let file_times =
             FileStats::new(Some(SystemTime::now()), Some(SystemTime::now()), 0);
-        let hashes =
-            HashRecord::new(Blake3Hash::new([1u8; 32]), HashMap::default());
+        let hashes = HashRecord::new(
+            Blake3Hash::new([1u8; 32]),
+            RawPropertyMapHash::default(),
+        );
 
         let mut version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
@@ -762,7 +764,10 @@ mod tests {
         let raw: RawSchema = serde_json::from_value(json).unwrap();
 
         let file_times = FileStats::new(None, None, 0);
-        let hashes = HashRecord::new(Blake3Hash::new([0; 32]), HashMap::new());
+        let hashes = HashRecord::new(
+            Blake3Hash::new([0; 32]),
+            RawPropertyMapHash::default(),
+        );
         let version = SchemaVersion::new(file_times, hashes, &raw).unwrap();
 
         let refs = version.bank_references();
@@ -785,7 +790,10 @@ mod tests {
         let raw: RawSchema = serde_json::from_value(json).unwrap();
         let version = SchemaVersion::new(
             FileStats::new(None, None, 0),
-            HashRecord::new(Blake3Hash::new([0; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([0; 32]),
+                RawPropertyMapHash::default(),
+            ),
             &raw,
         )
         .unwrap();
@@ -814,7 +822,10 @@ mod tests {
     fn schema_version_set_file_stats_updates_metadata() {
         let raw = create_test_raw_schema();
         let initial = FileStats::new(None, None, 0);
-        let hashes = HashRecord::new(Blake3Hash::new([0; 32]), HashMap::new());
+        let hashes = HashRecord::new(
+            Blake3Hash::new([0; 32]),
+            RawPropertyMapHash::default(),
+        );
         let mut version = SchemaVersion::new(initial, hashes, &raw).unwrap();
 
         let updated = FileStats::new(Some(SystemTime::now()), None, 0);
@@ -827,7 +838,10 @@ mod tests {
     fn property_bank_version_with_metadata_replaces_hash_and_timestamps() {
         let original = PropertyBankVersion::new(
             FileStats::new(None, None, 0),
-            HashRecord::new(Blake3Hash::new([1; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([1; 32]),
+                RawPropertyMapHash::default(),
+            ),
             "1.0",
         )
         .unwrap();
@@ -835,7 +849,10 @@ mod tests {
         let replacement = Version::with_metadata(
             &original,
             FileStats::new(Some(SystemTime::now()), None, 0),
-            HashRecord::new(Blake3Hash::new([2; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([2; 32]),
+                RawPropertyMapHash::default(),
+            ),
         );
 
         assert_eq!(replacement.hashes().content(), &Blake3Hash::new([2; 32]));
@@ -843,11 +860,14 @@ mod tests {
     }
 
     #[test]
-    fn archived_schema_version_supports_zero_copy_version_read() {
+    fn archived_schema_version_preserves_hash_record() {
         let raw = create_test_raw_schema();
         let version = SchemaVersion::new(
             FileStats::new(None, None, 0),
-            HashRecord::new(Blake3Hash::new([7; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([3; 32]),
+                RawPropertyMapHash::default(),
+            ),
             &raw,
         )
         .expect("schema version should build");
@@ -860,7 +880,7 @@ mod tests {
         >(&bytes)
         .expect("access archived schema version");
 
-        assert!(archived.is_content_match(&Blake3Hash::new([7; 32])));
+        assert!(archived.is_content_match(&Blake3Hash::new([3; 32])));
         assert_eq!(archived.version(), "1.0");
     }
 
@@ -868,7 +888,10 @@ mod tests {
     fn archived_property_bank_version_supports_zero_copy_version_read() {
         let version = PropertyBankVersion::new(
             FileStats::new(None, None, 0),
-            HashRecord::new(Blake3Hash::new([3; 32]), HashMap::new()),
+            HashRecord::new(
+                Blake3Hash::new([3; 32]),
+                RawPropertyMapHash::default(),
+            ),
             "1.0",
         )
         .expect("property bank version should build");

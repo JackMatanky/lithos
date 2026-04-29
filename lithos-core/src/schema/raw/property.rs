@@ -25,6 +25,8 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use super::{
     bool::RawBoolProperty,
     date::RawDateProperty,
@@ -35,6 +37,7 @@ use super::{
 use crate::{
     schema::{
         error::SchemaError, identifier::SchemaName, property::PropertyName,
+        views::RawPropertyMapHash,
     },
     support::hash::Blake3Hash,
 };
@@ -44,7 +47,7 @@ use crate::{
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Validated property map that guarantees all keys are valid `PropertyNames`.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct RawPropertyMap<T> {
@@ -200,7 +203,7 @@ impl<T> RawPropertyMap<T> {
     /// Computes per-property hashes for the map values.
     #[inline]
     #[must_use]
-    pub fn compute_hashes(&self) -> HashMap<PropertyName, Blake3Hash>
+    pub fn compute_hashes(&self) -> RawPropertyMapHash
     where
         T: serde::Serialize + std::fmt::Debug,
     {
@@ -209,7 +212,8 @@ impl<T> RawPropertyMap<T> {
             .map(|(name, value)| {
                 (name.clone(), Blake3Hash::compute_json(value))
             })
-            .collect()
+            .collect::<HashMap<PropertyName, Blake3Hash>>()
+            .into()
     }
 }
 
@@ -294,7 +298,7 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 ///     _ => {}
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum RawProperty {
@@ -308,7 +312,7 @@ pub enum RawProperty {
 ///
 /// All override fields are optional. Unknown fields are rejected to mirror the
 /// schema's `additionalProperties: false` constraint.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawPropertyRef {
@@ -345,7 +349,7 @@ pub struct RawPropertyRef {
 ///
 /// Discriminated by the `type` field. These are full inline definitions used
 /// in schema and property bank files (syntax-only validation at this layer).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub enum RawPropertyInline {
@@ -371,7 +375,7 @@ pub enum RawPropertyInline {
 /// Property bank entries use the same schema-level inline DTOs. `required` is
 /// allowed in the input for early warnings and overridden during domain
 /// construction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct RawPropertyBankEntry(pub RawPropertyInline);
@@ -381,7 +385,7 @@ pub struct RawPropertyBankEntry(pub RawPropertyInline);
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Validated reference path to a property bank entry.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(try_from = "String")]
 #[non_exhaustive]
 pub struct RawPropertyRefPath {

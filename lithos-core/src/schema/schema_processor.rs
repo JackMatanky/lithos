@@ -78,7 +78,7 @@ use crate::{
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
         storage::Repository,
-        views::{RawSchemaView, RawView as _},
+        views::{RawPropertyMapHash, RawSchemaView, RawViewRead as _},
     },
     support::hash::Blake3Hash,
 };
@@ -1914,7 +1914,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 payload.raw.excludes(),
                             );
 
-                            let empty_hashes = HashMap::new();
+                            let empty_hashes = RawPropertyMapHash::default();
                             let old_property_hashes = payload
                                 .view
                                 .current()
@@ -2893,9 +2893,8 @@ fn stage_variant_error(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
+    use crate::schema::views::RawPropertyMapHash;
 
     #[test]
     fn extends_change_kind_unchanged_can_update() {
@@ -2987,8 +2986,10 @@ mod tests {
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
         let file_stats = crate::fs::FileStats::new(None, None, 0);
-        let hashes =
-            crate::schema::views::HashRecord::new(content_hash, HashMap::new());
+        let hashes = crate::schema::views::HashRecord::new(
+            content_hash,
+            RawPropertyMapHash::default(),
+        );
         let version =
             crate::schema::views::SchemaVersion::new(file_stats, hashes, &raw)
                 .expect("valid schema view fixture");

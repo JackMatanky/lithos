@@ -22,11 +22,12 @@ use crate::{
                 RawPropertyMap, RawPropertyRef,
             },
         },
+        views::RawPropertyMapHash,
     },
     support::hash::Blake3Hash,
 };
 
-type PropertyHashes = HashMap<PropertyName, Blake3Hash>;
+type PropertyHashes = RawPropertyMapHash;
 type PropertyChangeSetParts<T> =
     (HashMap<PropertyName, T>, Vec<PropertyName>, PropertyHashes);
 type PropertyBankDeltaResult =
@@ -426,12 +427,11 @@ where
     /// 3. compute removed names from previous hash keys,
     /// 4. sort removals deterministically.
     fn compute_change_set(&self) -> PropertyChangeSet<T> {
-        let mut current_hashes = HashMap::with_capacity(
-            self.properties.len().max(self.previous_hashes.len()),
-        );
+        let mut current_hashes = RawPropertyMapHash::default();
         let mut upserts = HashMap::new();
 
-        for (name, entry) in self.properties {
+        let entries: Vec<_> = self.properties.iter().collect();
+        for (name, entry) in entries {
             let hash = Blake3Hash::compute_json(entry);
             current_hashes.insert(name.clone(), hash);
             if self.previous_hashes.get(name) != Some(&hash) {
@@ -442,7 +442,7 @@ where
         let mut removals = self
             .previous_hashes
             .keys()
-            .filter(|name| !current_hashes.contains_key(*name))
+            .filter(|name| !current_hashes.contains_key(name))
             .cloned()
             .collect::<Vec<_>>();
         removals.sort();
@@ -476,13 +476,15 @@ mod tests {
             names: &[&str],
         ) -> (RawPropertyBank, PropertyHashes) {
             let mut properties = serde_json::Map::new();
-            let mut hashes = HashMap::new();
+            let mut hashes = RawPropertyMapHash::default();
 
             for name_str in names {
                 let p_name = name(name_str);
                 let entry_value = serde_json::json!({"type": "string"});
                 let entry = RawPropertyBankEntry(inline_string());
-                hashes.insert(p_name.clone(), Blake3Hash::compute_json(&entry));
+                hashes
+                    .as_inner_mut()
+                    .insert(p_name.clone(), Blake3Hash::compute_json(&entry));
                 properties.insert((*name_str).to_owned(), entry_value);
             }
 
@@ -699,8 +701,10 @@ mod tests {
             let old_hash = Blake3Hash::compute_json(&serde_json::json!({
                 "type": "bool"
             }));
-            let mut previous_hashes = HashMap::new();
-            previous_hashes.insert(fixtures::name("prop"), old_hash);
+            let mut previous_hashes = RawPropertyMapHash::default();
+            previous_hashes
+                .as_inner_mut()
+                .insert(fixtures::name("prop"), old_hash);
 
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
             let change_set = engine.compute_change_set();
@@ -721,8 +725,9 @@ mod tests {
                 serde_json::from_value(serde_json::json!({}))
                     .expect("empty map");
 
-            let mut previous_hashes = HashMap::new();
+            let mut previous_hashes = RawPropertyMapHash::default();
             previous_hashes
+                .as_inner_mut()
                 .insert(fixtures::name("old"), Blake3Hash::new([0u8; 32]));
 
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
@@ -752,7 +757,7 @@ mod tests {
             let map: RawPropertyMap<RawProperty> =
                 serde_json::from_value(map_json).expect("valid map");
 
-            let mut previous_hashes = HashMap::new();
+            let mut previous_hashes = RawPropertyMapHash::default();
             previous_hashes.insert(fixtures::name("stable"), hash);
 
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
@@ -769,7 +774,7 @@ mod tests {
             let (bank, hashes) = fixtures::property_bank_fixture(&["a"]);
 
             // Force a change in "a" by providing an empty previous hash set
-            let empty_hashes = HashMap::new();
+            let empty_hashes = RawPropertyMapHash::default();
             let engine =
                 PropertyDeltaEngine::for_property_bank(&bank, &empty_hashes);
             let result =
