@@ -246,7 +246,10 @@ where
 
         let mut context = FilesContext::new(files);
         if has_property_bank {
-            context.set_property_bank_existence();
+            context.set_property_bank_existence(PropertyBankContext {
+                filename: bank_filename,
+                path: property_bank_path,
+            });
         }
         Ok(context)
     }
@@ -370,11 +373,12 @@ where
 pub(crate) struct FilesContext {
     pub(crate) files: Vec<RelativePath>,
     pub(crate) has_property_bank: bool,
+    pub(crate) property_bank_context: Option<PropertyBankContext>,
 }
 
 impl FilesContext {
     #[inline]
-    fn new(files: Vec<RelativePath>) -> Self {
+    pub(crate) fn new(files: Vec<RelativePath>) -> Self {
         if files.is_empty() {
             info!(
                 "No schema files found; schema processing skipped. Add a \
@@ -385,12 +389,24 @@ impl FilesContext {
         Self {
             files,
             has_property_bank: false,
+            property_bank_context: None,
         }
     }
 
     #[inline]
-    fn set_property_bank_existence(&mut self) {
+    pub(crate) fn set_property_bank_existence(
+        &mut self,
+        context: PropertyBankContext,
+    ) {
         self.has_property_bank = true;
+        self.property_bank_context = Some(context);
+    }
+
+    /// Returns the property bank context if one was found.
+    #[inline]
+    #[must_use]
+    pub(crate) fn property_bank_context(&self) -> Option<&PropertyBankContext> {
+        self.property_bank_context.as_ref()
     }
 }
 
@@ -575,5 +591,25 @@ description = "Test schema"
             4,
             "Should only include schema extensions"
         );
+    }
+
+    #[test]
+    fn files_context_stores_property_bank_context() {
+        use std::path::Path;
+        let mut context = FilesContext::new(vec![]);
+        assert!(!context.has_property_bank);
+        assert!(context.property_bank_context().is_none());
+
+        let bank_context = PropertyBankContext {
+            filename: Filename::try_from(Path::new("bank.json")).unwrap(),
+            path: RelativePath::try_from("bank.json").unwrap(),
+        };
+
+        context.set_property_bank_existence(bank_context.clone());
+
+        assert!(context.has_property_bank);
+        let stored = context.property_bank_context().unwrap();
+        assert_eq!(stored.filename, bank_context.filename);
+        assert_eq!(stored.path, bank_context.path);
     }
 }
