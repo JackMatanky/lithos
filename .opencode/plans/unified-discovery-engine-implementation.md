@@ -21,7 +21,7 @@ This plan consolidates the fragmented discovery logic across `Builder`, `Propert
 
 ### Key Innovation
 
-Uses a unified `DiscoveredFile` structure with `is_property_bank: bool` attribute and the `RawView` trait instead of separate `SchemaDiscovery` and `PropertyBankDiscovery` types. This eliminates duplication while maintaining type safety.
+Uses a unified `DiscoveredFile` structure keyed by `DiscoveryOutcome.files` path, with `SchemaFileKind` + `DiscoveredView` for type-safe branching. This eliminates duplication while preserving path-scoped discovery semantics.
 
 ---
 
@@ -243,7 +243,7 @@ impl DiscoveredFile {
 
 **File**: `lithos-core/src/schema/discovery.rs`
 
-```rust
+````rust
 use std::collections::{HashMap, HashSet};
 use crate::{
     fs::{FileStats, Filename, FsReader, RelativePath},
@@ -515,7 +515,7 @@ impl DiscoveryEngine {
             .collect()
     }
 }
-```
+````
 
 ### 3. Enhanced `BatchSchemaReader` Trait
 
@@ -959,21 +959,22 @@ fn discovery_engine_uses_single_transaction() {
 
 **Steps**:
 
-1. **Add `property_bank_context` field to `FilesContext`**:
-   - Change internal storage from boolean to full context
+1. **Add `property_bank_path` field to `FilesContext`**:
+   - Store property bank as `Option<RelativePath>`
+   - Keep discovery path-scoped; no `PropertyBankContext` dependency
    - Maintain backward compatibility with `has_property_bank` accessor
 
 2. **Update `set_property_bank()` method**:
-   - Accept `PropertyBankContext` instead of just setting boolean
-   - Store the full context internally
+   - Accept `path: RelativePath`
+   - Set `has_property_bank = true` and `property_bank_path = Some(path)`
 
-3. **Add `property_bank_context()` accessor**:
-   - Returns `Option<&PropertyBankContext>`
+3. **Add `property_bank_path()` accessor**:
+   - Returns `Option<&RelativePath>`
    - Used by `DiscoveryEngine`
 
 4. **Update `discover_files()` implementation**:
-   - Create full `PropertyBankContext` when property bank found
-   - Pass to `set_property_bank()`
+   - Capture property bank relative path when found
+   - Pass path to `set_property_bank()`
 
 **Verification**:
 ```rust
@@ -1071,8 +1072,8 @@ pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
     )?;
 
     // Step 3: Load property bank using discovery data
-    let property_bank = if let Some(pb_file) = discovery_outcome.property_bank() {
-        Some(self.load_property_bank_from_discovery(pb_file)?)
+    let property_bank = if let Some((pb_path, pb_file)) = discovery_outcome.property_bank() {
+        Some(self.load_property_bank_from_discovery(pb_path, pb_file)?)
     } else {
         None
     };
@@ -1110,6 +1111,7 @@ pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
 /// Load property bank from discovery data.
 fn load_property_bank_from_discovery(
     &mut self,
+    discovered_path: &RelativePath,
     discovered_file: &DiscoveredFile,
 ) -> Result<PropertyBank, SchemaLoaderError> {
     use crate::schema::property_bank_processor::{
@@ -1124,11 +1126,11 @@ fn load_property_bank_from_discovery(
     let (completed, delta) = match branch {
         ComparisonBranch::Missing(p) => {
             self.handle_missing(p, &discovered_file.filename,
-                discovered_file.path.as_path())?
+                discovered_path.as_path())?
         }
         ComparisonBranch::Present(p) => {
             self.handle_present(p, &discovered_file.filename,
-                discovered_file.path.as_path())?
+                discovered_path.as_path())?
         }
     };
 
@@ -1147,7 +1149,7 @@ fn process_cold_start(
     };
 
     let branch = SchemaProcessor::<Discovery, NeverSeen>::from_discovery(
-        outcome.schema_files().cloned().collect(),
+        outcome.schema_files().collect(),
     )?;
 
     match branch {
@@ -1179,7 +1181,7 @@ fn process_incremental(
     })?;
 
     let branch = SchemaProcessor::<Discovery, Review>::from_discovery(
-        outcome.schema_files().cloned().collect(),
+        outcome.schema_files().collect(),
         graph.clone(),
     )?;
 
@@ -1289,7 +1291,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     pub(crate) fn from_discovery(
         discovered: &DiscoveredFile,
     ) -> Result<ComparisonBranch, SchemaLoaderError> {
-        if !discovered.is_property_bank {
+        if discovered.kind != SchemaFileKind::PropertyBank {
             return Err(SchemaLoaderError::Ingestion(
                 SchemaIngestionError::File(SchemaFileError::FileSystem {
                     reason: "expected property bank, got schema file".into(),
@@ -1320,7 +1322,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             Some(DiscoveredView::Schema(_)) => {
                 Err(SchemaLoaderError::Ingestion(
                     SchemaIngestionError::File(SchemaFileError::FileSystem {
-                        reason: "discovered file has schema view, expected property bank"
+                        reason: "discovered file kind/view mismatch: property-bank kind required property-bank view"
                             .into(),
                     })
                 ))
@@ -1389,7 +1391,8 @@ fn property_bank_processor_from_discovery_rejects_schema() {
 **Acceptance Criteria**:
 - ✅ `from_discovery()` method added
 - ✅ Handles Missing and Present states correctly
-- ✅ Rejects non-property-bank files
+- ✅ Validates `SchemaFileKind` before branching
+- ✅ Rejects kind/view mismatches with explicit errors
 - ✅ Unit tests pass
 - ✅ Integration with Builder works
 
@@ -1410,19 +1413,19 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     ///
     /// Creates a batch of new schemas from the discovery outcome.
     pub(crate) fn from_discovery(
-        discovered_files: Vec<DiscoveredFile>,
+        discovered_files: Vec<(&RelativePath, &DiscoveredFile)>,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let mut new_schemas = NewBatch::new();
 
-        for file in discovered_files {
-            if file.is_property_bank {
+        for (path, file) in discovered_files {
+            if file.kind == SchemaFileKind::PropertyBank {
                 continue; // Skip property bank
             }
 
             new_schemas.insert(
                 file.id,
                 InitialScan {
-                    path: file.path,
+                    path: path.clone(),
                     stats: file.file_stats,
                 },
             );
@@ -1440,14 +1443,14 @@ impl SchemaProcessor<Discovery, Review> {
     ///
     /// Builds the processing graph with Present payloads for existing schemas.
     pub(crate) fn from_discovery(
-        discovered_files: Vec<DiscoveredFile>,
+        discovered_files: Vec<(&RelativePath, &DiscoveredFile)>,
         graph: InheritanceGraph<()>,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let mut builder = SchemaGraphBuilder::new();
         let mut new_schemas = NewBatch::new();
 
-        for file in discovered_files {
-            if file.is_property_bank {
+        for (path, file) in discovered_files {
+            if file.kind == SchemaFileKind::PropertyBank {
                 continue; // Skip property bank
             }
 
@@ -1455,7 +1458,7 @@ impl SchemaProcessor<Discovery, Review> {
                 // Existing schema with cached view
                 let payload = PipelinePayload::Present(PresentPayload::Found(
                     FoundPayload {
-                        path: file.path.clone(),
+                        path: path.clone(),
                         stats: file.file_stats,
                         view: view.clone(),
                     },
@@ -1474,7 +1477,7 @@ impl SchemaProcessor<Discovery, Review> {
                 new_schemas.insert(
                     file.id,
                     InitialScan {
-                        path: file.path,
+                        path: path.clone(),
                         stats: file.file_stats,
                     },
                 );
@@ -1603,12 +1606,14 @@ fn schema_processor_from_discovery_skips_property_bank() {
 - ✅ `from_discovery()` methods added for both NeverSeen and Review
 - ✅ Correctly handles cold-start vs incremental paths
 - ✅ Skips property bank files
+- ✅ Uses `(path, file)` pairs from `DiscoveryOutcome.files` (path-keyed input)
+- ✅ Rejects kind/view mismatch payloads
 - ✅ Unit tests pass
 - ✅ Integration with Builder works
 
 ---
 
-#### Task 2.4: Cleanup (Optional)
+#### Task 2.4: Cleanup and Documentation
 
 **Files to Modify**:
 - `lithos-core/src/schema/property_bank_processor.rs`
@@ -1628,7 +1633,11 @@ fn schema_processor_from_discovery_skips_property_bank() {
    }
    ```
 
-2. **Update documentation** to reference new patterns
+2. **Update documentation** to reference new patterns:
+   - `DiscoveredFile` is metadata-only (no embedded path)
+   - Path is sourced from `DiscoveryOutcome.files` keys
+   - Kind branching uses `SchemaFileKind`, not `is_property_bank`
+   - Discovery remains path-scoped batch lookup (no SchemaIndex-primary switch)
 
 3. **Consider removal in future version** (Phase 3, not part of this plan)
 
@@ -1900,7 +1909,8 @@ Create ADR documenting:
 - Context: Fragmented discovery logic
 - Decision: Consolidate into single engine
 - Consequences: Performance improvement, simplified orchestration
-- Alternatives considered: Status quo, parallel execution
+- Alternatives considered: Status quo, SchemaIndex-first discovery (rejected), parallel execution
+- Rationale: SchemaIndex is not the primary discovery source because path-scoped existence/deletion checks require filesystem + path-keyed lookup as source of truth
 
 ### 4. Inline Documentation
 

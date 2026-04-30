@@ -46,6 +46,15 @@ pub(crate) enum DiscoveredView {
     PropertyBank(RawPropertyBankView),
 }
 
+/// File kind discovered during scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SchemaFileKind {
+    /// Regular schema file with its stable schema ID.
+    Schema(SchemaId),
+    /// Property bank singleton file.
+    PropertyBank,
+}
+
 /// Unified discovery data for a single file (schema or property bank).
 ///
 /// This structure eliminates duplication by using the `RawView` trait.
@@ -59,12 +68,8 @@ pub(crate) enum DiscoveredView {
 pub(crate) struct DiscoveredFile {
     /// Filename (e.g., "note.toml", "property-bank.json").
     pub(crate) filename: Filename,
-    /// Relative path to the file.
-    pub(crate) path: RelativePath,
-    /// Schema ID or property bank ID.
-    pub(crate) id: SchemaId,
-    /// Whether this file is the property bank.
-    pub(crate) is_property_bank: bool,
+    /// File kind information.
+    pub(crate) kind: SchemaFileKind,
     /// Cached view from DB (None if never loaded).
     pub(crate) view: Option<DiscoveredView>,
     /// Current file stats from filesystem.
@@ -101,6 +106,30 @@ impl DiscoveredFile {
     #[must_use]
     pub(crate) fn is_new(&self) -> bool {
         self.view.is_none()
+    }
+
+    /// Returns true when this file is a schema file.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn is_schema(&self) -> bool {
+        matches!(self.kind, SchemaFileKind::Schema(_))
+    }
+
+    /// Returns true when this file is the property bank.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn is_property_bank(&self) -> bool {
+        matches!(self.kind, SchemaFileKind::PropertyBank)
+    }
+
+    /// Returns schema ID if this is a schema file.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn schema_id(&self) -> Option<SchemaId> {
+        match self.kind {
+            SchemaFileKind::Schema(id) => Some(id),
+            SchemaFileKind::PropertyBank => None,
+        }
     }
 
     /// Returns the raw schema view if this is a schema file and view exists.
@@ -168,20 +197,20 @@ impl DiscoveryOutcome {
     #[inline]
     #[must_use]
     pub(crate) fn has_schemas(&self) -> bool {
-        self.files.values().any(|f| !f.is_property_bank)
+        self.files.values().any(DiscoveredFile::is_schema)
     }
 
     /// Returns the property bank file, if it exists.
     #[inline]
     #[must_use]
     pub(crate) fn property_bank(&self) -> Option<&DiscoveredFile> {
-        self.files.values().find(|f| f.is_property_bank)
+        self.files.values().find(|f| f.is_property_bank())
     }
 
     /// Returns an iterator over schema files (excludes property bank).
     #[inline]
     pub(crate) fn schema_files(&self) -> impl Iterator<Item = &DiscoveredFile> {
-        self.files.values().filter(|f| !f.is_property_bank)
+        self.files.values().filter(|f| f.is_schema())
     }
 }
 
@@ -203,18 +232,31 @@ impl DiscoveryEngine {
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
+        let property_bank = if let Some(path) = context.property_bank_file() {
+            let filename = source
+                .filename(path.as_path())
+                .map_err(SchemaIngestionError::from)
+                .map_err(SchemaLoaderError::Ingestion)?;
+            Some((path.clone(), filename))
+        } else {
+            None
+        };
+
         // Step 1: Perform all database queries in a single atomic batch read.
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
             .with_batch_schema_reader(|batch_reader| {
                 let graph = batch_reader.get_topological_graph()?;
 
-                let bank_view = if let Some(bank_context) =
-                    context.property_bank_context()
-                {
-                    batch_reader
-                        .get_raw_property_bank_view(&bank_context.filename)?
-                } else {
-                    None
+                #[expect(
+                    clippy::pattern_type_mismatch,
+                    reason = "explicit match on reference preferred for \
+                              clarity"
+                )]
+                let bank_view = match &property_bank {
+                    Some((_, filename)) => {
+                        batch_reader.get_raw_property_bank_view(filename)?
+                    }
+                    None => None,
                 };
 
                 let views = batch_reader
@@ -229,17 +271,15 @@ impl DiscoveryEngine {
         // Step 2: Fetch all file stats (I/O) outside the database transaction.
         let mut files = HashMap::new();
 
-        if let Some(bank_context) = context.property_bank_context() {
+        if let Some((bank_path, bank_filename)) = property_bank {
             let file_stats = source
-                .stats(bank_context.path.as_path())
+                .stats(bank_path.as_path())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
 
-            files.insert(bank_context.path.clone(), DiscoveredFile {
-                filename: bank_context.filename.clone(),
-                path: bank_context.path.clone(),
-                id: SchemaId::new(), // Property bank uses synthetic ID
-                is_property_bank: true,
+            files.insert(bank_path, DiscoveredFile {
+                filename: bank_filename,
+                kind: SchemaFileKind::PropertyBank,
                 view: bank_view.map(DiscoveredView::PropertyBank),
                 file_stats,
             });
@@ -270,9 +310,7 @@ impl DiscoveryEngine {
 
             files.insert(path.clone(), DiscoveredFile {
                 filename,
-                path: path.clone(),
-                id,
-                is_property_bank: false,
+                kind: SchemaFileKind::Schema(id),
                 view,
                 file_stats,
             });
@@ -324,15 +362,12 @@ impl DiscoveryEngine {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use tempfile::TempDir;
 
     use super::*;
     use crate::{
         fs::FsReader,
         schema::{
-            builder::PropertyBankContext,
             inheritance::SchemaGraphBuilder,
             raw::RawSchema,
             storage::Repository as _,
@@ -377,7 +412,7 @@ mod tests {
 
         for file in outcome.schema_files() {
             assert!(file.is_new());
-            assert!(!file.is_property_bank);
+            assert!(!file.is_property_bank());
         }
     }
 
@@ -421,10 +456,9 @@ mod tests {
 
         let files = vec![RelativePath::try_from("schema.json").unwrap()];
         let mut context = FilesContext::new(files);
-        context.set_property_bank_existence(PropertyBankContext {
-            filename: Filename::try_from(Path::new("bank.json")).unwrap(),
-            path: RelativePath::try_from("bank.json").unwrap(),
-        });
+        context.set_property_bank_file(
+            RelativePath::try_from("bank.json").unwrap(),
+        );
 
         let outcome = DiscoveryEngine::run(&context, &repo, &source).unwrap();
 
@@ -437,7 +471,7 @@ mod tests {
 
         let schema_file = outcome.schema_files().next().unwrap();
         assert!(!schema_file.is_new());
-        assert_eq!(schema_file.id, id);
+        assert_eq!(schema_file.schema_id(), Some(id));
     }
 
     #[test]

@@ -62,21 +62,16 @@ where
             Discovery, DiscoveryBranch, NeverSeen, Review, SchemaProcessor,
         };
 
-        let mut bank_branch = BankContextBranch::Missing;
-        let files_context = self.discover_files(|context| {
-            bank_branch = BankContextBranch::Present(context);
-        })?;
+        let files_context = self.discover_files()?;
         let graph_branch = self.discover_graph()?;
 
-        let property_bank = match bank_branch {
-            BankContextBranch::Missing => {
+        let property_bank =
+            if let Some(bank_path) = files_context.property_bank_file() {
+                Some(self.load_property_bank(bank_path)?)
+            } else {
                 self.property_bank_delta = None;
                 None
-            }
-            BankContextBranch::Present(context) => {
-                Some(self.load_property_bank(&context)?)
-            }
-        };
+            };
 
         if files_context.files.is_empty() {
             return Ok(Vec::new());
@@ -132,14 +127,17 @@ where
     /// incremental staleness.
     pub(crate) fn load_property_bank(
         &mut self,
-        context: &PropertyBankContext,
+        bank_path: &RelativePath,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        let config_path = context.path.as_path();
-        let filename = &context.filename;
+        let config_path = bank_path.as_path();
+        let filename = self
+            .source
+            .filename(config_path)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
-            filename,
+            &filename,
             &self.source,
             config_path,
             &self.repository,
@@ -147,10 +145,10 @@ where
 
         let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, filename, config_path)?
+                self.handle_missing(p, &filename, config_path)?
             }
             ComparisonBranch::Present(p) => {
-                self.handle_present(p, filename, config_path)?
+                self.handle_present(p, &filename, config_path)?
             }
         };
 
@@ -158,13 +156,9 @@ where
         Ok(completed)
     }
 
-    pub(crate) fn discover_files<F>(
+    pub(crate) fn discover_files(
         &self,
-        mut on_bank_found: F,
-    ) -> Result<FilesContext, SchemaLoaderError>
-    where
-        F: FnMut(PropertyBankContext),
-    {
+    ) -> Result<FilesContext, SchemaLoaderError> {
         use crate::schema::error::SchemaIngestionError;
 
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
@@ -195,7 +189,7 @@ where
         })?;
 
         let mut files: Vec<RelativePath> = Vec::new();
-        let mut has_property_bank = false;
+        let mut property_bank_file = None;
 
         for path in all_files {
             let Ok(file_name) = Filename::try_from(path.as_path()) else {
@@ -203,7 +197,7 @@ where
             };
 
             if file_name == bank_filename {
-                if has_property_bank {
+                if property_bank_file.is_some() {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
                             crate::schema::error::SchemaFileError::FileSystem {
@@ -213,11 +207,7 @@ where
                         ),
                     ));
                 }
-                has_property_bank = true;
-                on_bank_found(PropertyBankContext {
-                    filename: bank_filename.clone(),
-                    path: property_bank_path.clone(),
-                });
+                property_bank_file = Some(property_bank_path.clone());
                 continue;
             }
 
@@ -245,11 +235,8 @@ where
         }
 
         let mut context = FilesContext::new(files);
-        if has_property_bank {
-            context.set_property_bank_existence(PropertyBankContext {
-                filename: bank_filename,
-                path: property_bank_path,
-            });
+        if let Some(bank_path) = property_bank_file {
+            context.set_property_bank_file(bank_path);
         }
         Ok(context)
     }
@@ -372,8 +359,7 @@ where
 #[derive(Debug, Clone)]
 pub(crate) struct FilesContext {
     pub(crate) files: Vec<RelativePath>,
-    pub(crate) has_property_bank: bool,
-    pub(crate) property_bank_context: Option<PropertyBankContext>,
+    pub(crate) property_bank_file: Option<RelativePath>,
 }
 
 impl FilesContext {
@@ -388,38 +374,21 @@ impl FilesContext {
         }
         Self {
             files,
-            has_property_bank: false,
-            property_bank_context: None,
+            property_bank_file: None,
         }
     }
 
     #[inline]
-    pub(crate) fn set_property_bank_existence(
-        &mut self,
-        context: PropertyBankContext,
-    ) {
-        self.has_property_bank = true;
-        self.property_bank_context = Some(context);
+    pub(crate) fn set_property_bank_file(&mut self, bank_path: RelativePath) {
+        self.property_bank_file = Some(bank_path);
     }
 
-    /// Returns the property bank context if one was found.
+    /// Returns the property bank file path if one was found.
     #[inline]
     #[must_use]
-    pub(crate) fn property_bank_context(&self) -> Option<&PropertyBankContext> {
-        self.property_bank_context.as_ref()
+    pub(crate) fn property_bank_file(&self) -> Option<&RelativePath> {
+        self.property_bank_file.as_ref()
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PropertyBankContext {
-    pub(crate) filename: Filename,
-    pub(crate) path: RelativePath,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum BankContextBranch {
-    Missing,
-    Present(PropertyBankContext),
 }
 
 #[derive(Debug, Clone)]
@@ -530,15 +499,10 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let mut bank_branch = BankContextBranch::Missing;
-        let context = builder
-            .discover_files(|bank| {
-                bank_branch = BankContextBranch::Present(bank);
-            })
-            .unwrap();
+        let context = builder.discover_files().unwrap();
 
         assert!(
-            context.has_property_bank,
+            context.property_bank_file.is_some(),
             "Should detect property bank presence"
         );
         assert_eq!(
@@ -547,8 +511,8 @@ description = "Test schema"
             "Should exclude property_bank from schema files"
         );
         assert!(
-            matches!(bank_branch, BankContextBranch::Present(_)),
-            "Should return property bank context"
+            context.property_bank_file().is_some(),
+            "Should retain property bank file path"
         );
     }
 
@@ -584,7 +548,7 @@ description = "Test schema"
         let source = FsReader::new(temp.path().to_path_buf());
 
         let builder = Builder::new(repo, source, &config);
-        let context = builder.discover_files(|_| {}).unwrap();
+        let context = builder.discover_files().unwrap();
 
         assert_eq!(
             context.files.len(),
@@ -594,22 +558,17 @@ description = "Test schema"
     }
 
     #[test]
-    fn files_context_stores_property_bank_context() {
-        use std::path::Path;
+    fn files_context_stores_property_bank_file() {
         let mut context = FilesContext::new(vec![]);
-        assert!(!context.has_property_bank);
-        assert!(context.property_bank_context().is_none());
+        assert!(context.property_bank_file.is_none());
+        assert!(context.property_bank_file().is_none());
 
-        let bank_context = PropertyBankContext {
-            filename: Filename::try_from(Path::new("bank.json")).unwrap(),
-            path: RelativePath::try_from("bank.json").unwrap(),
-        };
+        let bank_path = RelativePath::try_from("bank.json").unwrap();
 
-        context.set_property_bank_existence(bank_context.clone());
+        context.set_property_bank_file(bank_path.clone());
 
-        assert!(context.has_property_bank);
-        let stored = context.property_bank_context().unwrap();
-        assert_eq!(stored.filename, bank_context.filename);
-        assert_eq!(stored.path, bank_context.path);
+        assert!(context.property_bank_file.is_some());
+        let stored = context.property_bank_file().unwrap();
+        assert_eq!(*stored, bank_path);
     }
 }
