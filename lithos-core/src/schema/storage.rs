@@ -43,6 +43,46 @@ pub trait BatchSchemaReader {
     /// Storage-specific error type for batch reads.
     type Error;
 
+    /// Finds multiple raw schema views by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs reads
+    /// within the current batch transaction. Returns a map of
+    /// path → view for paths that have cached views.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>;
+
+    /// Finds multiple schema IDs by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs reads
+    /// within the current batch transaction. Returns a map of
+    /// path → `SchemaId` for paths that have schemas.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
+
+    /// Gets the raw property bank view.
+    ///
+    /// Returns `None` if the property bank has never been loaded.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_raw_property_bank_view(
+        &self,
+        filename: &Filename,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error>;
+
     /// Gets the raw schema view for a given schema ID.
     ///
     /// # Errors
@@ -69,6 +109,81 @@ struct RedbBatchSchemaReader<'reader> {
 
 impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
     type Error = SchemaRepositoryError;
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
+
+        let mut result = HashMap::new();
+
+        for path in file_paths {
+            let path_key = path.as_path().to_string_lossy();
+
+            // Step 1: Look up SchemaId by path
+            let Some(id) = self
+                .reader
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+                .map_err(map_db_error)?
+            else {
+                continue;
+            };
+
+            // Step 2: Look up RawSchemaView by ID
+            if let Some(view) = self
+                .reader
+                .get_owned_by_uuid::<RawSchemaView>(
+                    RAW_SCHEMA_VIEWS,
+                    id.into_uuid(),
+                )
+                .map_err(map_db_error)?
+            {
+                result.insert(path.clone(), view);
+            }
+        }
+
+        Ok(result)
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let mut result = HashMap::new();
+
+        for path in file_paths {
+            let path_key = path.as_path().to_string_lossy();
+            if let Some(id) = self
+                .reader
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+                .map_err(map_db_error)?
+            {
+                result.insert(path.clone(), id);
+            }
+        }
+
+        Ok(result)
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        filename: &Filename,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
+
+        self.reader
+            .get_owned::<RawPropertyBankView>(
+                RAW_PROPERTY_BANK_VIEW,
+                filename.as_str(),
+            )
+            .map_err(map_db_error)
+    }
 
     #[inline]
     fn get_raw_schema_view(
