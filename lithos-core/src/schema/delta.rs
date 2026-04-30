@@ -9,7 +9,10 @@
 //! - Excludes deltas are computed with deterministic set-diff semantics.
 //! - The module is pure computation (no filesystem or repository I/O).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use crate::{
     schema::{
@@ -40,6 +43,26 @@ pub(crate) struct ExcludesDelta {
 }
 
 impl ExcludesDelta {
+    /// Creates a new excludes delta with normalized vectors.
+    ///
+    /// Both `added` and `removals` will be sorted and deduplicated.
+    #[inline]
+    #[must_use]
+    #[expect(dead_code, reason = "API constructor for future use")]
+    pub(crate) fn new(
+        mut added: Vec<PropertyName>,
+        mut removals: Vec<PropertyName>,
+    ) -> Self {
+        added.sort();
+        added.dedup();
+        removals.sort();
+        removals.dedup();
+        Self {
+            added,
+            removals,
+        }
+    }
+
     /// Returns `true` when no excludes changes exist.
     #[inline]
     #[must_use]
@@ -63,28 +86,6 @@ impl ExcludesDelta {
         &self.removals
     }
 
-    /// Returns an iterator over all changed exclude names.
-    #[inline]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn iter_changed(&self) -> impl Iterator<Item = &PropertyName> {
-        self.added.iter().chain(self.removals.iter())
-    }
-
-    /// Returns the union of all changed exclude names as a new set.
-    ///
-    /// This allocates a new `HashSet` on each call.
-    #[inline]
-    #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
-        let mut changed = HashSet::with_capacity(
-            self.added.len().saturating_add(self.removals.len()),
-        );
-        changed.extend(self.added.iter().cloned());
-        changed.extend(self.removals.iter().cloned());
-        changed
-    }
-
     /// Builds an excludes delta from old/new slices.
     ///
     /// Uses ordered-set diffing to keep output deterministic.
@@ -94,13 +95,28 @@ impl ExcludesDelta {
         old_excludes: &[PropertyName],
         new_excludes: &[PropertyName],
     ) -> Self {
-        let old_set: BTreeSet<PropertyName> =
-            old_excludes.iter().cloned().collect();
-        let new_set: BTreeSet<PropertyName> =
-            new_excludes.iter().cloned().collect();
+        let mut old_sorted: Vec<_> = old_excludes.to_vec();
+        let mut new_sorted: Vec<_> = new_excludes.to_vec();
 
-        let added = new_set.difference(&old_set).cloned().collect();
-        let removals = old_set.difference(&new_set).cloned().collect();
+        // Sort + dedup (matches PropertyDelta::new() pattern)
+        old_sorted.sort();
+        old_sorted.dedup();
+        new_sorted.sort();
+        new_sorted.dedup();
+
+        // Compute added: in new but not in old
+        let added: Vec<_> = new_sorted
+            .iter()
+            .filter(|n| old_sorted.binary_search(n).is_err())
+            .cloned()
+            .collect();
+
+        // Compute removals: in old but not in new
+        let removals: Vec<_> = old_sorted
+            .iter()
+            .filter(|n| new_sorted.binary_search(n).is_err())
+            .cloned()
+            .collect();
 
         Self {
             added,
@@ -255,10 +271,8 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
         let (raw_upserts, removals, _current_hashes) = change_set.into_parts();
 
         let mut resolved_upserts = PropertyMap::new();
-        let mut inline_map: std::collections::HashMap<
-            PropertyName,
-            RawPropertyInline,
-        > = std::collections::HashMap::new();
+        let mut inline_map: HashMap<PropertyName, RawPropertyInline> =
+            HashMap::new();
 
         #[expect(
             clippy::iter_over_hash_type,
@@ -315,7 +329,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
 
         let upserts = PropertyMap::try_from(raw_upserts).map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                path: std::path::PathBuf::from("property_bank"),
+                path: PathBuf::from("property_bank"),
                 source: error,
             })
         })?;
@@ -480,14 +494,17 @@ mod tests {
             let new = vec![fixtures::name("added")];
             let delta = ExcludesDelta::from_slices(&old, &new);
 
-            let changed: HashSet<_> = delta.iter_changed().collect();
+            let mut changed: HashSet<_> =
+                delta.added().iter().cloned().collect();
+            changed.extend(delta.removals().iter().cloned());
+
             assert!(
                 changed.contains(&fixtures::name("removed")),
-                "Iterator missing removal"
+                "Missing removal"
             );
             assert!(
                 changed.contains(&fixtures::name("added")),
-                "Iterator missing addition"
+                "Missing addition"
             );
         }
 
@@ -497,7 +514,9 @@ mod tests {
             let new = vec![fixtures::name("b")];
             let delta = ExcludesDelta::from_slices(&old, &new);
 
-            let set = delta.to_changed_name_set();
+            let mut set: HashSet<_> = delta.added().iter().cloned().collect();
+            set.extend(delta.removals().iter().cloned());
+
             assert_eq!(
                 set.len(),
                 2,
@@ -565,7 +584,7 @@ mod tests {
         }
     }
 
-    mod property_bank_delta {
+    mod property_delta {
         use super::{fixtures, *};
         use crate::schema::{
             property::{Multiplicity, Optionality, Property, PropertyId},
