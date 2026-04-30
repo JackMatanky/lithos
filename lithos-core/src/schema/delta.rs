@@ -369,8 +369,7 @@ where
         let mut current_hashes = RawPropertyMapHash::default();
         let mut upserts = HashMap::new();
 
-        let entries: Vec<_> = self.properties.iter().collect();
-        for (name, entry) in entries {
+        for (name, entry) in self.properties.iter() {
             let hash = Blake3Hash::compute_json(entry);
             current_hashes.insert(name.clone(), hash);
             if self.previous_hashes.get(name) != Some(&hash) {
