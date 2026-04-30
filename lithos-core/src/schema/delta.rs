@@ -28,11 +28,6 @@ use crate::{
     support::hash::Blake3Hash,
 };
 
-type PropertyChangeSetParts<T> =
-    (HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyMapHash);
-type PropertyDeltaResult =
-    Result<(PropertyDelta, RawPropertyMapHash), SchemaLoaderError>;
-
 /// Delta for schema-level `excludes` lists.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ExcludesDelta {
@@ -267,8 +262,8 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
         &self,
         expander: &RefExpander,
     ) -> Result<PropertyDelta, SchemaLoaderError> {
-        let change_set = self.compute_change_set();
-        let (raw_upserts, removals, _current_hashes) = change_set.into_parts();
+        let (raw_upserts, removals, _current_hashes) =
+            self.compute_change_set();
 
         let mut resolved_upserts = PropertyMap::new();
         let mut inline_map: HashMap<PropertyName, RawPropertyInline> =
@@ -323,9 +318,11 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
-    pub(crate) fn diff_property_bank(&self) -> PropertyDeltaResult {
-        let change_set = self.compute_change_set();
-        let (raw_upserts, removals, property_hashes) = change_set.into_parts();
+    pub(crate) fn diff_property_bank(
+        &self,
+    ) -> Result<(PropertyDelta, RawPropertyMapHash), SchemaLoaderError> {
+        let (raw_upserts, removals, property_hashes) =
+            self.compute_change_set();
 
         let upserts = PropertyMap::try_from(raw_upserts).map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
@@ -335,22 +332,6 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
         })?;
 
         Ok((PropertyDelta::new(upserts, removals), property_hashes))
-    }
-}
-
-/// Internal generic change set used by the shared delta engine.
-struct PropertyChangeSet<T> {
-    upserts: HashMap<PropertyName, T>,
-    removals: Vec<PropertyName>,
-    current_hashes: RawPropertyMapHash,
-}
-
-impl<T> PropertyChangeSet<T> {
-    /// Consumes the change set and returns all computed parts.
-    #[inline]
-    #[must_use]
-    fn into_parts(self) -> PropertyChangeSetParts<T> {
-        (self.upserts, self.removals, self.current_hashes)
     }
 }
 
@@ -365,7 +346,9 @@ where
     /// 2. record new/changed entries as upserts,
     /// 3. compute removed names from previous hash keys,
     /// 4. sort removals deterministically.
-    fn compute_change_set(&self) -> PropertyChangeSet<T> {
+    fn compute_change_set(
+        &self,
+    ) -> (HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyMapHash) {
         let mut current_hashes = RawPropertyMapHash::default();
         let mut upserts = HashMap::new();
 
@@ -385,11 +368,7 @@ where
             .collect::<Vec<_>>();
         removals.sort();
 
-        PropertyChangeSet {
-            upserts,
-            removals,
-            current_hashes,
-        }
+        (upserts, removals, current_hashes)
     }
 }
 
@@ -641,13 +620,10 @@ mod tests {
             let change_set = engine.compute_change_set();
 
             assert!(
-                change_set.upserts.contains_key(&fixtures::name("prop")),
+                change_set.0.contains_key(&fixtures::name("prop")),
                 "Changed property should be in upserts"
             );
-            assert!(
-                change_set.removals.is_empty(),
-                "No properties were removed"
-            );
+            assert!(change_set.1.is_empty(), "No properties were removed");
         }
 
         #[test]
@@ -664,10 +640,10 @@ mod tests {
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
             let change_set = engine.compute_change_set();
 
-            assert_eq!(change_set.removals.len(), 1);
+            assert_eq!(change_set.1.len(), 1);
             assert_eq!(
                 change_set
-                    .removals
+                    .1
                     .first()
                     .expect("removals should have 1 element")
                     .as_str(),
@@ -695,7 +671,7 @@ mod tests {
             let change_set = engine.compute_change_set();
 
             assert!(
-                change_set.upserts.is_empty(),
+                change_set.0.is_empty(),
                 "Unchanged property should not be in upserts"
             );
         }
