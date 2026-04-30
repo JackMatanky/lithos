@@ -78,7 +78,6 @@ impl NoteScanner {
         _include_task_marker: bool,
     ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
         let mut artifacts = Vec::with_capacity(8);
-        let mut cursor = Cursor::new("", SourceByteOffset::new(0));
         for range in ranges {
             if range.is_empty() {
                 continue;
@@ -87,7 +86,7 @@ impl NoteScanner {
                 continue;
             };
             let base_offset = SourceByteOffset::try_from_usize(range.start)?;
-            cursor.reset(segment, base_offset);
+            let mut cursor = Cursor::new(segment, base_offset);
             self.scan_cursor(&mut cursor, &mut artifacts)?;
         }
         Ok(ScannedRawArtifacts::from_scanned_artifacts(artifacts))
@@ -651,5 +650,67 @@ impl BareFieldRule {
         }
 
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scanner() -> NoteScanner {
+        NoteScanner::new(Vec::<char>::new())
+    }
+
+    #[test]
+    fn scan_ranges_isolates_prev_alnum_across_disjoint_ranges() {
+        let source = "abc [ignored](x) #tag";
+        let first_end = source.find(' ').expect("space exists");
+        let tag_start = source.find("#tag").expect("tag exists");
+        let tag_end = tag_start.saturating_add("#tag".len());
+        let ranges = vec![0..first_end, tag_start..tag_end];
+
+        let scanned = scanner()
+            .scan_ranges(source, &ranges, false)
+            .expect("scan succeeds");
+
+        assert_eq!(scanned.tags.len(), 1);
+        assert_eq!(
+            scanned.tags.first().map(|tag| tag.value.as_ref()),
+            Some("#tag")
+        );
+    }
+
+    #[test]
+    fn scan_ranges_isolates_line_start_mode_across_disjoint_ranges() {
+        let source = "x\nkey:: value";
+        let ranges = vec![0..1, 2..source.len()];
+
+        let scanned = scanner()
+            .scan_ranges(source, &ranges, false)
+            .expect("scan succeeds");
+
+        assert_eq!(scanned.inline_fields.len(), 1);
+        assert_eq!(
+            scanned.inline_fields.first().map(|field| field.key.as_ref()),
+            Some("key")
+        );
+        assert_eq!(
+            scanned.inline_fields.first().map(|field| field.value.as_ref()),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn scan_ranges_skips_empty_and_invalid_ranges() {
+        let source = "hello";
+        let ranges = vec![0..0, 99..104];
+
+        let scanned = scanner()
+            .scan_ranges(source, &ranges, false)
+            .expect("scan succeeds");
+
+        assert!(scanned.tags.is_empty());
+        assert!(scanned.inline_fields.is_empty());
+        assert!(scanned.block_refs.is_empty());
     }
 }

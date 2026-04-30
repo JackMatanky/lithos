@@ -8,7 +8,11 @@
 use std::borrow::Cow;
 
 use super::{
-    parser::{ArtifactSink, BlockSpan, ContainerKind, LeafKind, TextFragment},
+    parser::{
+        ArtifactSink, BlockSpan, ContainerKind, LeafKind,
+        text::{TextContext, TextSequence, TextStyle},
+        types::{FrontmatterFormat, RangedEvent},
+    },
     raw::RawListItemText,
 };
 use crate::note::{
@@ -16,7 +20,7 @@ use crate::note::{
     position::{SourceByteOffset, SourceByteRange},
     raw::{
         RawFrontmatter, RawHeading, RawLink, RawListItem, RawNote, RawSection,
-        RawSectionKind,
+        RawSectionKind, frontmatter::RawFrontmatterFormat,
     },
     scanner::{NoteScanner, ScannedRawArtifacts},
 };
@@ -62,14 +66,15 @@ impl<'source> BlockExtractor<'source> {
         &mut self,
         kind: LeafKind,
         span: BlockSpan,
-        fragments: &[TextFragment<'source>],
+        events: &[RangedEvent<'source>],
         depth: u32,
     ) -> Result<(), NoteIngestError> {
+        let projection = TextSequence::from_events(events);
         let block_range = span.to_source_range()?;
         match kind {
             LeafKind::Heading(payload) => {
-                let scanned = self.scan_fragments(fragments)?;
-                let text = collect_text(fragments);
+                let scanned = self.scan_projection(&projection)?;
+                let text = projection.as_plain_text();
                 self.out.headings.push(RawHeading::new(
                     payload.to_u8(),
                     Cow::Owned(text.trim().to_owned()),
@@ -86,7 +91,7 @@ impl<'source> BlockExtractor<'source> {
                 self.out.block_refs.extend(scanned.block_refs);
             }
             LeafKind::Paragraph => {
-                let scanned = self.scan_fragments(fragments)?;
+                let scanned = self.scan_projection(&projection)?;
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Paragraph,
                     block_range,
@@ -97,7 +102,7 @@ impl<'source> BlockExtractor<'source> {
                 self.out.block_refs.extend(scanned.block_refs);
             }
             LeafKind::ListItem(payload) => {
-                let scanned = self.scan_fragments(fragments)?;
+                let scanned = self.scan_projection(&projection)?;
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::List,
                     block_range,
@@ -105,7 +110,7 @@ impl<'source> BlockExtractor<'source> {
                 ));
 
                 let (raw_text, text_range) =
-                    fragments_to_text_and_range(fragments)?;
+                    projection_text_and_range(&projection, block_range)?;
 
                 let item = RawListItem::new(
                     payload.kind,
@@ -122,14 +127,17 @@ impl<'source> BlockExtractor<'source> {
                 self.out.block_refs.extend(scanned.block_refs);
             }
             LeafKind::Metadata(payload) => {
-                let text = collect_text(fragments);
+                let text = projection.as_plain_text();
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Frontmatter,
                     block_range,
                     0,
                 ));
                 self.out.frontmatter = Some(RawFrontmatter::new(
-                    payload.kind.into(),
+                    match payload.format {
+                        FrontmatterFormat::Yaml => RawFrontmatterFormat::Yaml,
+                        FrontmatterFormat::Toml => RawFrontmatterFormat::Toml,
+                    },
                     text.into(),
                     block_range,
                 ));
@@ -139,15 +147,11 @@ impl<'source> BlockExtractor<'source> {
         Ok(())
     }
 
-    fn scan_fragments(
+    fn scan_projection(
         &self,
-        fragments: &[TextFragment<'source>],
+        projection: &TextSequence,
     ) -> Result<ScannedRawArtifacts<'source>, NoteIngestError> {
-        let scannable_ranges: Vec<std::ops::Range<usize>> = fragments
-            .iter()
-            .filter(|f| f.is_scannable)
-            .map(|f| f.range.start().as_usize()..f.range.end().as_usize())
-            .collect();
+        let scannable_ranges = scannable_ranges_from_projection(projection);
 
         self.scanner
             .scan_ranges(self.source, &scannable_ranges, false)
@@ -160,10 +164,10 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
         &mut self,
         kind: LeafKind,
         span: BlockSpan,
-        fragments: &[TextFragment<'source>],
+        events: &[RangedEvent<'source>],
         depth: u32,
     ) -> Result<(), NoteIngestError> {
-        self.process_leaf(kind, span, fragments, depth)
+        self.process_leaf(kind, span, events, depth)
     }
 
     fn on_container_complete(
@@ -193,36 +197,36 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
 
 // ── Free functions ───────────────────────────────────────────────────────────
 
-/// Collects text from fragments into a single string.
-fn collect_text(fragments: &[TextFragment<'_>]) -> String {
-    fragments.iter().map(|f| f.text.as_ref()).collect()
+/// Extracts text and source range from projected text nodes without any
+/// trimming. The raw layer preserves source content as-is; trimming is a domain
+/// concern.
+fn projection_text_and_range(
+    projection: &TextSequence,
+    block_range: SourceByteRange,
+) -> Result<(String, SourceByteRange), NoteIngestError> {
+    let text = projection.as_plain_text();
+    let range = match projection.covering_range() {
+        Some(range) => range,
+        None => SourceByteRange::new(block_range.start(), block_range.start())
+            .map_err(NoteIngestError::Domain)?,
+    };
+    Ok((text, range))
 }
 
-/// Extracts text and source range from fragments without any trimming.
-/// The raw layer preserves source content as-is; trimming is a domain concern.
-///
-/// # Errors
-///
-/// Returns [`NoteIngestError`] if range construction fails.
-fn fragments_to_text_and_range(
-    fragments: &[TextFragment<'_>],
-) -> Result<(String, SourceByteRange), NoteIngestError> {
-    if fragments.is_empty() {
-        let zero = SourceByteOffset::new(0);
-        return Ok((
-            String::new(),
-            SourceByteRange::new(zero, zero)
-                .map_err(NoteIngestError::Domain)?,
-        ));
-    }
-
-    let text = collect_text(fragments);
-    let start = fragments
-        .first()
-        .map_or_else(|| SourceByteOffset::new(0), |f| f.range.start());
-    let end = fragments.last().map_or(start, |f| f.range.end());
-    let range =
-        SourceByteRange::new(start, end).map_err(NoteIngestError::Domain)?;
-
-    Ok((text, range))
+fn scannable_ranges_from_projection(
+    projection: &TextSequence,
+) -> Vec<std::ops::Range<usize>> {
+    projection
+        .nodes()
+        .iter()
+        .filter(|node| {
+            node.context() == TextContext::Normal
+                && !node.styles().contains(&TextStyle::Code)
+                && !node.styles().contains(&TextStyle::MathInline)
+                && !node.styles().contains(&TextStyle::MathDisplay)
+        })
+        .map(|node| {
+            node.range().start().as_usize()..node.range().end().as_usize()
+        })
+        .collect()
 }

@@ -27,20 +27,23 @@
     not(test),
     expect(dead_code, reason = "Structure builder is consumed incrementally")
 )]
-
-use pulldown_cmark::{CowStr, MetadataBlockKind};
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Parser stack code intentionally matches borrowed enum shapes"
+)]
 
 use super::{
-    block::{
-        Block, BlockKind, ContainerBlockKind, HeadingLevel, LeafBlockKind,
-        ListKind, inline_events_text,
-    },
+    block::{Block, BlockKind, ContainerBlockKind, LeafBlockKind},
     context::ParserContext,
-    stream::{BlockType, EventWithRange, ParserEvent},
+    text::TextSequence,
+    types::{
+        BlockEnd, BlockStart, FrontmatterFormat, HeadingLevel, ListKind,
+        ParserEvent, RangedEvent,
+    },
 };
 use crate::note::{
     error::{NoteIngestError, NoteParseError},
-    position::SourceByteRange,
+    position::{SourceByteOffset, SourceByteRange},
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -199,7 +202,7 @@ impl<'source> DocStructure<'source> {
                 language,
                 ..
             }) => {
-                visitor.visit_code_block(block, language.as_ref(), depth);
+                visitor.visit_code_block(block, language.as_deref(), depth);
             }
             BlockKind::Leaf(LeafBlockKind::Frontmatter {
                 format,
@@ -299,7 +302,7 @@ impl<'source> StructureBuilder<'source> {
 
     fn process_event(
         &mut self,
-        spanned_event: &EventWithRange<'source>,
+        spanned_event: &RangedEvent<'source>,
     ) -> Result<(), NoteIngestError> {
         #[expect(
             clippy::pattern_type_mismatch,
@@ -310,7 +313,7 @@ impl<'source> StructureBuilder<'source> {
                 self.on_start(block_type, spanned_event.range());
             }
             ParserEvent::BlockEnd(block_type) => {
-                self.on_end(block_type, spanned_event.range())?;
+                self.on_end(*block_type, spanned_event.range())?;
             }
             ParserEvent::Inline(_) => {
                 self.on_inline_event(spanned_event);
@@ -324,7 +327,7 @@ impl<'source> StructureBuilder<'source> {
                     kind: BlockKind::Leaf(LeafBlockKind::ThematicBreak),
                     span: spanned_event.range(),
                 };
-                self.tree.attach_completed(block);
+                self.tree.attach_completed(block)?;
             }
         }
         Ok(())
@@ -336,75 +339,65 @@ impl<'source> StructureBuilder<'source> {
     )]
     fn on_start(
         &mut self,
-        block_type: &BlockType<'source>,
+        block_type: &BlockStart<'source>,
         span: SourceByteRange,
     ) {
         let start = span.start().as_usize();
         match block_type {
-            BlockType::Paragraph => {
+            BlockStart::Paragraph => {
                 self.push_leaf(ProcessingLeafKind::Paragraph, start);
             }
-            BlockType::Heading {
+            BlockStart::Heading {
                 level,
             } => {
                 self.push_leaf(
                     ProcessingLeafKind::Heading {
-                        level: (*level).into(),
+                        level: *level,
                     },
                     start,
                 );
             }
-            BlockType::BlockQuote => {
+            BlockStart::BlockQuote => {
                 self.push_container(
-                    ProcessingContainerKind::BlockQuote,
+                    ProcessingContainer::new_blockquote(),
                     start,
                     None,
                 );
-                self.list_state.increase_depth();
             }
-            BlockType::CodeBlock {
-                language,
+            BlockStart::CodeBlock {
+                info_string,
             } => {
-                let language = language.as_ref().map(ToString::to_string);
                 self.push_leaf(
                     ProcessingLeafKind::CodeBlock {
-                        language,
+                        language: info_string.clone().map(Into::into),
                     },
                     start,
                 );
             }
-            BlockType::List {
-                start: list_start,
+            BlockStart::List {
+                kind: list_kind,
             } => {
-                let kind = match list_start {
-                    Some(n) => ListKind::Ordered {
-                        start: *n,
-                    },
-                    None => ListKind::Unordered,
-                };
                 self.push_container(
-                    ProcessingContainerKind::List {
-                        kind,
-                    },
+                    ProcessingContainer::new_list(*list_kind),
                     start,
                     None,
                 );
                 self.list_state.increase_depth();
             }
-            BlockType::Item => {
-                let parent_span = self.list_state.parent_span_for_next_item();
+            BlockStart::ListItem => {
+                let parent_span = ListNestingState::parent_span_for_next_item();
                 self.push_container(
-                    ProcessingContainerKind::ListItem,
+                    ProcessingContainer::new_list_item(),
                     start,
                     parent_span,
                 );
             }
-            BlockType::Frontmatter {
-                format: kind,
+            BlockStart::Frontmatter {
+                format,
             } => {
                 self.push_leaf(
                     ProcessingLeafKind::Frontmatter {
-                        format: *kind,
+                        format: *format,
                     },
                     start,
                 );
@@ -420,13 +413,12 @@ impl<'source> StructureBuilder<'source> {
 
     fn push_container(
         &mut self,
-        kind: ProcessingContainerKind,
+        container: ProcessingContainer<'source>,
         start: usize,
         parent_span: Option<SourceByteRange>,
     ) {
         self.tree.push_incomplete(ProcessingNode::Container(
-            ProcessingContainer::new(
-                kind,
+            container.with_position(
                 start,
                 self.list_state.depth(),
                 parent_span,
@@ -434,60 +426,94 @@ impl<'source> StructureBuilder<'source> {
         ));
     }
 
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matches borrowed block tags by design"
-    )]
     fn on_end(
         &mut self,
-        block_type: &BlockType<'source>,
+        block_type: BlockEnd,
         span: SourceByteRange,
     ) -> Result<(), NoteIngestError> {
-        match block_type {
-            BlockType::Paragraph
-            | BlockType::Heading {
-                ..
-            }
-            | BlockType::CodeBlock {
-                ..
-            }
-            | BlockType::Frontmatter {
-                ..
-            } => {
-                self.finalize_and_attach_leaf(
-                    span,
-                    "stack underflow: End tag without matching Start",
-                )?;
-            }
-            BlockType::BlockQuote => {
-                self.finalize_and_attach_container(
-                    span,
-                    "stack underflow: End BlockQuote without Start",
-                )?;
-                self.list_state.decrease_depth();
-            }
-            BlockType::List {
-                ..
-            } => {
-                self.finalize_and_attach_container(
-                    span,
-                    "stack underflow: End List without Start",
-                )?;
-                self.list_state.decrease_depth();
-            }
-            BlockType::Item => {
-                let block = self.finalize_container(
-                    span,
-                    "stack underflow: End Item without Start",
-                )?;
-                self.list_state.record_item_parent(block.span);
-                self.tree.attach_completed(block);
-            }
+        let block = self.tree.finalize_matching(block_type, span)?;
+
+        if matches!(block_type, BlockEnd::List) {
+            self.list_state.decrease_depth();
         }
+
+        let mut block = block;
+        if matches!(block_type, BlockEnd::ListItem) {
+            Self::backfill_nested_list_item_parent_spans(&mut block);
+        }
+
+        self.tree.attach_completed(block)?;
         Ok(())
     }
 
-    fn on_inline_event(&mut self, event: &EventWithRange<'source>) {
+    fn backfill_nested_list_item_parent_spans(block: &mut Block<'source>) {
+        let (parent_depth, parent_span, children) = match &mut block.kind {
+            BlockKind::Container(ContainerBlockKind::ListItem {
+                depth,
+                children,
+                ..
+            }) => (*depth, block.span, children),
+            BlockKind::Leaf(_) | BlockKind::Container(_) => return,
+        };
+
+        for child in children {
+            Self::assign_parent_span_to_matching_descendants(
+                child,
+                parent_depth.saturating_add(1),
+                parent_span,
+            );
+        }
+    }
+
+    fn assign_parent_span_to_matching_descendants(
+        block: &mut Block<'source>,
+        target_depth: u32,
+        parent_span: SourceByteRange,
+    ) {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Pattern matching borrowed container variants in-place"
+        )]
+        match &mut block.kind {
+            BlockKind::Container(
+                ContainerBlockKind::List {
+                    children,
+                    ..
+                }
+                | ContainerBlockKind::BlockQuote {
+                    children,
+                },
+            ) => {
+                for child in children {
+                    Self::assign_parent_span_to_matching_descendants(
+                        child,
+                        target_depth,
+                        parent_span,
+                    );
+                }
+            }
+            BlockKind::Container(ContainerBlockKind::ListItem {
+                depth,
+                parent_span: child_parent_span,
+                children,
+                ..
+            }) => {
+                if *depth == target_depth {
+                    *child_parent_span = Some(parent_span);
+                }
+                for child in children {
+                    Self::assign_parent_span_to_matching_descendants(
+                        child,
+                        target_depth,
+                        parent_span,
+                    );
+                }
+            }
+            BlockKind::Leaf(_) => {}
+        }
+    }
+
+    fn on_inline_event(&mut self, event: &RangedEvent<'source>) {
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "Match ergonomics on mutable borrowed stack node"
@@ -510,96 +536,25 @@ impl<'source> StructureBuilder<'source> {
     fn finalize(self) -> Result<Vec<Block<'source>>, NoteIngestError> {
         // Check that all blocks were closed
         if !self.tree.is_empty() {
-            return Err(NoteParseError::Markdown {
-                line: 0,
-                column: 0,
-                reason: "unclosed blocks at end of document".into(),
+            return Err(NoteParseError::UnclosedBlocks {
+                open_count: self.tree.stack.len(),
+                top_kind: self.tree.stack.last().map(ProcessingNode::kind_name),
+                at: SourceByteOffset::new(0),
             }
             .into());
         }
         Ok(self.tree.into_roots())
     }
-
-    fn pop_incomplete_or(
-        &mut self,
-        reason: &'static str,
-    ) -> Result<ProcessingNode<'source>, NoteIngestError> {
-        self.tree.pop_incomplete().ok_or_else(|| {
-            NoteParseError::Markdown {
-                line: 0,
-                column: 0,
-                reason: reason.into(),
-            }
-            .into()
-        })
-    }
-
-    fn finalize_leaf(
-        &mut self,
-        span: SourceByteRange,
-        underflow_reason: &'static str,
-    ) -> Result<Block<'source>, NoteIngestError> {
-        let processing = self.pop_incomplete_or(underflow_reason)?;
-        match processing {
-            ProcessingNode::Leaf(leaf) => leaf.finalize(span.end().as_usize()),
-            ProcessingNode::Container(_) => Err(Self::role_mismatch_error()),
-        }
-    }
-
-    fn finalize_and_attach_leaf(
-        &mut self,
-        span: SourceByteRange,
-        underflow_reason: &'static str,
-    ) -> Result<(), NoteIngestError> {
-        let block = self.finalize_leaf(span, underflow_reason)?;
-        self.tree.attach_completed(block);
-        Ok(())
-    }
-
-    fn finalize_container(
-        &mut self,
-        span: SourceByteRange,
-        underflow_reason: &'static str,
-    ) -> Result<Block<'source>, NoteIngestError> {
-        let processing = self.pop_incomplete_or(underflow_reason)?;
-        match processing {
-            ProcessingNode::Container(container) => {
-                container.finalize(span.end().as_usize())
-            }
-            ProcessingNode::Leaf(_) => Err(Self::role_mismatch_error()),
-        }
-    }
-
-    fn finalize_and_attach_container(
-        &mut self,
-        span: SourceByteRange,
-        underflow_reason: &'static str,
-    ) -> Result<(), NoteIngestError> {
-        let block = self.finalize_container(span, underflow_reason)?;
-        self.tree.attach_completed(block);
-        Ok(())
-    }
-
-    fn role_mismatch_error() -> NoteIngestError {
-        NoteParseError::Markdown {
-            line: 0,
-            column: 0,
-            reason: "builder role mismatch during block finalization".into(),
-        }
-        .into()
-    }
 }
 
 struct ListNestingState {
     depth: u32,
-    list_item_parents: Vec<SourceByteRange>,
 }
 
 impl ListNestingState {
     const fn new() -> Self {
         Self {
             depth: 0,
-            list_item_parents: Vec::new(),
         }
     }
 
@@ -615,25 +570,8 @@ impl ListNestingState {
         self.depth = self.depth.saturating_sub(1);
     }
 
-    fn parent_span_for_next_item(&self) -> Option<SourceByteRange> {
-        if self.depth > 1 {
-            let parent_depth_index =
-                usize::try_from(self.depth).unwrap_or(0).saturating_sub(2);
-            self.list_item_parents.get(parent_depth_index).copied()
-        } else {
-            None
-        }
-    }
-
-    fn record_item_parent(&mut self, span: SourceByteRange) {
-        let depth_index =
-            usize::try_from(self.depth).unwrap_or(0).saturating_sub(1);
-        if self.list_item_parents.len() <= depth_index {
-            self.list_item_parents.resize(depth_index.saturating_add(1), span);
-        }
-        if let Some(slot) = self.list_item_parents.get_mut(depth_index) {
-            *slot = span;
-        }
+    fn parent_span_for_next_item() -> Option<SourceByteRange> {
+        None
     }
 }
 
@@ -658,11 +596,43 @@ impl<'source> ProcessingBlockTree<'source> {
         self.stack.pop()
     }
 
+    fn finalize_matching(
+        &mut self,
+        end: BlockEnd,
+        end_range: SourceByteRange,
+    ) -> Result<Block<'source>, NoteIngestError> {
+        let processing = self.pop_incomplete().ok_or_else(|| {
+            NoteParseError::EventStackUnderflow {
+                expected: "open block",
+                encountered: end.label(),
+                depth: self.stack.len(),
+                range: end_range,
+            }
+        })?;
+
+        let expected_end = processing.expected_end();
+        if expected_end != end {
+            return Err(NoteParseError::EventStackMismatch {
+                expected: expected_end.label(),
+                found: end.label(),
+                depth: self.stack.len(),
+                start_range: processing.start_anchor_range(),
+                end_range,
+            }
+            .into());
+        }
+
+        processing.finalize(end_range.end().as_usize())
+    }
+
     fn last_mut(&mut self) -> Option<&mut ProcessingNode<'source>> {
         self.stack.last_mut()
     }
 
-    fn attach_completed(&mut self, block: Block<'source>) {
+    fn attach_completed(
+        &mut self,
+        block: Block<'source>,
+    ) -> Result<(), NoteIngestError> {
         if let Some(parent) = self.stack.last_mut() {
             #[expect(
                 clippy::pattern_type_mismatch,
@@ -671,16 +641,22 @@ impl<'source> ProcessingBlockTree<'source> {
             match parent {
                 ProcessingNode::Container(container) => {
                     container.push_child(block);
+                    Ok(())
                 }
                 ProcessingNode::Leaf(_) => {
-                    // This indicates an invalid nesting logic in the builder
-                    // but we can't easily recover here without changing
-                    // signatures We shouldn't hit this if
-                    // the markdown structure is valid
+                    Err(NoteParseError::InvalidTopology {
+                        code: "parser.structure.attach_to_leaf",
+                        detail: "attempted to attach completed block under \
+                                 leaf"
+                            .into(),
+                        range: Some(block.span),
+                    }
+                    .into())
                 }
             }
         } else {
             self.root_blocks.push(block);
+            Ok(())
         }
     }
 
@@ -693,11 +669,43 @@ impl<'source> ProcessingBlockTree<'source> {
     }
 }
 
+impl<'source> ProcessingNode<'source> {
+    const fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Leaf(_) => "leaf",
+            Self::Container(_) => "container",
+        }
+    }
+
+    const fn expected_end(&self) -> BlockEnd {
+        match self {
+            Self::Leaf(leaf) => leaf.expected_end(),
+            Self::Container(container) => container.expected_end(),
+        }
+    }
+
+    fn start_anchor_range(&self) -> Option<SourceByteRange> {
+        let start = match self {
+            Self::Leaf(leaf) => leaf.start,
+            Self::Container(container) => container.start(),
+        };
+
+        SourceByteRange::try_from(start..start.saturating_add(1)).ok()
+    }
+
+    fn finalize(self, end: usize) -> Result<Block<'source>, NoteIngestError> {
+        match self {
+            Self::Leaf(leaf) => leaf.finalize(end),
+            Self::Container(container) => container.finalize(end),
+        }
+    }
+}
+
 /// Temporary state for a leaf block being constructed.
 struct ProcessingLeaf<'source> {
     kind: ProcessingLeafKind,
     start: usize,
-    events: Vec<EventWithRange<'source>>,
+    events: Vec<RangedEvent<'source>>,
 }
 
 impl<'source> ProcessingLeaf<'source> {
@@ -709,15 +717,30 @@ impl<'source> ProcessingLeaf<'source> {
         }
     }
 
-    fn push_event(&mut self, event: EventWithRange<'source>) {
+    fn push_event(&mut self, event: RangedEvent<'source>) {
         self.events.push(event);
+    }
+
+    const fn expected_end(&self) -> BlockEnd {
+        match self.kind {
+            ProcessingLeafKind::Paragraph => BlockEnd::Paragraph,
+            ProcessingLeafKind::Heading {
+                ..
+            } => BlockEnd::Heading,
+            ProcessingLeafKind::CodeBlock {
+                ..
+            } => BlockEnd::CodeBlock,
+            ProcessingLeafKind::Frontmatter {
+                ..
+            } => BlockEnd::Frontmatter,
+        }
     }
 
     fn finalize(self, end: usize) -> Result<Block<'source>, NoteIngestError> {
         let span = SourceByteRange::try_from(self.start..end)
             .map_err(NoteIngestError::Domain)?;
 
-        let text = inline_events_text(&self.events);
+        let text = TextSequence::from_events(&self.events).as_plain_text();
 
         let kind = match self.kind {
             ProcessingLeafKind::Paragraph => LeafBlockKind::Paragraph {
@@ -732,7 +755,7 @@ impl<'source> ProcessingLeaf<'source> {
             ProcessingLeafKind::CodeBlock {
                 language,
             } => LeafBlockKind::CodeBlock {
-                language: language.map(|s| CowStr::Boxed(s.into_boxed_str())),
+                language,
                 text,
             },
             ProcessingLeafKind::Frontmatter {
@@ -752,70 +775,159 @@ impl<'source> ProcessingLeaf<'source> {
 
 /// Temporary state for a container block being constructed.
 struct ProcessingContainer<'source> {
-    kind: ProcessingContainerKind,
-    start: usize,
-    children: Vec<Block<'source>>,
-    depth: u32,
-    is_checked: Option<bool>,
-    parent_span: Option<SourceByteRange>,
+    payload: ProcessingContainerPayload<'source>,
 }
 
 impl<'source> ProcessingContainer<'source> {
-    fn new(
-        kind: ProcessingContainerKind,
+    fn new_blockquote() -> Self {
+        Self {
+            payload: ProcessingContainerPayload::BlockQuote(
+                ProcessingBlockQuote {
+                    start: 0,
+                    children: Vec::new(),
+                },
+            ),
+        }
+    }
+
+    fn new_list(kind: ListKind) -> Self {
+        Self {
+            payload: ProcessingContainerPayload::List(ProcessingList {
+                start: 0,
+                kind,
+                children: Vec::new(),
+            }),
+        }
+    }
+
+    fn new_list_item() -> Self {
+        Self {
+            payload: ProcessingContainerPayload::ListItem(ProcessingListItem {
+                start: 0,
+                depth: 0,
+                parent_span: None,
+                is_checked: None,
+                children: Vec::new(),
+            }),
+        }
+    }
+
+    fn with_position(
+        mut self,
         start: usize,
         depth: u32,
         parent_span: Option<SourceByteRange>,
     ) -> Self {
-        Self {
-            kind,
-            start,
-            children: Vec::new(),
-            depth,
-            is_checked: None,
-            parent_span,
+        match &mut self.payload {
+            ProcessingContainerPayload::BlockQuote(blockquote) => {
+                blockquote.start = start;
+            }
+            ProcessingContainerPayload::List(list) => {
+                list.start = start;
+            }
+            ProcessingContainerPayload::ListItem(list_item) => {
+                list_item.start = start;
+                list_item.depth = depth;
+                list_item.parent_span = parent_span;
+            }
         }
+        self
     }
 
     fn push_child(&mut self, child: Block<'source>) {
-        self.children.push(child);
+        match &mut self.payload {
+            ProcessingContainerPayload::BlockQuote(blockquote) => {
+                blockquote.children.push(child);
+            }
+            ProcessingContainerPayload::List(list) => list.children.push(child),
+            ProcessingContainerPayload::ListItem(list_item) => {
+                list_item.children.push(child);
+            }
+        }
     }
 
     fn set_task_marker(&mut self, checked: bool) {
-        if matches!(self.kind, ProcessingContainerKind::ListItem) {
-            self.is_checked = Some(checked);
+        if let ProcessingContainerPayload::ListItem(list_item) =
+            &mut self.payload
+        {
+            list_item.is_checked = Some(checked);
+        }
+    }
+
+    const fn expected_end(&self) -> BlockEnd {
+        match &self.payload {
+            ProcessingContainerPayload::BlockQuote(_) => BlockEnd::BlockQuote,
+            ProcessingContainerPayload::List(_) => BlockEnd::List,
+            ProcessingContainerPayload::ListItem(_) => BlockEnd::ListItem,
+        }
+    }
+
+    const fn start(&self) -> usize {
+        match &self.payload {
+            ProcessingContainerPayload::BlockQuote(blockquote) => {
+                blockquote.start
+            }
+            ProcessingContainerPayload::List(list) => list.start,
+            ProcessingContainerPayload::ListItem(list_item) => list_item.start,
         }
     }
 
     fn finalize(self, end: usize) -> Result<Block<'source>, NoteIngestError> {
-        let span = SourceByteRange::try_from(self.start..end)
-            .map_err(NoteIngestError::Domain)?;
-
-        let kind = match self.kind {
-            ProcessingContainerKind::BlockQuote => {
-                ContainerBlockKind::BlockQuote {
-                    children: self.children,
-                }
+        let (start, kind) = match self.payload {
+            ProcessingContainerPayload::BlockQuote(blockquote) => {
+                (blockquote.start, ContainerBlockKind::BlockQuote {
+                    children: blockquote.children,
+                })
             }
-            ProcessingContainerKind::List {
-                kind,
-            } => ContainerBlockKind::List {
-                kind,
-                children: self.children,
-            },
-            ProcessingContainerKind::ListItem => ContainerBlockKind::ListItem {
-                depth: self.depth.saturating_sub(1),
-                parent_span: self.parent_span,
-                is_checked: self.is_checked,
-                children: self.children,
-            },
+            ProcessingContainerPayload::List(list) => {
+                (list.start, ContainerBlockKind::List {
+                    kind: list.kind,
+                    children: list.children,
+                })
+            }
+            ProcessingContainerPayload::ListItem(list_item) => {
+                (list_item.start, ContainerBlockKind::ListItem {
+                    depth: list_item.depth.saturating_sub(1),
+                    parent_span: list_item.parent_span,
+                    is_checked: list_item.is_checked,
+                    children: list_item.children,
+                })
+            }
         };
+
+        let span = SourceByteRange::try_from(start..end)
+            .map_err(NoteIngestError::Domain)?;
 
         Ok(Block {
             kind: BlockKind::Container(kind),
             span,
         })
     }
+}
+
+enum ProcessingContainerPayload<'source> {
+    BlockQuote(ProcessingBlockQuote<'source>),
+    List(ProcessingList<'source>),
+    ListItem(ProcessingListItem<'source>),
+}
+
+struct ProcessingBlockQuote<'source> {
+    start: usize,
+    children: Vec<Block<'source>>,
+}
+
+struct ProcessingList<'source> {
+    start: usize,
+    kind: ListKind,
+    children: Vec<Block<'source>>,
+}
+
+struct ProcessingListItem<'source> {
+    start: usize,
+    depth: u32,
+    parent_span: Option<SourceByteRange>,
+    is_checked: Option<bool>,
+    children: Vec<Block<'source>>,
 }
 
 enum ProcessingNode<'source> {
@@ -829,19 +941,25 @@ enum ProcessingLeafKind {
         level: HeadingLevel,
     },
     CodeBlock {
-        language: Option<String>,
+        language: Option<Box<str>>,
     },
     Frontmatter {
-        format: MetadataBlockKind,
+        format: FrontmatterFormat,
     },
 }
 
-enum ProcessingContainerKind {
-    BlockQuote,
-    List {
-        kind: ListKind,
-    },
-    ListItem,
+impl BlockEnd {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Paragraph => "paragraph",
+            Self::Heading => "heading",
+            Self::BlockQuote => "blockquote",
+            Self::List => "list",
+            Self::ListItem => "list_item",
+            Self::CodeBlock => "code_block",
+            Self::Frontmatter => "frontmatter",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -969,6 +1087,76 @@ mod tests {
     }
 
     #[test]
+    fn blockquote_nesting_does_not_increment_list_item_depth() {
+        let structure = build_structure(
+            "- outer\n  > quote\n  > - nested-in-quote\n- sibling",
+        );
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &structure.blocks()[0].kind
+        else {
+            panic!("expected root list");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            depth,
+            children,
+            ..
+        }) = &children[0].kind
+        else {
+            panic!("expected root list item");
+        };
+        assert_eq!(*depth, 0);
+
+        let quote_block = children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::BlockQuote { .. })
+                )
+            })
+            .expect("expected blockquote inside first list item");
+
+        let BlockKind::Container(ContainerBlockKind::BlockQuote {
+            children,
+        }) = &quote_block.kind
+        else {
+            panic!("expected blockquote container");
+        };
+
+        let nested_list = children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected nested list under blockquote");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &nested_list.kind
+        else {
+            panic!("expected list container");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            depth,
+            ..
+        }) = &children[0].kind
+        else {
+            panic!("expected nested list item");
+        };
+
+        assert_eq!(*depth, 1);
+    }
+
+    #[test]
     fn parses_frontmatter_then_content() {
         let structure = build_structure("---\ntags: [a]\n---\n\nBody");
         assert!(matches!(
@@ -979,5 +1167,347 @@ mod tests {
             structure.blocks()[1].kind,
             BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
         ));
+    }
+
+    #[test]
+    fn attach_completed_rejects_leaf_parent_topology() {
+        let mut tree = ProcessingBlockTree::new();
+        tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
+            ProcessingLeafKind::Paragraph,
+            0,
+        )));
+
+        let span = SourceByteRange::try_from(0..1).expect("valid range");
+        let block = Block {
+            kind: BlockKind::Leaf(LeafBlockKind::ThematicBreak),
+            span,
+        };
+
+        let result = tree.attach_completed(block);
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.attach_to_leaf",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn on_end_reports_canonical_underflow_encountered_label() {
+        let mut builder = StructureBuilder::new();
+        let span = SourceByteRange::try_from(3..4).expect("valid range");
+
+        let result = builder.on_end(BlockEnd::List, span);
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::EventStackUnderflow {
+                expected: "open block",
+                encountered: "list",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn on_end_reports_exact_end_kind_mismatch() {
+        let mut builder = StructureBuilder::new();
+        let start = SourceByteRange::try_from(0..1).expect("valid range");
+        builder.on_start(&BlockStart::Paragraph, start);
+
+        let end = SourceByteRange::try_from(2..3).expect("valid range");
+        let result = builder.on_end(BlockEnd::Heading, end);
+
+        let start_expected =
+            SourceByteRange::try_from(0..1).expect("valid range");
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::EventStackMismatch {
+                expected: "paragraph",
+                found: "heading",
+                start_range: Some(start_range),
+                end_range,
+                ..
+            })) if start_range == start_expected && end_range == end
+        ));
+    }
+
+    #[test]
+    fn nested_list_item_parent_span_matches_enclosing_parent_item_span() {
+        let structure = build_structure("- parent\n  - child");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &structure.blocks()[0].kind
+        else {
+            panic!("expected root list");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            children: parent_children,
+            ..
+        }) = &children[0].kind
+        else {
+            panic!("expected parent list item");
+        };
+
+        let expected_parent_span = children[0].span;
+        let nested_list = parent_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected nested list");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: nested_items,
+            ..
+        }) = &nested_list.kind
+        else {
+            panic!("expected nested list container");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span,
+            ..
+        }) = &nested_items[0].kind
+        else {
+            panic!("expected nested list item");
+        };
+
+        assert_eq!(*parent_span, Some(expected_parent_span));
+    }
+
+    #[test]
+    fn multi_level_nested_list_items_use_immediate_parent_spans() {
+        let structure =
+            build_structure("- parent\n  - child\n    - grandchild");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &structure.blocks()[0].kind
+        else {
+            panic!("expected root list");
+        };
+
+        let parent = &children[0];
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            children: parent_children,
+            ..
+        }) = &parent.kind
+        else {
+            panic!("expected parent list item");
+        };
+
+        let child_list = parent_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected child list");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: child_items,
+            ..
+        }) = &child_list.kind
+        else {
+            panic!("expected child list container");
+        };
+
+        let child = &child_items[0];
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: child_parent_span,
+            children: child_children,
+            ..
+        }) = &child.kind
+        else {
+            panic!("expected child list item");
+        };
+
+        let grandchild_list = child_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected grandchild list");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: grandchild_items,
+            ..
+        }) = &grandchild_list.kind
+        else {
+            panic!("expected grandchild list container");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: grandchild_parent_span,
+            ..
+        }) = &grandchild_items[0].kind
+        else {
+            panic!("expected grandchild list item");
+        };
+
+        assert_ne!(parent.span, child.span);
+        assert_eq!(*child_parent_span, Some(parent.span));
+        assert_eq!(*grandchild_parent_span, Some(child.span));
+    }
+
+    #[test]
+    fn nested_list_item_parent_spans_do_not_leak_across_top_level_branches() {
+        let structure =
+            build_structure("- parent-a\n  - child-a\n- parent-b\n  - child-b");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &structure.blocks()[0].kind
+        else {
+            panic!("expected root list");
+        };
+
+        let parent_a = &children[0];
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            children: parent_alpha_children,
+            ..
+        }) = &parent_a.kind
+        else {
+            panic!("expected parent-a list item");
+        };
+
+        let nested_list_a = parent_alpha_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected nested list under parent-a");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: nested_items_a,
+            ..
+        }) = &nested_list_a.kind
+        else {
+            panic!("expected nested list container under parent-a");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: child_alpha_parent_span,
+            ..
+        }) = &nested_items_a[0].kind
+        else {
+            panic!("expected child-a list item");
+        };
+
+        let parent_b = &children[1];
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            children: parent_beta_children,
+            ..
+        }) = &parent_b.kind
+        else {
+            panic!("expected parent-b list item");
+        };
+
+        let nested_list_b = parent_beta_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected nested list under parent-b");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: nested_items_b,
+            ..
+        }) = &nested_list_b.kind
+        else {
+            panic!("expected nested list container under parent-b");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: child_beta_parent_span,
+            ..
+        }) = &nested_items_b[0].kind
+        else {
+            panic!("expected child-b list item");
+        };
+
+        assert_ne!(parent_a.span, parent_b.span);
+        assert_eq!(*child_alpha_parent_span, Some(parent_a.span));
+        assert_eq!(*child_beta_parent_span, Some(parent_b.span));
+    }
+
+    #[test]
+    fn sibling_nested_list_items_share_same_enclosing_parent_span() {
+        let structure = build_structure("- parent\n  - child-a\n  - child-b");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children,
+            ..
+        }) = &structure.blocks()[0].kind
+        else {
+            panic!("expected root list");
+        };
+
+        let parent = &children[0];
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            children: parent_children,
+            ..
+        }) = &parent.kind
+        else {
+            panic!("expected parent list item");
+        };
+
+        let nested_list = parent_children
+            .iter()
+            .find(|block| {
+                matches!(
+                    block.kind,
+                    BlockKind::Container(ContainerBlockKind::List { .. })
+                )
+            })
+            .expect("expected nested list");
+
+        let BlockKind::Container(ContainerBlockKind::List {
+            children: nested_items,
+            ..
+        }) = &nested_list.kind
+        else {
+            panic!("expected nested list container");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: child_alpha_parent_span,
+            ..
+        }) = &nested_items[0].kind
+        else {
+            panic!("expected child-a list item");
+        };
+
+        let BlockKind::Container(ContainerBlockKind::ListItem {
+            parent_span: child_beta_parent_span,
+            ..
+        }) = &nested_items[1].kind
+        else {
+            panic!("expected child-b list item");
+        };
+
+        assert_eq!(*child_alpha_parent_span, Some(parent.span));
+        assert_eq!(*child_beta_parent_span, Some(parent.span));
     }
 }

@@ -75,7 +75,7 @@ Total: 9 edits (remove one line each - the `#[expect(...)]` line)
 
 After fix:
 ```bash
-cargo clippy --lib -p lithos-core 2>&1 | grep -E "^error:" 
+cargo clippy --lib -p lithos-core 2>&1 | grep -E "^error:"
 # Should return: error: could not compile... (no actual errors after fix)
 ```
 

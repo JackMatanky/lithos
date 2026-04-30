@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use pulldown_cmark::LinkType;
 
-use crate::note::position::SourceByteOffset;
+use crate::note::{parser::types::LinkKind, position::SourceByteOffset};
 
 /// Raw link extracted from markdown.
 ///
@@ -85,6 +85,28 @@ impl From<LinkType> for RawLinkStyle {
             | LinkType::ShortcutUnknown
             | LinkType::Autolink
             | LinkType::Email => Self::Markdown,
+        }
+    }
+}
+
+impl From<LinkKind> for RawLinkStyle {
+    #[inline]
+    fn from(kind: LinkKind) -> Self {
+        match kind {
+            LinkKind::WikiLink {
+                has_pothole,
+            } => Self::Wiki {
+                has_alias: has_pothole,
+            },
+            LinkKind::Inline
+            | LinkKind::Reference
+            | LinkKind::ReferenceUnknown
+            | LinkKind::Collapsed
+            | LinkKind::CollapsedUnknown
+            | LinkKind::Shortcut
+            | LinkKind::ShortcutUnknown
+            | LinkKind::Autolink
+            | LinkKind::Email => Self::Markdown,
         }
     }
 }

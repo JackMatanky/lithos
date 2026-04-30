@@ -61,6 +61,11 @@
 //! The current entry point is [`MarkdownParser`], which composes parser,
 //! structure, and scanning responsibilities while this module evolves.
 
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Parser pipeline matches borrowed event payloads intentionally"
+)]
+
 /// Block-domain types for parser AST.
 pub(crate) mod block;
 /// Configuration types for the event stream.
@@ -73,6 +78,10 @@ pub(crate) mod references;
 pub(crate) mod stream;
 /// Block structure and AST types for markdown documents.
 pub(crate) mod structure;
+/// Derived inline text projection types.
+pub(crate) mod text;
+/// Parser-owned neutral event and payload types.
+pub(crate) mod types;
 /// Block visitor trait for AST traversal.
 pub(crate) mod visitor;
 
@@ -82,7 +91,12 @@ mod context_integration_test;
 
 use std::borrow::Cow;
 
-use pulldown_cmark::{CowStr, Options, TagEnd};
+use pulldown_cmark::Options;
+use text::{TextContext, TextSequence, TextStyle};
+use types::{
+    BlockEnd, BlockStart, FrontmatterFormat, InlineDelimiterEnd,
+    InlineDelimiterStart, InlineToken, LinkKind, ParserEvent, RangedEvent,
+};
 
 use crate::{
     config::task::TaskConfigSpec,
@@ -112,7 +126,7 @@ where
     // PDA state
     stack: BlockStack<'source>,
     depth: u32,
-    link: Option<RawLink<'source>>,
+    link: Option<ActiveLink<'source>>,
     list_kinds: Vec<RawListKind>,
     open_items: Vec<usize>,
 
@@ -151,7 +165,7 @@ where
 
     fn step_spanned(
         &mut self,
-        event: &stream::EventWithRange<'source>,
+        event: &RangedEvent<'source>,
     ) -> Result<(), NoteIngestError> {
         let range = event.range();
         #[expect(
@@ -159,28 +173,26 @@ where
             reason = "Pattern matching borrowed parser event variants"
         )]
         match event.event() {
-            stream::ParserEvent::BlockStart(block) => {
-                let tag = block.as_start_tag();
-                self.on_start(tag, range.start().as_usize())?;
+            ParserEvent::BlockStart(block) => {
+                self.on_block_start(block, range.start().as_usize())?;
             }
-            stream::ParserEvent::BlockEnd(block) => {
-                let tag = block.as_end_tag();
-                self.on_end(tag, range.end().as_usize())?;
+            ParserEvent::BlockEnd(block) => {
+                self.on_block_end(*block, range.end().as_usize())?;
             }
-            stream::ParserEvent::Inline(inline) => {
+            ParserEvent::Inline(inline) => {
                 self.on_inline_event(inline, range)?;
             }
-            stream::ParserEvent::TaskListMarker(checked) => {
+            ParserEvent::TaskListMarker(checked) => {
                 self.on_task_marker(*checked);
             }
-            stream::ParserEvent::ThematicBreak => {}
+            ParserEvent::ThematicBreak => {}
         }
         Ok(())
     }
 
     fn on_inline_event(
         &mut self,
-        inline: &stream::InlineEvent<'source>,
+        inline: &InlineToken<'source>,
         range: SourceByteRange,
     ) -> Result<(), NoteIngestError> {
         #[expect(
@@ -188,50 +200,49 @@ where
             reason = "Pattern matching borrowed inline parser variants"
         )]
         match inline {
-            stream::InlineEvent::Start(stream::InlineTag::Link {
-                link_type,
-                dest_url,
+            InlineToken::DelimiterStart(InlineDelimiterStart::Link {
+                kind,
+                destination,
                 ..
             }) => {
                 self.open_link(
-                    *link_type,
-                    dest_url.clone(),
+                    *kind,
+                    destination.clone(),
                     false,
                     range.start().as_usize(),
                 )?;
             }
-            stream::InlineEvent::Start(stream::InlineTag::Image {
-                link_type,
-                dest_url,
+            InlineToken::DelimiterStart(InlineDelimiterStart::Image {
+                kind,
+                destination,
                 ..
             }) => {
-                let is_embed = matches!(
-                    link_type,
-                    pulldown_cmark::LinkType::WikiLink { .. }
-                );
+                let is_embed = matches!(kind, LinkKind::WikiLink { .. });
                 self.open_link(
-                    *link_type,
-                    dest_url.clone(),
+                    *kind,
+                    destination.clone(),
                     is_embed,
                     range.start().as_usize(),
                 )?;
             }
-            stream::InlineEvent::End(
-                stream::InlineTagEnd::Link | stream::InlineTagEnd::Image,
+            InlineToken::DelimiterEnd(
+                InlineDelimiterEnd::Link | InlineDelimiterEnd::Image,
             ) => {
                 self.finalize_link();
             }
-            stream::InlineEvent::Text(text) => {
-                self.on_text(
-                    text,
-                    range.start().as_usize()..range.end().as_usize(),
-                )?;
-            }
-            stream::InlineEvent::CodeSpan(text) => self.on_code(text),
-            stream::InlineEvent::Start(_)
-            | stream::InlineEvent::End(_)
-            | stream::InlineEvent::Html(_) => {}
+            InlineToken::Text(_)
+            | InlineToken::InlineCode(_)
+            | InlineToken::DelimiterStart(_)
+            | InlineToken::DelimiterEnd(_)
+            | InlineToken::Html(_)
+            | InlineToken::LineBreak(_)
+            | InlineToken::Math {
+                ..
+            } => {}
         }
+
+        self.record_link_event(inline, range);
+        self.record_inline_event(inline, range);
 
         Ok(())
     }
@@ -240,7 +251,7 @@ where
     /// parsing.
     #[inline]
     #[must_use]
-    pub const fn extension_options() -> Options {
+    pub fn extension_options() -> Options {
         config::EventStreamConfig::default_options()
     }
 
@@ -252,7 +263,7 @@ where
     ) -> Self {
         Self {
             ref_defs,
-            stack: BlockStack::new(4, 4),
+            stack: BlockStack::new(4),
             depth: 0,
             link: None,
             list_kinds: Vec::with_capacity(4),
@@ -261,76 +272,56 @@ where
         }
     }
 
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Only tags relevant to note extraction are handled"
-    )]
-    fn on_start(
+    fn on_block_start(
         &mut self,
-        tag: pulldown_cmark::Tag<'source>,
+        block: &BlockStart<'source>,
         start: usize,
     ) -> Result<(), NoteIngestError> {
-        match tag {
-            pulldown_cmark::Tag::MetadataBlock(kind) => {
+        match block {
+            BlockStart::Frontmatter {
+                format,
+            } => {
                 self.stack.push_leaf(
                     LeafKind::Metadata(MetadataPayload {
-                        kind,
+                        format: *format,
                     }),
                     start,
                 );
             }
-            pulldown_cmark::Tag::Heading {
+            BlockStart::Heading {
                 level,
-                ..
             } => {
                 self.stack.push_leaf(
                     LeafKind::Heading(HeadingPayload {
-                        level,
+                        level: *level,
                     }),
                     start,
                 );
             }
-            pulldown_cmark::Tag::Paragraph => {
+            BlockStart::Paragraph => {
                 self.stack.push_leaf(LeafKind::Paragraph, start);
             }
-            pulldown_cmark::Tag::List(list_start) => {
-                let kind = match list_start {
-                    Some(n) => RawListKind::Ordered(n),
-                    None => RawListKind::Unordered,
+            BlockStart::List {
+                kind,
+            } => {
+                let raw_kind = match kind {
+                    types::ListKind::Ordered(n) => RawListKind::Ordered(*n),
+                    types::ListKind::Unordered => RawListKind::Unordered,
                 };
-                self.list_kinds.push(kind);
+                self.list_kinds.push(raw_kind);
                 self.depth = self.depth.saturating_add(1);
                 self.stack.push_container(ContainerKind::List, start);
             }
-            pulldown_cmark::Tag::Item => {
-                self.on_list_item_start(start)?;
-            }
-            pulldown_cmark::Tag::BlockQuote(_) => {
+            BlockStart::ListItem => self.on_list_item_start(start)?,
+            BlockStart::BlockQuote => {
                 self.depth = self.depth.saturating_add(1);
                 self.stack.push_container(ContainerKind::BlockQuote, start);
             }
-            pulldown_cmark::Tag::CodeBlock(_) => {
+            BlockStart::CodeBlock {
+                ..
+            } => {
                 self.stack.push_container(ContainerKind::CodeBlock, start);
             }
-            pulldown_cmark::Tag::Link {
-                link_type,
-                dest_url,
-                ..
-            } => {
-                self.open_link(link_type, dest_url, false, start)?;
-            }
-            pulldown_cmark::Tag::Image {
-                link_type,
-                dest_url,
-                ..
-            } => {
-                let is_embed = matches!(
-                    link_type,
-                    pulldown_cmark::LinkType::WikiLink { .. }
-                );
-                self.open_link(link_type, dest_url, is_embed, start)?;
-            }
-            _ => {}
         }
         Ok(())
     }
@@ -366,78 +357,55 @@ where
         Ok(())
     }
 
-    #[expect(
-        clippy::match_same_arms,
-        reason = "Symmetric frame finalization keeps tag handling explicit"
-    )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Unsupported markdown end-tags are intentionally ignored"
-    )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern ergonomics are used for mutable stack frame access"
-    )]
-    fn on_end(
+    fn on_block_end(
         &mut self,
-        tag: TagEnd,
+        block: BlockEnd,
         byte_end: usize,
     ) -> Result<(), NoteIngestError> {
-        match tag {
-            TagEnd::Link | TagEnd::Image => self.finalize_link(),
-            TagEnd::MetadataBlock(_) => {
+        match block {
+            BlockEnd::Frontmatter => {
                 self.finalize_leaf_frame(byte_end, 0)?;
             }
-            TagEnd::Heading(_) => {
+            BlockEnd::Heading | BlockEnd::ListItem => {
                 self.finalize_leaf_frame(byte_end, self.depth)?;
             }
-            TagEnd::Paragraph => {
+            BlockEnd::Paragraph => {
                 let mut frame = self.stack.pop()?;
                 if let BlockFrame::Leaf {
                     kind,
                     mut span,
-                    ref mut fragments,
+                    ref mut events,
                 } = frame
                 {
                     span.end = byte_end;
-                    // Propagate fragments to parent list item if applicable.
+                    // Propagate paragraph events to parent list item if
+                    // applicable.
                     if let Some(BlockFrame::Leaf {
                         kind: LeafKind::ListItem(..),
-                        fragments: parent_frags,
+                        events: parent_events,
                         ..
                     }) = self.stack.last_mut()
-                        && parent_frags.is_empty()
+                        && parent_events.is_empty()
                     {
-                        parent_frags.extend(fragments.iter().cloned());
+                        parent_events.extend(events.iter().cloned());
                     }
                     self.sink
-                        .on_leaf_complete(kind, span, fragments, self.depth)?;
-                }
-                if let BlockFrame::Leaf {
-                    fragments,
-                    ..
-                } = frame
-                {
-                    self.stack.pool_mut().put(fragments);
+                        .on_leaf_complete(kind, span, events, self.depth)?;
                 }
             }
 
-            TagEnd::Item => {
-                self.finalize_leaf_frame(byte_end, self.depth)?;
-            }
-            TagEnd::List(_) => {
+            BlockEnd::List => {
                 self.depth = self.depth.saturating_sub(1);
                 self.list_kinds.pop();
                 self.finalize_container_frame(byte_end, self.depth)?;
             }
-            TagEnd::BlockQuote(_) => {
+            BlockEnd::BlockQuote => {
                 self.depth = self.depth.saturating_sub(1);
                 self.finalize_container_frame(byte_end, self.depth)?;
             }
-            TagEnd::CodeBlock => {
+            BlockEnd::CodeBlock => {
                 self.finalize_container_frame(byte_end, self.depth)?;
             }
-            _ => {}
         }
         Ok(())
     }
@@ -448,15 +416,27 @@ where
         depth: u32,
     ) -> Result<(), NoteIngestError> {
         let frame = self.stack.pop()?;
-        if let BlockFrame::Leaf {
-            kind,
-            mut span,
-            fragments,
-        } = frame
-        {
-            span.end = byte_end;
-            self.sink.on_leaf_complete(kind, span, &fragments, depth)?;
-            self.stack.pool_mut().put(fragments);
+        match frame {
+            BlockFrame::Leaf {
+                kind,
+                mut span,
+                events,
+            } => {
+                span.end = byte_end;
+                self.sink.on_leaf_complete(kind, span, &events, depth)?;
+            }
+            BlockFrame::Container {
+                span,
+                ..
+            } => {
+                return Err(frame_role_mismatch_error(
+                    "leaf",
+                    "container",
+                    span,
+                    byte_end,
+                    self.stack.frames.len(),
+                ));
+            }
         }
         Ok(())
     }
@@ -467,13 +447,26 @@ where
         depth: u32,
     ) -> Result<(), NoteIngestError> {
         let frame = self.stack.pop()?;
-        if let BlockFrame::Container {
-            kind,
-            mut span,
-        } = frame
-        {
-            span.end = byte_end;
-            self.sink.on_container_complete(kind, span, depth)?;
+        match frame {
+            BlockFrame::Container {
+                kind,
+                mut span,
+            } => {
+                span.end = byte_end;
+                self.sink.on_container_complete(kind, span, depth)?;
+            }
+            BlockFrame::Leaf {
+                span,
+                ..
+            } => {
+                return Err(frame_role_mismatch_error(
+                    "container",
+                    "leaf",
+                    span,
+                    byte_end,
+                    self.stack.frames.len(),
+                ));
+            }
         }
         Ok(())
     }
@@ -482,33 +475,20 @@ where
         clippy::pattern_type_mismatch,
         reason = "Pattern ergonomics are used for mutable stack frame access"
     )]
-    fn on_text(
+    fn record_inline_event(
         &mut self,
-        text: &CowStr<'source>,
-        range: std::ops::Range<usize>,
-    ) -> Result<(), NoteIngestError> {
+        inline: &InlineToken<'source>,
+        range: SourceByteRange,
+    ) {
         if let Some(BlockFrame::Leaf {
-            fragments,
+            events,
             ..
         }) = self.stack.last_mut()
         {
-            let source_range = SourceByteRange::try_from(range)
-                .map_err(NoteIngestError::Domain)?;
-            fragments.push(TextFragment {
-                text: Cow::from(text.clone()),
-                range: source_range,
-                is_scannable: self.link.is_none(),
-            });
-        }
-        if let Some(ref mut raw) = self.link {
-            raw.text.display.push_str(text.as_ref());
-        }
-        Ok(())
-    }
-
-    fn on_code(&mut self, text: &CowStr<'source>) {
-        if let Some(ref mut raw) = self.link {
-            raw.text.display.push_str(text.as_ref());
+            events.push(RangedEvent::new(
+                ParserEvent::Inline(inline.clone()),
+                range,
+            ));
         }
     }
 
@@ -527,8 +507,22 @@ where
     }
 
     fn finalize_link(&mut self) {
-        if let Some(raw) = self.link.take() {
-            self.sink.on_link(raw);
+        if let Some(mut active) = self.link.take() {
+            active.raw.text.display = link_display_from_events(&active.events);
+            self.sink.on_link(active.raw);
+        }
+    }
+
+    fn record_link_event(
+        &mut self,
+        inline: &InlineToken<'source>,
+        range: SourceByteRange,
+    ) {
+        if let Some(active) = self.link.as_mut() {
+            active.events.push(RangedEvent::new(
+                ParserEvent::Inline(inline.clone()),
+                range,
+            ));
         }
     }
 
@@ -544,22 +538,75 @@ where
 
     fn open_link(
         &mut self,
-        link_type: pulldown_cmark::LinkType,
-        dest_url: CowStr<'source>,
+        link_type: LinkKind,
+        dest_url: Cow<'source, str>,
         is_embed: bool,
         start: usize,
     ) -> Result<(), NoteIngestError> {
         let style = RawLinkStyle::from(link_type);
         let target =
             resolve_reference_target(link_type, dest_url, &self.ref_defs);
-        self.link = Some(RawLink::new(
-            style,
-            is_embed,
-            target,
-            SourceByteOffset::try_from_usize(start)?,
-        ));
+        self.link = Some(ActiveLink {
+            raw: RawLink::new(
+                style,
+                is_embed,
+                target,
+                SourceByteOffset::try_from_usize(start)?,
+            ),
+            events: Vec::with_capacity(8),
+        });
         Ok(())
     }
+}
+
+struct ActiveLink<'source> {
+    raw: RawLink<'source>,
+    events: Vec<RangedEvent<'source>>,
+}
+
+fn frame_role_mismatch_error(
+    expected: &'static str,
+    found: &'static str,
+    opened: BlockSpan,
+    closed_at: usize,
+    depth: usize,
+) -> NoteIngestError {
+    let start_range =
+        SourceByteRange::try_from(opened.start..opened.start).ok();
+    let Ok(end_range) = SourceByteRange::try_from(closed_at..closed_at)
+        .or_else(|_| SourceByteRange::try_from(opened.start..opened.start))
+    else {
+        return NoteParseError::InvalidTopology {
+            code: "parser.stack.range_construction",
+            detail: "failed to build range for frame role mismatch diagnostic"
+                .into(),
+            range: None,
+        }
+        .into();
+    };
+    NoteParseError::EventStackMismatch {
+        expected,
+        found,
+        depth,
+        start_range,
+        end_range,
+    }
+    .into()
+}
+
+fn link_display_from_events(events: &[RangedEvent<'_>]) -> String {
+    TextSequence::from_events(events)
+        .nodes()
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.context(),
+                TextContext::LinkLabel | TextContext::Normal
+            ) && !node.styles().contains(&TextStyle::MathInline)
+                && !node.styles().contains(&TextStyle::MathDisplay)
+        })
+        .map(text::TextNode::text)
+        .collect()
 }
 
 impl<'source> MarkdownParser<'source, BlockExtractor<'source>> {
@@ -601,7 +648,7 @@ pub(crate) trait ArtifactSink<'source> {
         &mut self,
         kind: LeafKind,
         span: BlockSpan,
-        fragments: &[TextFragment<'source>],
+        events: &[RangedEvent<'source>],
         depth: u32,
     ) -> Result<(), NoteIngestError>;
 
@@ -625,30 +672,15 @@ impl BlockSpan {
     }
 }
 
-/// A text fragment with its source position.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TextFragment<'source> {
-    pub text: Cow<'source, str>,
-    pub range: SourceByteRange,
-    pub is_scannable: bool,
-}
-
-/// The parser's pushdown automaton stack, bundled with its backing fragment
-/// pool.
+/// The parser's pushdown automaton stack.
 pub(crate) struct BlockStack<'source> {
     frames: Vec<BlockFrame<'source>>,
-    pool: FragmentPool<'source>,
 }
 
 impl<'source> BlockStack<'source> {
-    fn new(frame_cap: usize, prewarm: u8) -> Self {
-        let mut pool = FragmentPool::new();
-        for _ in 0..prewarm {
-            pool.put(Vec::with_capacity(4));
-        }
+    fn new(frame_cap: usize) -> Self {
         Self {
             frames: Vec::with_capacity(frame_cap),
-            pool,
         }
     }
 
@@ -659,7 +691,7 @@ impl<'source> BlockStack<'source> {
                 start,
                 end: 0,
             },
-            fragments: self.pool.take(),
+            events: Vec::with_capacity(8),
         });
     }
 
@@ -688,10 +720,6 @@ impl<'source> BlockStack<'source> {
     fn last_mut(&mut self) -> Option<&mut BlockFrame<'source>> {
         self.frames.last_mut()
     }
-
-    fn pool_mut(&mut self) -> &mut FragmentPool<'source> {
-        &mut self.pool
-    }
 }
 
 /// A block frame on the parser's pushdown stack.
@@ -699,7 +727,7 @@ pub(crate) enum BlockFrame<'source> {
     Leaf {
         kind: LeafKind,
         span: BlockSpan,
-        fragments: Vec<TextFragment<'source>>,
+        events: Vec<RangedEvent<'source>>,
     },
     Container {
         kind: ContainerKind,
@@ -727,24 +755,24 @@ pub(crate) enum ContainerKind {
 /// Payload for metadata blocks.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct MetadataPayload {
-    pub kind: pulldown_cmark::MetadataBlockKind,
+    pub format: FrontmatterFormat,
 }
 
 /// Payload for heading blocks.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct HeadingPayload {
-    pub level: pulldown_cmark::HeadingLevel,
+    pub level: types::HeadingLevel,
 }
 
 impl HeadingPayload {
     pub(crate) fn to_u8(self) -> u8 {
         match self.level {
-            pulldown_cmark::HeadingLevel::H1 => 1,
-            pulldown_cmark::HeadingLevel::H2 => 2,
-            pulldown_cmark::HeadingLevel::H3 => 3,
-            pulldown_cmark::HeadingLevel::H4 => 4,
-            pulldown_cmark::HeadingLevel::H5 => 5,
-            pulldown_cmark::HeadingLevel::H6 => 6,
+            types::HeadingLevel::H1 => 1,
+            types::HeadingLevel::H2 => 2,
+            types::HeadingLevel::H3 => 3,
+            types::HeadingLevel::H4 => 4,
+            types::HeadingLevel::H5 => 5,
+            types::HeadingLevel::H6 => 6,
         }
     }
 }
@@ -758,93 +786,11 @@ pub(crate) struct ListItemPayload {
     pub is_checkbox: Option<bool>,
 }
 
-// ── Fragment pool ────────────────────────────────────────────────────────────
-
-/// A pool of cleared fragment buffers reused across block frames.
-pub(crate) struct FragmentPool<'source> {
-    pool: Vec<Vec<TextFragment<'source>>>,
-}
-
-impl<'source> FragmentPool<'source> {
-    /// Creates a new pool with an initial backing capacity.
-    pub(crate) fn new() -> Self {
-        Self {
-            pool: Vec::with_capacity(16),
-        }
-    }
-
-    /// Removes and returns a cleared fragment buffer from the pool.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "metrics are user-controlled instrumentation"
-    )]
-    pub(crate) fn take(&mut self) -> Vec<TextFragment<'source>> {
-        FRAGMENT_POOL_METRICS.with(|cell| {
-            let mut metrics = cell.borrow_mut();
-            metrics.takes += 1;
-            metrics.pool_size = self.pool.len();
-            metrics.pool_capacity = self.pool.capacity();
-        });
-        self.pool.pop().unwrap_or_else(|| Vec::with_capacity(4))
-    }
-
-    /// Clears `fragments` and returns it to the pool for later reuse.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "metrics are user-controlled instrumentation"
-    )]
-    pub(crate) fn put(&mut self, mut fragments: Vec<TextFragment<'source>>) {
-        fragments.clear();
-        self.pool.push(fragments);
-        FRAGMENT_POOL_METRICS.with(|cell| {
-            let mut metrics = cell.borrow_mut();
-            metrics.puts += 1;
-            metrics.pool_size = self.pool.len();
-            metrics.pool_capacity = self.pool.capacity();
-        });
-    }
-}
-
-// ── Fragment pool instrumentation ────────────────────────────────────────────
-
-/// Metrics collected during `FragmentPool` operations for benchmarking.
-#[derive(Default, Debug, Clone, Copy)]
-#[non_exhaustive]
-pub struct FragmentPoolMetrics {
-    /// Number of times `take()` was called (buffers requested from pool).
-    pub takes: usize,
-    /// Number of times `put()` was called (buffers returned to pool).
-    pub puts: usize,
-    /// Current number of buffers held in the pool.
-    pub pool_size: usize,
-    /// Current capacity of the pool's internal vector.
-    pub pool_capacity: usize,
-}
-
-thread_local! {
-    static FRAGMENT_POOL_METRICS: std::cell::RefCell<FragmentPoolMetrics> =
-        std::cell::RefCell::new(FragmentPoolMetrics::default());
-}
-
-/// Retrieve the current `FragmentPool` metrics.
-#[inline]
-#[must_use]
-pub fn get_fragment_pool_metrics() -> FragmentPoolMetrics {
-    FRAGMENT_POOL_METRICS.with(|cell| *cell.borrow())
-}
-
-/// Reset `FragmentPool` metrics to zero.
-#[inline]
-pub fn reset_fragment_pool_metrics() {
-    FRAGMENT_POOL_METRICS
-        .with(|cell| *cell.borrow_mut() = FragmentPoolMetrics::default());
-}
-
 // ── Private implementation details ───────────────────────────────────────────
 
 fn resolve_reference_target<'source>(
-    link_type: pulldown_cmark::LinkType,
-    dest_url: CowStr<'source>,
+    link_type: LinkKind,
+    dest_url: Cow<'source, str>,
     ref_defs: &references::ReferenceDefinitions,
 ) -> Cow<'source, str> {
     if is_reference_link_type(link_type)
@@ -852,19 +798,19 @@ fn resolve_reference_target<'source>(
     {
         return Cow::Owned(String::from(resolved));
     }
-    Cow::from(dest_url)
+    dest_url
 }
 
 #[inline]
-fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
+fn is_reference_link_type(link_type: LinkKind) -> bool {
     matches!(
         link_type,
-        pulldown_cmark::LinkType::Reference
-            | pulldown_cmark::LinkType::ReferenceUnknown
-            | pulldown_cmark::LinkType::Collapsed
-            | pulldown_cmark::LinkType::CollapsedUnknown
-            | pulldown_cmark::LinkType::Shortcut
-            | pulldown_cmark::LinkType::ShortcutUnknown
+        LinkKind::Reference
+            | LinkKind::ReferenceUnknown
+            | LinkKind::Collapsed
+            | LinkKind::CollapsedUnknown
+            | LinkKind::Shortcut
+            | LinkKind::ShortcutUnknown
     )
 }
 
@@ -872,6 +818,32 @@ fn is_reference_link_type(link_type: pulldown_cmark::LinkType) -> bool {
 mod tests {
     use super::*;
     use crate::config::task::TaskConfigSpec;
+
+    #[derive(Default)]
+    struct NoopSink;
+
+    impl<'source> ArtifactSink<'source> for NoopSink {
+        fn on_container_complete(
+            &mut self,
+            _kind: ContainerKind,
+            _span: BlockSpan,
+            _depth: u32,
+        ) -> Result<(), NoteIngestError> {
+            Ok(())
+        }
+
+        fn on_leaf_complete(
+            &mut self,
+            _kind: LeafKind,
+            _span: BlockSpan,
+            _events: &[RangedEvent<'source>],
+            _depth: u32,
+        ) -> Result<(), NoteIngestError> {
+            Ok(())
+        }
+
+        fn on_link(&mut self, _link: RawLink<'source>) {}
+    }
 
     fn task_spec_fixture() -> TaskConfigSpec {
         TaskConfigSpec {
@@ -932,6 +904,79 @@ mod tests {
         let md = "See [link ^ref](http://example.test)";
         let raw = parse_raw(md);
         assert!(raw.block_refs.is_empty());
+    }
+
+    #[test]
+    fn should_detect_tag_after_link_label_gap() {
+        let md = "See [label](http://example.test) #tag";
+        let raw = parse_raw(md);
+        assert!(raw.tags.iter().any(|tag| tag.value == "#tag"));
+    }
+
+    #[test]
+    fn should_detect_block_ref_after_link_label_gap() {
+        let md = "See [label](http://example.test) ^my-id";
+        let raw = parse_raw(md);
+        assert!(raw.block_refs.iter().any(|block_ref| block_ref.id == "my-id"));
+    }
+
+    #[test]
+    fn should_not_scan_code_or_math_for_tags() {
+        let md = "`#hidden` $#hidden_math$ #visible";
+        let raw = parse_raw(md);
+        assert_eq!(raw.tags.len(), 1);
+        assert_eq!(
+            raw.tags.first().map(|tag| tag.value.as_ref()),
+            Some("#visible")
+        );
+    }
+
+    #[test]
+    fn finalize_leaf_frame_rejects_container_topology_mismatch() {
+        let mut parser = MarkdownParser::new(
+            "",
+            &task_spec_fixture(),
+            references::ReferenceDefinitions::new(
+                std::collections::HashMap::new(),
+            ),
+            NoopSink,
+        );
+        parser.stack.push_container(ContainerKind::List, 0);
+
+        let result = parser.finalize_leaf_frame(1, 0);
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::EventStackMismatch {
+                expected: "leaf",
+                found: "container",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn finalize_container_frame_rejects_leaf_topology_mismatch() {
+        let mut parser = MarkdownParser::new(
+            "",
+            &task_spec_fixture(),
+            references::ReferenceDefinitions::new(
+                std::collections::HashMap::new(),
+            ),
+            NoopSink,
+        );
+        parser.stack.push_container(ContainerKind::List, 0);
+        parser.stack.push_leaf(LeafKind::Paragraph, 0);
+
+        let result = parser.finalize_container_frame(1, 0);
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::EventStackMismatch {
+                expected: "container",
+                found: "leaf",
+                depth: 1,
+                ..
+            }))
+        ));
     }
 
     #[test]

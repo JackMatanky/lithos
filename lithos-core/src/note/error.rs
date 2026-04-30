@@ -62,7 +62,11 @@
 
 use std::path::PathBuf;
 
-use super::{aggregate::NoteId, paths::NotePath, position::SourceByteOffset};
+use super::{
+    aggregate::NoteId,
+    paths::NotePath,
+    position::{SourceByteOffset, SourceByteRange},
+};
 
 // --- Umbrella Error Types ---
 
@@ -307,6 +311,98 @@ pub enum NoteParseError {
     Encoding {
         /// The vault-relative path of the note.
         path: NotePath,
+    },
+
+    /// Enabled parser extension is not yet represented by parser IR.
+    #[error(
+        "unsupported enabled extension '{extension}' (option: \
+         {parser_option}, stage: {stage}, range: {range:?})"
+    )]
+    UnsupportedEnabledExtension {
+        /// Human-readable extension name.
+        extension: &'static str,
+        /// Option flag that enabled this extension.
+        parser_option: &'static str,
+        /// Parser stage where support is missing.
+        stage: &'static str,
+        /// Optional source location for the unsupported construct.
+        range: Option<SourceByteRange>,
+    },
+
+    /// Parser policy contract was violated while adapting or normalizing
+    /// events.
+    #[error(
+        "policy violation '{policy}' (expected: {expected}, observed: \
+         {observed}, range: {range:?})"
+    )]
+    PolicyViolation {
+        /// The policy name or identifier.
+        policy: &'static str,
+        /// Expected behavior under policy.
+        expected: &'static str,
+        /// Observed behavior or condition.
+        observed: &'static str,
+        /// Optional source location where violation was detected.
+        range: Option<SourceByteRange>,
+    },
+
+    /// Parser block stack underflow while processing a closing token.
+    #[error(
+        "event stack underflow (expected: {expected}, encountered: \
+         {encountered}, depth: {depth}, range: {range:?})"
+    )]
+    EventStackUnderflow {
+        /// Expected open element kind.
+        expected: &'static str,
+        /// Encountered closing element kind.
+        encountered: &'static str,
+        /// Stack depth at failure.
+        depth: usize,
+        /// Source range for the closing token.
+        range: SourceByteRange,
+    },
+
+    /// Parser block stack close token does not match the active open token.
+    #[error(
+        "event stack mismatch (expected: {expected}, found: {found}, depth: \
+         {depth}, start_range: {start_range:?}, end_range: {end_range:?})"
+    )]
+    EventStackMismatch {
+        /// Expected closing kind for current stack top.
+        expected: &'static str,
+        /// Actual closing kind found in stream.
+        found: &'static str,
+        /// Stack depth at mismatch.
+        depth: usize,
+        /// Source range of the opening token if available.
+        start_range: Option<SourceByteRange>,
+        /// Source range of the mismatched closing token.
+        end_range: SourceByteRange,
+    },
+
+    /// End-of-document reached with still-open block containers.
+    #[error(
+        "unclosed blocks at end of document (open_count: {open_count}, \
+         top_kind: {top_kind:?}, at: {at:?})"
+    )]
+    UnclosedBlocks {
+        /// Number of open blocks remaining on the stack.
+        open_count: usize,
+        /// Kind of top-most open block if known.
+        top_kind: Option<&'static str>,
+        /// Source offset where EOF was observed.
+        at: SourceByteOffset,
+    },
+
+    /// Structural topology violation in parser state machine.
+    #[error("invalid parser topology ({code}): {detail} (range: {range:?})")]
+    InvalidTopology {
+        /// Stable diagnostic code for this topology class.
+        code: &'static str,
+        /// Human-readable details.
+        detail: Box<str>,
+        /// Optional source location where the violation was observed.
+        range: Option<SourceByteRange>,
     },
 }
 

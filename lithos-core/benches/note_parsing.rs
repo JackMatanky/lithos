@@ -29,6 +29,9 @@
 //! - Frontmatter YAML parsing (small overhead relative to markdown)
 //! - Database storage (see `db_storage.rs`)
 //! - Concurrent parsing (single-threaded focus)
+//! - String-pool metrics benchmarks (parser metrics API is no longer exposed)
+//! - Historical `string_pool_metrics` trend continuity ended at this removal;
+//!   runs before and after are not directly comparable for that metric.
 //!
 //! # Benchmark Style
 //!
@@ -220,13 +223,7 @@ use std::path::Path;
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use lithos_core::{
-    config::task::TaskConfigSpec,
-    fs::FsReader,
-    note::parser::{
-        self, get_fragment_pool_metrics, reset_fragment_pool_metrics,
-    },
-};
+use lithos_core::{config::task::TaskConfigSpec, fs::FsReader, note::parser};
 
 fn task_spec_fixture() -> TaskConfigSpec {
     TaskConfigSpec::new(
@@ -464,13 +461,13 @@ fn bench_ingest_group(
 }
 
 fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
-    let mut parse_group = c.benchmark_group("note_parsing_ingest_only");
+    let mut parse_group = c.benchmark_group("note_parsing_parse_only");
 
     let task_spec = task_spec_fixture();
 
-    // Ingest-only simple benchmark (no file I/O)
+    // Parse-only simple benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
-    parse_group.bench_function("ingest_markdown/simple", |b| {
+    parse_group.bench_function("parse_markdown/simple", |b| {
         b.iter(|| {
             let outcome =
                 parser::MarkdownParser::parse(samples.simple, &task_spec)
@@ -479,9 +476,9 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
         });
     });
 
-    // Ingest-only medium benchmark (no file I/O)
+    // Parse-only medium benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
-    parse_group.bench_function("ingest_markdown/medium", |b| {
+    parse_group.bench_function("parse_markdown/medium", |b| {
         b.iter(|| {
             let outcome =
                 parser::MarkdownParser::parse(samples.medium, &task_spec)
@@ -490,9 +487,9 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
         });
     });
 
-    // Ingest-only complex benchmark (no file I/O)
+    // Parse-only complex benchmark (no file I/O)
     parse_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
-    parse_group.bench_function("ingest_markdown/complex", |b| {
+    parse_group.bench_function("parse_markdown/complex", |b| {
         b.iter(|| {
             let outcome =
                 parser::MarkdownParser::parse(samples.complex, &task_spec)
@@ -520,98 +517,6 @@ fn bench_note_ingest(c: &mut Criterion) {
 
     bench_ingest_group(c, &reader, root.as_path(), &samples);
     bench_parse_group(c, &samples);
-    bench_string_pool_metrics(c, &samples);
-}
-
-fn bench_string_pool_metrics(c: &mut Criterion, samples: &BenchSamples<'_>) {
-    let mut pool_group = c.benchmark_group("string_pool_metrics");
-
-    let task_spec = task_spec_fixture();
-
-    // Print one-time metrics summary before benchmarks run
-    eprintln!("\n=== StringPool Metrics Summary ===");
-
-    reset_fragment_pool_metrics();
-    let _simple_outcome =
-        parser::MarkdownParser::parse(samples.simple, &task_spec)
-            .expect("extract markdown");
-    let simple_metrics = get_fragment_pool_metrics();
-    eprintln!(
-        "Simple ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
-        samples.simple.len(),
-        simple_metrics.takes,
-        simple_metrics.puts,
-        simple_metrics.pool_size,
-        simple_metrics.pool_capacity
-    );
-
-    reset_fragment_pool_metrics();
-    let _medium_outcome =
-        parser::MarkdownParser::parse(samples.medium, &task_spec)
-            .expect("extract markdown");
-    let medium_metrics = get_fragment_pool_metrics();
-    eprintln!(
-        "Medium ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
-        samples.medium.len(),
-        medium_metrics.takes,
-        medium_metrics.puts,
-        medium_metrics.pool_size,
-        medium_metrics.pool_capacity
-    );
-
-    reset_fragment_pool_metrics();
-    let _complex_outcome =
-        parser::MarkdownParser::parse(samples.complex, &task_spec)
-            .expect("extract markdown");
-    let complex_metrics = get_fragment_pool_metrics();
-    eprintln!(
-        "Complex ({}B): takes={}, puts={}, pool_size={}, pool_cap={}",
-        samples.complex.len(),
-        complex_metrics.takes,
-        complex_metrics.puts,
-        complex_metrics.pool_size,
-        complex_metrics.pool_capacity
-    );
-    eprintln!("================================\n");
-
-    // Reset before benchmarks
-    pool_group.bench_function("parse_simple/string_pool_stats", |b| {
-        b.iter(|| {
-            reset_fragment_pool_metrics();
-            let outcome =
-                parser::MarkdownParser::parse(samples.simple, &task_spec)
-                    .expect("extract markdown");
-            black_box(&outcome);
-            let metrics = get_fragment_pool_metrics();
-            black_box(metrics);
-        });
-    });
-
-    pool_group.bench_function("parse_medium/string_pool_stats", |b| {
-        b.iter(|| {
-            reset_fragment_pool_metrics();
-            let outcome =
-                parser::MarkdownParser::parse(samples.medium, &task_spec)
-                    .expect("extract markdown");
-            black_box(&outcome);
-            let metrics = get_fragment_pool_metrics();
-            black_box(metrics);
-        });
-    });
-
-    pool_group.bench_function("parse_complex/string_pool_stats", |b| {
-        b.iter(|| {
-            reset_fragment_pool_metrics();
-            let outcome =
-                parser::MarkdownParser::parse(samples.complex, &task_spec)
-                    .expect("extract markdown");
-            black_box(&outcome);
-            let metrics = get_fragment_pool_metrics();
-            black_box(metrics);
-        });
-    });
-
-    pool_group.finish();
 }
 
 criterion_group!(benches, bench_note_ingest);

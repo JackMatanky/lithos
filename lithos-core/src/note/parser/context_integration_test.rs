@@ -5,7 +5,7 @@ mod integration {
     use crate::note::parser::{
         config::EventStreamConfig,
         context::ParserContext,
-        stream::{BlockType, ParserEvent},
+        types::{BlockStart, ParserEvent},
     };
 
     #[test]
@@ -62,7 +62,7 @@ fn test() {}
             .filter(|e| {
                 matches!(
                     e.event(),
-                    ParserEvent::BlockStart(BlockType::Heading { .. })
+                    ParserEvent::BlockStart(BlockStart::Heading { .. })
                 )
             })
             .count();

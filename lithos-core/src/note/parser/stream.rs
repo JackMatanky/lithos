@@ -1,9 +1,10 @@
 //! Event stream processing and normalization.
 //!
-//! This module provides the `MarkdownEventStream` component and the
-//! `EventWithRange` type. The stream acts as a facade adapter between
-//! `pulldown-cmark` and the rest of the parsing pipeline, handling event
-//! normalization and extracting link reference definitions.
+//! This module provides the `MarkdownEventStream` component and maps
+//! pulldown events into parser IR (`types::RangedEvent`). The stream acts as a
+//! facade adapter between `pulldown-cmark` and the rest of the parsing
+//! pipeline, handling event normalization and extracting link reference
+//! definitions.
 
 use std::ops::Range;
 
@@ -12,8 +13,13 @@ use pulldown_cmark::{
 };
 
 use super::{
-    config::{BreakPolicy, EventStreamConfig},
+    config::{BreakPolicy, EventRetentionPolicy, EventStreamConfig},
     references::ReferenceDefinitions,
+    types::{
+        BlockEnd, BlockStart, FrontmatterFormat, HeadingLevel,
+        InlineDelimiterEnd, InlineDelimiterStart, InlineToken, LinkKind,
+        ListKind, ParserEvent, RangedEvent,
+    },
 };
 use crate::note::{error::NoteIngestError, position::SourceByteRange};
 
@@ -24,7 +30,7 @@ use crate::note::{error::NoteIngestError, position::SourceByteRange};
 /// A normalized stream of markdown events.
 ///
 /// This acts as the facade adapter between the raw `pulldown-cmark` library
-/// and the internal `Lithos` parsing pipeline. It yields `EventWithRange`
+/// and the internal `Lithos` parsing pipeline. It yields `RangedEvent`
 /// structures instead of raw tuples.
 ///
 /// Reference definitions are extracted during construction and returned
@@ -79,10 +85,12 @@ impl<'source> MarkdownEventStream<'source> {
             let merged = TextMergeWithOffset::new(break_policy_iter);
             StreamState::Merged(EventAdapterIter {
                 inner: merged,
+                retention: config.retention(),
             })
         } else {
             StreamState::Unmerged(EventAdapterIter {
                 inner: break_policy_iter,
+                retention: config.retention(),
             })
         };
 
@@ -101,7 +109,7 @@ impl<'source> MarkdownEventStream<'source> {
               public wrapper"
 )]
 impl<'source> Iterator for MarkdownEventStream<'source> {
-    type Item = Result<EventWithRange<'source>, NoteIngestError>;
+    type Item = Result<RangedEvent<'source>, NoteIngestError>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -182,7 +190,7 @@ where
               internal wrapper"
 )]
 impl<'source> Iterator for StreamState<'source> {
-    type Item = Result<EventWithRange<'source>, NoteIngestError>;
+    type Item = Result<RangedEvent<'source>, NoteIngestError>;
 
     #[inline]
     #[expect(
@@ -203,6 +211,7 @@ where
     I: Iterator<Item = (Event<'source>, Range<usize>)>,
 {
     inner: I,
+    retention: EventRetentionPolicy,
 }
 
 #[expect(
@@ -214,22 +223,27 @@ impl<'source, I> Iterator for EventAdapterIter<'source, I>
 where
     I: Iterator<Item = (Event<'source>, Range<usize>)>,
 {
-    type Item = Result<EventWithRange<'source>, NoteIngestError>;
+    type Item = Result<RangedEvent<'source>, NoteIngestError>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         for (event, byte_range) in self.inner.by_ref() {
-            let Some(parser_event) = ParserEventMapper::try_from_event(&event)
-            else {
-                continue;
-            };
-
             let range = match SourceByteRange::try_from(byte_range) {
                 Ok(range) => range,
                 Err(error) => return Some(Err(NoteIngestError::Domain(error))),
             };
 
-            return Some(Ok(EventWithRange::new(parser_event, range)));
+            let parser_event = match ParserEventMapper::try_from_event(
+                &event,
+                self.retention,
+                Some(range),
+            ) {
+                Ok(Some(parser_event)) => parser_event,
+                Ok(None) => continue,
+                Err(error) => return Some(Err(error)),
+            };
+
+            return Some(Ok(RangedEvent::new(parser_event, range)));
         }
         None
     }
@@ -239,33 +253,61 @@ where
 struct ParserEventMapper;
 
 impl ParserEventMapper {
+    // Payload contract: pulldown emits content-only payloads for inline code
+    // and math events (delimiters are not included), and this adapter preserves
+    // that contract in parser IR.
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Pattern matches borrowed parser events by design"
     )]
     fn try_from_event<'source>(
         event: &Event<'source>,
-    ) -> Option<ParserEvent<'source>> {
+        retention: EventRetentionPolicy,
+        range: Option<SourceByteRange>,
+    ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
         match event {
-            Event::Start(tag) => Self::try_from_start_tag(tag),
-            Event::End(tag_end) => Self::try_from_end_tag(*tag_end),
-            Event::Text(text) => {
-                Some(ParserEvent::Inline(InlineEvent::Text(text.clone())))
+            Event::Start(tag) => {
+                Self::try_from_start_tag(tag, retention, range)
             }
-            Event::Code(code) => {
-                Some(ParserEvent::Inline(InlineEvent::CodeSpan(code.clone())))
+            Event::End(tag_end) => {
+                Self::try_from_end_tag(*tag_end, retention, range)
             }
-            Event::InlineHtml(html) | Event::Html(html) => {
-                Some(ParserEvent::Inline(InlineEvent::Html(html.clone())))
+            Event::Text(text) => Ok(Some(ParserEvent::Inline(
+                InlineToken::Text(text.clone().into()),
+            ))),
+            Event::Code(code) => Ok(Some(ParserEvent::Inline(
+                InlineToken::InlineCode(code.clone().into()),
+            ))),
+            Event::InlineHtml(html) | Event::Html(html) => Ok(Some(
+                ParserEvent::Inline(InlineToken::Html(html.clone().into())),
+            )),
+            Event::Rule => Ok(Some(ParserEvent::ThematicBreak)),
+            Event::SoftBreak | Event::HardBreak => {
+                retention.enforce_unknown_inline("line_break", range)?;
+                Ok(None)
             }
-            Event::Rule => Some(ParserEvent::ThematicBreak),
-            Event::SoftBreak
-            | Event::HardBreak
-            | Event::FootnoteReference(_)
-            | Event::InlineMath(_)
-            | Event::DisplayMath(_) => None,
+            Event::FootnoteReference(reference) => {
+                Ok(Some(ParserEvent::Inline(InlineToken::Text(
+                    CowStr::Boxed(
+                        format!("[^{}]", reference.as_ref()).into_boxed_str(),
+                    )
+                    .into(),
+                ))))
+            }
+            Event::InlineMath(content) => {
+                Ok(Some(ParserEvent::Inline(InlineToken::Math {
+                    kind: super::types::MathKind::Inline,
+                    content: content.clone().into(),
+                })))
+            }
+            Event::DisplayMath(content) => {
+                Ok(Some(ParserEvent::Inline(InlineToken::Math {
+                    kind: super::types::MathKind::Display,
+                    content: content.clone().into(),
+                })))
+            }
             Event::TaskListMarker(checked) => {
-                Some(ParserEvent::TaskListMarker(*checked))
+                Ok(Some(ParserEvent::TaskListMarker(*checked)))
             }
         }
     }
@@ -276,27 +318,29 @@ impl ParserEventMapper {
     )]
     fn try_from_start_tag<'source>(
         tag: &pulldown_cmark::Tag<'source>,
-    ) -> Option<ParserEvent<'source>> {
+        retention: EventRetentionPolicy,
+        range: Option<SourceByteRange>,
+    ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
         match tag {
             pulldown_cmark::Tag::Paragraph => {
-                Some(ParserEvent::BlockStart(BlockType::Paragraph))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::Paragraph)))
             }
             pulldown_cmark::Tag::Heading {
                 level,
                 ..
-            } => Some(ParserEvent::BlockStart(BlockType::Heading {
-                level: *level,
-            })),
+            } => Ok(Some(ParserEvent::BlockStart(BlockStart::Heading {
+                level: (*level).into(),
+            }))),
             pulldown_cmark::Tag::BlockQuote(_) => {
-                Some(ParserEvent::BlockStart(BlockType::BlockQuote))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::BlockQuote)))
             }
             pulldown_cmark::Tag::List(start) => {
-                Some(ParserEvent::BlockStart(BlockType::List {
-                    start: *start,
-                }))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::List {
+                    kind: (*start).into(),
+                })))
             }
             pulldown_cmark::Tag::Item => {
-                Some(ParserEvent::BlockStart(BlockType::Item))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::ListItem)))
             }
             pulldown_cmark::Tag::CodeBlock(code_kind) => {
                 let language = match code_kind {
@@ -309,56 +353,58 @@ impl ParserEventMapper {
                         }
                     }
                 };
-                Some(ParserEvent::BlockStart(BlockType::CodeBlock {
-                    language,
-                }))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::CodeBlock {
+                    info_string: language.map(Into::into),
+                })))
             }
             pulldown_cmark::Tag::MetadataBlock(format) => {
-                Some(ParserEvent::BlockStart(BlockType::Frontmatter {
-                    format: *format,
-                }))
+                Ok(Some(ParserEvent::BlockStart(BlockStart::Frontmatter {
+                    format: (*format).into(),
+                })))
             }
-            pulldown_cmark::Tag::Emphasis => Some(ParserEvent::Inline(
-                InlineEvent::Start(InlineTag::Emphasis),
-            )),
-            pulldown_cmark::Tag::Strong => {
-                Some(ParserEvent::Inline(InlineEvent::Start(InlineTag::Strong)))
+            pulldown_cmark::Tag::Emphasis => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterStart(InlineDelimiterStart::Emphasis),
+            ))),
+            pulldown_cmark::Tag::Strong => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterStart(InlineDelimiterStart::Strong),
+            ))),
+            pulldown_cmark::Tag::Strikethrough => {
+                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
+                    InlineDelimiterStart::Strikethrough,
+                ))))
             }
-            pulldown_cmark::Tag::Strikethrough => Some(ParserEvent::Inline(
-                InlineEvent::Start(InlineTag::Strikethrough),
-            )),
-            pulldown_cmark::Tag::Superscript => Some(ParserEvent::Inline(
-                InlineEvent::Start(InlineTag::Superscript),
-            )),
-            pulldown_cmark::Tag::Subscript => Some(ParserEvent::Inline(
-                InlineEvent::Start(InlineTag::Subscript),
-            )),
+            pulldown_cmark::Tag::Superscript => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterStart(InlineDelimiterStart::Superscript),
+            ))),
+            pulldown_cmark::Tag::Subscript => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterStart(InlineDelimiterStart::Subscript),
+            ))),
             pulldown_cmark::Tag::Link {
                 link_type,
                 dest_url,
                 title,
                 id,
-            } => {
-                Some(ParserEvent::Inline(InlineEvent::Start(InlineTag::Link {
-                    link_type: *link_type,
-                    dest_url: dest_url.clone(),
-                    title: title.clone(),
-                    id: id.clone(),
-                })))
-            }
+            } => Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
+                InlineDelimiterStart::Link {
+                    kind: (*link_type).into(),
+                    destination: dest_url.clone().into(),
+                    title: title.clone().into(),
+                    label: id.clone().into(),
+                },
+            )))),
             pulldown_cmark::Tag::Image {
                 link_type,
                 dest_url,
                 title,
                 id,
-            } => Some(ParserEvent::Inline(InlineEvent::Start(
-                InlineTag::Image {
-                    link_type: *link_type,
-                    dest_url: dest_url.clone(),
-                    title: title.clone(),
-                    id: id.clone(),
+            } => Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
+                InlineDelimiterStart::Image {
+                    kind: (*link_type).into(),
+                    destination: dest_url.clone().into(),
+                    title: title.clone().into(),
+                    label: id.clone().into(),
                 },
-            ))),
+            )))),
             pulldown_cmark::Tag::HtmlBlock
             | pulldown_cmark::Tag::Table(_)
             | pulldown_cmark::Tag::TableHead
@@ -367,64 +413,66 @@ impl ParserEventMapper {
             | pulldown_cmark::Tag::FootnoteDefinition(_)
             | pulldown_cmark::Tag::DefinitionList
             | pulldown_cmark::Tag::DefinitionListTitle
-            | pulldown_cmark::Tag::DefinitionListDefinition => None,
+            | pulldown_cmark::Tag::DefinitionListDefinition => {
+                retention
+                    .enforce_unknown_block("start_tag_extension", range)?;
+                Ok(None)
+            }
         }
     }
 
     fn try_from_end_tag<'source>(
         tag_end: pulldown_cmark::TagEnd,
-    ) -> Option<ParserEvent<'source>> {
+        retention: EventRetentionPolicy,
+        range: Option<SourceByteRange>,
+    ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
         match tag_end {
             pulldown_cmark::TagEnd::Paragraph => {
-                Some(ParserEvent::BlockEnd(BlockType::Paragraph))
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Paragraph)))
             }
-            pulldown_cmark::TagEnd::Heading(level) => {
-                Some(ParserEvent::BlockEnd(BlockType::Heading {
-                    level,
-                }))
+            pulldown_cmark::TagEnd::Heading(_) => {
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Heading)))
             }
             pulldown_cmark::TagEnd::BlockQuote(_) => {
-                Some(ParserEvent::BlockEnd(BlockType::BlockQuote))
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::BlockQuote)))
             }
             pulldown_cmark::TagEnd::List(_) => {
-                Some(ParserEvent::BlockEnd(BlockType::List {
-                    start: None,
-                }))
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::List)))
             }
             pulldown_cmark::TagEnd::Item => {
-                Some(ParserEvent::BlockEnd(BlockType::Item))
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::ListItem)))
             }
             pulldown_cmark::TagEnd::CodeBlock => {
-                Some(ParserEvent::BlockEnd(BlockType::CodeBlock {
-                    language: None,
-                }))
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::CodeBlock)))
             }
-            pulldown_cmark::TagEnd::MetadataBlock(format) => {
-                Some(ParserEvent::BlockEnd(BlockType::Frontmatter {
-                    format,
-                }))
+            pulldown_cmark::TagEnd::MetadataBlock(_) => {
+                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Frontmatter)))
             }
-            pulldown_cmark::TagEnd::Emphasis => Some(ParserEvent::Inline(
-                InlineEvent::End(InlineTagEnd::Emphasis),
-            )),
-            pulldown_cmark::TagEnd::Strong => Some(ParserEvent::Inline(
-                InlineEvent::End(InlineTagEnd::Strong),
-            )),
-            pulldown_cmark::TagEnd::Strikethrough => Some(ParserEvent::Inline(
-                InlineEvent::End(InlineTagEnd::Strikethrough),
-            )),
-            pulldown_cmark::TagEnd::Superscript => Some(ParserEvent::Inline(
-                InlineEvent::End(InlineTagEnd::Superscript),
-            )),
-            pulldown_cmark::TagEnd::Subscript => Some(ParserEvent::Inline(
-                InlineEvent::End(InlineTagEnd::Subscript),
-            )),
-            pulldown_cmark::TagEnd::Link => {
-                Some(ParserEvent::Inline(InlineEvent::End(InlineTagEnd::Link)))
+            pulldown_cmark::TagEnd::Emphasis => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterEnd(InlineDelimiterEnd::Emphasis),
+            ))),
+            pulldown_cmark::TagEnd::Strong => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterEnd(InlineDelimiterEnd::Strong),
+            ))),
+            pulldown_cmark::TagEnd::Strikethrough => {
+                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterEnd(
+                    InlineDelimiterEnd::Strikethrough,
+                ))))
             }
-            pulldown_cmark::TagEnd::Image => {
-                Some(ParserEvent::Inline(InlineEvent::End(InlineTagEnd::Image)))
+            pulldown_cmark::TagEnd::Superscript => {
+                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterEnd(
+                    InlineDelimiterEnd::Superscript,
+                ))))
             }
+            pulldown_cmark::TagEnd::Subscript => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterEnd(InlineDelimiterEnd::Subscript),
+            ))),
+            pulldown_cmark::TagEnd::Link => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterEnd(InlineDelimiterEnd::Link),
+            ))),
+            pulldown_cmark::TagEnd::Image => Ok(Some(ParserEvent::Inline(
+                InlineToken::DelimiterEnd(InlineDelimiterEnd::Image),
+            ))),
             pulldown_cmark::TagEnd::HtmlBlock
             | pulldown_cmark::TagEnd::Table
             | pulldown_cmark::TagEnd::TableHead
@@ -433,198 +481,64 @@ impl ParserEventMapper {
             | pulldown_cmark::TagEnd::FootnoteDefinition
             | pulldown_cmark::TagEnd::DefinitionList
             | pulldown_cmark::TagEnd::DefinitionListTitle
-            | pulldown_cmark::TagEnd::DefinitionListDefinition => None,
+            | pulldown_cmark::TagEnd::DefinitionListDefinition => {
+                retention.enforce_unknown_block("end_tag_extension", range)?;
+                Ok(None)
+            }
         }
     }
 }
 
-/// Block boundary type emitted by the event adapter.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BlockType<'source> {
-    Frontmatter {
-        format: pulldown_cmark::MetadataBlockKind,
-    },
-    Heading {
-        level: pulldown_cmark::HeadingLevel,
-    },
-    Paragraph,
-    BlockQuote,
-    CodeBlock {
-        language: Option<CowStr<'source>>,
-    },
-    List {
-        start: Option<u64>,
-    },
-    Item,
+impl From<pulldown_cmark::HeadingLevel> for HeadingLevel {
+    fn from(value: pulldown_cmark::HeadingLevel) -> Self {
+        match value {
+            pulldown_cmark::HeadingLevel::H1 => Self::H1,
+            pulldown_cmark::HeadingLevel::H2 => Self::H2,
+            pulldown_cmark::HeadingLevel::H3 => Self::H3,
+            pulldown_cmark::HeadingLevel::H4 => Self::H4,
+            pulldown_cmark::HeadingLevel::H5 => Self::H5,
+            pulldown_cmark::HeadingLevel::H6 => Self::H6,
+        }
+    }
 }
 
-impl<'source> BlockType<'source> {
-    /// Converts block IR into a pulldown-cmark start tag.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matching borrowed block variants"
-    )]
-    pub(crate) fn as_start_tag(&self) -> pulldown_cmark::Tag<'source> {
-        match self {
-            Self::Frontmatter {
-                format,
-            } => pulldown_cmark::Tag::MetadataBlock(*format),
-            Self::Heading {
-                level,
-            } => pulldown_cmark::Tag::Heading {
-                level: *level,
-                id: None,
-                classes: Vec::new(),
-                attrs: Vec::new(),
+impl From<Option<u64>> for ListKind {
+    fn from(value: Option<u64>) -> Self {
+        value.map_or(Self::Unordered, Self::Ordered)
+    }
+}
+
+impl From<pulldown_cmark::MetadataBlockKind> for FrontmatterFormat {
+    fn from(value: pulldown_cmark::MetadataBlockKind) -> Self {
+        match value {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => Self::Yaml,
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => Self::Toml,
+        }
+    }
+}
+
+impl From<pulldown_cmark::LinkType> for LinkKind {
+    fn from(value: pulldown_cmark::LinkType) -> Self {
+        match value {
+            pulldown_cmark::LinkType::Inline => Self::Inline,
+            pulldown_cmark::LinkType::Reference => Self::Reference,
+            pulldown_cmark::LinkType::ReferenceUnknown => {
+                Self::ReferenceUnknown
+            }
+            pulldown_cmark::LinkType::Collapsed => Self::Collapsed,
+            pulldown_cmark::LinkType::CollapsedUnknown => {
+                Self::CollapsedUnknown
+            }
+            pulldown_cmark::LinkType::Shortcut => Self::Shortcut,
+            pulldown_cmark::LinkType::ShortcutUnknown => Self::ShortcutUnknown,
+            pulldown_cmark::LinkType::Autolink => Self::Autolink,
+            pulldown_cmark::LinkType::Email => Self::Email,
+            pulldown_cmark::LinkType::WikiLink {
+                has_pothole,
+            } => Self::WikiLink {
+                has_pothole,
             },
-            Self::Paragraph => pulldown_cmark::Tag::Paragraph,
-            Self::BlockQuote => pulldown_cmark::Tag::BlockQuote(None),
-            Self::CodeBlock {
-                language,
-            } => language.as_ref().map_or(
-                pulldown_cmark::Tag::CodeBlock(
-                    pulldown_cmark::CodeBlockKind::Indented,
-                ),
-                |info| {
-                    pulldown_cmark::Tag::CodeBlock(
-                        pulldown_cmark::CodeBlockKind::Fenced(info.clone()),
-                    )
-                },
-            ),
-            Self::List {
-                start,
-            } => pulldown_cmark::Tag::List(*start),
-            Self::Item => pulldown_cmark::Tag::Item,
         }
-    }
-
-    /// Converts block IR into a pulldown-cmark end tag.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matching borrowed block variants"
-    )]
-    pub(crate) fn as_end_tag(&self) -> pulldown_cmark::TagEnd {
-        match self {
-            Self::Frontmatter {
-                format,
-            } => pulldown_cmark::TagEnd::MetadataBlock(*format),
-            Self::Heading {
-                level,
-            } => pulldown_cmark::TagEnd::Heading(*level),
-            Self::Paragraph => pulldown_cmark::TagEnd::Paragraph,
-            Self::BlockQuote => pulldown_cmark::TagEnd::BlockQuote(None),
-            Self::CodeBlock {
-                ..
-            } => pulldown_cmark::TagEnd::CodeBlock,
-            Self::List {
-                ..
-            } => pulldown_cmark::TagEnd::List(false),
-            Self::Item => pulldown_cmark::TagEnd::Item,
-        }
-    }
-}
-
-/// Parser-facing structural and inline event IR.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ParserEvent<'source> {
-    BlockStart(BlockType<'source>),
-    BlockEnd(BlockType<'source>),
-    Inline(InlineEvent<'source>),
-    TaskListMarker(bool),
-    ThematicBreak,
-}
-
-/// Inline payload type used by [`ParserEvent`].
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum InlineEvent<'source> {
-    Start(InlineTag<'source>),
-    End(InlineTagEnd),
-    Text(CowStr<'source>),
-    CodeSpan(CowStr<'source>),
-    Html(CowStr<'source>),
-}
-
-/// Inline boundary start tag used by [`InlineEvent`].
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum InlineTag<'source> {
-    Emphasis,
-    Strong,
-    Strikethrough,
-    Link {
-        link_type: pulldown_cmark::LinkType,
-        dest_url: CowStr<'source>,
-        title: CowStr<'source>,
-        id: CowStr<'source>,
-    },
-    Image {
-        link_type: pulldown_cmark::LinkType,
-        dest_url: CowStr<'source>,
-        title: CowStr<'source>,
-        id: CowStr<'source>,
-    },
-    Superscript,
-    Subscript,
-    _Marker(std::marker::PhantomData<&'source str>),
-}
-
-/// Inline boundary end tag used by [`InlineEvent`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum InlineTagEnd {
-    Emphasis,
-    Strong,
-    Strikethrough,
-    Link,
-    Image,
-    Superscript,
-    Subscript,
-}
-
-/// A markdown event paired with its original source byte range.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EventWithRange<'source> {
-    event: ParserEvent<'source>,
-    range: SourceByteRange,
-}
-
-impl<'source> EventWithRange<'source> {
-    #[must_use]
-    #[inline]
-    pub(crate) const fn new(
-        event: ParserEvent<'source>,
-        range: SourceByteRange,
-    ) -> Self {
-        Self {
-            event,
-            range,
-        }
-    }
-
-    #[must_use]
-    #[inline]
-    pub(crate) const fn event(&self) -> &ParserEvent<'source> {
-        &self.event
-    }
-
-    #[must_use]
-    #[inline]
-    pub(crate) const fn range(&self) -> SourceByteRange {
-        self.range
-    }
-}
-
-impl<'source> TryFrom<(ParserEvent<'source>, Range<usize>)>
-    for EventWithRange<'source>
-{
-    type Error = NoteIngestError;
-
-    fn try_from(
-        (event, byte_range): (ParserEvent<'source>, Range<usize>),
-    ) -> Result<Self, Self::Error> {
-        let range = SourceByteRange::try_from(byte_range)
-            .map_err(NoteIngestError::Domain)?;
-        Ok(Self::new(event, range))
     }
 }
 
@@ -640,7 +554,7 @@ mod tests {
     use super::*;
     use crate::note::position::SourceByteOffset;
 
-    mod event_with_range {
+    mod ranged_event {
         use pulldown_cmark::CowStr;
 
         use super::*;
@@ -653,15 +567,15 @@ mod tests {
             )
             .expect("test range should be valid");
 
-            let event = EventWithRange::new(
-                ParserEvent::Inline(InlineEvent::Text(CowStr::Borrowed(
-                    "hello",
-                ))),
+            let event = RangedEvent::new(
+                ParserEvent::Inline(InlineToken::Text(
+                    CowStr::Borrowed("hello").into(),
+                )),
                 range,
             );
 
             assert!(
-                matches!(event.event(), ParserEvent::Inline(InlineEvent::Text(text)) if text.as_ref() == "hello"),
+                matches!(event.event(), ParserEvent::Inline(InlineToken::Text(text)) if text.as_ref() == "hello"),
                 "event accessor should preserve text payload"
             );
         }
@@ -674,7 +588,7 @@ mod tests {
             )
             .expect("test range should be valid");
 
-            let event = EventWithRange::new(ParserEvent::ThematicBreak, range);
+            let event = RangedEvent::new(ParserEvent::ThematicBreak, range);
 
             assert_eq!(
                 event.range(),
@@ -685,12 +599,12 @@ mod tests {
 
         #[test]
         fn try_from_converts_valid_tuple() {
-            let event = ParserEvent::Inline(InlineEvent::Text(
-                CowStr::Borrowed("test"),
+            let event = ParserEvent::Inline(InlineToken::Text(
+                CowStr::Borrowed("test").into(),
             ));
             let byte_range = 0..4;
 
-            let result = EventWithRange::try_from((event, byte_range));
+            let result = RangedEvent::try_from((event, byte_range));
 
             assert!(
                 result.is_ok(),
@@ -703,8 +617,8 @@ mod tests {
 
         #[test]
         fn try_from_rejects_invalid_range() {
-            let event = ParserEvent::Inline(InlineEvent::Text(
-                CowStr::Borrowed("test"),
+            let event = ParserEvent::Inline(InlineToken::Text(
+                CowStr::Borrowed("test").into(),
             ));
             // Explicitly construct invalid range to test error handling
             #[expect(
@@ -713,7 +627,7 @@ mod tests {
             )]
             let invalid_range = 10..5; // end before start
 
-            let result = EventWithRange::try_from((event, invalid_range));
+            let result = RangedEvent::try_from((event, invalid_range));
 
             assert!(
                 result.is_err(),
@@ -789,7 +703,7 @@ mod tests {
             assert!(
                 events.iter().all(|event| !matches!(
                     event.event(),
-                    ParserEvent::Inline(InlineEvent::Text(text))
+                    ParserEvent::Inline(InlineToken::Text(text))
                         if text.as_ref() == "\n"
                 )),
                 "preserve policy should not emit hard-break newline text in IR"
@@ -805,7 +719,7 @@ mod tests {
 
             assert!(
                 events.iter().any(|event| {
-                    matches!(event.event(), ParserEvent::Inline(InlineEvent::Text(text)) if text.as_ref() == "\n")
+                    matches!(event.event(), ParserEvent::Inline(InlineToken::Text(text)) if text.as_ref() == "\n")
                 }),
                 "hard-as-newline policy should map hard breaks to newline text events"
             );
@@ -821,7 +735,7 @@ mod tests {
             assert!(
                 events.iter().all(|event| !matches!(
                     event.event(),
-                    ParserEvent::Inline(InlineEvent::Text(text))
+                    ParserEvent::Inline(InlineToken::Text(text))
                         if text.as_ref() == "\n"
                 )),
                 "soft-as-space policy should not emit hard-break newline text"
@@ -831,40 +745,171 @@ mod tests {
 
     mod event_adapter_iter_math_contract {
         use super::*;
+        use crate::note::parser::types::MathKind;
 
         #[test]
-        fn inline_math_event_is_not_emitted_into_parser_ir() {
+        fn inline_math_event_is_emitted_as_math_token() {
             let events =
                 collect_events("a $x+y$ b", EventStreamConfig::default());
 
             assert!(
-                !events.iter().any(|event| {
+                events.iter().any(|event| {
                     matches!(
                         event.event(),
-                        ParserEvent::Inline(InlineEvent::Text(text)) if text.as_ref() == "x+y"
+                        ParserEvent::Inline(InlineToken::Math { kind: MathKind::Inline, content }) if content.as_ref() == "x+y"
                     )
                 }),
-                "math payload should not surface as plain inline text when math events are dropped"
+                "inline math payload should be preserved as typed IR token"
             );
         }
 
         #[test]
-        fn display_math_event_is_not_emitted_into_parser_ir() {
+        fn display_math_event_is_emitted_as_math_token() {
             let events = collect_events(
                 "$$\\na^2 + b^2\\n$$",
                 EventStreamConfig::default(),
             );
 
             assert!(
-                !events.iter().any(|event| {
+                events.iter().any(|event| {
                     matches!(
                         event.event(),
-                        ParserEvent::Inline(InlineEvent::Text(text))
-                            if text.as_ref().contains("a^2 + b^2")
+                        ParserEvent::Inline(InlineToken::Math { kind: MathKind::Display, content })
+                            if content.as_ref().contains("a^2 + b^2")
                     )
                 }),
-                "display math payload should not surface as plain inline text \
-                 with current mapper contract"
+                "display math payload should be preserved as typed IR token"
+            );
+        }
+
+        #[test]
+        fn inline_code_payload_is_content_only_without_backticks() {
+            let events =
+                collect_events("pre `x+y` post", EventStreamConfig::default());
+
+            assert!(
+                events.iter().any(|event| {
+                    matches!(
+                        event.event(),
+                        ParserEvent::Inline(InlineToken::InlineCode(content))
+                            if content.as_ref() == "x+y"
+                    )
+                }),
+                "inline code payload should be delimiter-stripped content"
+            );
+            assert!(
+                events.iter().all(|event| {
+                    !matches!(
+                        event.event(),
+                        ParserEvent::Inline(InlineToken::InlineCode(content))
+                            if content.as_ref().contains('`')
+                    )
+                }),
+                "inline code payload must not contain backtick delimiters"
+            );
+        }
+
+        #[test]
+        fn merge_text_does_not_collapse_math_into_text() {
+            let events =
+                collect_events("a $x+y$ b", EventStreamConfig::default());
+
+            assert!(
+                events.iter().any(|event| {
+                    matches!(
+                        event.event(),
+                        ParserEvent::Inline(InlineToken::Math { kind: MathKind::Inline, content })
+                            if content.as_ref() == "x+y"
+                    )
+                }),
+                "math token should remain explicit under merge_text=true"
+            );
+
+            assert!(
+                events.iter().all(|event| {
+                    !matches!(
+                        event.event(),
+                        ParserEvent::Inline(InlineToken::Text(text))
+                            if text.as_ref().contains("x+y")
+                    )
+                }),
+                "text merging should not absorb math payload into plain text"
+            );
+        }
+    }
+
+    mod event_adapter_iter_extension_drop_baseline {
+        use super::*;
+
+        #[test]
+        fn footnote_reference_event_is_not_emitted_into_parser_ir() {
+            let events = collect_events(
+                "[^n]\n\n[^n]: Footnote body",
+                EventStreamConfig::new(
+                    Options::ENABLE_FOOTNOTES,
+                    BreakPolicy::NormalizeAsText,
+                    true,
+                ),
+            );
+
+            assert!(
+                events.iter().any(|event| {
+                    matches!(
+                        event.event(),
+                        ParserEvent::Inline(InlineToken::Text(text))
+                            if text.as_ref().contains("Footnote body")
+                    )
+                }),
+                "footnote content is currently flattened into plain inline \
+                 text (no dedicated footnote IR token)"
+            );
+        }
+
+        #[test]
+        fn table_structure_events_are_not_emitted_into_parser_ir() {
+            let events = collect_events(
+                "| h |\\n| - |\\n| c |",
+                EventStreamConfig::new(
+                    Options::ENABLE_TABLES,
+                    BreakPolicy::NormalizeAsText,
+                    true,
+                ),
+            );
+
+            assert!(
+                events.iter().all(|event| matches!(
+                    event.event(),
+                    ParserEvent::Inline(_)
+                        | ParserEvent::BlockStart(BlockStart::Paragraph)
+                        | ParserEvent::BlockEnd(BlockEnd::Paragraph)
+                )),
+                "table-specific structure is currently flattened to paragraph \
+                 and inline events"
+            );
+        }
+
+        #[test]
+        fn reject_policy_returns_error_for_unknown_block_extensions() {
+            let config = EventStreamConfig::with_policy(
+                crate::note::parser::config::ExtensionsPolicy::new(
+                    crate::note::parser::config::ExtensionFlags::TABLES,
+                    crate::note::parser::config::MetadataPolicy::None,
+                ),
+                crate::note::parser::config::EventRetentionPolicy::new(
+                    crate::note::parser::config::UnknownEventPolicy::Reject,
+                    crate::note::parser::config::UnknownEventPolicy::Drop,
+                ),
+                BreakPolicy::NormalizeAsText,
+                true,
+            );
+
+            let (stream, _references) =
+                MarkdownEventStream::new("| h |\n| - |\n| c |", config);
+            let result = stream.collect::<Result<Vec<_>, _>>();
+
+            assert!(
+                result.is_err(),
+                "reject policy should fail on unknown block events"
             );
         }
     }
@@ -898,14 +943,14 @@ mod tests {
     fn collect_events(
         source: &str,
         config: EventStreamConfig,
-    ) -> Vec<EventWithRange<'_>> {
+    ) -> Vec<RangedEvent<'_>> {
         let (stream, _references) = MarkdownEventStream::new(source, config);
         stream
             .collect::<Result<Vec<_>, _>>()
             .expect("event stream should not produce invalid spans")
     }
 
-    fn collect_text_payloads(events: &[EventWithRange<'_>]) -> Vec<String> {
+    fn collect_text_payloads(events: &[RangedEvent<'_>]) -> Vec<String> {
         events
             .iter()
             .filter_map(|event| {
@@ -914,7 +959,7 @@ mod tests {
                     reason = "Matching borrowed enum payload inside iterator \
                               adapter"
                 )]
-                if let ParserEvent::Inline(InlineEvent::Text(text)) =
+                if let ParserEvent::Inline(InlineToken::Text(text)) =
                     event.event()
                 {
                     Some(text.to_string())

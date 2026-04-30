@@ -32,7 +32,7 @@
 //!         level: HeadingLevel,
 //!         depth: u32,
 //!     ) {
-//!         if let Some(text) = block.text() {
+//!         if let Some(text) = plain_text(block) {
 //!             self.headings.push(text);
 //!         }
 //!     }
@@ -44,9 +44,10 @@
 //! println!("Found {} headings", collector.headings.len());
 //! ```
 
-use pulldown_cmark::{CowStr, MetadataBlockKind};
-
-use super::block::{Block, HeadingLevel, ListKind};
+use super::{
+    block::Block,
+    types::{FrontmatterFormat, HeadingLevel, ListKind},
+};
 
 /// Visitor trait for traversing the block AST.
 ///
@@ -107,7 +108,7 @@ pub trait BlockVisitor<'source> {
     fn visit_code_block(
         &mut self,
         block: &Block<'source>,
-        language: Option<&CowStr<'source>>,
+        language: Option<&str>,
         depth: u32,
     ) {
     }
@@ -123,7 +124,7 @@ pub trait BlockVisitor<'source> {
     fn visit_frontmatter(
         &mut self,
         block: &Block<'source>,
-        format: MetadataBlockKind,
+        format: FrontmatterFormat,
         depth: u32,
     ) {
     }
@@ -186,7 +187,8 @@ pub trait BlockVisitor<'source> {
     /// Visit a paragraph block.
     ///
     /// Paragraphs contain inline content (text, links, emphasis, etc.) stored
-    /// as events. Use `block.text()` to extract plain text.
+    /// as events. Use `text::TextSequence::from_events(...)` to derive plain
+    /// text and scannable ranges.
     ///
     /// # Parameters
     ///
@@ -222,12 +224,35 @@ pub trait BlockVisitor<'source> {
     clippy::missing_trait_methods,
     reason = "Visitors override only methods required for each focused test"
 )]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Test helpers destructure borrowed block variants"
+)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Non-text blocks intentionally map to None in test helper"
+)]
 mod tests {
     use super::*;
     use crate::note::parser::{
         config::EventStreamConfig, context::ParserContext,
-        structure::DocStructure,
+        structure::DocStructure, text::TextSequence,
     };
+
+    fn plain_text_from_block(block: &Block<'_>) -> Option<String> {
+        match &block.kind {
+            crate::note::parser::block::BlockKind::Leaf(
+                crate::note::parser::block::LeafBlockKind::Paragraph {
+                    events,
+                }
+                | crate::note::parser::block::LeafBlockKind::Heading {
+                    events,
+                    ..
+                },
+            ) => Some(TextSequence::from_events(events).as_plain_text()),
+            _ => None,
+        }
+    }
 
     /// Test visitor that collects block type counts.
     struct BlockCounter {
@@ -284,7 +309,7 @@ mod tests {
         fn visit_code_block(
             &mut self,
             _block: &Block<'source>,
-            _language: Option<&CowStr<'source>>,
+            _language: Option<&str>,
             _depth: u32,
         ) {
             self.code_blocks += 1;
@@ -293,7 +318,7 @@ mod tests {
         fn visit_frontmatter(
             &mut self,
             _block: &Block<'source>,
-            _format: MetadataBlockKind,
+            _format: FrontmatterFormat,
             _depth: u32,
         ) {
             self.frontmatter += 1;
@@ -371,7 +396,7 @@ mod tests {
         fn visit_code_block(
             &mut self,
             _block: &Block<'source>,
-            _language: Option<&CowStr<'source>>,
+            _language: Option<&str>,
             depth: u32,
         ) {
             self.record_depth(depth);
@@ -551,7 +576,7 @@ Regular paragraph
 
     impl<'source> BlockVisitor<'source> for TextCollector {
         fn visit_paragraph(&mut self, block: &Block<'source>, _depth: u32) {
-            if let Some(text) = block.text() {
+            if let Some(text) = plain_text_from_block(block) {
                 self.texts.push(text);
             }
         }

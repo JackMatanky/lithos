@@ -43,9 +43,8 @@
 )]
 
 use super::{
-    config::EventStreamConfig,
-    references::ReferenceDefinitions,
-    stream::{EventWithRange, MarkdownEventStream},
+    config::EventStreamConfig, references::ReferenceDefinitions,
+    stream::MarkdownEventStream, types::RangedEvent,
 };
 use crate::note::error::NoteIngestError;
 
@@ -77,7 +76,7 @@ pub(crate) struct ParserContext<'source> {
     /// The original markdown source text.
     source: &'source str,
     /// The cached stream of normalized markdown events.
-    events: Vec<EventWithRange<'source>>,
+    events: Vec<RangedEvent<'source>>,
     /// Normalized link reference definitions extracted from the source.
     references: ReferenceDefinitions,
 }
@@ -127,7 +126,7 @@ impl<'source> ParserContext<'source> {
     /// - All events have source byte ranges attached
     #[must_use]
     #[inline]
-    pub(crate) fn events(&self) -> &[EventWithRange<'source>] {
+    pub(crate) fn events(&self) -> &[RangedEvent<'source>] {
         &self.events
     }
 
@@ -158,7 +157,7 @@ impl<'source> ParserContext<'source> {
 )]
 mod tests {
     use super::*;
-    use crate::note::parser::stream::{InlineEvent, ParserEvent};
+    use crate::note::parser::types::{InlineToken, ParserEvent};
 
     mod parser_context_new {
         use super::*;
@@ -215,7 +214,7 @@ mod tests {
                                   test"
                     )]
                     match e.event() {
-                        ParserEvent::Inline(InlineEvent::Text(s)) => {
+                        ParserEvent::Inline(InlineToken::Text(s)) => {
                             Some(s.as_ref())
                         }
                         _ => None,
