@@ -82,8 +82,6 @@ pub(crate) mod structure;
 pub(crate) mod text;
 /// Parser-owned neutral event and payload types.
 pub(crate) mod types;
-/// Block visitor trait for AST traversal.
-pub(crate) mod visitor;
 
 #[cfg(test)]
 #[path = "context_integration_test.rs"]

@@ -47,6 +47,161 @@ use crate::note::{
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TRAVERSAL ITERATOR API
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Event emitted during pre-order traversal of the document AST.
+///
+/// Each container block (List, `BlockQuote`, `ListItem`) emits both an `Enter`
+/// and `Exit` event. Leaf blocks (Paragraph, Heading, etc.) emit only `Enter`.
+///
+/// # Traversal Order
+///
+/// Pre-order traversal visits parent blocks before their children:
+/// 1. Enter container
+/// 2. Enter/Exit children (recursively)
+/// 3. Exit container
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use lithos_core::note::parser::structure::{DocStructure, TraversalEvent};
+///
+/// let structure = DocStructure::from_context(&ctx)?;
+/// for event in structure.iter_preorder() {
+///     match event {
+///         TraversalEvent::Enter(block, depth) => {
+///             println!("Entering block at depth {}", depth);
+///         }
+///         TraversalEvent::Exit(block, depth) => {
+///             println!("Exiting block at depth {}", depth);
+///         }
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum TraversalEvent<'tree, 'source> {
+    /// Entering a block (emitted for all blocks).
+    Enter(&'tree Block<'source>, u32),
+    /// Exiting a container block (emitted only for containers).
+    Exit(&'tree Block<'source>, u32),
+}
+
+/// Frame type for the traversal stack.
+#[derive(Debug, Clone, Copy)]
+enum StackFrame<'tree, 'source> {
+    /// Enter a block (emit Enter event, then push children and Exit marker).
+    Enter(&'tree Block<'source>, u32),
+    /// Exit a container block (emit Exit event).
+    Exit(&'tree Block<'source>, u32),
+}
+
+/// Pre-order depth-first iterator over the document AST.
+///
+/// This iterator emits [`TraversalEvent`] instances as it traverses the block
+/// tree. Container blocks emit both `Enter` and `Exit` events, while leaf
+/// blocks emit only `Enter`.
+///
+/// # Implementation Notes
+///
+/// - Uses a stack-based algorithm to avoid recursion
+/// - Depth tracking handled automatically
+/// - Children pushed in reverse order for forward iteration
+/// - Exit markers pushed before children to ensure proper order
+pub(crate) struct PreorderIter<'tree, 'source> {
+    /// Stack of frames to process.
+    stack: Vec<StackFrame<'tree, 'source>>,
+}
+
+impl<'tree, 'source> PreorderIter<'tree, 'source> {
+    /// Creates a new pre-order iterator from root blocks.
+    fn new(roots: &'tree [Block<'source>]) -> Self {
+        // Most documents have shallow nesting (2-4 levels).
+        // Pre-allocate 8 frames to handle typical nested lists/blockquotes.
+        let mut stack = Vec::with_capacity(8.max(roots.len()));
+        // Push roots in reverse order so we pop in forward order
+        for root in roots.iter().rev() {
+            stack.push(StackFrame::Enter(root, 0));
+        }
+        Self {
+            stack,
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Basic iterator implementation; default trait methods are \
+              sufficient"
+)]
+impl<'tree, 'source> Iterator for PreorderIter<'tree, 'source> {
+    type Item = TraversalEvent<'tree, 'source>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let frame = self.stack.pop()?;
+
+        match frame {
+            StackFrame::Exit(block, depth) => {
+                // Just emit the exit event
+                Some(TraversalEvent::Exit(block, depth))
+            }
+            StackFrame::Enter(block, depth) => {
+                // For containers, push Exit marker first (so it's processed
+                // last) then push children in reverse order
+                match &block.kind {
+                    BlockKind::Container(ContainerBlockKind::BlockQuote {
+                        children,
+                    }) => {
+                        // Push exit marker first (will be popped last)
+                        self.stack.push(StackFrame::Exit(block, depth));
+
+                        // Push children in reverse order (will be popped in
+                        // forward order)
+                        let child_depth = depth.saturating_add(1);
+                        for child in children.iter().rev() {
+                            self.stack
+                                .push(StackFrame::Enter(child, child_depth));
+                        }
+                    }
+                    BlockKind::Container(ContainerBlockKind::List {
+                        children,
+                        ..
+                    }) => {
+                        // Push exit marker first (will be popped last)
+                        self.stack.push(StackFrame::Exit(block, depth));
+
+                        // List items do NOT increment depth
+                        for child in children.iter().rev() {
+                            self.stack.push(StackFrame::Enter(child, depth));
+                        }
+                    }
+                    BlockKind::Container(ContainerBlockKind::ListItem {
+                        children,
+                        ..
+                    }) => {
+                        // Push exit marker first (will be popped last)
+                        self.stack.push(StackFrame::Exit(block, depth));
+
+                        // Push children in reverse order
+                        let child_depth = depth.saturating_add(1);
+                        for child in children.iter().rev() {
+                            self.stack
+                                .push(StackFrame::Enter(child, child_depth));
+                        }
+                    }
+                    BlockKind::Leaf(_) => {
+                        // Leaf blocks have no children, no exit event
+                    }
+                }
+
+                // Emit Enter event
+                Some(TraversalEvent::Enter(block, depth))
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DOC STRUCTURE - THE DOCUMENT AST
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -140,110 +295,79 @@ impl<'source> DocStructure<'source> {
         &self.blocks
     }
 
-    /// Traverse the document AST using a visitor.
+    /// Returns an iterator over the document blocks in pre-order.
     ///
-    /// This method performs a **pre-order depth-first traversal** of the block
-    /// tree, calling the appropriate `visit_*` method on the visitor for each
-    /// block. Container blocks (lists, blockquotes) are visited before their
-    /// children, and depth tracking is handled automatically.
+    /// This iterator emits [`TraversalEvent`] instances for each block in the
+    /// tree. Container blocks emit both `Enter` and `Exit` events, while leaf
+    /// blocks emit only `Enter`.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// struct BlockCounter {
-    ///     count: usize,
-    /// }
-    ///
-    /// impl<'source> BlockVisitor<'source> for BlockCounter {
-    ///     fn visit_paragraph(&mut self, _block: &Block, _depth: u32) {
-    ///         self.count += 1;
+    /// let structure = DocStructure::from_context(&ctx)?;
+    /// for event in structure.iter_preorder() {
+    ///     match event {
+    ///         TraversalEvent::Enter(block, depth) => {
+    ///             println!("Block at depth {}", depth);
+    ///         }
+    ///         TraversalEvent::Exit(..) => {}
     ///     }
-    ///     fn visit_heading(&mut self, _block: &Block, _level: HeadingLevel, _depth: u32) {
-    ///         self.count += 1;
-    ///     }
-    ///     // ... implement other visit methods
     /// }
-    ///
-    /// let mut counter = BlockCounter { count: 0 };
-    /// structure.walk(&mut counter);
-    /// println!("Found {} blocks", counter.count);
     /// ```
-    pub(crate) fn walk<V>(&self, visitor: &mut V)
+    #[inline]
+    #[must_use]
+    pub(crate) fn iter_preorder(&self) -> PreorderIter<'_, 'source> {
+        PreorderIter::new(&self.blocks)
+    }
+
+    /// Execute a callback for each block in pre-order traversal.
+    ///
+    /// This is a convenience method that calls `f` for each `Enter` event,
+    /// ignoring `Exit` events. Use [`iter_preorder`](Self::iter_preorder) if
+    /// you need full control over Enter/Exit events.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let mut count = 0;
+    /// structure.for_each_block(|block, depth| {
+    ///     count += 1;
+    /// });
+    /// println!("Found {} blocks", count);
+    /// ```
+    pub(crate) fn for_each_block<F>(&self, mut f: F)
     where
-        V: super::visitor::BlockVisitor<'source>,
+        F: FnMut(&Block<'source>, u32),
     {
-        for block in &self.blocks {
-            Self::walk_block(block, visitor, 0);
+        for event in self.iter_preorder() {
+            if let TraversalEvent::Enter(block, depth) = event {
+                f(block, depth);
+            }
         }
     }
 
-    /// Recursively walk a single block and its children.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matches borrowed block kinds by design"
-    )]
-    fn walk_block<V>(block: &Block<'source>, visitor: &mut V, depth: u32)
-    where
-        V: super::visitor::BlockVisitor<'source>,
-    {
-        match &block.kind {
-            BlockKind::Leaf(LeafBlockKind::Paragraph {
-                ..
-            }) => {
-                visitor.visit_paragraph(block, depth);
-            }
-            BlockKind::Leaf(LeafBlockKind::Heading {
-                level,
-                ..
-            }) => {
-                visitor.visit_heading(block, *level, depth);
-            }
-            BlockKind::Leaf(LeafBlockKind::CodeBlock {
-                language,
-                ..
-            }) => {
-                visitor.visit_code_block(block, language.as_deref(), depth);
-            }
-            BlockKind::Leaf(LeafBlockKind::Frontmatter {
-                format,
-                ..
-            }) => {
-                visitor.visit_frontmatter(block, *format, depth);
-            }
-            BlockKind::Leaf(LeafBlockKind::ThematicBreak) => {
-                visitor.visit_thematic_break(block, depth);
-            }
-            BlockKind::Container(ContainerBlockKind::BlockQuote {
-                children,
-            }) => {
-                visitor.visit_blockquote(block, depth);
-                // Visit children with incremented depth
-                for child in children {
-                    Self::walk_block(child, visitor, depth.saturating_add(1));
-                }
-            }
-            BlockKind::Container(ContainerBlockKind::List {
-                kind,
-                children,
-            }) => {
-                visitor.visit_list(block, *kind, depth);
-                // Visit list items (children are ListItem blocks)
-                for child in children {
-                    Self::walk_block(child, visitor, depth);
-                }
-            }
-            BlockKind::Container(ContainerBlockKind::ListItem {
-                is_checked,
-                children,
-                ..
-            }) => {
-                visitor.visit_list_item(block, *is_checked, depth);
-                // Visit item contents with incremented depth
-                for child in children {
-                    Self::walk_block(child, visitor, depth.saturating_add(1));
-                }
-            }
-        }
+    /// Collect all blocks in pre-order traversal.
+    ///
+    /// Returns a vector of (block, depth) tuples for all blocks in the
+    /// document. This is useful when you need to process blocks multiple times
+    /// or when you need random access to the traversal order.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let blocks = structure.blocks_preorder();
+    /// for (block, depth) in &blocks {
+    ///     println!("Block at depth {}", depth);
+    /// }
+    /// ```
+    #[must_use]
+    pub(crate) fn blocks_preorder(&self) -> Vec<(&Block<'source>, u32)> {
+        self.iter_preorder()
+            .filter_map(|event| match event {
+                TraversalEvent::Enter(block, depth) => Some((block, depth)),
+                TraversalEvent::Exit(..) => None,
+            })
+            .collect()
     }
 }
 
@@ -1481,5 +1605,226 @@ mod tests {
                 ..
             }))
         ));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // TRAVERSAL ITERATOR TESTS
+    // ═════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn iter_preorder_handles_empty_document() {
+        let structure = build_structure("");
+        let count = structure.iter_preorder().count();
+        assert_eq!(count, 0, "empty document should have no events");
+    }
+
+    #[test]
+    fn iter_preorder_emits_enter_only_for_leaf_blocks() {
+        let structure = build_structure("# Heading\n\nParagraph");
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        // Should have 2 Enter events, no Exit events (both are leaves)
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0], TraversalEvent::Enter(_, 0)));
+        assert!(matches!(events[1], TraversalEvent::Enter(_, 0)));
+    }
+
+    #[test]
+    fn iter_preorder_emits_enter_exit_for_containers() {
+        let structure = build_structure("- Item 1\n- Item 2");
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        // Tight list structure:
+        // List (Enter) + Item1 (Enter) + Para (Enter) + Item1 (Exit) +
+        // Item2 (Enter) + Para (Enter) + Item2 (Exit) + List (Exit)
+        // = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 = 8 events
+        assert_eq!(events.len(), 8);
+
+        // First event should be List Enter at depth 0
+        assert!(matches!(events[0], TraversalEvent::Enter(_, 0)));
+        // Last event should be List Exit at depth 0
+        assert!(matches!(events[7], TraversalEvent::Exit(_, 0)));
+    }
+
+    #[test]
+    fn iter_preorder_tracks_depth_correctly() {
+        // Use loose list in blockquote to get depth-2 paragraph
+        let structure = build_structure("> - Item\n>\n>   Paragraph");
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        let depths: Vec<u32> = events
+            .iter()
+            .filter_map(|event| match event {
+                TraversalEvent::Enter(_, depth) => Some(*depth),
+                TraversalEvent::Exit(..) => None,
+            })
+            .collect();
+
+        assert!(depths.contains(&0), "should have depth 0 (blockquote)");
+        assert!(depths.contains(&1), "should have depth 1 (list/items)");
+        assert!(depths.contains(&2), "should have depth 2 (paragraph in item)");
+    }
+
+    #[test]
+    fn iter_preorder_nested_list_depth_matches_visitor() {
+        // This test verifies depth behavior matches visitor:
+        // List items do NOT increment depth, only their children do
+        //
+        // Note: Tight lists (no blank lines) create list items that contain
+        // the nested list directly. The structure is:
+        // - List (depth 0)
+        //   - Item "Item" (depth 0)
+        //     - Paragraph "Item" (depth 1)
+        //     - List (depth 1)
+        //       - Item "Nested" (depth 1)
+        //         - Paragraph "Nested" (depth 2)
+        let structure = build_structure("- Item\n  - Nested");
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        let enter_depths: Vec<u32> = events
+            .iter()
+            .filter_map(|event| match event {
+                TraversalEvent::Enter(_, depth) => Some(*depth),
+                TraversalEvent::Exit(..) => None,
+            })
+            .collect();
+
+        // Actual structure with tight list:
+        // List(0), Item(0), Para(1), List(1), Item(1), Para(2)
+        assert_eq!(
+            enter_depths,
+            vec![0, 0, 1, 1, 1, 2],
+            "depths should match actual tight list structure"
+        );
+    }
+
+    #[test]
+    fn iter_preorder_event_order_is_preorder() {
+        let structure = build_structure("> Quote\n>\n> - Item");
+
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        // Pre-order means:
+        // 1. Enter BlockQuote
+        // 2. Enter Paragraph (Quote text)
+        // 3. Enter List
+        // 4. Enter ListItem
+        // 5. Enter Paragraph (Item text)
+        // 6. Exit ListItem
+        // 7. Exit List
+        // 8. Exit BlockQuote
+
+        assert!(events.len() >= 8);
+
+        // First Enter should be the blockquote
+        if let TraversalEvent::Enter(block, depth) = events[0] {
+            assert_eq!(depth, 0);
+            assert!(matches!(
+                block.kind,
+                BlockKind::Container(ContainerBlockKind::BlockQuote { .. })
+            ));
+        } else {
+            panic!("First event should be Enter");
+        }
+
+        // Find the last event (should be blockquote exit)
+        let last_exit = events
+            .iter()
+            .rev()
+            .find(|e| matches!(e, TraversalEvent::Exit(..)))
+            .expect("should have at least one exit event");
+
+        if let TraversalEvent::Exit(block, depth) = last_exit {
+            assert_eq!(*depth, 0);
+            assert!(matches!(
+                block.kind,
+                BlockKind::Container(ContainerBlockKind::BlockQuote { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn for_each_block_visits_all_blocks() {
+        let structure = build_structure("# Heading\n\nParagraph");
+        let mut count = 0usize;
+
+        structure.for_each_block(|_block, _depth| {
+            count += 1;
+        });
+
+        assert_eq!(count, 2usize, "should visit heading and paragraph");
+    }
+
+    #[test]
+    fn for_each_block_ignores_exit_events() {
+        let structure = build_structure("- Item");
+        let mut count = 0usize;
+
+        structure.for_each_block(|_block, _depth| {
+            count += 1;
+        });
+
+        // List + ListItem + Paragraph = 3 blocks (tight list creates paragraph)
+        // Should NOT count Exit events
+        assert_eq!(count, 3usize, "should count only Enter events");
+    }
+
+    #[test]
+    fn blocks_preorder_returns_all_blocks() {
+        let structure = build_structure("# Heading\n\n- Item 1\n- Item 2");
+        let blocks = structure.blocks_preorder();
+
+        // Heading + List + Item1 + Para1 + Item2 + Para2 = 6 blocks
+        assert_eq!(blocks.len(), 6);
+        assert_eq!(blocks[0].1, 0, "heading at depth 0");
+        assert_eq!(blocks[1].1, 0, "list at depth 0");
+        assert_eq!(blocks[2].1, 0, "item1 at depth 0");
+        assert_eq!(blocks[3].1, 1, "para1 at depth 1");
+        assert_eq!(blocks[4].1, 0, "item2 at depth 0");
+        assert_eq!(blocks[5].1, 1, "para2 at depth 1");
+    }
+
+    #[test]
+    fn blocks_preorder_preserves_depth_info() {
+        let structure = build_structure("> - Item\n>\n>   Text");
+        let blocks = structure.blocks_preorder();
+
+        let depths: Vec<u32> = blocks.iter().map(|(_, depth)| *depth).collect();
+
+        // BlockQuote(0) + List(1) + Item(1) + Para("Item")(2) + Para("Text")(2)
+        // Loose list creates separate paragraphs for each text block
+        assert_eq!(depths, vec![0, 1, 1, 2, 2]);
+    }
+
+    #[test]
+    fn iter_preorder_enter_exit_events_are_balanced() {
+        let structure =
+            build_structure("> - Item 1\n> - Item 2\n>\n> Paragraph");
+
+        let events: Vec<_> = structure.iter_preorder().collect();
+
+        let mut stack = Vec::new();
+        for event in &events {
+            match event {
+                TraversalEvent::Enter(block, _) => {
+                    if matches!(block.kind, BlockKind::Container(_)) {
+                        stack.push(std::ptr::from_ref(*block));
+                    }
+                }
+                TraversalEvent::Exit(block, _) => {
+                    if matches!(block.kind, BlockKind::Container(_)) {
+                        let expected =
+                            stack.pop().expect("Exit without matching Enter");
+                        assert_eq!(
+                            std::ptr::from_ref(*block),
+                            expected,
+                            "Exit event does not match corresponding Enter"
+                        );
+                    }
+                }
+            }
+        }
+
+        assert!(stack.is_empty(), "Unmatched Enter events remaining");
     }
 }
