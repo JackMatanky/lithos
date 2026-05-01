@@ -238,23 +238,13 @@ impl DiscoveryEngine {
         R::Error: Into<SchemaRepositoryError>,
     {
         // Step 1: Scan filesystem for schema files and property bank
-        let (schema_files, property_bank_path) =
+        let (schema_files, property_bank_path, property_bank_filename) =
             Self::scan_filesystem(spec, source)?;
 
-        // Step 2: Extract property bank filename if it exists
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Option<&T> pattern matching requires explicit ref"
-        )]
-        let property_bank = if let Some(path) = &property_bank_path {
-            let filename = source
-                .filename(path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-            Some((path.clone(), filename))
-        } else {
-            None
-        };
+        // Step 2: Package property bank path and filename for query
+        let property_bank = property_bank_path
+            .as_ref()
+            .map(|path| (path.clone(), property_bank_filename));
 
         // Step 3: Perform all database queries in a single atomic batch read
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
@@ -342,7 +332,9 @@ impl DiscoveryEngine {
 
     /// Scans the filesystem for schema files and property bank.
     ///
-    /// Returns a tuple of (`schema_files`, `property_bank_path`).
+    /// Returns a tuple of (`schema_files`, `property_bank_path`,
+    /// `property_bank_filename`). The filename is extracted once during
+    /// scan and returned to avoid duplicate extraction in callers.
     ///
     /// # Errors
     ///
@@ -356,8 +348,10 @@ impl DiscoveryEngine {
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
         source: &FsReader,
-    ) -> Result<(Vec<RelativePath>, Option<RelativePath>), SchemaLoaderError>
-    {
+    ) -> Result<
+        (Vec<RelativePath>, Option<RelativePath>, Filename),
+        SchemaLoaderError,
+    > {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
@@ -436,7 +430,7 @@ impl DiscoveryEngine {
             );
         }
 
-        Ok((schema_files, found_property_bank))
+        Ok((schema_files, found_property_bank, bank_filename))
     }
 
     fn fetch_file_stats_batch(
