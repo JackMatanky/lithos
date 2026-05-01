@@ -212,7 +212,6 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     /// property bank or has a view/kind mismatch.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    #[expect(dead_code, reason = "Will be used when Builder is updated")]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Idiomatic option matching"
@@ -258,51 +257,6 @@ impl PropertyBankProcessor<Discovery, Unknown> {
                     },
                 )))
             }
-        }
-    }
-
-    /// Initial entry point: checks the repository for an existing view.
-    ///
-    /// This method gathers file stats and queries the repository to decide
-    /// whether the pipeline starts as a `Missing` (new ingestion) or a
-    /// `Present` (incremental update) branch.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails.
-    #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn discover<R: Repository>(
-        self,
-        path: &RelativePath,
-        source: &FsReader,
-        config_path: &std::path::Path,
-        repository: &R,
-    ) -> Result<ComparisonBranch, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        drop(self);
-        let cached_view = repository
-            .get_raw_property_bank_view(path)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        let stats = source
-            .stats(config_path)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        if let Some(view) = cached_view {
-            Ok(ComparisonBranch::Present(Self::transition(
-                Comparison,
-                Present {
-                    stats,
-                    view,
-                },
-            )))
-        } else {
-            Ok(ComparisonBranch::Missing(Self::transition(Parsed, Missing {
-                stats,
-            })))
         }
     }
 }

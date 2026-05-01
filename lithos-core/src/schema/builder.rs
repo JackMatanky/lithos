@@ -1,13 +1,7 @@
 #![expect(clippy::missing_errors_doc, reason = "Facade methods")]
 #![expect(clippy::missing_inline_in_public_items, reason = "Facade methods")]
-#![expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "builder context uses pub(crate) fields for tests"
-)]
 
 use std::{collections::HashSet, sync::Arc};
-
-use tracing::info;
 
 use crate::{
     config::aggregate::Config,
@@ -97,52 +91,16 @@ where
         }
     }
 
-    /// Load and construct the `PropertyBank`, automatically handling
-    /// incremental staleness.
-    pub(crate) fn load_property_bank(
-        &mut self,
-        bank_path: &RelativePath,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        let config_path = bank_path.as_path();
-
-        let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
-        let branch = pipeline.discover(
-            bank_path,
-            &self.source,
-            config_path,
-            &self.repository,
-        )?;
-
-        let (completed, delta) = match branch {
-            ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, bank_path, config_path)?
-            }
-            ComparisonBranch::Present(p) => {
-                self.handle_present(p, bank_path, config_path)?
-            }
-        };
-
-        self.property_bank_delta = delta;
-        Ok(completed)
-    }
-
     /// Load property bank from discovery data.
     ///
     /// # Errors
     ///
     /// Returns error if property bank processing fails.
-    ///
-    /// # Note
-    ///
-    /// This currently uses the old `discover()` API. Commit 5 will add
-    /// `from_discovery()` method to `PropertyBankProcessor` to directly accept
-    /// `DiscoveredFile` data and bypass redundant I/O.
     fn load_property_bank_from_discovery(
         &mut self,
-        _discovered: &DiscoveredFile,
+        discovered: &DiscoveredFile,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        // For now, delegate to existing load_property_bank which will
-        // re-query the repository. This is temporary until Commit 5.
+        // Get bank path from config (needed for helper methods)
         let bank_path =
             RelativePath::try_from(self.config.paths().property_bank_path())
                 .map_err(|error| {
@@ -157,7 +115,26 @@ where
                     ))
                 })?;
 
-        self.load_property_bank(&bank_path)
+        let config_path = bank_path.as_path();
+
+        // Call from_discovery() to get the comparison branch
+        let branch =
+            PropertyBankProcessor::<Discovery, Unknown>::from_discovery(
+                discovered,
+            )?;
+
+        // Handle the branch using existing helper methods
+        let (completed, delta) = match branch {
+            ComparisonBranch::Missing(p) => {
+                self.handle_missing(p, &bank_path, config_path)?
+            }
+            ComparisonBranch::Present(p) => {
+                self.handle_present(p, &bank_path, config_path)?
+            }
+        };
+
+        self.property_bank_delta = delta;
+        Ok(completed)
     }
 
     /// Process cold-start path (all schemas are new).
@@ -179,34 +156,25 @@ where
             Discovery, DiscoveryBranch, NeverSeen, SchemaProcessor,
         };
 
-        // NOTE: This temporarily uses old processor discover() API
-        // Will be replaced with from_discovery() in Commit 5
+        // Build discovered_files Vec from outcome.schema_files()
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iterator returns references; explicit pattern preferred \
-                      for clarity"
+            reason = "Iterator pattern is idiomatic"
         )]
-        let files_context = FilesContext {
-            files: outcome
-                .schema_files()
-                .filter_map(|f| {
-                    outcome
-                        .files
-                        .iter()
-                        .find(|(_, v)| {
-                            std::ptr::eq(
-                                std::ptr::from_ref(*v),
-                                std::ptr::from_ref(f),
-                            )
-                        })
-                        .map(|(k, _)| k.clone())
-                })
-                .collect(),
-        };
+        let discovered_files: Vec<_> = outcome
+            .files
+            .iter()
+            .filter(|(_, file)| {
+                !matches!(
+                    file.kind,
+                    super::discovery::SchemaFileKind::PropertyBank
+                )
+            })
+            .collect();
 
-        let branch = SchemaProcessor::<Discovery, NeverSeen>::discover(
-            &files_context,
-            &self.source,
+        // Call from_discovery() to bypass redundant I/O
+        let branch = SchemaProcessor::<Discovery, NeverSeen>::from_discovery(
+            discovered_files,
         )?;
 
         match branch {
@@ -249,36 +217,27 @@ where
             ))
         })?;
 
-        // NOTE: This temporarily uses old processor discover() API
-        // Will be replaced with from_discovery() in Commit 5
+        // Build discovered_files Vec from outcome.files (excluding property
+        // bank)
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iterator returns references; explicit pattern preferred \
-                      for clarity"
+            reason = "Iterator pattern is idiomatic"
         )]
-        let files_context = FilesContext {
-            files: outcome
-                .schema_files()
-                .filter_map(|f| {
-                    outcome
-                        .files
-                        .iter()
-                        .find(|(_, v)| {
-                            std::ptr::eq(
-                                std::ptr::from_ref(*v),
-                                std::ptr::from_ref(f),
-                            )
-                        })
-                        .map(|(k, _)| k.clone())
-                })
-                .collect(),
-        };
+        let discovered_files: Vec<_> = outcome
+            .files
+            .iter()
+            .filter(|(_, file)| {
+                !matches!(
+                    file.kind,
+                    super::discovery::SchemaFileKind::PropertyBank
+                )
+            })
+            .collect();
 
-        let branch = SchemaProcessor::<Discovery, Review>::discover(
-            &files_context,
+        // Call from_discovery() to bypass redundant I/O
+        let branch = SchemaProcessor::<Discovery, Review>::from_discovery(
+            discovered_files,
             graph,
-            &self.repository,
-            &self.source,
         )?;
 
         match branch {
@@ -393,31 +352,6 @@ where
     ) -> Result<PropertyBank, SchemaLoaderError> {
         let fresh = processor.sync_metadata(&self.repository)?;
         self.fetch_fresh(fresh)
-    }
-}
-
-pub(crate) struct FilesContext {
-    pub(crate) files: Vec<RelativePath>,
-}
-
-impl FilesContext {
-    #[inline]
-    #[expect(
-        dead_code,
-        reason = "Constructor new() preserves logging intent; manual \
-                  construction used in process_cold_start/incremental"
-    )]
-    pub(crate) fn new(files: Vec<RelativePath>) -> Self {
-        if files.is_empty() {
-            info!(
-                "No schema files found; schema processing skipped. Add a \
-                 schema file (json, yaml, or toml) to enable schema \
-                 validation."
-            );
-        }
-        Self {
-            files,
-        }
     }
 }
 

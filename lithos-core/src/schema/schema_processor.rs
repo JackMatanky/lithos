@@ -63,7 +63,6 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        builder::FilesContext,
         delta::PropertyDeltaEngine,
         discovery::{DiscoveredFile, DiscoveredView, SchemaFileKind},
         error::{
@@ -698,39 +697,7 @@ pub(crate) enum DiscoveryBranch {
 //  DISCOVERY HELPERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-type FileState =
-    (NewBatch<InitialScan>, HashMap<SchemaId, FoundPayload>, Vec<SchemaId>);
-type ViewMaps =
-    (HashMap<RelativePath, RawSchemaView>, HashMap<RelativePath, SchemaId>);
-
 impl SchemaProcessor<Discovery, NeverSeen> {
-    pub(crate) fn discover(
-        context: &FilesContext,
-        source: &FsReader,
-    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
-        let files = &context.files;
-        let mut missing = NewBatch::new();
-
-        for path in files {
-            let stats = source
-                .stats(path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-            let id = SchemaId::new();
-            missing.insert(id, InitialScan {
-                path: path.clone(),
-                stats,
-            });
-        }
-
-        Ok(DiscoveryBranch::AllMissing(Self::transition(
-            FileParsed,
-            AllMissing {
-                new_schemas: missing,
-            },
-        )))
-    }
-
     /// Creates discovery branch from discovered files, bypassing redundant I/O.
     ///
     /// This method accepts discovered file data directly from the
@@ -739,12 +706,8 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     #[expect(
-        dead_code,
-        reason = "Will be used when Builder is updated to use from_discovery"
-    )]
-    #[expect(
         clippy::unnecessary_wraps,
-        reason = "Matches existing discover() signature for consistency"
+        reason = "Matches existing API signature for consistency"
     )]
     pub(crate) fn from_discovery(
         discovered_files: Vec<(&RelativePath, &DiscoveredFile)>,
@@ -773,50 +736,6 @@ impl SchemaProcessor<Discovery, NeverSeen> {
 }
 
 impl SchemaProcessor<Discovery, Review> {
-    pub(crate) fn discover<R>(
-        context: &FilesContext,
-        graph: &InheritanceGraph<()>,
-        repository: &R,
-        source: &FsReader,
-    ) -> Result<DiscoveryBranch, SchemaLoaderError>
-    where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let files = &context.files;
-
-        let (views_by_path, ids_by_path) =
-            Self::fetch_view_maps(repository, files)?;
-
-        let (missing, found, deleted_ids) = Self::classify_file_state(
-            files,
-            views_by_path,
-            &ids_by_path,
-            Some(graph),
-            source,
-        );
-
-        if found.is_empty() {
-            Ok(DiscoveryBranch::AllMissing(Self::transition(
-                FileParsed,
-                AllMissing {
-                    new_schemas: missing,
-                },
-            )))
-        } else {
-            let present_graph =
-                Self::build_present_graph(graph, &found, &deleted_ids);
-            Ok(DiscoveryBranch::HasPresent(Self::transition(
-                Comparison,
-                Present {
-                    graph: present_graph,
-                    new_schemas: missing,
-                    deleted_ids,
-                },
-            )))
-        }
-    }
-
     /// Creates discovery branch from discovered files, bypassing redundant I/O.
     ///
     /// This method accepts discovered file data directly from the
@@ -824,7 +743,6 @@ impl SchemaProcessor<Discovery, Review> {
     /// the need to re-query the repository.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    #[expect(dead_code, reason = "Will be used when Builder is updated")]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Idiomatic option matching"
@@ -907,78 +825,6 @@ impl SchemaProcessor<Discovery, Review> {
     // ═════════════════════════════════════════════════════════════════════
     //  Discovery Helpers
     // ═════════════════════════════════════════════════════════════════════
-    fn fetch_view_maps<R: Repository>(
-        repository: &R,
-        files: &[crate::fs::RelativePath],
-    ) -> Result<ViewMaps, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let views_by_path = repository
-            .find_raw_schema_views_by_paths(files)
-            .map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?
-            .into_iter()
-            .collect();
-
-        let ids_by_path = repository
-            .find_schema_ids_by_paths(files)
-            .map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?
-            .into_iter()
-            .collect();
-
-        Ok((views_by_path, ids_by_path))
-    }
-
-    fn classify_file_state(
-        files: &[crate::fs::RelativePath],
-        mut views_by_path: HashMap<RelativePath, RawSchemaView>,
-        ids_by_path: &HashMap<RelativePath, SchemaId>,
-        graph: Option<&InheritanceGraph<()>>,
-        source: &FsReader,
-    ) -> FileState {
-        let mut missing = NewBatch::new();
-        let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
-
-        for path in files {
-            let stats = source.stats(path.as_path()).unwrap_or_else(|_error| {
-                crate::fs::FileStats::new(None, None, 0)
-            });
-
-            if let (Some(view), Some(id)) =
-                (views_by_path.remove(path), ids_by_path.get(path))
-            {
-                found.insert(*id, FoundPayload {
-                    path: path.clone(),
-                    stats,
-                    view,
-                });
-            } else {
-                let id = SchemaId::new();
-                missing.insert(id, InitialScan {
-                    path: path.clone(),
-                    stats,
-                });
-            }
-        }
-
-        let mut deleted_ids = Vec::new();
-        if let Some(graph) = graph {
-            for id in graph.topo_order() {
-                if !found.contains_key(id) && !missing.contains_key(id) {
-                    deleted_ids.push(*id);
-                }
-            }
-        }
-
-        (missing, found, deleted_ids)
-    }
-
     fn build_present_graph(
         graph: &InheritanceGraph<()>,
         found: &HashMap<SchemaId, FoundPayload>,
