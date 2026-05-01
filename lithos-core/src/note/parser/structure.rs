@@ -801,40 +801,39 @@ impl<'source> ProcessingLeaf<'source> {
 
 /// Temporary state for a container block being constructed.
 struct ProcessingContainer<'source> {
-    payload: ProcessingContainerPayload<'source>,
+    kind: ProcessingContainerKind<'source>,
+    start: usize,
 }
 
 impl<'source> ProcessingContainer<'source> {
     fn new_blockquote() -> Self {
         Self {
-            payload: ProcessingContainerPayload::BlockQuote(
-                ProcessingBlockQuote {
-                    start: 0,
-                    children: Vec::new(),
-                },
-            ),
+            kind: ProcessingContainerKind::BlockQuote(BlockQuotePayload {
+                children: Vec::new(),
+            }),
+            start: 0,
         }
     }
 
     fn new_list(kind: ListKind) -> Self {
         Self {
-            payload: ProcessingContainerPayload::List(ProcessingList {
-                start: 0,
+            kind: ProcessingContainerKind::List(ListPayload {
                 kind,
                 children: Vec::new(),
             }),
+            start: 0,
         }
     }
 
     fn new_list_item() -> Self {
         Self {
-            payload: ProcessingContainerPayload::ListItem(ProcessingListItem {
-                start: 0,
+            kind: ProcessingContainerKind::ListItem(ListItemPayload {
                 depth: 0,
                 parent_span: None,
                 is_checked: None,
                 children: Vec::new(),
             }),
+            start: 0,
         }
     }
 
@@ -844,84 +843,66 @@ impl<'source> ProcessingContainer<'source> {
         depth: u32,
         parent_span: Option<SourceByteRange>,
     ) -> Self {
-        match &mut self.payload {
-            ProcessingContainerPayload::BlockQuote(blockquote) => {
-                blockquote.start = start;
-            }
-            ProcessingContainerPayload::List(list) => {
-                list.start = start;
-            }
-            ProcessingContainerPayload::ListItem(list_item) => {
-                list_item.start = start;
-                list_item.depth = depth;
-                list_item.parent_span = parent_span;
-            }
+        self.start = start;
+        if let ProcessingContainerKind::ListItem(list_item) = &mut self.kind {
+            list_item.depth = depth;
+            list_item.parent_span = parent_span;
         }
         self
     }
 
     fn push_child(&mut self, child: Block<'source>) {
-        match &mut self.payload {
-            ProcessingContainerPayload::BlockQuote(blockquote) => {
+        match &mut self.kind {
+            ProcessingContainerKind::BlockQuote(blockquote) => {
                 blockquote.children.push(child);
             }
-            ProcessingContainerPayload::List(list) => list.children.push(child),
-            ProcessingContainerPayload::ListItem(list_item) => {
+            ProcessingContainerKind::List(list) => list.children.push(child),
+            ProcessingContainerKind::ListItem(list_item) => {
                 list_item.children.push(child);
             }
         }
     }
 
     fn set_task_marker(&mut self, checked: bool) {
-        if let ProcessingContainerPayload::ListItem(list_item) =
-            &mut self.payload
-        {
+        if let ProcessingContainerKind::ListItem(list_item) = &mut self.kind {
             list_item.is_checked = Some(checked);
         }
     }
 
     const fn expected_end(&self) -> BlockEnd {
-        match &self.payload {
-            ProcessingContainerPayload::BlockQuote(_) => BlockEnd::BlockQuote,
-            ProcessingContainerPayload::List(_) => BlockEnd::List,
-            ProcessingContainerPayload::ListItem(_) => BlockEnd::ListItem,
+        match &self.kind {
+            ProcessingContainerKind::BlockQuote(_) => BlockEnd::BlockQuote,
+            ProcessingContainerKind::List(_) => BlockEnd::List,
+            ProcessingContainerKind::ListItem(_) => BlockEnd::ListItem,
         }
     }
 
     const fn start(&self) -> usize {
-        match &self.payload {
-            ProcessingContainerPayload::BlockQuote(blockquote) => {
-                blockquote.start
-            }
-            ProcessingContainerPayload::List(list) => list.start,
-            ProcessingContainerPayload::ListItem(list_item) => list_item.start,
-        }
+        self.start
     }
 
     fn finalize(self, end: usize) -> Result<Block<'source>, NoteIngestError> {
-        let (start, kind) = match self.payload {
-            ProcessingContainerPayload::BlockQuote(blockquote) => {
-                (blockquote.start, ContainerBlockKind::BlockQuote {
+        let kind = match self.kind {
+            ProcessingContainerKind::BlockQuote(blockquote) => {
+                ContainerBlockKind::BlockQuote {
                     children: blockquote.children,
-                })
+                }
             }
-            ProcessingContainerPayload::List(list) => {
-                (list.start, ContainerBlockKind::List {
-                    kind: list.kind,
-                    children: list.children,
-                })
-            }
-            ProcessingContainerPayload::ListItem(list_item) => {
-                (list_item.start, ContainerBlockKind::ListItem {
+            ProcessingContainerKind::List(list) => ContainerBlockKind::List {
+                kind: list.kind,
+                children: list.children,
+            },
+            ProcessingContainerKind::ListItem(list_item) => {
+                ContainerBlockKind::ListItem {
                     depth: list_item.depth.saturating_sub(1),
                     parent_span: list_item.parent_span,
                     is_checked: list_item.is_checked,
                     children: list_item.children,
-                })
+                }
             }
         };
 
-        let span = SourceByteRange::try_from(start..end)
+        let span = SourceByteRange::try_from(self.start..end)
             .map_err(NoteIngestError::Domain)?;
 
         Ok(Block {
@@ -931,25 +912,22 @@ impl<'source> ProcessingContainer<'source> {
     }
 }
 
-enum ProcessingContainerPayload<'source> {
-    BlockQuote(ProcessingBlockQuote<'source>),
-    List(ProcessingList<'source>),
-    ListItem(ProcessingListItem<'source>),
+enum ProcessingContainerKind<'source> {
+    BlockQuote(BlockQuotePayload<'source>),
+    List(ListPayload<'source>),
+    ListItem(ListItemPayload<'source>),
 }
 
-struct ProcessingBlockQuote<'source> {
-    start: usize,
+struct BlockQuotePayload<'source> {
     children: Vec<Block<'source>>,
 }
 
-struct ProcessingList<'source> {
-    start: usize,
+struct ListPayload<'source> {
     kind: ListKind,
     children: Vec<Block<'source>>,
 }
 
-struct ProcessingListItem<'source> {
-    start: usize,
+struct ListItemPayload<'source> {
     depth: u32,
     parent_span: Option<SourceByteRange>,
     is_checked: Option<bool>,
