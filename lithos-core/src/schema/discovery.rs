@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{FileStats, Filename, FsReader, RelativePath},
+    fs::{FileStats, FsReader, RelativePath},
     schema::{
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
@@ -66,8 +66,6 @@ pub(crate) enum SchemaFileKind {
     reason = "Internal data structure"
 )]
 pub(crate) struct DiscoveredFile {
-    /// Filename (e.g., "note.toml", "property-bank.json").
-    pub(crate) filename: Filename,
     /// File kind information.
     pub(crate) kind: SchemaFileKind,
     /// Cached view from DB (None if never loaded).
@@ -271,13 +269,7 @@ impl DiscoveryEngine {
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
 
-            let filename = source
-                .filename(bank_path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-
             files.insert(bank_path.clone(), DiscoveredFile {
-                filename,
                 kind: SchemaFileKind::PropertyBank,
                 view: bank_view.map(DiscoveredView::PropertyBank),
                 file_stats,
@@ -300,15 +292,9 @@ impl DiscoveryEngine {
                 ))
             })?;
 
-            let filename = source
-                .filename(path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-
             filesystem_ids.insert(id);
 
             files.insert(path.clone(), DiscoveredFile {
-                filename,
                 kind: SchemaFileKind::Schema(id),
                 view,
                 file_stats,
@@ -348,12 +334,6 @@ impl DiscoveryEngine {
         let schema_dir = spec.directory();
         let property_bank_path = spec.property_bank();
 
-        // Extract property bank filename for comparison
-        let bank_filename = source
-            .filename(property_bank_path.as_path())
-            .map_err(SchemaIngestionError::from)
-            .map_err(SchemaLoaderError::Ingestion)?;
-
         // Scan directory for all files
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
         let all_files = source.list_files(&pattern).map_err(|e| {
@@ -369,12 +349,14 @@ impl DiscoveryEngine {
         let mut found_property_bank: Option<RelativePath> = None;
 
         for path in all_files {
-            let Ok(file_name) = Filename::try_from(path.as_path()) else {
+            // Convert to RelativePath for comparison
+            let Ok(relative_path) = RelativePath::try_from(path) else {
                 continue;
             };
 
-            // Check if this is the property bank file
-            if file_name == bank_filename {
+            // Check if this is the property bank file by comparing paths
+            // directly
+            if relative_path == *property_bank_path {
                 if found_property_bank.is_some() {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
@@ -390,7 +372,7 @@ impl DiscoveryEngine {
             }
 
             // Check if this is a schema file (by extension)
-            let Some(ext) = file_name.extension() else {
+            let Some(ext) = relative_path.as_path().extension() else {
                 continue;
             };
 
@@ -398,18 +380,7 @@ impl DiscoveryEngine {
                 .iter()
                 .any(|allowed| ext.eq_ignore_ascii_case(allowed))
             {
-                let relative =
-                    RelativePath::try_from(path).map_err(|error| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: format!(
-                                "invalid schema path discovered: {error}"
-                            )
-                            .into(),
-                        },
-                    ))
-                    })?;
-                schema_files.push(relative);
+                schema_files.push(relative_path);
             }
         }
 
