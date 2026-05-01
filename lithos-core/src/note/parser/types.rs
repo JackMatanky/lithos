@@ -54,6 +54,13 @@ impl<'source> RangedEvent<'source> {
     pub(crate) const fn range(&self) -> SourceByteRange {
         self.range
     }
+
+    /// Consumes the event and returns its parts.
+    #[must_use]
+    #[inline]
+    pub(crate) fn into_parts(self) -> (ParserEvent<'source>, SourceByteRange) {
+        (self.event, self.range)
+    }
 }
 
 impl<'source> TryFrom<(ParserEvent<'source>, Range<usize>)>

@@ -131,8 +131,8 @@ pub(crate) enum ContainerBlockKind<'source> {
     ListItem {
         /// Nesting depth (0 = root, 1 = first level, etc.).
         depth: u32,
-        /// Byte range of parent list item when nested.
-        parent_span: Option<SourceByteRange>,
+        /// Byte offset of the parent list item start when nested.
+        parent_pos: Option<crate::note::position::SourceByteOffset>,
         /// Checkbox state:
         /// - `is_checked == Some(true)`: Checked task `- [x] Done`.
         /// - `is_checked == Some(false)`: Unchecked task `- [ ] Todo`.
