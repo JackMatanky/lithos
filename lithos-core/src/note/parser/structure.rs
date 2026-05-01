@@ -310,7 +310,7 @@ impl<'source> StructureBuilder<'source> {
         )]
         match spanned_event.event() {
             ParserEvent::BlockStart(block_type) => {
-                self.on_start(block_type, spanned_event.range());
+                self.on_start(block_type, spanned_event.range())?;
             }
             ParserEvent::BlockEnd(block_type) => {
                 self.on_end(*block_type, spanned_event.range())?;
@@ -341,11 +341,11 @@ impl<'source> StructureBuilder<'source> {
         &mut self,
         block_type: &BlockStart<'source>,
         span: SourceByteRange,
-    ) {
+    ) -> Result<(), NoteIngestError> {
         let start = span.start().as_usize();
         match block_type {
             BlockStart::Paragraph => {
-                self.push_leaf(ProcessingLeafKind::Paragraph, start);
+                self.push_leaf(ProcessingLeafKind::Paragraph, start)?;
             }
             BlockStart::Heading {
                 level,
@@ -355,14 +355,14 @@ impl<'source> StructureBuilder<'source> {
                         level: *level,
                     },
                     start,
-                );
+                )?;
             }
             BlockStart::BlockQuote => {
                 self.push_container(
                     ProcessingContainer::new_blockquote(),
                     start,
                     None,
-                );
+                )?;
             }
             BlockStart::CodeBlock {
                 info_string,
@@ -372,7 +372,7 @@ impl<'source> StructureBuilder<'source> {
                         language: info_string.clone().map(Into::into),
                     },
                     start,
-                );
+                )?;
             }
             BlockStart::List {
                 kind: list_kind,
@@ -381,7 +381,7 @@ impl<'source> StructureBuilder<'source> {
                     ProcessingContainer::new_list(*list_kind),
                     start,
                     None,
-                );
+                )?;
                 self.list_state.increase_depth();
             }
             BlockStart::ListItem => {
@@ -390,7 +390,7 @@ impl<'source> StructureBuilder<'source> {
                     ProcessingContainer::new_list_item(),
                     start,
                     parent_span,
-                );
+                )?;
             }
             BlockStart::Frontmatter {
                 format,
@@ -400,15 +400,20 @@ impl<'source> StructureBuilder<'source> {
                         format: *format,
                     },
                     start,
-                );
+                )?;
             }
         }
+        Ok(())
     }
 
-    fn push_leaf(&mut self, kind: ProcessingLeafKind, start: usize) {
+    fn push_leaf(
+        &mut self,
+        kind: ProcessingLeafKind,
+        start: usize,
+    ) -> Result<(), NoteIngestError> {
         self.tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
             kind, start,
-        )));
+        )))
     }
 
     fn push_container(
@@ -416,14 +421,14 @@ impl<'source> StructureBuilder<'source> {
         container: ProcessingContainer<'source>,
         start: usize,
         parent_span: Option<SourceByteRange>,
-    ) {
+    ) -> Result<(), NoteIngestError> {
         self.tree.push_incomplete(ProcessingNode::Container(
             container.with_position(
                 start,
                 self.list_state.depth(),
                 parent_span,
             ),
-        ));
+        ))
     }
 
     fn on_end(
@@ -588,8 +593,29 @@ impl<'source> ProcessingBlockTree<'source> {
         }
     }
 
-    fn push_incomplete(&mut self, node: ProcessingNode<'source>) {
+    fn push_incomplete(
+        &mut self,
+        node: ProcessingNode<'source>,
+    ) -> Result<(), NoteIngestError> {
+        if let Some(ProcessingNode::Leaf(_)) = self.stack.last() {
+            let start = match &node {
+                ProcessingNode::Leaf(leaf) => leaf.start,
+                ProcessingNode::Container(container) => container.start(),
+            };
+
+            let range =
+                SourceByteRange::try_from(start..start.saturating_add(1)).ok();
+
+            return Err(NoteParseError::InvalidTopology {
+                code: "parser.structure.start_inside_leaf",
+                detail: "cannot start a new block inside a leaf block".into(),
+                range,
+            }
+            .into());
+        }
+
         self.stack.push(node);
+        Ok(())
     }
 
     fn pop_incomplete(&mut self) -> Option<ProcessingNode<'source>> {
@@ -1175,7 +1201,8 @@ mod tests {
         tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
             ProcessingLeafKind::Paragraph,
             0,
-        )));
+        )))
+        .expect("first push should succeed");
 
         let span = SourceByteRange::try_from(0..1).expect("valid range");
         let block = Block {
@@ -1211,10 +1238,36 @@ mod tests {
     }
 
     #[test]
+    fn on_start_returns_error_when_top_is_leaf() {
+        let mut builder = StructureBuilder::new();
+        let start = SourceByteRange::try_from(0..1).expect("valid range");
+        builder
+            .on_start(&BlockStart::Paragraph, start)
+            .expect("first start should succeed");
+
+        let result = builder.on_start(
+            &BlockStart::Heading {
+                level: HeadingLevel::H1,
+            },
+            start,
+        );
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.start_inside_leaf",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
     fn on_end_reports_exact_end_kind_mismatch() {
         let mut builder = StructureBuilder::new();
         let start = SourceByteRange::try_from(0..1).expect("valid range");
-        builder.on_start(&BlockStart::Paragraph, start);
+        builder
+            .on_start(&BlockStart::Paragraph, start)
+            .expect("start should succeed");
 
         let end = SourceByteRange::try_from(2..3).expect("valid range");
         let result = builder.on_end(BlockEnd::Heading, end);
@@ -1509,5 +1562,32 @@ mod tests {
 
         assert_eq!(*child_alpha_parent_span, Some(parent.span));
         assert_eq!(*child_beta_parent_span, Some(parent.span));
+    }
+
+    #[test]
+    fn start_block_inside_leaf_returns_invalid_topology() {
+        let mut tree = ProcessingBlockTree::new();
+        let leaf_start = 0;
+        tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
+            ProcessingLeafKind::Paragraph,
+            leaf_start,
+        )))
+        .expect("first push should succeed");
+
+        let result =
+            tree.push_incomplete(ProcessingNode::Leaf(ProcessingLeaf::new(
+                ProcessingLeafKind::Heading {
+                    level: HeadingLevel::H1,
+                },
+                5,
+            )));
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.start_inside_leaf",
+                ..
+            }))
+        ));
     }
 }

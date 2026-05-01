@@ -281,11 +281,12 @@ Remaining Stage 5 scope (structure-first, minimal legacy churn):
   - [x] `ProcessingList`
   - [x] `ProcessingListItem`
 - [ ] Refactor `ProcessingLeaf` similarly if needed for symmetry and invariants.
-- [ ] Split depth tracking:
+      (deferred: optional, not required for Stage 5 completion)
+- [x] Split depth tracking:
   - [x] `list_depth`
   - [x] ensure non-list nesting does not mutate list hierarchy depth
-- [ ] Move structural correctness into `ProcessingBlockTree`:
-  - [ ] legal `start_block`
+- [x] Move structural correctness into `ProcessingBlockTree`:
+  - [x] legal `start_block` (no-start-inside-leaf enforcement)
   - [x] exact `end_block` matching (reuse `types::BlockEnd` semantics)
   - [x] legal parent-child attach rules
   - [x] no silent no-op on invalid attach
@@ -293,8 +294,10 @@ Remaining Stage 5 scope (structure-first, minimal legacy churn):
 
 Acceptance criteria:
 
-- Structure builder fails fast on topology violations.
-- No silent attach failures remain.
+- [x] Structure builder fails fast on topology violations.
+- [x] No silent attach failures remain.
+
+**Stage 5: COMPLETE**
 
 Validation:
 
