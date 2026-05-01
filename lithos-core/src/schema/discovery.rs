@@ -238,30 +238,20 @@ impl DiscoveryEngine {
         R::Error: Into<SchemaRepositoryError>,
     {
         // Step 1: Scan filesystem for schema files and property bank
-        let (schema_files, property_bank_path, property_bank_filename) =
+        let (schema_files, property_bank_path) =
             Self::scan_filesystem(spec, source)?;
 
-        // Step 2: Package property bank path and filename for query
-        let property_bank = property_bank_path
-            .as_ref()
-            .map(|path| (path.clone(), property_bank_filename));
-
-        // Step 3: Perform all database queries in a single atomic batch read
+        // Step 2: Perform all database queries in a single atomic batch read
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
             .with_batch_schema_reader(|batch_reader| {
                 let graph = batch_reader.get_topological_graph()?;
 
-                #[expect(
-                    clippy::pattern_type_mismatch,
-                    reason = "explicit match on reference preferred for \
-                              clarity"
-                )]
-                let bank_view = match &property_bank {
-                    Some((_, filename)) => {
-                        batch_reader.get_raw_property_bank_view(filename)?
-                    }
-                    None => None,
-                };
+                let bank_view = property_bank_path
+                    .as_ref()
+                    .and_then(|path| {
+                        batch_reader.get_raw_property_bank_view(path).ok()
+                    })
+                    .flatten();
 
                 let views = batch_reader
                     .find_raw_schema_views_by_paths(&schema_files)?;
@@ -275,14 +265,19 @@ impl DiscoveryEngine {
         // Step 4: Fetch all file stats (I/O) outside the database transaction
         let mut files = HashMap::new();
 
-        if let Some((bank_path, bank_filename)) = property_bank {
+        if let Some(bank_path) = property_bank_path {
             let file_stats = source
                 .stats(bank_path.as_path())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
 
-            files.insert(bank_path, DiscoveredFile {
-                filename: bank_filename,
+            let filename = source
+                .filename(bank_path.as_path())
+                .map_err(SchemaIngestionError::from)
+                .map_err(SchemaLoaderError::Ingestion)?;
+
+            files.insert(bank_path.clone(), DiscoveredFile {
+                filename,
                 kind: SchemaFileKind::PropertyBank,
                 view: bank_view.map(DiscoveredView::PropertyBank),
                 file_stats,
@@ -332,9 +327,7 @@ impl DiscoveryEngine {
 
     /// Scans the filesystem for schema files and property bank.
     ///
-    /// Returns a tuple of (`schema_files`, `property_bank_path`,
-    /// `property_bank_filename`). The filename is extracted once during
-    /// scan and returned to avoid duplicate extraction in callers.
+    /// Returns a tuple of (`schema_files`, `property_bank_path`).
     ///
     /// # Errors
     ///
@@ -348,10 +341,8 @@ impl DiscoveryEngine {
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
         source: &FsReader,
-    ) -> Result<
-        (Vec<RelativePath>, Option<RelativePath>, Filename),
-        SchemaLoaderError,
-    > {
+    ) -> Result<(Vec<RelativePath>, Option<RelativePath>), SchemaLoaderError>
+    {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
@@ -430,7 +421,7 @@ impl DiscoveryEngine {
             );
         }
 
-        Ok((schema_files, found_property_bank, bank_filename))
+        Ok((schema_files, found_property_bank))
     }
 
     fn fetch_file_stats_batch(

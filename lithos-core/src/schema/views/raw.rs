@@ -144,7 +144,7 @@ use super::{
     Version as _, VersionRead as _,
 };
 use crate::{
-    fs::{FileStats, Filename, RelativePath},
+    fs::{FileStats, RelativePath},
     schema::{
         error::{SchemaIngestionError, SchemaStorageError},
         identifier::SchemaName,
@@ -539,8 +539,9 @@ impl RawViewRead for ArchivedRawSchemaView {
 /// Tracks up to 5 versions of the property bank file for staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
-    /// Filename with extension (e.g., "properties.yaml").
-    filename: Filename,
+    /// Relative path to the property bank file (e.g.,
+    /// "`schemas/property_bank.json`").
+    path: RelativePath,
 
     /// Version history (ring buffer, max 5 versions, newest first).
     versions: VecDeque<PropertyBankVersion>,
@@ -557,22 +558,22 @@ impl RawPropertyBankView {
     /// #
     /// # // let filename = Filename::new("properties.yaml".into());
     /// # // let version = ...
-    /// # // let view = RawPropertyBankView::new(filename, version);
+    /// # // let view = RawPropertyBankView::new(path, version);
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(filename: Filename, version: PropertyBankVersion) -> Self {
+    pub fn new(path: RelativePath, version: PropertyBankVersion) -> Self {
         let mut versions =
             VecDeque::with_capacity(<Self as RawView>::MAX_VERSIONS);
         versions.push_front(version);
 
         Self {
-            filename,
+            path,
             versions,
         }
     }
 
-    /// Returns the property bank filename.
+    /// Returns the property bank relative path.
     ///
     /// # Examples
     ///
@@ -580,12 +581,12 @@ impl RawPropertyBankView {
     /// # use lithos_core::schema::views::RawPropertyBankView;
     /// #
     /// # // let view = ...
-    /// # // assert_eq!(view.file_path().as_str(), "properties.yaml");
+    /// # // assert_eq!(view.file_path().as_str(), "schemas/property_bank.json");
     /// ```
     #[inline]
     #[must_use]
-    pub fn file_path(&self) -> &Filename {
-        &self.filename
+    pub fn file_path(&self) -> &RelativePath {
+        &self.path
     }
 
     /// Returns the most recent version, if any.
@@ -766,7 +767,7 @@ impl RawPropertyBankView {
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
-        filename: Filename,
+        path: RelativePath,
         raw_hash: HashRecord,
     ) -> Result<Self, SchemaIngestionError> {
         let file_stats = *raw.file_stats();
@@ -777,18 +778,18 @@ impl RawPropertyBankView {
             raw.version().as_str(),
         )?;
 
-        Ok(Self::new(filename, version))
+        Ok(Self::new(path, version))
     }
 }
 
 /// Implements [`RawView`] for [`RawPropertyBankView`].
 impl RawView for RawPropertyBankView {
-    type FilePath = Filename;
+    type FilePath = RelativePath;
     type Version = PropertyBankVersion;
 
     #[inline]
     fn file_path(&self) -> &Self::FilePath {
-        &self.filename
+        &self.path
     }
 
     #[inline]
@@ -917,7 +918,7 @@ impl RawViewRead for ArchivedRawPropertyBankView {
 mod tests {
     use super::*;
     use crate::{
-        fs::{FileStats, Filename},
+        fs::FileStats,
         schema::{
             property::{PropertyMap, PropertyName},
             raw::{RawPropertyBank, RawSchema},
@@ -960,9 +961,10 @@ mod tests {
 
     #[test]
     fn property_bank_view_rotation_uses_trait_max_versions() {
-        let filename = Filename::new("property_bank.json".into());
+        let path =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
         let mut view = RawPropertyBankView::new(
-            filename,
+            path,
             make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
@@ -984,9 +986,10 @@ mod tests {
 
     #[test]
     fn property_bank_update_content_hash_preserves_property_hashes() {
-        let filename = Filename::new("property_bank.json".into());
+        let path =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
         let mut view = RawPropertyBankView::new(
-            filename,
+            path,
             make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
@@ -1076,9 +1079,10 @@ mod tests {
 
     #[test]
     fn property_bank_update_content_hash_errors_without_current_version() {
-        let filename = Filename::new("property_bank.json".into());
+        let path =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
         let mut view = RawPropertyBankView::new(
-            filename,
+            path,
             make_property_bank_version(Blake3Hash::new([1; 32])),
         );
 
@@ -1101,7 +1105,7 @@ mod tests {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &raw,
-            Filename::new("property_bank.json".into()),
+            RelativePath::try_from("property_bank.json").unwrap(),
             HashRecord::new(
                 Blake3Hash::new([1; 32]),
                 RawPropertyMapHash::default(),
@@ -1114,9 +1118,10 @@ mod tests {
 
     #[test]
     fn archived_raw_property_bank_view_supports_zero_copy_staleness_checks() {
-        let filename = Filename::new("property_bank.json".into());
+        let path =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
         let view = RawPropertyBankView::new(
-            filename,
+            path,
             make_property_bank_version(Blake3Hash::new([9; 32])),
         );
 

@@ -110,7 +110,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{FileStats, FsReader},
+    fs::{FileStats, FsReader, RelativePath},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -212,7 +212,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn discover<R: Repository>(
         self,
-        filename: &crate::fs::Filename,
+        path: &RelativePath,
         source: &FsReader,
         config_path: &std::path::Path,
         repository: &R,
@@ -222,7 +222,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     {
         drop(self);
         let cached_view = repository
-            .get_raw_property_bank_view(filename)
+            .get_raw_property_bank_view(path)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         let stats = source
@@ -681,7 +681,7 @@ impl PropertyBankProcessor<Construction, New> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn create<R: Repository>(
         self,
-        filename: &crate::fs::Filename,
+        path: &RelativePath,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     where
@@ -695,7 +695,7 @@ impl PropertyBankProcessor<Construction, New> {
                 })
             },
         )?;
-        self.persist(filename, repository, &bank)?;
+        self.persist(path, repository, &bank)?;
 
         Ok(Self::transition(Completed, NewReady {
             bank,
@@ -705,7 +705,7 @@ impl PropertyBankProcessor<Construction, New> {
     #[inline]
     fn persist<R: Repository>(
         &self,
-        filename: &crate::fs::Filename,
+        path: &RelativePath,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError>
@@ -722,13 +722,13 @@ impl PropertyBankProcessor<Construction, New> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            filename.clone(),
+            path.clone(),
             raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
         repository
-            .save_raw_property_bank_view(filename, &view)
+            .save_raw_property_bank_view(path, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }
@@ -747,7 +747,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn update<R: Repository>(
         self,
-        filename: &crate::fs::Filename,
+        path: &RelativePath,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     where
@@ -763,7 +763,7 @@ impl PropertyBankProcessor<Construction, Changed> {
             ))?;
 
         self.apply_delta(&mut bank);
-        self.persist(filename, repository, &bank)?;
+        self.persist(path, repository, &bank)?;
         Ok(Self::transition(Completed, StaleReady {
             bank,
             delta: self.status.delta.into_changed_name_set(),
@@ -791,7 +791,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[inline]
     fn persist<R: Repository>(
         &self,
-        filename: &crate::fs::Filename,
+        path: &RelativePath,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError>
@@ -804,13 +804,13 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            filename.clone(),
+            path.clone(),
             self.status.raw_hash.clone(),
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
         repository
-            .save_raw_property_bank_view(filename, &view)
+            .save_raw_property_bank_view(path, &view)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 }

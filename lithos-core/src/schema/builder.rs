@@ -11,7 +11,7 @@ use tracing::info;
 
 use crate::{
     config::aggregate::Config,
-    fs::{Filename, FsReader, RelativePath},
+    fs::{FsReader, RelativePath},
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -104,14 +104,10 @@ where
         bank_path: &RelativePath,
     ) -> Result<PropertyBank, SchemaLoaderError> {
         let config_path = bank_path.as_path();
-        let filename = self
-            .source
-            .filename(config_path)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
         let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
         let branch = pipeline.discover(
-            &filename,
+            bank_path,
             &self.source,
             config_path,
             &self.repository,
@@ -119,10 +115,10 @@ where
 
         let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, &filename, config_path)?
+                self.handle_missing(p, bank_path, config_path)?
             }
             ComparisonBranch::Present(p) => {
-                self.handle_present(p, &filename, config_path)?
+                self.handle_present(p, bank_path, config_path)?
             }
         };
 
@@ -312,24 +308,24 @@ where
     fn handle_missing(
         &self,
         processor: PropertyBankProcessor<Parsed, Missing>,
-        filename: &Filename,
+        path: &RelativePath,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         let constructed = processor.parse(&self.source, config_path)?;
-        let completed = constructed.create(filename, &self.repository)?;
+        let completed = constructed.create(path, &self.repository)?;
         Ok((completed.into_bank(), None))
     }
 
     fn handle_present(
         &self,
         processor: PropertyBankProcessor<Comparison, Present>,
-        filename: &Filename,
+        path: &RelativePath,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_timestamps(&self.source, config_path)? {
             TimestampBranch::Match(p) => Ok((self.fetch_fresh(p)?, None)),
             TimestampBranch::Mismatch(p) => {
-                self.handle_content_mismatch(p, filename, config_path)
+                self.handle_content_mismatch(p, path, config_path)
             }
         }
     }
@@ -337,7 +333,7 @@ where
     fn handle_content_mismatch(
         &self,
         processor: PropertyBankProcessor<Comparison, Suspect>,
-        filename: &Filename,
+        path: &RelativePath,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_content() {
@@ -346,7 +342,7 @@ where
             }
             ContentBranch::Mismatch(p) => {
                 let parsed = p.parse(config_path)?;
-                self.handle_analysis_branch(parsed.analyze(), filename)
+                self.handle_analysis_branch(parsed.analyze(), path)
             }
         }
     }
@@ -354,19 +350,19 @@ where
     fn handle_analysis_branch(
         &self,
         branch: AnalysisBranch,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(p) => {
                 Ok((self.sync_and_fetch_content(p)?, None))
             }
             AnalysisBranch::Delta(p) => {
-                let completed = p.update(filename, &self.repository)?;
+                let completed = p.update(path, &self.repository)?;
                 let (bank, delta) = completed.into_bank_with_changes();
                 Ok((bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(p) => {
-                let completed = p.create(filename, &self.repository)?;
+                let completed = p.create(path, &self.repository)?;
                 Ok((completed.into_bank(), None))
             }
         }

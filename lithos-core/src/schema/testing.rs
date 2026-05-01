@@ -56,7 +56,7 @@ use super::{
     storage::{Repository, SchemaPropertyUsage},
     views::{RawPropertyBankView, RawSchemaView},
 };
-use crate::fs::{Filename, RelativePath};
+use crate::fs::RelativePath;
 
 // ============================================================================
 // InMemoryRepository - For Pure Unit Tests
@@ -104,9 +104,9 @@ pub struct InMemoryRepository {
     /// Path-to-ID lookup for raw views: file path → `SchemaId`
     path_to_id: Arc<RwLock<HashMap<RelativePath, SchemaId>>>,
 
-    /// Raw property bank views for staleness detection: filename →
+    /// Raw property bank views for staleness detection: path →
     /// `RawPropertyBankView`
-    raw_bank_views: Arc<RwLock<HashMap<Filename, RawPropertyBankView>>>,
+    raw_bank_views: Arc<RwLock<HashMap<RelativePath, RawPropertyBankView>>>,
 
     /// Cached topological graph singleton.
     topological_graph: Arc<RwLock<Option<InheritanceGraph<()>>>>,
@@ -439,25 +439,25 @@ impl Repository for InMemoryRepository {
 
     fn get_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
         let views = self.raw_bank_views.read().map_err(|_| {
             InMemoryError::lock_poisoned("get_raw_property_bank_view")
         })?;
 
-        Ok(views.get(filename).cloned())
+        Ok(views.get(path).cloned())
     }
 
     fn save_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
         let mut views = self.raw_bank_views.write().map_err(|_| {
             InMemoryError::lock_poisoned("save_raw_property_bank_view")
         })?;
 
-        views.insert(filename.clone(), view.clone());
+        views.insert(path.clone(), view.clone());
 
         Ok(())
     }
@@ -612,9 +612,9 @@ impl Repository for InMemoryRepository {
 
             fn get_raw_property_bank_view(
                 &self,
-                filename: &Filename,
+                path: &RelativePath,
             ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-                self.repo.get_raw_property_bank_view(filename)
+                self.repo.get_raw_property_bank_view(path)
             }
 
             fn get_raw_schema_view(

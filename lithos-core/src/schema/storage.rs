@@ -25,7 +25,7 @@ use super::{
 };
 use crate::{
     db::{BatchReader, Database},
-    fs::{Filename, RelativePath},
+    fs::RelativePath,
 };
 
 fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
@@ -80,7 +80,7 @@ pub trait BatchSchemaReader {
     /// Returns storage-specific error if the batch read fails.
     fn get_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, Self::Error>;
 
     /// Gets the raw schema view for a given schema ID.
@@ -173,14 +173,14 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
     #[inline]
     fn get_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
         use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.reader
             .get_owned::<RawPropertyBankView>(
                 RAW_PROPERTY_BANK_VIEW,
-                filename.as_str(),
+                path.as_path().to_string_lossy().as_ref(),
             )
             .map_err(map_db_error)
     }
@@ -431,7 +431,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the query fails.
     fn get_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<Option<super::views::RawPropertyBankView>, Self::Error>;
 
     /// Saves the raw property bank view.
@@ -441,7 +441,7 @@ pub trait Repository: Send + Sync {
     /// Returns storage-specific error if the save fails.
     fn save_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
         view: &super::views::RawPropertyBankView,
     ) -> Result<(), Self::Error>;
 
@@ -929,25 +929,32 @@ impl Repository for RedbRepository {
     #[inline]
     fn get_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, Self::Error> {
         use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .get_owned(RAW_PROPERTY_BANK_VIEW, filename.as_str())
+            .get_owned(
+                RAW_PROPERTY_BANK_VIEW,
+                path.as_path().to_string_lossy().as_ref(),
+            )
             .map_err(map_db_error)
     }
 
     #[inline]
     fn save_raw_property_bank_view(
         &self,
-        filename: &Filename,
+        path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), Self::Error> {
         use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
 
         self.db
-            .put(RAW_PROPERTY_BANK_VIEW, filename.as_str(), view)
+            .put(
+                RAW_PROPERTY_BANK_VIEW,
+                path.as_path().to_string_lossy().as_ref(),
+                view,
+            )
             .map_err(map_db_error)
     }
 
