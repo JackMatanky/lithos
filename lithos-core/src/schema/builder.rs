@@ -115,21 +115,19 @@ where
                     ))
                 })?;
 
-        let config_path = bank_path.as_path();
-
         // Call from_discovery() to get the comparison branch
         let branch =
             PropertyBankProcessor::<Discovery, Unknown>::from_discovery(
-                discovered,
+                &bank_path, discovered,
             )?;
 
         // Handle the branch using existing helper methods
         let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, &bank_path, config_path)?
+                self.handle_missing(p, &bank_path, bank_path.as_path())?
             }
             ComparisonBranch::Present(p) => {
-                self.handle_present(p, &bank_path, config_path)?
+                self.handle_present(p, &bank_path, bank_path.as_path())?
             }
         };
 

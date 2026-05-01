@@ -703,6 +703,19 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     /// This method accepts discovered file data directly from the
     /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
     /// the need to re-read file stats.
+    ///
+    /// # Design Note
+    ///
+    /// This method processes a **batch** of schema files because:
+    /// - Multiple schemas can exist in a directory
+    /// - Batch processing enables efficient bulk operations
+    /// - All new schemas need the same initial processing (assign IDs, track
+    ///   stats)
+    ///
+    /// In contrast, the property bank uses a **single-file** API because:
+    /// - Only one property bank exists per schema directory (singleton)
+    /// - Processing requires a full validation/parsing/comparison pipeline
+    /// - The caller already has the specific file reference from discovery
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     #[expect(
@@ -741,6 +754,18 @@ impl SchemaProcessor<Discovery, Review> {
     /// This method accepts discovered file data directly from the
     /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
     /// the need to re-query the repository.
+    ///
+    /// # Design Note
+    ///
+    /// This method processes a **batch** of schema files because:
+    /// - Multiple schemas can exist in a directory
+    /// - Batch processing enables efficient bulk operations
+    /// - Schema discovery requires checking against the existing graph
+    ///
+    /// In contrast, the property bank uses a **single-file** API because:
+    /// - Only one property bank exists per schema directory (singleton)
+    /// - Processing requires a full validation/parsing/comparison pipeline
+    /// - The caller already has the specific file reference from discovery
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     #[expect(
@@ -777,9 +802,11 @@ impl SchemaProcessor<Discovery, Review> {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
                             SchemaFileError::FileSystem {
-                                reason: "schema file has a property bank view \
-                                         (kind/view mismatch)"
-                                    .into(),
+                                reason: format!(
+                                    "schema file at '{path}' has a property \
+                                     bank view (kind/view mismatch)"
+                                )
+                                .into(),
                             },
                         ),
                     ));

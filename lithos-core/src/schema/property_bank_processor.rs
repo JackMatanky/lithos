@@ -206,6 +206,20 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
     /// the need to re-read file stats or re-query the repository.
     ///
+    /// # Design Note
+    ///
+    /// This method processes a **single** property bank file because:
+    /// - The property bank is a singleton resource (only one per schema
+    ///   directory)
+    /// - Processing requires the full comparison pipeline (validate, parse,
+    ///   compare)
+    /// - The caller already has the specific file reference from discovery
+    ///
+    /// In contrast, schema files are processed in **batches** because:
+    /// - Multiple schemas can exist in a directory
+    /// - Batch processing enables efficient bulk operations
+    /// - The discovery engine naturally groups them together
+    ///
     /// # Errors
     ///
     /// Returns [`SchemaLoaderError`] if the discovered file is not a
@@ -217,6 +231,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
         reason = "Idiomatic option matching"
     )]
     pub(crate) fn from_discovery(
+        path: &RelativePath,
         discovered: &DiscoveredFile,
     ) -> Result<ComparisonBranch, SchemaLoaderError> {
         match discovered.kind {
@@ -224,9 +239,11 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             SchemaFileKind::Schema(_) => {
                 return Err(SchemaLoaderError::Ingestion(
                     SchemaIngestionError::File(SchemaFileError::FileSystem {
-                        reason: "discovered file is a schema, not a property \
-                                 bank"
-                            .into(),
+                        reason: format!(
+                            "discovered file at '{path}' is a schema, not a \
+                             property bank"
+                        )
+                        .into(),
                     }),
                 ));
             }
@@ -251,9 +268,11 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             Some(DiscoveredView::Schema(_)) => {
                 Err(SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     SchemaFileError::FileSystem {
-                        reason: "property bank has a schema view (kind/view \
-                                 mismatch)"
-                            .into(),
+                        reason: format!(
+                            "property bank at '{path}' has a schema view \
+                             (kind/view mismatch)"
+                        )
+                        .into(),
                     },
                 )))
             }
