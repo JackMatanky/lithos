@@ -433,6 +433,97 @@ impl std::fmt::Display for PropertyBank {
     }
 }
 
+// ----------------------------------------------------------- //
+//                    Schema Config Spec                       //
+// ----------------------------------------------------------- //
+
+/// Schema configuration specification for discovery engine.
+///
+/// This type provides a minimal, filesystem-focused view of schema
+/// configuration for the discovery engine. It contains only the paths
+/// needed for file scanning and discovery.
+///
+/// # Design Rationale
+///
+/// - **Minimizes imports**: Both fields are `RelativePath` (not `PropertyBank`
+///   type)
+/// - **Explicit paths**: `property_bank` is the full joined path, not just
+///   filename
+/// - **Discovery-focused**: Used by `DiscoveryEngine::run()` instead of full
+///   `Config`
+///
+/// # Examples
+///
+/// ```rust
+/// use std::path::PathBuf;
+///
+/// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+///
+/// let directory = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+/// let property_bank =
+///     RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
+///         .unwrap();
+///
+/// let spec = SchemaConfigSpec::new(directory, property_bank);
+/// assert_eq!(spec.directory().as_path(), std::path::Path::new("schemas"));
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct SchemaConfigSpec {
+    /// Directory containing schema files (e.g., "schemas").
+    directory: RelativePath,
+    /// Full path to property bank file (e.g., "`schemas/property_bank.json`").
+    property_bank: RelativePath,
+}
+
+impl SchemaConfigSpec {
+    /// Creates a new schema configuration specification.
+    ///
+    /// # Arguments
+    ///
+    /// * `directory` - The schemas directory path
+    /// * `property_bank` - The full path to the property bank file (directory +
+    ///   filename)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+    ///
+    /// let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+    /// let bank =
+    ///     RelativePath::try_from(PathBuf::from("schemas/bank.json")).unwrap();
+    /// let spec = SchemaConfigSpec::new(dir, bank);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        directory: RelativePath,
+        property_bank: RelativePath,
+    ) -> Self {
+        Self {
+            directory,
+            property_bank,
+        }
+    }
+
+    /// Returns the schemas directory path.
+    #[inline]
+    #[must_use]
+    pub const fn directory(&self) -> &RelativePath {
+        &self.directory
+    }
+
+    /// Returns the full property bank file path.
+    #[inline]
+    #[must_use]
+    pub const fn property_bank(&self) -> &RelativePath {
+        &self.property_bank
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod fixtures {
@@ -490,6 +581,47 @@ mod tests {
             let file_name = Filename::try_from(std::path::Path::new(""));
             assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");
+        }
+    }
+
+    mod schema_config_spec {
+        use std::path::PathBuf;
+
+        use super::super::*;
+
+        /// Test `SchemaConfigSpec` construction.
+        #[test]
+        fn constructs_with_valid_paths() {
+            let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+            let bank =
+                RelativePath::try_from(PathBuf::from("schemas/bank.json"))
+                    .unwrap();
+
+            let spec = SchemaConfigSpec::new(dir, bank);
+
+            assert_eq!(
+                spec.directory().as_path(),
+                std::path::Path::new("schemas")
+            );
+            assert_eq!(
+                spec.property_bank().as_path(),
+                std::path::Path::new("schemas/bank.json")
+            );
+        }
+
+        /// Test `SchemaConfigSpec` accessors.
+        #[test]
+        fn accessors_return_correct_values() {
+            let dir =
+                RelativePath::try_from(PathBuf::from("my-schemas")).unwrap();
+            let bank =
+                RelativePath::try_from(PathBuf::from("my-schemas/props.json"))
+                    .unwrap();
+
+            let spec = SchemaConfigSpec::new(dir.clone(), bank.clone());
+
+            assert_eq!(*spec.directory(), dir);
+            assert_eq!(*spec.property_bank(), bank);
         }
     }
 }

@@ -21,9 +21,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    config::paths::SchemaConfigSpec,
     fs::{FileStats, Filename, FsReader, RelativePath},
     schema::{
-        builder::FilesContext,
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
@@ -220,11 +220,16 @@ pub(crate) struct DiscoveryEngine;
 impl DiscoveryEngine {
     /// Discovers all files and database state required for schema processing.
     ///
+    /// This method performs unified discovery by:
+    /// 1. Scanning the filesystem for schema files and property bank
+    /// 2. Querying the database for cached views and metadata
+    /// 3. Combining filesystem and database state into a unified outcome
+    ///
     /// # Errors
     ///
     /// Returns `SchemaLoaderError` if I/O or repository operations fail.
     pub(crate) fn run<R>(
-        context: &FilesContext,
+        spec: &SchemaConfigSpec,
         repo: &R,
         source: &FsReader,
     ) -> Result<DiscoveryOutcome, SchemaLoaderError>
@@ -232,7 +237,16 @@ impl DiscoveryEngine {
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        let property_bank = if let Some(path) = context.property_bank_file() {
+        // Step 1: Scan filesystem for schema files and property bank
+        let (schema_files, property_bank_path) =
+            Self::scan_filesystem(spec, source)?;
+
+        // Step 2: Extract property bank filename if it exists
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Option<&T> pattern matching requires explicit ref"
+        )]
+        let property_bank = if let Some(path) = &property_bank_path {
             let filename = source
                 .filename(path.as_path())
                 .map_err(SchemaIngestionError::from)
@@ -242,7 +256,7 @@ impl DiscoveryEngine {
             None
         };
 
-        // Step 1: Perform all database queries in a single atomic batch read.
+        // Step 3: Perform all database queries in a single atomic batch read
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
             .with_batch_schema_reader(|batch_reader| {
                 let graph = batch_reader.get_topological_graph()?;
@@ -260,15 +274,15 @@ impl DiscoveryEngine {
                 };
 
                 let views = batch_reader
-                    .find_raw_schema_views_by_paths(&context.files)?;
+                    .find_raw_schema_views_by_paths(&schema_files)?;
                 let ids =
-                    batch_reader.find_schema_ids_by_paths(&context.files)?;
+                    batch_reader.find_schema_ids_by_paths(&schema_files)?;
 
                 Ok((graph, bank_view, views, ids))
             })
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        // Step 2: Fetch all file stats (I/O) outside the database transaction.
+        // Step 4: Fetch all file stats (I/O) outside the database transaction
         let mut files = HashMap::new();
 
         if let Some((bank_path, bank_filename)) = property_bank {
@@ -286,10 +300,10 @@ impl DiscoveryEngine {
         }
 
         let mut stats_by_path =
-            Self::fetch_file_stats_batch(&context.files, source)?;
+            Self::fetch_file_stats_batch(&schema_files, source)?;
         let mut filesystem_ids = HashSet::new();
 
-        for path in &context.files {
+        for path in &schema_files {
             let id = ids_by_path.remove(path).unwrap_or_else(SchemaId::new);
             let view = views_by_path.remove(path).map(DiscoveredView::Schema);
             let file_stats = stats_by_path.remove(path).ok_or_else(|| {
@@ -324,6 +338,105 @@ impl DiscoveryEngine {
             graph,
             deleted_schemas,
         })
+    }
+
+    /// Scans the filesystem for schema files and property bank.
+    ///
+    /// Returns a tuple of (`schema_files`, `property_bank_path`).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if filesystem scanning fails or duplicate property bank is
+    /// found.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Return type is clear and self-documenting; Vec and Option \
+                  are common"
+    )]
+    fn scan_filesystem(
+        spec: &SchemaConfigSpec,
+        source: &FsReader,
+    ) -> Result<(Vec<RelativePath>, Option<RelativePath>), SchemaLoaderError>
+    {
+        const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
+
+        let schema_dir = spec.directory();
+        let property_bank_path = spec.property_bank();
+
+        // Extract property bank filename for comparison
+        let bank_filename = source
+            .filename(property_bank_path.as_path())
+            .map_err(SchemaIngestionError::from)
+            .map_err(SchemaLoaderError::Ingestion)?;
+
+        // Scan directory for all files
+        let pattern = format!("{}/**/*", schema_dir.as_path().display());
+        let all_files = source.list_files(&pattern).map_err(|e| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                crate::schema::error::SchemaFileError::Io {
+                    path: schema_dir.as_path().to_path_buf(),
+                    source: std::io::Error::other(e),
+                },
+            ))
+        })?;
+
+        let mut schema_files: Vec<RelativePath> = Vec::new();
+        let mut found_property_bank: Option<RelativePath> = None;
+
+        for path in all_files {
+            let Ok(file_name) = Filename::try_from(path.as_path()) else {
+                continue;
+            };
+
+            // Check if this is the property bank file
+            if file_name == bank_filename {
+                if found_property_bank.is_some() {
+                    return Err(SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: "duplicate property bank file found"
+                                    .into(),
+                            },
+                        ),
+                    ));
+                }
+                found_property_bank = Some(property_bank_path.clone());
+                continue;
+            }
+
+            // Check if this is a schema file (by extension)
+            let Some(ext) = file_name.extension() else {
+                continue;
+            };
+
+            if SCHEMA_EXTENSIONS
+                .iter()
+                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+            {
+                let relative =
+                    RelativePath::try_from(path).map_err(|error| {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: format!(
+                                "invalid schema path discovered: {error}"
+                            )
+                            .into(),
+                        },
+                    ))
+                    })?;
+                schema_files.push(relative);
+            }
+        }
+
+        if schema_files.is_empty() {
+            tracing::info!(
+                "No schema files found; schema processing skipped. Add a \
+                 schema file (json, yaml, or toml) to enable schema \
+                 validation."
+            );
+        }
+
+        Ok((schema_files, found_property_bank))
     }
 
     fn fetch_file_stats_batch(
@@ -384,23 +497,31 @@ mod tests {
         (temp, repo, source)
     }
 
+    fn create_test_spec() -> SchemaConfigSpec {
+        use std::path::PathBuf;
+
+        let directory =
+            RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+        let property_bank =
+            RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
+                .unwrap();
+        SchemaConfigSpec::new(directory, property_bank)
+    }
+
     #[test]
     fn discovery_engine_cold_start() {
         let (temp, repo, source) = setup_test_env();
 
-        // Create 2 schema files
-        let path1 = temp.path().join("schema1.json");
-        let path2 = temp.path().join("schema2.json");
+        // Create schemas directory and files
+        let schemas_dir = temp.path().join("schemas");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+        let path1 = schemas_dir.join("schema1.json");
+        let path2 = schemas_dir.join("schema2.json");
         std::fs::write(&path1, "{}").unwrap();
         std::fs::write(&path2, "{}").unwrap();
 
-        let files = vec![
-            RelativePath::try_from("schema1.json").unwrap(),
-            RelativePath::try_from("schema2.json").unwrap(),
-        ];
-
-        let context = FilesContext::new(files);
-        let outcome = DiscoveryEngine::run(&context, &repo, &source).unwrap();
+        let spec = create_test_spec();
+        let outcome = DiscoveryEngine::run(&spec, &repo, &source).unwrap();
 
         assert!(outcome.is_cold_start());
         assert!(!outcome.is_incremental());
@@ -418,11 +539,15 @@ mod tests {
 
     #[test]
     fn discovery_engine_incremental_with_property_bank() {
+        use std::path::PathBuf;
+
         let (temp, repo, source) = setup_test_env();
 
-        // Create 1 schema + property bank
-        let schema_path = temp.path().join("schema.json");
-        let bank_path = temp.path().join("bank.json");
+        // Create schemas directory, schema file, and property bank
+        let schemas_dir = temp.path().join("schemas");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+        let schema_path = schemas_dir.join("schema.json");
+        let bank_path = schemas_dir.join("property_bank.json");
         std::fs::write(&schema_path, "{}").unwrap();
         std::fs::write(&bank_path, "{}").unwrap();
 
@@ -449,18 +574,14 @@ mod tests {
         )
         .unwrap();
         let view = RawSchemaView::new(
-            RelativePath::try_from("schema.json").unwrap(),
+            RelativePath::try_from(PathBuf::from("schemas/schema.json"))
+                .unwrap(),
             version,
         );
         repo.save_raw_schema_view(id, &view).unwrap();
 
-        let files = vec![RelativePath::try_from("schema.json").unwrap()];
-        let mut context = FilesContext::new(files);
-        context.set_property_bank_file(
-            RelativePath::try_from("bank.json").unwrap(),
-        );
-
-        let outcome = DiscoveryEngine::run(&context, &repo, &source).unwrap();
+        let spec = create_test_spec();
+        let outcome = DiscoveryEngine::run(&spec, &repo, &source).unwrap();
 
         assert!(!outcome.is_cold_start());
         assert!(outcome.is_incremental());
@@ -478,6 +599,10 @@ mod tests {
     fn discovery_engine_detects_deleted_schemas() {
         let (temp, repo, source) = setup_test_env();
 
+        // Create schemas directory
+        let schemas_dir = temp.path().join("schemas");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+
         // Graph with 3 schemas
         let mut builder = SchemaGraphBuilder::new();
         let id1 = SchemaId::new(); // Will be deleted
@@ -489,10 +614,10 @@ mod tests {
         let graph = InheritanceGraph::try_from(builder.build()).unwrap();
         repo.save_topological_graph(&graph).unwrap();
 
-        // But filesystem only has 1 schema
-        let path3 = temp.path().join("schema3.json");
+        // Create only 1 schema file in the filesystem (at id3's path)
+        let path3 = schemas_dir.join("schema3.json");
         std::fs::write(&path3, "{}").unwrap();
-        let rel_path3 = RelativePath::try_from("schema3.json").unwrap();
+        let rel_path3 = RelativePath::try_from("schemas/schema3.json").unwrap();
 
         // Mock the cached view for the remaining schema so it maps to id3
         let raw_json = r#"{ "$version": "1.0", "properties": {} }"#;
@@ -512,10 +637,13 @@ mod tests {
         let view = RawSchemaView::new(rel_path3.clone(), version);
         repo.save_raw_schema_view(id3, &view).unwrap();
 
-        let files = vec![rel_path3];
-        let context = FilesContext::new(files);
+        // Use relative paths for the spec
+        let spec = SchemaConfigSpec::new(
+            RelativePath::try_from("schemas").unwrap(),
+            RelativePath::try_from("schemas/property_bank.json").unwrap(),
+        );
 
-        let outcome = DiscoveryEngine::run(&context, &repo, &source).unwrap();
+        let outcome = DiscoveryEngine::run(&spec, &repo, &source).unwrap();
 
         assert_eq!(outcome.deleted_schemas.len(), 2);
         assert!(outcome.deleted_schemas.contains(&id1));
@@ -527,8 +655,9 @@ mod tests {
     fn discovery_engine_handles_empty_file_list() {
         let (_temp, repo, source) = setup_test_env();
 
-        let context = FilesContext::new(vec![]);
-        let outcome = DiscoveryEngine::run(&context, &repo, &source).unwrap();
+        // Create empty schema directory
+        let spec = create_test_spec();
+        let outcome = DiscoveryEngine::run(&spec, &repo, &source).unwrap();
 
         assert!(outcome.files.is_empty());
         assert!(!outcome.has_schemas());

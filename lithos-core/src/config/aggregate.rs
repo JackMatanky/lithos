@@ -85,6 +85,50 @@ impl Config {
         &self.task
     }
 
+    /// Builds a schema configuration specification for the discovery engine.
+    ///
+    /// This method constructs the full property bank path by joining the
+    /// schemas directory with the property bank filename from the
+    /// configuration.
+    ///
+    /// # Panics
+    ///
+    /// Never panics. The `property_bank_path()` method joins validated relative
+    /// paths, and the result is guaranteed to be a valid `RelativePath`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use lithos_core::config::aggregate::Config;
+    /// # fn example(config: &Config) {
+    /// let spec = config.to_schema_spec();
+    /// // spec.directory() returns "schemas"
+    /// // spec.property_bank() returns "schemas/property_bank.json"
+    /// # }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
+        use super::paths::{RelativePath, SchemaConfigSpec};
+
+        // Join schemas directory with property bank filename to get full path
+        let property_bank_path = self.paths.property_bank_path();
+
+        // Convert PathBuf to RelativePath
+        #[expect(
+            clippy::expect_used,
+            reason = "property_bank_path() joins validated relative paths; \
+                      result is guaranteed valid"
+        )]
+        let property_bank = RelativePath::try_from(property_bank_path)
+            .expect("property bank path must be valid");
+
+        SchemaConfigSpec::new(
+            self.paths.schema.schemas_dir().clone(),
+            property_bank,
+        )
+    }
+
     /// Create a new Config with the specified version, keeping all other fields
     /// unchanged.
     ///
@@ -513,6 +557,58 @@ mod tests {
             assert_eq!(
                 config.paths().cache.cache_dir().as_path(),
                 std::path::Path::new(".lithos-cache")
+            );
+        }
+    }
+
+    mod schema_spec {
+        use super::*;
+
+        #[test]
+        fn to_schema_spec_constructs_correct_paths() {
+            let config = fixtures::test_config();
+
+            let spec = config.to_schema_spec();
+
+            assert_eq!(
+                spec.directory().as_path(),
+                std::path::Path::new("schemas"),
+                "Directory should match config schemas_dir"
+            );
+            assert_eq!(
+                spec.property_bank().as_path(),
+                std::path::Path::new("schemas/property_bank.json"),
+                "Property bank should be schemas_dir joined with filename"
+            );
+        }
+
+        #[test]
+        fn to_schema_spec_respects_custom_paths() {
+            let raw = raw::RawConfig {
+                paths: raw::RawPathsConfig {
+                    schemas_dir: Some("custom-schemas".to_owned()),
+                    property_bank_file: Some("custom-bank.json".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let config = Config::build(
+                &raw,
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                Version::initial(),
+            )
+            .unwrap();
+
+            let spec = config.to_schema_spec();
+
+            assert_eq!(
+                spec.directory().as_path(),
+                std::path::Path::new("custom-schemas")
+            );
+            assert_eq!(
+                spec.property_bank().as_path(),
+                std::path::Path::new("custom-schemas/custom-bank.json")
             );
         }
     }

@@ -58,16 +58,13 @@ where
 
     /// Run the full ingestion pipeline.
     pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
-        // Step 1: Discover files on filesystem
-        let files_context = self.discover_files()?;
+        // Step 1: Convert config to schema spec for unified discovery engine
+        let spec = self.config.to_schema_spec();
 
         // Step 2: Run unified discovery engine (single atomic batch
         // transaction)
-        let discovery_outcome = DiscoveryEngine::run(
-            &files_context,
-            &self.repository,
-            &self.source,
-        )?;
+        let discovery_outcome =
+            DiscoveryEngine::run(&spec, &self.repository, &self.source)?;
 
         // Step 3: Load property bank from discovery data if present
         let property_bank =
@@ -131,91 +128,6 @@ where
 
         self.property_bank_delta = delta;
         Ok(completed)
-    }
-
-    pub(crate) fn discover_files(
-        &self,
-    ) -> Result<FilesContext, SchemaLoaderError> {
-        use crate::schema::error::SchemaIngestionError;
-
-        const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
-
-        let bank_filename = self.resolve_property_bank_filename()?;
-        let schema_dir = self.config.paths().schema.schemas_dir();
-        let property_bank_path =
-            RelativePath::try_from(self.config.paths().property_bank_path())
-                .map_err(|error| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: format!(
-                                "invalid property bank path in config: {error}"
-                            )
-                            .into(),
-                        },
-                    ))
-                })?;
-
-        let pattern = format!("{}/**/*", schema_dir.as_path().display());
-        let all_files = self.source.list_files(&pattern).map_err(|e| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::Io {
-                    path: schema_dir.as_path().to_path_buf(),
-                    source: std::io::Error::other(e),
-                },
-            ))
-        })?;
-
-        let mut files: Vec<RelativePath> = Vec::new();
-        let mut property_bank_file = None;
-
-        for path in all_files {
-            let Ok(file_name) = Filename::try_from(path.as_path()) else {
-                continue;
-            };
-
-            if file_name == bank_filename {
-                if property_bank_file.is_some() {
-                    return Err(SchemaLoaderError::Ingestion(
-                        SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
-                                reason: "duplicate property bank file found"
-                                    .into(),
-                            },
-                        ),
-                    ));
-                }
-                property_bank_file = Some(property_bank_path.clone());
-                continue;
-            }
-
-            let Some(ext) = file_name.extension() else {
-                continue;
-            };
-
-            if SCHEMA_EXTENSIONS
-                .iter()
-                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
-            {
-                let relative =
-                    RelativePath::try_from(path).map_err(|error| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: format!(
-                                "invalid schema path discovered: {error}"
-                            )
-                            .into(),
-                        },
-                    ))
-                    })?;
-                files.push(relative);
-            }
-        }
-
-        let mut context = FilesContext::new(files);
-        if let Some(bank_path) = property_bank_file {
-            context.set_property_bank_file(bank_path);
-        }
-        Ok(context)
     }
 
     /// Load property bank from discovery data.
@@ -294,7 +206,6 @@ where
                         .map(|(k, _)| k.clone())
                 })
                 .collect(),
-            property_bank_file: None,
         };
 
         let branch = SchemaProcessor::<Discovery, NeverSeen>::discover(
@@ -365,7 +276,6 @@ where
                         .map(|(k, _)| k.clone())
                 })
                 .collect(),
-            property_bank_file: None,
         };
 
         let branch = SchemaProcessor::<Discovery, Review>::discover(
@@ -397,14 +307,6 @@ where
                 unreachable!("incremental always returns HasPresent")
             }
         }
-    }
-
-    fn resolve_property_bank_filename(
-        &self,
-    ) -> Result<Filename, SchemaLoaderError> {
-        self.source
-            .filename(self.config.paths().property_bank_path().as_path())
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))
     }
 
     fn handle_missing(
@@ -498,14 +400,17 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
 pub(crate) struct FilesContext {
     pub(crate) files: Vec<RelativePath>,
-    pub(crate) property_bank_file: Option<RelativePath>,
 }
 
 impl FilesContext {
     #[inline]
+    #[expect(
+        dead_code,
+        reason = "Constructor new() preserves logging intent; manual \
+                  construction used in process_cold_start/incremental"
+    )]
     pub(crate) fn new(files: Vec<RelativePath>) -> Self {
         if files.is_empty() {
             info!(
@@ -516,20 +421,7 @@ impl FilesContext {
         }
         Self {
             files,
-            property_bank_file: None,
         }
-    }
-
-    #[inline]
-    pub(crate) fn set_property_bank_file(&mut self, bank_path: RelativePath) {
-        self.property_bank_file = Some(bank_path);
-    }
-
-    /// Returns the property bank file path if one was found.
-    #[inline]
-    #[must_use]
-    pub(crate) fn property_bank_file(&self) -> Option<&RelativePath> {
-        self.property_bank_file.as_ref()
     }
 }
 
@@ -584,72 +476,6 @@ mod tests {
         let repo = InMemoryRepository::new();
 
         let _builder = Builder::new(repo, source, &config);
-    }
-
-    #[test]
-    fn builder_discovery_excludes_property_bank() {
-        let temp = TempDir::new().unwrap();
-        create_schema_files(&temp, &["schema_a.toml", "property_bank.json"]);
-        let repo = InMemoryRepository::new();
-        let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
-
-        let builder = Builder::new(repo, source, &config);
-        let context = builder.discover_files().unwrap();
-
-        assert!(
-            context.property_bank_file.is_some(),
-            "Should detect property bank presence"
-        );
-        assert_eq!(
-            context.files.len(),
-            1,
-            "Should exclude property_bank from schema files"
-        );
-        assert!(
-            context.property_bank_file().is_some(),
-            "Should retain property bank file path"
-        );
-    }
-
-    #[test]
-    fn builder_discovery_filters_by_extension() {
-        let temp = TempDir::new().unwrap();
-        create_schema_files(&temp, &[
-            "schema_a.toml",
-            "schema_b.json",
-            "schema_c.yaml",
-            "schema_d.yml",
-            "readme.md",
-            "config.txt",
-        ]);
-        let repo = InMemoryRepository::new();
-        let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
-
-        let builder = Builder::new(repo, source, &config);
-        let context = builder.discover_files().unwrap();
-
-        assert_eq!(
-            context.files.len(),
-            4,
-            "Should only include schema extensions"
-        );
-    }
-
-    #[test]
-    fn files_context_stores_property_bank_file() {
-        let mut context = FilesContext::new(vec![]);
-        assert!(context.property_bank_file.is_none());
-        assert!(context.property_bank_file().is_none());
-
-        let bank_path = RelativePath::try_from("bank.json").unwrap();
-
-        context.set_property_bank_file(bank_path.clone());
-
-        assert!(context.property_bank_file.is_some());
-        let stored = context.property_bank_file().unwrap();
-        assert_eq!(*stored, bank_path);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
