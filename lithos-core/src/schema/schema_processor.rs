@@ -65,9 +65,10 @@ use crate::{
         bank::PropertyBank,
         builder::FilesContext,
         delta::PropertyDeltaEngine,
+        discovery::{DiscoveredFile, DiscoveredView, SchemaFileKind},
         error::{
-            SchemaError, SchemaIngestionError, SchemaLoaderError,
-            SchemaRepositoryError,
+            SchemaError, SchemaFileError, SchemaIngestionError,
+            SchemaLoaderError, SchemaRepositoryError,
         },
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
@@ -729,6 +730,46 @@ impl SchemaProcessor<Discovery, NeverSeen> {
             },
         )))
     }
+
+    /// Creates discovery branch from discovered files, bypassing redundant I/O.
+    ///
+    /// This method accepts discovered file data directly from the
+    /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
+    /// the need to re-read file stats.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    #[expect(
+        dead_code,
+        reason = "Will be used when Builder is updated to use from_discovery"
+    )]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Matches existing discover() signature for consistency"
+    )]
+    pub(crate) fn from_discovery(
+        discovered_files: Vec<(&RelativePath, &DiscoveredFile)>,
+    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
+        let mut missing = NewBatch::new();
+
+        for (path, file) in discovered_files {
+            if matches!(file.kind, SchemaFileKind::PropertyBank) {
+                continue;
+            }
+
+            let id = SchemaId::new();
+            missing.insert(id, InitialScan {
+                path: path.clone(),
+                stats: file.file_stats,
+            });
+        }
+
+        Ok(DiscoveryBranch::AllMissing(Self::transition(
+            FileParsed,
+            AllMissing {
+                new_schemas: missing,
+            },
+        )))
+    }
 }
 
 impl SchemaProcessor<Discovery, Review> {
@@ -754,6 +795,93 @@ impl SchemaProcessor<Discovery, Review> {
             Some(graph),
             source,
         );
+
+        if found.is_empty() {
+            Ok(DiscoveryBranch::AllMissing(Self::transition(
+                FileParsed,
+                AllMissing {
+                    new_schemas: missing,
+                },
+            )))
+        } else {
+            let present_graph =
+                Self::build_present_graph(graph, &found, &deleted_ids);
+            Ok(DiscoveryBranch::HasPresent(Self::transition(
+                Comparison,
+                Present {
+                    graph: present_graph,
+                    new_schemas: missing,
+                    deleted_ids,
+                },
+            )))
+        }
+    }
+
+    /// Creates discovery branch from discovered files, bypassing redundant I/O.
+    ///
+    /// This method accepts discovered file data directly from the
+    /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
+    /// the need to re-query the repository.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    #[expect(dead_code, reason = "Will be used when Builder is updated")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Idiomatic option matching"
+    )]
+    pub(crate) fn from_discovery(
+        discovered_files: Vec<(&RelativePath, &DiscoveredFile)>,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
+        let mut missing = NewBatch::new();
+        let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
+
+        for (path, file) in discovered_files {
+            if matches!(file.kind, SchemaFileKind::PropertyBank) {
+                continue;
+            }
+
+            match (&file.kind, &file.view) {
+                (
+                    SchemaFileKind::Schema(id),
+                    Some(DiscoveredView::Schema(view)),
+                ) => {
+                    found.insert(*id, FoundPayload {
+                        path: path.clone(),
+                        stats: file.file_stats,
+                        view: view.clone(),
+                    });
+                }
+                (
+                    SchemaFileKind::Schema(_),
+                    Some(DiscoveredView::PropertyBank(_)),
+                ) => {
+                    return Err(SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::File(
+                            SchemaFileError::FileSystem {
+                                reason: "schema file has a property bank view \
+                                         (kind/view mismatch)"
+                                    .into(),
+                            },
+                        ),
+                    ));
+                }
+                _ => {
+                    let id = SchemaId::new();
+                    missing.insert(id, InitialScan {
+                        path: path.clone(),
+                        stats: file.file_stats,
+                    });
+                }
+            }
+        }
+
+        let mut deleted_ids = Vec::new();
+        for id in graph.topo_order() {
+            if !found.contains_key(id) && !missing.contains_key(id) {
+                deleted_ids.push(*id);
+            }
+        }
 
         if found.is_empty() {
             Ok(DiscoveryBranch::AllMissing(Self::transition(

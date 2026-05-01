@@ -114,9 +114,10 @@ use crate::{
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
+        discovery::{DiscoveredFile, DiscoveredView, SchemaFileKind},
         error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-            SchemaStorageError,
+            SchemaFileError, SchemaIngestionError, SchemaLoaderError,
+            SchemaRepositoryError, SchemaStorageError,
         },
         property::PropertyName,
         raw::RawPropertyBank,
@@ -196,6 +197,67 @@ impl PropertyBankProcessor<Discovery, Unknown> {
         PropertyBankProcessor {
             status: Unknown,
             _stage: PhantomData,
+        }
+    }
+
+    /// Creates a branch from discovery data, bypassing redundant I/O.
+    ///
+    /// This method accepts `DiscoveredFile` data directly from the
+    /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
+    /// the need to re-read file stats or re-query the repository.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaLoaderError`] if the discovered file is not a
+    /// property bank or has a view/kind mismatch.
+    #[inline]
+    #[must_use = "state transitions must be used to continue the pipeline"]
+    #[expect(dead_code, reason = "Will be used when Builder is updated")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Idiomatic option matching"
+    )]
+    pub(crate) fn from_discovery(
+        discovered: &DiscoveredFile,
+    ) -> Result<ComparisonBranch, SchemaLoaderError> {
+        match discovered.kind {
+            SchemaFileKind::PropertyBank => {}
+            SchemaFileKind::Schema(_) => {
+                return Err(SchemaLoaderError::Ingestion(
+                    SchemaIngestionError::File(SchemaFileError::FileSystem {
+                        reason: "discovered file is a schema, not a property \
+                                 bank"
+                            .into(),
+                    }),
+                ));
+            }
+        }
+
+        match &discovered.view {
+            None => Ok(ComparisonBranch::Missing(Self::transition(
+                Parsed,
+                Missing {
+                    stats: discovered.file_stats,
+                },
+            ))),
+            Some(DiscoveredView::PropertyBank(view)) => {
+                Ok(ComparisonBranch::Present(Self::transition(
+                    Comparison,
+                    Present {
+                        stats: discovered.file_stats,
+                        view: view.clone(),
+                    },
+                )))
+            }
+            Some(DiscoveredView::Schema(_)) => {
+                Err(SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    SchemaFileError::FileSystem {
+                        reason: "property bank has a schema view (kind/view \
+                                 mismatch)"
+                            .into(),
+                    },
+                )))
+            }
         }
     }
 
