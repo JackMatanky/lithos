@@ -146,10 +146,6 @@ pub(crate) enum InlineToken<'source> {
     Text(Cow<'source, str>),
     InlineCode(Cow<'source, str>),
     Html(Cow<'source, str>),
-    #[expect(
-        dead_code,
-        reason = "Line break IR is enabled in a later parser phase"
-    )]
     LineBreak(LineBreakKind),
     Math {
         kind: MathKind,
@@ -252,11 +248,11 @@ pub(crate) enum LinkKind {
 
 /// Line break kind.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[expect(
-    dead_code,
-    reason = "Line break IR is enabled in a later parser phase"
-)]
 pub(crate) enum LineBreakKind {
+    #[expect(
+        dead_code,
+        reason = "Line break IR is enabled in a later parser phase"
+    )]
     Soft,
     Hard,
 }

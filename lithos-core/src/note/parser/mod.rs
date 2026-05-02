@@ -90,7 +90,7 @@ mod context_integration_test;
 use std::borrow::Cow;
 
 use pulldown_cmark::Options;
-use text::{TextContext, TextSequence, TextStyle};
+use text::{TextContext, TextSequence};
 use types::{
     BlockEnd, BlockStart, FrontmatterFormat, InlineDelimiterEnd,
     InlineDelimiterStart, InlineToken, LinkKind, ParserEvent, RangedEvent,
@@ -600,8 +600,7 @@ fn link_display_from_events(events: &[RangedEvent<'_>]) -> String {
             matches!(
                 node.context(),
                 TextContext::LinkLabel | TextContext::Normal
-            ) && !node.styles().contains(&TextStyle::MathInline)
-                && !node.styles().contains(&TextStyle::MathDisplay)
+            ) && node.is_displayable()
         })
         .map(text::TextNode::text)
         .collect()

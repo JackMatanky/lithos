@@ -68,6 +68,10 @@ impl TextNode {
 
     #[must_use]
     #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Public accessor for projection nodes")
+    )]
     pub(crate) fn styles(&self) -> &[TextStyle] {
         &self.styles
     }
@@ -82,6 +86,24 @@ impl TextNode {
     #[inline]
     pub(crate) const fn range(&self) -> SourceByteRange {
         self.range
+    }
+
+    /// Returns true if the node is eligible for artifact scanning (tags, etc).
+    #[must_use]
+    #[inline]
+    pub(crate) fn is_scannable(&self) -> bool {
+        self.context == TextContext::Normal
+            && !self.styles.contains(&TextStyle::Code)
+            && !self.styles.contains(&TextStyle::MathInline)
+            && !self.styles.contains(&TextStyle::MathDisplay)
+    }
+
+    /// Returns true if the node is eligible for display (e.g. in link labels).
+    #[must_use]
+    #[inline]
+    pub(crate) fn is_displayable(&self) -> bool {
+        !self.styles.contains(&TextStyle::MathInline)
+            && !self.styles.contains(&TextStyle::MathDisplay)
     }
 }
 
@@ -137,13 +159,17 @@ impl TextSequence {
     /// Returns source-covering span of first..last node.
     #[must_use]
     pub(crate) fn covering_range(&self) -> Option<SourceByteRange> {
-        let start = self.nodes.first().map(|node| node.range().start())?;
-        let end = self.nodes.last().map_or(start, |node| node.range().end());
-        SourceByteRange::new(start, end).ok()
+        let first = self.nodes.first()?;
+        let last = self.nodes.last()?;
+        SourceByteRange::new(first.range().start(), last.range().end()).ok()
     }
 
     /// Projects parser events into text nodes without consumer policy.
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Enum dispatch for all IR tokens"
+    )]
     pub(crate) fn from_events(events: &[RangedEvent<'_>]) -> Self {
         let mut nodes = Vec::new();
         let mut styles = Vec::new();
@@ -233,10 +259,23 @@ impl TextSequence {
                         event.range(),
                     ));
                 }
-                ParserEvent::Inline(
-                    InlineToken::Html(_) | InlineToken::LineBreak(_),
-                )
-                | ParserEvent::BlockStart(_)
+                ParserEvent::Inline(InlineToken::Html(html)) => {
+                    nodes.push(TextNode::new(
+                        html.to_string().into_boxed_str(),
+                        styles.clone(),
+                        context_for_depth(link_depth, image_depth),
+                        event.range(),
+                    ));
+                }
+                ParserEvent::Inline(InlineToken::LineBreak(_)) => {
+                    nodes.push(TextNode::new(
+                        "".into(),
+                        styles.clone(),
+                        context_for_depth(link_depth, image_depth),
+                        event.range(),
+                    ));
+                }
+                ParserEvent::BlockStart(_)
                 | ParserEvent::BlockEnd(_)
                 | ParserEvent::TaskListMarker(_)
                 | ParserEvent::ThematicBreak => {}
@@ -348,6 +387,101 @@ mod tests {
         assert_eq!(
             sequence.nodes().first().map(TextNode::context),
             Some(TextContext::LinkLabel)
+        );
+    }
+
+    #[test]
+    fn is_scannable_filters_appropriately() {
+        let range = sample_range();
+        let normal =
+            TextNode::new("a".into(), vec![], TextContext::Normal, range);
+        let link =
+            TextNode::new("a".into(), vec![], TextContext::LinkLabel, range);
+        let code = TextNode::new(
+            "a".into(),
+            vec![TextStyle::Code],
+            TextContext::Normal,
+            range,
+        );
+        let math = TextNode::new(
+            "a".into(),
+            vec![TextStyle::MathInline],
+            TextContext::Normal,
+            range,
+        );
+
+        assert!(normal.is_scannable());
+        assert!(!link.is_scannable());
+        assert!(!code.is_scannable());
+        assert!(!math.is_scannable());
+    }
+
+    #[test]
+    fn is_displayable_filters_math_only() {
+        let range = sample_range();
+        let normal =
+            TextNode::new("a".into(), vec![], TextContext::Normal, range);
+        let code = TextNode::new(
+            "a".into(),
+            vec![TextStyle::Code],
+            TextContext::Normal,
+            range,
+        );
+        let math = TextNode::new(
+            "a".into(),
+            vec![TextStyle::MathInline],
+            TextContext::Normal,
+            range,
+        );
+
+        assert!(normal.is_displayable());
+        assert!(code.is_displayable());
+        assert!(!math.is_displayable());
+    }
+
+    #[test]
+    fn covering_range_handles_edge_cases() {
+        let r1 = SourceByteRange::try_from(1..5).unwrap();
+        let r2 = SourceByteRange::try_from(5..10).unwrap();
+
+        let n1 = TextNode::new("a".into(), vec![], TextContext::Normal, r1);
+        let n2 = TextNode::new("b".into(), vec![], TextContext::Normal, r2);
+
+        let empty = TextSequence::new();
+        let single = TextSequence::from_nodes(vec![n1.clone()]);
+        let multiple = TextSequence::from_nodes(vec![n1, n2]);
+
+        assert_eq!(empty.covering_range(), None);
+        assert_eq!(single.covering_range(), Some(r1));
+        assert_eq!(
+            multiple.covering_range(),
+            Some(SourceByteRange::try_from(1..10).unwrap())
+        );
+    }
+
+    #[test]
+    fn from_events_includes_html_and_linebreak() {
+        use crate::note::parser::types::LineBreakKind;
+
+        let html_ev = RangedEvent::try_from((
+            ParserEvent::Inline(InlineToken::Html("<div>".into())),
+            0..5,
+        ))
+        .unwrap();
+        let br_ev = RangedEvent::try_from((
+            ParserEvent::Inline(InlineToken::LineBreak(LineBreakKind::Hard)),
+            5..7,
+        ))
+        .unwrap();
+
+        let sequence = TextSequence::from_events(&[html_ev, br_ev]);
+
+        assert_eq!(sequence.nodes().len(), 2);
+        assert_eq!(sequence.nodes().first().map(TextNode::text), Some("<div>"));
+        assert_eq!(sequence.nodes().get(1).map(TextNode::text), Some(""));
+        assert_eq!(
+            sequence.covering_range(),
+            Some(SourceByteRange::try_from(0..7).unwrap())
         );
     }
 }

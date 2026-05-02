@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use super::{
     parser::{
         ArtifactSink, BlockSpan, ContainerKind, LeafKind,
-        text::{TextContext, TextSequence, TextStyle},
+        text::TextSequence,
         types::{FrontmatterFormat, RangedEvent},
     },
     raw::RawListItemText,
@@ -219,12 +219,7 @@ fn scannable_ranges_from_projection(
     projection
         .nodes()
         .iter()
-        .filter(|node| {
-            node.context() == TextContext::Normal
-                && !node.styles().contains(&TextStyle::Code)
-                && !node.styles().contains(&TextStyle::MathInline)
-                && !node.styles().contains(&TextStyle::MathDisplay)
-        })
+        .filter(|node| node.is_scannable())
         .map(|node| {
             node.range().start().as_usize()..node.range().end().as_usize()
         })
