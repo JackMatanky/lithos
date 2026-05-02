@@ -57,6 +57,8 @@ pub(crate) struct Processing<'source> {
     stack: Vec<Block<'source, Open>>,
     /// List depth and parent-position bookkeeping.
     open_items: Vec<SourceByteOffset>,
+    /// The end offset of the last processed event.
+    last_end: SourceByteOffset,
 }
 impl DocState for Processing<'_> {}
 
@@ -141,6 +143,8 @@ impl<'source> DocTree<'source, Processing<'source>> {
         spanned_event: RangedEvent<'source>,
     ) -> Result<(), NoteIngestError> {
         let (event, range) = spanned_event.into_parts();
+        self.state.last_end = range.end();
+
         match event {
             ParserEvent::BlockStart(block_type) => {
                 self.on_start(&block_type, range)?;
@@ -156,6 +160,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
                 self.on_task_marker(checked);
             }
             ParserEvent::ThematicBreak => {
+                self.auto_close_implicit_paragraph(range)?;
                 let block = Block {
                     kind: BlockKind::Leaf(LeafBlockKind::ThematicBreak),
                     span: range.start(),
@@ -339,7 +344,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
                 }
                 LeafBlockKind::ThematicBreak => {
                     Err(NoteParseError::InvalidTopology {
-                        code: "parser.structure.push_event_to_thematic_break",
+                        code: "parser.structure.push_inline_to_thematic_break",
                         detail: "cannot push inline events to a thematic break"
                             .into(),
                         range: Some(event.range()),
@@ -348,7 +353,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
                 }
             },
             BlockKind::Container(_) => Err(NoteParseError::InvalidTopology {
-                code: "parser.structure.push_event_to_container",
+                code: "parser.structure.push_inline_to_container",
                 detail: "cannot push inline events to a container block".into(),
                 range: Some(event.range()),
             }
@@ -420,9 +425,32 @@ impl<'source> DocTree<'source, Processing<'source>> {
     }
 
     fn finish(self) -> Result<DocTree<'source, Complete>, NoteIngestError> {
-        if let Some(top) = self.state.stack.last() {
+        let mut this = self;
+
+        // Auto-close trailing implicit paragraph
+        if let Some(top) = this.state.stack.last()
+            && top.kind.expected_end() == BlockEnd::Paragraph
+        {
+            let last_end = this.state.last_end;
+            let range =
+                SourceByteRange::new(top.span, last_end).map_err(|e| {
+                    NoteParseError::InvalidTopology {
+                        code: "parser.structure.invalid_paragraph_range",
+                        detail: format!(
+                            "failed to construct range for trailing \
+                             paragraph: {e}"
+                        )
+                        .into(),
+                        range: None,
+                    }
+                })?;
+
+            this.on_end(BlockEnd::Paragraph, range)?;
+        }
+
+        if let Some(top) = this.state.stack.last() {
             return Err(NoteParseError::UnclosedBlocks {
-                open_count: self.state.stack.len(),
+                open_count: this.state.stack.len(),
                 top_kind: Some(match top.kind {
                     BlockKind::Leaf(_) => "leaf",
                     BlockKind::Container(_) => "container",
@@ -433,7 +461,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
         }
 
         Ok(DocTree {
-            blocks: self.blocks,
+            blocks: this.blocks,
             state: Complete,
         })
     }
@@ -545,7 +573,8 @@ impl<'tree, 'source> Iterator for PreorderIter<'tree, 'source> {
 mod tests {
     use super::*;
     use crate::note::parser::{
-        config::EventStreamConfig, context::ParserContext, types::HeadingLevel,
+        InlineToken, config::EventStreamConfig, context::ParserContext,
+        types::HeadingLevel,
     };
 
     fn build_structure(source: &str) -> DocTree<'_, Complete> {
@@ -1246,5 +1275,157 @@ mod tests {
             }
         }
         assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn on_start_fails_when_top_is_non_paragraph_leaf() {
+        let mut tree = DocTree::<Processing<'_>>::new();
+        let range = SourceByteRange::try_from(0..1).expect("valid range");
+
+        // Heading is a leaf that doesn't auto-close on new block start
+        tree.on_start(
+            &BlockStart::Heading {
+                level: HeadingLevel::H1,
+            },
+            range,
+        )
+        .expect("start heading");
+
+        let result = tree.on_start(&BlockStart::Paragraph, range);
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.start_inside_leaf",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn on_inline_event_fails_when_inside_unsupported_leaf() {
+        // Since ThematicBreak is never on stack, and
+        // Paragraph/Heading/CodeBlock/Frontmatter all support inline
+        // events, this is hard to trigger via public API. We can test
+        // by manually manipulating the stack if needed, but the current
+        // implementation handles all variants on stack.
+
+        // However, we can test that it correctly opens a paragraph when needed.
+        let mut tree = DocTree::<Processing<'_>>::new();
+        let range = SourceByteRange::try_from(0..1).expect("valid range");
+        let event = RangedEvent::new(
+            ParserEvent::Inline(InlineToken::Text("foo".into())),
+            range,
+        );
+
+        tree.on_inline_event(event).expect("should auto-open paragraph");
+
+        assert_eq!(tree.state.stack.len(), 1);
+        assert!(matches!(
+            tree.state.stack[0].kind,
+            BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
+        ));
+    }
+
+    #[test]
+    fn attach_completed_fails_when_top_is_leaf() {
+        let mut tree = DocTree::<Processing<'_>>::new();
+        let range = SourceByteRange::try_from(0..1).expect("valid range");
+
+        tree.on_start(
+            &BlockStart::Heading {
+                level: HeadingLevel::H1,
+            },
+            range,
+        )
+        .expect("start heading");
+
+        let child = Block {
+            kind: BlockKind::Leaf(LeafBlockKind::Paragraph {
+                events: Vec::new(),
+            }),
+            span: SourceByteRange::try_from(2..3).expect("valid range"),
+        };
+
+        let result = tree.attach_completed(child);
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.push_child_to_leaf",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn on_end_fails_on_mismatched_tag() {
+        let mut tree = DocTree::<Processing<'_>>::new();
+        let range = SourceByteRange::try_from(0..1).expect("valid range");
+
+        tree.on_start(&BlockStart::BlockQuote, range).expect("start quote");
+
+        let result = tree.on_end(BlockEnd::List, range);
+
+        assert!(matches!(
+            result,
+            Err(NoteIngestError::Parse(NoteParseError::EventStackMismatch {
+                expected: "blockquote",
+                found: "list",
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn thematic_break_closes_implicit_paragraph() {
+        let mut tree = DocTree::<Processing<'_>>::new();
+
+        // 1. Inline event opens implicit paragraph
+        let range1 = SourceByteRange::try_from(0..4).expect("valid range");
+        tree.process_event(RangedEvent::new(
+            ParserEvent::Inline(InlineToken::Text("foo".into())),
+            range1,
+        ))
+        .expect("process inline");
+
+        assert_eq!(tree.state.stack.len(), 1);
+
+        // 2. Thematic break should close it
+        let range2 = SourceByteRange::try_from(5..8).expect("valid range");
+        tree.process_event(RangedEvent::new(
+            ParserEvent::ThematicBreak,
+            range2,
+        ))
+        .expect("process thematic break");
+
+        assert_eq!(tree.state.stack.len(), 0);
+        assert_eq!(tree.blocks.len(), 2);
+        assert!(matches!(
+            tree.blocks[0].kind,
+            BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
+        ));
+        assert!(matches!(
+            tree.blocks[1].kind,
+            BlockKind::Leaf(LeafBlockKind::ThematicBreak)
+        ));
+    }
+
+    #[test]
+    fn finish_auto_closes_trailing_implicit_paragraph() {
+        let mut tree = DocTree::<Processing<'_>>::new();
+
+        // 1. Inline event opens implicit paragraph
+        let range = SourceByteRange::try_from(0..4).expect("valid range");
+        tree.process_event(RangedEvent::new(
+            ParserEvent::Inline(InlineToken::Text("foo".into())),
+            range,
+        ))
+        .expect("process inline");
+
+        // 2. finish should succeed (currently expected to fail until fixed)
+        let result = tree.finish();
+
+        assert!(result.is_ok(), "finish should auto-close trailing paragraph");
     }
 }

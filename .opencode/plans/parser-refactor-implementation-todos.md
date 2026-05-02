@@ -309,21 +309,21 @@ Validation:
 
 Files:
 
-- `lithos-core/src/note/parser/visitor.rs` (replace or compatibility shim)
+- `lithos-core/src/note/parser/visitor.rs` (deleted)
 - `lithos-core/src/note/parser/structure.rs` traversal methods
 
 Tasks:
 
-- [ ] Implement `walk_preorder()` iterator API returning traversal events.
-- [ ] Add convenience traversal helpers:
-  - [ ] `for_each_block`
-  - [ ] optional typed filters
-- [ ] Update structure docs/examples to use iterator/callback model.
-- [ ] Remove pulldown types from traversal API.
-- [ ] Decide whether to:
-  - [ ] delete `BlockVisitor` trait entirely, or
-  - [ ] keep temporary adapter shim with deprecation note.
-- [ ] Port existing visitor tests to traversal event tests.
+- [x] Implement `walk_preorder()` iterator API returning traversal events.
+- [x] Add convenience traversal helpers:
+  - [x] `for_each_block`
+  - [x] optional typed filters
+- [x] Update structure docs/examples to use iterator/callback model.
+- [x] Remove pulldown types from traversal API.
+- [x] Decide whether to:
+  - [x] delete `BlockVisitor` trait entirely, or
+  - [x] keep temporary adapter shim with deprecation note.
+- [x] Port existing visitor tests to traversal event tests.
 
 Acceptance criteria:
 
@@ -346,12 +346,12 @@ Files:
 
 Tasks:
 
-- [ ] Add contract tests for `TextContext` + `TextStyle` filtering boundaries:
-  - [ ] scanner excludes link/image/code/math nodes by intended rules
-  - [ ] link display includes intended label/code nodes and excludes math
-- [ ] Add range-contract tests for `TextSequence::covering_range()` in nested/mixed inline scenarios.
-- [ ] Verify no duplicated projection/filtering logic drifts back into parser/extractor.
-- [ ] Add malformed-event topology tests that assert typed errors (no stringly fallbacks).
+- [x] Add contract tests for `TextContext` + `TextStyle` filtering boundaries:
+  - [x] scanner excludes link/image/code/math nodes by intended rules
+  - [x] link display includes intended label/code nodes and excludes math
+- [x] Add range-contract tests for `TextSequence::covering_range()` in nested/mixed inline scenarios.
+- [x] Verify no duplicated projection/filtering logic drifts back into parser/extractor.
+- [x] Add malformed-event topology tests that assert typed errors (no stringly fallbacks).
 
 Acceptance criteria:
 

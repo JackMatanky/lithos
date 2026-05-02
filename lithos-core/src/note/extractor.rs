@@ -74,10 +74,17 @@ impl<'source> BlockExtractor<'source> {
         match kind {
             LeafKind::Heading(payload) => {
                 let scanned = self.scan_projection(&projection)?;
-                let text = projection.as_plain_text();
+                let text = projection.as_displayable_text();
+                let trimmed = text.trim();
+                let heading_text = if trimmed.len() == text.len() {
+                    Cow::Owned(text)
+                } else {
+                    Cow::Owned(trimmed.to_owned())
+                };
+
                 self.out.headings.push(RawHeading::new(
                     payload.to_u8(),
-                    Cow::Owned(text.trim().to_owned()),
+                    heading_text,
                     block_range,
                     SourceByteOffset::try_from_usize(span.start)?,
                 ));
@@ -142,6 +149,13 @@ impl<'source> BlockExtractor<'source> {
                     block_range,
                 ));
             }
+            LeafKind::ThematicBreak => {
+                self.out.sections.push(RawSection::new(
+                    RawSectionKind::ThematicBreak,
+                    block_range,
+                    depth,
+                ));
+            }
         }
 
         Ok(())
@@ -204,7 +218,7 @@ fn projection_text_and_range(
     projection: &TextSequence,
     block_range: SourceByteRange,
 ) -> Result<(String, SourceByteRange), NoteIngestError> {
-    let text = projection.as_plain_text();
+    let text = projection.as_displayable_text();
     let range = match projection.covering_range() {
         Some(range) => range,
         None => SourceByteRange::new(block_range.start(), block_range.start())

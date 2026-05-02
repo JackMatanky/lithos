@@ -16,6 +16,8 @@ pub enum RawSectionKind {
     List,
     /// Frontmatter section.
     Frontmatter,
+    /// Thematic break (horizontal rule).
+    ThematicBreak,
 }
 
 /// Raw section range with optional heading reference id.

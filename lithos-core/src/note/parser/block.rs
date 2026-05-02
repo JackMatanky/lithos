@@ -17,7 +17,7 @@ use super::{
     types::{BlockEnd, FrontmatterFormat, HeadingLevel, RangedEvent},
 };
 use crate::note::{
-    error::NoteIngestError,
+    error::{NoteIngestError, NoteParseError},
     position::{SourceByteOffset, SourceByteRange},
 };
 
@@ -92,8 +92,16 @@ impl<'source> Block<'source, Open> {
         self,
         end: SourceByteOffset,
     ) -> Result<Block<'source, Closed>, NoteIngestError> {
-        let span = SourceByteRange::new(self.span, end)
-            .map_err(NoteIngestError::Domain)?;
+        let span = SourceByteRange::new(self.span, end).map_err(|e| {
+            NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.invalid_block_range",
+                detail: format!(
+                    "failed to construct range for closed block: {e}"
+                )
+                .into(),
+                range: None,
+            })
+        })?;
 
         let kind = match self.kind {
             BlockKind::Leaf(leaf) => BlockKind::Leaf(match leaf {

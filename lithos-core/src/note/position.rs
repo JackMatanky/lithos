@@ -25,6 +25,7 @@ use super::error::{NoteError, StructureError};
 /// assert_eq!(u32::from(offset), 1024);
 /// ```
 #[derive(
+    Default,
     Debug,
     Clone,
     Copy,

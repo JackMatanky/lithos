@@ -44,6 +44,8 @@ pub enum SectionKind {
     Table,
     /// A frontmatter block.
     Frontmatter,
+    /// A thematic break (horizontal rule).
+    ThematicBreak,
     /// Other or unknown block type.
     Other(Box<str>),
 }
@@ -131,6 +133,7 @@ impl TryFrom<&RawSection> for Section {
             RawSectionKind::BlockQuote => SectionKind::BlockQuote,
             RawSectionKind::List => SectionKind::List,
             RawSectionKind::Frontmatter => SectionKind::Frontmatter,
+            RawSectionKind::ThematicBreak => SectionKind::ThematicBreak,
         };
         Ok(Section::new(kind, None, raw.range))
     }

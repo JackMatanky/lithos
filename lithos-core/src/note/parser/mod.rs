@@ -183,7 +183,17 @@ where
             ParserEvent::TaskListMarker(checked) => {
                 self.on_task_marker(*checked);
             }
-            ParserEvent::ThematicBreak => {}
+            ParserEvent::ThematicBreak => {
+                self.sink.on_leaf_complete(
+                    LeafKind::ThematicBreak,
+                    BlockSpan {
+                        start: range.start().as_usize(),
+                        end: range.end().as_usize(),
+                    },
+                    &[],
+                    self.depth,
+                )?;
+            }
         }
         Ok(())
     }
@@ -739,6 +749,7 @@ pub(crate) enum LeafKind {
     Heading(HeadingPayload),
     Paragraph,
     ListItem(ListItemPayload),
+    ThematicBreak,
 }
 
 /// Discriminant for [`ContainerKind`] frames.
@@ -1010,6 +1021,17 @@ mod tests {
         let raw = parse_raw(md);
         let item = raw.list_items.first().expect("list item exists");
         assert_eq!(item.is_checkbox, Some(true));
+    }
+
+    #[test]
+    fn should_extract_thematic_break() {
+        let md = "Paragraph\n\n---\n\nAnother paragraph";
+        let raw = parse_raw(md);
+        assert_eq!(raw.sections.len(), 3);
+        assert!(matches!(
+            raw.sections.get(1).map(|s| s.kind),
+            Some(crate::note::raw::RawSectionKind::ThematicBreak)
+        ));
     }
 
     #[test]

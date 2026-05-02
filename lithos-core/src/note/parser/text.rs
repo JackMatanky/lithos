@@ -3,6 +3,26 @@
 //! This module projects parser inline IR (`RangedEvent`) into stable text
 //! nodes. It is policy-agnostic: consumer layers (scanner, assembler, link
 //! handling) decide which nodes to include for their own use cases.
+//!
+//! # The Text Contract
+//!
+//! To ensure consistent behavior across scanning, indexing, and display, all
+//! text consumers must filter `TextNode` collections using the following rules:
+//!
+//! 1. **Scanning (`is_scannable`)**:
+//!     * **Context**: Must be `Normal`. Nodes inside `LinkLabel` or `ImageAlt`
+//!       are ignored to prevent local link artifacts from being promoted to
+//!       global note artifacts.
+//!     * **Style**: Must NOT contain `Code`, `MathInline`, or `MathDisplay`.
+//!       Content inside backticks or math delimiters is technical IR and should
+//!       not be scanned for domain artifacts like tags or fields.
+//!
+//! 2. **Display (`is_displayable`)**:
+//!     * **Style**: Must NOT contain `MathInline` or `MathDisplay`. These
+//!       variants require specialized rendering and are inhibited when
+//!       projecting to "plain" display text (e.g. for link labels or section
+//!       summaries).
+//!     * **Note**: `Code` style IS displayable as it represents literal text.
 
 #![expect(
     clippy::pattern_type_mismatch,
@@ -156,6 +176,17 @@ impl TextSequence {
         self.nodes.iter().map(TextNode::text).collect()
     }
 
+    /// Renders displayable text from nodes, filtering out non-displayable
+    /// content (e.g. math) according to the Text Contract.
+    #[must_use]
+    pub(crate) fn as_displayable_text(&self) -> String {
+        self.nodes
+            .iter()
+            .filter(|node| node.is_displayable())
+            .map(TextNode::text)
+            .collect()
+    }
+
     /// Returns source-covering span of first..last node.
     #[must_use]
     pub(crate) fn covering_range(&self) -> Option<SourceByteRange> {
@@ -227,7 +258,7 @@ impl TextSequence {
                 }
                 ParserEvent::Inline(InlineToken::Text(text)) => {
                     nodes.push(TextNode::new(
-                        text.to_string().into_boxed_str(),
+                        Box::from(text.as_ref()),
                         styles.clone(),
                         context_for_depth(link_depth, image_depth),
                         event.range(),
@@ -237,7 +268,7 @@ impl TextSequence {
                     let mut node_styles = styles.clone();
                     node_styles.push(TextStyle::Code);
                     nodes.push(TextNode::new(
-                        text.to_string().into_boxed_str(),
+                        Box::from(text.as_ref()),
                         node_styles,
                         context_for_depth(link_depth, image_depth),
                         event.range(),
@@ -253,7 +284,7 @@ impl TextSequence {
                         MathKind::Display => TextStyle::MathDisplay,
                     });
                     nodes.push(TextNode::new(
-                        content.to_string().into_boxed_str(),
+                        Box::from(content.as_ref()),
                         node_styles,
                         context_for_depth(link_depth, image_depth),
                         event.range(),
@@ -261,7 +292,7 @@ impl TextSequence {
                 }
                 ParserEvent::Inline(InlineToken::Html(html)) => {
                     nodes.push(TextNode::new(
-                        html.to_string().into_boxed_str(),
+                        Box::from(html.as_ref()),
                         styles.clone(),
                         context_for_depth(link_depth, image_depth),
                         event.range(),
