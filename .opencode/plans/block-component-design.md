@@ -191,7 +191,7 @@ pub(crate) enum ListKind {
 
 ---
 
-## Builder State Components (Private to DocStructure)
+## Builder State Components (Private to DocTree)
 
 ### **`ProcessingBlock<'source>`**
 
@@ -199,14 +199,14 @@ pub(crate) enum ListKind {
 
 **Lifecycle**: Created on `Event::Start(tag)`, finalized on `Event::End(tag)`.
 
-**Visibility**: Private to `DocStructure::from_context()` implementation.
+**Visibility**: Private to `DocTree::from_context()` implementation.
 
 **Design**:
 ```rust
 /// Temporary state for a block being constructed.
 ///
 /// This type only exists during the AST building phase and is never
-/// exposed outside of `DocStructure::from_context()`. It accumulates
+/// exposed outside of `DocTree::from_context()`. It accumulates
 /// events and child blocks until the closing tag arrives, then
 /// finalizes into a complete `Block`.
 struct ProcessingBlock<'source> {
@@ -362,10 +362,10 @@ enum ProcessingBlockKind {
 
 ---
 
-## Usage Example (Inside DocStructure::from_context)
+## Usage Example (Inside DocTree::from_context)
 
 ```rust
-impl<'source> DocStructure<'source> {
+impl<'source> DocTree<'source> {
     pub(crate) fn from_context(ctx: &ParserContext<'source>) -> Result<Self, ParseError> {
         let mut stack: Vec<ProcessingBlock<'source>> = Vec::new();
         let mut root_blocks: Vec<Block<'source>> = Vec::new();
@@ -526,7 +526,7 @@ fn processing_list_finalizes_with_children() {
 }
 ```
 
-### Integration Tests for `DocStructure`
+### Integration Tests for `DocTree`
 - Parse simple paragraph
 - Parse nested lists with correct depth tracking
 - Parse blockquote containing list

@@ -27,13 +27,13 @@ This document provides a complete implementation roadmap for refactoring the Lit
 │ PARSING LAYER (This Implementation)                        │
 ├─────────────────────────────────────────────────────────────┤
 │ Input:  Raw markdown (&str)                                 │
-│ Output: DocStructure (AST)                                  │
+│ Output: DocTree (AST)                                  │
 │ Scope:  Grammar recognition ONLY                            │
 ├─────────────────────────────────────────────────────────────┤
 │ Components:                                                 │
 │ 1. MarkdownEventStream (Thick Adapter) ✅ UPDATED           │
 │ 2. ParserContext (Cache) ✅ EXISTS                          │
-│ 3. DocStructure (AST) ✅ EXISTS                             │
+│ 3. DocTree (AST) ✅ EXISTS                             │
 │ 4. BlockVisitor (Traversal) ✅ EXISTS                       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -63,7 +63,7 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 
 ### 1. Component Naming
 
-- **`DocStructure`**: The AST container (not `MarkdownAst`, `NoteStructure`, or `ParsedDocument`)
+- **`DocTree`**: The AST container (not `MarkdownAst`, `NoteStructure`, or `ParsedDocument`)
 - **`ParserContext`**: The cache (not `NoteContext`)
 - **`Block`**: AST node type
 - **`BlockVisitor`**: Traversal trait
@@ -82,7 +82,7 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 
 - **Decision**: Store as `BlockKind::Frontmatter { format, text }`
 - **Rationale**: Frontmatter is a block per CommonMark spec, not special metadata
-- **Location**: Can only appear in `DocStructure::blocks[0]` (root-level only)
+- **Location**: Can only appear in `DocTree::blocks[0]` (root-level only)
 
 ### 3. List Depth Tracking
 
@@ -93,7 +93,7 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 ### 4. Caching Strategy
 
 - **Decision**: Cache both events AND AST in `ParserContext`
-- **Mechanism**: `OnceCell<DocStructure>` for lazy initialization
+- **Mechanism**: `OnceCell<DocTree>` for lazy initialization
 - **Rationale**: LSP will request multiple passes per edit (diagnostics + autocomplete + hover)
 
 ### 5. Block Helper Methods
@@ -103,7 +103,7 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 
 ### 6. Error Handling
 
-- **Decision**: `DocStructure::from_context()` returns `Result<DocStructure, ParseError>`
+- **Decision**: `DocTree::from_context()` returns `Result<DocTree, ParseError>`
 - **Rationale**: Safety against malformed event streams (stack underflow)
 
 ### 7. Internal Representation (IR) "Chokepoint"
@@ -130,7 +130,7 @@ To ensure consistency, the parsing layer uses official CommonMark terminology:
 - **Inline**: Granular elements inside Leaf Blocks (Text, Link, Emphasis, CodeSpan).
 - **Rationale**: Strict adherence to the spec prevents misunderstanding of component responsibilities.
 
-### 10. Structural Storage (`DocStructure`)
+### 10. Structural Storage (`DocTree`)
 
 - **Decision**: `Paragraph` and `Heading` blocks store `Vec<InlineWithRange<'source>>`.
 - **Rationale**: Sets up the lexical scanning layer to operate solely on inline streams without structural noise.
@@ -196,7 +196,7 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 ### Phase 1: Foundation (COMPLETED)
 
 - `ParserContext` eager caching implemented.
-- `DocStructure` and `BlockVisitor` foundations established.
+- `DocTree` and `BlockVisitor` foundations established.
 - `EventWithRange` moved to `stream.rs`.
 
 ---
@@ -230,8 +230,8 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Implement `DocStructure` struct in `structure.rs`.
-2. Implement `DocStructure::from_context()` with stack-based algorithm matching on `ParserEvent`.
+1. Implement `DocTree` struct in `structure.rs`.
+2. Implement `DocTree::from_context()` with stack-based algorithm matching on `ParserEvent`.
 3. Handle all `ParserEvent` variants (`BlockStart`, `BlockEnd`, `Inline`).
 4. Track list depth and parent spans during building using internal `StructureBuilder`.
 5. Add explicit builder-state types (`ProcessingBlockTree`, `ProcessingContainer`, `ProcessingLeaf`) and container/leaf finalize paths.
@@ -260,14 +260,14 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 1. Create `lithos-core/src/note/parser/visitor.rs`.
 2. Define `BlockVisitor` trait with `visit_*` methods.
-3. Implement `DocStructure::walk()` method.
+3. Implement `DocTree::walk()` method.
 4. Add depth-tracking during traversal.
 5. Add tests for visitor pattern.
 
 **Acceptance Criteria**:
 
 - [ ] `BlockVisitor` has methods for all `BlockKind` variants.
-- [ ] `DocStructure::walk()` correctly traverses nested structures.
+- [ ] `DocTree::walk()` correctly traverses nested structures.
 - [ ] Visitor receives correct depth parameter.
 - [ ] Test visitor can collect all block types and counts.
 
@@ -281,8 +281,8 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 
 **Tasks**:
 
-1. Create compatibility adapter: `DocStructure` -> `BlockExtractor` callback.
-2. Update `MarkdownParser::parse()` to use `ParserContext` + `DocStructure`.
+1. Create compatibility adapter: `DocTree` -> `BlockExtractor` callback.
+2. Update `MarkdownParser::parse()` to use `ParserContext` + `DocTree`.
 3. Run full test suite and fix regressions.
 4. Update benchmarks to measure parsing vs extraction separately.
 
@@ -306,7 +306,7 @@ This table defines how `pulldown-cmark` types map to Lithos Internal Representat
 2. Delete `TextFragment` (replaced by `Vec<SpannedEvent>`).
 3. Delete `BlockFrame` (replaced by `StackFrame`).
 4. Delete `LeafKind` and `ContainerKind` (replaced by `BlockKind`).
-5. Delete `BlockStack` and `FragmentPool` (replaced by `DocStructure` internal stack).
+5. Delete `BlockStack` and `FragmentPool` (replaced by `DocTree` internal stack).
 6. Delete `ArtifactSink` trait (replaced by `BlockVisitor`).
 7. Update module exports in `parser/mod.rs`.
 
@@ -361,7 +361,7 @@ pub(crate) enum InlineEvent<'source> {
 
 `structure.rs` will focus on build-time orchestration:
 
-- `DocStructure<'source>`
+- `DocTree<'source>`
 - `StructureBuilder<'source>`
 - `ProcessingBlockTree<'source>`
 - `ProcessingContainer<'source>` / `ProcessingLeaf<'source>`
@@ -384,7 +384,7 @@ pub(crate) enum InlineEvent<'source> {
 - [ ] **Zero Coupling**: No `pulldown_cmark` types in `structure.rs`.
 - [ ] **CommonMark Fidelity**: Nested lists and blockquotes correctly modeled via `ParserEvent::BlockStart/End`.
 - [ ] **Performance**: IR conversion overhead remains <2% of total parse time.
-- [ ] **Clean Pipeline**: `DocStructure::from_context` only matches on `ParserEvent`.
+- [ ] **Clean Pipeline**: `DocTree::from_context` only matches on `ParserEvent`.
 
 ---
 
@@ -444,7 +444,7 @@ The IR "Chokepoint" design resolves previous confusion:
 - ✅ `EventWithRange` (`parser/stream.rs`) - Now wraps IR `ParserEvent`
 - ✅ `ReferenceDefinitions` (`parser/references.rs`)
 - ✅ `SourceByteRange` (`note/position.rs`)
-- ✅ `DocStructure` (`parser/structure.rs`) - Uses `ParserEvent`
+- ✅ `DocTree` (`parser/structure.rs`) - Uses `ParserEvent`
 - ✅ `BlockVisitor` (`parser/visitor.rs`)
 
 ### External Crates
@@ -460,7 +460,7 @@ The IR "Chokepoint" design resolves previous confusion:
 
 - `ParserContext`: Event caching, reference resolution
 - `Block`: Helper methods (`text()`, `is_scannable()`)
-- `DocStructure::from_context()`: AST building for each block type
+- `DocTree::from_context()`: AST building for each block type
 
 ### Integration Tests (End-to-End)
 
@@ -537,7 +537,7 @@ Content here
 2. **Design IR Chokepoint & Thick Adapter** ✅
 3. **Implement Phase 1 (ParserContext)** ✅
 4. **Implement Phase 2 (IR Refactoring)** ⬅️ **NEXT**
-5. **Implement Phase 3 (DocStructure building)**
+5. **Implement Phase 3 (DocTree building)**
 6. **Continue through remaining phases**
 
 ---

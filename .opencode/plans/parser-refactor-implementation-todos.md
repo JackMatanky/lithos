@@ -33,7 +33,7 @@ Execution checklist for the policy-driven parser refactor.
 - `stream.rs` still exposes reverse conversion helpers (`as_start_tag`, `as_end_tag`) via block IR types.
 - `block.rs` still imports pulldown types and stream internals.
 - `structure.rs` still imports pulldown types and depends on `stream::BlockType`; stack invariants are split and one invalid attach path is silent.
-- `visitor.rs` is trait-heavy and pulldown-leaking; `DocStructure::walk` is coupled to it.
+- `visitor.rs` is trait-heavy and pulldown-leaking; `DocTree::walk` is coupled to it.
 
 ---
 

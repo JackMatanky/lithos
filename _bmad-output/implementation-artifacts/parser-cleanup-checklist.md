@@ -35,7 +35,7 @@ Recorded warning hotspots to resolve during consolidation:
 4. Reference normalization semantics:
    - Case folding, whitespace collapse, and backslash unescaping remain stable.
 5. AST assembly semantics:
-   - `DocStructure::from_context` stack assembly keeps current list depth/task marker/parent span behavior.
+   - `DocTree::from_context` stack assembly keeps current list depth/task marker/parent span behavior.
 6. Visitor traversal semantics:
    - Pre-order traversal and depth propagation behavior remain stable.
 7. Context isolation:

@@ -34,7 +34,7 @@ Status: active cleanup contract for scanner/extraction/assembly planning.
 
 ### `structure.rs`
 
-- Owns flat-event-to-AST assembly (`DocStructure::from_context`).
+- Owns flat-event-to-AST assembly (`DocTree::from_context`).
 - Owns stack/tree assembly algorithm and list nesting/task marker semantics.
 - Must not re-interpret markdown source directly.
 

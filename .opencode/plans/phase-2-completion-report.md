@@ -258,7 +258,7 @@ test result: ok. 802 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 warning: variants `ThematicBreak` and `ListItem` are never constructed
 ```
 
-**Explanation**: These will be constructed in Phase 3 (DocStructure building). Warnings will disappear after integration.
+**Explanation**: These will be constructed in Phase 3 (DocTree building). Warnings will disappear after integration.
 
 ### 2. No Constructor Methods
 **Status**: Blocks are constructed directly via struct literals in tests
@@ -330,7 +330,7 @@ None
 
 ### Immediate (Phase 3)
 1. Implement `ProcessingBlock` (internal builder state)
-2. Implement `DocStructure::from_context()` with stack-based algorithm
+2. Implement `DocTree::from_context()` with stack-based algorithm
 3. Add comprehensive integration tests for AST building
 
 ### Future Phases

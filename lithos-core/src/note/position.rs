@@ -89,6 +89,13 @@ impl SourceByteOffset {
             source_len: Self::new(u32::MAX),
         })
     }
+
+    /// Returns the offset incremented by `rhs`, saturating at `u32::MAX`.
+    #[inline]
+    #[must_use]
+    pub const fn saturating_add(self, rhs: Self) -> Self {
+        Self(self.0.saturating_add(rhs.0))
+    }
 }
 
 impl From<u32> for SourceByteOffset {

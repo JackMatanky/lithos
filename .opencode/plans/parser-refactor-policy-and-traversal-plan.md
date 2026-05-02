@@ -250,7 +250,7 @@ Replace trait-heavy `visitor.rs` with traversal iterator/callback APIs.
 
 ### Proposed traversal API
 
-- `DocStructure::walk_preorder() -> impl Iterator<Item = TraversalEvent<'_>>`
+- `DocTree::walk_preorder() -> impl Iterator<Item = TraversalEvent<'_>>`
 - `TraversalEvent`:
   - `EnterBlock { block: &Block<'source>, depth: u32 }`
   - optional `ExitBlock { block: &Block<'source>, depth: u32 }`

@@ -124,6 +124,20 @@ pub(crate) enum BlockEnd {
     Frontmatter,
 }
 
+impl BlockEnd {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Paragraph => "paragraph",
+            Self::Heading => "heading",
+            Self::BlockQuote => "blockquote",
+            Self::List => "list",
+            Self::ListItem => "list_item",
+            Self::CodeBlock => "code_block",
+            Self::Frontmatter => "frontmatter",
+        }
+    }
+}
+
 /// Inline token.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InlineToken<'source> {

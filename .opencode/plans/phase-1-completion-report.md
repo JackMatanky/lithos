@@ -173,7 +173,7 @@ warning: associated items `new`, `events`, `references`, and `source` are never 
 ### 2. Future Optimizations (Out of Scope for Phase 1)
 - **Incremental parsing**: Re-parse only changed subtrees (LSP Phase 2)
 - **Event deduplication**: Share identical text fragments across events
-- **Lazy AST building**: Build `DocStructure` only when requested
+- **Lazy AST building**: Build `DocTree` only when requested
 
 ---
 
@@ -283,7 +283,7 @@ None
 3. Add tests for `Block` data integrity
 
 ### Future Phases
-- Phase 3: Implement `DocStructure::from_context()` builder
+- Phase 3: Implement `DocTree::from_context()` builder
 - Phase 4: Implement `BlockVisitor` traversal API
 - Phase 5: Wire into existing `MarkdownParser` pipeline
 - Phase 6: Delete legacy components
