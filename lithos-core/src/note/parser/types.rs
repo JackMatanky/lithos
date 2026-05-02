@@ -151,6 +151,7 @@ pub(crate) enum InlineToken<'source> {
         kind: MathKind,
         content: Cow<'source, str>,
     },
+    FootnoteReference(Cow<'source, str>),
 }
 
 /// Start delimiter for inline spans.
@@ -259,7 +260,7 @@ pub(crate) enum LineBreakKind {
 
 /// Math token kind.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MathKind {
+pub enum MathKind {
     Inline,
     Display,
 }

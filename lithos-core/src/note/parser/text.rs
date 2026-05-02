@@ -306,6 +306,14 @@ impl TextSequence {
                         event.range(),
                     ));
                 }
+                ParserEvent::Inline(InlineToken::FootnoteReference(label)) => {
+                    nodes.push(TextNode::new(
+                        Box::from(format!("[^{label}]").as_str()),
+                        styles.clone(),
+                        context_for_depth(link_depth, image_depth),
+                        event.range(),
+                    ));
+                }
                 ParserEvent::BlockStart(_)
                 | ParserEvent::BlockEnd(_)
                 | ParserEvent::TaskListMarker(_)

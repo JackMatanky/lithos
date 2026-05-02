@@ -48,7 +48,7 @@ use crate::note::{
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Trait for the document tree's lifecycle state.
-pub(crate) trait DocState: std::fmt::Debug {}
+pub trait DocState: std::fmt::Debug {}
 
 /// Marker for a document tree currently being assembled.
 #[derive(Debug, Default)]
@@ -64,12 +64,12 @@ impl DocState for Processing<'_> {}
 
 /// Marker for a finalized, read-only document tree.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Complete;
+pub struct Complete;
 impl DocState for Complete {}
 
 /// The hierarchical document structure (AST) for a markdown document.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DocTree<'source, S: DocState = Complete> {
+pub struct DocTree<'source, S: DocState = Complete> {
     /// Root-level blocks in the document.
     blocks: Vec<Block<'source, Closed>>,
     /// State-specific data.
@@ -571,9 +571,13 @@ impl<'tree, 'source> Iterator for PreorderIter<'tree, 'source> {
     reason = "Test pattern matching on borrowed enums favors readability"
 )]
 mod tests {
+    use pulldown_cmark::Options;
+
     use super::*;
     use crate::note::parser::{
-        InlineToken, config::EventStreamConfig, context::ParserContext,
+        InlineToken,
+        config::{BreakPolicy, EventStreamConfig},
+        context::ParserContext,
         types::HeadingLevel,
     };
 
@@ -1423,9 +1427,62 @@ mod tests {
         ))
         .expect("process inline");
 
-        // 2. finish should succeed (currently expected to fail until fixed)
+        // 2. finish should succeed
         let result = tree.finish();
 
         assert!(result.is_ok(), "finish should auto-close trailing paragraph");
+    }
+
+    #[test]
+    fn captures_text_inside_tables_as_paragraphs() {
+        let source =
+            "| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |";
+        let config = EventStreamConfig::new(
+            Options::ENABLE_TABLES,
+            BreakPolicy::NormalizeAsText,
+            true,
+        );
+        let ctx = ParserContext::new(source, config).expect("ctx");
+        let tree = DocTree::from_context(&ctx).expect("tree");
+
+        assert!(!tree.blocks().is_empty());
+        assert!(tree.blocks().iter().any(|b| matches!(
+            b.kind,
+            BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
+        )));
+    }
+
+    #[test]
+    fn captures_text_inside_footnotes_as_paragraphs() {
+        let source = "Text with a footnote[^1]\n\n[^1]: The footnote content.";
+        let config = EventStreamConfig::new(
+            Options::ENABLE_FOOTNOTES,
+            BreakPolicy::NormalizeAsText,
+            true,
+        );
+        let ctx = ParserContext::new(source, config).expect("ctx");
+        let tree = DocTree::from_context(&ctx).expect("tree");
+
+        assert!(tree.blocks().iter().any(|b| matches!(
+            b.kind,
+            BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
+        )));
+    }
+
+    #[test]
+    fn captures_text_inside_definition_lists_as_paragraphs() {
+        let source = "Term\n: Definition";
+        let config = EventStreamConfig::new(
+            Options::ENABLE_DEFINITION_LIST,
+            BreakPolicy::NormalizeAsText,
+            true,
+        );
+        let ctx = ParserContext::new(source, config).expect("ctx");
+        let tree = DocTree::from_context(&ctx).expect("tree");
+
+        assert!(tree.blocks().iter().any(|b| matches!(
+            b.kind,
+            BlockKind::Leaf(LeafBlockKind::Paragraph { .. })
+        )));
     }
 }

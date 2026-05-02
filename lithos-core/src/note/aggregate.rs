@@ -643,6 +643,7 @@ impl<'source>
             list_items,
             inline_fields: raw_inline_fields,
             block_refs,
+            ..
         } = raw;
         let path = path.clone();
 

@@ -246,7 +246,8 @@ where
             | InlineToken::LineBreak(_)
             | InlineToken::Math {
                 ..
-            } => {}
+            }
+            | InlineToken::FootnoteReference(_) => {}
         }
 
         self.record_link_event(inline, range);
@@ -353,8 +354,8 @@ where
                 .transpose()?
         };
         self.record_open_item(start, depth_index);
-        self.stack.push_leaf(
-            LeafKind::ListItem(ListItemPayload {
+        self.stack.push_container(
+            ContainerKind::ListItem(ListItemPayload {
                 kind: list_kind,
                 depth: list_depth,
                 parent_pos,
@@ -374,8 +375,11 @@ where
             BlockEnd::Frontmatter => {
                 self.finalize_leaf_frame(byte_end, 0)?;
             }
-            BlockEnd::Heading | BlockEnd::ListItem => {
+            BlockEnd::Heading => {
                 self.finalize_leaf_frame(byte_end, self.depth)?;
+            }
+            BlockEnd::ListItem | BlockEnd::CodeBlock => {
+                self.finalize_container_frame(byte_end, self.depth)?;
             }
             BlockEnd::Paragraph => {
                 let mut frame = self.stack.pop()?;
@@ -386,14 +390,12 @@ where
                 } = frame
                 {
                     span.end = byte_end;
-                    // Propagate paragraph events to parent list item if
+                    // Propagate paragraph events to parent container if
                     // applicable.
-                    if let Some(BlockFrame::Leaf {
-                        kind: LeafKind::ListItem(..),
+                    if let Some(BlockFrame::Container {
                         events: parent_events,
                         ..
                     }) = self.stack.last_mut()
-                        && parent_events.is_empty()
                     {
                         parent_events.extend(events.iter().cloned());
                     }
@@ -409,9 +411,6 @@ where
             }
             BlockEnd::BlockQuote => {
                 self.depth = self.depth.saturating_sub(1);
-                self.finalize_container_frame(byte_end, self.depth)?;
-            }
-            BlockEnd::CodeBlock => {
                 self.finalize_container_frame(byte_end, self.depth)?;
             }
         }
@@ -459,9 +458,10 @@ where
             BlockFrame::Container {
                 kind,
                 mut span,
+                events,
             } => {
                 span.end = byte_end;
-                self.sink.on_container_complete(kind, span, depth)?;
+                self.sink.on_container_complete(kind, span, &events, depth)?;
             }
             BlockFrame::Leaf {
                 span,
@@ -479,20 +479,22 @@ where
         Ok(())
     }
 
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern ergonomics are used for mutable stack frame access"
-    )]
     fn record_inline_event(
         &mut self,
         inline: &InlineToken<'source>,
         range: SourceByteRange,
     ) {
-        if let Some(BlockFrame::Leaf {
-            events,
-            ..
-        }) = self.stack.last_mut()
-        {
+        if let Some(frame) = self.stack.last_mut() {
+            let events = match frame {
+                BlockFrame::Leaf {
+                    events,
+                    ..
+                }
+                | BlockFrame::Container {
+                    events,
+                    ..
+                } => events,
+            };
             events.push(RangedEvent::new(
                 ParserEvent::Inline(inline.clone()),
                 range,
@@ -505,8 +507,8 @@ where
         reason = "Pattern ergonomics are used for mutable stack frame access"
     )]
     fn on_task_marker(&mut self, checked: bool) {
-        if let Some(BlockFrame::Leaf {
-            kind: LeafKind::ListItem(payload),
+        if let Some(BlockFrame::Container {
+            kind: ContainerKind::ListItem(payload),
             ..
         }) = self.stack.last_mut()
         {
@@ -648,6 +650,7 @@ pub(crate) trait ArtifactSink<'source> {
         &mut self,
         kind: ContainerKind,
         span: BlockSpan,
+        events: &[RangedEvent<'source>],
         depth: u32,
     ) -> Result<(), NoteIngestError>;
 
@@ -709,6 +712,7 @@ impl<'source> BlockStack<'source> {
                 start,
                 end: 0,
             },
+            events: Vec::with_capacity(8),
         });
     }
 
@@ -739,6 +743,7 @@ pub(crate) enum BlockFrame<'source> {
     Container {
         kind: ContainerKind,
         span: BlockSpan,
+        events: Vec<RangedEvent<'source>>,
     },
 }
 
@@ -748,14 +753,14 @@ pub(crate) enum LeafKind {
     Metadata(MetadataPayload),
     Heading(HeadingPayload),
     Paragraph,
-    ListItem(ListItemPayload),
     ThematicBreak,
 }
 
 /// Discriminant for [`ContainerKind`] frames.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ContainerKind {
     List,
+    ListItem(ListItemPayload),
     BlockQuote,
     CodeBlock,
 }
@@ -823,9 +828,14 @@ fn is_reference_link_type(link_type: LinkKind) -> bool {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::panic,
+    reason = "Tests prioritize readability with assertions"
+)]
 mod tests {
     use super::*;
-    use crate::config::task::TaskConfigSpec;
+    use crate::{config::task::TaskConfigSpec, note::error::NoteError};
 
     #[derive(Default)]
     struct NoopSink;
@@ -835,6 +845,7 @@ mod tests {
             &mut self,
             _kind: ContainerKind,
             _span: BlockSpan,
+            _events: &[RangedEvent<'source>],
             _depth: u32,
         ) -> Result<(), NoteIngestError> {
             Ok(())
@@ -872,71 +883,90 @@ mod tests {
         }
     }
 
-    fn parse_raw(markdown: &str) -> RawNote<'_> {
+    fn parse_raw(markdown: &str) -> Result<RawNote<'_>, NoteIngestError> {
         let task_spec = task_spec_fixture();
-        MarkdownParser::parse(markdown, &task_spec).expect("parsing failed")
+        MarkdownParser::parse(markdown, &task_spec)
     }
 
     #[test]
-    fn should_extract_block_ref_from_paragraph_tail() {
+    fn should_extract_block_ref_from_paragraph_tail()
+    -> Result<(), NoteIngestError> {
         let md = "Paragraph text ^my-id";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert_eq!(raw.block_refs.len(), 1);
-        assert_eq!(raw.block_refs.first().unwrap().id, "my-id");
+        assert_eq!(
+            raw.block_refs
+                .first()
+                .ok_or(NoteError::Internal("missing block ref".into()))?
+                .id,
+            "my-id"
+        );
+        Ok(())
     }
 
     #[test]
-    fn should_capture_yaml_at_start() {
+    fn should_capture_yaml_at_start() -> Result<(), NoteIngestError> {
         let md = "---\ntags: [a]\n---\nContent";
-        let raw = parse_raw(md);
-        let fm = raw.frontmatter.as_ref().expect("frontmatter missing");
+        let raw = parse_raw(md)?;
+        let fm = raw
+            .frontmatter
+            .as_ref()
+            .ok_or(NoteError::Internal("frontmatter missing".into()))?;
         assert_eq!(fm.text, "tags: [a]\n");
+        Ok(())
     }
 
     #[test]
-    fn should_capture_tags_inside_heading() {
+    fn should_capture_tags_inside_heading() -> Result<(), NoteIngestError> {
         let md = "## Heading #tag";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.tags.iter().any(|t| t.value == "#tag"));
+        Ok(())
     }
 
     #[test]
-    fn should_ignore_tags_inside_links() {
+    fn should_ignore_tags_inside_links() -> Result<(), NoteIngestError> {
         let md = "See [[target|#tag]] and [link #tag](http://example.test)";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.tags.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn should_ignore_block_refs_inside_links() {
+    fn should_ignore_block_refs_inside_links() -> Result<(), NoteIngestError> {
         let md = "See [link ^ref](http://example.test)";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.block_refs.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn should_detect_tag_after_link_label_gap() {
+    fn should_detect_tag_after_link_label_gap() -> Result<(), NoteIngestError> {
         let md = "See [label](http://example.test) #tag";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.tags.iter().any(|tag| tag.value == "#tag"));
+        Ok(())
     }
 
     #[test]
-    fn should_detect_block_ref_after_link_label_gap() {
+    fn should_detect_block_ref_after_link_label_gap()
+    -> Result<(), NoteIngestError> {
         let md = "See [label](http://example.test) ^my-id";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.block_refs.iter().any(|block_ref| block_ref.id == "my-id"));
+        Ok(())
     }
 
     #[test]
-    fn should_not_scan_code_or_math_for_tags() {
+    fn should_not_scan_code_or_math_for_tags() -> Result<(), NoteIngestError> {
         let md = "`#hidden` $#hidden_math$ #visible";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert_eq!(raw.tags.len(), 1);
         assert_eq!(
             raw.tags.first().map(|tag| tag.value.as_ref()),
             Some("#visible")
         );
+        Ok(())
     }
 
     #[test]
@@ -988,130 +1018,222 @@ mod tests {
     }
 
     #[test]
-    fn should_extract_bare_fields() {
+    fn should_extract_bare_fields() -> Result<(), NoteIngestError> {
         let md = "bare_key:: bare_val";
-        let raw = parse_raw(md);
-        let field = raw.inline_fields.first().expect("field exists");
+        let raw = parse_raw(md)?;
+        let field = raw
+            .inline_fields
+            .first()
+            .ok_or(NoteError::Internal("field missing".into()))?;
         assert_eq!(field.key, "bare_key");
         assert_eq!(field.value, "bare_val");
+        Ok(())
     }
 
     #[test]
-    fn should_handle_wikilinks() {
+    fn should_handle_wikilinks() -> Result<(), NoteIngestError> {
         let md = "Check [[target]] and [[target|alias]]";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert_eq!(raw.links.len(), 2);
-        assert_eq!(raw.links.first().unwrap().text.target.as_ref(), "target");
+        assert_eq!(
+            raw.links
+                .first()
+                .ok_or(NoteError::Internal("link missing".into()))?
+                .text
+                .target
+                .as_ref(),
+            "target"
+        );
+        Ok(())
     }
 
     #[test]
-    fn should_track_list_nesting() {
+    fn should_track_list_nesting() -> Result<(), NoteIngestError> {
         let md = "- Parent\n  - Child";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert_eq!(raw.list_items.len(), 2);
         let mut sorted = raw.list_items.clone();
         sorted.sort_by_key(|i| i.range.start().as_usize());
-        let child = sorted.get(1).expect("Child list item must exist");
+        let child = sorted
+            .get(1)
+            .ok_or(NoteError::Internal("Child list item missing".into()))?;
         assert!(matches!(child.depth, RawListDepth::Nested(1)));
+        Ok(())
     }
 
     #[test]
-    fn should_capture_checkbox_state_and_marker() {
+    fn should_capture_checkbox_state_and_marker() -> Result<(), NoteIngestError>
+    {
         let md = "- [x] Done";
-        let raw = parse_raw(md);
-        let item = raw.list_items.first().expect("list item exists");
+        let raw = parse_raw(md)?;
+        let item = raw
+            .list_items
+            .first()
+            .ok_or(NoteError::Internal("list item missing".into()))?;
         assert_eq!(item.is_checkbox, Some(true));
+        Ok(())
     }
 
     #[test]
-    fn should_extract_thematic_break() {
+    fn should_extract_thematic_break() -> Result<(), NoteIngestError> {
         let md = "Paragraph\n\n---\n\nAnother paragraph";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert_eq!(raw.sections.len(), 3);
         assert!(matches!(
             raw.sections.get(1).map(|s| s.kind),
             Some(crate::note::raw::RawSectionKind::ThematicBreak)
         ));
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_first_wins() {
+    fn should_report_event_stack_mismatch_on_finalization() {
+        let mut parser = MarkdownParser::new(
+            "",
+            &task_spec_fixture(),
+            references::ReferenceDefinitions::new(
+                std::collections::HashMap::new(),
+            ),
+            NoopSink,
+        );
+
+        // Push a container but try to finalize a leaf
+        parser.stack.push_container(ContainerKind::List, 0);
+        let result = parser.finalize_leaf_frame(1, 0);
+
+        match result {
+            Err(NoteIngestError::Parse(
+                NoteParseError::EventStackMismatch {
+                    expected,
+                    found,
+                    ..
+                },
+            )) => {
+                assert_eq!(expected, "leaf");
+                assert_eq!(found, "container");
+            }
+            _ => panic!("Expected EventStackMismatch error, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn reference_definitions_first_wins() -> Result<(), NoteIngestError> {
         let md = "[ref]: http://a.example\n[ref]: http://b.example\n\n[ref][]";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "http://a.example");
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_are_case_insensitive() {
+    fn reference_definitions_are_case_insensitive()
+    -> Result<(), NoteIngestError> {
         let md = "[Ref]: http://example.test\n\n[ref][]";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "http://example.test");
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_in_frontmatter_are_ignored() {
+    fn reference_definitions_in_frontmatter_are_ignored()
+    -> Result<(), NoteIngestError> {
         let md = "---\n[ref]: http://frontmatter.test\n---\n\n[ref][]";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.links.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_in_fenced_code_are_ignored() {
+    fn reference_definitions_in_fenced_code_are_ignored()
+    -> Result<(), NoteIngestError> {
         let md = "```\n[ref]: http://code.test\n```\n\n[ref][]";
-        let raw = parse_raw(md);
+        let raw = parse_raw(md)?;
         assert!(raw.links.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_normalize_whitespace() {
+    fn reference_definitions_normalize_whitespace()
+    -> Result<(), NoteIngestError> {
         let md = "[Foo   Bar]: http://example.test\n\n[foo bar][]";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "http://example.test");
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_unescape_labels() {
+    fn reference_definitions_unescape_labels() -> Result<(), NoteIngestError> {
         let md = "[Foo\\ Bar]: http://example.test\n\n[foo\\ bar][]";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "http://example.test");
+        Ok(())
     }
 
     #[test]
-    fn reference_definitions_allow_multiline_destination() {
+    fn reference_definitions_allow_multiline_destination()
+    -> Result<(), NoteIngestError> {
         let md = "[ref]:\n  http://example.test\n\n[ref][]";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "http://example.test");
+        Ok(())
     }
 
     #[test]
-    fn external_scheme_targets_preserve_fragments() {
+    fn external_scheme_targets_preserve_fragments()
+    -> Result<(), NoteIngestError> {
         let md = "[obsidian](obsidian://open?vault=V#frag)";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "obsidian://open?vault=V#frag");
+        Ok(())
     }
 
     #[test]
-    fn file_scheme_targets_preserve_fragments() {
+    fn file_scheme_targets_preserve_fragments() -> Result<(), NoteIngestError> {
         let md = "[file](file:///Users/example/test.md#section)";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(
             link.text.target.as_ref(),
             "file:///Users/example/test.md#section"
         );
+        Ok(())
     }
 
     #[test]
-    fn s3_scheme_targets_preserve_fragments() {
+    fn s3_scheme_targets_preserve_fragments() -> Result<(), NoteIngestError> {
         let md = "[s3](s3://bucket/key#object)";
-        let raw = parse_raw(md);
-        let link = raw.links.first().expect("link exists");
+        let raw = parse_raw(md)?;
+        let link = raw
+            .links
+            .first()
+            .ok_or(NoteError::Internal("link missing".into()))?;
         assert_eq!(link.text.target.as_ref(), "s3://bucket/key#object");
+        Ok(())
     }
 }

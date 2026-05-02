@@ -40,8 +40,6 @@ pub enum SectionKind {
     BlockQuote,
     /// A callout block quote.
     Callout,
-    /// A table block.
-    Table,
     /// A frontmatter block.
     Frontmatter,
     /// A thematic break (horizontal rule).

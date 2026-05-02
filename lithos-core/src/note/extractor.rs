@@ -108,31 +108,6 @@ impl<'source> BlockExtractor<'source> {
                 self.out.inline_fields.extend(scanned.inline_fields);
                 self.out.block_refs.extend(scanned.block_refs);
             }
-            LeafKind::ListItem(payload) => {
-                let scanned = self.scan_projection(&projection)?;
-                self.out.sections.push(RawSection::new(
-                    RawSectionKind::List,
-                    block_range,
-                    payload.depth.to_u32(),
-                ));
-
-                let (raw_text, text_range) =
-                    projection_text_and_range(&projection, block_range)?;
-
-                let item = RawListItem::new(
-                    payload.kind,
-                    payload.depth,
-                    payload.parent_pos,
-                    payload.is_checkbox,
-                    RawListItemText::new(Cow::Owned(raw_text), text_range),
-                    block_range,
-                    scanned.tags,
-                    scanned.inline_fields,
-                );
-
-                self.out.accept_list_item(item);
-                self.out.block_refs.extend(scanned.block_refs);
-            }
             LeafKind::Metadata(payload) => {
                 let text = projection.as_plain_text();
                 self.out.sections.push(RawSection::new(
@@ -188,11 +163,35 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
         &mut self,
         kind: ContainerKind,
         span: BlockSpan,
+        events: &[RangedEvent<'source>],
         depth: u32,
     ) -> Result<(), NoteIngestError> {
+        let projection = TextSequence::from_events(events);
         let range = span.to_source_range()?;
         match kind {
             ContainerKind::List => {}
+            ContainerKind::ListItem(payload) => {
+                let scanned = self.scan_projection(&projection)?;
+                let (raw_text, text_range) =
+                    projection_text_and_range(&projection, range);
+
+                let item = RawListItem::new(
+                    payload.kind,
+                    payload.depth,
+                    payload.parent_pos,
+                    payload.is_checkbox,
+                    RawListItemText::new(Cow::Owned(raw_text), text_range),
+                    range,
+                    scanned.tags,
+                    scanned.inline_fields,
+                );
+                self.out.accept_list_item(item);
+                self.out.sections.push(RawSection::new(
+                    RawSectionKind::List,
+                    range,
+                    payload.depth.to_u32(),
+                ));
+            }
             ContainerKind::BlockQuote => self.out.sections.push(
                 RawSection::new(RawSectionKind::BlockQuote, range, depth),
             ),
@@ -211,22 +210,6 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
 
 // ── Free functions ───────────────────────────────────────────────────────────
 
-/// Extracts text and source range from projected text nodes without any
-/// trimming. The raw layer preserves source content as-is; trimming is a domain
-/// concern.
-fn projection_text_and_range(
-    projection: &TextSequence,
-    block_range: SourceByteRange,
-) -> Result<(String, SourceByteRange), NoteIngestError> {
-    let text = projection.as_displayable_text();
-    let range = match projection.covering_range() {
-        Some(range) => range,
-        None => SourceByteRange::new(block_range.start(), block_range.start())
-            .map_err(NoteIngestError::Domain)?,
-    };
-    Ok((text, range))
-}
-
 fn scannable_ranges_from_projection(
     projection: &TextSequence,
 ) -> Vec<std::ops::Range<usize>> {
@@ -239,3 +222,15 @@ fn scannable_ranges_from_projection(
         })
         .collect()
 }
+
+fn projection_text_and_range(
+    projection: &TextSequence,
+    container_range: SourceByteRange,
+) -> (String, SourceByteRange) {
+    let text = projection.as_plain_text();
+    let range = projection.covering_range().unwrap_or(container_range);
+    (text, range)
+}
+
+#[cfg(test)]
+mod tests {}

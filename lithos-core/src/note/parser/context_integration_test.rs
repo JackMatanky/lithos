@@ -37,8 +37,7 @@ fn test() {}
 ";
 
         let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config)
-            .expect("should parse complex markdown");
+        let ctx = ParserContext::new(source, config).expect("should parse");
 
         // Verify events are cached
         assert!(!ctx.events().is_empty(), "should cache events");
@@ -76,8 +75,7 @@ fn test() {}
     fn handles_empty_markdown() {
         let source = "";
         let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config)
-            .expect("should parse empty markdown");
+        let ctx = ParserContext::new(source, config).expect("should parse");
 
         assert!(
             ctx.events().is_empty(),
