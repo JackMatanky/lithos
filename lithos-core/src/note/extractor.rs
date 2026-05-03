@@ -10,8 +10,13 @@ use std::borrow::Cow;
 use super::{
     parser::{
         ArtifactSink, BlockSpan, ContainerKind, LeafKind,
+        block::{Block, BlockKind, Closed, ContainerBlockKind, LeafBlockKind},
+        structure::{Complete, DocTree, TraversalEvent},
         text::TextSequence,
-        types::{FrontmatterFormat, RangedEvent},
+        types::{
+            FrontmatterFormat, InlineDelimiterEnd, InlineDelimiterStart,
+            InlineToken, ListKind, ParserEvent, RangedEvent,
+        },
     },
     raw::RawListItemText,
 };
@@ -19,8 +24,9 @@ use crate::note::{
     error::NoteIngestError,
     position::{SourceByteOffset, SourceByteRange},
     raw::{
-        RawFrontmatter, RawHeading, RawLink, RawListItem, RawNote, RawSection,
-        RawSectionKind, frontmatter::RawFrontmatterFormat,
+        RawFrontmatter, RawHeading, RawLink, RawLinkStyle, RawListDepth,
+        RawListItem, RawListKind, RawNote, RawSection, RawSectionKind,
+        frontmatter::RawFrontmatterFormat,
     },
     scanner::{NoteScanner, ScannedRawArtifacts},
 };
@@ -61,18 +67,146 @@ impl<'source> BlockExtractor<'source> {
         self.out
     }
 
-    /// Shared processing for all leaf blocks.
-    fn process_leaf(
+    pub(crate) fn process_doc_tree(
         &mut self,
-        kind: LeafKind,
-        span: BlockSpan,
-        events: &[RangedEvent<'source>],
+        tree: &DocTree<'source, Complete>,
+    ) -> Result<(), NoteIngestError> {
+        let mut list_kinds: Vec<RawListKind> = Vec::with_capacity(4);
+
+        for event in tree.iter_preorder() {
+            match event {
+                TraversalEvent::Enter(block, depth) => match &block.kind {
+                    BlockKind::Leaf(leaf) => {
+                        self.process_leaf_block(leaf, block.span, depth)?;
+                    }
+                    BlockKind::Container(container) => {
+                        self.process_container_enter(
+                            container,
+                            block.span,
+                            depth,
+                            &mut list_kinds,
+                        )?;
+                    }
+                },
+                TraversalEvent::Exit(block, _depth) => {
+                    if let BlockKind::Container(ContainerBlockKind::List {
+                        ..
+                    }) = &block.kind
+                    {
+                        list_kinds.pop();
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn process_container_enter(
+        &mut self,
+        container: &ContainerBlockKind<'source>,
+        range: SourceByteRange,
+        depth: u32,
+        list_kinds: &mut Vec<RawListKind>,
+    ) -> Result<(), NoteIngestError> {
+        match container {
+            ContainerBlockKind::List {
+                kind,
+                ..
+            } => {
+                list_kinds.push(list_kind_to_raw(*kind));
+            }
+            ContainerBlockKind::ListItem {
+                depth: item_depth,
+                parent_pos,
+                is_checked,
+                children,
+            } => {
+                let kind = list_kinds
+                    .last()
+                    .copied()
+                    .unwrap_or(RawListKind::Unordered);
+                self.process_list_item(
+                    kind,
+                    *item_depth,
+                    *parent_pos,
+                    *is_checked,
+                    children,
+                    range,
+                    depth,
+                )?;
+            }
+            ContainerBlockKind::BlockQuote {
+                ..
+            } => {
+                self.out.sections.push(RawSection::new(
+                    RawSectionKind::BlockQuote,
+                    range,
+                    depth,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "internal refactor method matching RawListItem requirements"
+    )]
+    fn process_list_item(
+        &mut self,
+        list_kind: RawListKind,
+        item_depth: u32,
+        parent_pos: Option<SourceByteOffset>,
+        is_checked: Option<bool>,
+        children: &[Block<'source, Closed>],
+        range: SourceByteRange,
+        section_depth: u32,
+    ) -> Result<(), NoteIngestError> {
+        let mut text = String::new();
+        let mut events = Vec::new();
+
+        collect_text_recursively(children, &mut text, &mut events);
+        self.extract_links_from_events(&events);
+
+        let projection = TextSequence::from_events(&events);
+        let scanned = self.scan_projection(&projection)?;
+        let item_text_range = projection.covering_range().unwrap_or(range);
+
+        let item = RawListItem::new(
+            list_kind,
+            RawListDepth::from(item_depth),
+            parent_pos,
+            is_checked,
+            RawListItemText::new(Cow::Owned(text), item_text_range),
+            range,
+            scanned.tags,
+            scanned.inline_fields,
+        );
+
+        self.out.accept_list_item(item);
+        self.out.sections.push(RawSection::new(
+            RawSectionKind::List,
+            range,
+            section_depth,
+        ));
+
+        Ok(())
+    }
+
+    /// Shared processing for all leaf blocks.
+    fn process_leaf_block(
+        &mut self,
+        leaf: &LeafBlockKind<'source, Closed>,
+        range: SourceByteRange,
         depth: u32,
     ) -> Result<(), NoteIngestError> {
-        let projection = TextSequence::from_events(events);
-        let block_range = span.to_source_range()?;
-        match kind {
-            LeafKind::Heading(payload) => {
+        match leaf {
+            LeafBlockKind::Heading {
+                level,
+                events,
+            } => {
+                self.extract_links_from_events(events);
+                let projection = TextSequence::from_events(events);
                 let scanned = self.scan_projection(&projection)?;
                 let text = projection.as_displayable_text();
                 let trimmed = text.trim();
@@ -83,51 +217,66 @@ impl<'source> BlockExtractor<'source> {
                 };
 
                 self.out.headings.push(RawHeading::new(
-                    payload.to_u8(),
+                    level.as_u8(),
                     heading_text,
-                    block_range,
-                    SourceByteOffset::try_from_usize(span.start)?,
+                    range,
+                    range.start(),
                 ));
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Heading,
-                    block_range,
+                    range,
                     depth,
                 ));
                 self.out.tags.extend(scanned.tags);
                 self.out.inline_fields.extend(scanned.inline_fields);
                 self.out.block_refs.extend(scanned.block_refs);
             }
-            LeafKind::Paragraph => {
+            LeafBlockKind::Paragraph {
+                events,
+            } => {
+                self.extract_links_from_events(events);
+                let projection = TextSequence::from_events(events);
                 let scanned = self.scan_projection(&projection)?;
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Paragraph,
-                    block_range,
+                    range,
                     depth,
                 ));
                 self.out.tags.extend(scanned.tags);
                 self.out.inline_fields.extend(scanned.inline_fields);
                 self.out.block_refs.extend(scanned.block_refs);
             }
-            LeafKind::Metadata(payload) => {
-                let text = projection.as_plain_text();
+            LeafBlockKind::Frontmatter {
+                format,
+                text,
+            } => {
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Frontmatter,
-                    block_range,
+                    range,
                     0,
                 ));
                 self.out.frontmatter = Some(RawFrontmatter::new(
-                    match payload.format {
+                    match format {
                         FrontmatterFormat::Yaml => RawFrontmatterFormat::Yaml,
                         FrontmatterFormat::Toml => RawFrontmatterFormat::Toml,
                     },
-                    text.into(),
-                    block_range,
+                    text.clone().into(),
+                    range,
                 ));
             }
-            LeafKind::ThematicBreak => {
+            LeafBlockKind::ThematicBreak => {
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::ThematicBreak,
-                    block_range,
+                    range,
+                    depth,
+                ));
+            }
+            LeafBlockKind::CodeBlock {
+                ..
+            } => {
+                self.out.sections.push(RawSection::new(
+                    RawSectionKind::CodeBlock,
+                    range,
                     depth,
                 ));
             }
@@ -146,60 +295,105 @@ impl<'source> BlockExtractor<'source> {
             .scan_ranges(self.source, &scannable_ranges, false)
             .map_err(NoteIngestError::Domain)
     }
+
+    fn extract_links_from_events(&mut self, events: &[RangedEvent<'source>]) {
+        let mut i = 0;
+        while i < events.len() {
+            let event = &events[i];
+            if let ParserEvent::Inline(InlineToken::DelimiterStart(start)) =
+                event.event()
+            {
+                match start {
+                    InlineDelimiterStart::Link {
+                        kind,
+                        destination,
+                        ..
+                    }
+                    | InlineDelimiterStart::Image {
+                        kind,
+                        destination,
+                        ..
+                    } => {
+                        let is_embed =
+                            matches!(start, InlineDelimiterStart::Image { .. });
+                        let mut raw_link = RawLink::new(
+                            RawLinkStyle::from(*kind),
+                            is_embed,
+                            destination.clone(),
+                            event.range().start(),
+                        );
+
+                        let target_end = if is_embed {
+                            InlineDelimiterEnd::Image
+                        } else {
+                            InlineDelimiterEnd::Link
+                        };
+
+                        i += 1;
+                        while i < events.len() {
+                            let inner_event = &events[i];
+                            if let ParserEvent::Inline(
+                                InlineToken::DelimiterEnd(end),
+                            ) = inner_event.event()
+                            {
+                                if *end == target_end {
+                                    break;
+                                }
+                            }
+
+                            // Accumulate display text
+                            if let ParserEvent::Inline(token) =
+                                inner_event.event()
+                            {
+                                match token {
+                                    InlineToken::Text(t)
+                                    | InlineToken::InlineCode(t)
+                                    | InlineToken::Html(t) => {
+                                        raw_link.text.display.push_str(t);
+                                    }
+                                    InlineToken::Math {
+                                        content,
+                                        ..
+                                    } => {
+                                        raw_link.text.display.push_str(content);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            i += 1;
+                        }
+                        self.out.links.push(raw_link);
+                        if i < events.len() {
+                            i += 1;
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            i += 1;
+        }
+    }
 }
 
 impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
     fn on_leaf_complete(
         &mut self,
-        kind: LeafKind,
-        span: BlockSpan,
-        events: &[RangedEvent<'source>],
-        depth: u32,
+        _kind: LeafKind,
+        _span: BlockSpan,
+        _events: &[RangedEvent<'source>],
+        _depth: u32,
     ) -> Result<(), NoteIngestError> {
-        self.process_leaf(kind, span, events, depth)
+        Ok(())
     }
 
     fn on_container_complete(
         &mut self,
-        kind: ContainerKind,
-        span: BlockSpan,
-        events: &[RangedEvent<'source>],
-        depth: u32,
+        _kind: ContainerKind,
+        _span: BlockSpan,
+        _events: &[RangedEvent<'source>],
+        _depth: u32,
     ) -> Result<(), NoteIngestError> {
-        let projection = TextSequence::from_events(events);
-        let range = span.to_source_range()?;
-        match kind {
-            ContainerKind::List => {}
-            ContainerKind::ListItem(payload) => {
-                let scanned = self.scan_projection(&projection)?;
-                let (raw_text, text_range) =
-                    projection_text_and_range(&projection, range)?;
-
-                let item = RawListItem::new(
-                    payload.kind,
-                    payload.depth,
-                    payload.parent_pos,
-                    payload.is_checkbox,
-                    RawListItemText::new(Cow::Owned(raw_text), text_range),
-                    range,
-                    scanned.tags,
-                    scanned.inline_fields,
-                );
-                self.out.accept_list_item(item);
-                self.out.sections.push(RawSection::new(
-                    RawSectionKind::List,
-                    range,
-                    payload.depth.to_u32(),
-                ));
-            }
-            ContainerKind::BlockQuote => self.out.sections.push(
-                RawSection::new(RawSectionKind::BlockQuote, range, depth),
-            ),
-            ContainerKind::CodeBlock => self
-                .out
-                .sections
-                .push(RawSection::new(RawSectionKind::CodeBlock, range, depth)),
-        }
         Ok(())
     }
 
@@ -209,6 +403,58 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
 }
 
 // ── Free functions ───────────────────────────────────────────────────────────
+
+fn list_kind_to_raw(kind: ListKind) -> RawListKind {
+    match kind {
+        ListKind::Ordered(start) => RawListKind::Ordered(start),
+        ListKind::Unordered => RawListKind::Unordered,
+    }
+}
+
+fn collect_text_recursively<'source>(
+    children: &[Block<'source, Closed>],
+    out_text: &mut String,
+    out_events: &mut Vec<RangedEvent<'source>>,
+) {
+    for child in children {
+        match &child.kind {
+            BlockKind::Leaf(leaf) => match leaf {
+                LeafBlockKind::Paragraph {
+                    events,
+                }
+                | LeafBlockKind::Heading {
+                    events,
+                    ..
+                } => {
+                    let projection = TextSequence::from_events(events);
+                    out_text.push_str(&projection.as_plain_text());
+                    out_events.extend(events.iter().cloned());
+                }
+                _ => {}
+            },
+            BlockKind::Container(container) => match container {
+                ContainerBlockKind::BlockQuote {
+                    children: inner_children,
+                } => {
+                    collect_text_recursively(
+                        inner_children,
+                        out_text,
+                        out_events,
+                    );
+                }
+                // DO NOT recurse into nested lists or list items.
+                // These belong to their own identity and should not
+                // leak their content (tags, checkboxes) into the parent.
+                ContainerBlockKind::List {
+                    ..
+                }
+                | ContainerBlockKind::ListItem {
+                    ..
+                } => {}
+            },
+        }
+    }
+}
 
 fn scannable_ranges_from_projection(
     projection: &TextSequence,
@@ -221,19 +467,6 @@ fn scannable_ranges_from_projection(
             node.range().start().as_usize()..node.range().end().as_usize()
         })
         .collect()
-}
-
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "Result enables ? operator usage at call sites"
-)]
-fn projection_text_and_range(
-    projection: &TextSequence,
-    container_range: SourceByteRange,
-) -> Result<(String, SourceByteRange), NoteIngestError> {
-    let text = projection.as_plain_text();
-    let range = projection.covering_range().unwrap_or(container_range);
-    Ok((text, range))
 }
 
 #[cfg(test)]

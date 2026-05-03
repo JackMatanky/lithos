@@ -101,6 +101,7 @@ use crate::{
     note::{
         error::{NoteIngestError, NoteParseError},
         extractor::BlockExtractor,
+        parser::{context::ParserContext, structure::DocTree},
         position::{SourceByteOffset, SourceByteRange},
         raw::{RawLink, RawLinkStyle, RawListDepth, RawListKind, RawNote},
         scanner::NoteScanner,
@@ -110,6 +111,11 @@ use crate::{
 // ── Primary public API ───────────────────────────────────────────────────────
 
 /// Markdown parser for extracting note facts and structure.
+#[expect(
+    dead_code,
+    reason = "Legacy PDA implementation being replaced by DocTree pipeline; \
+              delete in Phase 4"
+)]
 #[expect(
     private_bounds,
     reason = "ArtifactSink is internal while parser facade stays public"
@@ -630,15 +636,19 @@ impl<'source> MarkdownParser<'source, BlockExtractor<'source>> {
         source: &'source str,
         task_spec: &TaskConfigSpec,
     ) -> Result<RawNote<'source>, NoteIngestError> {
+        let config = config::EventStreamConfig::default();
+        let ctx = ParserContext::new(source, config)?;
+        let tree = DocTree::from_context(&ctx)?;
+
         let emoji_markers = if task_spec.use_emoji {
             task_spec.emoji_markers.clone()
         } else {
             Box::new([])
         };
         let scanner = NoteScanner::new(emoji_markers);
-        let sink = BlockExtractor::new(source, scanner);
-        Self::parse_with_sink(source, task_spec, sink)
-            .map(BlockExtractor::finish)
+        let mut extractor = BlockExtractor::new(source, scanner);
+        extractor.process_doc_tree(&tree)?;
+        Ok(extractor.finish())
     }
 }
 
