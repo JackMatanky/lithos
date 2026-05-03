@@ -579,10 +579,9 @@ mod tests {
 
     use super::*;
     use crate::note::parser::{
-        InlineToken,
         config::{BreakPolicy, EventStreamConfig},
         context::ParserContext,
-        types::HeadingLevel,
+        types::{HeadingLevel, InlineToken},
     };
 
     fn build_structure(source: &str) -> DocTree<'_, Complete> {

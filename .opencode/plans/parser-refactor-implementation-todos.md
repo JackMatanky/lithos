@@ -423,23 +423,31 @@ Validation:
 ### Phase 3: Rewrite MarkdownParser::parse()
 
 - [x] **3.1** Implement new `MarkdownParser::parse()` using `ParserContext` + `DocTree`
-- [ ] **3.2** Remove `parse_with_sink()` method
-- [ ] **3.3** Check tests that use `parse_with_sink()` (remove PDA-internal tests)
-- [ ] **3.4** Update `MarkdownParser` struct definition (empty struct / PhantomData)
+- [x] **3.2** Remove `parse_with_sink()` method
+- [x] **3.3** Check tests that use `parse_with_sink()` (remove PDA-internal tests)
+- [x] **3.4** Update `MarkdownParser` struct definition (empty struct / PhantomData)
 
-**Phase 3: IN PROGRESS** (3.1 DONE)
+**Phase 3: COMPLETE**
 
 ### Phase 4: Remove Legacy PDA Code
 
-- [ ] **4.1** Delete `BlockStack`, `BlockFrame`, `ActiveLink`, `LeafKind`, `ContainerKind` from `mod.rs`
-- [ ] **4.2** Delete `ArtifactSink` trait from `mod.rs`
-- [ ] **4.3** Delete PDA methods from `MarkdownParser` struct
-- [ ] **4.4** Delete `BlockSpan` struct
-- [ ] **4.5** Delete legacy helper functions (`frame_role_mismatch_error`, etc.)
+- [x] **4.1** Delete `BlockStack`, `BlockFrame`, `ActiveLink`, `LeafKind`, `ContainerKind` from `mod.rs`
+- [x] **4.2** Delete `ArtifactSink` trait from `mod.rs`
+- [x] **4.3** Delete PDA methods from `MarkdownParser` struct
+- [x] **4.4** Delete `BlockSpan` struct
+- [x] **4.5** Delete legacy helper functions (`frame_role_mismatch_error`, etc.)
+
+**Phase 4: COMPLETE**
 
 ### Phase 5: Clean Up and Verify
 
-- [ ] **5.1** Update module-level documentation to describe the new pipeline
-- [ ] **5.2** Remove stale `#[expect(dead_code)]` attributes
-- [ ] **5.3** Run benchmarks and verify no performance regressions
-- [ ] **5.4** Run full quality gate (`mise run verify`)
+- [x] **5.1** Update module-level documentation to describe the new pipeline
+- [x] **5.2** Remove stale `#[expect(dead_code)]` attributes
+- [x] **5.3** Run benchmarks and verify no performance regressions
+- [x] **5.4** Run full quality gate (`mise run verify`)
+
+**Phase 5: COMPLETE**
+
+---
+
+**STAGE 9: COMPLETE**

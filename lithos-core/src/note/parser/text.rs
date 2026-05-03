@@ -88,16 +88,14 @@ impl TextNode {
 
     #[must_use]
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Public accessor for projection nodes")
-    )]
+    #[cfg(test)]
     pub(crate) fn styles(&self) -> &[TextStyle] {
         &self.styles
     }
 
     #[must_use]
     #[inline]
+    #[cfg(test)]
     pub(crate) const fn context(&self) -> TextContext {
         self.context
     }

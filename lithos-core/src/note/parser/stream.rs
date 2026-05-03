@@ -994,9 +994,7 @@ mod tests {
             for event in events {
                 assert!(!matches!(
                     event.event(),
-                    ParserEvent::Inline(
-                        crate::note::parser::InlineToken::LineBreak(_)
-                    )
+                    ParserEvent::Inline(InlineToken::LineBreak(_))
                 ));
             }
         }

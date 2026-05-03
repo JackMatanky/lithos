@@ -5,11 +5,15 @@
 //! (`MarkdownParser`) after a block's text and scannable ranges have been
 //! fully accumulated.
 
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Parser pipeline matches borrowed event payloads intentionally"
+)]
+
 use std::borrow::Cow;
 
 use super::{
     parser::{
-        ArtifactSink, BlockSpan, ContainerKind, LeafKind,
         block::{Block, BlockKind, Closed, ContainerBlockKind, LeafBlockKind},
         structure::{Complete, DocTree, TraversalEvent},
         text::TextSequence,
@@ -298,111 +302,100 @@ impl<'source> BlockExtractor<'source> {
 
     fn extract_links_from_events(&mut self, events: &[RangedEvent<'source>]) {
         let mut i = 0;
-        while i < events.len() {
-            let event = &events[i];
+        while let Some(event) = events.get(i) {
             if let ParserEvent::Inline(InlineToken::DelimiterStart(start)) =
                 event.event()
+                && let Some(mut link) =
+                    Self::try_extract_link(start, events, &mut i)
             {
-                match start {
-                    InlineDelimiterStart::Link {
-                        kind,
-                        destination,
-                        ..
-                    }
-                    | InlineDelimiterStart::Image {
-                        kind,
-                        destination,
-                        ..
-                    } => {
-                        let is_embed =
-                            matches!(start, InlineDelimiterStart::Image { .. });
-                        let mut raw_link = RawLink::new(
-                            RawLinkStyle::from(*kind),
-                            is_embed,
-                            destination.clone(),
-                            event.range().start(),
-                        );
-
-                        let target_end = if is_embed {
-                            InlineDelimiterEnd::Image
-                        } else {
-                            InlineDelimiterEnd::Link
-                        };
-
-                        i += 1;
-                        while i < events.len() {
-                            let inner_event = &events[i];
-                            if let ParserEvent::Inline(
-                                InlineToken::DelimiterEnd(end),
-                            ) = inner_event.event()
-                            {
-                                if *end == target_end {
-                                    break;
-                                }
-                            }
-
-                            // Accumulate display text
-                            if let ParserEvent::Inline(token) =
-                                inner_event.event()
-                            {
-                                match token {
-                                    InlineToken::Text(t)
-                                    | InlineToken::InlineCode(t)
-                                    | InlineToken::Html(t) => {
-                                        raw_link.text.display.push_str(t);
-                                    }
-                                    InlineToken::Math {
-                                        content,
-                                        ..
-                                    } => {
-                                        raw_link.text.display.push_str(content);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            i += 1;
-                        }
-                        self.out.links.push(raw_link);
-                        if i < events.len() {
-                            i += 1;
-                        }
-                        continue;
-                    }
-                    _ => {}
-                }
+                link.position = event.range().start();
+                self.out.links.push(link);
+                continue;
             }
-            i += 1;
+            i = i.saturating_add(1);
         }
     }
+
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Manual event stream traversal with lookahead"
+    )]
+    fn try_extract_link(
+        start: &InlineDelimiterStart<'source>,
+        events: &[RangedEvent<'source>],
+        index: &mut usize,
+    ) -> Option<RawLink<'source>> {
+        let (kind, destination, is_embed) = match start {
+            InlineDelimiterStart::Link {
+                kind,
+                destination,
+                ..
+            } => (kind, destination, false),
+            InlineDelimiterStart::Image {
+                kind,
+                destination,
+                ..
+            } => (kind, destination, true),
+            InlineDelimiterStart::Emphasis
+            | InlineDelimiterStart::Strong
+            | InlineDelimiterStart::Strikethrough
+            | InlineDelimiterStart::Superscript
+            | InlineDelimiterStart::Subscript
+            | InlineDelimiterStart::_Marker(_) => return None,
+        };
+
+        let mut raw_link = RawLink::new(
+            RawLinkStyle::from(*kind),
+            is_embed,
+            destination.clone(),
+            SourceByteOffset::default(),
+        );
+
+        let target_end = if is_embed {
+            InlineDelimiterEnd::Image
+        } else {
+            InlineDelimiterEnd::Link
+        };
+
+        *index += 1;
+        while let Some(inner_event) = events.get(*index) {
+            if let ParserEvent::Inline(InlineToken::DelimiterEnd(end)) =
+                inner_event.event()
+                && *end == target_end
+            {
+                break;
+            }
+
+            // Accumulate display text
+            if let ParserEvent::Inline(token) = inner_event.event() {
+                match token {
+                    InlineToken::Text(t)
+                    | InlineToken::InlineCode(t)
+                    | InlineToken::Html(t) => {
+                        raw_link.text.display.push_str(t);
+                    }
+                    InlineToken::Math {
+                        content,
+                        ..
+                    } => {
+                        raw_link.text.display.push_str(content);
+                    }
+                    InlineToken::DelimiterStart(_)
+                    | InlineToken::DelimiterEnd(_)
+                    | InlineToken::LineBreak(_)
+                    | InlineToken::FootnoteReference(_) => {}
+                }
+            }
+            *index += 1;
+        }
+
+        if *index < events.len() {
+            *index += 1;
+        }
+
+        Some(raw_link)
+    }
 }
-
-impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
-    fn on_leaf_complete(
-        &mut self,
-        _kind: LeafKind,
-        _span: BlockSpan,
-        _events: &[RangedEvent<'source>],
-        _depth: u32,
-    ) -> Result<(), NoteIngestError> {
-        Ok(())
-    }
-
-    fn on_container_complete(
-        &mut self,
-        _kind: ContainerKind,
-        _span: BlockSpan,
-        _events: &[RangedEvent<'source>],
-        _depth: u32,
-    ) -> Result<(), NoteIngestError> {
-        Ok(())
-    }
-
-    fn on_link(&mut self, link: RawLink<'source>) {
-        self.out.links.push(link);
-    }
-}
-
-// ── Free functions ───────────────────────────────────────────────────────────
 
 fn list_kind_to_raw(kind: ListKind) -> RawListKind {
     match kind {
@@ -430,7 +423,13 @@ fn collect_text_recursively<'source>(
                     out_text.push_str(&projection.as_plain_text());
                     out_events.extend(events.iter().cloned());
                 }
-                _ => {}
+                LeafBlockKind::CodeBlock {
+                    ..
+                }
+                | LeafBlockKind::Frontmatter {
+                    ..
+                }
+                | LeafBlockKind::ThematicBreak => {}
             },
             BlockKind::Container(container) => match container {
                 ContainerBlockKind::BlockQuote {
