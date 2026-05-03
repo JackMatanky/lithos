@@ -1,6 +1,10 @@
 // Integration test for ParserContext with complex markdown
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Tests prioritize readability with assertions"
+)]
 mod integration {
     use crate::note::parser::{
         config::EventStreamConfig,
@@ -9,7 +13,8 @@ mod integration {
     };
 
     #[test]
-    fn parses_complex_markdown_with_multiple_features() {
+    fn parses_complex_markdown_with_multiple_features()
+    -> Result<(), crate::note::error::NoteIngestError> {
         let source = "# Large Document Test
 
 ## Section 1
@@ -37,7 +42,7 @@ fn test() {}
 ";
 
         let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config).expect("should parse");
+        let ctx = ParserContext::new(source, config)?;
 
         // Verify events are cached
         assert!(!ctx.events().is_empty(), "should cache events");
@@ -69,18 +74,21 @@ fn test() {}
 
         // Verify source is preserved
         assert_eq!(ctx.source(), source);
+        Ok(())
     }
 
     #[test]
-    fn handles_empty_markdown() {
+    fn handles_empty_markdown()
+    -> Result<(), crate::note::error::NoteIngestError> {
         let source = "";
         let config = EventStreamConfig::default();
-        let ctx = ParserContext::new(source, config).expect("should parse");
+        let ctx = ParserContext::new(source, config)?;
 
         assert!(
             ctx.events().is_empty(),
             "empty markdown should have no events"
         );
         assert_eq!(ctx.source(), "");
+        Ok(())
     }
 }

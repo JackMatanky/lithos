@@ -69,11 +69,15 @@ impl DocState for Complete {}
 
 /// The hierarchical document structure (AST) for a markdown document.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) fields follow project convention for internal APIs"
+)]
 pub struct DocTree<'source, S: DocState = Complete> {
     /// Root-level blocks in the document.
-    blocks: Vec<Block<'source, Closed>>,
+    pub(crate) blocks: Vec<Block<'source, Closed>>,
     /// State-specific data.
-    state: S,
+    pub(crate) state: S,
 }
 
 impl<'source> DocTree<'source, Complete> {

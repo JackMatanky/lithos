@@ -371,17 +371,17 @@ Files:
 - `lithos-core/src/note/parser/stream.rs` tests
 - `lithos-core/src/note/parser/structure.rs` tests
 - `lithos-core/src/note/parser/context.rs` tests
-- capability doc artifact under `.opencode/plans` or project docs
+- `.opencode/plans/parser-capability-matrix.md` (new)
 
 Tasks:
 
-- [ ] Add matrix doc rows for each feature:
-  - [ ] option enabled state
-  - [ ] stream IR behavior
-  - [ ] structure behavior
-  - [ ] scanner/semantic expectation
-  - [ ] unsupported fallback/error path
-- [ ] Add automated tests per matrix row.
+- [x] Add matrix doc rows for each feature:
+  - [x] option enabled state
+  - [x] stream IR behavior
+  - [x] structure behavior
+  - [x] scanner/semantic expectation
+  - [x] unsupported fallback/error path
+- [x] Add automated tests per matrix row.
 
 Acceptance criteria:
 

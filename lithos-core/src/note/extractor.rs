@@ -173,7 +173,7 @@ impl<'source> ArtifactSink<'source> for BlockExtractor<'source> {
             ContainerKind::ListItem(payload) => {
                 let scanned = self.scan_projection(&projection)?;
                 let (raw_text, text_range) =
-                    projection_text_and_range(&projection, range);
+                    projection_text_and_range(&projection, range)?;
 
                 let item = RawListItem::new(
                     payload.kind,
@@ -223,13 +223,17 @@ fn scannable_ranges_from_projection(
         .collect()
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Result enables ? operator usage at call sites"
+)]
 fn projection_text_and_range(
     projection: &TextSequence,
     container_range: SourceByteRange,
-) -> (String, SourceByteRange) {
+) -> Result<(String, SourceByteRange), NoteIngestError> {
     let text = projection.as_plain_text();
     let range = projection.covering_range().unwrap_or(container_range);
-    (text, range)
+    Ok((text, range))
 }
 
 #[cfg(test)]
