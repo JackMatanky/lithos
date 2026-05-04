@@ -49,6 +49,12 @@ pub mod writer;
 // Re-export commonly used types at the `fs::` path so adapter call sites stay
 // readable without long module chains.
 
+pub use error::{ParseError, PathValidationError};
+pub use file::{FileEntry, FileInfo, FileName};
+pub use path::{AbsolutePath, RelativePath};
+pub use reader::{FileTimestamp, Reader as FsReader};
+pub use scanner::{DirScanInput, DirScanner};
+pub use validator::Validator as PathValidator;
 /// Root-scoped filesystem writer.
 ///
 /// See [`writer::Writer`] for the full API.
@@ -60,12 +66,4 @@ pub mod writer;
     reason = "FsWriter has no external callers yet; it will be promoted to \
               `pub` when the template module adapter is implemented."
 )]
-pub(crate) use self::writer::Writer as FsWriter;
-pub use self::{
-    error::{ParseError, PathValidationError},
-    file::{FileEntry, FileInfo, FileName},
-    path::{AbsolutePath, RelativePath},
-    reader::{FileTimestamp, Reader as FsReader},
-    scanner::{DirScanInput, DirScanner},
-    validator::Validator as PathValidator,
-};
+pub(crate) use writer::Writer as FsWriter;
