@@ -3,6 +3,15 @@
 //! Provides the [`FileName`], [`FileInfo`], and [`FileEntry`] types for
 //! capturing and processing file information in a way that is compatible with
 //! zero-copy storage.
+//!
+//! ## Usage
+//!
+//! These types are primarily used by:
+//! - [`crate::fs::scanner::DirScanner`]: Returns `Vec<FileEntry>` from
+//!   directory scans
+//! - [`crate::fs::reader::Reader`]: Uses `FileEntry` in `list_entries()` method
+//! - Domain contexts: Store and query file metadata with zero-copy access via
+//!   rkyv
 
 use std::{
     fs::DirEntry,

@@ -2,6 +2,21 @@
 //!
 //! This module provides [`DirScanner`] for efficient directory traversal and
 //! filtering based on glob patterns, file extensions, and other criteria.
+//!
+//! ## Architecture
+//!
+//! `DirScanner` is a standalone utility that can be used independently or via
+//! [`crate::fs::reader::Reader`]'s convenience methods (`filter_dir` and
+//! `list_entries`). It uses [`walkdir`] for recursive traversal with
+//! configurable depth, symlink handling, and filtering.
+//!
+//! ## Design Decisions
+//!
+//! - **Standalone type**: Not embedded in Reader to allow reuse across contexts
+//! - **AND semantics**: When both `pattern` and `extensions` are specified,
+//!   both must match
+//! - **Root exclusion**: The root directory itself is excluded from results
+//!   (walkdir includes it at depth 0)
 
 use std::path::{Path, PathBuf};
 
