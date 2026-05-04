@@ -1,26 +1,9 @@
-//! Block structure and AST types for markdown documents.
+//! Hierarchical document structure (AST).
 //!
-//! This module provides the core AST data structures that represent the
-//! hierarchical structure of a parsed markdown document. The AST follows
-//! CommonMark semantics, distinguishing between **leaf blocks**
-//! (content-bearing) and **container blocks** (structure-bearing).
-//!
-//! # Design Philosophy
-//!
-//! - **Minimal AST**: Only structure and content, no metadata extraction
-//! - **CommonMark-aligned**: Block types map directly to CommonMark spec
-//! - **Zero-copy where possible**: Events borrow from source via lifetimes
-//! - **Explicit nesting**: Container blocks have `children` fields
-//!
-//! # Examples
-//!
-//! ```rust,ignore
-//! use lithos_core::note::parser::{ParserContext, structure::DocTree};
-//!
-//! let source = "# Heading\n\nParagraph text";
-//! let ctx = ParserContext::new(source, config)?;
-//! let tree = DocTree::from_context(&ctx)?;
-//! ```
+//! This module provides the [`DocTree`], which represents a fully parsed
+//! markdown document as a tree of blocks. It handles the transition from
+//! a linear event stream to a nested structure, enforcing CommonMark
+//! nesting rules and tracking block depth.
 
 #![cfg_attr(
     not(test),
@@ -142,6 +125,11 @@ impl<'source> DocTree<'source, Processing<'source>> {
         }
     }
 
+    /// Processes a single ranged event, driving the state machine forward.
+    ///
+    /// This is the heart of the structure builder. It converts linear events
+    /// into a nested tree by maintaining a stack of open blocks and applying
+    /// auto-closing rules for paragraphs and lists.
     fn process_event(
         &mut self,
         spanned_event: RangedEvent<'source>,
@@ -176,6 +164,15 @@ impl<'source> DocTree<'source, Processing<'source>> {
         Ok(())
     }
 
+    /// Handles the start of a new block element.
+    ///
+    /// # Invariants
+    ///
+    /// - **Implicit Paragraphs**: If a paragraph is open, it is auto-closed
+    ///   before starting any new block (except for thematic breaks which handle
+    ///   this themselves).
+    /// - **Leaf Isolation**: A new block cannot be started inside an existing
+    ///   leaf block (e.g., you cannot start a list inside a heading).
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Pattern matches borrowed block tags by design"
@@ -258,6 +255,10 @@ impl<'source> DocTree<'source, Processing<'source>> {
         Ok(())
     }
 
+    /// Handles the end of a block element.
+    ///
+    /// Pops the top block from the stack, validates that it matches the
+    /// expected `block_type`, and attaches it to its parent or the root.
     fn on_end(
         &mut self,
         block_type: BlockEnd,
@@ -301,6 +302,10 @@ impl<'source> DocTree<'source, Processing<'source>> {
         Ok(())
     }
 
+    /// Handles inline events (text, code, math, etc.).
+    ///
+    /// If no leaf block is currently open, an implicit paragraph is
+    /// automatically started to contain the inline content.
     fn on_inline_event(
         &mut self,
         event: RangedEvent<'source>,
@@ -365,6 +370,11 @@ impl<'source> DocTree<'source, Processing<'source>> {
         }
     }
 
+    /// Automatically closes an open paragraph if it exists.
+    ///
+    /// In `CommonMark`, paragraphs do not always have explicit closing tags in
+    /// the event stream (e.g., when followed immediately by a heading or list).
+    /// This helper ensures they are finalized correctly.
     fn auto_close_implicit_paragraph(
         &mut self,
         span: SourceByteRange,
@@ -428,6 +438,10 @@ impl<'source> DocTree<'source, Processing<'source>> {
         }
     }
 
+    /// Finalizes the document assembly.
+    ///
+    /// Closes any remaining open blocks (like a trailing paragraph) and
+    /// validates that the stack is empty.
     fn finish(self) -> Result<DocTree<'source, Complete>, NoteIngestError> {
         let mut this = self;
 

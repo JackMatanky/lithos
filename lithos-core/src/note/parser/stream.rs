@@ -249,6 +249,10 @@ where
     }
 }
 
+/// Mapper that converts `pulldown-cmark` events into neutral parser IR.
+///
+/// This component enforces the `EventRetentionPolicy` and handles low-level
+/// normalization, such as stripping delimiters from code and math tokens.
 #[derive(Debug, Clone, Copy)]
 struct ParserEventMapper;
 
@@ -264,9 +268,18 @@ impl ParserEventMapper {
         }
     }
 
-    // Payload contract: pulldown emits content-only payloads for inline code
-    // and math events (delimiters are not included), and this adapter preserves
-    // that contract in parser IR.
+    /// Maps a raw pulldown event to a parser event.
+    ///
+    /// Returns `Ok(Some(event))` if the event should be preserved, `Ok(None)`
+    /// if it should be dropped according to policy, or `Err` if it violates
+    /// a rejection policy.
+    ///
+    /// # Normalization Contract
+    ///
+    /// - **Code/Math**: Delimiters (backticks, `$`) are stripped. Only the
+    ///   content is preserved in the token.
+    /// - **Line Breaks**: Soft and hard breaks are normalized according to the
+    ///   configured `BreakPolicy` before reaching this mapper.
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Pattern matches borrowed parser events by design"

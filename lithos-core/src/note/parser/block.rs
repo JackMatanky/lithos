@@ -1,16 +1,22 @@
 //! Block domain types for markdown document structure.
 //!
-//! This module provides the core AST data structures that represent the
-//! hierarchical structure of a parsed markdown document. The AST follows
-//! CommonMark semantics, distinguishing between **leaf blocks**
-//! (content-bearing) and **container blocks** (structure-bearing).
+//! This module defines the core [`Block`] type and its variants. Blocks
+//! represent structural elements like paragraphs, headings, and lists.
 //!
-//! # Design Philosophy
+//! # Block Lifecycle (Type-State Pattern)
 //!
-//! - **Minimal AST**: Only structure and content, no metadata extraction
-//! - **CommonMark-aligned**: Block types map directly to CommonMark spec
-//! - **Zero-copy where possible**: Events borrow from source via lifetimes
-//! - **Explicit nesting**: Container blocks have `children` fields
+//! To ensure structural integrity during parsing, blocks use a type-state
+//! pattern to distinguish between their lifecycle phases:
+//!
+//! 1. **[`Open`]**: A block that is currently being assembled. It stores its
+//!    start offset and accumulates raw events or text fragments.
+//! 2. **[`Closed`]**: A finalized AST node. It has a confirmed
+//!    [`SourceByteRange`] and its content (like code block text) is
+//!    materialized.
+//!
+//! This pattern prevents logic errors such as attempting to read the content of
+//! a block that hasn't finished parsing or attaching children to a finalized
+//! leaf.
 
 use super::{
     text::TextSequence,
