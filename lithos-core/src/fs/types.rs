@@ -12,6 +12,24 @@ use serde::de::DeserializeOwned;
 
 use super::error::ParseError;
 
+/// Supported file formats for structured parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) enum FormatKind {
+    /// JSON format.
+    Json,
+    /// TOML format.
+    Toml,
+    /// YAML format.
+    Yaml,
+    /// Markdown format.
+    Markdown,
+    /// Binary format.
+    Binary,
+    /// Unknown or unsupported format.
+    Unknown,
+}
+
 /// Markdown file type marker.
 ///
 /// Markdown does not use `detect`/`parse` here because parsing is delegated to

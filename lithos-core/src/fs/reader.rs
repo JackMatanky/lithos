@@ -1,3 +1,44 @@
+//! Root-scoped filesystem reader with validation and format-classification.
+//!
+//! This module provides [`Reader`], a read-only filesystem adapter for safe
+//! vault access with built-in path validation, directory scanning, and
+//! structured file parsing.
+//!
+//! # Security
+//!
+//! All file access is scoped to a root directory with validation via
+//! [`Validator`] to prevent path traversal attacks and unauthorized access to
+//! restricted files.
+//!
+//! # Features
+//!
+//! - **Directory scanning**: Glob-pattern filtering via
+//!   [`filter_dir`](Reader::filter_dir) and
+//!   [`list_entries`](Reader::list_entries)
+//! - **File reading**: Raw bytes, UTF-8 strings, and structured parsing
+//!   (JSON/TOML/YAML)
+//! - **Format detection**: Automatic format classification by extension and
+//!   content
+//! - **Metadata access**: File info, timestamps, and existence checks
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use lithos_core::fs::FsReader;
+//!
+//! let reader = FsReader::new("/vault");
+//!
+//! // Find all TOML files
+//! let schema_files = reader.filter_dir("schemas/**/*.toml")?;
+//!
+//! // Read and parse structured file
+//! let data: serde_json::Value = reader.read_structured("config.json")?;
+//!
+//! // Get file metadata
+//! let info = reader.file_info("README.md")?;
+//! # Ok::<(), lithos_core::fs::ParseError>(())
+//! ```
+
 use std::{
     path::{Path, PathBuf},
     time::SystemTime,
@@ -6,28 +47,10 @@ use std::{
 use super::{
     error::PathValidationError,
     file::{FileEntry, FileInfo, FileName},
-    types::{Binary, Json, Markdown, Toml, Yaml},
+    types::{Binary, FormatKind, Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
 use crate::fs::error::ParseError;
-
-/// Supported file formats for structured parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FormatKind {
-    /// JSON format.
-    Json,
-    /// TOML format.
-    Toml,
-    /// YAML format.
-    Yaml,
-    /// Markdown format.
-    Markdown,
-    /// Binary format.
-    Binary,
-    /// Unknown or unsupported format.
-    Unknown,
-}
 
 /// A read-only filesystem adapter for safe vault access.
 ///

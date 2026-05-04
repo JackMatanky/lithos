@@ -44,22 +44,10 @@ pub mod validator;
 /// Root-scoped filesystem writer with atomic-replace semantics.
 pub mod writer;
 
-// ─── Public type aliases ────────────────────────────────────────────────────
+// ─── Public Re-exports ──────────────────────────────────────────────────────
 //
-// These aliases surface the most commonly used types at the `fs::` path so
-// adapter call sites stay readable without long module chains.
-
-/// Root-scoped filesystem reader.
-///
-/// See [`reader::Reader`] for the full API.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "The `Fs` prefix is intentional: it makes the filesystem \
-              boundary explicit at call sites (`FsReader` vs a bare \
-              `Reader`). Removing the prefix would conflict with domain \
-              reader types."
-)]
-pub type FsReader = reader::Reader;
+// Re-export commonly used types at the `fs::` path so adapter call sites stay
+// readable without long module chains.
 
 /// Root-scoped filesystem writer.
 ///
@@ -72,55 +60,12 @@ pub type FsReader = reader::Reader;
     reason = "FsWriter has no external callers yet; it will be promoted to \
               `pub` when the template module adapter is implemented."
 )]
-pub(crate) type FsWriter = writer::Writer;
-
-/// Parse error type alias.
-///
-/// See [`error::ParseError`] for all variants.
-pub type ParseError = error::ParseError;
-
-/// Path validator type alias.
-///
-/// The primary entry point for all path validation. Use
-/// [`PathValidator::validate_vault_path`] for string-based vault path
-/// validation, or construct a validator with [`PathValidator::new_flexible`] /
-/// [`PathValidator::try_new_strict`] for finer control.
-pub type PathValidator = validator::Validator;
-
-/// Path validation error type alias.
-///
-/// See [`error::PathValidationError`] for all variants.
-pub type PathValidationError = error::PathValidationError;
-
-/// FileName wrapper for vault-scoped files.
-pub type FileName = file::FileName;
-
-/// Filesystem information for a file.
-pub type FileInfo = file::FileInfo;
-
-/// A general-purpose filesystem entry.
-pub type FileEntry = file::FileEntry;
-
-/// A validated vault-relative path.
-pub type RelativePath = path::RelativePath;
-
-/// A validated absolute path.
-pub type AbsolutePath = path::AbsolutePath;
-
-/// File system timestamp type alias.
-///
-/// Represents file creation/modification timestamps as seconds since Unix
-/// epoch. This is an infrastructure primitive used only in the adapter layer.
-///
-/// See [`reader::FileTimestamp`] for the full API.
-pub type FileTimestamp = reader::FileTimestamp;
-
-/// Directory scanner for finding files matching criteria.
-///
-/// See [`scanner::DirScanner`] for the full API.
-pub type DirScanner = scanner::DirScanner;
-
-/// Input parameters for directory scanning operations.
-///
-/// See [`scanner::DirScanInput`] for the full API.
-pub type DirScanInput<'a> = scanner::DirScanInput<'a>;
+pub(crate) use self::writer::Writer as FsWriter;
+pub use self::{
+    error::{ParseError, PathValidationError},
+    file::{FileEntry, FileInfo, FileName},
+    path::{AbsolutePath, RelativePath},
+    reader::{FileTimestamp, Reader as FsReader},
+    scanner::{DirScanInput, DirScanner},
+    validator::Validator as PathValidator,
+};
