@@ -5,8 +5,7 @@ use std::{
 
 use super::{
     error::PathValidationError,
-    filename::Filename,
-    stats::FileStats,
+    file::{FileEntry, FileInfo, FileName},
     types::{Binary, Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
@@ -32,7 +31,7 @@ pub enum FormatKind {
 
 /// A read-only filesystem adapter for safe vault access.
 ///
-/// `Reader` provides methods for listing, reading, and parsing files within a
+/// `Reader` provides methods for filtering, reading, and parsing files within a
 /// specified root directory. It enforces path safety via [`Validator`] to
 /// prevent traversal attacks and unauthorized access to restricted files.
 pub struct Reader {
@@ -127,7 +126,7 @@ impl Reader {
         self.root.join(path).exists()
     }
 
-    /// Lists files matching a glob pattern within the vault.
+    /// Filters files within the vault using a glob pattern.
     ///
     /// The pattern is relative to the vault root. Only files and symlinks are
     /// returned; directories are excluded. Results are sorted alphabetically.
@@ -136,7 +135,7 @@ impl Reader {
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn list_files(
+    pub fn filter_dir(
         &self,
         pattern: &str,
     ) -> Result<Vec<PathBuf>, ParseError> {
@@ -176,6 +175,75 @@ impl Reader {
 
         paths.sort();
         Ok(paths)
+    }
+
+    /// Lists file entries within the vault using a glob pattern.
+    ///
+    /// Similar to [`filter_dir`], but returns a [`FileEntry`] for each matching
+    /// file, which includes the path, filename, and metadata (FileInfo).
+    /// Results are sorted by path alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pattern is invalid or if I/O operations fail.
+    pub fn list_entries(
+        &self,
+        pattern: &str,
+    ) -> Result<Vec<FileEntry>, ParseError> {
+        let full_pattern = self.root.join(pattern);
+        let pattern_str =
+            full_pattern.to_str().ok_or_else(|| ParseError::Io {
+                path: full_pattern.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid UTF-8 in pattern",
+                ),
+            })?;
+
+        let mut entries = Vec::new();
+        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
+            path: full_pattern.clone(),
+            source: std::io::Error::other(e),
+        })? {
+            let path = entry.map_err(|e| ParseError::Io {
+                path: e.path().to_path_buf(),
+                source: e.into_error(),
+            })?;
+
+            if !path.is_file() && !path.is_symlink() {
+                continue;
+            }
+
+            let metadata = std::fs::symlink_metadata(&path).map_err(|e| {
+                ParseError::Io {
+                    path: path.clone(),
+                    source: e,
+                }
+            })?;
+
+            let relative = path.strip_prefix(&self.root).map_err(|_err| {
+                ParseError::Io {
+                    path: path.clone(),
+                    source: std::io::Error::other("Path outside root"),
+                }
+            })?;
+
+            let relative_path = relative.to_path_buf();
+            let filename = FileName::try_from(relative_path.as_path())
+                .map_err(|source| ParseError::Io {
+                    path: relative_path.clone(),
+                    source,
+                })?;
+
+            entries.push(FileEntry {
+                path: relative_path,
+                filename,
+                info: FileInfo::from(metadata),
+            });
+        }
+
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(entries)
     }
 
     /// Reads a file's content as raw bytes.
@@ -229,15 +297,15 @@ impl Reader {
         f(path, &content)
     }
 
-    /// Returns the statistics for a file.
+    /// Returns the information for a file.
     ///
     /// # Errors
     ///
     /// Returns [`ParseError::Io`] if the file does not exist or metadata cannot
     /// be read.
     #[inline]
-    pub fn stats(&self, path: &Path) -> Result<FileStats, ParseError> {
-        self.metadata(path).map(FileStats::from)
+    pub fn info(&self, path: &Path) -> Result<FileInfo, ParseError> {
+        self.metadata(path).map(FileInfo::from)
     }
 
     /// Returns the metadata for a file.
@@ -266,7 +334,7 @@ impl Reader {
     #[must_use]
     pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
         let s = self
-            .stats(path)
+            .info(path)
             .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
@@ -286,7 +354,7 @@ impl Reader {
     #[must_use]
     pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
         let s = self
-            .stats(path)
+            .info(path)
             .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
@@ -307,8 +375,8 @@ impl Reader {
     /// Returns [`ParseError::Io`] if the path has no filename or the filename
     /// is not valid UTF-8.
     #[inline]
-    pub fn filename(&self, path: &Path) -> Result<Filename, ParseError> {
-        Filename::try_from(path).map_err(|source| ParseError::Io {
+    pub fn filename(&self, path: &Path) -> Result<FileName, ParseError> {
+        FileName::try_from(path).map_err(|source| ParseError::Io {
             path: path.to_path_buf(),
             source,
         })
@@ -551,7 +619,7 @@ mod tests {
         }
     }
 
-    mod list_files {
+    mod filter_dir {
         use super::*;
 
         #[test]
@@ -560,7 +628,7 @@ mod tests {
             write_file(dir.path(), "schemas/b.json", b"{}");
             write_file(dir.path(), "schemas/a.json", b"{}");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("schemas/**/*.json").expect("list");
+            let files = reader.filter_dir("schemas/**/*.json").expect("list");
             assert_eq!(files, vec![
                 PathBuf::from("schemas/a.json"),
                 PathBuf::from("schemas/b.json")
@@ -574,7 +642,7 @@ mod tests {
             std::fs::create_dir_all(dir.path().join("subdir.json"))
                 .expect("dir");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert_eq!(files.len(), 1);
         }
 
@@ -582,14 +650,14 @@ mod tests {
         fn rejects_invalid_pattern() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            reader.list_files("[invalid").unwrap_err();
+            reader.filter_dir("[invalid").unwrap_err();
         }
 
         #[test]
         fn returns_empty_when_no_matches() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert!(files.is_empty());
         }
 
@@ -604,8 +672,48 @@ mod tests {
             )
             .expect("symlink");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert_eq!(files.len(), 2);
+        }
+    }
+
+    mod list_entries {
+        use super::*;
+
+        #[test]
+        fn returns_sorted_entries() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "schemas/b.json", b"{}");
+            write_file(dir.path(), "schemas/a.json", b"{}");
+            let reader = Reader::new(dir.path());
+            let entries =
+                reader.list_entries("schemas/**/*.json").expect("list");
+
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0].path, PathBuf::from("schemas/a.json"));
+            assert_eq!(entries[1].path, PathBuf::from("schemas/b.json"));
+            assert_eq!(entries[0].filename.as_str(), "a.json");
+            assert_eq!(entries[1].filename.as_str(), "b.json");
+            assert!(entries[0].info.size() > 0);
+        }
+
+        #[test]
+        fn excludes_directories_from_results() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.json", b"{}");
+            std::fs::create_dir_all(dir.path().join("subdir.json"))
+                .expect("dir");
+            let reader = Reader::new(dir.path());
+            let entries = reader.list_entries("*.json").expect("list");
+            assert_eq!(entries.len(), 1);
+        }
+
+        #[test]
+        fn returns_empty_when_no_matches() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let entries = reader.list_entries("*.json").expect("list");
+            assert!(entries.is_empty());
         }
     }
 

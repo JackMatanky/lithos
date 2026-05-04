@@ -62,7 +62,7 @@ where
 
         // Step 3: Load property bank from discovery data if present
         let property_bank =
-            if let Some(bank_file) = discovery_outcome.property_bank() {
+            if let Some((_, bank_file)) = discovery_outcome.property_bank() {
                 Some(self.load_property_bank_from_discovery(bank_file)?)
             } else {
                 self.property_bank_delta = None;
@@ -246,7 +246,6 @@ where
                 let graphed = parsed.build_graph()?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
-                    bank,
                     self.property_bank_delta.as_ref(),
                 )?;
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;

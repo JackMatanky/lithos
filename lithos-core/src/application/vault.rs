@@ -144,7 +144,7 @@ impl<'db, 'config> Service<'db, 'config> {
 
     fn scan_note_paths(fs: &FsReader) -> Result<Vec<NotePath>, ServiceError> {
         let pattern = "**/*";
-        let files = fs.list_files(pattern).map_err(|error| {
+        let files = fs.filter_dir(pattern).map_err(|error| {
             NoteIngestError::Source(error.to_string().into())
         })?;
 

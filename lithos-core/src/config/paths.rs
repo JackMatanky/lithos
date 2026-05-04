@@ -7,7 +7,7 @@
 //! # Always Valid Invariants
 //! - **Relative Paths**: Most paths must be vault-relative and cannot use `..`
 //!   to escape the vault root.
-//! - **File Names**: Filenames must not contain path separators.
+//! - **File Names**: FileNames must not contain path separators.
 //! - **Non-Empty**: Paths and filenames cannot be empty. Construction of these
 //!   types will fail if these invariants are violated.
 
@@ -21,15 +21,7 @@ use std::path::PathBuf;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
-
-/// Re-exported absolute path type from filesystem module.
-pub type AbsolutePath = crate::fs::AbsolutePath;
-
-/// Re-exported relative path type from filesystem module.
-pub type RelativePath = crate::fs::RelativePath;
-
-/// Re-exported filename type from filesystem module.
-pub type Filename = crate::fs::Filename;
+use crate::fs::{FileName, RelativePath};
 
 #[expect(
     clippy::expect_used,
@@ -370,7 +362,7 @@ impl ArchivedCache {
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct PropertyBank(Filename);
+pub struct PropertyBank(FileName);
 
 impl Default for PropertyBank {
     #[inline]
@@ -392,7 +384,7 @@ impl PropertyBank {
     /// contains path separators.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        Ok(Self(Filename::new(value.into())))
+        Ok(Self(FileName::new(value.into())))
     }
 
     /// Return the filename as a string slice.
@@ -403,9 +395,9 @@ impl PropertyBank {
     }
 }
 
-impl From<Filename> for PropertyBank {
+impl From<FileName> for PropertyBank {
     #[inline]
-    fn from(value: Filename) -> Self {
+    fn from(value: FileName) -> Self {
         Self(value)
     }
 }
@@ -578,7 +570,7 @@ mod tests {
         fn schema_rejects_empty_paths() {
             let schemas_dir =
                 RelativePath::try_from(std::path::PathBuf::from(""));
-            let file_name = Filename::try_from(std::path::Path::new(""));
+            let file_name = FileName::try_from(std::path::Path::new(""));
             assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");
         }

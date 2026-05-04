@@ -29,14 +29,12 @@
 
 /// Filesystem error types.
 pub mod error;
-/// Filename wrapper for vault-scoped files.
-pub mod filename;
+/// Ergonomic conversions for filesystem entries.
+pub mod file;
 /// Validated path types.
 pub mod path;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
-/// Filesystem statistics for files.
-pub mod stats;
 /// Structured data parsers (TOML/JSON/YAML) — module-internal.
 pub(crate) mod types;
 /// Security-critical path validation utilities.
@@ -92,11 +90,14 @@ pub type PathValidator = validator::Validator;
 /// See [`error::PathValidationError`] for all variants.
 pub type PathValidationError = error::PathValidationError;
 
-/// Filename wrapper for vault-scoped files.
-pub type Filename = filename::Filename;
+/// FileName wrapper for vault-scoped files.
+pub type FileName = file::FileName;
 
-/// Filesystem statistics for a file.
-pub type FileStats = stats::FileStats;
+/// Filesystem information for a file.
+pub type FileInfo = file::FileInfo;
+
+/// A general-purpose filesystem entry.
+pub type FileEntry = file::FileEntry;
 
 /// A validated vault-relative path.
 pub type RelativePath = path::RelativePath;

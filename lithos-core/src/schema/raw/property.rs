@@ -61,6 +61,24 @@ type SplitPropertyEntries = (
 );
 
 impl<T> RawPropertyMap<T> {
+    /// Constructs a `RawPropertyMap` from a validated `HashMap`.
+    #[inline]
+    #[must_use]
+    pub fn from_map(inner: HashMap<PropertyName, T>) -> Self {
+        Self {
+            inner,
+        }
+    }
+
+    /// Creates an empty `RawPropertyMap`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+
     /// Returns a reference to the inner map.
     ///
     /// All keys are guaranteed to be valid `PropertyName` instances.

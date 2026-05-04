@@ -16,6 +16,49 @@ use std::hash::Hash;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
+/// Provides immutable access to a graph node's payload.
+pub trait GraphNode {
+    /// The type of payload stored in this node.
+    type Payload;
+
+    /// Returns the payload stored in this node.
+    #[must_use]
+    fn payload(&self) -> &Self::Payload;
+}
+
+/// Provides mutable access to a graph node's payload.
+pub trait GraphNodeMut: GraphNode {
+    /// Returns a mutable reference to the payload.
+    fn payload_mut(&mut self) -> &mut Self::Payload;
+}
+
+/// Marker trait for directed graph nodes, adding depth tracking.
+///
+/// Extends GraphNode with depth information for hierarchical graphs.
+pub trait DiGraphNode: GraphNode {
+    /// Returns the depth of this node in the graph.
+    ///
+    /// Depth represents the distance from root nodes (depth 0) in a directed
+    /// graph.
+    #[must_use]
+    fn depth(&self) -> NodeDepth;
+
+    /// Consumes the node and returns its payload and depth.
+    fn into_parts(self) -> (Self::Payload, NodeDepth);
+
+    /// Constructs a node from a payload and depth.
+    fn from_parts(payload: Self::Payload, depth: NodeDepth) -> Self;
+}
+
+/// Provides mutable access to directed graph node metadata.
+///
+/// Extends both GraphNodeMut and DiGraphNode with operations for modifying
+/// depth.
+pub trait DiGraphNodeMut: GraphNodeMut + DiGraphNode {
+    /// Sets the depth of this node.
+    fn set_depth(&mut self, depth: NodeDepth);
+}
+
 /// A node in the graph.
 ///
 /// **Pure infrastructure** - NO serialization constraint. Domain wrappers
@@ -92,6 +135,94 @@ impl<T> Node<T> {
             depth,
             payload,
         }
+    }
+}
+
+// GraphNode trait implementation for Node<T>
+impl<T> GraphNode for Node<T> {
+    type Payload = T;
+
+    #[inline]
+    fn payload(&self) -> &Self::Payload {
+        &self.payload
+    }
+}
+
+// GraphNodeMut trait implementation for Node<T>
+impl<T> GraphNodeMut for Node<T> {
+    #[inline]
+    fn payload_mut(&mut self) -> &mut Self::Payload {
+        &mut self.payload
+    }
+}
+
+// DiGraphNode trait implementation for Node<T>
+impl<T> DiGraphNode for Node<T> {
+    #[inline]
+    fn depth(&self) -> NodeDepth {
+        self.depth
+    }
+
+    #[inline]
+    fn into_parts(self) -> (Self::Payload, NodeDepth) {
+        (self.payload, self.depth)
+    }
+
+    #[inline]
+    fn from_parts(payload: Self::Payload, depth: NodeDepth) -> Self {
+        Self {
+            depth,
+            payload,
+        }
+    }
+}
+
+// DiGraphNodeMut trait implementation for Node<T>
+impl<T> DiGraphNodeMut for Node<T> {
+    #[inline]
+    fn set_depth(&mut self, depth: NodeDepth) {
+        self.depth = depth;
+    }
+}
+
+// Unit type implementations for trivial graph nodes
+impl GraphNode for () {
+    type Payload = ();
+
+    #[inline]
+    fn payload(&self) -> &Self::Payload {
+        self
+    }
+}
+
+impl GraphNodeMut for () {
+    #[inline]
+    fn payload_mut(&mut self) -> &mut Self::Payload {
+        self
+    }
+}
+
+impl DiGraphNode for () {
+    #[inline]
+    fn depth(&self) -> NodeDepth {
+        NodeDepth::ROOT
+    }
+
+    #[inline]
+    fn into_parts(self) -> (Self::Payload, NodeDepth) {
+        ((), NodeDepth::ROOT)
+    }
+
+    #[inline]
+    fn from_parts(_payload: Self::Payload, _depth: NodeDepth) -> Self {
+        ()
+    }
+}
+
+impl DiGraphNodeMut for () {
+    #[inline]
+    fn set_depth(&mut self, _depth: NodeDepth) {
+        // No-op for unit type
     }
 }
 

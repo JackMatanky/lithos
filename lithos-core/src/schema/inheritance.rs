@@ -168,7 +168,9 @@ where
         crate::schema::error::SchemaInheritanceError,
     >
     where
-        T: Clone,
+        T: Clone
+            + crate::graph::GraphNode<Payload = T>
+            + crate::graph::DiGraphNode,
     {
         let mut builder = SchemaGraphBuilder::new();
         for (id, payload) in &self.nodes {
@@ -179,7 +181,7 @@ where
                 builder.add_parent(*child_id, parent_id);
             }
         }
-        builder.build().try_into_dag().map_err(|_e| {
+        builder.build::<T>().try_into_dag().map_err(|_e| {
             crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
             }
@@ -189,7 +191,10 @@ where
 
 impl<T> TryFrom<ProcessingGraph<T>> for InheritanceGraph<T>
 where
-    T: rkyv::Archive + Clone,
+    T: rkyv::Archive
+        + Clone
+        + crate::graph::GraphNode
+        + crate::graph::DiGraphNode,
 {
     type Error = crate::schema::error::SchemaInheritanceError;
 
@@ -213,7 +218,7 @@ where
         let mut children = std::collections::HashMap::new();
 
         for (id, node) in raw_graph.iter() {
-            nodes.insert(id, node.payload().clone());
+            nodes.insert(id, node.clone());
         }
 
         for (child_id, _) in raw_graph.iter() {
@@ -247,14 +252,23 @@ where
 /// This wrapper allows using ANY payload type (including non-Archive types
 /// like Raw* schemas). Use this for intermediate pipeline stages where
 /// serialization is not needed.
+///
+/// The graph stores nodes directly as `T` where `T` implements graph node
+/// traits.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct ProcessingGraph<T> {
+pub struct ProcessingGraph<T>
+where
+    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+{
     inner: Graph<SchemaId, T>,
     topo_cache: Option<Arc<[SchemaId]>>,
 }
 
-impl<T> ProcessingGraph<T> {
+impl<T> ProcessingGraph<T>
+where
+    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+{
     /// Wraps a graph for processing.
     #[inline]
     #[must_use]
@@ -351,38 +365,70 @@ impl<T> ProcessingGraph<T> {
         ids
     }
 
-    /// Maps each node payload into a new graph while preserving structure.
+    /// Maps each node into a new graph while preserving structure.
     ///
     /// This is a high-performance, consuming transformation that reuses the
     /// existing adjacency maps and preserves the topological cache.
     ///
+    /// The mapper function receives the full node (e.g., `ProcessorNode<P>`)
+    /// and must return a new node type.
+    ///
     /// # Errors
     ///
     /// Returns an error from the mapping closure.
-    #[inline]
     pub fn map_payload<U, E, F>(
         self,
-        mapper: F,
+        mut mapper: F,
     ) -> Result<ProcessingGraph<U>, E>
     where
+        U: crate::graph::GraphNode + crate::graph::DiGraphNode,
         F: FnMut(SchemaId, T) -> Result<U, E>,
     {
-        let next_inner = self.inner.map_nodes(mapper)?;
+        use std::collections::HashMap;
+
+        // Destructure the inner graph to get its parts
+        let crate::graph::Graph {
+            nodes,
+            parents,
+            children,
+        } = self.inner;
+
+        let mut new_nodes = HashMap::with_capacity(nodes.len());
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "graph transforms do not depend on HashMap order"
+        )]
+        for (id, node) in nodes {
+            let new_node = mapper(id, node)?;
+            new_nodes.insert(id, new_node);
+        }
+
         Ok(ProcessingGraph {
-            inner: next_inner,
+            inner: crate::graph::Graph {
+                nodes: new_nodes,
+                parents,
+                children,
+            },
             topo_cache: self.topo_cache,
         })
     }
 }
 
-impl<T> From<Graph<SchemaId, T>> for ProcessingGraph<T> {
+impl<T> From<Graph<SchemaId, T>> for ProcessingGraph<T>
+where
+    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+{
     #[inline]
     fn from(value: Graph<SchemaId, T>) -> Self {
         Self::from_inner(value)
     }
 }
 
-impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T> {
+impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T>
+where
+    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+{
     #[inline]
     fn from(value: ProcessingGraph<T>) -> Self {
         value.into_inner()
@@ -395,6 +441,9 @@ impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T> {
 
 /// Builder for constructing a schema inheritance graph.
 ///
+/// Generic over payload type `T`. Call `build::<N>()` to specify the node
+/// wrapper type.
+///
 /// # Example
 ///
 /// ```
@@ -402,9 +451,9 @@ impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T> {
 ///     identifier::SchemaId, inheritance::SchemaGraphBuilder,
 /// };
 ///
-/// let mut builder = SchemaGraphBuilder::new();
+/// let mut builder = SchemaGraphBuilder::<()>::new();
 /// builder.add_node(SchemaId::new(), ());
-/// let graph = builder.build();
+/// let graph = builder.build::<()>();
 /// ```
 #[non_exhaustive]
 pub struct SchemaGraphBuilder<T>(GraphBuilder<SchemaId, T>);
@@ -424,7 +473,7 @@ impl<T> SchemaGraphBuilder<T> {
         Self(GraphBuilder::with_capacity(capacity))
     }
 
-    /// Adds a node to the graph.
+    /// Adds a node to the graph with its payload.
     #[inline]
     pub fn add_node(&mut self, id: SchemaId, payload: T) {
         self.0.add_node(id, payload);
@@ -437,10 +486,16 @@ impl<T> SchemaGraphBuilder<T> {
     }
 
     /// Builds the graph with normalized adjacency lists.
+    ///
+    /// The type parameter `N` specifies the node wrapper type (e.g., `Node<T>`
+    /// for `()` payload, or `ProcessorNode<T>` for schema processing).
     #[inline]
     #[must_use]
-    pub fn build(self) -> ProcessingGraph<T> {
-        ProcessingGraph::from(self.0.build())
+    pub fn build<N>(self) -> ProcessingGraph<N>
+    where
+        N: crate::graph::GraphNode<Payload = T> + crate::graph::DiGraphNode,
+    {
+        ProcessingGraph::from(self.0.build::<N>())
     }
 
     /// Consumes self and returns the inner builder.
@@ -499,7 +554,10 @@ impl<T> Default for SchemaGraphBuilder<T> {
 pub fn affected_subtree<T>(
     graph: &Graph<SchemaId, T>,
     changed_ids: &HashSet<SchemaId>,
-) -> HashSet<SchemaId> {
+) -> HashSet<SchemaId>
+where
+    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+{
     let mut affected = HashSet::with_capacity(changed_ids.len());
     let mut queue = VecDeque::new();
 
@@ -545,7 +603,7 @@ mod tests {
         builder.add_node(child, ());
         builder.add_parent(child, parent);
 
-        let graph = builder.build();
+        let graph = builder.build::<()>();
         let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
 
         assert_eq!(dag.roots(), &[parent]);
@@ -563,7 +621,7 @@ mod tests {
         builder.add_node(child, ());
         builder.add_parent(child, parent);
 
-        let graph = builder.build();
+        let graph = builder.build::<()>();
         let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
 
         let underlying_dag = dag.to_dag_graph().expect("valid DAG");
@@ -585,7 +643,7 @@ mod tests {
         builder.add_parent(a, b);
         builder.add_parent(b, a); // Cycle!
 
-        let graph = builder.build();
+        let graph = builder.build::<()>();
         let result = InheritanceGraph::try_from(graph);
 
         result.unwrap_err();
@@ -621,7 +679,7 @@ mod tests {
         builder.add_parent(d, b);
         builder.add_parent(e, c);
 
-        let graph = builder.build();
+        let graph = builder.build::<()>();
         let changed = HashSet::from([b]);
         let affected = affected_subtree(graph.as_inner(), &changed);
 
@@ -646,7 +704,7 @@ mod tests {
         builder.add_node(c, ());
         builder.add_parent(c, a);
 
-        let graph = builder.build();
+        let graph = builder.build::<()>();
         let changed = HashSet::from([a, b]); // Two separate roots
         let affected = affected_subtree(graph.as_inner(), &changed);
 

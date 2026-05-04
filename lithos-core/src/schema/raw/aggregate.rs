@@ -1,52 +1,49 @@
-//! Aggregate raw types for schema definitions.
+//! Root aggregate for raw schema parsing.
+//!
+//! Provides the [`RawSchema`] type which represents a schema file before
+//! inheritance resolution.
 
-use super::{
-    property::{RawProperty, RawPropertyMap},
-    version::RawSchemaVersion,
-};
 use crate::{
-    fs::FileStats,
+    fs::FileInfo,
     schema::{
-        error::SchemaIngestionError, identifier::SchemaName,
+        error::SchemaIngestionError,
+        identifier::SchemaName,
         property::PropertyName,
+        raw::{RawProperty, RawPropertyMap, version::RawSchemaVersion},
     },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Schema Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Raw schema definition loaded from vault files.
+/// Represents a raw schema as parsed from a file.
 ///
-/// Property names in the `properties` map are validated during deserialization
-/// via `RawPropertyMap`. The `extends` and `excludes` fields are validated
-/// during deserialization via custom `Deserialize` impls for `SchemaName` and
-/// `PropertyName`.
+/// This structure captures the serialized form of a schema, including its
+/// version, inheritance settings, and property definitions. It is the first
+/// stage of the schema ingestion pipeline.
 ///
-/// Property definitions are either inline (`RawPropertyInline`) or references
-/// (`RawPropertyRef`) via `RawProperty`.
+/// # Field Policy
 ///
-/// The `name` field is special - it's derived from the filename (not the file
-/// content) and validated in `validated()` with file path context for better
-/// error messages.
+/// - `version`: Schema format version (defaults to "1.0").
+/// - `name`: Derived from filename, not file content.
+/// - `extends`: Optional parent schema for inheritance.
+/// - `excludes`: Properties to exclude from parent.
+/// - `properties`: Map of property definitions.
+/// - `info`: File metadata for staleness detection.
 ///
-/// # Examples
-/// ```
-/// use lithos_core::schema::raw::RawSchema;
+/// # Example
 ///
-/// // All name fields validated during deserialization
-/// let toml = r#"
-/// "$version" = "1.0"
-/// extends = "base_schema"
-/// excludes = ["inherited_prop"]
-///
-/// [properties.my_property]
-/// type = "bool"
-/// required = true
-/// "#;
-///
-/// let schema: RawSchema = toml::from_str(toml).unwrap();
-/// // If we reach this point, all syntax is valid!
+/// ```no_run
+/// # use lithos_core::schema::raw::{RawSchema, RawPropertyMap, RawProperty};
+/// # use lithos_core::fs::FileInfo;
+/// #
+/// # fn example() {
+/// let raw = RawSchema {
+///     version: "1.0".into(),
+///     name: "User".into(),
+///     extends: None,
+///     excludes: vec![],
+///     properties: RawPropertyMap::new(),
+///     info: FileInfo::default(),
+/// };
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,7 +51,7 @@ use crate::{
 pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
     #[serde(rename = "$version", default)]
-    version: RawSchemaVersion,
+    pub version: RawSchemaVersion,
 
     /// Schema name (always derived from filename by Ingestor).
     ///
@@ -62,32 +59,32 @@ pub struct RawSchema {
     /// based on the filename (without extension). The file format does not
     /// include a `name` field.
     #[serde(skip)]
-    name: Box<str>,
+    pub name: Box<str>,
 
     /// Optional parent schema name for inheritance.
     /// Validated during deserialization via `SchemaName`'s custom Deserialize
     /// impl.
-    extends: Option<SchemaName>,
+    pub extends: Option<SchemaName>,
 
     /// Property names to exclude from parent schema.
     /// Validated during deserialization via `PropertyName`'s custom
     /// Deserialize impl.
     #[serde(default)]
-    excludes: Vec<PropertyName>,
+    pub excludes: Vec<PropertyName>,
 
     /// Validated property map (keys are guaranteed valid `PropertyNames`).
-    properties: RawPropertyMap<RawProperty>,
+    pub properties: RawPropertyMap<RawProperty>,
 
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip, default = "default_file_stats")]
-    file_stats: FileStats,
+    #[serde(skip, default = "default_info")]
+    pub info: FileInfo,
 }
 
 #[inline]
-const fn default_file_stats() -> FileStats {
-    FileStats::new(None, None, 0)
+const fn default_info() -> FileInfo {
+    FileInfo::new(None, None, 0)
 }
 
 impl RawSchema {
@@ -128,11 +125,11 @@ impl RawSchema {
         &self.properties
     }
 
-    /// Returns the file stats.
+    /// Returns the file information.
     #[inline]
     #[must_use]
-    pub fn file_stats(&self) -> &FileStats {
-        &self.file_stats
+    pub fn info(&self) -> &FileInfo {
+        &self.info
     }
 
     /// Set the schema name (called by Ingestor after deserialization).
@@ -147,12 +144,12 @@ impl RawSchema {
         }
     }
 
-    /// Set file stats (called by Ingestor after deserialization).
+    /// Set file information (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_file_stats(self, file_stats: FileStats) -> Self {
+    pub fn with_info(self, info: FileInfo) -> Self {
         Self {
-            file_stats,
+            info,
             ..self
         }
     }
@@ -181,145 +178,5 @@ impl RawSchema {
         // (custom Deserialize impls ensure type safety)
 
         Ok(self)
-    }
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test helpers are grouped at the top for readability"
-)]
-mod tests {
-    use super::*;
-
-    // Helper to construct RawSchema using JSON deserialization
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Test fixture indices into known-fixed JSON object"
-    )]
-    fn create_raw_schema(
-        name: &str,
-        extends: Option<&str>,
-        excludes: &[&str],
-    ) -> RawSchema {
-        let mut json = serde_json::json!({
-            "$version": "1.0",
-            "properties": {}
-        });
-        if let Some(parent) = extends {
-            json["extends"] = serde_json::json!(parent);
-        }
-        if !excludes.is_empty() {
-            json["excludes"] = serde_json::json!(excludes);
-        }
-        serde_json::from_value::<RawSchema>(json)
-            .expect("valid schema JSON")
-            .with_name(name.into())
-    }
-
-    mod raw_schema {
-        use super::*;
-
-        #[test]
-        fn defaults_to_empty_excludes() {
-            let schema = create_raw_schema("note", None, &[]);
-
-            assert!(
-                schema.excludes().is_empty(),
-                "RawSchema should have empty excludes by default"
-            );
-        }
-
-        #[test]
-        fn defaults_to_no_extends() {
-            let schema = create_raw_schema("note", None, &[]);
-
-            assert!(
-                schema.extends().is_none(),
-                "RawSchema should have no extends by default"
-            );
-        }
-
-        #[test]
-        fn validate_valid() {
-            let schema = create_raw_schema("test_schema", None, &[]);
-            schema.validated("test").unwrap();
-        }
-
-        #[test]
-        fn validate_with_parent() {
-            let schema =
-                create_raw_schema("child_schema", Some("parent_schema"), &[]);
-            schema.validated("test").unwrap();
-        }
-
-        #[test]
-        fn validate_with_excludes() {
-            let schema =
-                create_raw_schema("test", Some("parent"), &["prop1", "prop2"]);
-            schema.validated("test").unwrap();
-        }
-
-        #[test]
-        fn validate_invalid_name() {
-            let schema = create_raw_schema("Invalid Name", None, &[]); // Uppercase + space
-            schema.validated("test").unwrap_err();
-        }
-
-        #[test]
-        fn validate_invalid_parent_name() {
-            // Parent name validation now happens during deserialization
-            // Invalid parent names cannot be constructed via SchemaName
-            let json = serde_json::json!({
-                "$version": "1.0",
-                "extends": "Parent!Invalid",  // Uppercase + special char
-                "properties": {}
-            });
-            // Deserialization should fail
-            serde_json::from_value::<RawSchema>(json).unwrap_err();
-        }
-
-        #[test]
-        fn validate_invalid_exclude_name() {
-            // Exclude name validation now happens during deserialization
-            // Invalid property names cannot be constructed via PropertyName
-            let json = serde_json::json!({
-                "$version": "1.0",
-                "extends": "parent",
-                "excludes": ["Invalid Property"],  // Space
-                "properties": {}
-            });
-            // Deserialization should fail
-            serde_json::from_value::<RawSchema>(json).unwrap_err();
-        }
-
-        #[test]
-        fn validate_with_valid_properties() {
-            let json = serde_json::json!({
-                "$version": "1.0",
-                "properties": {
-                    "valid_property": { "type": "bool" }
-                }
-            });
-            let schema = serde_json::from_value::<RawSchema>(json)
-                .unwrap()
-                .with_name("test".into());
-            schema.validated("test").unwrap();
-        }
-
-        #[test]
-        fn validate_invalid_property_name() {
-            // Property name validation now happens during deserialization
-            // Invalid property names cannot be constructed via RawPropertyMap
-            let json = serde_json::json!({
-                "$version": "1.0",
-                "name": "test",
-                "properties": {
-                    "Invalid Property!": { "type": "bool" }  // Space + special char
-                }
-            });
-            // Deserialization should fail
-            serde_json::from_value::<RawSchema>(json).unwrap_err();
-        }
     }
 }

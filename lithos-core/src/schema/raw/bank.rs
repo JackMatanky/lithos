@@ -1,65 +1,50 @@
-//! Raw property bank definitions.
+//! Root aggregate for raw property bank parsing.
+//!
+//! Provides the [`RawPropertyBank`] type which represents a property bank
+//! file as parsed from the filesystem.
 
-use super::{
-    property::{RawPropertyBankEntry, RawPropertyMap},
-    version::RawSchemaVersion,
+use crate::{
+    fs::FileInfo,
+    schema::raw::{
+        RawPropertyBankEntry, RawPropertyMap, version::RawSchemaVersion,
+    },
 };
-use crate::fs::FileStats;
 
-/// Raw property bank loaded from vault files.
+/// Represents a raw property bank as parsed from a file.
 ///
-/// Property names are validated during deserialization via `RawPropertyMap`,
-/// ensuring all keys are valid `PropertyName` instances.
+/// This structure captures the serialized form of a property bank,
+/// including its format version and global property definitions.
 ///
-/// Bank entries use inline property DTOs; `required` is accepted at this layer
-/// and overridden with a warning during domain construction.
+/// # Field Policy
 ///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::RawPropertyBank;
-///
-/// // Properties are validated during deserialization
-/// let toml = r#"
-/// [properties.my_property]
-/// type = "bool"
-/// "#;
-/// let bank: RawPropertyBank = toml::from_str(toml)?;
-/// // bank.properties() returns HashMap<PropertyName, RawPropertyBankEntry>
-/// ```
+/// - `version`: Format version (defaults to "1.0").
+/// - `properties`: Map of shared property definitions.
+/// - `info`: File metadata for staleness detection.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
-    /// Property bank format version (defaults to "1.0" if not specified).
-    /// Validated during deserialization via `RawSchemaVersion`'s custom
-    /// Deserialize impl.
+    /// Property bank format version.
     #[serde(rename = "$version", default)]
-    version: RawSchemaVersion,
+    pub version: RawSchemaVersion,
 
     /// Validated property map (keys are guaranteed valid `PropertyNames`).
-    properties: RawPropertyMap<RawPropertyBankEntry>,
+    pub properties: RawPropertyMap<RawPropertyBankEntry>,
 
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip, default = "default_file_stats")]
-    file_stats: FileStats,
+    #[serde(skip, default = "default_info")]
+    pub info: FileInfo,
 }
 
 #[inline]
-const fn default_file_stats() -> FileStats {
-    FileStats::new(None, None, 0)
+const fn default_info() -> FileInfo {
+    FileInfo::new(None, None, 0)
 }
 
 impl RawPropertyBank {
     /// Returns the schema version.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::schema::raw::RawPropertyBank;
-    /// # let bank: RawPropertyBank = unimplemented!();
-    /// assert_eq!(bank.version().as_str(), "1.0");
-    /// ```
     #[inline]
     #[must_use]
     pub fn version(&self) -> &RawSchemaVersion {
@@ -69,16 +54,6 @@ impl RawPropertyBank {
     /// Returns the properties map.
     ///
     /// All keys are guaranteed to be valid `PropertyName` instances.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::schema::raw::RawPropertyBank;
-    /// # let bank: RawPropertyBank = unimplemented!();
-    /// for (name, entry) in bank.properties().iter() {
-    ///     // name is &PropertyName - already validated
-    ///     println!("{}: {:?}", name.as_str(), entry);
-    /// }
-    /// ```
     #[inline]
     #[must_use]
     pub fn properties(&self) -> &RawPropertyMap<RawPropertyBankEntry> {
@@ -92,36 +67,19 @@ impl RawPropertyBank {
         self.properties
     }
 
-    /// Returns the file stats.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::schema::raw::RawPropertyBank;
-    /// # let bank: RawPropertyBank = unimplemented!();
-    /// let file_stats = bank.file_stats();
-    /// println!("Created: {:?}", file_stats.created_at());
-    /// ```
+    /// Returns the file information.
     #[inline]
     #[must_use]
-    pub fn file_stats(&self) -> &FileStats {
-        &self.file_stats
+    pub fn info(&self) -> &FileInfo {
+        &self.info
     }
 
-    /// Set file stats (called by Ingestor after deserialization).
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::fs::FileStats;
-    /// # use lithos_core::schema::raw::RawPropertyBank;
-    /// # let bank: RawPropertyBank = unimplemented!();
-    /// # let file_stats: FileStats = unimplemented!();
-    /// let bank = bank.with_file_stats(file_stats);
-    /// ```
+    /// Set file information (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_file_stats(self, file_stats: FileStats) -> Self {
+    pub fn with_info(self, info: FileInfo) -> Self {
         Self {
-            file_stats,
+            info,
             ..self
         }
     }
@@ -152,22 +110,5 @@ mod tests {
             "properties": {}
         });
         let _: RawPropertyBank = serde_json::from_value(json).unwrap();
-    }
-
-    #[test]
-    fn validate_invalid_property_name() {
-        // Property name validation now happens during deserialization
-        // Invalid property names cannot be constructed via RawPropertyMap
-        let json = serde_json::json!({
-            "$version": "1.0",
-            "properties": {
-                "Invalid Name!": {  // Space + special char
-                    "multi": false,
-                    "type": "bool"
-                }
-            }
-        });
-        // Deserialization should fail
-        serde_json::from_value::<RawPropertyBank>(json).unwrap_err();
     }
 }

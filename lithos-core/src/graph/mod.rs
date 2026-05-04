@@ -59,4 +59,6 @@ pub use core::{Graph, GraphBuilder};
 
 pub use dag::DagGraph;
 pub use error::{CycleError, GraphError};
-pub use node::{Node, NodeDepth};
+pub use node::{
+    DiGraphNode, DiGraphNodeMut, GraphNode, GraphNodeMut, Node, NodeDepth,
+};

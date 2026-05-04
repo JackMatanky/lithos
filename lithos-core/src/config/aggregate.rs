@@ -109,7 +109,8 @@ impl Config {
     #[inline]
     #[must_use]
     pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
-        use super::paths::{RelativePath, SchemaConfigSpec};
+        use super::paths::SchemaConfigSpec;
+        use crate::fs::RelativePath;
 
         // Join schemas directory with property bank filename to get full path
         let property_bank_path = self.paths.property_bank_path();

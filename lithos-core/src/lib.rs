@@ -19,6 +19,7 @@ pub mod db;
 pub mod fs;
 pub mod graph;
 pub mod note;
+pub mod prelude;
 pub mod schema;
 pub mod support;
 pub mod template;

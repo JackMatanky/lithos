@@ -45,7 +45,7 @@
 //! These validations happen after deserialization with **file path context**
 //! for better error messages.
 //!
-//! ### Special Case: Filename Validation
+//! ### Special Case: FileName Validation
 //!
 //! The schema `name` field is **not deserialized** from the file - it's derived
 //! from the filename by the `Ingestor`. Therefore, it:
@@ -59,7 +59,7 @@
 //! - **Deserialization errors**: Serde provides line/column context
 //!   automatically
 //! - **Validation errors**: Wrapped in `SchemaIngestionError` with file path
-//! - **Filename errors**: Include full path for clear user feedback
+//! - **FileName errors**: Include full path for clear user feedback
 //!
 //! ## Performance
 //!

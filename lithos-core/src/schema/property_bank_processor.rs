@@ -110,7 +110,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{FileStats, FsReader, RelativePath},
+    fs::{FileInfo, FsReader, RelativePath},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -122,7 +122,10 @@ use crate::{
         property::PropertyName,
         raw::RawPropertyBank,
         storage::Repository,
-        views::{HashRecord, RawPropertyBankView, RawView as _},
+        views::{
+            HashRecord, RawPropertyBankView, RawView as _,
+            contracts::RawViewRead,
+        },
     },
     support::hash::Blake3Hash,
 };
@@ -253,14 +256,14 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             None => Ok(ComparisonBranch::Missing(Self::transition(
                 Parsed,
                 Missing {
-                    stats: discovered.file_stats,
+                    info: discovered.info,
                 },
             ))),
             Some(DiscoveredView::PropertyBank(view)) => {
                 Ok(ComparisonBranch::Present(Self::transition(
                     Comparison,
                     Present {
-                        stats: discovered.file_stats,
+                        info: discovered.info,
                         view: view.clone(),
                     },
                 )))
@@ -298,20 +301,20 @@ pub(crate) struct Comparison;
 /// Proven: View does not exist in repository; carries file stats.
 #[derive(Debug)]
 pub(crate) struct Missing {
-    stats: FileStats,
+    info: FileInfo,
 }
 
 /// Proven: View exists in repository; carries file stats and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
-    stats: FileStats,
+    info: FileInfo,
     view: RawPropertyBankView,
 }
 
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
-    stats: FileStats,
+    info: FileInfo,
     view: RawPropertyBankView,
     content: String,
 }
@@ -320,7 +323,7 @@ pub(crate) struct Suspect {
 /// Transitions to Analysis.
 #[derive(Debug)]
 pub(crate) struct Stale {
-    stats: FileStats,
+    info: FileInfo,
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -357,8 +360,8 @@ impl PropertyBankProcessor<Comparison, Present> {
         config_path: &std::path::Path,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = self.status.view.is_timestamp_match(
-            self.status.stats.created_at(),
-            self.status.stats.modified_at(),
+            self.status.info.created_at(),
+            self.status.info.modified_at(),
         );
 
         if timestamps_match {
@@ -371,7 +374,7 @@ impl PropertyBankProcessor<Comparison, Present> {
             Ok(TimestampBranch::Mismatch(Self::transition(
                 Comparison,
                 Suspect {
-                    stats: self.status.stats,
+                    info: self.status.info,
                     view: self.status.view,
                     content,
                 },
@@ -405,12 +408,12 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 
         if content_match {
             ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
-                stats: self.status.stats,
+                info: self.status.info,
                 view: self.status.view,
             }))
         } else {
             ContentBranch::Mismatch(Self::transition(Parsed, Stale {
-                stats: self.status.stats,
+                info: self.status.info,
                 content: self.status.content,
                 content_hash,
                 view: self.status.view,
@@ -466,7 +469,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
             FsReader::parse_structured_from_str(config_path, &content)
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_file_stats(self.status.stats);
+        let raw = raw.with_info(self.status.info);
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition(Construction, New {
@@ -499,7 +502,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_file_stats(self.status.stats);
+        let raw = raw.with_info(self.status.info);
 
         Ok(Self::transition(Analysis, ParsedStale {
             raw,
@@ -574,7 +577,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
         if delta.is_empty() {
             AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
-                stats: *raw.file_stats(),
+                info: *raw.info(),
                 view,
                 content_hash,
             }))
@@ -599,14 +602,14 @@ pub(crate) struct Refresh;
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
-    stats: FileStats,
+    info: FileInfo,
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
-    stats: FileStats,
+    info: FileInfo,
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }
@@ -627,7 +630,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        self.status.view.update_file_stats(self.status.stats);
+        self.status.view.update_file_info(self.status.info);
 
         repository
             .save_raw_property_bank_view(
@@ -656,12 +659,11 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     where
         R::Error: Into<SchemaRepositoryError>,
     {
-        self.status.view.update_file_stats(self.status.stats);
+        self.status.view.update_file_info(self.status.info);
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(SchemaRepositoryError::Storage)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
         repository
             .save_raw_property_bank_view(

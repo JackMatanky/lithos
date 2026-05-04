@@ -12,7 +12,7 @@ use std::path::{Component, Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsString};
 
-use super::filename::Filename;
+use super::file::FileName;
 
 /// A validated vault-relative path.
 ///
@@ -48,7 +48,7 @@ impl RelativePath {
     /// Returns the filename component of this path if it exists.
     #[inline]
     #[must_use]
-    pub fn filename(&self) -> Option<Filename> {
+    pub fn filename(&self) -> Option<FileName> {
         self.try_filename().ok().flatten()
     }
 
@@ -58,9 +58,9 @@ impl RelativePath {
     /// Returns an error when a filename exists but cannot be represented as
     /// valid UTF-8.
     #[inline]
-    pub fn try_filename(&self) -> Result<Option<Filename>, std::io::Error> {
+    pub fn try_filename(&self) -> Result<Option<FileName>, std::io::Error> {
         match self.0.file_name() {
-            Some(_) => Filename::try_from(self.0.as_path()).map(Some),
+            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
             None => Ok(None),
         }
     }
@@ -194,7 +194,7 @@ impl AbsolutePath {
     /// Returns the filename component of this path if it exists.
     #[inline]
     #[must_use]
-    pub fn filename(&self) -> Option<Filename> {
+    pub fn filename(&self) -> Option<FileName> {
         self.try_filename().ok().flatten()
     }
 
@@ -204,9 +204,9 @@ impl AbsolutePath {
     /// Returns an error when a filename exists but cannot be represented as
     /// valid UTF-8.
     #[inline]
-    pub fn try_filename(&self) -> Result<Option<Filename>, std::io::Error> {
+    pub fn try_filename(&self) -> Result<Option<FileName>, std::io::Error> {
         match self.0.file_name() {
-            Some(_) => Filename::try_from(self.0.as_path()).map(Some),
+            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
             None => Ok(None),
         }
     }

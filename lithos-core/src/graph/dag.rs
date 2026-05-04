@@ -18,7 +18,11 @@
 
 use std::hash::Hash;
 
-use crate::graph::{Graph, GraphError, sorting::topological_sort_with_nodes};
+use crate::graph::{
+    Graph, GraphError,
+    node::{DiGraphNode, GraphNode},
+    sorting::topological_sort_with_nodes,
+};
 
 /// Validated DAG wrapper that owns the graph and caches topology.
 ///
@@ -28,34 +32,36 @@ use crate::graph::{Graph, GraphError, sorting::topological_sort_with_nodes};
 /// # Examples
 ///
 /// ```
-/// use lithos_core::graph::{DagGraph, GraphBuilder};
+/// use lithos_core::graph::{DagGraph, GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
 /// builder.add_node(1u8, Box::<str>::from("A"));
 /// builder.add_node(2u8, Box::<str>::from("B"));
 /// builder.add_parent(2, 1);
 ///
-/// let dag = DagGraph::try_from(builder.build()).unwrap();
+/// let dag = DagGraph::try_from(builder.build::<Node<_>>()).unwrap();
 /// assert_eq!(dag.topo_order(), &[1, 2]);
 /// ```
 #[derive(Debug, Clone)]
-pub struct DagGraph<Id, T>
+pub struct DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
+    N: GraphNode + DiGraphNode,
 {
-    graph: Graph<Id, T>,
+    graph: Graph<Id, N>,
     topo_order: Vec<Id>,
     roots: Vec<Id>,
 }
 
-impl<Id, T> TryFrom<Graph<Id, T>> for DagGraph<Id, T>
+impl<Id, N> TryFrom<Graph<Id, N>> for DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
+    N: GraphNode + DiGraphNode,
 {
     type Error = GraphError<Id>;
 
     #[inline]
-    fn try_from(graph: Graph<Id, T>) -> Result<Self, Self::Error> {
+    fn try_from(graph: Graph<Id, N>) -> Result<Self, Self::Error> {
         let (order, roots) =
             topological_sort_with_nodes(graph.parents(), graph.node_ids())?;
         Ok(Self {
@@ -66,9 +72,10 @@ where
     }
 }
 
-impl<Id, T> DagGraph<Id, T>
+impl<Id, N> DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
+    N: GraphNode + DiGraphNode,
 {
     /// Returns the cached topological order.
     #[inline]
@@ -87,7 +94,7 @@ where
     /// Returns a reference to the underlying raw graph.
     #[inline]
     #[must_use]
-    pub fn graph(&self) -> &Graph<Id, T> {
+    pub fn graph(&self) -> &Graph<Id, N> {
         &self.graph
     }
 
@@ -97,14 +104,14 @@ where
     /// edges) will invalidate the cached topological order. Only use this
     /// for in-place payload updates.
     #[inline]
-    pub fn graph_mut(&mut self) -> &mut Graph<Id, T> {
+    pub fn graph_mut(&mut self) -> &mut Graph<Id, N> {
         &mut self.graph
     }
 
     /// Consumes the wrapper and returns the raw graph.
     #[inline]
     #[must_use]
-    pub fn into_graph(self) -> Graph<Id, T> {
+    pub fn into_graph(self) -> Graph<Id, N> {
         self.graph
     }
 }
@@ -115,7 +122,7 @@ mod tests {
 
     mod try_from {
         use super::*;
-        use crate::graph::GraphBuilder;
+        use crate::graph::{GraphBuilder, node::Node};
 
         #[test]
         fn rejects_cycles() {
@@ -125,7 +132,7 @@ mod tests {
             builder.add_parent(1i32, 2i32);
             builder.add_parent(2i32, 1i32);
 
-            let graph = builder.build();
+            let graph = builder.build::<Node<_>>();
             let result = DagGraph::try_from(graph);
 
             assert!(
@@ -140,7 +147,7 @@ mod tests {
             builder.add_node(1i32, Box::<str>::from("A"));
             builder.add_parent(2i32, 1i32);
 
-            let graph = builder.build();
+            let graph = builder.build::<Node<_>>();
             let result = DagGraph::try_from(graph);
 
             assert!(
@@ -152,7 +159,7 @@ mod tests {
 
     mod roots {
         use super::*;
-        use crate::graph::GraphBuilder;
+        use crate::graph::{GraphBuilder, node::Node};
 
         #[test]
         fn returns_sorted_roots_for_disconnected_nodes() {
@@ -162,7 +169,7 @@ mod tests {
             builder.add_node(3i32, Box::<str>::from("C"));
             builder.add_parent(2i32, 1i32);
 
-            let dag = DagGraph::try_from(builder.build())
+            let dag = DagGraph::try_from(builder.build::<Node<_>>())
                 .expect("expected DAG to be valid");
             assert_eq!(
                 dag.roots(),
