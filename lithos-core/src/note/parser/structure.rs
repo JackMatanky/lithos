@@ -26,9 +26,9 @@ use crate::note::{
     position::{SourceByteOffset, SourceByteRange},
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DOC TREE - THE DOCUMENT AST
-// ═══════════════════════════════════════════════════════════════════════════
+// ----------------------------------------------------------- //
+//                        State Markers                        //
+// ----------------------------------------------------------- //
 
 /// Trait for the document tree's lifecycle state.
 pub trait DocState: std::fmt::Debug {}
@@ -50,6 +50,10 @@ impl DocState for Processing<'_> {}
 pub struct Complete;
 impl DocState for Complete {}
 
+// ----------------------------------------------------------- //
+//                   `Doctree` Document AST                    //
+// ----------------------------------------------------------- //
+
 /// The hierarchical document structure (AST) for a markdown document.
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
@@ -63,6 +67,10 @@ pub struct DocTree<'source, S: DocState = Complete> {
     pub(crate) state: S,
 }
 
+// ----------------------------------------------------------- //
+//                    Complete Document API                    //
+// ----------------------------------------------------------- //
+
 impl<'source> DocTree<'source, Complete> {
     /// Build the document structure from a parser context.
     pub(crate) fn from_context(
@@ -70,8 +78,8 @@ impl<'source> DocTree<'source, Complete> {
     ) -> Result<Self, NoteIngestError> {
         let mut tree = DocTree::<Processing<'source>>::new();
 
-        for spanned_event in ctx.events().iter().cloned() {
-            tree.process_event(spanned_event)?;
+        for event in ctx.events().iter().cloned() {
+            tree.process_event(event)?;
         }
 
         tree.finish()
@@ -117,6 +125,9 @@ impl<'source> DocTree<'source, Complete> {
     }
 }
 
+// ----------------------------------------------------------- //
+//                   Processing Document API                   //
+// ----------------------------------------------------------- //
 impl<'source> DocTree<'source, Processing<'source>> {
     fn new() -> Self {
         Self {
@@ -127,14 +138,14 @@ impl<'source> DocTree<'source, Processing<'source>> {
 
     /// Processes a single ranged event, driving the state machine forward.
     ///
-    /// This is the heart of the structure builder. It converts linear events
+    /// This is the heart of the structure builder. it converts linear events
     /// into a nested tree by maintaining a stack of open blocks and applying
     /// auto-closing rules for paragraphs and lists.
     fn process_event(
         &mut self,
-        spanned_event: RangedEvent<'source>,
+        event: RangedEvent<'source>,
     ) -> Result<(), NoteIngestError> {
-        let (event, range) = spanned_event.into_parts();
+        let (event, range) = event.into_parts();
         self.state.last_end = range.end();
 
         match event {
@@ -163,6 +174,54 @@ impl<'source> DocTree<'source, Processing<'source>> {
         }
         Ok(())
     }
+
+    /// Finalizes the document assembly.
+    ///
+    /// Closes any remaining open blocks (like a trailing paragraph) and
+    /// validates that the stack is empty.
+    fn finish(self) -> Result<DocTree<'source, Complete>, NoteIngestError> {
+        let mut this = self;
+
+        // Auto-close trailing implicit paragraph
+        if let Some(top) = this.state.stack.last()
+            && top.kind.expected_end() == BlockEnd::Paragraph
+        {
+            let last_end = this.state.last_end;
+            let range =
+                SourceByteRange::new(top.span, last_end).map_err(|e| {
+                    NoteParseError::InvalidTopology {
+                        code: "parser.structure.invalid_paragraph_range",
+                        detail: format!(
+                            "failed to construct range for trailing \
+                             paragraph: {e}"
+                        )
+                        .into(),
+                        range: None,
+                    }
+                })?;
+
+            this.on_end(BlockEnd::Paragraph, range)?;
+        }
+
+        if let Some(top) = this.state.stack.last() {
+            return Err(NoteParseError::UnclosedBlocks {
+                open_count: this.state.stack.len(),
+                top_kind: Some(match top.kind {
+                    BlockKind::Leaf(_) => "leaf",
+                    BlockKind::Container(_) => "container",
+                }),
+                at: top.span,
+            }
+            .into());
+        }
+
+        Ok(DocTree {
+            blocks: this.blocks,
+            state: Complete,
+        })
+    }
+
+    // ------------------- Event Handlers -------------------- //
 
     /// Handles the start of a new block element.
     ///
@@ -437,57 +496,11 @@ impl<'source> DocTree<'source, Processing<'source>> {
             Ok(())
         }
     }
-
-    /// Finalizes the document assembly.
-    ///
-    /// Closes any remaining open blocks (like a trailing paragraph) and
-    /// validates that the stack is empty.
-    fn finish(self) -> Result<DocTree<'source, Complete>, NoteIngestError> {
-        let mut this = self;
-
-        // Auto-close trailing implicit paragraph
-        if let Some(top) = this.state.stack.last()
-            && top.kind.expected_end() == BlockEnd::Paragraph
-        {
-            let last_end = this.state.last_end;
-            let range =
-                SourceByteRange::new(top.span, last_end).map_err(|e| {
-                    NoteParseError::InvalidTopology {
-                        code: "parser.structure.invalid_paragraph_range",
-                        detail: format!(
-                            "failed to construct range for trailing \
-                             paragraph: {e}"
-                        )
-                        .into(),
-                        range: None,
-                    }
-                })?;
-
-            this.on_end(BlockEnd::Paragraph, range)?;
-        }
-
-        if let Some(top) = this.state.stack.last() {
-            return Err(NoteParseError::UnclosedBlocks {
-                open_count: this.state.stack.len(),
-                top_kind: Some(match top.kind {
-                    BlockKind::Leaf(_) => "leaf",
-                    BlockKind::Container(_) => "container",
-                }),
-                at: top.span,
-            }
-            .into());
-        }
-
-        Ok(DocTree {
-            blocks: this.blocks,
-            state: Complete,
-        })
-    }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TRAVERSAL ITERATOR API
-// ═══════════════════════════════════════════════════════════════════════════
+// ----------------------------------------------------------- //
+//                     Traversal Iterator                      //
+// ----------------------------------------------------------- //
 
 /// Event emitted during pre-order traversal of the document AST.
 ///
