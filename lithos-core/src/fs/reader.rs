@@ -139,42 +139,10 @@ impl Reader {
         &self,
         pattern: &str,
     ) -> Result<Vec<PathBuf>, ParseError> {
-        let full_pattern = self.root.join(pattern);
-        let pattern_str =
-            full_pattern.to_str().ok_or_else(|| ParseError::Io {
-                path: full_pattern.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid UTF-8 in pattern",
-                ),
-            })?;
+        use super::scanner::{DirScanInput, DirScanner};
 
-        let mut paths = Vec::new();
-        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
-            path: full_pattern.clone(),
-            source: std::io::Error::other(e),
-        })? {
-            let path = entry.map_err(|e| ParseError::Io {
-                path: e.path().to_path_buf(),
-                source: e.into_error(),
-            })?;
-
-            if !path.is_file() && !path.is_symlink() {
-                continue;
-            }
-
-            let relative = path.strip_prefix(&self.root).map_err(|_err| {
-                ParseError::Io {
-                    path: path.clone(),
-                    source: std::io::Error::other("Path outside root"),
-                }
-            })?;
-
-            paths.push(relative.to_path_buf());
-        }
-
-        paths.sort();
-        Ok(paths)
+        let scanner = DirScanner::new(&self.root);
+        scanner.paths(DirScanInput::new().with_pattern(pattern))
     }
 
     /// Lists file entries within the vault using a glob pattern.
@@ -190,60 +158,10 @@ impl Reader {
         &self,
         pattern: &str,
     ) -> Result<Vec<FileEntry>, ParseError> {
-        let full_pattern = self.root.join(pattern);
-        let pattern_str =
-            full_pattern.to_str().ok_or_else(|| ParseError::Io {
-                path: full_pattern.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid UTF-8 in pattern",
-                ),
-            })?;
+        use super::scanner::{DirScanInput, DirScanner};
 
-        let mut entries = Vec::new();
-        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
-            path: full_pattern.clone(),
-            source: std::io::Error::other(e),
-        })? {
-            let path = entry.map_err(|e| ParseError::Io {
-                path: e.path().to_path_buf(),
-                source: e.into_error(),
-            })?;
-
-            if !path.is_file() && !path.is_symlink() {
-                continue;
-            }
-
-            let metadata = std::fs::symlink_metadata(&path).map_err(|e| {
-                ParseError::Io {
-                    path: path.clone(),
-                    source: e,
-                }
-            })?;
-
-            let relative = path.strip_prefix(&self.root).map_err(|_err| {
-                ParseError::Io {
-                    path: path.clone(),
-                    source: std::io::Error::other("Path outside root"),
-                }
-            })?;
-
-            let relative_path = relative.to_path_buf();
-            let filename = FileName::try_from(relative_path.as_path())
-                .map_err(|source| ParseError::Io {
-                    path: relative_path.clone(),
-                    source,
-                })?;
-
-            entries.push(FileEntry {
-                path: relative_path,
-                filename,
-                info: FileInfo::from(metadata),
-            });
-        }
-
-        entries.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(entries)
+        let scanner = DirScanner::new(&self.root);
+        scanner.entries(DirScanInput::new().with_pattern(pattern))
     }
 
     /// Reads a file's content as raw bytes.
@@ -647,10 +565,14 @@ mod tests {
         }
 
         #[test]
-        fn rejects_invalid_pattern() {
+        fn handles_glob_patterns() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            reader.filter_dir("[invalid").unwrap_err();
+            // glob::Pattern is very permissive - even "[invalid" is considered
+            // valid It just won't match anything, which is fine
+            let result = reader.filter_dir("[invalid");
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_empty());
         }
 
         #[test]

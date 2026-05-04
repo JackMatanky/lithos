@@ -35,6 +35,8 @@ pub mod file;
 pub mod path;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
+/// Directory scanning utilities for finding files matching criteria.
+pub mod scanner;
 /// Structured data parsers (TOML/JSON/YAML) — module-internal.
 pub(crate) mod types;
 /// Security-critical path validation utilities.
@@ -112,3 +114,13 @@ pub type AbsolutePath = path::AbsolutePath;
 ///
 /// See [`reader::FileTimestamp`] for the full API.
 pub type FileTimestamp = reader::FileTimestamp;
+
+/// Directory scanner for finding files matching criteria.
+///
+/// See [`scanner::DirScanner`] for the full API.
+pub type DirScanner = scanner::DirScanner;
+
+/// Input parameters for directory scanning operations.
+///
+/// See [`scanner::DirScanInput`] for the full API.
+pub type DirScanInput<'a> = scanner::DirScanInput<'a>;
