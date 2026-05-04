@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    fs::{DirScanInput, DirScanner, FileInfo, RelativePath},
+    fs::{DirScanInput, DirScanner, FileEntry, FileInfo, RelativePath},
     prelude::W,
     schema::{
         error::{
@@ -20,6 +20,38 @@ use crate::{
         views::contracts::RawViewRead,
     },
 };
+
+/// Discovered files from filesystem scan.
+///
+/// Newtype wrapper around `HashMap<RelativePath, FileEntry>` for type safety
+/// and to provide domain-specific query methods.
+#[derive(Debug)]
+struct FileDiscovery(HashMap<RelativePath, FileEntry>);
+
+impl FileDiscovery {
+    /// Returns an iterator over all entries.
+    fn iter(&self) -> impl Iterator<Item = (&RelativePath, &FileEntry)> {
+        self.0.iter()
+    }
+
+    /// Extracts the property bank entry if present.
+    fn extract_property_bank(
+        &mut self,
+        expected_path: &RelativePath,
+    ) -> Option<FileEntry> {
+        self.0.remove(expected_path)
+    }
+
+    /// Returns the number of remaining files (after property bank extraction).
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Consumes self and returns the inner HashMap.
+    fn into_inner(self) -> HashMap<RelativePath, FileEntry> {
+        self.0
+    }
+}
 
 /// File kind for discovery results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,21 +204,27 @@ impl DiscoveryEngine {
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        // Step 1: Scan filesystem for schema files and property bank
-        let (schema_files, property_bank_info, property_bank_path) =
-            Self::scan_filesystem(spec, vault_root)?;
+        // Step 1: Scan filesystem for all schema files and property bank
+        let mut discovered = Self::scan_filesystem(spec, vault_root)?;
 
-        // Extract paths for database queries
+        // Step 2: Extract property bank with O(1) lookup
+        let property_bank_path = spec.property_bank();
+        let property_bank_entry =
+            discovered.extract_property_bank(property_bank_path);
+
+        // Step 3: Extract paths for database queries (only schemas remain)
         let schema_paths: Vec<RelativePath> =
-            schema_files.iter().map(|(path, _)| path.clone()).collect();
+            discovered.iter().map(|(path, _)| path.clone()).collect();
 
-        // Step 2: Perform all database queries in a single atomic batch read
+        // Step 4: Perform all database queries in a single atomic batch read
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
             .with_batch_schema_reader(|batch_reader| {
                 let graph = batch_reader.get_topological_graph()?;
 
-                let bank_view = property_bank_path.as_ref().and_then(|path| {
-                    batch_reader.get_raw_property_bank_view(path).ok()
+                let bank_view = property_bank_entry.as_ref().and_then(|_| {
+                    batch_reader
+                        .get_raw_property_bank_view(property_bank_path)
+                        .ok()
                 });
 
                 let views = batch_reader
@@ -198,22 +236,22 @@ impl DiscoveryEngine {
             })
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        // Step 3: Build discovered files map
+        // Step 5: Build discovered files map
         let mut files = HashMap::new();
 
-        if let Some((bank_path, bank_info)) =
-            property_bank_path.zip(property_bank_info)
-        {
-            files.insert(bank_path, DiscoveredFile {
+        // Add property bank if found
+        if let Some(entry) = property_bank_entry {
+            files.insert(property_bank_path.clone(), DiscoveredFile {
                 kind: SchemaFileKind::PropertyBank,
                 view: bank_view.map(DiscoveredView::PropertyBank),
-                info: bank_info,
+                info: entry.info,
             });
         }
 
         let mut filesystem_ids = HashSet::new();
 
-        for (path, info) in schema_files {
+        // Add schema files
+        for (path, entry) in discovered.into_inner() {
             let id = ids_by_path.remove(&path).unwrap_or_else(SchemaId::new);
             let view = views_by_path.remove(&path).map(DiscoveredView::Schema);
 
@@ -222,7 +260,7 @@ impl DiscoveryEngine {
             files.insert(path, DiscoveredFile {
                 kind: SchemaFileKind::Schema(id),
                 view,
-                info,
+                info: entry.info,
             });
         }
 
@@ -238,35 +276,29 @@ impl DiscoveryEngine {
 
     /// Scans the filesystem for schema files and property bank.
     ///
-    /// Returns a tuple of (`schema_files_with_info`, `property_bank_info`,
-    /// `property_bank_path`).
+    /// Returns `FileDiscovery` containing all discovered files (schemas and
+    /// property bank).
     ///
     /// # Errors
     ///
-    /// Returns error if filesystem scanning fails or duplicate property bank is
-    /// found.
-    #[expect(
-        clippy::type_complexity,
-        reason = "Return type is clear and self-documenting; tuple components \
-                  have descriptive names in docstring"
-    )]
+    /// Returns error if filesystem scanning fails.
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
         vault_root: &std::path::Path,
-    ) -> Result<
-        (Vec<(RelativePath, FileInfo)>, Option<FileInfo>, Option<RelativePath>),
-        SchemaLoaderError,
-    > {
+    ) -> Result<FileDiscovery, SchemaLoaderError> {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
-        let property_bank_path = spec.property_bank();
 
-        // Scan directory for all files with metadata in one pass
+        // Scan directory with extension filter (DirScanner handles filtering)
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
         let scanner = DirScanner::new(vault_root);
-        let all_entries = scanner
-            .entries(DirScanInput::new().with_pattern(&pattern))
+        let entries = scanner
+            .entries(
+                DirScanInput::new()
+                    .with_pattern(&pattern)
+                    .with_extensions(&SCHEMA_EXTENSIONS),
+            )
             .map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::Io {
@@ -276,47 +308,17 @@ impl DiscoveryEngine {
                 ))
             })?;
 
-        let mut schema_files: Vec<(RelativePath, FileInfo)> = Vec::new();
-        let mut property_bank_info: Option<FileInfo> = None;
-        let mut found_property_bank_path: Option<RelativePath> = None;
-
-        for entry in all_entries {
-            // Convert to RelativePath for comparison
-            let Ok(relative_path) = RelativePath::try_from(entry.path) else {
+        // Convert to HashMap for O(1) lookups
+        let mut files = HashMap::new();
+        for entry in entries {
+            let Ok(relative_path) = RelativePath::try_from(entry.path.clone())
+            else {
                 continue;
             };
-
-            // Check if this is the property bank file by comparing paths
-            if relative_path == *property_bank_path {
-                if property_bank_info.is_some() {
-                    return Err(SchemaLoaderError::Ingestion(
-                        SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
-                                reason: "duplicate property bank file found"
-                                    .into(),
-                            },
-                        ),
-                    ));
-                }
-                property_bank_info = Some(entry.info);
-                found_property_bank_path = Some(property_bank_path.clone());
-                continue;
-            }
-
-            // Check if this is a schema file (by extension)
-            let Some(ext) = relative_path.as_path().extension() else {
-                continue;
-            };
-
-            if SCHEMA_EXTENSIONS
-                .iter()
-                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
-            {
-                schema_files.push((relative_path, entry.info));
-            }
+            files.insert(relative_path, entry);
         }
 
-        if schema_files.is_empty() {
+        if files.is_empty() {
             tracing::info!(
                 "No schema files found; schema processing skipped. Add a \
                  schema file (json, yaml, or toml) to enable schema \
@@ -324,7 +326,7 @@ impl DiscoveryEngine {
             );
         }
 
-        Ok((schema_files, property_bank_info, found_property_bank_path))
+        Ok(FileDiscovery(files))
     }
 
     fn detect_deleted_schemas(
