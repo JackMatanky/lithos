@@ -58,7 +58,7 @@ where
         // Step 2: Run unified discovery engine (single atomic batch
         // transaction)
         let discovery_outcome =
-            DiscoveryEngine::run(&spec, &self.repository, &self.source)?;
+            DiscoveryEngine::run(&spec, &self.repository, self.source.root())?;
 
         // Step 3: Load property bank from discovery data if present
         let property_bank =

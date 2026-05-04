@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    fs::{FileInfo, FsReader, RelativePath},
+    fs::{DirScanInput, DirScanner, FileInfo, RelativePath},
     prelude::W,
     schema::{
         error::{
@@ -166,15 +166,19 @@ impl DiscoveryEngine {
     pub(crate) fn run<R>(
         spec: &SchemaConfigSpec,
         repo: &R,
-        source: &FsReader,
+        vault_root: &std::path::Path,
     ) -> Result<DiscoveryOutcome, SchemaLoaderError>
     where
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
         // Step 1: Scan filesystem for schema files and property bank
-        let (schema_files, property_bank_path) =
-            Self::scan_filesystem(spec, source)?;
+        let (schema_files, property_bank_info, property_bank_path) =
+            Self::scan_filesystem(spec, vault_root)?;
+
+        // Extract paths for database queries
+        let schema_paths: Vec<RelativePath> =
+            schema_files.iter().map(|(path, _)| path.clone()).collect();
 
         // Step 2: Perform all database queries in a single atomic batch read
         let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
@@ -186,50 +190,36 @@ impl DiscoveryEngine {
                 });
 
                 let views = batch_reader
-                    .find_raw_schema_views_by_paths(&schema_files)?;
+                    .find_raw_schema_views_by_paths(&schema_paths)?;
                 let ids =
-                    batch_reader.find_schema_ids_by_paths(&schema_files)?;
+                    batch_reader.find_schema_ids_by_paths(&schema_paths)?;
 
                 Ok((graph, bank_view, views, ids))
             })
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        // Step 4: Fetch all file info (I/O) outside the database transaction
+        // Step 3: Build discovered files map
         let mut files = HashMap::new();
 
-        if let Some(bank_path) = property_bank_path {
-            let info = source
-                .info(bank_path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-
-            files.insert(bank_path.clone(), DiscoveredFile {
+        if let Some((bank_path, bank_info)) =
+            property_bank_path.zip(property_bank_info)
+        {
+            files.insert(bank_path, DiscoveredFile {
                 kind: SchemaFileKind::PropertyBank,
                 view: bank_view.map(DiscoveredView::PropertyBank),
-                info,
+                info: bank_info,
             });
         }
 
-        let mut info_by_path = Self::fetch_info_batch(&schema_files, source)?;
         let mut filesystem_ids = HashSet::new();
 
-        for path in &schema_files {
-            let id = ids_by_path.remove(path).unwrap_or_else(SchemaId::new);
-            let view = views_by_path.remove(path).map(DiscoveredView::Schema);
-            let info = info_by_path.remove(path).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::Io {
-                        path: path.as_path().to_path_buf(),
-                        source: std::io::Error::other(
-                            "missing file information",
-                        ),
-                    },
-                ))
-            })?;
+        for (path, info) in schema_files {
+            let id = ids_by_path.remove(&path).unwrap_or_else(SchemaId::new);
+            let view = views_by_path.remove(&path).map(DiscoveredView::Schema);
 
             filesystem_ids.insert(id);
 
-            files.insert(path.clone(), DiscoveredFile {
+            files.insert(path, DiscoveredFile {
                 kind: SchemaFileKind::Schema(id),
                 view,
                 info,
@@ -248,7 +238,8 @@ impl DiscoveryEngine {
 
     /// Scans the filesystem for schema files and property bank.
     ///
-    /// Returns a tuple of (`schema_files`, `property_bank_path`).
+    /// Returns a tuple of (`schema_files_with_info`, `property_bank_info`,
+    /// `property_bank_path`).
     ///
     /// # Errors
     ///
@@ -256,43 +247,48 @@ impl DiscoveryEngine {
     /// found.
     #[expect(
         clippy::type_complexity,
-        reason = "Return type is clear and self-documenting; Vec and Option \
-                  are common"
+        reason = "Return type is clear and self-documenting; tuple components \
+                  have descriptive names in docstring"
     )]
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
-        source: &FsReader,
-    ) -> Result<(Vec<RelativePath>, Option<RelativePath>), SchemaLoaderError>
-    {
+        vault_root: &std::path::Path,
+    ) -> Result<
+        (Vec<(RelativePath, FileInfo)>, Option<FileInfo>, Option<RelativePath>),
+        SchemaLoaderError,
+    > {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
         let property_bank_path = spec.property_bank();
 
-        // Scan directory for all files
+        // Scan directory for all files with metadata in one pass
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
-        let all_files = source.filter_dir(&pattern).map_err(|e| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::Io {
-                    path: schema_dir.as_path().to_path_buf(),
-                    source: std::io::Error::other(e),
-                },
-            ))
-        })?;
+        let scanner = DirScanner::new(vault_root);
+        let all_entries = scanner
+            .entries(DirScanInput::new().with_pattern(&pattern))
+            .map_err(|e| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::Io {
+                        path: schema_dir.as_path().to_path_buf(),
+                        source: std::io::Error::other(e),
+                    },
+                ))
+            })?;
 
-        let mut schema_files: Vec<RelativePath> = Vec::new();
-        let mut found_property_bank: Option<RelativePath> = None;
+        let mut schema_files: Vec<(RelativePath, FileInfo)> = Vec::new();
+        let mut property_bank_info: Option<FileInfo> = None;
+        let mut found_property_bank_path: Option<RelativePath> = None;
 
-        for path in all_files {
+        for entry in all_entries {
             // Convert to RelativePath for comparison
-            let Ok(relative_path) = RelativePath::try_from(path) else {
+            let Ok(relative_path) = RelativePath::try_from(entry.path) else {
                 continue;
             };
 
             // Check if this is the property bank file by comparing paths
-            // directly
             if relative_path == *property_bank_path {
-                if found_property_bank.is_some() {
+                if property_bank_info.is_some() {
                     return Err(SchemaLoaderError::Ingestion(
                         SchemaIngestionError::File(
                             crate::schema::error::SchemaFileError::FileSystem {
@@ -302,7 +298,8 @@ impl DiscoveryEngine {
                         ),
                     ));
                 }
-                found_property_bank = Some(property_bank_path.clone());
+                property_bank_info = Some(entry.info);
+                found_property_bank_path = Some(property_bank_path.clone());
                 continue;
             }
 
@@ -315,7 +312,7 @@ impl DiscoveryEngine {
                 .iter()
                 .any(|allowed| ext.eq_ignore_ascii_case(allowed))
             {
-                schema_files.push(relative_path);
+                schema_files.push((relative_path, entry.info));
             }
         }
 
@@ -327,24 +324,7 @@ impl DiscoveryEngine {
             );
         }
 
-        Ok((schema_files, found_property_bank))
-    }
-
-    fn fetch_info_batch(
-        files: &[RelativePath],
-        source: &FsReader,
-    ) -> Result<HashMap<RelativePath, FileInfo>, SchemaLoaderError> {
-        let mut info_map = HashMap::new();
-
-        for path in files {
-            let info = source
-                .info(path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-            info_map.insert(path.clone(), info);
-        }
-
-        Ok(info_map)
+        Ok((schema_files, property_bank_info, found_property_bank_path))
     }
 
     fn detect_deleted_schemas(
@@ -385,7 +365,6 @@ mod tests {
         let schema1_path = schema_dir.join("schema1.json");
         std::fs::write(&schema1_path, "{}").unwrap();
 
-        let source = FsReader::new(root.path());
         let spec = SchemaConfigSpec::new(
             RelativePath::try_from(PathBuf::from("schemas")).unwrap(),
             RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
@@ -393,7 +372,7 @@ mod tests {
         );
 
         let repo = InMemoryRepository::new();
-        let outcome = DiscoveryEngine::run(&spec, &repo, &source).unwrap();
+        let outcome = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
 
         assert_eq!(outcome.files.len(), 2);
         assert!(outcome.property_bank().is_some());
