@@ -508,27 +508,42 @@ mod tests {
 
         #[test]
         fn new_extracts_metadata_correctly() {
+            let ref_path: crate::schema::raw::property::RawPropertyRefPath =
+                serde_json::from_str(r##""#property_bank/target""##).unwrap();
+
             let raw = RawSchema {
-                version: "1.0".into(),
+                version: crate::schema::raw::RawSchemaVersion::default(),
                 name: "Test".into(),
                 extends: None,
                 excludes: vec![],
-                properties: [(
-                    "prop1".try_into().unwrap(),
-                    crate::schema::raw::property::RawProperty::Ref(
-                        crate::schema::raw::property::RawPropertyRef {
-                            ref_path: "bank/target".try_into().unwrap(),
-                        },
-                    ),
-                )]
-                .into_iter()
-                .collect(),
-                info: FileInfo::default(),
+                properties: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert(
+                        "prop1".try_into().unwrap(),
+                        crate::schema::raw::property::RawProperty::Ref(
+                            crate::schema::raw::property::RawPropertyRef {
+                                ref_path,
+                                required: None,
+                                multi: None,
+                                options: None,
+                                pattern: None,
+                                min: None,
+                                max: None,
+                                step: None,
+                                format: None,
+                                directory: None,
+                                file_class: None,
+                            },
+                        ),
+                    );
+                    crate::schema::raw::property::RawPropertyMap::from_map(map)
+                },
+                info: crate::fs::FileInfo::new(None, None, 0),
             };
 
-            let info = FileInfo::new(None, None, 100);
-            let hashes = HashRecord::new(
-                Blake3Hash::from_bytes([0; 32]),
+            let info = crate::fs::FileInfo::new(None, None, 100);
+            let hashes = crate::schema::views::hashes::HashRecord::new(
+                crate::support::hash::Blake3Hash::new([0; 32]),
                 Default::default(),
             );
 
@@ -538,9 +553,14 @@ mod tests {
             assert_eq!(version.version(), "1.0");
             assert_eq!(version.info().size(), 100);
             assert_eq!(version.hashes().content(), hashes.content());
+
+            let prop_name: crate::schema::property::PropertyName =
+                "prop1".try_into().unwrap();
+            let target_name: crate::schema::property::PropertyName =
+                "target".try_into().unwrap();
             assert_eq!(
-                version.bank_references().get(&"prop1".try_into().unwrap()),
-                Some(&"target".try_into().unwrap())
+                version.bank_references().get(&prop_name),
+                Some(&target_name)
             );
         }
     }
@@ -551,14 +571,14 @@ mod tests {
         #[test]
         fn new_extracts_metadata_correctly() {
             let raw = RawPropertyBank {
-                version: "1.0".into(),
-                properties: RawPropertyMap::new(),
-                info: FileInfo::default(),
+                version: crate::schema::raw::RawSchemaVersion::default(),
+                properties: crate::schema::raw::property::RawPropertyMap::new(),
+                info: crate::fs::FileInfo::new(None, None, 0),
             };
 
-            let info = FileInfo::new(None, None, 100);
-            let hashes = HashRecord::new(
-                Blake3Hash::from_bytes([0; 32]),
+            let info = crate::fs::FileInfo::new(None, None, 100);
+            let hashes = crate::schema::views::hashes::HashRecord::new(
+                crate::support::hash::Blake3Hash::new([0; 32]),
                 Default::default(),
             );
 

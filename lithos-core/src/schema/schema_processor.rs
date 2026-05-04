@@ -1928,10 +1928,10 @@ fn stage_variant_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::raw::property::RawPropertyMapHash;
+    use crate::schema::views::RawPropertyMapHash;
 
     fn make_raw_schema(name: &str) -> RawSchema {
-        serde_json::from_value(serde_json::json!({
+        serde_json::from_value::<RawSchema>(serde_json::json!({
             "$version": "1.0",
             "properties": {}
         }))

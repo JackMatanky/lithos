@@ -444,7 +444,10 @@ mod tests {
         );
 
         // Verify graph was saved (proves incremental path will be used)
-        let has_graph = repo.get_topological_graph().unwrap().is_some();
+        let has_graph = repo
+            .with_batch_schema_reader(|reader| reader.get_topological_graph())
+            .unwrap()
+            .is_some();
         assert!(has_graph, "Graph should be persisted after initial load");
     }
 

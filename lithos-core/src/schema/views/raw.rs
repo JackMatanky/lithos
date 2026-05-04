@@ -411,22 +411,21 @@ mod tests {
 
     mod raw_schema_view {
         use super::*;
+        use crate::schema::raw::{RawPropertyMap, RawSchemaVersion};
 
         #[test]
         fn supports_zero_copy_staleness_checks() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes = HashRecord::new(
-                Blake3Hash::from_bytes([0; 32]),
-                Default::default(),
-            );
+            let hashes =
+                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
             let raw = RawSchema {
-                version: "1.0".into(),
+                version: RawSchemaVersion::default(),
                 name: "Note".into(),
                 extends: None,
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
-                info: FileInfo::default(),
+                info: FileInfo::new(None, None, 0),
             };
 
             let version =
@@ -449,17 +448,15 @@ mod tests {
         fn update_file_info_replaces_full_metadata() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes = HashRecord::new(
-                Blake3Hash::from_bytes([0; 32]),
-                Default::default(),
-            );
+            let hashes =
+                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
             let raw = RawSchema {
-                version: "1.0".into(),
+                version: RawSchemaVersion::default(),
                 name: "Note".into(),
                 extends: None,
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
-                info: FileInfo::default(),
+                info: FileInfo::new(None, None, 0),
             };
 
             let version = SchemaVersion::new(info, hashes, &raw).unwrap();
@@ -475,20 +472,19 @@ mod tests {
 
     mod raw_property_bank_view {
         use super::*;
+        use crate::schema::raw::{RawPropertyMap, RawSchemaVersion};
 
         #[test]
         fn supports_zero_copy_staleness_checks() {
             let path =
                 RelativePath::try_from("schemas/property_bank.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes = HashRecord::new(
-                Blake3Hash::from_bytes([0; 32]),
-                Default::default(),
-            );
+            let hashes =
+                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
             let raw = RawPropertyBank {
-                version: "1.0".into(),
+                version: RawSchemaVersion::default(),
                 properties: RawPropertyMap::new(),
-                info: FileInfo::default(),
+                info: FileInfo::new(None, None, 0),
             };
 
             let version =
