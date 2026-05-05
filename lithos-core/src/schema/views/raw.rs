@@ -417,8 +417,10 @@ mod tests {
         fn supports_zero_copy_staleness_checks() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes =
-                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
+            let hashes = HashRecord::new(
+                Blake3Hash::new([0; 32]),
+                RawPropertyMapHash::default(),
+            );
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
                 name: "Note".into(),
@@ -448,8 +450,10 @@ mod tests {
         fn update_file_info_replaces_full_metadata() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes =
-                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
+            let hashes = HashRecord::new(
+                Blake3Hash::new([0; 32]),
+                RawPropertyMapHash::default(),
+            );
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
                 name: "Note".into(),
@@ -479,8 +483,10 @@ mod tests {
             let path =
                 RelativePath::try_from("schemas/property_bank.json").unwrap();
             let info = FileInfo::new(None, None, 100);
-            let hashes =
-                HashRecord::new(Blake3Hash::new([0; 32]), Default::default());
+            let hashes = HashRecord::new(
+                Blake3Hash::new([0; 32]),
+                RawPropertyMapHash::default(),
+            );
             let raw = RawPropertyBank {
                 version: RawSchemaVersion::default(),
                 properties: RawPropertyMap::new(),

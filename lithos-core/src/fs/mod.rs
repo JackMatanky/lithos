@@ -58,15 +58,3 @@ pub use path::{AbsolutePath, RelativePath};
 pub use reader::{FileTimestamp, Reader as FsReader};
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;
-/// Root-scoped filesystem writer.
-///
-/// See [`writer::Writer`] for the full API.
-///
-/// Currently `pub(crate)` — will be promoted to `pub` when the template
-/// module provides its first caller.
-#[expect(
-    dead_code,
-    reason = "FsWriter has no external callers yet; it will be promoted to \
-              `pub` when the template module adapter is implemented."
-)]
-pub(crate) use writer::Writer as FsWriter;

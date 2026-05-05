@@ -8,15 +8,12 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     fs::{DirScanInput, DirScanner, FileEntry, FileInfo, RelativePath},
-    prelude::W,
     schema::{
         error::{
-            SchemaFileError, SchemaIngestionError, SchemaLoaderError,
-            SchemaRepositoryError,
+            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
         identifier::SchemaId,
         inheritance::InheritanceGraph,
-        storage::BatchSchemaReader,
         views::contracts::RawViewRead,
     },
 };

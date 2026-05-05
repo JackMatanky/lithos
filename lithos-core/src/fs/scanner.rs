@@ -350,7 +350,7 @@ impl DirScanner {
             let path = entry.path();
 
             // Filter by file type
-            if !self.matches_file_type(&entry, input.include_dirs) {
+            if !Self::matches_file_type(&entry, input.include_dirs) {
                 continue;
             }
 
@@ -367,12 +367,12 @@ impl DirScanner {
             }
 
             // Filter by extensions (if specified)
-            if !self.matches_extensions(relative, input.extensions) {
+            if !Self::matches_extensions(relative, input.extensions) {
                 continue;
             }
 
             // Filter by pattern (if specified)
-            if !self.matches_pattern(relative, input.pattern)? {
+            if !Self::matches_pattern(relative, input.pattern)? {
                 continue;
             }
 
@@ -402,7 +402,6 @@ impl DirScanner {
 
     /// Checks if entry matches the file type filter.
     fn matches_file_type(
-        &self,
         entry: &walkdir::DirEntry,
         include_dirs: bool,
     ) -> bool {
@@ -416,11 +415,7 @@ impl DirScanner {
     }
 
     /// Checks if path matches the extensions filter (if specified).
-    fn matches_extensions(
-        &self,
-        path: &Path,
-        extensions: Option<&[&str]>,
-    ) -> bool {
+    fn matches_extensions(path: &Path, extensions: Option<&[&str]>) -> bool {
         let Some(exts) = extensions else {
             return true; // No filter specified
         };
@@ -434,7 +429,6 @@ impl DirScanner {
 
     /// Checks if path matches the glob pattern (if specified).
     fn matches_pattern(
-        &self,
         path: &Path,
         pattern: Option<&str>,
     ) -> Result<bool, ParseError> {

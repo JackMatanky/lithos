@@ -71,16 +71,14 @@ use crate::{
             SchemaLoaderError, SchemaRepositoryError,
         },
         expander::RefExpander,
-        identifier::{SchemaId, SchemaName},
-        index::{NameIdPairs, SchemaIndex},
+        identifier::SchemaId,
         inheritance::{InheritanceGraph, ProcessingGraph, SchemaGraphBuilder},
-        merger::Merger,
-        property::{PropertyMap, PropertyName},
+        property::PropertyName,
         raw::{RawPropertyMap, RawSchema},
         storage::Repository,
         views::{
             HashRecord, RawPropertyMapHash, RawSchemaView, SchemaVersion,
-            contracts::{RawView, RawViewRead, Version, VersionRead},
+            contracts::{RawView, RawViewRead},
         },
     },
     support::hash::Blake3Hash,
@@ -901,8 +899,8 @@ impl SchemaProcessor<Comparison, Present> {
         } = self.status;
 
         let mut fresh_ids = Vec::new();
-        let mut stale_timestamp_ids = Vec::new();
-        let mut stale_bank_ids = Vec::new();
+        let stale_timestamp_ids = Vec::new();
+        let stale_bank_ids = Vec::new();
         let mut suspect_ids = Vec::new();
 
         let next_graph = graph.map_payload(|id, node| {
@@ -955,7 +953,7 @@ impl SchemaProcessor<Comparison, Present> {
                         )
                     } else {
                         // Timestamps changed - must read content to verify
-                        let content_str = source
+                        let _content_str = source
                             .read_to_string(found.path.as_path())
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?;
@@ -1022,7 +1020,7 @@ impl SchemaProcessor<FileParsed, Compared> {
         SchemaLoaderError,
     > {
         let mut stale_parsed_ids = Vec::new();
-        let mut suspect_ids = self.status.suspect_ids;
+        let mut _suspect_ids = self.status.suspect_ids;
 
         let next_graph = self.status.graph.map_payload(|id, node| {
             let relation = node.relation();
@@ -1349,10 +1347,10 @@ impl SchemaProcessor<PropertyAnalysis, GraphedBatch> {
         let GraphedBatch {
             graph,
             new_graph_base,
-            new_schemas,
-            fresh_ids,
+            new_schemas: _,
+            fresh_ids: _,
             stale_timestamp_ids,
-            stale_parsed_ids,
+            stale_parsed_ids: _,
             deleted_ids,
         } = self.status;
 
@@ -1421,8 +1419,11 @@ impl SchemaProcessor<PropertyAnalysis, GraphedBatch> {
                             Self::schema_stem(source, payload.path.as_path())?;
 
                         // Ensure view's current version info is preserved
-                        let current_info =
-                            *RawView::current(&payload.view).unwrap().info();
+                        let current_version = RawView::current(&payload.view)
+                            .expect(
+                                "StaleBank payload must have current version",
+                            );
+                        let current_info = *current_version.info();
                         let raw = FsReader::parse_structured_from_str::<
                             RawSchema,
                         >(
@@ -1472,8 +1473,11 @@ impl SchemaProcessor<PropertyAnalysis, GraphedBatch> {
                 PipelinePayload::FileParsed(
                     FileParsedBranch::StaleTimestamps(payload),
                 ) => {
-                    let info_for_raw =
-                        *RawView::current(&payload.view).unwrap().info();
+                    let current_version = RawView::current(&payload.view)
+                        .expect(
+                            "StaleTimestamps payload must have current version",
+                        );
+                    let info_for_raw = *current_version.info();
                     let bank_changed =
                         Self::bank_changed(&payload.view, property_bank_delta);
 
@@ -1624,15 +1628,18 @@ impl SchemaProcessor<PropertyAnalysis, GraphedBatch> {
                         }
                     }
                 }
-                PipelinePayload::Deleted(payload) => {
+                PipelinePayload::Deleted(_payload) => {
                     (
                         NodeStatus::Deleted,
                         AnalysisBranch::Refresh(RefreshNodePayload {
-                            path: RelativePath::try_from("deleted").unwrap(),
+                            path: RelativePath::try_from("deleted")
+                                .expect("'deleted' is a valid relative path"),
                             info: FileInfo::new(None, None, 0),
                             content_hash: Blake3Hash::new([0; 32]),
                             view: RawSchemaView::new(
-                                RelativePath::try_from("deleted").unwrap(),
+                                RelativePath::try_from("deleted").expect(
+                                    "'deleted' is a valid relative path",
+                                ),
                                 SchemaVersion::new(
                                     FileInfo::new(None, None, 0),
                                     HashRecord::new(
@@ -1850,11 +1857,11 @@ impl SchemaProcessor<Construction, Analyzed> {
     )]
     pub(crate) fn construct_schemas(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        _repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
         _property_bank: &PropertyBank,
     ) -> Result<SchemaProcessor<Completion, Completed>, SchemaLoaderError> {
-        let mut schemas = Vec::new();
-        let mut fetched_by_id: HashMap<SchemaId, Schema> = HashMap::new();
+        let schemas = Vec::new();
+        let _fetched_by_id: HashMap<SchemaId, Schema> = HashMap::new();
 
         // 1. Fetch schemas that don't need rebuild
         let mut fetch_ids = Vec::new();
@@ -1884,6 +1891,7 @@ impl SchemaProcessor<Construction, Analyzed> {
 }
 
 impl SchemaProcessor<Construction, NewParsedBatch> {
+    #[allow(unused_variables, reason = "self consumed for type-state pattern")]
     pub(crate) fn construct_new_schemas(
         self,
         _repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,

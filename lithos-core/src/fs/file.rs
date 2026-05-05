@@ -24,7 +24,7 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-use crate::{fs::error::DirEntryError, prelude::*};
+use crate::{fs::error::DirEntryError, prelude::W};
 
 /// FileName for vault-scoped files (schemas, notes, templates).
 ///
@@ -321,7 +321,7 @@ impl TryFrom<W<&DirEntry>> for FileEntry {
         let file_name = entry
             .file_name()
             .to_str()
-            .map(|s| FileName::from(s.to_string()))
+            .map(|s| FileName::from(s.to_owned()))
             .ok_or_else(|| {
                 DirEntryError::InvalidUtf8(
                     entry.path().to_string_lossy().into_owned(),

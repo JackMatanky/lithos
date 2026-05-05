@@ -192,8 +192,7 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
             )
             .map_err(|e| {
                 SchemaRepositoryError::Serialization(format!(
-                    "Failed to build inheritance graph: {:?}",
-                    e
+                    "Failed to build inheritance graph: {e:?}"
                 ))
             })?;
             Ok(Some(graph))
@@ -439,7 +438,7 @@ impl Repository for RedbRepository {
                         SchemaStorageError::Conflict {
                             reason,
                         },
-                    ) => DbError::Database(format!("conflict: {}", reason)),
+                    ) => DbError::Database(format!("conflict: {reason}")),
                     SchemaRepositoryError::Domain(domain_err) => {
                         DbError::Deserialization(domain_err.to_string())
                     }
@@ -491,7 +490,7 @@ impl Repository for RedbRepository {
                         SchemaStorageError::Conflict {
                             reason,
                         },
-                    ) => DbError::Database(format!("conflict: {}", reason)),
+                    ) => DbError::Database(format!("conflict: {reason}")),
                     SchemaRepositoryError::Domain(domain_err) => {
                         DbError::Deserialization(domain_err.to_string())
                     }

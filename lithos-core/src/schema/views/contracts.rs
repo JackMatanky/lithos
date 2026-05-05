@@ -227,10 +227,11 @@ pub trait VersionRead {
 
     /// Returns file info metadata for this version.
     ///
+    /// # Panics
     /// Default implementation panics - archived types must override
-    /// `is_timestamp_match()` directly.
+    /// `is_timestamp_match()` directly instead of calling this method.
     fn file_info(&self) -> &FileInfo {
-        unimplemented!(
+        panic!(
             "Archived types must override is_timestamp_match() instead of \
              using file_info()"
         )
