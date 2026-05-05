@@ -45,8 +45,6 @@
 
 /// Note aggregate and identity types.
 pub mod aggregate;
-/// Block-level artifact extraction component.
-pub mod extractor;
 /// Markdown parser boundary.
 pub mod parser;
 /// Note processing pipeline.

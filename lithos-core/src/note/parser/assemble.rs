@@ -1,9 +1,4 @@
-//! Block-level artifact extraction component.
-//!
-//! [`BlockExtractor`] owns the scanner and task spec needed to extract raw
-//! artifacts from completed parser blocks. It is invoked by the orchestrator
-//! (`MarkdownParser`) after a block's text and scannable ranges have been
-//! fully accumulated.
+//! Parser-owned raw note assembly.
 
 #![expect(
     clippy::pattern_type_mismatch,
@@ -13,16 +8,14 @@
 use std::borrow::Cow;
 
 use super::{
-    parser::{
-        block::{Block, BlockKind, Closed, ContainerBlockKind, LeafBlockKind},
-        structure::{Complete, DocTree, TraversalEvent},
-        text::TextSequence,
-        types::{
-            FrontmatterFormat, InlineDelimiterEnd, InlineDelimiterStart,
-            InlineToken, ListKind, ParserEvent, RangedEvent,
-        },
+    block::{Block, BlockKind, Closed, ContainerBlockKind, LeafBlockKind},
+    lexical::{DefaultScanPolicy, scan_projection},
+    structure::{Complete, DocTree, TraversalEvent},
+    text::TextSequence,
+    types::{
+        FrontmatterFormat, InlineDelimiterEnd, InlineDelimiterStart,
+        InlineToken, ListKind, ParserEvent, RangedEvent,
     },
-    raw::RawListItemText,
 };
 use crate::note::{
     error::NoteIngestError,
@@ -35,18 +28,16 @@ use crate::note::{
     scanner::{NoteScanner, ScannedRawArtifacts},
 };
 
-/// Artifact extractor for note markdown blocks.
-pub struct BlockExtractor<'source> {
+pub(crate) struct RawAssembler<'source> {
     source: &'source str,
     scanner: NoteScanner,
     out: RawNote<'source>,
 }
 
-impl<'source> BlockExtractor<'source> {
-    /// Creates a new extractor.
+impl<'source> RawAssembler<'source> {
     #[inline]
     #[must_use]
-    pub fn new(source: &'source str, scanner: NoteScanner) -> Self {
+    pub(crate) fn new(source: &'source str, scanner: NoteScanner) -> Self {
         Self {
             source,
             scanner,
@@ -63,10 +54,9 @@ impl<'source> BlockExtractor<'source> {
         }
     }
 
-    /// Consumes the extractor and returns the populated note.
     #[inline]
     #[must_use]
-    pub fn finish(mut self) -> RawNote<'source> {
+    pub(crate) fn finish(mut self) -> RawNote<'source> {
         self.out.sections.sort_by_key(|s| u32::from(s.range.start()));
         self.out
     }
@@ -186,7 +176,10 @@ impl<'source> BlockExtractor<'source> {
             RawListDepth::from(item_depth),
             parent_pos,
             is_checked,
-            RawListItemText::new(Cow::Owned(text), item_text_range),
+            crate::note::raw::RawListItemText::new(
+                Cow::Owned(text),
+                item_text_range,
+            ),
             range.clone(),
             scanned.tags,
             scanned.inline_fields,
@@ -202,7 +195,6 @@ impl<'source> BlockExtractor<'source> {
         Ok(())
     }
 
-    /// Shared processing for all leaf blocks.
     fn process_leaf_block(
         &mut self,
         leaf: &LeafBlockKind<'source, Closed>,
@@ -298,11 +290,13 @@ impl<'source> BlockExtractor<'source> {
         &self,
         projection: &TextSequence,
     ) -> Result<ScannedRawArtifacts<'source>, NoteIngestError> {
-        let scannable_ranges = scannable_ranges_from_projection(projection);
-
-        self.scanner
-            .scan_ranges(self.source, &scannable_ranges, false)
-            .map_err(NoteIngestError::Domain)
+        scan_projection(
+            &self.scanner,
+            self.source,
+            projection,
+            &DefaultScanPolicy,
+        )
+        .map_err(NoteIngestError::Domain)
     }
 
     fn extract_links_from_events(&mut self, events: &[RangedEvent<'source>]) {
@@ -371,7 +365,6 @@ impl<'source> BlockExtractor<'source> {
                 break;
             }
 
-            // Accumulate display text
             if let ParserEvent::Inline(token) = inner_event.event() {
                 match token {
                     InlineToken::Text(t)
@@ -446,9 +439,6 @@ fn collect_text_recursively<'source>(
                         out_events,
                     );
                 }
-                // DO NOT recurse into nested lists or list items.
-                // These belong to their own identity and should not
-                // leak their content (tags, checkboxes) into the parent.
                 ContainerBlockKind::List {
                     ..
                 }
@@ -459,19 +449,3 @@ fn collect_text_recursively<'source>(
         }
     }
 }
-
-fn scannable_ranges_from_projection(
-    projection: &TextSequence,
-) -> Vec<std::ops::Range<usize>> {
-    projection
-        .nodes()
-        .iter()
-        .filter(|node| node.is_scannable())
-        .map(|node| {
-            node.range().start().as_usize()..node.range().end().as_usize()
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {}

@@ -12,7 +12,7 @@
 
 use crate::note::{
     error::NoteError,
-    position::{SourceByteOffset, SourceByteRange},
+    position::{SourceByteOffset, SourceByteRange, SourceByteRangeIndex},
     raw::{RawBlockRef, RawInlineFieldToken, RawTag},
 };
 
@@ -74,18 +74,17 @@ impl NoteScanner {
     pub(crate) fn scan_ranges<'source>(
         &self,
         text: &'source str,
-        ranges: &[std::ops::Range<usize>],
-        _include_task_marker: bool,
+        ranges: &SourceByteRangeIndex,
     ) -> Result<ScannedRawArtifacts<'source>, NoteError> {
         let mut artifacts = Vec::with_capacity(8);
         for range in ranges {
             if range.is_empty() {
                 continue;
             }
-            let Some(segment) = text.get(range.clone()) else {
+            let Some(segment) = text.get(range.as_usize_range()) else {
                 continue;
             };
-            let base_offset = SourceByteOffset::try_from_usize(range.start)?;
+            let base_offset = range.start();
             let mut cursor = Cursor::new(segment, base_offset);
             self.scan_cursor(&mut cursor, &mut artifacts)?;
         }
@@ -299,8 +298,8 @@ impl ScannedArtifact<'_> {
 
 /// Raw tokens extracted from a single scan pass, grouped by artifact type.
 ///
-/// Produced by [`NoteScanner::scan_ranges`] and consumed by
-/// [`BlockExtractor`](crate::note::extractor::BlockExtractor) to populate
+/// Produced by [`NoteScanner::scan_ranges`] and consumed by parser assembly
+/// (`crate::note::parser::assemble`) to populate
 /// [`RawNote`](crate::note::raw::RawNote) collections.
 #[derive(Debug, Default)]
 pub(crate) struct ScannedRawArtifacts<'source> {
@@ -667,11 +666,14 @@ mod tests {
         let first_end = source.find(' ').expect("space exists");
         let tag_start = source.find("#tag").expect("tag exists");
         let tag_end = tag_start.saturating_add("#tag".len());
-        let ranges = vec![0..first_end, tag_start..tag_end];
+        let mut ranges = SourceByteRangeIndex::new();
+        ranges.push(SourceByteRange::try_from(0..first_end).expect("range"));
+        ranges.push(
+            SourceByteRange::try_from(tag_start..tag_end).expect("range"),
+        );
 
-        let scanned = scanner()
-            .scan_ranges(source, &ranges, false)
-            .expect("scan succeeds");
+        let scanned =
+            scanner().scan_ranges(source, &ranges).expect("scan succeeds");
 
         assert_eq!(scanned.tags.len(), 1);
         assert_eq!(
@@ -683,11 +685,12 @@ mod tests {
     #[test]
     fn scan_ranges_isolates_line_start_mode_across_disjoint_ranges() {
         let source = "x\nkey:: value";
-        let ranges = vec![0..1, 2..source.len()];
+        let mut ranges = SourceByteRangeIndex::new();
+        ranges.push(SourceByteRange::try_from(0..1).expect("range"));
+        ranges.push(SourceByteRange::try_from(2..source.len()).expect("range"));
 
-        let scanned = scanner()
-            .scan_ranges(source, &ranges, false)
-            .expect("scan succeeds");
+        let scanned =
+            scanner().scan_ranges(source, &ranges).expect("scan succeeds");
 
         assert_eq!(scanned.inline_fields.len(), 1);
         assert_eq!(
@@ -703,11 +706,12 @@ mod tests {
     #[test]
     fn scan_ranges_skips_empty_and_invalid_ranges() {
         let source = "hello";
-        let ranges = vec![0..0, 99..104];
+        let mut ranges = SourceByteRangeIndex::new();
+        ranges.push(SourceByteRange::try_from(0..0).expect("range"));
+        ranges.push(SourceByteRange::try_from(99..104).expect("range"));
 
-        let scanned = scanner()
-            .scan_ranges(source, &ranges, false)
-            .expect("scan succeeds");
+        let scanned =
+            scanner().scan_ranges(source, &ranges).expect("scan succeeds");
 
         assert!(scanned.tags.is_empty());
         assert!(scanned.inline_fields.is_empty());

@@ -66,12 +66,16 @@
     reason = "Parser pipeline matches borrowed event payloads intentionally"
 )]
 
+/// Parser-owned assembly into RawNote.
+pub(crate) mod assemble;
 /// Block-domain types for parser AST.
 pub(crate) mod block;
 /// Configuration types for the event stream.
 pub(crate) mod config;
 /// Cached parsing context for markdown documents.
 pub(crate) mod context;
+/// Lexical scan policy and range index builder.
+pub(crate) mod lexical;
 /// Extracted reference link definitions.
 pub(crate) mod references;
 /// Event stream processing and normalization.
@@ -93,8 +97,9 @@ use crate::{
     config::task::TaskConfigSpec,
     note::{
         error::NoteIngestError,
-        extractor::BlockExtractor,
-        parser::{context::ParserContext, structure::DocTree},
+        parser::{
+            assemble::RawAssembler, context::ParserContext, structure::DocTree,
+        },
         raw::RawNote,
         scanner::NoteScanner,
     },
@@ -136,9 +141,9 @@ impl MarkdownParser {
             Box::new([])
         };
         let scanner = NoteScanner::new(emoji_markers);
-        let mut extractor = BlockExtractor::new(source, scanner);
-        extractor.process_doc_tree(&tree)?;
-        Ok(extractor.finish())
+        let mut assembler = RawAssembler::new(source, scanner);
+        assembler.process_doc_tree(&tree)?;
+        Ok(assembler.finish())
     }
 }
 

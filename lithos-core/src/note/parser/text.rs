@@ -35,12 +35,31 @@ use super::types::{
 };
 use crate::note::position::SourceByteRange;
 
-/// Link/image context for derived text nodes.
+/// Factual inline context flags for derived text nodes.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum TextContext {
-    Normal,
-    LinkLabel,
-    ImageAlt,
+pub(crate) struct TextContext(u16);
+
+impl TextContext {
+    pub(crate) const IN_CODE_BLOCK: Self = Self(1 << 5);
+    pub(crate) const IN_CODE_INLINE: Self = Self(1 << 2);
+    pub(crate) const IN_FRONTMATTER: Self = Self(1 << 6);
+    pub(crate) const IN_IMAGE_ALT: Self = Self(1 << 1);
+    pub(crate) const IN_LINK_LABEL: Self = Self(1 << 0);
+    pub(crate) const IN_MATH_DISPLAY: Self = Self(1 << 4);
+    pub(crate) const IN_MATH_INLINE: Self = Self(1 << 3);
+    pub(crate) const NONE: Self = Self(0);
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn with(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 }
 
 /// Derived style marker for text nodes.
@@ -143,13 +162,13 @@ impl InlineStyleContext {
 
     #[must_use]
     #[inline]
-    pub(crate) const fn context(&self) -> TextContext {
+    pub(crate) const fn context_base(&self) -> TextContext {
         if self.image_depth > 0 {
-            TextContext::ImageAlt
+            TextContext::IN_IMAGE_ALT
         } else if self.link_depth > 0 {
-            TextContext::LinkLabel
+            TextContext::IN_LINK_LABEL
         } else {
-            TextContext::Normal
+            TextContext::NONE
         }
     }
 
@@ -165,7 +184,17 @@ impl InlineStyleContext {
         if let Some(extra) = extra_style {
             styles.insert(extra);
         }
-        TextNode::new(text, styles, self.context(), range)
+        let mut context = self.context_base();
+        if styles.contains(TextStyle::CODE) {
+            context = context.with(TextContext::IN_CODE_INLINE);
+        }
+        if styles.contains(TextStyle::MATH_INLINE) {
+            context = context.with(TextContext::IN_MATH_INLINE);
+        }
+        if styles.contains(TextStyle::MATH_DISPLAY) {
+            context = context.with(TextContext::IN_MATH_DISPLAY);
+        }
+        TextNode::new(text, styles, context, range)
     }
 }
 
@@ -210,7 +239,6 @@ impl TextNode {
 
     #[must_use]
     #[inline]
-    #[cfg(test)]
     pub(crate) const fn context(&self) -> TextContext {
         self.context
     }
@@ -219,16 +247,6 @@ impl TextNode {
     #[inline]
     pub(crate) fn range(&self) -> SourceByteRange {
         self.range.clone()
-    }
-
-    /// Returns true if the node is eligible for artifact scanning (tags, etc).
-    #[must_use]
-    #[inline]
-    pub(crate) const fn is_scannable(&self) -> bool {
-        matches!(self.context, TextContext::Normal)
-            && !self.styles.contains(TextStyle::CODE)
-            && !self.styles.contains(TextStyle::MATH_INLINE)
-            && !self.styles.contains(TextStyle::MATH_DISPLAY)
     }
 
     /// Returns true if the node is eligible for display (e.g. in link labels).
@@ -398,14 +416,14 @@ mod tests {
         let node = TextNode::new(
             "hello".into(),
             styles,
-            TextContext::LinkLabel,
+            TextContext::IN_LINK_LABEL,
             range.clone(),
         );
 
         assert_eq!(node.text(), "hello");
         assert!(node.styles().contains(TextStyle::STRONG));
         assert!(node.styles().contains(TextStyle::CODE));
-        assert_eq!(node.context(), TextContext::LinkLabel);
+        assert_eq!(node.context(), TextContext::IN_LINK_LABEL);
         assert_eq!(node.range(), range);
     }
 
@@ -415,13 +433,13 @@ mod tests {
         let first = TextNode::new(
             "a".into(),
             TextStyle::EMPHASIS,
-            TextContext::Normal,
+            TextContext::NONE,
             sample_range(),
         );
         let second = TextNode::new(
             "b".into(),
             TextStyle::STRONG,
-            TextContext::Normal,
+            TextContext::NONE,
             sample_range(),
         );
 
@@ -468,42 +486,42 @@ mod tests {
         assert_eq!(sequence.as_plain_text(), "tag");
         assert_eq!(
             sequence.nodes().first().map(TextNode::context),
-            Some(TextContext::LinkLabel)
+            Some(TextContext::IN_LINK_LABEL)
         );
     }
 
     #[test]
-    fn is_scannable_filters_appropriately() {
+    fn context_flags_capture_link_code_and_math_facts() {
         let range = sample_range();
         let normal = TextNode::new(
             "a".into(),
             TextStyle::NONE,
-            TextContext::Normal,
+            TextContext::NONE,
             range.clone(),
         );
         let link = TextNode::new(
             "a".into(),
             TextStyle::NONE,
-            TextContext::LinkLabel,
+            TextContext::IN_LINK_LABEL,
             range.clone(),
         );
         let code = TextNode::new(
             "a".into(),
             TextStyle::CODE,
-            TextContext::Normal,
+            TextContext::IN_CODE_INLINE,
             range.clone(),
         );
         let math = TextNode::new(
             "a".into(),
             TextStyle::MATH_INLINE,
-            TextContext::Normal,
+            TextContext::IN_MATH_INLINE,
             range,
         );
 
-        assert!(normal.is_scannable());
-        assert!(!link.is_scannable());
-        assert!(!code.is_scannable());
-        assert!(!math.is_scannable());
+        assert!(!normal.context().contains(TextContext::IN_LINK_LABEL));
+        assert!(link.context().contains(TextContext::IN_LINK_LABEL));
+        assert!(code.context().contains(TextContext::IN_CODE_INLINE));
+        assert!(math.context().contains(TextContext::IN_MATH_INLINE));
     }
 
     #[test]
@@ -512,19 +530,19 @@ mod tests {
         let normal = TextNode::new(
             "a".into(),
             TextStyle::NONE,
-            TextContext::Normal,
+            TextContext::NONE,
             range.clone(),
         );
         let code = TextNode::new(
             "a".into(),
             TextStyle::CODE,
-            TextContext::Normal,
+            TextContext::NONE,
             range.clone(),
         );
         let math = TextNode::new(
             "a".into(),
             TextStyle::MATH_INLINE,
-            TextContext::Normal,
+            TextContext::NONE,
             range,
         );
 
@@ -541,11 +559,11 @@ mod tests {
         let n1 = TextNode::new(
             "a".into(),
             TextStyle::NONE,
-            TextContext::Normal,
+            TextContext::NONE,
             r1.clone(),
         );
         let n2 =
-            TextNode::new("b".into(), TextStyle::NONE, TextContext::Normal, r2);
+            TextNode::new("b".into(), TextStyle::NONE, TextContext::NONE, r2);
 
         let empty = TextSequence::new();
         let single = TextSequence::from_nodes(vec![n1.clone()]);
