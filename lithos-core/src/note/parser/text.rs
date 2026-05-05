@@ -36,7 +36,7 @@ use super::types::{
 use crate::note::position::SourceByteRange;
 
 /// Link/image context for derived text nodes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum TextContext {
     Normal,
     LinkLabel,
@@ -44,7 +44,7 @@ pub(crate) enum TextContext {
 }
 
 /// Derived style marker for text nodes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum TextStyle {
     Emphasis,
     Strong,
@@ -55,7 +55,7 @@ pub(crate) enum TextStyle {
 }
 
 /// Derived text node with style stack and source span.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TextNode {
     text: Box<str>,
     styles: Vec<TextStyle>,
@@ -126,7 +126,7 @@ impl TextNode {
 }
 
 /// Ordered collection of derived text nodes.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct TextSequence {
     nodes: Vec<TextNode>,
 }

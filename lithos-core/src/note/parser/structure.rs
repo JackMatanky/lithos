@@ -46,7 +46,7 @@ pub(crate) struct Processing<'source> {
 impl DocState for Processing<'_> {}
 
 /// Marker for a finalized, read-only document tree.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Complete;
 impl DocState for Complete {}
 
@@ -55,7 +55,7 @@ impl DocState for Complete {}
 // ----------------------------------------------------------- //
 
 /// The hierarchical document structure (AST) for a markdown document.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) fields follow project convention for internal APIs"
@@ -506,7 +506,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
 ///
 /// Each container block (List, `BlockQuote`, `ListItem`) emits both an `Enter`
 /// and `Exit` event. Leaf blocks (Paragraph, Heading, etc.) emit only `Enter`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum TraversalEvent<'tree, 'source> {
     /// Entering a block (emitted for all blocks).
     Enter(&'tree Block<'source, Closed>, u32),
@@ -515,7 +515,7 @@ pub(crate) enum TraversalEvent<'tree, 'source> {
 }
 
 /// Frame type for the traversal stack.
-#[derive(Debug, Clone, Copy)]
+#[derive(Copy, Clone, Debug)]
 enum StackFrame<'tree, 'source> {
     /// Enter a block (emit Enter event, then push children and Exit marker).
     Enter(&'tree Block<'source, Closed>, u32),

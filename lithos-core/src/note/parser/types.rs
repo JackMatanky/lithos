@@ -113,7 +113,7 @@ pub(crate) enum BlockStart<'source> {
 }
 
 /// Block end token.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum BlockEnd {
     Paragraph,
     Heading,
@@ -178,7 +178,7 @@ pub(crate) enum InlineDelimiterStart<'source> {
 }
 
 /// End delimiter for inline spans.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum InlineDelimiterEnd {
     Emphasis,
     Strong,
@@ -189,8 +189,15 @@ pub(crate) enum InlineDelimiterEnd {
     Image,
 }
 
+/// Frontmatter format.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum FrontmatterFormat {
+    Yaml,
+    Toml,
+}
+
 /// Heading levels (`#` through `######`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum HeadingLevel {
     H1,
     H2,
@@ -217,21 +224,14 @@ impl HeadingLevel {
 }
 
 /// List kind from `CommonMark` list syntax.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ListKind {
     Unordered,
     Ordered(u64),
 }
 
-/// Frontmatter format.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum FrontmatterFormat {
-    Yaml,
-    Toml,
-}
-
 /// Link syntactic kind.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum LinkKind {
     Inline,
     Reference,
@@ -248,7 +248,7 @@ pub(crate) enum LinkKind {
 }
 
 /// Line break kind.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum LineBreakKind {
     #[expect(
         dead_code,
@@ -259,7 +259,7 @@ pub(crate) enum LineBreakKind {
 }
 
 /// Math token kind.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum MathKind {
     Inline,
     Display,

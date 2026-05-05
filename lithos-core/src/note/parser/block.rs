@@ -149,6 +149,16 @@ impl<'source> Block<'source, Open> {
     }
 }
 
+/// The type and content of a markdown block.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub(crate) enum BlockKind<'source, S: BlockState = Closed> {
+    /// Content-bearing block variant wrapper.
+    Leaf(LeafBlockKind<'source, S>),
+    /// Structure-bearing block variant wrapper.
+    Container(ContainerBlockKind<'source>),
+}
+
 impl<'source, S: BlockState> BlockKind<'source, S> {
     /// Returns the expected end token for this block kind.
     #[must_use]
@@ -206,16 +216,6 @@ impl<'source, S: BlockState> BlockKind<'source, S> {
             Self::Leaf(_) => &[],
         }
     }
-}
-
-/// The type and content of a markdown block.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub(crate) enum BlockKind<'source, S: BlockState = Closed> {
-    /// Content-bearing block variant wrapper.
-    Leaf(LeafBlockKind<'source, S>),
-    /// Structure-bearing block variant wrapper.
-    Container(ContainerBlockKind<'source>),
 }
 
 /// Content-bearing markdown block variants.

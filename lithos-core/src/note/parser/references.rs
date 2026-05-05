@@ -90,7 +90,7 @@ impl ReferenceDefinitions {
 /// Labels are case-insensitive and have internal whitespace collapsed according
 /// to the `CommonMark` specification. This type guarantees normalization
 /// through its constructor, implementing "parse, don't validate".
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ReferenceLabel(Box<str>);
 
 impl ReferenceLabel {

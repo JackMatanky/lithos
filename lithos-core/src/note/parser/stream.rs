@@ -126,6 +126,27 @@ enum StreamState<'source> {
     Unmerged(EventAdapterIter<'source, UnmergedOffsetIter<'source>>),
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Implementing all iterator methods is unnecessary for this \
+              internal wrapper"
+)]
+impl<'source> Iterator for StreamState<'source> {
+    type Item = Result<RangedEvent<'source>, NoteIngestError>;
+
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Ergonomics for mutable reference match"
+    )]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            StreamState::Merged(iter) => iter.next(),
+            StreamState::Unmerged(iter) => iter.next(),
+        }
+    }
+}
+
 type MergedOffsetIter<'source> =
     TextMergeWithOffset<'source, UnmergedOffsetIter<'source>>;
 
@@ -181,27 +202,6 @@ where
             };
             (normalized, range)
         })
-    }
-}
-
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Implementing all iterator methods is unnecessary for this \
-              internal wrapper"
-)]
-impl<'source> Iterator for StreamState<'source> {
-    type Item = Result<RangedEvent<'source>, NoteIngestError>;
-
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Ergonomics for mutable reference match"
-    )]
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            StreamState::Merged(iter) => iter.next(),
-            StreamState::Unmerged(iter) => iter.next(),
-        }
     }
 }
 
