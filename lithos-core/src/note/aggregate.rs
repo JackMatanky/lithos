@@ -441,9 +441,10 @@ impl Note {
         let mut tags = Vec::new();
         let mut seen = HashSet::new();
         for raw_tag in raw_tags {
-            if let Ok(tag) =
-                Tag::try_new_with_range(raw_tag.value.as_ref(), raw_tag.range)
-            {
+            if let Ok(tag) = Tag::try_new_with_range(
+                raw_tag.value.as_ref(),
+                raw_tag.range.clone(),
+            ) {
                 Note::add_tag(&mut tags, &mut seen, tag);
             }
         }
@@ -899,7 +900,7 @@ mod tests {
             crate::note::raw::RawListDepth::Root,
             None,
             is_checkbox,
-            RawListItemText::new(raw_text.into(), range),
+            RawListItemText::new(raw_text.into(), range.clone()),
             range,
             tags,
             inline_fields,

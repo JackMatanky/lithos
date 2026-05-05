@@ -217,8 +217,8 @@ impl TextNode {
 
     #[must_use]
     #[inline]
-    pub(crate) const fn range(&self) -> SourceByteRange {
-        self.range
+    pub(crate) fn range(&self) -> SourceByteRange {
+        self.range.clone()
     }
 
     /// Returns true if the node is eligible for artifact scanning (tags, etc).
@@ -399,7 +399,7 @@ mod tests {
             "hello".into(),
             styles,
             TextContext::LinkLabel,
-            range,
+            range.clone(),
         );
 
         assert_eq!(node.text(), "hello");
@@ -479,19 +479,19 @@ mod tests {
             "a".into(),
             TextStyle::NONE,
             TextContext::Normal,
-            range,
+            range.clone(),
         );
         let link = TextNode::new(
             "a".into(),
             TextStyle::NONE,
             TextContext::LinkLabel,
-            range,
+            range.clone(),
         );
         let code = TextNode::new(
             "a".into(),
             TextStyle::CODE,
             TextContext::Normal,
-            range,
+            range.clone(),
         );
         let math = TextNode::new(
             "a".into(),
@@ -513,13 +513,13 @@ mod tests {
             "a".into(),
             TextStyle::NONE,
             TextContext::Normal,
-            range,
+            range.clone(),
         );
         let code = TextNode::new(
             "a".into(),
             TextStyle::CODE,
             TextContext::Normal,
-            range,
+            range.clone(),
         );
         let math = TextNode::new(
             "a".into(),
@@ -538,8 +538,12 @@ mod tests {
         let r1 = SourceByteRange::try_from(1..5).unwrap();
         let r2 = SourceByteRange::try_from(5..10).unwrap();
 
-        let n1 =
-            TextNode::new("a".into(), TextStyle::NONE, TextContext::Normal, r1);
+        let n1 = TextNode::new(
+            "a".into(),
+            TextStyle::NONE,
+            TextContext::Normal,
+            r1.clone(),
+        );
         let n2 =
             TextNode::new("b".into(), TextStyle::NONE, TextContext::Normal, r2);
 

@@ -284,9 +284,10 @@ impl ListItem {
 
         let mut tags = Vec::with_capacity(raw.tags.len());
         for raw_tag in &raw.tags {
-            if let Ok(tag) =
-                Tag::try_new_with_range(raw_tag.value.as_ref(), raw_tag.range)
-            {
+            if let Ok(tag) = Tag::try_new_with_range(
+                raw_tag.value.as_ref(),
+                raw_tag.range.clone(),
+            ) {
                 tags.push(tag);
             }
         }
@@ -300,7 +301,7 @@ impl ListItem {
 
         let base = ListItemBase::new(
             ListItemId::new(),
-            raw.range,
+            raw.range.clone(),
             raw.text.text.as_ref().into(),
             tags.into_boxed_slice(),
             depth,
@@ -322,8 +323,8 @@ impl ListItem {
     /// Returns the source byte range of this list item.
     #[inline]
     #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.base.range
+    pub fn range(&self) -> SourceByteRange {
+        self.base.range.clone()
     }
 
     /// Returns the collection of metadata tags extracted from the list item.
@@ -406,6 +407,6 @@ impl InlineField {
             .into_owned(),
         };
 
-        Self::new(key, typed_value.into(), token.range)
+        Self::new(key, typed_value.into(), token.range.clone())
     }
 }

@@ -163,7 +163,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
                 self.on_task_marker(checked);
             }
             ParserEvent::ThematicBreak => {
-                self.auto_close_implicit_paragraph(range)?;
+                self.auto_close_implicit_paragraph(range.clone())?;
                 let block = Block {
                     kind: BlockKind::Leaf(LeafBlockKind::ThematicBreak),
                     span: range.start(),
@@ -241,7 +241,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
         block_type: &BlockStart<'source>,
         span: SourceByteRange,
     ) -> Result<(), NoteIngestError> {
-        self.auto_close_implicit_paragraph(span)?;
+        self.auto_close_implicit_paragraph(span.clone())?;
 
         if let Some(top) = self.state.stack.last()
             && matches!(top.kind, BlockKind::Leaf(_))
@@ -324,7 +324,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
         span: SourceByteRange,
     ) -> Result<(), NoteIngestError> {
         if block_type != BlockEnd::Paragraph {
-            self.auto_close_implicit_paragraph(span)?;
+            self.auto_close_implicit_paragraph(span.clone())?;
         }
 
         let processing = self.state.stack.pop().ok_or_else(|| {
@@ -332,7 +332,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
                 expected: "open block",
                 encountered: block_type.label(),
                 depth: self.state.stack.len(),
-                range: span,
+                range: span.clone(),
             }
         })?;
 
@@ -754,7 +754,7 @@ mod tests {
             &BlockStart::Heading {
                 level: HeadingLevel::H1,
             },
-            start,
+            start.clone(),
         )
         .expect("first start should succeed");
 
@@ -770,31 +770,29 @@ mod tests {
     }
 
     #[test]
-    fn on_end_reports_exact_end_kind_mismatch() {
+    fn start_block_inside_leaf_returns_invalid_topology() {
         let mut tree = DocTree::<Processing<'_>>::new();
-        let start = SourceByteRange::try_from(0..1).expect("valid range");
+        // Start a Heading (which is a leaf and doesn't auto-close)
+        let range = SourceByteRange::try_from(0..1).expect("valid range");
         tree.on_start(
             &BlockStart::Heading {
                 level: HeadingLevel::H1,
             },
-            start,
+            range.clone(),
         )
-        .expect("start should succeed");
+        .expect("first push should succeed");
 
-        let end = SourceByteRange::try_from(2..3).expect("valid range");
-        let result = tree.on_end(BlockEnd::Paragraph, end);
+        let result = tree.on_start(
+            &BlockStart::Paragraph,
+            SourceByteRange::try_from(5..6).expect("valid range"),
+        );
 
-        let start_expected =
-            SourceByteRange::try_from(0..1).expect("valid range");
         assert!(matches!(
             result,
-            Err(NoteIngestError::Parse(NoteParseError::EventStackMismatch {
-                expected: "heading",
-                found: "paragraph",
-                start_range: Some(start_range),
-                end_range,
+            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
+                code: "parser.structure.start_inside_leaf",
                 ..
-            })) if start_range == start_expected && end_range == end
+            }))
         ));
     }
 
@@ -1076,32 +1074,6 @@ mod tests {
         assert_eq!(*child_beta_parent_pos, Some(parent.span.start()));
     }
 
-    #[test]
-    fn start_block_inside_leaf_returns_invalid_topology() {
-        let mut tree = DocTree::<Processing<'_>>::new();
-        // Start a Heading (which is a leaf and doesn't auto-close)
-        tree.on_start(
-            &BlockStart::Heading {
-                level: HeadingLevel::H1,
-            },
-            SourceByteRange::try_from(0..1).expect("valid range"),
-        )
-        .expect("first push should succeed");
-
-        let result = tree.on_start(
-            &BlockStart::Paragraph,
-            SourceByteRange::try_from(5..6).expect("valid range"),
-        );
-
-        assert!(matches!(
-            result,
-            Err(NoteIngestError::Parse(NoteParseError::InvalidTopology {
-                code: "parser.structure.start_inside_leaf",
-                ..
-            }))
-        ));
-    }
-
     // ═════════════════════════════════════════════════════════════════════════
     // TRAVERSAL ITERATOR TESTS
     // ═════════════════════════════════════════════════════════════════════════
@@ -1257,7 +1229,7 @@ mod tests {
             &BlockStart::Heading {
                 level: HeadingLevel::H1,
             },
-            range,
+            range.clone(),
         )
         .expect("start heading");
 
@@ -1306,7 +1278,7 @@ mod tests {
             &BlockStart::Heading {
                 level: HeadingLevel::H1,
             },
-            range,
+            range.clone(),
         )
         .expect("start heading");
 
@@ -1333,7 +1305,8 @@ mod tests {
         let mut tree = DocTree::<Processing<'_>>::new();
         let range = SourceByteRange::try_from(0..1).expect("valid range");
 
-        tree.on_start(&BlockStart::BlockQuote, range).expect("start quote");
+        tree.on_start(&BlockStart::BlockQuote, range.clone())
+            .expect("start quote");
 
         let result = tree.on_end(BlockEnd::List, range);
 

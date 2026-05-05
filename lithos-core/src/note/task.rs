@@ -98,8 +98,8 @@ impl Task {
     /// Returns the byte range of the task in the note source.
     #[inline]
     #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.base.range
+    pub fn range(&self) -> SourceByteRange {
+        self.base.range.clone()
     }
 
     /// Returns the collection of tags associated with this task.
@@ -133,9 +133,11 @@ impl Task {
         source: &str,
         spec: &TaskConfigSpec,
     ) -> Result<Self, NoteError> {
+        let item_range = item.range();
+
         // 1. Extract marker character lazily from source
         let status_symbol =
-            extract_task_marker_from_source(source, item.range())?;
+            extract_task_marker_from_source(source, &item_range)?;
 
         // Look up status name from symbol using config
         let status: Box<str> =
@@ -174,7 +176,7 @@ impl Task {
         }
 
         // We also exclude the marker range
-        if let Some(marker_range) = find_checkbox_range(source, item.range()) {
+        if let Some(marker_range) = find_checkbox_range(source, &item_range) {
             exclusion_ranges.push(marker_range);
         }
 
@@ -198,7 +200,7 @@ impl Task {
 /// Extracts the task marker character from the source range.
 fn extract_task_marker_from_source(
     source: &str,
-    range: SourceByteRange,
+    range: &SourceByteRange,
 ) -> Result<char, NoteError> {
     let segment = source
         .get(range.start().as_usize()..range.end().as_usize())
@@ -225,7 +227,7 @@ fn extract_task_marker_from_source(
 /// Finds the source byte range of the checkbox [X].
 fn find_checkbox_range(
     source: &str,
-    range: SourceByteRange,
+    range: &SourceByteRange,
 ) -> Option<SourceByteRange> {
     let start_idx = range.start().as_usize();
     let segment = source.get(start_idx..range.end().as_usize())?;
@@ -256,7 +258,7 @@ fn find_checkbox_range(
 
 /// Lightweight reference to a task by its source byte range.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct TaskRef(SourceByteRange);

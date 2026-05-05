@@ -107,8 +107,8 @@ impl Tag {
     /// Returns the source range for the tag, if known.
     #[inline]
     #[must_use]
-    pub const fn range(&self) -> Option<SourceByteRange> {
-        self.range
+    pub fn range(&self) -> Option<SourceByteRange> {
+        self.range.clone()
     }
 
     /// Returns the individual segments of the tag.

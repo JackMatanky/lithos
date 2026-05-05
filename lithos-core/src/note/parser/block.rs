@@ -32,7 +32,7 @@ pub(crate) trait BlockState: std::fmt::Debug {
     /// The leaf data type for this state (CodeBlock/Frontmatter).
     type LeafData<'source>: Clone + PartialEq + std::fmt::Debug;
     /// The position type for this state.
-    type Position: Copy + PartialEq + std::fmt::Debug;
+    type Position: Clone + PartialEq + std::fmt::Debug;
 }
 
 /// Marker for an open block (currently being parsed).

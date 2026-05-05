@@ -114,8 +114,8 @@ impl Section {
     /// Returns the character range in the source document.
     #[inline]
     #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.range
+    pub fn range(&self) -> SourceByteRange {
+        self.range.clone()
     }
 }
 
@@ -133,7 +133,7 @@ impl TryFrom<&RawSection> for Section {
             RawSectionKind::Frontmatter => SectionKind::Frontmatter,
             RawSectionKind::ThematicBreak => SectionKind::ThematicBreak,
         };
-        Ok(Section::new(kind, None, raw.range))
+        Ok(Section::new(kind, None, raw.range.clone()))
     }
 }
 
@@ -269,7 +269,8 @@ mod tests {
             SourceByteOffset::from(15u32),
         )
         .unwrap();
-        let section = Section::new(SectionKind::Heading, heading, range);
+        let section =
+            Section::new(SectionKind::Heading, heading, range.clone());
         SectionWithTitle {
             section,
             range,

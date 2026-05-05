@@ -51,8 +51,8 @@ impl<'source> RangedEvent<'source> {
     /// Returns source byte range.
     #[must_use]
     #[inline]
-    pub(crate) const fn range(&self) -> SourceByteRange {
-        self.range
+    pub fn range(&self) -> SourceByteRange {
+        self.range.clone()
     }
 
     /// Consumes the event and returns its parts.

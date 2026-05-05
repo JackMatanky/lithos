@@ -81,12 +81,16 @@ impl<'source> BlockExtractor<'source> {
             match event {
                 TraversalEvent::Enter(block, depth) => match &block.kind {
                     BlockKind::Leaf(leaf) => {
-                        self.process_leaf_block(leaf, block.span, depth)?;
+                        self.process_leaf_block(
+                            leaf,
+                            block.span.clone(),
+                            depth,
+                        )?;
                     }
                     BlockKind::Container(container) => {
                         self.process_container_enter(
                             container,
-                            block.span,
+                            block.span.clone(),
                             depth,
                             &mut list_kinds,
                         )?;
@@ -174,7 +178,8 @@ impl<'source> BlockExtractor<'source> {
 
         let projection = TextSequence::from_events(&events);
         let scanned = self.scan_projection(&projection)?;
-        let item_text_range = projection.covering_range().unwrap_or(range);
+        let item_text_range =
+            projection.covering_range().unwrap_or(range.clone());
 
         let item = RawListItem::new(
             list_kind,
@@ -182,7 +187,7 @@ impl<'source> BlockExtractor<'source> {
             parent_pos,
             is_checked,
             RawListItemText::new(Cow::Owned(text), item_text_range),
-            range,
+            range.clone(),
             scanned.tags,
             scanned.inline_fields,
         );
@@ -223,7 +228,7 @@ impl<'source> BlockExtractor<'source> {
                 self.out.headings.push(RawHeading::new(
                     level.as_u8(),
                     heading_text,
-                    range,
+                    range.clone(),
                     range.start(),
                 ));
                 self.out.sections.push(RawSection::new(
@@ -256,7 +261,7 @@ impl<'source> BlockExtractor<'source> {
             } => {
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Frontmatter,
-                    range,
+                    range.clone(),
                     0,
                 ));
                 self.out.frontmatter = Some(RawFrontmatter::new(

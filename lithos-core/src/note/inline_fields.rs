@@ -182,8 +182,8 @@ impl InlineField {
     /// Return the source byte range of the field.
     #[inline]
     #[must_use]
-    pub const fn range(&self) -> SourceByteRange {
-        self.range
+    pub fn range(&self) -> SourceByteRange {
+        self.range.clone()
     }
 
     /// Convert from a raw inline field.
@@ -218,6 +218,6 @@ impl InlineField {
             RawFieldValue::Null => FieldValue::Null,
         };
 
-        InlineField::new(raw.key.as_ref().into(), value, raw.range)
+        InlineField::new(raw.key.as_ref().into(), value, raw.range.clone())
     }
 }

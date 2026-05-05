@@ -236,7 +236,7 @@ where
             let parser_event = match ParserEventMapper::try_from_event(
                 &event,
                 self.retention,
-                Some(range),
+                Some(range.clone()),
             ) {
                 Ok(Some(parser_event)) => parser_event,
                 Ok(None) => continue,
@@ -610,11 +610,12 @@ mod tests {
             )
             .expect("test range should be valid");
 
-            let event = RangedEvent::new(ParserEvent::ThematicBreak, range);
+            let event =
+                RangedEvent::new(ParserEvent::ThematicBreak, range.clone());
 
             assert_eq!(
                 event.range(),
-                range,
+                range.clone(),
                 "range accessor should preserve original source range"
             );
         }
