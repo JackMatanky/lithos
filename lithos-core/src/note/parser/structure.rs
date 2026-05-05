@@ -387,46 +387,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
             }
         })?;
 
-        match &mut current.kind {
-            BlockKind::Leaf(leaf) => match leaf {
-                LeafBlockKind::Paragraph {
-                    events,
-                }
-                | LeafBlockKind::Heading {
-                    events,
-                    ..
-                } => {
-                    events.push(event);
-                    Ok(())
-                }
-                LeafBlockKind::CodeBlock {
-                    text,
-                    ..
-                }
-                | LeafBlockKind::Frontmatter {
-                    text,
-                    ..
-                } => {
-                    text.push(event);
-                    Ok(())
-                }
-                LeafBlockKind::ThematicBreak => {
-                    Err(NoteParseError::InvalidTopology {
-                        code: "parser.structure.push_inline_to_thematic_break",
-                        detail: "cannot push inline events to a thematic break"
-                            .into(),
-                        range: Some(event.range()),
-                    }
-                    .into())
-                }
-            },
-            BlockKind::Container(_) => Err(NoteParseError::InvalidTopology {
-                code: "parser.structure.push_inline_to_container",
-                detail: "cannot push inline events to a container block".into(),
-                range: Some(event.range()),
-            }
-            .into()),
-        }
+        current.kind.push_inline_event(event).map_err(Into::into)
     }
 
     /// Automatically closes an open paragraph if it exists.
@@ -465,32 +426,7 @@ impl<'source> DocTree<'source, Processing<'source>> {
         block: Block<'source, Closed>,
     ) -> Result<(), NoteIngestError> {
         if let Some(parent) = self.state.stack.last_mut() {
-            match &mut parent.kind {
-                BlockKind::Container(container) => {
-                    match container {
-                        ContainerBlockKind::BlockQuote {
-                            children,
-                        }
-                        | ContainerBlockKind::List {
-                            children,
-                            ..
-                        }
-                        | ContainerBlockKind::ListItem {
-                            children,
-                            ..
-                        } => {
-                            children.push(block);
-                        }
-                    }
-                    Ok(())
-                }
-                BlockKind::Leaf(_) => Err(NoteParseError::InvalidTopology {
-                    code: "parser.structure.push_child_to_leaf",
-                    detail: "cannot push child blocks to a leaf block".into(),
-                    range: Some(block.span),
-                }
-                .into()),
-            }
+            parent.kind.push_child(block).map_err(Into::into)
         } else {
             self.blocks.push(block);
             Ok(())

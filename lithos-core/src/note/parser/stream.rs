@@ -249,6 +249,15 @@ where
     }
 }
 
+#[inline]
+fn cow_to_cow<'source>(s: &CowStr<'source>) -> std::borrow::Cow<'source, str> {
+    match s {
+        CowStr::Borrowed(s) => std::borrow::Cow::Borrowed(s),
+        CowStr::Boxed(s) => std::borrow::Cow::Owned(s.to_string()),
+        CowStr::Inlined(s) => std::borrow::Cow::Owned(s.to_string()),
+    }
+}
+
 /// Mapper that converts `pulldown-cmark` events into neutral parser IR.
 ///
 /// This component enforces the `EventRetentionPolicy` and handles low-level
@@ -257,17 +266,6 @@ where
 struct ParserEventMapper;
 
 impl ParserEventMapper {
-    #[inline]
-    fn cow_to_cow<'source>(
-        s: &CowStr<'source>,
-    ) -> std::borrow::Cow<'source, str> {
-        match s {
-            CowStr::Borrowed(s) => std::borrow::Cow::Borrowed(s),
-            CowStr::Boxed(s) => std::borrow::Cow::Owned(s.to_string()),
-            CowStr::Inlined(s) => std::borrow::Cow::Owned(s.to_string()),
-        }
-    }
-
     /// Maps a raw pulldown event to a parser event.
     ///
     /// Returns `Ok(Some(event))` if the event should be preserved, `Ok(None)`
@@ -297,13 +295,13 @@ impl ParserEventMapper {
                 Self::try_from_end_tag(*tag_end, retention, range)
             }
             Event::Text(text) => Ok(Some(ParserEvent::Inline(
-                InlineToken::Text(Self::cow_to_cow(text)),
+                InlineToken::Text(cow_to_cow(text)),
             ))),
             Event::Code(code) => Ok(Some(ParserEvent::Inline(
-                InlineToken::InlineCode(Self::cow_to_cow(code)),
+                InlineToken::InlineCode(cow_to_cow(code)),
             ))),
             Event::InlineHtml(html) | Event::Html(html) => Ok(Some(
-                ParserEvent::Inline(InlineToken::Html(Self::cow_to_cow(html))),
+                ParserEvent::Inline(InlineToken::Html(cow_to_cow(html))),
             )),
             Event::Rule => Ok(Some(ParserEvent::ThematicBreak)),
             Event::SoftBreak | Event::HardBreak => {
@@ -312,19 +310,19 @@ impl ParserEventMapper {
             }
             Event::FootnoteReference(reference) => {
                 Ok(Some(ParserEvent::Inline(InlineToken::FootnoteReference(
-                    Self::cow_to_cow(reference),
+                    cow_to_cow(reference),
                 ))))
             }
             Event::InlineMath(content) => {
                 Ok(Some(ParserEvent::Inline(InlineToken::Math {
                     kind: super::types::MathKind::Inline,
-                    content: Self::cow_to_cow(content),
+                    content: cow_to_cow(content),
                 })))
             }
             Event::DisplayMath(content) => {
                 Ok(Some(ParserEvent::Inline(InlineToken::Math {
                     kind: super::types::MathKind::Display,
-                    content: Self::cow_to_cow(content),
+                    content: cow_to_cow(content),
                 })))
             }
             Event::TaskListMarker(checked) => {
@@ -342,27 +340,65 @@ impl ParserEventMapper {
         retention: EventRetentionPolicy,
         range: Option<SourceByteRange>,
     ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
+        if let Ok(block_start) = BlockStart::try_from(tag) {
+            return Ok(Some(ParserEvent::BlockStart(block_start)));
+        }
+        if let Ok(inline_start) = InlineDelimiterStart::try_from(tag) {
+            return Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
+                inline_start,
+            ))));
+        }
+
+        if let pulldown_cmark::Tag::HtmlBlock = tag {
+            retention.enforce_unknown_block("start_tag_extension", range)?;
+        }
+        Ok(None)
+    }
+
+    fn try_from_end_tag<'source>(
+        tag_end: pulldown_cmark::TagEnd,
+        retention: EventRetentionPolicy,
+        range: Option<SourceByteRange>,
+    ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
+        if let Ok(block_end) = BlockEnd::try_from(&tag_end) {
+            return Ok(Some(ParserEvent::BlockEnd(block_end)));
+        }
+        if let Ok(inline_end) = InlineDelimiterEnd::try_from(&tag_end) {
+            return Ok(Some(ParserEvent::Inline(InlineToken::DelimiterEnd(
+                inline_end,
+            ))));
+        }
+
+        if let pulldown_cmark::TagEnd::HtmlBlock = tag_end {
+            retention.enforce_unknown_block("end_tag_extension", range)?;
+        }
+        Ok(None)
+    }
+}
+
+impl<'source> TryFrom<&pulldown_cmark::Tag<'source>> for BlockStart<'source> {
+    type Error = ();
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Delegates unsupported tags to caller"
+    )]
+    fn try_from(
+        tag: &pulldown_cmark::Tag<'source>,
+    ) -> Result<Self, Self::Error> {
         match tag {
-            pulldown_cmark::Tag::Paragraph => {
-                Ok(Some(ParserEvent::BlockStart(BlockStart::Paragraph)))
-            }
+            pulldown_cmark::Tag::Paragraph => Ok(Self::Paragraph),
             pulldown_cmark::Tag::Heading {
                 level,
                 ..
-            } => Ok(Some(ParserEvent::BlockStart(BlockStart::Heading {
+            } => Ok(Self::Heading {
                 level: (*level).into(),
-            }))),
-            pulldown_cmark::Tag::BlockQuote(_) => {
-                Ok(Some(ParserEvent::BlockStart(BlockStart::BlockQuote)))
-            }
-            pulldown_cmark::Tag::List(start) => {
-                Ok(Some(ParserEvent::BlockStart(BlockStart::List {
-                    kind: (*start).into(),
-                })))
-            }
-            pulldown_cmark::Tag::Item => {
-                Ok(Some(ParserEvent::BlockStart(BlockStart::ListItem)))
-            }
+            }),
+            pulldown_cmark::Tag::BlockQuote(_) => Ok(Self::BlockQuote),
+            pulldown_cmark::Tag::List(start) => Ok(Self::List {
+                kind: (*start).into(),
+            }),
+            pulldown_cmark::Tag::Item => Ok(Self::ListItem),
             pulldown_cmark::Tag::CodeBlock(code_kind) => {
                 let language = match code_kind {
                     pulldown_cmark::CodeBlockKind::Indented => None,
@@ -374,138 +410,103 @@ impl ParserEventMapper {
                         }
                     }
                 };
-                Ok(Some(ParserEvent::BlockStart(BlockStart::CodeBlock {
-                    info_string: language.as_ref().map(Self::cow_to_cow),
-                })))
+                Ok(Self::CodeBlock {
+                    info_string: language.as_ref().map(cow_to_cow),
+                })
             }
             pulldown_cmark::Tag::MetadataBlock(format) => {
-                Ok(Some(ParserEvent::BlockStart(BlockStart::Frontmatter {
+                Ok(Self::Frontmatter {
                     format: (*format).into(),
-                })))
+                })
             }
-            pulldown_cmark::Tag::Emphasis => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterStart(InlineDelimiterStart::Emphasis),
-            ))),
-            pulldown_cmark::Tag::Strong => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterStart(InlineDelimiterStart::Strong),
-            ))),
-            pulldown_cmark::Tag::Strikethrough => {
-                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
-                    InlineDelimiterStart::Strikethrough,
-                ))))
-            }
-            pulldown_cmark::Tag::Superscript => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterStart(InlineDelimiterStart::Superscript),
-            ))),
-            pulldown_cmark::Tag::Subscript => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterStart(InlineDelimiterStart::Subscript),
-            ))),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<&pulldown_cmark::TagEnd> for BlockEnd {
+    type Error = ();
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Delegates unsupported tags to caller"
+    )]
+    fn try_from(tag_end: &pulldown_cmark::TagEnd) -> Result<Self, Self::Error> {
+        match tag_end {
+            pulldown_cmark::TagEnd::Paragraph => Ok(Self::Paragraph),
+            pulldown_cmark::TagEnd::Heading(_) => Ok(Self::Heading),
+            pulldown_cmark::TagEnd::BlockQuote(_) => Ok(Self::BlockQuote),
+            pulldown_cmark::TagEnd::List(_) => Ok(Self::List),
+            pulldown_cmark::TagEnd::Item => Ok(Self::ListItem),
+            pulldown_cmark::TagEnd::CodeBlock => Ok(Self::CodeBlock),
+            pulldown_cmark::TagEnd::MetadataBlock(_) => Ok(Self::Frontmatter),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'source> TryFrom<&pulldown_cmark::Tag<'source>>
+    for InlineDelimiterStart<'source>
+{
+    type Error = ();
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Delegates unsupported tags to caller"
+    )]
+    fn try_from(
+        tag: &pulldown_cmark::Tag<'source>,
+    ) -> Result<Self, Self::Error> {
+        match tag {
+            pulldown_cmark::Tag::Emphasis => Ok(Self::Emphasis),
+            pulldown_cmark::Tag::Strong => Ok(Self::Strong),
+            pulldown_cmark::Tag::Strikethrough => Ok(Self::Strikethrough),
+            pulldown_cmark::Tag::Superscript => Ok(Self::Superscript),
+            pulldown_cmark::Tag::Subscript => Ok(Self::Subscript),
             pulldown_cmark::Tag::Link {
                 link_type,
                 dest_url,
                 title,
                 id,
-            } => Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
-                InlineDelimiterStart::Link {
-                    kind: (*link_type).into(),
-                    destination: Self::cow_to_cow(dest_url),
-                    title: Self::cow_to_cow(title),
-                    label: Self::cow_to_cow(id),
-                },
-            )))),
+            } => Ok(Self::Link {
+                kind: (*link_type).into(),
+                destination: cow_to_cow(dest_url),
+                title: cow_to_cow(title),
+                label: cow_to_cow(id),
+            }),
             pulldown_cmark::Tag::Image {
                 link_type,
                 dest_url,
                 title,
                 id,
-            } => Ok(Some(ParserEvent::Inline(InlineToken::DelimiterStart(
-                InlineDelimiterStart::Image {
-                    kind: (*link_type).into(),
-                    destination: Self::cow_to_cow(dest_url),
-                    title: Self::cow_to_cow(title),
-                    label: Self::cow_to_cow(id),
-                },
-            )))),
-            pulldown_cmark::Tag::Table(_)
-            | pulldown_cmark::Tag::TableHead
-            | pulldown_cmark::Tag::TableRow
-            | pulldown_cmark::Tag::TableCell
-            | pulldown_cmark::Tag::FootnoteDefinition(_)
-            | pulldown_cmark::Tag::DefinitionList
-            | pulldown_cmark::Tag::DefinitionListTitle
-            | pulldown_cmark::Tag::DefinitionListDefinition => Ok(None),
-            pulldown_cmark::Tag::HtmlBlock => {
-                retention
-                    .enforce_unknown_block("start_tag_extension", range)?;
-                Ok(None)
-            }
+            } => Ok(Self::Image {
+                kind: (*link_type).into(),
+                destination: cow_to_cow(dest_url),
+                title: cow_to_cow(title),
+                label: cow_to_cow(id),
+            }),
+            _ => Err(()),
         }
     }
+}
 
-    fn try_from_end_tag<'source>(
-        tag_end: pulldown_cmark::TagEnd,
-        retention: EventRetentionPolicy,
-        range: Option<SourceByteRange>,
-    ) -> Result<Option<ParserEvent<'source>>, NoteIngestError> {
+impl TryFrom<&pulldown_cmark::TagEnd> for InlineDelimiterEnd {
+    type Error = ();
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Delegates unsupported tags to caller"
+    )]
+    fn try_from(tag_end: &pulldown_cmark::TagEnd) -> Result<Self, Self::Error> {
         match tag_end {
-            pulldown_cmark::TagEnd::Paragraph => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Paragraph)))
-            }
-            pulldown_cmark::TagEnd::Heading(_) => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Heading)))
-            }
-            pulldown_cmark::TagEnd::BlockQuote(_) => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::BlockQuote)))
-            }
-            pulldown_cmark::TagEnd::List(_) => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::List)))
-            }
-            pulldown_cmark::TagEnd::Item => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::ListItem)))
-            }
-            pulldown_cmark::TagEnd::CodeBlock => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::CodeBlock)))
-            }
-            pulldown_cmark::TagEnd::MetadataBlock(_) => {
-                Ok(Some(ParserEvent::BlockEnd(BlockEnd::Frontmatter)))
-            }
-            pulldown_cmark::TagEnd::Emphasis => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterEnd(InlineDelimiterEnd::Emphasis),
-            ))),
-            pulldown_cmark::TagEnd::Strong => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterEnd(InlineDelimiterEnd::Strong),
-            ))),
-            pulldown_cmark::TagEnd::Strikethrough => {
-                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterEnd(
-                    InlineDelimiterEnd::Strikethrough,
-                ))))
-            }
-            pulldown_cmark::TagEnd::Superscript => {
-                Ok(Some(ParserEvent::Inline(InlineToken::DelimiterEnd(
-                    InlineDelimiterEnd::Superscript,
-                ))))
-            }
-            pulldown_cmark::TagEnd::Subscript => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterEnd(InlineDelimiterEnd::Subscript),
-            ))),
-            pulldown_cmark::TagEnd::Link => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterEnd(InlineDelimiterEnd::Link),
-            ))),
-            pulldown_cmark::TagEnd::Image => Ok(Some(ParserEvent::Inline(
-                InlineToken::DelimiterEnd(InlineDelimiterEnd::Image),
-            ))),
-            pulldown_cmark::TagEnd::Table
-            | pulldown_cmark::TagEnd::TableHead
-            | pulldown_cmark::TagEnd::TableRow
-            | pulldown_cmark::TagEnd::TableCell
-            | pulldown_cmark::TagEnd::FootnoteDefinition
-            | pulldown_cmark::TagEnd::DefinitionList
-            | pulldown_cmark::TagEnd::DefinitionListTitle
-            | pulldown_cmark::TagEnd::DefinitionListDefinition => Ok(None),
-            pulldown_cmark::TagEnd::HtmlBlock => {
-                retention.enforce_unknown_block("end_tag_extension", range)?;
-                Ok(None)
-            }
+            pulldown_cmark::TagEnd::Emphasis => Ok(Self::Emphasis),
+            pulldown_cmark::TagEnd::Strong => Ok(Self::Strong),
+            pulldown_cmark::TagEnd::Strikethrough => Ok(Self::Strikethrough),
+            pulldown_cmark::TagEnd::Superscript => Ok(Self::Superscript),
+            pulldown_cmark::TagEnd::Subscript => Ok(Self::Subscript),
+            pulldown_cmark::TagEnd::Link => Ok(Self::Link),
+            pulldown_cmark::TagEnd::Image => Ok(Self::Image),
+            _ => Err(()),
         }
     }
 }

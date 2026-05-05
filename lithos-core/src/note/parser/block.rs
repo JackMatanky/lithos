@@ -159,6 +159,41 @@ pub(crate) enum BlockKind<'source, S: BlockState = Closed> {
     Container(ContainerBlockKind<'source>),
 }
 
+impl<'source> BlockKind<'source, Open> {
+    /// Pushes an inline event to a leaf block.
+    pub(crate) fn push_inline_event(
+        &mut self,
+        event: RangedEvent<'source>,
+    ) -> Result<(), NoteParseError> {
+        match self {
+            Self::Leaf(leaf) => leaf.push_inline_event(event),
+            Self::Container(_) => Err(NoteParseError::InvalidTopology {
+                code: "parser.structure.push_inline_to_container",
+                detail: "cannot push inline events to a container block".into(),
+                range: Some(event.range()),
+            }),
+        }
+    }
+
+    /// Pushes a finalized child block to a container block.
+    pub(crate) fn push_child(
+        &mut self,
+        child: Block<'source, Closed>,
+    ) -> Result<(), NoteParseError> {
+        match self {
+            Self::Container(container) => {
+                container.push_child(child);
+                Ok(())
+            }
+            Self::Leaf(_) => Err(NoteParseError::InvalidTopology {
+                code: "parser.structure.push_child_to_leaf",
+                detail: "cannot push child blocks to a leaf block".into(),
+                range: Some(child.span),
+            }),
+        }
+    }
+}
+
 impl<'source, S: BlockState> BlockKind<'source, S> {
     /// Returns the expected end token for this block kind.
     #[must_use]
@@ -252,6 +287,43 @@ pub(crate) enum LeafBlockKind<'source, S: BlockState = Closed> {
     ThematicBreak,
 }
 
+impl<'source> LeafBlockKind<'source, Open> {
+    /// Pushes an inline event to the leaf block's buffer.
+    pub(crate) fn push_inline_event(
+        &mut self,
+        event: RangedEvent<'source>,
+    ) -> Result<(), NoteParseError> {
+        match self {
+            Self::Paragraph {
+                events,
+            }
+            | Self::Heading {
+                events,
+                ..
+            } => {
+                events.push(event);
+                Ok(())
+            }
+            Self::CodeBlock {
+                text,
+                ..
+            }
+            | Self::Frontmatter {
+                text,
+                ..
+            } => {
+                text.push(event);
+                Ok(())
+            }
+            Self::ThematicBreak => Err(NoteParseError::InvalidTopology {
+                code: "parser.structure.push_inline_to_thematic_break",
+                detail: "cannot push inline events to a thematic break".into(),
+                range: Some(event.range()),
+            }),
+        }
+    }
+}
+
 /// Structure-bearing markdown block variants.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -279,4 +351,25 @@ pub(crate) enum ContainerBlockKind<'source> {
         /// Child blocks.
         children: Vec<Block<'source, Closed>>,
     },
+}
+
+impl<'source> ContainerBlockKind<'source> {
+    /// Pushes a finalized child block into this container.
+    pub(crate) fn push_child(&mut self, child: Block<'source, Closed>) {
+        match self {
+            Self::BlockQuote {
+                children,
+            }
+            | Self::List {
+                children,
+                ..
+            }
+            | Self::ListItem {
+                children,
+                ..
+            } => {
+                children.push(child);
+            }
+        }
+    }
 }

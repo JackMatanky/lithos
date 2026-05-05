@@ -45,20 +45,135 @@ pub(crate) enum TextContext {
 
 /// Derived style marker for text nodes.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum TextStyle {
-    Emphasis,
-    Strong,
-    Strikethrough,
-    Code,
-    MathInline,
-    MathDisplay,
+pub(crate) struct TextStyle(u8);
+
+impl TextStyle {
+    pub(crate) const CODE: Self = Self(1 << 3);
+    pub(crate) const EMPHASIS: Self = Self(1 << 0);
+    pub(crate) const MATH_DISPLAY: Self = Self(1 << 5);
+    pub(crate) const MATH_INLINE: Self = Self(1 << 4);
+    pub(crate) const NONE: Self = Self(0);
+    pub(crate) const STRIKETHROUGH: Self = Self(1 << 2);
+    pub(crate) const STRONG: Self = Self(1 << 1);
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    #[inline]
+    pub(crate) fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    #[inline]
+    pub(crate) fn remove(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+}
+
+/// State tracking for projecting text sequences from an event stream.
+#[derive(Clone, Debug)]
+pub(crate) struct InlineStyleContext {
+    styles: TextStyle,
+    link_depth: u32,
+    image_depth: u32,
+}
+
+impl InlineStyleContext {
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new() -> Self {
+        Self {
+            styles: TextStyle::NONE,
+            link_depth: 0,
+            image_depth: 0,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn apply_start(&mut self, start: &InlineDelimiterStart<'_>) {
+        match start {
+            InlineDelimiterStart::Emphasis => {
+                self.styles.insert(TextStyle::EMPHASIS);
+            }
+            InlineDelimiterStart::Strong => {
+                self.styles.insert(TextStyle::STRONG);
+            }
+            InlineDelimiterStart::Strikethrough => {
+                self.styles.insert(TextStyle::STRIKETHROUGH);
+            }
+            InlineDelimiterStart::Link {
+                ..
+            } => {
+                self.link_depth = self.link_depth.saturating_add(1);
+            }
+            InlineDelimiterStart::Image {
+                ..
+            } => {
+                self.image_depth = self.image_depth.saturating_add(1);
+            }
+            InlineDelimiterStart::Superscript
+            | InlineDelimiterStart::Subscript
+            | InlineDelimiterStart::_Marker(_) => {}
+        }
+    }
+
+    #[inline]
+    pub(crate) fn apply_end(&mut self, end: InlineDelimiterEnd) {
+        match end {
+            InlineDelimiterEnd::Emphasis => {
+                self.styles.remove(TextStyle::EMPHASIS);
+            }
+            InlineDelimiterEnd::Strong => self.styles.remove(TextStyle::STRONG),
+            InlineDelimiterEnd::Strikethrough => {
+                self.styles.remove(TextStyle::STRIKETHROUGH);
+            }
+            InlineDelimiterEnd::Link => {
+                self.link_depth = self.link_depth.saturating_sub(1);
+            }
+            InlineDelimiterEnd::Image => {
+                self.image_depth = self.image_depth.saturating_sub(1);
+            }
+            InlineDelimiterEnd::Superscript | InlineDelimiterEnd::Subscript => {
+            }
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) const fn context(&self) -> TextContext {
+        if self.image_depth > 0 {
+            TextContext::ImageAlt
+        } else if self.link_depth > 0 {
+            TextContext::LinkLabel
+        } else {
+            TextContext::Normal
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) fn create_node(
+        &self,
+        text: Box<str>,
+        extra_style: Option<TextStyle>,
+        range: SourceByteRange,
+    ) -> TextNode {
+        let mut styles = self.styles;
+        if let Some(extra) = extra_style {
+            styles.insert(extra);
+        }
+        TextNode::new(text, styles, self.context(), range)
+    }
 }
 
 /// Derived text node with style stack and source span.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TextNode {
     text: Box<str>,
-    styles: Vec<TextStyle>,
+    styles: TextStyle,
     context: TextContext,
     range: SourceByteRange,
 }
@@ -66,9 +181,9 @@ pub(crate) struct TextNode {
 impl TextNode {
     #[must_use]
     #[inline]
-    pub(crate) fn new(
+    pub(crate) const fn new(
         text: Box<str>,
-        styles: Vec<TextStyle>,
+        styles: TextStyle,
         context: TextContext,
         range: SourceByteRange,
     ) -> Self {
@@ -89,8 +204,8 @@ impl TextNode {
     #[must_use]
     #[inline]
     #[cfg(test)]
-    pub(crate) fn styles(&self) -> &[TextStyle] {
-        &self.styles
+    pub(crate) const fn styles(&self) -> TextStyle {
+        self.styles
     }
 
     #[must_use]
@@ -109,19 +224,19 @@ impl TextNode {
     /// Returns true if the node is eligible for artifact scanning (tags, etc).
     #[must_use]
     #[inline]
-    pub(crate) fn is_scannable(&self) -> bool {
-        self.context == TextContext::Normal
-            && !self.styles.contains(&TextStyle::Code)
-            && !self.styles.contains(&TextStyle::MathInline)
-            && !self.styles.contains(&TextStyle::MathDisplay)
+    pub(crate) const fn is_scannable(&self) -> bool {
+        matches!(self.context, TextContext::Normal)
+            && !self.styles.contains(TextStyle::CODE)
+            && !self.styles.contains(TextStyle::MATH_INLINE)
+            && !self.styles.contains(TextStyle::MATH_DISPLAY)
     }
 
     /// Returns true if the node is eligible for display (e.g. in link labels).
     #[must_use]
     #[inline]
-    pub(crate) fn is_displayable(&self) -> bool {
-        !self.styles.contains(&TextStyle::MathInline)
-            && !self.styles.contains(&TextStyle::MathDisplay)
+    pub(crate) const fn is_displayable(&self) -> bool {
+        !self.styles.contains(TextStyle::MATH_INLINE)
+            && !self.styles.contains(TextStyle::MATH_DISPLAY)
     }
 }
 
@@ -143,7 +258,7 @@ impl TextSequence {
 
     #[must_use]
     #[inline]
-    pub(crate) fn from_nodes(nodes: Vec<TextNode>) -> Self {
+    pub(crate) const fn from_nodes(nodes: Vec<TextNode>) -> Self {
         Self {
             nodes,
         }
@@ -195,80 +310,29 @@ impl TextSequence {
 
     /// Projects parser events into text nodes without consumer policy.
     #[must_use]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Enum dispatch for all IR tokens"
-    )]
     pub(crate) fn from_events(events: &[RangedEvent<'_>]) -> Self {
         let mut nodes = Vec::new();
-        let mut styles = Vec::new();
-        let mut link_depth = 0u32;
-        let mut image_depth = 0u32;
+        let mut style_ctx = InlineStyleContext::new();
 
         for event in events {
             match event.event() {
                 ParserEvent::Inline(InlineToken::DelimiterStart(start)) => {
-                    match start {
-                        InlineDelimiterStart::Emphasis => {
-                            styles.push(TextStyle::Emphasis);
-                        }
-                        InlineDelimiterStart::Strong => {
-                            styles.push(TextStyle::Strong);
-                        }
-                        InlineDelimiterStart::Strikethrough => {
-                            styles.push(TextStyle::Strikethrough);
-                        }
-                        InlineDelimiterStart::Link {
-                            ..
-                        } => {
-                            link_depth = link_depth.saturating_add(1);
-                        }
-                        InlineDelimiterStart::Image {
-                            ..
-                        } => {
-                            image_depth = image_depth.saturating_add(1);
-                        }
-                        InlineDelimiterStart::Superscript
-                        | InlineDelimiterStart::Subscript
-                        | InlineDelimiterStart::_Marker(_) => {}
-                    }
+                    style_ctx.apply_start(start);
                 }
                 ParserEvent::Inline(InlineToken::DelimiterEnd(end)) => {
-                    match end {
-                        InlineDelimiterEnd::Emphasis => {
-                            remove_style(&mut styles, TextStyle::Emphasis);
-                        }
-                        InlineDelimiterEnd::Strong => {
-                            remove_style(&mut styles, TextStyle::Strong);
-                        }
-                        InlineDelimiterEnd::Strikethrough => {
-                            remove_style(&mut styles, TextStyle::Strikethrough);
-                        }
-                        InlineDelimiterEnd::Link => {
-                            link_depth = link_depth.saturating_sub(1);
-                        }
-                        InlineDelimiterEnd::Image => {
-                            image_depth = image_depth.saturating_sub(1);
-                        }
-                        InlineDelimiterEnd::Superscript
-                        | InlineDelimiterEnd::Subscript => {}
-                    }
+                    style_ctx.apply_end(*end);
                 }
                 ParserEvent::Inline(InlineToken::Text(text)) => {
-                    nodes.push(TextNode::new(
+                    nodes.push(style_ctx.create_node(
                         Box::from(text.as_ref()),
-                        styles.clone(),
-                        context_for_depth(link_depth, image_depth),
+                        None,
                         event.range(),
                     ));
                 }
                 ParserEvent::Inline(InlineToken::InlineCode(text)) => {
-                    let mut node_styles = styles.clone();
-                    node_styles.push(TextStyle::Code);
-                    nodes.push(TextNode::new(
+                    nodes.push(style_ctx.create_node(
                         Box::from(text.as_ref()),
-                        node_styles,
-                        context_for_depth(link_depth, image_depth),
+                        Some(TextStyle::CODE),
                         event.range(),
                     ));
                 }
@@ -276,39 +340,34 @@ impl TextSequence {
                     kind,
                     content,
                 }) => {
-                    let mut node_styles = styles.clone();
-                    node_styles.push(match kind {
-                        MathKind::Inline => TextStyle::MathInline,
-                        MathKind::Display => TextStyle::MathDisplay,
-                    });
-                    nodes.push(TextNode::new(
+                    let extra = match kind {
+                        MathKind::Inline => TextStyle::MATH_INLINE,
+                        MathKind::Display => TextStyle::MATH_DISPLAY,
+                    };
+                    nodes.push(style_ctx.create_node(
                         Box::from(content.as_ref()),
-                        node_styles,
-                        context_for_depth(link_depth, image_depth),
+                        Some(extra),
                         event.range(),
                     ));
                 }
                 ParserEvent::Inline(InlineToken::Html(html)) => {
-                    nodes.push(TextNode::new(
+                    nodes.push(style_ctx.create_node(
                         Box::from(html.as_ref()),
-                        styles.clone(),
-                        context_for_depth(link_depth, image_depth),
+                        None,
                         event.range(),
                     ));
                 }
                 ParserEvent::Inline(InlineToken::LineBreak(_)) => {
-                    nodes.push(TextNode::new(
+                    nodes.push(style_ctx.create_node(
                         "".into(),
-                        styles.clone(),
-                        context_for_depth(link_depth, image_depth),
+                        None,
                         event.range(),
                     ));
                 }
                 ParserEvent::Inline(InlineToken::FootnoteReference(label)) => {
-                    nodes.push(TextNode::new(
+                    nodes.push(style_ctx.create_node(
                         Box::from(format!("[^{label}]").as_str()),
-                        styles.clone(),
-                        context_for_depth(link_depth, image_depth),
+                        None,
                         event.range(),
                     ));
                 }
@@ -323,23 +382,6 @@ impl TextSequence {
     }
 }
 
-#[must_use]
-const fn context_for_depth(link_depth: u32, image_depth: u32) -> TextContext {
-    if image_depth > 0 {
-        TextContext::ImageAlt
-    } else if link_depth > 0 {
-        TextContext::LinkLabel
-    } else {
-        TextContext::Normal
-    }
-}
-
-fn remove_style(styles: &mut Vec<TextStyle>, needle: TextStyle) {
-    if let Some(position) = styles.iter().rposition(|style| *style == needle) {
-        styles.remove(position);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,15 +393,18 @@ mod tests {
     #[test]
     fn text_node_accessors_return_constructor_values() {
         let range = sample_range();
+        let mut styles = TextStyle::STRONG;
+        styles.insert(TextStyle::CODE);
         let node = TextNode::new(
             "hello".into(),
-            vec![TextStyle::Strong, TextStyle::Code],
+            styles,
             TextContext::LinkLabel,
             range,
         );
 
         assert_eq!(node.text(), "hello");
-        assert_eq!(node.styles(), [TextStyle::Strong, TextStyle::Code]);
+        assert!(node.styles().contains(TextStyle::STRONG));
+        assert!(node.styles().contains(TextStyle::CODE));
         assert_eq!(node.context(), TextContext::LinkLabel);
         assert_eq!(node.range(), range);
     }
@@ -369,13 +414,13 @@ mod tests {
         let mut sequence = TextSequence::new();
         let first = TextNode::new(
             "a".into(),
-            vec![TextStyle::Emphasis],
+            TextStyle::EMPHASIS,
             TextContext::Normal,
             sample_range(),
         );
         let second = TextNode::new(
             "b".into(),
-            vec![TextStyle::Strong],
+            TextStyle::STRONG,
             TextContext::Normal,
             sample_range(),
         );
@@ -430,19 +475,27 @@ mod tests {
     #[test]
     fn is_scannable_filters_appropriately() {
         let range = sample_range();
-        let normal =
-            TextNode::new("a".into(), vec![], TextContext::Normal, range);
-        let link =
-            TextNode::new("a".into(), vec![], TextContext::LinkLabel, range);
+        let normal = TextNode::new(
+            "a".into(),
+            TextStyle::NONE,
+            TextContext::Normal,
+            range,
+        );
+        let link = TextNode::new(
+            "a".into(),
+            TextStyle::NONE,
+            TextContext::LinkLabel,
+            range,
+        );
         let code = TextNode::new(
             "a".into(),
-            vec![TextStyle::Code],
+            TextStyle::CODE,
             TextContext::Normal,
             range,
         );
         let math = TextNode::new(
             "a".into(),
-            vec![TextStyle::MathInline],
+            TextStyle::MATH_INLINE,
             TextContext::Normal,
             range,
         );
@@ -456,17 +509,21 @@ mod tests {
     #[test]
     fn is_displayable_filters_math_only() {
         let range = sample_range();
-        let normal =
-            TextNode::new("a".into(), vec![], TextContext::Normal, range);
+        let normal = TextNode::new(
+            "a".into(),
+            TextStyle::NONE,
+            TextContext::Normal,
+            range,
+        );
         let code = TextNode::new(
             "a".into(),
-            vec![TextStyle::Code],
+            TextStyle::CODE,
             TextContext::Normal,
             range,
         );
         let math = TextNode::new(
             "a".into(),
-            vec![TextStyle::MathInline],
+            TextStyle::MATH_INLINE,
             TextContext::Normal,
             range,
         );
@@ -481,8 +538,10 @@ mod tests {
         let r1 = SourceByteRange::try_from(1..5).unwrap();
         let r2 = SourceByteRange::try_from(5..10).unwrap();
 
-        let n1 = TextNode::new("a".into(), vec![], TextContext::Normal, r1);
-        let n2 = TextNode::new("b".into(), vec![], TextContext::Normal, r2);
+        let n1 =
+            TextNode::new("a".into(), TextStyle::NONE, TextContext::Normal, r1);
+        let n2 =
+            TextNode::new("b".into(), TextStyle::NONE, TextContext::Normal, r2);
 
         let empty = TextSequence::new();
         let single = TextSequence::from_nodes(vec![n1.clone()]);
