@@ -39,13 +39,35 @@ Phase 3
 - **Status:** complete
 
 ### Phase 4: Refactor Builder to Use DiscoveryEngine
-- [ ] Replace `discover_files()` with DiscoveryEngine call
-- [ ] Replace `discover_graph()` with DiscoveryEngine data
-- [ ] Update `load_all()` to use unified DiscoveryOutcome
-- [ ] Remove duplicate DirScanner usage from builder.rs
-- [ ] Update tests in builder.rs
-- [ ] Verify all tests pass: `mise run test:unit:schema`
-- **Status:** pending
+- [x] Replace `discover_files()` with DiscoveryEngine call
+- [x] Replace `discover_graph()` with DiscoveryEngine data
+- [x] Update `load_all()` to use unified DiscoveryResult
+- [x] Remove duplicate DirScanner usage from builder.rs
+- [x] Update tests in builder.rs
+- [x] Verify all tests pass: `mise run test:unit:schema`
+- **Status:** complete (code works, tests pass, some clippy warnings remain for future phases)
+
+### Phase 5: Refactor PropertyBankProcessor Discovery Phase
+- [x] Remove discovery stage from PropertyBankProcessor (route directly to Comparison)
+- [x] Update Builder to skip PropertyBankProcessor::discover() call
+- [x] Verify all tests pass: `mise run test:unit:schema`
+- **Status:** complete
+
+### Phase 6: Refactor SchemaProcessor Discovery Phase
+- [x] Update SchemaProcessor to accept DiscoveryResult data
+- [x] Add from_discovery_result constructor methods
+- [x] Remove duplicate discovery logic from schema_processor.rs
+- [x] Remove unused discover() methods from PropertyBankProcessor and SchemaProcessor
+- [x] Remove FilesContext type (no longer needed)
+- [x] Verify all tests pass: `mise run test:unit:schema`
+- **Status:** complete
+
+### Phase 7: Integration & Verification
+- [x] Run full test suite: `mise run test` (all passed)
+- [x] Verify no regressions in functionality
+- [x] Check for any remaining duplicate code (removed all discover methods)
+- [x] Run full verification: `mise run verify`
+- **Status:** complete
 
 ### Phase 5: Refactor PropertyBankProcessor Discovery Phase
 - [ ] Remove filesystem scanning from property_bank_processor.rs

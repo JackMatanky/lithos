@@ -62,6 +62,9 @@ pub mod inheritance;
 /// Schema index types for efficient lookups.
 pub(crate) mod index;
 
+/// Atomic schema discovery engine.
+pub(crate) mod discovery;
+
 /// Shared delta computation utilities for schema ingestion.
 pub(crate) mod delta;
 /// Schema errors.

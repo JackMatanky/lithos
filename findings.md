@@ -1096,3 +1096,168 @@ Builder.load_all()
 3. Atomic consistency (all data from same snapshot)
 4. Clear separation: discovery is infrastructure, processors are transformations
 5. No duplicate code across builder, property_bank_processor, schema_processor
+
+---
+
+## Phase 4 Implementation Plan: Refactor Builder
+
+### Current State Analysis
+
+**Builder.load_all() Current Flow (lines 58-127):**
+1. Call `discover_files()` → Returns `FilesContext` + callback with `PropertyBankContext`
+2. Call `discover_graph()` → Returns `GraphContextBranch`
+3. If bank present: call `load_property_bank()`
+4. Route to SchemaProcessor based on graph presence
+5. Process through pipeline
+
+**Methods to Remove/Replace:**
+1. **`discover_files()` (lines 158-242)**:
+   - Uses DirScanner (duplicate of DiscoveryEngine)
+   - Returns FilesContext { files: Vec<RelativePath> }
+   - Callback with PropertyBankContext { path: RelativePath }
+   - REPLACE WITH: DiscoveryEngine::run()
+
+2. **`discover_graph()` (lines 244-258)**:
+   - Queries repository.get_topological_graph() (duplicate)
+   - Returns GraphContextBranch
+   - REPLACE WITH: Data from DiscoveryResult
+
+**Context Types to Remove:**
+- `FilesContext` - Replace with iterator over DiscoveryResult.schemas
+- `PropertyBankContext` - Replace with DiscoveryResult.property_bank
+- `BankContextBranch` - Replace with Option from DiscoveryResult.property_bank
+- `GraphContextBranch` - Replace with DiscoveryResult.graph (already Option)
+
+### Target State
+
+**New Builder.load_all() Flow:**
+```rust
+pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
+    // 1. Single discovery call
+    let discovery = DiscoveryEngine::run(
+        &self.config.to_schema_spec(),
+        &self.repository,
+        self.source.root()
+    )?;
+
+    // 2. Load property bank if present
+    let property_bank = if let Some(bank_discovery) = &discovery.property_bank {
+        Some(self.load_property_bank(bank_discovery)?)
+    } else {
+        self.property_bank_delta = None;
+        None
+    };
+
+    // 3. Early exit if no schemas
+    if !discovery.has_schemas() {
+        return Ok(Vec::new());
+    }
+
+    let property_bank = property_bank.unwrap_or_else(PropertyBank::new);
+
+    // 4. Route to SchemaProcessor based on graph presence
+    let branch = match &discovery.graph {
+        Some(graph) => SchemaProcessor::<Discovery, Review>::from_discovery_result(
+            &discovery,
+            graph,
+            &self.repository,
+            &self.source,
+        )?,
+        None => SchemaProcessor::<Discovery, NeverSeen>::from_discovery_result(
+            &discovery,
+            &self.source,
+        )?,
+    };
+
+    // 5. Process through pipeline (unchanged)
+    match branch { /* ... */ }
+}
+```
+
+**New load_property_bank() signature:**
+```rust
+fn load_property_bank(
+    &mut self,
+    bank_discovery: &PropertyBankDiscovery,
+) -> Result<PropertyBank, SchemaLoaderError>
+```
+
+### Implementation Steps
+
+**Step 1: Add DiscoveryEngine import**
+- Add `DiscoveryEngine` to imports
+- Add `DiscoveryResult`, `PropertyBankDiscovery` to imports
+
+**Step 2: Update load_all() method**
+- Replace `discover_files()` + `discover_graph()` with single `DiscoveryEngine::run()`
+- Replace `FilesContext` with `&DiscoveryResult`
+- Replace `BankContextBranch` with `Option<&PropertyBankDiscovery>`
+- Replace `GraphContextBranch` with `Option<&InheritanceGraph<()>>`
+- Update property bank loading call
+- Update SchemaProcessor routing
+
+**Step 3: Update load_property_bank() signature**
+- Change parameter from `&PropertyBankContext` to `&PropertyBankDiscovery`
+- Update PropertyBankProcessor::discover() call to pass bank_discovery data
+  (Note: PropertyBankProcessor changes will be in Phase 5)
+
+**Step 4: Remove obsolete methods and types**
+- Remove `discover_files()` method
+- Remove `discover_graph()` method
+- Remove `FilesContext` type
+- Remove `PropertyBankContext` type
+- Remove `BankContextBranch` enum
+- Remove `GraphContextBranch` enum
+
+**Step 5: Update tests**
+- `builder_discovery_loads_graph_from_db()` → Test via load_all() or remove
+- `builder_discovery_excludes_property_bank()` → Test via load_all() or remove
+- `builder_discovery_handles_missing_graph()` → Test via load_all() or remove
+- `builder_discovery_filters_by_extension()` → Test moved to DiscoveryEngine
+- `builder_constructs()` → Should still pass (tests load_all())
+
+### Critical Considerations
+
+**Config Method:**
+- Config has `to_schema_spec()` method (config/aggregate.rs:111)
+- Returns `SchemaConfigSpec` with validated paths
+- Use: `self.config.to_schema_spec()`
+
+**Error Handling:**
+- DiscoveryEngine returns `Result<DiscoveryResult, SchemaLoaderError>`
+- Errors should propagate correctly (same error type)
+
+**PropertyBankProcessor Integration:**
+- Phase 4 only changes Builder's signature
+- PropertyBankProcessor.discover() still expects old signature (will update in Phase 5)
+- Need to extract path from PropertyBankDiscovery: `bank_discovery.entry.path()`
+
+**SchemaProcessor Integration:**
+- Will need new constructor methods (Phase 6):
+  - `SchemaProcessor::<Discovery, Review>::from_discovery_result()`
+  - `SchemaProcessor::<Discovery, NeverSeen>::from_discovery_result()`
+- For now, will keep existing discover() methods and adapt the call
+
+### Testing Strategy
+
+1. Run existing Builder tests after each change
+2. Ensure `builder_constructs()` still passes (integration test)
+3. Verify discovery tests are moved/removed appropriately
+4. Run full schema test suite: `mise run test:unit:schema`
+
+### Risk Mitigation
+
+- **Small commits**: Commit after each working step
+- **Tests first**: Ensure tests run before removing code
+- **Incremental changes**: Don't remove old code until new code works
+- **Verification**: Run tests after each modification
+
+### Success Criteria
+
+- [ ] Builder.load_all() uses DiscoveryEngine::run() (single call)
+- [ ] No duplicate DirScanner usage in builder.rs
+- [ ] No duplicate repository.get_topological_graph() call
+- [ ] Context types removed (FilesContext, PropertyBankContext, etc.)
+- [ ] All builder tests pass
+- [ ] All schema unit tests pass
+- [ ] Code is cleaner and more maintainable

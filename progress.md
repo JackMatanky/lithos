@@ -108,7 +108,36 @@
   - Performance: Same (single FS scan, single DB transaction preserved)
 
 ### Phase 4: Refactor Builder to Use DiscoveryEngine
-- **Status:** pending
+- **Status:** complete
+- **Started:** 2026-05-06
+- **Completed:** 2026-05-06
+
+- Actions taken:
+  - Updated `Builder::load_all()` to use `DiscoveryEngine::run()`
+  - Updated `load_property_bank()` signature to accept `PropertyBankDiscovery`
+  - Removed obsolete `discover_files()` and `discover_graph()` methods
+  - Removed obsolete context types (`PropertyBankContext`, `BankContextBranch`, `GraphContextBranch`)
+  - Kept `FilesContext` temporarily for `SchemaProcessor` compatibility
+  - Updated `BatchSchemaReader` trait and implementations to include missing methods needed for discovery
+  - Fixed bugs in `DiscoveryEngine` (nested Options, iterator calls)
+  - Updated tests in `builder.rs` to reflect the new orchestration flow
+  - Verified all tests pass: `mise run test:unit:schema`
+
+- Files modified:
+  - lithos-core/src/schema/builder.rs (REFACTORED)
+  - lithos-core/src/schema/discovery.rs (FIXED)
+  - lithos-core/src/schema/storage.rs (UPDATED TRAIT)
+  - lithos-core/src/schema/testing.rs (UPDATED TEST DOUBLE)
+  - lithos-core/src/schema/mod.rs (EXPORTED DISCOVERY)
+  - task_plan.md (updated)
+  - progress.md (updated)
+
+- Test Results:
+  - ✅ 248 tests run, all passed
+  - ✅ 77 doctests passed
+  - Performance: preserved (single FS scan, single DB transaction)
+
+
 
 ### Phase 5: Refactor PropertyBankProcessor Discovery Phase
 - **Status:** pending

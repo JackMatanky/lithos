@@ -590,6 +590,29 @@ impl Repository for InMemoryRepository {
         impl super::storage::BatchSchemaReader for InMemoryBatchSchemaReader<'_> {
             type Error = InMemoryError;
 
+            fn find_raw_schema_views_by_paths(
+                &self,
+                file_paths: &[RelativePath],
+            ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>
+            {
+                self.repo.find_raw_schema_views_by_paths(file_paths)
+            }
+
+            fn find_schema_ids_by_paths(
+                &self,
+                file_paths: &[RelativePath],
+            ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>
+            {
+                self.repo.find_schema_ids_by_paths(file_paths)
+            }
+
+            fn get_raw_property_bank_view(
+                &self,
+                path: &RelativePath,
+            ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+                self.repo.get_raw_property_bank_view(path)
+            }
+
             fn get_raw_schema_view(
                 &self,
                 id: SchemaId,

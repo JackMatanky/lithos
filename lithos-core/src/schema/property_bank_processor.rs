@@ -151,7 +151,7 @@ pub(crate) struct PropertyBankProcessor<P, S> {
 impl<P, S> PropertyBankProcessor<P, S> {
     /// Internal constructor for state transitions.
     #[inline]
-    fn transition<NP, NS>(
+    pub(crate) fn transition<NP, NS>(
         _stage: NP,
         status: NS,
     ) -> PropertyBankProcessor<NP, NS> {
@@ -201,52 +201,6 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             _stage: PhantomData,
         }
     }
-
-    /// Initial entry point: checks the repository for an existing view.
-    ///
-    /// This method gathers file metadata (created time, last modified, and byte
-    /// size) and queries the repository to decide whether the pipeline
-    /// starts as a `Missing` (new ingestion) or a `Present` (incremental
-    /// update) branch.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails.
-    #[inline]
-    #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn discover<R: Repository>(
-        self,
-        path: &RelativePath,
-        source: &FsReader,
-        config_path: &std::path::Path,
-        repository: &R,
-    ) -> Result<ComparisonBranch, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        drop(self);
-        let cached_view = repository
-            .get_raw_property_bank_view(path)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        let file_info = source
-            .info(config_path)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        if let Some(view) = cached_view {
-            Ok(ComparisonBranch::Present(Self::transition(
-                Comparison,
-                Present {
-                    info: file_info,
-                    view,
-                },
-            )))
-        } else {
-            Ok(ComparisonBranch::Missing(Self::transition(Parsed, Missing {
-                info: file_info,
-            })))
-        }
-    }
 }
 
 impl Default for PropertyBankProcessor<Discovery, Unknown> {
@@ -270,11 +224,43 @@ pub(crate) struct Missing {
     info: FileInfo,
 }
 
+impl Missing {
+    #[expect(dead_code, reason = "reserved for future use")]
+    pub(crate) fn info(&self) -> &FileInfo {
+        &self.info
+    }
+
+    pub(crate) fn new(info: FileInfo) -> Self {
+        Self {
+            info,
+        }
+    }
+}
+
 /// Proven: View exists in repository; carries file info and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
     info: FileInfo,
     view: RawPropertyBankView,
+}
+
+impl Present {
+    #[expect(dead_code, reason = "reserved for future use")]
+    pub(crate) fn info(&self) -> &FileInfo {
+        &self.info
+    }
+
+    #[expect(dead_code, reason = "reserved for future use")]
+    pub(crate) fn view(&self) -> &RawPropertyBankView {
+        &self.view
+    }
+
+    pub(crate) fn new(info: FileInfo, view: RawPropertyBankView) -> Self {
+        Self {
+            info,
+            view,
+        }
+    }
 }
 
 /// Proven: binary identity has diverged; carries content for hashing/parsing.

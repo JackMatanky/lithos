@@ -29,9 +29,23 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaCachedState {
     /// Schema ID from previous ingestion.
-    pub(crate) id: SchemaId,
+    id: SchemaId,
     /// Cached view for staleness detection.
-    pub(crate) view: RawSchemaView,
+    view: RawSchemaView,
+}
+
+impl SchemaCachedState {
+    /// Returns the schema ID.
+    #[inline]
+    pub(crate) fn id(&self) -> SchemaId {
+        self.id
+    }
+
+    /// Returns the cached view.
+    #[inline]
+    pub(crate) fn view(&self) -> &RawSchemaView {
+        &self.view
+    }
 }
 
 /// Discovery data for a single schema file.
@@ -40,9 +54,23 @@ pub(crate) struct SchemaCachedState {
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    pub(crate) entry: FileEntry,
+    entry: FileEntry,
     /// Cached state from database (None for new files).
-    pub(crate) cached: Option<SchemaCachedState>,
+    cached: Option<SchemaCachedState>,
+}
+
+impl SchemaDiscovery {
+    /// Returns the file entry.
+    #[inline]
+    pub(crate) fn entry(&self) -> &FileEntry {
+        &self.entry
+    }
+
+    /// Returns the cached state, if any.
+    #[inline]
+    pub(crate) fn cached(&self) -> Option<&SchemaCachedState> {
+        self.cached.as_ref()
+    }
 }
 
 /// Discovery data for the property bank file.
@@ -51,9 +79,23 @@ pub(crate) struct SchemaDiscovery {
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyBankDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    pub(crate) entry: FileEntry,
+    entry: FileEntry,
     /// Cached view from database (None if never ingested).
-    pub(crate) view: Option<RawPropertyBankView>,
+    view: Option<RawPropertyBankView>,
+}
+
+impl PropertyBankDiscovery {
+    /// Returns the file entry.
+    #[inline]
+    pub(crate) fn entry(&self) -> &FileEntry {
+        &self.entry
+    }
+
+    /// Returns the cached view, if any.
+    #[inline]
+    pub(crate) fn view(&self) -> Option<&RawPropertyBankView> {
+        self.view.as_ref()
+    }
 }
 
 /// Result of atomic discovery combining filesystem scan and database state.
@@ -64,16 +106,40 @@ pub(crate) struct PropertyBankDiscovery {
 #[derive(Debug)]
 pub(crate) struct DiscoveryResult {
     /// Discovered schema files (path → discovery data).
-    pub(crate) schemas: HashMap<RelativePath, SchemaDiscovery>,
+    schemas: HashMap<RelativePath, SchemaDiscovery>,
     /// Discovered property bank file (if present).
-    pub(crate) property_bank: Option<PropertyBankDiscovery>,
+    property_bank: Option<PropertyBankDiscovery>,
     /// Inheritance graph from database (if exists).
-    pub(crate) graph: Option<InheritanceGraph<()>>,
+    graph: Option<InheritanceGraph<()>>,
     /// Schema IDs that exist in DB but not on filesystem (deleted files).
-    pub(crate) deleted_ids: Vec<SchemaId>,
+    deleted_ids: Vec<SchemaId>,
 }
 
 impl DiscoveryResult {
+    /// Returns the discovered schemas.
+    #[inline]
+    pub(crate) fn schemas(&self) -> &HashMap<RelativePath, SchemaDiscovery> {
+        &self.schemas
+    }
+
+    /// Returns the discovered property bank, if any.
+    #[inline]
+    pub(crate) fn property_bank(&self) -> Option<&PropertyBankDiscovery> {
+        self.property_bank.as_ref()
+    }
+
+    /// Returns the inheritance graph, if any.
+    #[inline]
+    pub(crate) fn graph(&self) -> Option<&InheritanceGraph<()>> {
+        self.graph.as_ref()
+    }
+
+    /// Returns the deleted schema IDs.
+    #[inline]
+    pub(crate) fn deleted_ids(&self) -> &[SchemaId] {
+        &self.deleted_ids
+    }
+
     /// Returns `true` if any schema files were discovered.
     #[inline]
     #[must_use]
@@ -83,10 +149,11 @@ impl DiscoveryResult {
 
     /// Returns `true` if this is a cold-start discovery (no cached data).
     #[must_use]
+    #[expect(dead_code, reason = "may be useful for future optimization")]
     pub(crate) fn is_cold_start(&self) -> bool {
         self.graph.is_none()
             && self.schemas.values().all(|s| s.cached.is_none())
-            && self.property_bank.as_ref().map_or(true, |pb| pb.view.is_none())
+            && self.property_bank.as_ref().is_none_or(|pb| pb.view.is_none())
     }
 }
 
@@ -146,13 +213,17 @@ impl DiscoveryEngine {
         // Step 3: Query DB for all cached state (single transaction)
         let cached_state = Self::query_cached_state(
             repo,
-            &property_bank_entry,
+            property_bank_entry.as_ref(),
             &schema_entries,
             spec.property_bank(),
         )?;
 
         // Step 4: Combine filesystem + DB state into result
-        Self::build_result(property_bank_entry, schema_entries, cached_state)
+        Ok(Self::build_result(
+            property_bank_entry,
+            schema_entries,
+            cached_state,
+        ))
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -161,7 +232,8 @@ impl DiscoveryEngine {
 
     /// Scans filesystem for schema files.
     ///
-    /// Returns `Vec<FileEntry>` for efficient processing (no HashMap overhead).
+    /// Returns `Vec<FileEntry>` for efficient processing (no `HashMap`
+    /// overhead).
     ///
     /// # Errors
     ///
@@ -194,6 +266,10 @@ impl DiscoveryEngine {
     /// Separates property bank from schema files (O(n) single pass).
     ///
     /// Returns owned `FileEntry` values for efficient processing.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Functional return type for discovery separation"
+    )]
     fn separate_property_bank(
         entries: Vec<FileEntry>,
         property_bank_path: &RelativePath,
@@ -237,7 +313,7 @@ impl DiscoveryEngine {
     /// Returns error if database queries fail.
     fn query_cached_state<R>(
         repo: &R,
-        property_bank_entry: &Option<FileEntry>,
+        property_bank_entry: Option<&FileEntry>,
         schema_entries: &[(RelativePath, FileEntry)],
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
@@ -245,18 +321,22 @@ impl DiscoveryEngine {
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "iter over &[(RelativePath, FileEntry)] yields \
+                      &&(RelativePath, FileEntry)"
+        )]
         let schema_paths: Vec<_> =
-            schema_entries.iter().map(|(path, _)| path.clone()).collect();
+            schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
         repo.with_batch_schema_reader(|batch_reader| {
             let graph = batch_reader.get_topological_graph()?;
 
-            let property_bank_view =
-                property_bank_entry.as_ref().and_then(|_| {
-                    batch_reader
-                        .get_raw_property_bank_view(property_bank_path)
-                        .ok()
-                });
+            let property_bank_view = match property_bank_entry {
+                Some(_) => batch_reader
+                    .get_raw_property_bank_view(property_bank_path)?,
+                None => None,
+            };
 
             let schema_views =
                 batch_reader.find_raw_schema_views_by_paths(&schema_paths)?;
@@ -277,15 +357,15 @@ impl DiscoveryEngine {
     // Result Construction
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Builds final DiscoveryResult from filesystem + DB data.
+    /// Builds final `DiscoveryResult` from filesystem + DB data.
     ///
-    /// Performance: Single pass over schema_entries; no intermediate
+    /// Performance: Single pass over `schema_entries`; no intermediate
     /// allocations.
     fn build_result(
         property_bank_entry: Option<FileEntry>,
         schema_entries: Vec<(RelativePath, FileEntry)>,
         cached: CachedState,
-    ) -> Result<DiscoveryResult, SchemaLoaderError> {
+    ) -> DiscoveryResult {
         // Build property bank discovery
         let property_bank =
             property_bank_entry.map(|entry| PropertyBankDiscovery {
@@ -321,32 +401,29 @@ impl DiscoveryEngine {
         }
 
         // Detect deleted schemas
-        let deleted_ids = Self::detect_deleted_schemas(
-            cached.graph.as_ref(),
-            &filesystem_ids,
-        );
+        let deleted_ids =
+            cached.graph.as_ref().map_or_else(Vec::new, |graph| {
+                Self::detect_deleted_schemas(graph, &filesystem_ids)
+            });
 
-        Ok(DiscoveryResult {
+        DiscoveryResult {
             schemas,
             property_bank,
             graph: cached.graph,
             deleted_ids,
-        })
+        }
     }
 
     /// Detects schemas deleted from filesystem but still in DB.
     ///
     /// Performance: O(n) where n = graph size.
     fn detect_deleted_schemas(
-        graph: Option<&InheritanceGraph<()>>,
+        graph: &InheritanceGraph<()>,
         filesystem_ids: &HashSet<SchemaId>,
     ) -> Vec<SchemaId> {
-        let Some(graph) = graph else {
-            return Vec::new();
-        };
-
         graph
             .topo_order()
+            .iter()
             .filter(|id| !filesystem_ids.contains(id))
             .copied()
             .collect()
@@ -364,7 +441,7 @@ mod tests {
     fn run_finds_all_files() {
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
-        std::fs::create_dir(&schema_dir).unwrap();
+        std::fs::create_dir_all(&schema_dir).unwrap();
 
         let bank_path = schema_dir.join("property_bank.json");
         std::fs::write(&bank_path, "{}").unwrap();

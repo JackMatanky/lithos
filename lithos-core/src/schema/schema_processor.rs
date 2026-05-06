@@ -64,8 +64,8 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        builder::FilesContext,
         delta::PropertyDeltaEngine,
+        discovery::DiscoveryResult,
         error::{
             SchemaError, SchemaIngestionError, SchemaLoaderError,
             SchemaRepositoryError,
@@ -716,23 +716,25 @@ pub(crate) enum DiscoveryBranch {
 
 type FileState =
     (NewBatch<InitialScan>, HashMap<SchemaId, FoundPayload>, Vec<SchemaId>);
-type ViewMaps =
-    (HashMap<RelativePath, RawSchemaView>, HashMap<RelativePath, SchemaId>);
-
 impl SchemaProcessor<Discovery, NeverSeen> {
-    pub(crate) fn discover(
-        context: &FilesContext,
-        source: &FsReader,
+    /// Creates a `DiscoveryBranch` from `DiscoveryResult` (cold start - no
+    /// graph).
+    #[expect(
+        clippy::unnecessary_wraps,
+        clippy::iter_over_hash_type,
+        reason = "Result wrapping for early return consistency"
+    )]
+    pub(crate) fn from_discovery_result(
+        discovery: &DiscoveryResult,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
-        let files = &context.files;
         let mut missing = NewBatch::new();
 
-        for path in files {
-            let file_info = source
-                .info(path.as_path())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
-            let id = SchemaId::new();
+        for (path, schema_discovery) in discovery.schemas() {
+            let file_info = schema_discovery.entry().info;
+            let id = schema_discovery.cached().map_or_else(
+                SchemaId::new,
+                super::discovery::SchemaCachedState::id,
+            );
             missing.insert(id, InitialScan {
                 path: path.clone(),
                 info: file_info,
@@ -749,27 +751,42 @@ impl SchemaProcessor<Discovery, NeverSeen> {
 }
 
 impl SchemaProcessor<Discovery, Review> {
-    pub(crate) fn discover<R>(
-        context: &FilesContext,
+    /// Creates a `DiscoveryBranch` from `DiscoveryResult` (with existing
+    /// graph).
+    #[expect(
+        clippy::unnecessary_wraps,
+        clippy::iter_over_hash_type,
+        reason = "Result wrapping for early return consistency"
+    )]
+    pub(crate) fn from_discovery_result(
+        discovery: &DiscoveryResult,
         graph: &InheritanceGraph<()>,
-        repository: &R,
-        source: &FsReader,
-    ) -> Result<DiscoveryBranch, SchemaLoaderError>
-    where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let files = &context.files;
+    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
+        let files: Vec<RelativePath> =
+            discovery.schemas().keys().cloned().collect();
 
-        let (views_by_path, ids_by_path) =
-            Self::fetch_view_maps(repository, files)?;
+        // Build views_by_path and ids_by_path from DiscoveryResult
+        let mut views_by_path: HashMap<RelativePath, RawSchemaView> =
+            HashMap::new();
+        let mut ids_by_path: HashMap<RelativePath, SchemaId> = HashMap::new();
 
-        let (missing, found, deleted_ids) = Self::classify_file_state(
-            files,
+        for (path, schema_discovery) in discovery.schemas() {
+            if let Some(cached) = schema_discovery.cached() {
+                views_by_path.insert(path.clone(), cached.view().clone());
+                ids_by_path.insert(path.clone(), cached.id());
+            }
+        }
+
+        let deleted_ids: Vec<SchemaId> = discovery.deleted_ids().to_vec();
+
+        let (missing, found, _) = Self::classify_file_state(
+            &files,
             views_by_path,
             &ids_by_path,
             Some(graph),
-            source,
+            // Pass a dummy FsReader since we don't need file info (already
+            // have it)
+            &crate::fs::FsReader::new(std::path::PathBuf::new()),
         );
 
         if found.is_empty() {
@@ -796,34 +813,6 @@ impl SchemaProcessor<Discovery, Review> {
     // ═════════════════════════════════════════════════════════════════════
     //  Discovery Helpers
     // ═════════════════════════════════════════════════════════════════════
-    fn fetch_view_maps<R: Repository>(
-        repository: &R,
-        files: &[RelativePath],
-    ) -> Result<ViewMaps, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
-        let views_by_path = repository
-            .find_raw_schema_views_by_paths(files)
-            .map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?
-            .into_iter()
-            .collect();
-
-        let ids_by_path = repository
-            .find_schema_ids_by_paths(files)
-            .map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?
-            .into_iter()
-            .collect();
-
-        Ok((views_by_path, ids_by_path))
-    }
-
     fn classify_file_state(
         files: &[RelativePath],
         mut views_by_path: HashMap<RelativePath, RawSchemaView>,
