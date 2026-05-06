@@ -197,8 +197,6 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
     reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
-    use uuid::Uuid;
-
     use super::{
         super::{
             property::{
@@ -217,7 +215,7 @@ mod tests {
             let mut bank = PropertyBank::new();
             let name = PropertyName::try_new("flag")?;
             let property = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
+                PropertyId::new(),
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -227,9 +225,6 @@ mod tests {
             Ok((bank, id))
         }
     }
-
-    const TEST_PROPERTY_ID_A: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0701);
 
     mod property_bank {
         use super::*;
@@ -249,7 +244,7 @@ mod tests {
             let spec = PropertySpec::String(StringSpec::default());
             let name = PropertyName::try_new("test").expect("Valid name");
             let prop = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
+                PropertyId::new(),
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec,

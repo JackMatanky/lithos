@@ -44,6 +44,7 @@ use super::{
     property_spec::PropertySpec,
     raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
 };
+use crate::support::uuid::UuidV7;
 
 /// Map of properties keyed by name.
 ///
@@ -532,7 +533,7 @@ impl Property {
 /// use lithos_core::schema::property::PropertyId;
 ///
 /// let id = PropertyId::new();
-/// let _ = id.as_uuid();
+/// let _ = id.as_uuid_v7();
 /// ```
 #[derive(
     Copy,
@@ -549,35 +550,37 @@ impl Property {
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
-pub struct PropertyId(Uuid);
+pub struct PropertyId(UuidV7);
 
 impl PropertyId {
     /// Creates a new UUID v7-based `PropertyId`.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(Uuid::now_v7())
+        Self(UuidV7::new())
     }
 
-    /// Wraps a UUID into a `PropertyId`.
+    /// Returns the inner `UuidV7` reference.
     #[inline]
     #[must_use]
-    pub const fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-
-    /// Returns the inner UUID reference.
-    #[inline]
-    #[must_use]
-    pub const fn as_uuid(&self) -> &Uuid {
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
         &self.0
     }
+}
 
-    /// Returns the inner UUID by value.
+impl From<UuidV7> for PropertyId {
     #[inline]
-    #[must_use]
-    pub const fn into_uuid(self) -> Uuid {
-        self.0
+    fn from(value: UuidV7) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<Uuid> for PropertyId {
+    type Error = crate::support::UuidV7Error;
+
+    #[inline]
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Ok(Self(UuidV7::try_from_uuid(value)?))
     }
 }
 
@@ -895,14 +898,11 @@ impl From<bool> for Multiplicity {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     /// Test fixtures and builders for `Property`.
     mod fixtures {
-        use uuid::Uuid;
-
         use super::super::{super::property_spec::StringSpec, *};
-
-        const TEST_PROPERTY_ID: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0801);
 
         /// `PropertyBuilder` for flexible test data generation.
         pub struct PropertyBuilder {
@@ -945,7 +945,7 @@ mod tests {
             pub fn build(self) -> Result<Property, SchemaError> {
                 let _name = PropertyName::try_new(&self.name)?;
                 Ok(Property::new(
-                    PropertyId::from_uuid(TEST_PROPERTY_ID),
+                    PropertyId::new(),
                     self.optionality,
                     self.multiplicity,
                     self.spec,
@@ -1022,17 +1022,13 @@ mod tests {
 
     mod property {
         use rstest::rstest;
-        use uuid::Uuid;
 
         use super::super::{super::property_spec::StringSpec, *};
-
-        const TEST_PROPERTY_ID: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0802);
 
         fn required_scalar_property() -> Property {
             let spec = PropertySpec::String(StringSpec::default());
             Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID),
+                PropertyId::new(),
                 Optionality::Required,
                 Multiplicity::Single,
                 spec,
@@ -1266,5 +1262,14 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn property_id_exposes_uuid_v7_view() {
+        let id = PropertyId::new();
+        assert_eq!(
+            id.as_uuid_v7().as_uuid().get_version(),
+            Some(uuid::Version::SortRand)
+        );
     }
 }

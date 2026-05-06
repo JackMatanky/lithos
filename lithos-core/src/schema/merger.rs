@@ -67,8 +67,6 @@ impl Merger {
 mod tests {
     use std::collections::HashMap;
 
-    use uuid::Uuid;
-
     use super::*;
     use crate::schema::{
         error::SchemaError,
@@ -86,7 +84,7 @@ mod tests {
             name: &str,
         ) -> Result<(PropertyName, Property), SchemaError> {
             let property = Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
+                PropertyId::new(),
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -134,13 +132,13 @@ mod tests {
         fn child_override_beats_parent() -> Result<(), SchemaError> {
             let name = PropertyName::try_new("shared")?;
             let parent_prop = Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
+                PropertyId::new(),
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let child_prop = Property::new(
-                PropertyId::from_uuid(Uuid::now_v7()),
+                PropertyId::new(),
                 Optionality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),

@@ -53,7 +53,6 @@ use lithos_core::schema::{
     property::{PropertyId, PropertyMap},
     storage::Repository as _,
 };
-use uuid::Uuid;
 
 // ========================================================================
 //                          Roundtrip Tests
@@ -61,10 +60,6 @@ use uuid::Uuid;
 
 mod roundtrip_tests {
     use super::*;
-
-    // Test fixture UUIDs (pub for use in other test modules)
-    pub(super) const TEST_PROPERTY_ID_A: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0A01);
 
     /// Integration test for `PropertyBank` save/load roundtrip.
     ///
@@ -91,7 +86,7 @@ mod roundtrip_tests {
 
         // Create and save property bank
         let (prop_name, prop) = PropertyBuilder::new("status")
-            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .id(PropertyId::new())
             .build_bool()?;
         let mut properties = PropertyMap::new();
         properties.insert(prop_name.clone(), prop);
@@ -272,7 +267,6 @@ mod lookup_tests {
 
 mod durability_tests {
     use super::*;
-    use crate::roundtrip_tests::TEST_PROPERTY_ID_A;
 
     /// Integration test for `PropertyBank` durability across restarts.
     ///
@@ -301,7 +295,7 @@ mod durability_tests {
 
         // Create and save property bank
         let (prop_name, prop) = PropertyBuilder::new("status")
-            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .id(PropertyId::new())
             .build_bool()?;
         let prop_id = prop.id();
         let mut properties = PropertyMap::new();

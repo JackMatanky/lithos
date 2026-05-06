@@ -255,8 +255,6 @@ fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
     reason = "Test module groups fixtures before test sub-modules"
 )]
 mod tests {
-    use uuid::Uuid;
-
     use super::*;
     use crate::schema::{
         bank::PropertyBank,
@@ -272,7 +270,7 @@ mod tests {
             name: &str,
         ) -> Result<(PropertyName, Property), SchemaError> {
             let property = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID),
+                PropertyId::new(),
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -314,9 +312,6 @@ mod tests {
                 .expect("Test fixture should create valid RawPropertyRef")
         }
     }
-
-    const TEST_PROPERTY_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0F01);
 
     #[expect(
         clippy::panic_in_result_fn,

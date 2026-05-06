@@ -20,6 +20,7 @@ use uuid::Uuid;
 use crate::{
     fs::RelativePath,
     schema::error::{SchemaError, SchemaNameError, SchemaSyntaxError},
+    support::uuid::UuidV7,
 };
 
 // ============================================================================
@@ -35,7 +36,7 @@ use crate::{
 /// use lithos_core::schema::identifier::SchemaId;
 ///
 /// let id = SchemaId::new();
-/// let uuid = id.into_uuid();
+/// let _uuid = id.as_uuid_v7().into_uuid();
 /// ```
 #[derive(
     Debug,
@@ -51,7 +52,7 @@ use crate::{
     Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-pub struct SchemaId(Uuid);
+pub struct SchemaId(UuidV7);
 
 impl SchemaId {
     /// Creates a new UUID v7-based `SchemaId`.
@@ -61,59 +62,35 @@ impl SchemaId {
     /// use lithos_core::schema::identifier::SchemaId;
     ///
     /// let id = SchemaId::new();
-    /// let _ = id.as_uuid();
+    /// let _ = id.as_uuid_v7();
     /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(Uuid::now_v7())
+        Self(UuidV7::new())
     }
 
-    /// Wraps a UUID into a `SchemaId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::identifier::SchemaId;
-    /// use uuid::Uuid;
-    ///
-    /// let uuid = Uuid::now_v7();
-    /// let id = SchemaId::from_uuid(uuid);
-    /// assert_eq!(*id.as_uuid(), uuid);
-    /// ```
+    /// Returns the inner `UuidV7` reference.
     #[inline]
     #[must_use]
-    pub const fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-
-    /// Returns the inner UUID reference.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::identifier::SchemaId;
-    ///
-    /// let id = SchemaId::new();
-    /// let _ = id.as_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_uuid(&self) -> &Uuid {
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
         &self.0
     }
+}
 
-    /// Returns the inner UUID by value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::identifier::SchemaId;
-    ///
-    /// let id = SchemaId::new();
-    /// let _uuid = id.into_uuid();
-    /// ```
+impl From<UuidV7> for SchemaId {
     #[inline]
-    #[must_use]
-    pub const fn into_uuid(self) -> Uuid {
-        self.0
+    fn from(value: UuidV7) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<Uuid> for SchemaId {
+    type Error = crate::support::UuidV7Error;
+
+    #[inline]
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Ok(Self(UuidV7::try_from_uuid(value)?))
     }
 }
 
@@ -389,6 +366,15 @@ mod tests {
         let id1 = SchemaId::new();
         let id2 = SchemaId::new();
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn schema_id_exposes_uuid_v7_view() {
+        let id = SchemaId::new();
+        assert_eq!(
+            id.as_uuid_v7().as_uuid().get_version(),
+            Some(uuid::Version::SortRand)
+        );
     }
 
     #[test]
