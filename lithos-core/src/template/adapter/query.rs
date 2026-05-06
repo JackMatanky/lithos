@@ -1,11 +1,9 @@
 //! Template query implementations (CQRS read operations).
 
-use uuid::Uuid;
-
 use crate::{
     db::Database,
     template::{
-        aggregate::Template,
+        aggregate::{Template, TemplateId},
         db_table::{NAME_TO_ID, TEMPLATES},
         error::TemplateError,
         ports::Query as QueryPort,
@@ -32,7 +30,10 @@ impl QueryPort for Query<'_> {
     type Archived<'archived> = &'archived rkyv::Archived<Template>;
 
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
+    fn find_by_id(
+        &self,
+        id: TemplateId,
+    ) -> Result<Option<Template>, TemplateError> {
         self.db.get_owned(TEMPLATES, &id.to_string()).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
@@ -66,7 +67,7 @@ impl QueryPort for Query<'_> {
     #[inline]
     fn with_archived<F, R>(
         &self,
-        id: Uuid,
+        id: TemplateId,
         f: F,
     ) -> Result<Option<R>, TemplateError>
     where

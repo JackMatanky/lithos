@@ -118,7 +118,7 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
                     .reader
                     .get_owned_by_uuid::<RawSchemaView>(
                         RAW_SCHEMA_VIEWS,
-                        id.as_uuid_v7().into_uuid(),
+                        *id.as_uuid_v7(),
                     )
                     .map_err(map_db_error)?
             {
@@ -175,7 +175,7 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
         self.reader
             .get_owned_by_uuid::<RawSchemaView>(
                 RAW_SCHEMA_VIEWS,
-                id.as_uuid_v7().into_uuid(),
+                *id.as_uuid_v7(),
             )
             .map_err(map_db_error)
     }
@@ -571,10 +571,7 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::SCHEMA_BY_ID;
 
         self.db
-            .get_owned_by_uuid::<Schema>(
-                SCHEMA_BY_ID,
-                id.as_uuid_v7().into_uuid(),
-            )
+            .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, *id.as_uuid_v7())
             .map_err(map_db_error)
     }
 
@@ -599,10 +596,10 @@ impl Repository for RedbRepository {
 
         ids.iter()
             .filter_map(|id| {
-                match self.db.get_owned_by_uuid::<Schema>(
-                    SCHEMA_BY_ID,
-                    id.as_uuid_v7().into_uuid(),
-                ) {
+                match self
+                    .db
+                    .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, *id.as_uuid_v7())
+                {
                     Ok(Some(schema)) => Some(Ok(schema)),
                     Ok(None) => None,
                     Err(e) => Some(Err(map_db_error(e))),
@@ -758,7 +755,7 @@ impl Repository for RedbRepository {
                     // Save schema by ID
                     batch.put_by_uuid(
                         SCHEMA_BY_ID,
-                        schema.id().as_uuid_v7().into_uuid(),
+                        *schema.id().as_uuid_v7(),
                         *schema,
                     )?;
 
@@ -805,14 +802,8 @@ impl Repository for RedbRepository {
 
         self.db
             .batch_write(|batch| {
-                batch.delete_by_uuid(
-                    SCHEMA_BY_ID,
-                    id.as_uuid_v7().into_uuid(),
-                )?;
-                batch.delete_by_uuid(
-                    RAW_SCHEMA_VIEWS,
-                    id.as_uuid_v7().into_uuid(),
-                )?;
+                batch.delete_by_uuid(SCHEMA_BY_ID, *id.as_uuid_v7())?;
+                batch.delete_by_uuid(RAW_SCHEMA_VIEWS, *id.as_uuid_v7())?;
                 if let Some(schema) = schema.as_ref() {
                     batch.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
                 }
@@ -891,7 +882,7 @@ impl Repository for RedbRepository {
         use crate::schema::db_table::RAW_SCHEMA_VIEWS;
 
         self.db
-            .get_owned_by_uuid(RAW_SCHEMA_VIEWS, id.as_uuid_v7().into_uuid())
+            .get_owned_by_uuid(RAW_SCHEMA_VIEWS, *id.as_uuid_v7())
             .map_err(map_db_error)
     }
 
@@ -906,11 +897,7 @@ impl Repository for RedbRepository {
         self.db
             .batch_write(|batch| {
                 let path_key = view.file_path().as_path().to_string_lossy();
-                batch.put_by_uuid(
-                    RAW_SCHEMA_VIEWS,
-                    id.as_uuid_v7().into_uuid(),
-                    view,
-                )?;
+                batch.put_by_uuid(RAW_SCHEMA_VIEWS, *id.as_uuid_v7(), view)?;
                 batch.put(SCHEMA_ID_BY_PATH, path_key.as_ref(), &id)?;
                 Ok(())
             })
@@ -1014,7 +1001,7 @@ impl Repository for RedbRepository {
                     if let Some(view) = reader
                         .get_owned_by_uuid::<RawSchemaView>(
                             RAW_SCHEMA_VIEWS,
-                            id.as_uuid_v7().into_uuid(),
+                            *id.as_uuid_v7(),
                         )?
                     {
                         results.insert(path.clone(), view);

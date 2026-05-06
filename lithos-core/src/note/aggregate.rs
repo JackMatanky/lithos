@@ -31,7 +31,10 @@ use super::{
     task::Task,
     value::FieldValue,
 };
-use crate::config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec};
+use crate::{
+    config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
+    support::UuidV7,
+};
 
 /// Stable identifier for a note.
 ///
@@ -51,7 +54,7 @@ use crate::config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec};
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct NoteId(Uuid);
+pub struct NoteId(UuidV7);
 
 impl NoteId {
     /// Creates a new random note identifier (UUID v7).
@@ -65,7 +68,7 @@ impl NoteId {
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(Uuid::now_v7())
+        Self(UuidV7::new())
     }
 
     /// Parses a note identifier from a string.
@@ -80,10 +83,18 @@ impl NoteId {
     ///
     /// # Errors
     ///
-    /// Returns [`uuid::Error`] if the string is not a valid UUID.
+    /// Returns [`crate::support::UuidV7Error`] if parsing fails or UUID is not
+    /// v7.
     #[inline]
-    pub fn parse(id: &str) -> Result<Self, uuid::Error> {
-        Ok(Self(Uuid::parse_str(id)?))
+    pub fn parse(id: &str) -> Result<Self, crate::support::UuidV7Error> {
+        Ok(Self(UuidV7::parse(id)?))
+    }
+
+    /// Returns the inner `UuidV7` reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
+        &self.0
     }
 }
 
@@ -101,17 +112,19 @@ impl Default for NoteId {
     }
 }
 
-impl From<Uuid> for NoteId {
-    #[inline]
-    fn from(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
 impl From<NoteId> for Uuid {
     #[inline]
     fn from(id: NoteId) -> Uuid {
-        id.0
+        id.0.into_uuid()
+    }
+}
+
+impl TryFrom<Uuid> for NoteId {
+    type Error = crate::support::UuidV7Error;
+
+    #[inline]
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Ok(Self(UuidV7::try_from_uuid(value)?))
     }
 }
 

@@ -10,6 +10,7 @@ use redb::{
 use rkyv::util::AlignedVec;
 
 use super::{Database, DbError};
+use crate::support::UuidV7;
 
 impl Database {
     /// Zero-copy read from a specific table definition (HOT PATH for LSP).
@@ -75,7 +76,7 @@ impl Database {
     pub fn get_by_uuid<V, F, R>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
         f: F,
     ) -> Result<Option<R>, DbError>
     where
@@ -88,7 +89,7 @@ impl Database {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         read_archived::<V, _, _>(&self.inner, table, key, f)
     }
 
@@ -102,7 +103,7 @@ impl Database {
     pub fn get_owned_by_uuid<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<Option<V>, DbError>
     where
         V: rkyv::Archive,
@@ -116,7 +117,7 @@ impl Database {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         deserialize_owned::<V>(&self.inner, table, key)
     }
 
@@ -339,7 +340,7 @@ impl BatchReader {
     pub fn get_by_uuid<V, F, R>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
         f: F,
     ) -> Result<Option<R>, DbError>
     where
@@ -352,7 +353,7 @@ impl BatchReader {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         read_archived_tx::<V, _, _>(&self.tx, table, key, f)
     }
 
@@ -365,7 +366,7 @@ impl BatchReader {
     pub fn get_owned_by_uuid<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<Option<V>, DbError>
     where
         V: rkyv::Archive,
@@ -379,7 +380,7 @@ impl BatchReader {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         get_owned_tx(&self.tx, table, key)
     }
 
@@ -1172,8 +1173,11 @@ mod tests {
                     id: 456,
                     name: "Charlie".to_owned(),
                 };
+                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                    .expect("generated uuid should be v7");
 
-                db.put_by_uuid(NOTES_TABLE, id, &value).expect("put_by_uuid");
+                db.put_by_uuid(NOTES_TABLE, id_v7, &value)
+                    .expect("put_by_uuid");
 
                 let result = db
                     .get::<TestValue, _, _>(
@@ -1196,8 +1200,10 @@ mod tests {
                     id: 789,
                     name: "David".to_owned(),
                 };
+                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                    .expect("generated uuid should be v7");
 
-                db.put_by_uuid(ITEMS_TABLE, id, &original)
+                db.put_by_uuid(ITEMS_TABLE, id_v7, &original)
                     .expect("put_by_uuid");
 
                 let result: Option<TestValue> = db

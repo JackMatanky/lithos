@@ -1,9 +1,9 @@
 //! Template query implementations (CQRS read operations).
 
-use uuid::Uuid;
-
 use super::{
-    aggregate::Template, error::TemplateError, ports as template_ports,
+    aggregate::{Template, TemplateId},
+    error::TemplateError,
+    ports as template_ports,
 };
 
 /// Query implementation for Template read operations.
@@ -35,7 +35,7 @@ where
     #[inline]
     pub fn find_by_id(
         &self,
-        id: Uuid,
+        id: TemplateId,
     ) -> Result<Option<Template>, TemplateError> {
         self.port.find_by_id(id)
     }
@@ -68,7 +68,7 @@ where
     #[inline]
     pub fn with_archived<F, R>(
         &self,
-        id: Uuid,
+        id: TemplateId,
         f: F,
     ) -> Result<Option<R>, TemplateError>
     where

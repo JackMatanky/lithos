@@ -5,10 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use uuid::Uuid;
-
 use super::{
-    aggregate::{Template, TemplateName},
+    aggregate::{Template, TemplateId, TemplateName},
     error::TemplateError,
 };
 
@@ -24,7 +22,7 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `TemplateError` if deletion fails.
-    fn delete(&self, id: Uuid) -> Result<(), TemplateError>;
+    fn delete(&self, id: TemplateId) -> Result<(), TemplateError>;
 
     /// Updates an existing template.
     ///
@@ -42,7 +40,10 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError>;
+    fn find_by_id(
+        &self,
+        id: TemplateId,
+    ) -> Result<Option<Template>, TemplateError>;
 
     /// Find a template by name.
     ///
@@ -65,7 +66,7 @@ pub trait Query: Send + Sync {
     /// Returns `TemplateError` if query fails.
     fn with_archived<F, R>(
         &self,
-        id: Uuid,
+        id: TemplateId,
         f: F,
     ) -> Result<Option<R>, TemplateError>
     where
@@ -100,8 +101,8 @@ mod tests {
 /// In-memory template storage for testing.
 #[derive(Clone, Default, Debug)]
 pub struct FakeTemplateStorage {
-    templates: Arc<Mutex<HashMap<Uuid, Template>>>,
-    name_index: Arc<Mutex<HashMap<TemplateName, Uuid>>>,
+    templates: Arc<Mutex<HashMap<TemplateId, Template>>>,
+    name_index: Arc<Mutex<HashMap<TemplateName, TemplateId>>>,
 }
 
 impl FakeTemplateStorage {
@@ -117,7 +118,10 @@ impl Query for FakeTemplateStorage {
     type Archived<'archived> = &'archived Template;
 
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
+    fn find_by_id(
+        &self,
+        id: TemplateId,
+    ) -> Result<Option<Template>, TemplateError> {
         let templates = self
             .templates
             .lock()
@@ -160,7 +164,7 @@ impl Query for FakeTemplateStorage {
     #[inline]
     fn with_archived<F, R>(
         &self,
-        id: Uuid,
+        id: TemplateId,
         f: F,
     ) -> Result<Option<R>, TemplateError>
     where
@@ -238,7 +242,7 @@ impl Command for FakeTemplateStorage {
     }
 
     #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+    fn delete(&self, id: TemplateId) -> Result<(), TemplateError> {
         let mut templates = self
             .templates
             .lock()

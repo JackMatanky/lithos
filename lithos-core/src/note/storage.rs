@@ -398,7 +398,7 @@ impl Repository for RedbRepository<'_> {
     fn delete_note(&self, id: NoteId) -> Result<(), Self::Error> {
         let stored = self
             .db
-            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, *id.as_uuid_v7())
             .map_err(NoteRepositoryError::Storage)?;
 
         if let Some(stored) = stored {
@@ -463,7 +463,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error> {
         self.db
-            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, *id.as_uuid_v7())
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -480,7 +480,7 @@ impl Repository for RedbRepository<'_> {
             return Ok(None);
         };
         self.db
-            .get_owned_by_uuid::<Note>(NOTES_BY_ID, Uuid::from(id))
+            .get_owned_by_uuid::<Note>(NOTES_BY_ID, *id.as_uuid_v7())
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -501,7 +501,7 @@ impl Repository for RedbRepository<'_> {
             return Ok(None);
         };
         self.db
-            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, Uuid::from(id), f)
+            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, *id.as_uuid_v7(), f)
             .map_err(NoteRepositoryError::Storage)
     }
 
@@ -522,7 +522,7 @@ impl Repository for RedbRepository<'_> {
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
         self.db
-            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, Uuid::from(id), f)
+            .get_by_uuid::<Note, _, R>(NOTES_BY_ID, *id.as_uuid_v7(), f)
             .map_err(NoteRepositoryError::Storage)
     }
 

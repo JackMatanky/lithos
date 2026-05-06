@@ -1,9 +1,9 @@
 //! Template command implementations (CQRS write operations).
 
-use uuid::Uuid;
-
 use super::{
-    aggregate::Template, error::TemplateError, ports as template_ports,
+    aggregate::{Template, TemplateId},
+    error::TemplateError,
+    ports as template_ports,
 };
 
 /// Command implementation for Template write operations.
@@ -42,7 +42,7 @@ where
     /// # Errors
     /// Returns `TemplateError` if deletion fails.
     #[inline]
-    pub fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+    pub fn delete(&self, id: TemplateId) -> Result<(), TemplateError> {
         self.port.delete(id)
     }
 

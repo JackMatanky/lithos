@@ -6,6 +6,7 @@
 use redb::{MultimapTableDefinition, ReadableTable as _, TableDefinition};
 
 use super::{Database, DbError};
+use crate::support::UuidV7;
 
 impl Database {
     /// Insert or update a value in a table definition.
@@ -50,7 +51,7 @@ impl Database {
     pub fn put_by_uuid<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
         value: &V,
     ) -> Result<(), DbError>
     where
@@ -65,7 +66,7 @@ impl Database {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         serialize_and_put::<V>(&self.inner, table, key, value)
     }
 
@@ -99,11 +100,11 @@ impl Database {
     pub fn delete_by_uuid(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<bool, DbError> {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         delete_key(&self.inner, table, key)
     }
 
@@ -290,7 +291,7 @@ impl BatchWriter {
     pub fn put_by_uuid<V>(
         &mut self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
         value: &V,
     ) -> Result<(), DbError>
     where
@@ -305,7 +306,7 @@ impl BatchWriter {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
     }
 
@@ -318,11 +319,11 @@ impl BatchWriter {
     pub fn delete_by_uuid(
         &mut self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<bool, DbError> {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         delete_key_tx(&mut self.tx, table, key)
     }
 
@@ -455,7 +456,7 @@ impl ReadWriteUnitOfWork {
     pub fn get_owned_by_uuid<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<Option<V>, DbError>
     where
         V: rkyv::Archive,
@@ -469,7 +470,7 @@ impl ReadWriteUnitOfWork {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         get_owned_tx(&self.tx, table, key)
     }
 
@@ -509,7 +510,7 @@ impl ReadWriteUnitOfWork {
     pub fn put_by_uuid<V>(
         &mut self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
         value: &V,
     ) -> Result<(), DbError>
     where
@@ -524,7 +525,7 @@ impl ReadWriteUnitOfWork {
     {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
     }
 
@@ -551,11 +552,11 @@ impl ReadWriteUnitOfWork {
     pub fn delete_by_uuid(
         &mut self,
         table: TableDefinition<&str, &[u8]>,
-        id: uuid::Uuid,
+        id: UuidV7,
     ) -> Result<bool, DbError> {
         // Stack-allocate a 36-byte buffer for UUID hyphenated format
         let mut buf = [0u8; 36];
-        let key = id.hyphenated().encode_lower(&mut buf);
+        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
         delete_key_tx(&mut self.tx, table, key)
     }
 
@@ -1012,8 +1013,11 @@ mod tests {
                     id: 10,
                     name: "Note".to_owned(),
                 };
+                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                    .expect("generated uuid should be v7");
 
-                db.put_by_uuid(USERS_TABLE, id, &value).expect("put_by_uuid");
+                db.put_by_uuid(USERS_TABLE, id_v7, &value)
+                    .expect("put_by_uuid");
 
                 let fetched: Option<TestValue> = db
                     .get_owned(USERS_TABLE, &id.to_string())
@@ -1030,11 +1034,15 @@ mod tests {
                     id: 11,
                     name: "Delete".to_owned(),
                 };
+                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                    .expect("generated uuid should be v7");
 
-                db.put_by_uuid(USERS_TABLE, id, &value).expect("put_by_uuid");
+                db.put_by_uuid(USERS_TABLE, id_v7, &value)
+                    .expect("put_by_uuid");
 
-                let removed =
-                    db.delete_by_uuid(USERS_TABLE, id).expect("delete_by_uuid");
+                let removed = db
+                    .delete_by_uuid(USERS_TABLE, id_v7)
+                    .expect("delete_by_uuid");
                 assert!(removed);
 
                 let fetched: Option<TestValue> = db
@@ -1052,8 +1060,11 @@ mod tests {
                     id: 12,
                     name: "Nova".to_owned(),
                 };
+                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                    .expect("generated uuid should be v7");
 
-                db.put_by_uuid(USERS_TABLE, id, &value).expect("put_by_uuid");
+                db.put_by_uuid(USERS_TABLE, id_v7, &value)
+                    .expect("put_by_uuid");
 
                 let fetched: Option<TestValue> = db
                     .get_owned(USERS_TABLE, &id.to_string())

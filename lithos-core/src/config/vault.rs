@@ -20,6 +20,7 @@ use super::{
     paths::{Cache, PropertyBank, Schema, Template},
     task::Task,
 };
+use crate::support::UuidV7;
 
 // ----------------------------------------------------------- //
 //                  Fundamental Building Blocks                //
@@ -38,21 +39,21 @@ use super::{
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct VaultId(uuid::Uuid);
+pub struct VaultId(UuidV7);
 
 impl VaultId {
     /// Create a new unique vault identity.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(uuid::Uuid::now_v7())
+        Self(UuidV7::new())
     }
 
-    /// Return the raw UUID.
+    /// Return the inner UUID v7.
     #[inline]
     #[must_use]
-    pub const fn uuid(&self) -> uuid::Uuid {
-        self.0
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
+        &self.0
     }
 }
 
@@ -66,7 +67,7 @@ impl Default for VaultId {
 impl std::fmt::Display for VaultId {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.as_uuid())
     }
 }
 /// A validated, absolute path to a vault root.

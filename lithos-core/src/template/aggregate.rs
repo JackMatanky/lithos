@@ -13,6 +13,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt,
     sync::LazyLock,
 };
 
@@ -30,6 +31,89 @@ use super::{
     events::{Events, TemplateCreated},
     value::InputSpec,
 };
+use crate::support::UuidV7;
+
+/// Template identity constrained to UUID v7.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
+pub struct TemplateId(UuidV7);
+
+impl TemplateId {
+    /// Creates a new UUID v7 template identifier.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(UuidV7::new())
+    }
+
+    /// Returns the inner UUID v7 reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
+        &self.0
+    }
+
+    /// Wraps a UUID without validating version.
+    #[inline]
+    #[must_use]
+    pub const fn from_uuid_unchecked(uuid: Uuid) -> Self {
+        Self(UuidV7::from_uuid_unchecked(uuid))
+    }
+
+    /// Validates and wraps a UUID as template identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns `UuidV7Error` when `uuid` is not version 7.
+    #[inline]
+    pub fn try_from_uuid(
+        uuid: Uuid,
+    ) -> Result<Self, crate::support::UuidV7Error> {
+        Ok(Self(UuidV7::try_from_uuid(uuid)?))
+    }
+}
+
+impl Default for TemplateId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<TemplateId> for Uuid {
+    #[inline]
+    fn from(value: TemplateId) -> Self {
+        value.0.into_uuid()
+    }
+}
+
+impl TryFrom<Uuid> for TemplateId {
+    type Error = crate::support::UuidV7Error;
+
+    #[inline]
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Self::try_from_uuid(value)
+    }
+}
+
+impl fmt::Display for TemplateId {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.as_uuid())
+    }
+}
 
 const RESERVED_WORDS: &[&str] = &[
     "block",
@@ -211,16 +295,7 @@ impl TryFrom<&str> for InputName {
 }
 
 /// Metadata for template management.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    RkyvSerialize,
-    RkyvDeserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, RkyvSerialize, RkyvDeserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Metadata {
@@ -251,21 +326,12 @@ impl Default for Metadata {
 }
 
 /// Aggregate root representing a reusable template metadata schema.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    RkyvSerialize,
-    RkyvDeserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, RkyvSerialize, RkyvDeserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Template {
     /// UUID v7 identity.
-    pub id: Uuid,
+    pub id: TemplateId,
     /// Unique template name.
     pub name: TemplateName,
     /// Optional parent template name.
@@ -278,7 +344,6 @@ pub struct Template {
     pub metadata: Metadata,
     /// Domain events pending emission.
     #[rkyv(with = Skip)]
-    #[serde(skip)]
     pub pending_events: Vec<Events>,
 }
 
@@ -309,7 +374,7 @@ impl Template {
             }
         }
 
-        let id = Uuid::now_v7();
+        let id = TemplateId::new();
         let mut template = Self {
             id,
             name: name.clone(),
@@ -321,7 +386,7 @@ impl Template {
         };
 
         template.add_event(Events::TemplateCreated(TemplateCreated::new(
-            id,
+            id.into(),
             name.as_str(),
             chrono::Utc::now().timestamp(),
         )));
@@ -388,7 +453,7 @@ impl Template {
     /// Returns the template's unique identifier.
     #[inline]
     #[must_use]
-    pub const fn id(&self) -> Uuid {
+    pub const fn id(&self) -> TemplateId {
         self.id
     }
 

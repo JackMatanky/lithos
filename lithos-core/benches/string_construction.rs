@@ -169,6 +169,7 @@ use lithos_core::{
     schema::{
         identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
     },
+    support::UuidV7,
     template::aggregate::{Template, TemplateName},
 };
 use redb::TableDefinition;
@@ -411,7 +412,7 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             black_box(score_str);
 
             // Task 2: UUID-native database operations
-            let template_uuid = Uuid::now_v7();
+            let template_uuid = UuidV7::from_uuid_unchecked(Uuid::now_v7());
             let name = TemplateName::try_from("workflow-template")
                 .expect("valid name");
             let template =

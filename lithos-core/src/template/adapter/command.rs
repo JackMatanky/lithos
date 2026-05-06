@@ -1,11 +1,9 @@
 //! Template command implementations (CQRS write operations).
 
-use uuid::Uuid;
-
 use crate::{
     db::Database,
     template::{
-        aggregate::Template,
+        aggregate::{Template, TemplateId},
         db_table::{NAME_TO_ID, TEMPLATES},
         error::TemplateError,
         ports::Command as CommandPort,
@@ -34,7 +32,7 @@ impl CommandPort for Command<'_> {
         let id_str = template.id().to_string();
 
         self.db
-            .put_by_uuid(TEMPLATES, template.id(), template)
+            .put_by_uuid(TEMPLATES, *template.id().as_uuid_v7(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
@@ -45,7 +43,7 @@ impl CommandPort for Command<'_> {
     }
 
     #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+    fn delete(&self, id: TemplateId) -> Result<(), TemplateError> {
         let id_str = id.to_string();
 
         let template = self
@@ -59,7 +57,7 @@ impl CommandPort for Command<'_> {
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
             self.db
-                .delete_by_uuid(TEMPLATES, id)
+                .delete_by_uuid(TEMPLATES, *id.as_uuid_v7())
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
         }
 
@@ -87,7 +85,7 @@ impl CommandPort for Command<'_> {
         }
 
         self.db
-            .put_by_uuid(TEMPLATES, template.id(), template)
+            .put_by_uuid(TEMPLATES, *template.id().as_uuid_v7(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())

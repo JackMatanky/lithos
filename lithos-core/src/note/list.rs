@@ -26,8 +26,6 @@
 
 use std::fmt;
 
-use uuid::Uuid;
-
 use super::{
     error::{ListError, NoteError},
     inline_fields::InlineField,
@@ -40,6 +38,7 @@ use crate::{
         inline_fields::InlineFieldKey,
         raw::{RawInlineFieldToken, RawListDepth, RawListItem, RawListKind},
     },
+    support::UuidV7,
 };
 
 /// Unique identifier for a list item (UUID v7).
@@ -55,14 +54,21 @@ use crate::{
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug, PartialEq, Eq, Hash))]
-pub struct ListItemId(Uuid);
+pub struct ListItemId(UuidV7);
 
 impl ListItemId {
     /// Creates a new random `ListItemId` (UUID v7).
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(Uuid::now_v7())
+        Self(UuidV7::new())
+    }
+
+    /// Returns the inner `UuidV7` reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
+        &self.0
     }
 }
 

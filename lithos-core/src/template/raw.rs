@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::{
-    aggregate::{Template, TemplateName},
+    aggregate::{Template, TemplateId, TemplateName},
     block::{BlockStrategy, TemplateBlock},
     error::TemplateError,
     value::InputSpec,
@@ -79,7 +79,11 @@ impl TryFrom<RawTemplate> for Template {
 
         let mut template = Template::try_new(&name, extends, blocks, inputs)?;
         if let Some(id) = raw.id {
-            template.id = id;
+            template.id = TemplateId::try_from_uuid(id).map_err(|e| {
+                TemplateError::ValidationFailed(format!(
+                    "template id must be UUID v7: {e}"
+                ))
+            })?;
         }
         Ok(template)
     }

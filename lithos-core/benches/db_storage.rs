@@ -436,7 +436,7 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(note.id()), &note)
+            db.put_by_uuid(NOTES_BY_ID_TABLE, *note.id().as_uuid_v7(), &note)
                 .expect("put note");
         });
     });
@@ -544,7 +544,7 @@ fn bench_delete(c: &mut Criterion) {
             index = index.wrapping_add(1);
 
             let existed = db
-                .delete_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(id))
+                .delete_by_uuid(NOTES_BY_ID_TABLE, *id.as_uuid_v7())
                 .expect("delete note");
             black_box(existed);
         });
@@ -662,8 +662,12 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid(NOTES_BY_ID_TABLE, Uuid::from(note.id()), &note)
-                    .expect("put note");
+                db.put_by_uuid(
+                    NOTES_BY_ID_TABLE,
+                    *note.id().as_uuid_v7(),
+                    &note,
+                )
+                .expect("put note");
             }
         });
     });

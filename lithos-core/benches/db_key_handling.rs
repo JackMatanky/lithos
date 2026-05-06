@@ -163,7 +163,7 @@
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use lithos_core::db::Database;
+use lithos_core::{db::Database, support::UuidV7};
 use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -234,8 +234,12 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Pre-populate with test data
     let test_uuid = Uuid::now_v7();
     let test_key = test_uuid.to_string();
-    db.put_by_uuid(TEMPLATES_TABLE, test_uuid, &"test_value".to_owned())
-        .expect("put_by_uuid");
+    db.put_by_uuid(
+        TEMPLATES_TABLE,
+        UuidV7::from_uuid_unchecked(test_uuid),
+        &"test_value".to_owned(),
+    )
+    .expect("put_by_uuid");
 
     let mut group = c.benchmark_group("uuid_handling");
     group.throughput(Throughput::Elements(1));
@@ -265,7 +269,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Optimized: UUID-native put
     group.bench_function("put_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = Uuid::now_v7();
+            let uuid = UuidV7::from_uuid_unchecked(Uuid::now_v7());
             db.put_by_uuid(
                 TEMPLATES_TABLE,
                 black_box(uuid),
@@ -288,7 +292,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Optimized: UUID-native delete
     group.bench_function("delete_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = Uuid::now_v7();
+            let uuid = UuidV7::from_uuid_unchecked(Uuid::now_v7());
             db.put_by_uuid(TEMPLATES_TABLE, uuid, &"temp".to_owned())
                 .expect("setup");
             let existed = db
