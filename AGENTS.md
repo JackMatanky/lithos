@@ -1,28 +1,62 @@
 # Lithos Rust - AI Agent Reference
 
-## Critical Files - READ FIRST
+## Agent skills
 
-**MUST** review these files before starting any work:
+### Issue tracker
 
-- **Project Context**: [Core rules and patterns](_bmad-output/project-context.md)
-- **PRD**: [Product requirements](_bmad-output/planning-artifacts/prd.md)
-- **Architecture**:
-  - [Core Architectural Decisions](_bmad-output/planning-artifacts/architecture/03-core-architectural-decisions.md)
-  - [Implementation Patterns & Consistency Rules](_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md)
-  - [Project Structure & Boundaries](_bmad-output/planning-artifacts/architecture/05-project-structure-boundaries.md)
+Issues are tracked as local markdown files under `.scratch/<feature>/` in this repository. See `docs/agents/issue-tracker.md`.
 
-## BMAD Agent Activation
+### Triage labels
 
-To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, implement the cache service"`)
+Triage uses the canonical label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
 
-**Available agents**: See [_bmad/_config/agent-manifest.csv](_bmad/_config/agent-manifest.csv) for full list
-- **dev** - Implementation, debugging, refactoring
-- **architect** - System design, ADRs, tech selection
-- **tea** - Test strategy, quality gates
-- **quick-flow-solo-dev** - Rapid prototyping
-- **bmad-master** - General orchestration
+### Domain docs
 
-**Available workflows**: See [_bmad/_config/workflow-manifest.csv](_bmad/_config/workflow-manifest.csv)
+Domain documentation uses a multi-context layout with a root `CONTEXT-MAP.md` that points to per-context `CONTEXT.md` files; ADRs are read per context as mapped. See `docs/agents/domain.md`.
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **lithos** (16934 symbols, 24031 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/lithos/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/lithos/clusters` | All functional areas |
+| `gitnexus://repo/lithos/processes` | All execution flows |
+| `gitnexus://repo/lithos/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->
 
 ## Project-Specific Context
 
@@ -264,7 +298,6 @@ Before marking any task complete:
 1. **Run full verification**: `mise run verify` must be 100% green
 2. **Review test quality**: Critical paths tested, edge cases covered
 3. **Code hygiene check**: No debug prints, commented code, or TODOs
-4. **Documentation**: If architectural change, ADR created in `docs/adr/`
 
 ## Common Commands (mise tasks)
 
@@ -305,17 +338,3 @@ Before marking any task complete:
 | `mise run test:watch`        | Watch mode: automatically run tests on file changes (alias: `tw`).                |
 | `mise run test:burn-in`      | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
 | `mise run test:changed`      | Run tests only for crates affected by changes (alias: `tc`).                      |
-
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked as local markdown files under `.scratch/<feature>/` in this repository. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Triage uses the canonical label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Domain documentation uses a multi-context layout with a root `CONTEXT-MAP.md` that points to per-context `CONTEXT.md` files; ADRs are read per context as mapped. See `docs/agents/domain.md`.
