@@ -306,6 +306,44 @@ impl SourceByteRangeIndex {
     pub fn iter(&self) -> std::slice::Iter<'_, SourceByteRange> {
         self.0.iter()
     }
+
+    /// Sorts ranges by start offset and coalesces overlaps/adjacent ranges.
+    #[inline]
+    pub fn sort_and_coalesce(&mut self) {
+        if self.0.len() < 2 {
+            return;
+        }
+
+        self.0.sort_by_key(SourceByteRange::start);
+        let mut merged: Vec<SourceByteRange> = Vec::with_capacity(self.0.len());
+
+        for range in &self.0 {
+            if let Some(last) = merged.last_mut() {
+                let overlaps_or_adjacent = last.end() >= range.start();
+                if overlaps_or_adjacent {
+                    let merged_end = std::cmp::max(last.end(), range.end());
+                    *last = SourceByteRange::new_unchecked(
+                        last.start(),
+                        merged_end,
+                    );
+                    continue;
+                }
+            }
+            merged.push(range.clone());
+        }
+
+        self.0 = merged;
+    }
+
+    /// Returns true if `offset` falls within any indexed range.
+    #[inline]
+    #[must_use]
+    pub fn contains_offset(&self, offset: SourceByteOffset) -> bool {
+        let idx = self.0.partition_point(|range| range.start() <= offset);
+        self.0
+            .get(idx.saturating_sub(1))
+            .is_some_and(|range| idx > 0 && offset < range.end())
+    }
 }
 
 impl Default for SourceByteRangeIndex {
@@ -808,5 +846,41 @@ mod tests {
         );
         let result = SourceLocationRange::new(start, end);
         assert!(matches!(result, Err(NoteError::Structure(_))));
+    }
+
+    #[test]
+    fn range_index_sort_and_coalesce_merges_overlapping_and_adjacent() {
+        let mut index = SourceByteRangeIndex::new();
+        index.push(SourceByteRange::try_from(5..8).expect("range"));
+        index.push(SourceByteRange::try_from(0..3).expect("range"));
+        index.push(SourceByteRange::try_from(3..5).expect("range"));
+        index.push(SourceByteRange::try_from(10..12).expect("range"));
+        index.push(SourceByteRange::try_from(11..15).expect("range"));
+
+        index.sort_and_coalesce();
+
+        assert_eq!(index.len(), 2);
+        assert_eq!(
+            index
+                .iter()
+                .map(SourceByteRange::as_usize_range)
+                .collect::<Vec<_>>(),
+            vec![0..8, 10..15]
+        );
+    }
+
+    #[test]
+    fn range_index_contains_offset_uses_half_open_bounds() {
+        let mut index = SourceByteRangeIndex::new();
+        index.push(SourceByteRange::try_from(2..6).expect("range"));
+        index.push(SourceByteRange::try_from(10..12).expect("range"));
+        index.sort_and_coalesce();
+
+        assert!(!index.contains_offset(SourceByteOffset::new(1)));
+        assert!(index.contains_offset(SourceByteOffset::new(2)));
+        assert!(index.contains_offset(SourceByteOffset::new(5)));
+        assert!(!index.contains_offset(SourceByteOffset::new(6)));
+        assert!(index.contains_offset(SourceByteOffset::new(10)));
+        assert!(!index.contains_offset(SourceByteOffset::new(12)));
     }
 }
