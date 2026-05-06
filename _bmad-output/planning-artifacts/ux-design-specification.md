@@ -2,13 +2,13 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 inputDocuments:
   - label: Project Brief
-    path: _bmad-output/planning-artifacts/discovery/project_brief.md
+    path: docs/project-genesis/project_brief.md
     category: product_brief
   - label: PRD
     path: docs/rust/prd.md
     category: research
   - label: Elicitation Summary
-    path: _bmad-output/planning-artifacts/discovery/elicitation_summary.md
+    path: docs/project-genesis/elicitation_summary.md
     category: research
   - label: Project Context
     path: _bmad-output/project-context.md

@@ -2,11 +2,11 @@
 
 ## Root Documents
 
-### [Elicitation Summary](../_bmad-output/planning-artifacts/discovery/elicitation_summary.md)
+### [Elicitation Summary](./project-genesis/elicitation_summary.md)
 
 This document provides a comprehensive summary of the key findings, discussions, and decisions made during the advanced elicitation sessions for the Lithos project.
 
-### [Project Brief](../_bmad-output/planning-artifacts/discovery/project_brief.md)
+### [Project Brief](./project-genesis/project_brief.md)
 
 This document outlines the project vision, problem statement, proposed solution, target users, goals, and scope for the Lithos CLI tool.
 
