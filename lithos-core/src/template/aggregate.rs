@@ -65,13 +65,6 @@ impl TemplateId {
         &self.0
     }
 
-    /// Wraps a UUID without validating version.
-    #[inline]
-    #[must_use]
-    pub const fn from_uuid_unchecked(uuid: Uuid) -> Self {
-        Self(UuidV7::from_uuid_unchecked(uuid))
-    }
-
     /// Validates and wraps a UUID as template identity.
     ///
     /// # Errors

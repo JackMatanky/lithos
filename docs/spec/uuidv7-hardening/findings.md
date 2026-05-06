@@ -221,6 +221,32 @@ Call sites then borrow key as `&str` once, centrally.
   - `mise run lint` passed.
   - `mise run verify` passed (unit, integration, and doc tests green; only non-fatal mise warnings about expected output artifact paths).
 
+## API hardening findings (Step 7)
+
+- `from_uuid_unchecked` usage was fully removable in current code: all remaining call sites were benchmark helpers or wrapper passthroughs.
+- Hardening change set:
+  - Removed `UuidV7::from_uuid_unchecked` from `lithos-core/src/support/uuid.rs`.
+  - Removed `TemplateId::from_uuid_unchecked` from `lithos-core/src/template/aggregate.rs`.
+  - Migrated benchmark constructors to validated conversion with explicit invariant checks (`UuidV7::try_from_uuid(...).expect(...)`).
+- Net effect: API surface now prefers validated construction (`try_from_uuid`, `TryFrom<Uuid>`) and eliminates public unchecked constructors from this migration path.
+- Validation evidence after hardening:
+  - `mise run lint` passed.
+  - `mise run verify` passed.
+
+## DB helper dedupe findings (Step 8)
+
+- UUID key encoding in DB internals is now centralized via internal helper `with_uuid_v7_key`.
+- Implemented in:
+  - `lithos-core/src/db/reader.rs`
+  - `lithos-core/src/db/writer.rs`
+- Effect:
+  - removed repeated inline buffer/encode blocks from Database, BatchReader,
+    BatchWriter, and ReadWriteUnitOfWork UUID paths.
+  - preserved zero-allocation behavior and call-site signatures.
+- Validation evidence:
+  - `mise run lint` passed.
+  - `mise run verify` passed.
+
 ## Step 1 Spec (Implementation-Ready): `support/uuid.rs`
 
 ### Scope

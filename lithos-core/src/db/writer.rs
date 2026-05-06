@@ -8,6 +8,13 @@ use redb::{MultimapTableDefinition, ReadableTable as _, TableDefinition};
 use super::{Database, DbError};
 use crate::support::UuidV7;
 
+#[inline]
+fn with_uuid_v7_key<R>(id: UuidV7, f: impl FnOnce(&str) -> R) -> R {
+    let mut buf = [0u8; 36];
+    let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
+    f(key)
+}
+
 impl Database {
     /// Insert or update a value in a table definition.
     ///
@@ -64,10 +71,9 @@ impl Database {
                 >,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        serialize_and_put::<V>(&self.inner, table, key, value)
+        with_uuid_v7_key(id, |key| {
+            serialize_and_put::<V>(&self.inner, table, key, value)
+        })
     }
 
     /// Delete a value by key in a table definition.
@@ -102,10 +108,7 @@ impl Database {
         table: TableDefinition<&str, &[u8]>,
         id: UuidV7,
     ) -> Result<bool, DbError> {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        delete_key(&self.inner, table, key)
+        with_uuid_v7_key(id, |key| delete_key(&self.inner, table, key))
     }
 
     /// Execute multiple writes in a batch with a single commit.
@@ -304,10 +307,9 @@ impl BatchWriter {
                 >,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+        with_uuid_v7_key(id, |key| {
+            serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+        })
     }
 
     /// Delete a value by UUID key within the batch transaction.
@@ -321,10 +323,7 @@ impl BatchWriter {
         table: TableDefinition<&str, &[u8]>,
         id: UuidV7,
     ) -> Result<bool, DbError> {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        delete_key_tx(&mut self.tx, table, key)
+        with_uuid_v7_key(id, |key| delete_key_tx(&mut self.tx, table, key))
     }
 
     /// Insert a value into a multimap within the batch transaction using a
@@ -468,10 +467,7 @@ impl ReadWriteUnitOfWork {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        get_owned_tx(&self.tx, table, key)
+        with_uuid_v7_key(id, |key| get_owned_tx(&self.tx, table, key))
     }
 
     /// Insert or update a value within the transaction using a table
@@ -523,10 +519,9 @@ impl ReadWriteUnitOfWork {
                 >,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+        with_uuid_v7_key(id, |key| {
+            serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+        })
     }
 
     /// Delete a value by key within the transaction using a table definition.
@@ -554,10 +549,7 @@ impl ReadWriteUnitOfWork {
         table: TableDefinition<&str, &[u8]>,
         id: UuidV7,
     ) -> Result<bool, DbError> {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        delete_key_tx(&mut self.tx, table, key)
+        with_uuid_v7_key(id, |key| delete_key_tx(&mut self.tx, table, key))
     }
 
     /// Scan entries matching a key prefix within the transaction.

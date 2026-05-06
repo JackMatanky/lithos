@@ -70,16 +70,6 @@ impl UuidV7 {
         })
     }
 
-    /// Wraps a UUID without validating version.
-    ///
-    /// Prefer [`Self::try_from_uuid`] for untrusted inputs.
-    /// Use this method only when the caller already guarantees the UUID is v7.
-    #[inline]
-    #[must_use]
-    pub const fn from_uuid_unchecked(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-
     /// Returns the inner UUID by reference.
     #[inline]
     #[must_use]

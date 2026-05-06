@@ -12,6 +12,13 @@ use rkyv::util::AlignedVec;
 use super::{Database, DbError};
 use crate::support::UuidV7;
 
+#[inline]
+fn with_uuid_v7_key<R>(id: UuidV7, f: impl FnOnce(&str) -> R) -> R {
+    let mut buf = [0u8; 36];
+    let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
+    f(key)
+}
+
 impl Database {
     /// Zero-copy read from a specific table definition (HOT PATH for LSP).
     ///
@@ -87,10 +94,9 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        read_archived::<V, _, _>(&self.inner, table, key, f)
+        with_uuid_v7_key(id, |key| {
+            read_archived::<V, _, _>(&self.inner, table, key, f)
+        })
     }
 
     /// Full deserialization using UUID as key (eliminates allocation).
@@ -115,10 +121,9 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        deserialize_owned::<V>(&self.inner, table, key)
+        with_uuid_v7_key(id, |key| {
+            deserialize_owned::<V>(&self.inner, table, key)
+        })
     }
 
     /// Get all values for a key from a multimap table definition.
@@ -351,10 +356,9 @@ impl BatchReader {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        read_archived_tx::<V, _, _>(&self.tx, table, key, f)
+        with_uuid_v7_key(id, |key| {
+            read_archived_tx::<V, _, _>(&self.tx, table, key, f)
+        })
     }
 
     /// Full deserialization using UUID as key within a transaction.
@@ -378,10 +382,7 @@ impl BatchReader {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        // Stack-allocate a 36-byte buffer for UUID hyphenated format
-        let mut buf = [0u8; 36];
-        let key = id.as_uuid().hyphenated().encode_lower(&mut buf);
-        get_owned_tx(&self.tx, table, key)
+        with_uuid_v7_key(id, |key| get_owned_tx(&self.tx, table, key))
     }
 
     /// Scan a table and return all owned values.

@@ -30,3 +30,15 @@
 - Ran `mise run lint` after fixes: pass.
 - Ran `mise run verify` after fixes: pass (985/985 unit tests, 36/36 integration tests, doctests passed).
 - Marked Step 6 complete in `task_plan.md`.
+- Started Step 7 API hardening: remove/contain `from_uuid_unchecked` and migrate to `TryFrom`-based construction where possible.
+- Removed `UuidV7::from_uuid_unchecked` and `TemplateId::from_uuid_unchecked` from public API surface.
+- Migrated remaining constructor call sites in benchmark files to `UuidV7::try_from_uuid(...).expect(...)`.
+- Attempted GitNexus impact check for `UuidV7`; tool returned `Not connected`.
+- Ran `mise run lint`: pass.
+- Ran `mise run verify`: pass.
+- Marked Step 7 complete in `task_plan.md`.
+- Started Step 8 to dedupe DB UUID key encoding helpers across reader/writer internals.
+- Added internal `with_uuid_v7_key` helper to `db/reader.rs` and `db/writer.rs`; replaced repeated UUID encode snippets in UUID read/write methods.
+- Ran `mise run lint`: pass.
+- Ran `mise run verify`: pass.
+- Marked Step 8 complete in `task_plan.md`.

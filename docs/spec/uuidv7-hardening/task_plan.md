@@ -27,7 +27,10 @@ Identify basic domain types duplicated across contexts (starting with UUID-backe
 | 4. Migrate DB UUID API | complete | Migrated DB `*_by_uuid` signatures to `UuidV7` and adapted schema/note/template call sites |
 | 5. Migrate remaining IDs | complete | Migrated `NoteId`, `ListItemId`, `VaultId`, and introduced `TemplateId` across template ports/adapters |
 | 6. Verify and benchmark | complete | Fixed benchmark `Uuid`->`UuidV7` call sites, then ran `mise run lint` and `mise run verify` successfully |
+| 7. API hardening | complete | Removed `from_uuid_unchecked` APIs and migrated call sites to `try_from_uuid` with full lint/verify pass |
+| 8. DB UUID helper dedupe | complete | Added internal `with_uuid_v7_key` helper in db reader/writer and removed repeated UUID encode snippets |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |---|---|---|
+| GitNexus unavailable for impact checks | 1 | Proceeded with grep+compile+verify loop and logged limitation (`Not connected`) |
