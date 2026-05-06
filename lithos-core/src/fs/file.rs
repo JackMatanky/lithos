@@ -13,6 +13,12 @@
 //! - Domain contexts: Store and query file metadata with zero-copy access via
 //!   rkyv
 
+#![expect(
+    clippy::module_name_repetitions,
+    reason = "File* names are intentional and clear in this file-specific \
+              module"
+)]
+
 use std::{
     fs::DirEntry,
     path::{Path, PathBuf},
@@ -26,7 +32,7 @@ use rkyv::{
 
 use crate::{fs::error::DirEntryError, prelude::W};
 
-/// FileName for vault-scoped files (schemas, notes, templates).
+/// `FileName` for vault-scoped files (schemas, notes, templates).
 ///
 /// Stores only the filename with its extension (e.g., "note.toml").
 /// Vault directories are typically assumed to be flat or managed via
@@ -337,6 +343,11 @@ impl TryFrom<W<&DirEntry>> for FileEntry {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules use conventional test function before nested mod \
+              ordering"
+)]
 mod tests {
     use super::*;
 

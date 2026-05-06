@@ -16,7 +16,7 @@ use crate::{
         error::{SchemaIngestionError, SchemaStorageError},
         raw::{RawPropertyBank, RawSchema},
         views::{
-            contracts::{RawView, RawViewRead, Version, VersionRead},
+            contracts::{RawView, RawViewRead, Version, VersionRead as _},
             hashes::HashRecord,
             snapshots::{
                 ArchivedPropertyBankVersion, ArchivedSchemaVersion,
@@ -82,15 +82,6 @@ impl RawSchemaView {
             .unwrap_or("")
     }
 
-    /// Adds a new version to the history, evicting the oldest if at capacity.
-    #[inline]
-    pub fn add_version(&mut self, version: SchemaVersion) {
-        if self.versions.len() >= Self::MAX_VERSIONS {
-            self.versions.pop();
-        }
-        self.versions.insert(0, version);
-    }
-
     /// Creates a view from a raw schema with hashes.
     ///
     /// Use this when you have computed hashes and want to persist a new
@@ -135,7 +126,17 @@ impl RawView for RawSchemaView {
 
     #[inline]
     fn add_version(&mut self, version: Self::Version) {
-        RawSchemaView::add_version(self, version);
+        if self.versions.len() >= Self::MAX_VERSIONS {
+            self.versions.pop();
+        }
+        self.versions.insert(0, version);
+    }
+
+    #[inline]
+    fn update_file_info(&mut self, info: FileInfo) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_info(info);
+        }
     }
 
     #[inline]
@@ -262,15 +263,6 @@ impl RawPropertyBankView {
         &self.path
     }
 
-    /// Adds a new version to history, evicting the oldest if at capacity.
-    #[inline]
-    pub fn add_version(&mut self, version: PropertyBankVersion) {
-        if self.versions.len() >= Self::MAX_VERSIONS {
-            self.versions.pop();
-        }
-        self.versions.insert(0, version);
-    }
-
     /// Creates a view from a raw property bank with hashes.
     ///
     /// Use this when you have computed hashes and want to persist a new
@@ -316,7 +308,17 @@ impl RawView for RawPropertyBankView {
 
     #[inline]
     fn add_version(&mut self, version: Self::Version) {
-        RawPropertyBankView::add_version(self, version);
+        if self.versions.len() >= Self::MAX_VERSIONS {
+            self.versions.pop();
+        }
+        self.versions.insert(0, version);
+    }
+
+    #[inline]
+    fn update_file_info(&mut self, info: FileInfo) {
+        if let Some(current) = self.current_mut() {
+            current.set_file_info(info);
+        }
     }
 
     /// Updates timestamps on the current version, preserving file size.
@@ -411,7 +413,10 @@ mod tests {
 
     mod raw_schema_view {
         use super::*;
-        use crate::schema::raw::{RawPropertyMap, RawSchemaVersion};
+        use crate::schema::{
+            raw::{RawPropertyMap, RawSchemaVersion},
+            views::RawPropertyMapHash,
+        };
 
         #[test]
         fn supports_zero_copy_staleness_checks() {
@@ -476,7 +481,10 @@ mod tests {
 
     mod raw_property_bank_view {
         use super::*;
-        use crate::schema::raw::{RawPropertyMap, RawSchemaVersion};
+        use crate::schema::{
+            raw::{RawPropertyMap, RawSchemaVersion},
+            views::RawPropertyMapHash,
+        };
 
         #[test]
         fn supports_zero_copy_staleness_checks() {

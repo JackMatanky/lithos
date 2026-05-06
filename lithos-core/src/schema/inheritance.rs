@@ -168,20 +168,18 @@ where
         crate::schema::error::SchemaInheritanceError,
     >
     where
-        T: Clone
-            + crate::graph::GraphNode<Payload = T>
-            + crate::graph::DiGraphNode,
+        T: Clone + crate::graph::GraphNode,
     {
         let mut builder = SchemaGraphBuilder::new();
-        for (id, payload) in &self.nodes {
-            builder.add_node(*id, payload.clone());
+        for (id, node) in &self.nodes {
+            builder.add_node(*id, node.clone());
         }
         for (child_id, parent_ids) in &self.parents {
             for &parent_id in parent_ids {
                 builder.add_parent(*child_id, parent_id);
             }
         }
-        builder.build::<T>().try_into_dag().map_err(|_e| {
+        builder.build().try_into_dag().map_err(|_e| {
             crate::schema::error::SchemaInheritanceError::CycleDetected {
                 nodes: Vec::new(),
             }
@@ -191,10 +189,7 @@ where
 
 impl<T> TryFrom<ProcessingGraph<T>> for InheritanceGraph<T>
 where
-    T: rkyv::Archive
-        + Clone
-        + crate::graph::GraphNode
-        + crate::graph::DiGraphNode,
+    T: rkyv::Archive + Clone + crate::graph::GraphNode,
 {
     type Error = crate::schema::error::SchemaInheritanceError;
 
@@ -259,7 +254,7 @@ where
 #[non_exhaustive]
 pub struct ProcessingGraph<T>
 where
-    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+    T: crate::graph::GraphNode,
 {
     inner: Graph<SchemaId, T>,
     topo_cache: Option<Arc<[SchemaId]>>,
@@ -267,7 +262,7 @@ where
 
 impl<T> ProcessingGraph<T>
 where
-    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+    T: crate::graph::GraphNode,
 {
     /// Wraps a graph for processing.
     #[inline]
@@ -376,22 +371,19 @@ where
     /// # Errors
     ///
     /// Returns an error from the mapping closure.
+    #[inline]
     pub fn map_payload<U, E, F>(
         self,
         mut mapper: F,
     ) -> Result<ProcessingGraph<U>, E>
     where
-        U: crate::graph::GraphNode + crate::graph::DiGraphNode,
+        U: crate::graph::GraphNode,
         F: FnMut(SchemaId, T) -> Result<U, E>,
     {
         use std::collections::HashMap;
 
-        // Destructure the inner graph to get its parts
-        let crate::graph::Graph {
-            nodes,
-            parents,
-            children,
-        } = self.inner;
+        // Extract the inner graph parts
+        let (nodes, parents, children) = self.inner.into_parts();
 
         let mut new_nodes = HashMap::with_capacity(nodes.len());
 
@@ -405,11 +397,9 @@ where
         }
 
         Ok(ProcessingGraph {
-            inner: crate::graph::Graph {
-                nodes: new_nodes,
-                parents,
-                children,
-            },
+            inner: crate::graph::Graph::from_parts(
+                new_nodes, parents, children,
+            ),
             topo_cache: self.topo_cache,
         })
     }
@@ -417,7 +407,7 @@ where
 
 impl<T> From<Graph<SchemaId, T>> for ProcessingGraph<T>
 where
-    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+    T: crate::graph::GraphNode,
 {
     #[inline]
     fn from(value: Graph<SchemaId, T>) -> Self {
@@ -427,7 +417,7 @@ where
 
 impl<T> From<ProcessingGraph<T>> for Graph<SchemaId, T>
 where
-    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+    T: crate::graph::GraphNode,
 {
     #[inline]
     fn from(value: ProcessingGraph<T>) -> Self {
@@ -441,24 +431,32 @@ where
 
 /// Builder for constructing a schema inheritance graph.
 ///
-/// Generic over payload type `T`. Call `build::<N>()` to specify the node
-/// wrapper type.
+/// Uses node type `N`. Call `build()` to get a `ProcessingGraph<N>`.
 ///
 /// # Example
 ///
 /// ```
-/// use lithos_core::schema::{
-///     identifier::SchemaId, inheritance::SchemaGraphBuilder,
+/// use lithos_core::{
+///     graph::Node,
+///     schema::{
+///         identifier::SchemaId,
+///         inheritance::{ProcessingGraph, SchemaGraphBuilder},
+///     },
 /// };
 ///
-/// let mut builder = SchemaGraphBuilder::<()>::new();
-/// builder.add_node(SchemaId::new(), ());
-/// let graph = builder.build::<()>();
+/// let mut builder = SchemaGraphBuilder::<Node<()>>::new();
+/// builder.add_node(SchemaId::new(), Node::new(()));
+/// let graph: ProcessingGraph<Node<()>> = builder.build();
 /// ```
 #[non_exhaustive]
-pub struct SchemaGraphBuilder<T>(GraphBuilder<SchemaId, T>);
+pub struct SchemaGraphBuilder<N>(GraphBuilder<SchemaId, N>)
+where
+    N: crate::graph::GraphNode;
 
-impl<T> SchemaGraphBuilder<T> {
+impl<N> SchemaGraphBuilder<N>
+where
+    N: crate::graph::GraphNode,
+{
     /// Creates a new graph builder.
     #[inline]
     #[must_use]
@@ -475,8 +473,8 @@ impl<T> SchemaGraphBuilder<T> {
 
     /// Adds a node to the graph with its payload.
     #[inline]
-    pub fn add_node(&mut self, id: SchemaId, payload: T) {
-        self.0.add_node(id, payload);
+    pub fn add_node(&mut self, id: SchemaId, node: N) {
+        self.0.add_node(id, node);
     }
 
     /// Adds a parent relationship (child extends parent).
@@ -486,27 +484,24 @@ impl<T> SchemaGraphBuilder<T> {
     }
 
     /// Builds the graph with normalized adjacency lists.
-    ///
-    /// The type parameter `N` specifies the node wrapper type (e.g., `Node<T>`
-    /// for `()` payload, or `ProcessorNode<T>` for schema processing).
     #[inline]
     #[must_use]
-    pub fn build<N>(self) -> ProcessingGraph<N>
-    where
-        N: crate::graph::GraphNode<Payload = T> + crate::graph::DiGraphNode,
-    {
-        ProcessingGraph::from(self.0.build::<N>())
+    pub fn build(self) -> ProcessingGraph<N> {
+        ProcessingGraph::from(self.0.build())
     }
 
     /// Consumes self and returns the inner builder.
     #[inline]
     #[must_use]
-    pub fn into_inner(self) -> GraphBuilder<SchemaId, T> {
+    pub fn into_inner(self) -> GraphBuilder<SchemaId, N> {
         self.0
     }
 }
 
-impl<T> Default for SchemaGraphBuilder<T> {
+impl<N> Default for SchemaGraphBuilder<N>
+where
+    N: crate::graph::GraphNode,
+{
     #[inline]
     fn default() -> Self {
         Self::new()
@@ -556,7 +551,7 @@ pub fn affected_subtree<T>(
     changed_ids: &HashSet<SchemaId>,
 ) -> HashSet<SchemaId>
 where
-    T: crate::graph::GraphNode + crate::graph::DiGraphNode,
+    T: crate::graph::GraphNode,
 {
     let mut affected = HashSet::with_capacity(changed_ids.len());
     let mut queue = VecDeque::new();
@@ -591,7 +586,6 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::graph::NodeDepth;
 
     #[test]
     fn inheritance_graph_validates_dag() {
@@ -603,33 +597,12 @@ mod tests {
         builder.add_node(child, ());
         builder.add_parent(child, parent);
 
-        let graph = builder.build::<()>();
+        let graph = builder.build();
         let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
 
         assert_eq!(dag.roots(), &[parent]);
         assert_eq!(dag.topo_order().first(), Some(&parent));
         assert!(dag.topo_order().contains(&child));
-    }
-
-    #[test]
-    fn inheritance_graph_computes_depths() {
-        let parent = SchemaId::new();
-        let child = SchemaId::new();
-
-        let mut builder = SchemaGraphBuilder::new();
-        builder.add_node(parent, ());
-        builder.add_node(child, ());
-        builder.add_parent(child, parent);
-
-        let graph = builder.build::<()>();
-        let dag = InheritanceGraph::try_from(graph).expect("valid DAG");
-
-        let underlying_dag = dag.to_dag_graph().expect("valid DAG");
-        let depths =
-            underlying_dag.graph().compute_depths(underlying_dag.topo_order());
-
-        assert_eq!(depths.get(&parent), Some(&NodeDepth::ROOT));
-        assert_eq!(depths.get(&child), Some(&NodeDepth::new(1)));
     }
 
     #[test]
@@ -643,7 +616,7 @@ mod tests {
         builder.add_parent(a, b);
         builder.add_parent(b, a); // Cycle!
 
-        let graph = builder.build::<()>();
+        let graph = builder.build();
         let result = InheritanceGraph::try_from(graph);
 
         result.unwrap_err();
@@ -679,7 +652,7 @@ mod tests {
         builder.add_parent(d, b);
         builder.add_parent(e, c);
 
-        let graph = builder.build::<()>();
+        let graph = builder.build();
         let changed = HashSet::from([b]);
         let affected = affected_subtree(graph.as_inner(), &changed);
 
@@ -704,7 +677,7 @@ mod tests {
         builder.add_node(c, ());
         builder.add_parent(c, a);
 
-        let graph = builder.build::<()>();
+        let graph = builder.build();
         let changed = HashSet::from([a, b]); // Two separate roots
         let affected = affected_subtree(graph.as_inner(), &changed);
 

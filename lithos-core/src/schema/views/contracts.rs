@@ -215,6 +215,24 @@ pub trait Version: VersionRead + Sized {
 /// Exposes minimal staleness and format information needed by view containers
 /// and archived access paths.
 pub trait VersionRead {
+    /// Returns file info metadata for this version.
+    ///
+    /// # Panics
+    /// Default implementation panics - archived types must override
+    /// `is_timestamp_match()` directly instead of calling this method.
+    #[inline]
+    #[expect(
+        clippy::panic,
+        reason = "Intentional panic for unimplemented default - not reachable \
+                  in production"
+    )]
+    fn file_info(&self) -> &FileInfo {
+        panic!(
+            "Archived types must override is_timestamp_match() instead of \
+             using file_info()"
+        )
+    }
+
     /// Returns `true` if the content hash matches this version.
     fn is_content_match(&self, hash: &Blake3Hash) -> bool;
 
@@ -224,18 +242,6 @@ pub trait VersionRead {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> bool;
-
-    /// Returns file info metadata for this version.
-    ///
-    /// # Panics
-    /// Default implementation panics - archived types must override
-    /// `is_timestamp_match()` directly instead of calling this method.
-    fn file_info(&self) -> &FileInfo {
-        panic!(
-            "Archived types must override is_timestamp_match() instead of \
-             using file_info()"
-        )
-    }
 
     /// Returns the format version string (e.g., `"1.0"`).
     fn version(&self) -> &str;

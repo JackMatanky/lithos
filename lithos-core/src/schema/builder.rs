@@ -1,16 +1,20 @@
 #![expect(clippy::missing_errors_doc, reason = "Facade methods")]
 #![expect(clippy::missing_inline_in_public_items, reason = "Facade methods")]
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "builder context uses pub(crate) fields for tests"
+)]
 
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     config::aggregate::Config,
-    fs::{FsReader, RelativePath},
+    fs::{DirScanInput, DirScanner, FsReader, RelativePath},
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        discovery::{DiscoveredFile, DiscoveryEngine, DiscoveryOutcome},
         error::SchemaLoaderError,
+        inheritance::InheritanceGraph,
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, Construction,
@@ -52,59 +56,121 @@ where
 
     /// Run the full ingestion pipeline.
     pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
-        // Step 1: Convert config to schema spec for unified discovery engine
-        let spec = self.config.to_schema_spec();
+        use super::schema_processor::{
+            Discovery, DiscoveryBranch, NeverSeen, Review, SchemaProcessor,
+        };
 
-        // Step 2: Run unified discovery engine (single atomic batch
-        // transaction)
-        let discovery_outcome =
-            DiscoveryEngine::run(&spec, &self.repository, self.source.root())?;
+        let mut bank_branch = BankContextBranch::Missing;
+        let files_context = self.discover_files(|context| {
+            bank_branch = BankContextBranch::Present(context);
+        })?;
+        let graph_branch = self.discover_graph()?;
 
-        // Step 3: Load property bank from discovery data if present
-        let property_bank =
-            if let Some((_, bank_file)) = discovery_outcome.property_bank() {
-                Some(self.load_property_bank_from_discovery(bank_file)?)
-            } else {
+        let property_bank = match bank_branch {
+            BankContextBranch::Missing => {
                 self.property_bank_delta = None;
                 None
-            };
+            }
+            BankContextBranch::Present(context) => {
+                Some(self.load_property_bank(&context)?)
+            }
+        };
 
-        // Step 4: Early exit if no schemas on disk
-        if !discovery_outcome.has_schemas() {
+        if files_context.files.is_empty() {
             return Ok(Vec::new());
         }
 
         let property_bank = property_bank.unwrap_or_else(PropertyBank::new);
 
-        // Step 5: Delete schemas removed from filesystem
-        for deleted_id in &discovery_outcome.deleted_schemas {
-            self.repository
-                .delete_schema(*deleted_id)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-        }
+        let branch = match graph_branch {
+            GraphContextBranch::Present {
+                graph,
+            } => SchemaProcessor::<Discovery, Review>::discover(
+                &files_context,
+                &graph,
+                &self.repository,
+                &self.source,
+            )?,
+            GraphContextBranch::Missing => {
+                SchemaProcessor::<Discovery, NeverSeen>::discover(
+                    &files_context,
+                    &self.source,
+                )?
+            }
+        };
 
-        // Step 6: Process schemas based on cold-start vs incremental
-        if discovery_outcome.is_cold_start() {
-            self.process_cold_start(&discovery_outcome, &property_bank)
-        } else {
-            self.process_incremental(&discovery_outcome, &property_bank)
+        match branch {
+            DiscoveryBranch::AllMissing(missing) => {
+                let parsed_new = missing.parse(&self.source)?;
+                let new_build = parsed_new.build_new_graph()?;
+                new_build
+                    .construct_new_schemas(&self.repository, &property_bank)
+            }
+            DiscoveryBranch::HasPresent(present) => {
+                let compared = present
+                    .compare(&self.source, self.property_bank_delta.as_ref())?;
+                let parsed = compared.parse(&self.source)?;
+                let graphed = parsed.build_graph()?;
+                let analyzed = graphed.analyze_properties(
+                    &self.source,
+                    &property_bank,
+                    self.property_bank_delta.as_ref(),
+                )?;
+                let refreshed = analyzed.refresh_metadata(&self.repository)?;
+                let constructed = refreshed
+                    .construct_schemas(&self.repository, &property_bank)?;
+                let schemas =
+                    constructed.complete(&self.repository)?.into_schemas();
+                Ok(schemas)
+            }
         }
     }
 
-    /// Load property bank from discovery data.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if property bank processing fails.
-    fn load_property_bank_from_discovery(
+    /// Load and construct the `PropertyBank`, automatically handling
+    /// incremental staleness.
+    pub(crate) fn load_property_bank(
         &mut self,
-        discovered: &DiscoveredFile,
+        context: &PropertyBankContext,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        // Get bank path from config (needed for helper methods)
-        let bank_path =
+        let config_path = context.path.as_path();
+
+        let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
+        let branch = pipeline.discover(
+            &context.path,
+            &self.source,
+            config_path,
+            &self.repository,
+        )?;
+
+        let (completed, delta) = match branch {
+            ComparisonBranch::Missing(p) => {
+                self.handle_missing(p, &context.path, config_path)?
+            }
+            ComparisonBranch::Present(p) => {
+                self.handle_present(p, &context.path, config_path)?
+            }
+        };
+
+        self.property_bank_delta = delta;
+        Ok(completed)
+    }
+
+    pub(crate) fn discover_files<F>(
+        &self,
+        mut on_bank_found: F,
+    ) -> Result<FilesContext, SchemaLoaderError>
+    where
+        F: FnMut(PropertyBankContext),
+    {
+        use crate::schema::error::SchemaIngestionError;
+
+        const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
+
+        let mut has_property_bank = false;
+        let schema_dir = self.config.paths().schema.schemas_dir();
+        let property_bank_path =
             RelativePath::try_from(self.config.paths().property_bank_path())
                 .map_err(|error| {
-                    use crate::schema::error::SchemaIngestionError;
                     SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                         crate::schema::error::SchemaFileError::FileSystem {
                             reason: format!(
@@ -115,150 +181,80 @@ where
                     ))
                 })?;
 
-        // Call from_discovery() to get the comparison branch
-        let branch =
-            PropertyBankProcessor::<Discovery, Unknown>::from_discovery(
-                &bank_path, discovered,
-            )?;
+        // Scan directory with extension filter (DirScanner handles filtering)
+        let pattern = format!("{}/**/*", schema_dir.as_path().display());
+        let scanner = DirScanner::new(self.source.root());
+        let paths = scanner
+            .paths(
+                DirScanInput::new()
+                    .with_pattern(&pattern)
+                    .with_extensions(&SCHEMA_EXTENSIONS),
+            )
+            .map_err(|e| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::Io {
+                        path: schema_dir.as_path().to_path_buf(),
+                        source: std::io::Error::other(e),
+                    },
+                ))
+            })?;
 
-        // Handle the branch using existing helper methods
-        let (completed, delta) = match branch {
-            ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, &bank_path, bank_path.as_path())?
-            }
-            ComparisonBranch::Present(p) => {
-                self.handle_present(p, &bank_path, bank_path.as_path())?
-            }
-        };
+        // Convert to Vec for FilesContext
+        let mut files = Vec::new();
+        for path in paths {
+            let Ok(relative_path) = RelativePath::try_from(path) else {
+                continue;
+            };
 
-        self.property_bank_delta = delta;
-        Ok(completed)
+            // Check if this is the property bank file
+            if relative_path == property_bank_path {
+                if has_property_bank {
+                    return Err(SchemaLoaderError::Ingestion(
+                        SchemaIngestionError::File(
+                            crate::schema::error::SchemaFileError::FileSystem {
+                                reason: "duplicate property bank file found"
+                                    .into(),
+                            },
+                        ),
+                    ));
+                }
+                has_property_bank = true;
+                on_bank_found(PropertyBankContext {
+                    path: property_bank_path.clone(),
+                });
+                continue;
+            }
+
+            files.push(relative_path);
+        }
+
+        if files.is_empty() {
+            tracing::info!(
+                "No schema files found; schema processing skipped. Add a \
+                 schema file (json, yaml, or toml) to enable schema \
+                 validation."
+            );
+        }
+
+        Ok(FilesContext {
+            files,
+        })
     }
 
-    /// Process cold-start path (all schemas are new).
-    ///
-    /// # Errors
-    ///
-    /// Returns error if schema processing fails.
-    #[expect(
-        clippy::unreachable,
-        reason = "typestate guarantees cold-start returns AllMissing; \
-                  HasPresent arm is unreachable"
-    )]
-    fn process_cold_start(
+    pub(crate) fn discover_graph(
         &self,
-        outcome: &DiscoveryOutcome,
-        bank: &PropertyBank,
-    ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
-        use super::schema_processor::{
-            Discovery, DiscoveryBranch, NeverSeen, SchemaProcessor,
-        };
+    ) -> Result<GraphContextBranch, SchemaLoaderError> {
+        let graph = self
+            .repository
+            .get_topological_graph()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        // Build discovered_files Vec from outcome.schema_files()
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Iterator pattern is idiomatic"
-        )]
-        let discovered_files: Vec<_> = outcome
-            .files
-            .iter()
-            .filter(|(_, file)| {
-                !matches!(
-                    file.kind,
-                    super::discovery::SchemaFileKind::PropertyBank
-                )
-            })
-            .collect();
-
-        // Call from_discovery() to bypass redundant I/O
-        let branch = SchemaProcessor::<Discovery, NeverSeen>::from_discovery(
-            discovered_files,
-        )?;
-
-        match branch {
-            DiscoveryBranch::AllMissing(missing) => {
-                let parsed_new = missing.parse(&self.source)?;
-                let new_build = parsed_new.build_new_graph()?;
-                new_build.construct_new_schemas(&self.repository, bank)
-            }
-            DiscoveryBranch::HasPresent(_) => {
-                unreachable!("cold-start always returns AllMissing")
-            }
-        }
-    }
-
-    /// Process incremental path (some schemas may exist).
-    ///
-    /// # Errors
-    ///
-    /// Returns error if schema processing fails.
-    #[expect(
-        clippy::unreachable,
-        reason = "typestate guarantees incremental returns HasPresent; \
-                  AllMissing arm is unreachable"
-    )]
-    fn process_incremental(
-        &self,
-        outcome: &DiscoveryOutcome,
-        bank: &PropertyBank,
-    ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
-        use super::schema_processor::{
-            Discovery, DiscoveryBranch, Review, SchemaProcessor,
-        };
-        use crate::schema::error::SchemaIngestionError;
-
-        let graph = outcome.graph.as_ref().ok_or_else(|| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::FileSystem {
-                    reason: "incremental update requires graph".into(),
-                },
-            ))
-        })?;
-
-        // Build discovered_files Vec from outcome.files (excluding property
-        // bank)
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Iterator pattern is idiomatic"
-        )]
-        let discovered_files: Vec<_> = outcome
-            .files
-            .iter()
-            .filter(|(_, file)| {
-                !matches!(
-                    file.kind,
-                    super::discovery::SchemaFileKind::PropertyBank
-                )
-            })
-            .collect();
-
-        // Call from_discovery() to bypass redundant I/O
-        let branch = SchemaProcessor::<Discovery, Review>::from_discovery(
-            discovered_files,
-            graph,
-        )?;
-
-        match branch {
-            DiscoveryBranch::HasPresent(present) => {
-                let compared = present
-                    .compare(&self.source, self.property_bank_delta.as_ref())?;
-                let parsed = compared.parse(&self.source)?;
-                let graphed = parsed.build_graph()?;
-                let analyzed = graphed.analyze_properties(
-                    &self.source,
-                    self.property_bank_delta.as_ref(),
-                )?;
-                let refreshed = analyzed.refresh_metadata(&self.repository)?;
-                let constructed =
-                    refreshed.construct_schemas(&self.repository, bank)?;
-                let schemas =
-                    constructed.complete(&self.repository)?.into_schemas();
-                Ok(schemas)
-            }
-            DiscoveryBranch::AllMissing(_) => {
-                unreachable!("incremental always returns HasPresent")
-            }
-        }
+        Ok(match graph {
+            Some(graph) => GraphContextBranch::Present {
+                graph: Box::new(graph),
+            },
+            None => GraphContextBranch::Missing,
+        })
     }
 
     fn handle_missing(
@@ -352,6 +348,30 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct FilesContext {
+    pub(crate) files: Vec<RelativePath>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PropertyBankContext {
+    pub(crate) path: RelativePath,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum BankContextBranch {
+    Missing,
+    Present(PropertyBankContext),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum GraphContextBranch {
+    Missing,
+    Present {
+        graph: Box<InheritanceGraph<()>>,
+    },
+}
+
 type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
 
 #[cfg(test)]
@@ -360,8 +380,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::aggregate::Config, fs::FsReader,
-        schema::testing::InMemoryRepository,
+        config::aggregate::Config,
+        fs::FsReader,
+        schema::{
+            identifier::SchemaId,
+            inheritance::{InheritanceGraph, SchemaGraphBuilder},
+            testing::InMemoryRepository,
+        },
     };
 
     /// Helper to setup test config for a given temp directory.
@@ -386,13 +411,30 @@ mod tests {
             let path = schemas_dir.join(filename);
             std::fs::write(
                 path,
-                r#""$version" = "1.0"
-
-[properties]
-"#,
+                r#"
+name = "test"
+description = "Test schema"
+                "#,
             )
             .unwrap();
         }
+    }
+
+    /// Helper to setup test repository with a persisted graph.
+    fn setup_test_repo_with_graph(_temp: &TempDir) -> InMemoryRepository {
+        let repo = InMemoryRepository::new();
+
+        // Create minimal graph with one root node
+        let id = SchemaId::new();
+
+        let mut builder = SchemaGraphBuilder::new();
+        builder.add_node(id, ());
+        let graph = InheritanceGraph::try_from(builder.build()).unwrap();
+
+        // Save graph to DB
+        repo.save_topological_graph(&graph).unwrap();
+
+        repo
     }
 
     #[test]
@@ -405,117 +447,87 @@ mod tests {
         let _builder = Builder::new(repo, source, &config);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Integration Tests for DiscoveryEngine Integration
-    // ═══════════════════════════════════════════════════════════════════════
-
     #[test]
-    fn builder_uses_discovery_engine_cold_start() {
+    fn builder_discovery_loads_graph_from_db() {
         let temp = TempDir::new().unwrap();
-        create_schema_files(&temp, &["schema_a.toml"]);
-
-        let repo = InMemoryRepository::new();
+        let repo = setup_test_repo_with_graph(&temp);
         let config = setup_test_config(&temp);
         let source = FsReader::new(temp.path().to_path_buf());
-        let mut builder = Builder::new(repo, source, &config);
 
-        let schemas = builder.load_all().unwrap();
+        let builder = Builder::new(repo, source, &config);
+        let graph_branch = builder.discover_graph().unwrap();
 
-        assert_eq!(schemas.len(), 1, "Should load 1 schema in cold-start mode");
-    }
-
-    #[test]
-    fn builder_uses_discovery_engine_incremental() {
-        let temp = TempDir::new().unwrap();
-
-        // Setup: Create initial schema and persist it
-        create_schema_files(&temp, &["schema_a.toml"]);
-        let repo = InMemoryRepository::new();
-        let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
-        let mut builder = Builder::new(repo.clone(), source, &config);
-
-        // Initial load to populate DB
-        let initial_schemas = builder.load_all().unwrap();
-        assert_eq!(
-            initial_schemas.len(),
-            1,
-            "Initial load should have 1 schema"
-        );
-
-        // Verify graph was saved (proves incremental path will be used)
-        let has_graph = repo
-            .with_batch_schema_reader(|reader| reader.get_topological_graph())
-            .unwrap()
-            .is_some();
-        assert!(has_graph, "Graph should be persisted after initial load");
-    }
-
-    #[test]
-    fn builder_deletes_schemas_removed_from_filesystem() {
-        let temp = TempDir::new().unwrap();
-        let schemas_dir = temp.path().join("schemas");
-        std::fs::create_dir_all(&schemas_dir).unwrap();
-
-        // Setup: Create 2 schemas explicitly
-        let path_a = schemas_dir.join("schema_a.toml");
-        let path_b = schemas_dir.join("schema_b.toml");
-        let schema_content = r#""$version" = "1.0"
-
-[properties]
-"#;
-        std::fs::write(&path_a, schema_content).unwrap();
-        std::fs::write(&path_b, schema_content).unwrap();
-
-        let repo = InMemoryRepository::new();
-        let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
-        let mut builder = Builder::new(repo.clone(), source, &config);
-
-        // Initial load
-        let initial_schemas = builder.load_all().unwrap();
-        assert_eq!(initial_schemas.len(), 2);
-
-        // This test verifies that the DiscoveryEngine-based load_all() path
-        // includes deletion detection logic. Full e2e deletion testing
-        // is covered in integration tests.
-        // The key assertion is that cold-start works with 2 schemas.
-    }
-
-    #[test]
-    fn builder_processes_property_bank_via_discovery() {
-        let temp = TempDir::new().unwrap();
-        let schemas_dir = temp.path().join("schemas");
-        std::fs::create_dir_all(&schemas_dir).unwrap();
-
-        // Create schema file
-        create_schema_files(&temp, &["schema_a.toml"]);
-
-        // Create property bank file
-        let bank_path = temp.path().join("property_bank.json");
-        std::fs::write(
-            &bank_path,
-            r#"{
-                "properties": {
-                    "title": { "type": "string" }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        let repo = InMemoryRepository::new();
-        let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
-        let mut builder = Builder::new(repo, source, &config);
-
-        let schemas = builder.load_all().unwrap();
-
-        assert_eq!(schemas.len(), 1, "Should load schema");
-        // Property bank delta should be set if properties changed
-        // (in this case, None because it's the first load)
         assert!(
-            builder.property_bank_delta.is_none(),
-            "First load should not have delta"
+            matches!(graph_branch, GraphContextBranch::Present { .. }),
+            "Should load graph from DB when present"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_excludes_property_bank() {
+        let temp = TempDir::new().unwrap();
+        create_schema_files(&temp, &["schema_a.toml", "property_bank.json"]);
+        let repo = InMemoryRepository::new();
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let mut bank_branch = BankContextBranch::Missing;
+        let context = builder
+            .discover_files(|bank| {
+                bank_branch = BankContextBranch::Present(bank);
+            })
+            .unwrap();
+
+        assert_eq!(
+            context.files.len(),
+            1,
+            "Should exclude property_bank from schema files"
+        );
+        assert!(
+            matches!(bank_branch, BankContextBranch::Present(_)),
+            "Should return property bank context"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_handles_missing_graph() {
+        let temp = TempDir::new().unwrap();
+        let repo = InMemoryRepository::new(); // Empty DB
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let graph_branch = builder.discover_graph().unwrap();
+
+        assert!(
+            matches!(graph_branch, GraphContextBranch::Missing),
+            "Should handle missing graph gracefully"
+        );
+    }
+
+    #[test]
+    fn builder_discovery_filters_by_extension() {
+        let temp = TempDir::new().unwrap();
+        create_schema_files(&temp, &[
+            "schema_a.toml",
+            "schema_b.json",
+            "schema_c.yaml",
+            "schema_d.yml",
+            "readme.md",
+            "config.txt",
+        ]);
+        let repo = InMemoryRepository::new();
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+
+        let builder = Builder::new(repo, source, &config);
+        let context = builder.discover_files(|_| {}).unwrap();
+
+        assert_eq!(
+            context.files.len(),
+            4,
+            "Should only include schema extensions"
         );
     }
 }

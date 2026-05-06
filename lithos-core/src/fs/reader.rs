@@ -24,6 +24,8 @@
 //! # Examples
 //!
 //! ```no_run
+//! use std::path::Path;
+//!
 //! use lithos_core::fs::FsReader;
 //!
 //! let reader = FsReader::new("/vault");
@@ -32,10 +34,11 @@
 //! let schema_files = reader.filter_dir("schemas/**/*.toml")?;
 //!
 //! // Read and parse structured file
-//! let data: serde_json::Value = reader.read_structured("config.json")?;
+//! let data: serde_json::Value =
+//!     reader.parse_structured(Path::new("config.json"))?;
 //!
 //! // Get file metadata
-//! let info = reader.file_info("README.md")?;
+//! let info = reader.info(Path::new("README.md"))?;
 //! # Ok::<(), lithos_core::fs::ParseError>(())
 //! ```
 
@@ -171,12 +174,13 @@ impl Reader {
     /// Lists file entries within the vault using a glob pattern.
     ///
     /// Similar to [`filter_dir`], but returns a [`FileEntry`] for each matching
-    /// file, which includes the path, filename, and metadata (FileInfo).
+    /// file, which includes the path, filename, and metadata (`FileInfo`).
     /// Results are sorted by path alphabetically.
     ///
     /// # Errors
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
+    #[inline]
     pub fn list_entries(
         &self,
         pattern: &str,
@@ -635,11 +639,23 @@ mod tests {
                 reader.list_entries("schemas/**/*.json").expect("list");
 
             assert_eq!(entries.len(), 2);
-            assert_eq!(entries[0].path, PathBuf::from("schemas/a.json"));
-            assert_eq!(entries[1].path, PathBuf::from("schemas/b.json"));
-            assert_eq!(entries[0].filename.as_str(), "a.json");
-            assert_eq!(entries[1].filename.as_str(), "b.json");
-            assert!(entries[0].info.size() > 0);
+            assert_eq!(
+                entries.first().map(|e| &e.path),
+                Some(&PathBuf::from("schemas/a.json"))
+            );
+            assert_eq!(
+                entries.get(1).map(|e| &e.path),
+                Some(&PathBuf::from("schemas/b.json"))
+            );
+            assert_eq!(
+                entries.first().map(|e| e.filename.as_str()),
+                Some("a.json")
+            );
+            assert_eq!(
+                entries.get(1).map(|e| e.filename.as_str()),
+                Some("b.json")
+            );
+            assert!(entries.first().is_some_and(|e| e.info.size() > 0));
         }
 
         #[test]

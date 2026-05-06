@@ -50,10 +50,11 @@ use super::{
     aggregate::Schema,
     bank::PropertyBank,
     identifier::{SchemaId, SchemaName},
+    index::{NameIdPairs, PathIdPairs, SchemaIndex},
     inheritance::InheritanceGraph,
-    property::PropertyMap,
-    storage::Repository,
-    views::{RawPropertyBankView, RawSchemaView, RawView},
+    property::{PropertyMap, PropertyName},
+    storage::{Repository, SchemaPropertyUsage},
+    views::{RawPropertyBankView, RawSchemaView, RawView as _},
 };
 use crate::fs::RelativePath;
 
@@ -214,7 +215,94 @@ impl Repository for InMemoryRepository {
     type Error = InMemoryError;
 
     // ========================================================================
-    // Property Bank Operations
+    // Schema Read Operations
+    // ========================================================================
+
+    fn find_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Schema>, Self::Error> {
+        let schemas = self
+            .schemas
+            .read()
+            .map_err(|_| InMemoryError::lock_poisoned("find_schema_by_id"))?;
+
+        Ok(schemas.get(&id).cloned())
+    }
+
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, Self::Error> {
+        let name_to_id = self.name_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("find_schema_id_by_name")
+        })?;
+
+        Ok(name_to_id.get(name).copied())
+    }
+
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, Self::Error> {
+        let schemas = self
+            .schemas
+            .read()
+            .map_err(|_| InMemoryError::lock_poisoned("find_schemas_by_ids"))?;
+
+        Ok(ids.iter().filter_map(|id| schemas.get(id).cloned()).collect())
+    }
+
+    fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error> {
+        let schemas = self
+            .schemas
+            .read()
+            .map_err(|_| InMemoryError::lock_poisoned("list_schemas"))?;
+
+        Ok(schemas.values().cloned().collect())
+    }
+
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error> {
+        let name_to_id = self.name_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("list_schema_name_id_pairs")
+        })?;
+
+        let pairs: Vec<_> =
+            name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect();
+        Ok(pairs.into())
+    }
+
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error> {
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("list_schema_path_id_pairs")
+        })?;
+
+        let pairs: Vec<_> =
+            path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect();
+        Ok(pairs.into())
+    }
+
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
+        let name_to_id = self.name_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_schema_index (name_to_id)")
+        })?;
+
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_schema_index (path_to_id)")
+        })?;
+
+        let name_pairs: Vec<_> =
+            name_to_id.iter().map(|(n, id)| (n.clone(), *id)).collect();
+
+        let path_pairs: Vec<_> =
+            path_to_id.iter().map(|(p, id)| (p.clone(), *id)).collect();
+
+        SchemaIndex::from_pairs(name_pairs, path_pairs)
+            .map_err(|e| InMemoryError::internal(e.to_string()))
+    }
+
+    // ========================================================================
+    // Property Bank Read Operations
     // ========================================================================
 
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
@@ -224,6 +312,53 @@ impl Repository for InMemoryRepository {
             .map_err(|_| InMemoryError::lock_poisoned("get_property_bank"))?;
 
         Ok(bank.clone())
+    }
+
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<SchemaPropertyUsage, Self::Error> {
+        let schemas = self.schemas.read().map_err(|_| {
+            InMemoryError::lock_poisoned("find_schemas_using_properties")
+        })?;
+
+        let mut usage: SchemaPropertyUsage = HashMap::new();
+
+        for (schema_id, schema) in schemas.iter() {
+            let matching_props: Vec<PropertyName> = schema
+                .properties()
+                .iter()
+                .filter(|(prop_name, _)| property_names.contains(prop_name))
+                .map(|(prop_name, _)| prop_name.clone())
+                .collect();
+
+            if !matching_props.is_empty() {
+                usage.insert(*schema_id, matching_props);
+            }
+        }
+
+        Ok(usage)
+    }
+
+    // ========================================================================
+    // Write Operations
+    // ========================================================================
+
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error> {
+        let mut schemas_map = self.schemas.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_schemas (schemas)")
+        })?;
+
+        let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_schemas (name_to_id)")
+        })?;
+
+        for schema in schemas {
+            schemas_map.insert(*schema.id(), (*schema).clone());
+            name_to_id_map.insert(schema.name().clone(), *schema.id());
+        }
+
+        Ok(())
     }
 
     fn save_property_bank(
@@ -236,32 +371,6 @@ impl Repository for InMemoryRepository {
             .map_err(|_| InMemoryError::lock_poisoned("save_property_bank"))?;
 
         *storage = Some(bank.clone());
-
-        Ok(())
-    }
-
-    // ========================================================================
-    // Write Operations
-    // ========================================================================
-
-    fn save_raw_schema_view(
-        &self,
-        id: SchemaId,
-        view: &RawSchemaView,
-    ) -> Result<(), Self::Error> {
-        let mut views = self.raw_schema_views.write().map_err(|_| {
-            InMemoryError::lock_poisoned("save_raw_schema_view (views)")
-        })?;
-
-        let mut path_to_id = self.path_to_id.write().map_err(|_| {
-            InMemoryError::lock_poisoned("save_raw_schema_view (path_to_id)")
-        })?;
-
-        // Update path index
-        path_to_id.insert(view.file_path().clone(), id);
-
-        // Save view
-        views.insert(id, view.clone());
 
         Ok(())
     }
@@ -290,6 +399,55 @@ impl Repository for InMemoryRepository {
         Ok(())
     }
 
+    // ========================================================================
+    // Raw View Operations (for staleness detection)
+    // ========================================================================
+
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        let views = self
+            .raw_schema_views
+            .read()
+            .map_err(|_| InMemoryError::lock_poisoned("get_raw_schema_view"))?;
+
+        Ok(views.get(&id).cloned())
+    }
+
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error> {
+        let mut views = self.raw_schema_views.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_raw_schema_view (views)")
+        })?;
+
+        let mut path_to_id = self.path_to_id.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_raw_schema_view (path_to_id)")
+        })?;
+
+        // Update path index
+        path_to_id.insert(view.file_path().clone(), id);
+
+        // Save view
+        views.insert(id, view.clone());
+
+        Ok(())
+    }
+
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        let views = self.raw_bank_views.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_raw_property_bank_view")
+        })?;
+
+        Ok(views.get(path).cloned())
+    }
+
     fn save_raw_property_bank_view(
         &self,
         path: &RelativePath,
@@ -304,147 +462,152 @@ impl Repository for InMemoryRepository {
         Ok(())
     }
 
-    fn list_schema_path_id_pairs(
+    fn find_raw_schema_view_by_path(
         &self,
-    ) -> Result<Vec<(RelativePath, SchemaId)>, Self::Error> {
+        file_path: &RelativePath,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            InMemoryError::lock_poisoned("list_schema_path_id_pairs")
+            InMemoryError::lock_poisoned(
+                "find_raw_schema_view_by_path (path_to_id)",
+            )
         })?;
 
-        Ok(path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect())
+        let views = self.raw_schema_views.read().map_err(|_| {
+            InMemoryError::lock_poisoned("find_raw_schema_view_by_path (views)")
+        })?;
+
+        if let Some(id) = path_to_id.get(file_path) {
+            Ok(views.get(id).cloned())
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn find_schema_id_by_path(
+        &self,
+        file_path: &RelativePath,
+    ) -> Result<Option<SchemaId>, Self::Error> {
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("find_schema_id_by_path")
+        })?;
+
+        Ok(path_to_id.get(file_path).copied())
+    }
+
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned(
+                "find_raw_schema_views_by_paths (path_to_id)",
+            )
+        })?;
+
+        let views = self.raw_schema_views.read().map_err(|_| {
+            InMemoryError::lock_poisoned(
+                "find_raw_schema_views_by_paths (views)",
+            )
+        })?;
+
+        let mut result = HashMap::new();
+
+        for path in file_paths {
+            if let Some(id) = path_to_id.get(path) {
+                if let Some(view) = views.get(id) {
+                    result.insert(path.clone(), view.clone());
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        let path_to_id = self.path_to_id.read().map_err(|_| {
+            InMemoryError::lock_poisoned("find_schema_ids_by_paths")
+        })?;
+
+        Ok(file_paths
+            .iter()
+            .filter_map(|path| {
+                path_to_id.get(path).map(|id| (path.clone(), *id))
+            })
+            .collect())
+    }
+
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
+        let graph = self.topological_graph.read().map_err(|_| {
+            InMemoryError::lock_poisoned("get_topological_graph")
+        })?;
+
+        Ok(graph.clone())
+    }
+
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error> {
+        let mut storage = self.topological_graph.write().map_err(|_| {
+            InMemoryError::lock_poisoned("save_topological_graph")
+        })?;
+
+        *storage = Some(graph.clone());
+        Ok(())
     }
 
     // ========================================================================
     // Batch Operations
     // ========================================================================
 
+    fn with_batch_reader<F, R>(&self, _f: F) -> Result<R, Self::Error>
+    where
+        F: FnOnce(&crate::db::BatchReader) -> Result<R, Self::Error>,
+    {
+        // BatchReader is specific to redb.
+        // For InMemoryRepository, we don't need batch reads.
+        Err(InMemoryError::internal(
+            "with_batch_reader not supported for InMemoryRepository. This \
+             method is specific to RedbRepository.",
+        ))
+    }
+
     fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
     where
-        F: FnOnce(
-            &dyn super::storage::BatchSchemaReader<
-                Error = super::error::SchemaRepositoryError,
-            >,
-        ) -> Result<R, super::error::SchemaRepositoryError>,
+        for<'reader> F: FnOnce(
+            &'reader dyn super::storage::BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>,
     {
         struct InMemoryBatchSchemaReader<'repo> {
             repo: &'repo InMemoryRepository,
         }
 
         impl super::storage::BatchSchemaReader for InMemoryBatchSchemaReader<'_> {
-            type Error = super::error::SchemaRepositoryError;
+            type Error = InMemoryError;
 
             fn get_raw_schema_view(
                 &self,
                 id: SchemaId,
-            ) -> Result<RawSchemaView, Self::Error> {
-                let views =
-                    self.repo.raw_schema_views.read().map_err(|_| {
-                        InMemoryError::lock_poisoned("get_raw_schema_view")
-                    })?;
-
-                views.get(&id).cloned().ok_or_else(|| {
-                    super::error::SchemaRepositoryError::NotFound(id)
-                })
-            }
-
-            fn get_raw_property_bank_view(
-                &self,
-                path: &RelativePath,
-            ) -> Result<RawPropertyBankView, Self::Error> {
-                let views = self.repo.raw_bank_views.read().map_err(|_| {
-                    InMemoryError::lock_poisoned("get_raw_property_bank_view")
-                })?;
-
-                views.get(path).cloned().ok_or_else(|| {
-                    super::error::SchemaRepositoryError::Storage(
-                        super::error::SchemaStorageError::Storage(
-                            crate::db::DbError::Database(
-                                format!("Property bank view not found: {path}")
-                                    .into(),
-                            ),
-                        ),
-                    )
-                })
-            }
-
-            fn find_schema_ids_by_paths(
-                &self,
-                file_paths: &[RelativePath],
-            ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>
-            {
-                let path_to_id = self.repo.path_to_id.read().map_err(|_| {
-                    InMemoryError::lock_poisoned("find_schema_ids_by_paths")
-                })?;
-
-                Ok(file_paths
-                    .iter()
-                    .filter_map(|path| {
-                        path_to_id.get(path).map(|id| (path.clone(), *id))
-                    })
-                    .collect())
-            }
-
-            fn find_raw_schema_views_by_paths(
-                &self,
-                file_paths: &[RelativePath],
-            ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>
-            {
-                let path_to_id = self.repo.path_to_id.read().map_err(|_| {
-                    InMemoryError::lock_poisoned(
-                        "find_raw_schema_views_by_paths (path_to_id)",
-                    )
-                })?;
-
-                let views =
-                    self.repo.raw_schema_views.read().map_err(|_| {
-                        InMemoryError::lock_poisoned(
-                            "find_raw_schema_views_by_paths (views)",
-                        )
-                    })?;
-
-                let mut result = HashMap::new();
-
-                for path in file_paths {
-                    if let Some(id) = path_to_id.get(path) {
-                        if let Some(view) = views.get(id) {
-                            result.insert(path.clone(), view.clone());
-                        }
-                    }
-                }
-
-                Ok(result)
-            }
-
-            fn list_schema_path_id_pairs(
-                &self,
-            ) -> Result<Vec<(RelativePath, SchemaId)>, Self::Error>
-            {
-                let path_to_id = self.repo.path_to_id.read().map_err(|_| {
-                    InMemoryError::lock_poisoned("list_schema_path_id_pairs")
-                })?;
-
-                Ok(path_to_id
-                    .iter()
-                    .map(|(path, id)| (path.clone(), *id))
-                    .collect())
+            ) -> Result<Option<RawSchemaView>, Self::Error> {
+                self.repo.get_raw_schema_view(id)
             }
 
             fn get_topological_graph(
                 &self,
             ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
-                let graph =
-                    self.repo.topological_graph.read().map_err(|_| {
-                        InMemoryError::lock_poisoned("get_topological_graph")
-                    })?;
-
-                Ok(graph.clone())
+                self.repo.get_topological_graph()
             }
         }
 
         let reader = InMemoryBatchSchemaReader {
             repo: self,
         };
-        f(&reader).map_err(|e| InMemoryError::internal(e.to_string()))
+        f(&reader)
     }
 }
 
@@ -490,20 +653,13 @@ mod tests {
     fn clear_resets_all_state() {
         let repo = InMemoryRepository::new();
 
-        // Add some data - directly insert into internal state for test
+        // Add some data
         let id = SchemaId::new();
         let name = SchemaName::try_new("test-schema").unwrap();
-        let schema = Schema::new(
-            id,
-            name.clone(),
-            Vec::new(),
-            vec![],
-            PropertyMap::new(),
-        );
+        let schema =
+            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 
-        // Insert directly into internal storage for test purposes
-        repo.schemas.write().unwrap().insert(id, schema.clone());
-        repo.name_to_id.write().unwrap().insert(name, id);
+        repo.save_schemas(&[&schema]).unwrap();
         assert_eq!(repo.schema_count(), 1);
 
         // Clear

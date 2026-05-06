@@ -139,6 +139,11 @@ pub enum PathValidationError {
 /// Errors that can occur during [`DirEntry`](std::fs::DirEntry) conversions.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "DirEntry prefix clarifies this is for std::fs::DirEntry \
+              conversions"
+)]
 pub enum DirEntryError {
     /// Invalid UTF-8 in path.
     #[error("Invalid UTF-8 in path: {0}")]

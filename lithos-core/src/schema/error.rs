@@ -110,7 +110,7 @@ pub enum SchemaError {
 /// This error type preserves context throughout the ingestion pipeline:
 /// - **Parse errors**: Contain line/column from serde
 /// - **Validation errors**: Contain file path from ingestor
-/// - **FileName errors**: Contain full path for user feedback
+/// - **`FileName` errors**: Contain full path for user feedback
 ///
 /// # Error Chain Example
 ///

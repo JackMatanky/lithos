@@ -28,12 +28,12 @@
 //! Building a schema inheritance graph:
 //!
 //! ```
-//! use lithos_core::graph::{DagGraph, GraphBuilder, GraphError};
+//! use lithos_core::graph::{DagGraph, GraphBuilder, GraphError, Node};
 //!
 //! # fn main() -> Result<(), GraphError<u8>> {
 //! let mut builder = GraphBuilder::new();
-//! builder.add_node(1u8, Box::<str>::from("SchemaA"));
-//! builder.add_node(2u8, Box::<str>::from("SchemaB"));
+//! builder.add_node(1u8, Node::new(Box::<str>::from("SchemaA")));
+//! builder.add_node(2u8, Node::new(Box::<str>::from("SchemaB")));
 //! builder.add_parent(2, 1); // SchemaB extends SchemaA
 //!
 //! let dag = DagGraph::try_from(builder.build())?;
@@ -59,6 +59,4 @@ pub use core::{Graph, GraphBuilder};
 
 pub use dag::DagGraph;
 pub use error::{CycleError, GraphError};
-pub use node::{
-    DiGraphNode, DiGraphNodeMut, GraphNode, GraphNodeMut, Node, NodeDepth,
-};
+pub use node::{GraphNode, GraphNodeMut, Node};

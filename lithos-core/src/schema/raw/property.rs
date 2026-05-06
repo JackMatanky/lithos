@@ -60,6 +60,15 @@ type SplitPropertyEntries = (
     HashMap<PropertyName, RawPropertyRef>,
 );
 
+impl<T> Default for RawPropertyMap<T> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+}
+
 impl<T> RawPropertyMap<T> {
     /// Constructs a `RawPropertyMap` from a validated `HashMap`.
     #[inline]
@@ -74,9 +83,7 @@ impl<T> RawPropertyMap<T> {
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Returns a reference to the inner map.

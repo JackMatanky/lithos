@@ -7,11 +7,11 @@
 //! # Examples
 //!
 //! ```
-//! use lithos_core::graph::GraphBuilder;
+//! use lithos_core::graph::{GraphBuilder, Node};
 //!
 //! let mut builder = GraphBuilder::new();
-//! builder.add_node(1u8, Box::<str>::from("A"));
-//! builder.add_node(2u8, Box::<str>::from("B"));
+//! builder.add_node(1u8, Node::new(Box::<str>::from("A")));
+//! builder.add_node(2u8, Node::new(Box::<str>::from("B")));
 //! builder.add_parent(2, 1);
 //!
 //! let graph = builder.build();
@@ -20,7 +20,11 @@
 
 use std::{collections::HashMap, hash::Hash};
 
-use crate::graph::node::{DiGraphNode, DiGraphNodeMut, GraphNode, NodeDepth};
+use crate::graph::node::{GraphNode, GraphNodeMut};
+
+/// Type alias for the components returned by `into_parts()`.
+type GraphParts<Id, N> =
+    (HashMap<Id, N>, HashMap<Id, Vec<Id>>, HashMap<Id, Vec<Id>>);
 
 /// Directed graph infrastructure (raw, may contain cycles).
 ///
@@ -33,33 +37,33 @@ use crate::graph::node::{DiGraphNode, DiGraphNodeMut, GraphNode, NodeDepth};
 /// use lithos_core::graph::{GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
-/// builder.add_node(1u8, Box::<str>::from("A"));
-/// builder.add_node(2u8, Box::<str>::from("B"));
+/// builder.add_node(1u8, Node::new(Box::<str>::from("A")));
+/// builder.add_node(2u8, Node::new(Box::<str>::from("B")));
 /// builder.add_parent(2, 1);
 ///
-/// let graph = builder.build::<Node<_>>();
+/// let graph = builder.build();
 /// assert_eq!(graph.parents_of(2), &[1]);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Graph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
-    N: GraphNode + DiGraphNode,
+    N: GraphNode,
 {
     /// Nodes indexed by Id (ID is key, not in value).
-    pub(crate) nodes: HashMap<Id, N>,
+    nodes: HashMap<Id, N>,
 
     /// Adjacency: child -> parents (for topological sort).
-    pub(crate) parents: HashMap<Id, Vec<Id>>,
+    parents: HashMap<Id, Vec<Id>>,
 
     /// Adjacency: parent -> children (for depth computation & traversal).
-    pub(crate) children: HashMap<Id, Vec<Id>>,
+    children: HashMap<Id, Vec<Id>>,
 }
 
 impl<Id, N> Graph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
-    N: GraphNode + DiGraphNode,
+    N: GraphNode,
 {
     /// Returns node by ID.
     #[inline]
@@ -72,7 +76,7 @@ where
     #[inline]
     pub fn get_mut(&mut self, id: Id) -> Option<&mut N>
     where
-        N: DiGraphNodeMut,
+        N: GraphNodeMut,
     {
         self.nodes.get_mut(&id)
     }
@@ -107,7 +111,7 @@ where
     #[inline]
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (Id, &mut N)>
     where
-        N: DiGraphNodeMut,
+        N: GraphNodeMut,
     {
         self.nodes.iter_mut().map(|(id, node)| (*id, node))
     }
@@ -125,54 +129,34 @@ where
         &self.parents
     }
 
-    // Returns the children adjacency map.
-    // #[inline]
-    // pub(crate) fn children(&self) -> &HashMap<Id, Vec<Id>> {
-    //     &self.children
-    // }
-
-    /// Computes depths for all nodes given topological order.
+    /// Consumes the graph and returns its internal components.
+    ///
+    /// This is useful for advanced graph transformations that need to
+    /// rebuild the graph structure with modified nodes.
     #[inline]
     #[must_use]
-    pub fn compute_depths(&self, order: &[Id]) -> HashMap<Id, NodeDepth> {
-        let mut depths: HashMap<Id, NodeDepth> =
-            HashMap::with_capacity(order.len());
-
-        for &id in order {
-            let max_parent_depth = self
-                .parents_of(id)
-                .iter()
-                .filter_map(|pid| depths.get(pid))
-                .map(|d| d.as_usize())
-                .max()
-                .unwrap_or(0);
-
-            let depth = if self.parents_of(id).is_empty() {
-                NodeDepth::ROOT
-            } else {
-                NodeDepth::new(max_parent_depth.saturating_add(1))
-            };
-
-            depths.insert(id, depth);
-        }
-
-        depths
+    pub fn into_parts(self) -> GraphParts<Id, N> {
+        (self.nodes, self.parents, self.children)
     }
 
-    /// Updates all node depths in-place.
+    /// Constructs a graph from its internal components.
+    ///
+    /// This is the inverse of `into_parts()`, allowing reconstruction
+    /// after transformation.
+    ///
+    /// **Note**: The caller must ensure that all parent/child references
+    /// point to valid node IDs and that the adjacency maps are consistent.
     #[inline]
-    pub fn update_depths(&mut self, depths: HashMap<Id, NodeDepth>)
-    where
-        N: DiGraphNodeMut,
-    {
-        #![expect(
-            clippy::iter_over_hash_type,
-            reason = "graph algorithms do not rely on HashMap iteration order"
-        )]
-        for (id, depth) in depths {
-            if let Some(node) = self.nodes.get_mut(&id) {
-                N::set_depth(node, depth);
-            }
+    #[must_use]
+    pub fn from_parts(
+        nodes: HashMap<Id, N>,
+        parents: HashMap<Id, Vec<Id>>,
+        children: HashMap<Id, Vec<Id>>,
+    ) -> Self {
+        Self {
+            nodes,
+            parents,
+            children,
         }
     }
 
@@ -187,8 +171,8 @@ where
     #[inline]
     pub fn map_nodes<M, E, F>(self, mut f: F) -> Result<Graph<Id, M>, E>
     where
-        M: GraphNode + DiGraphNode,
-        F: FnMut(Id, N::Payload) -> Result<M::Payload, E>,
+        M: GraphNode,
+        F: FnMut(Id, &N::Payload) -> Result<M::Payload, E>,
     {
         let mut new_nodes = HashMap::with_capacity(self.nodes.len());
 
@@ -197,9 +181,8 @@ where
             reason = "graph transforms do not depend on HashMap order"
         )]
         for (id, node) in self.nodes {
-            let (payload, depth) = N::into_parts(node);
-            let new_payload = f(id, payload)?;
-            new_nodes.insert(id, M::from_parts(new_payload, depth));
+            let new_payload = f(id, node.payload())?;
+            new_nodes.insert(id, M::from_payload(new_payload));
         }
 
         Ok(Graph {
@@ -218,38 +201,55 @@ where
 /// use lithos_core::graph::{GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
-/// builder.add_node(1u8, Box::<str>::from("A"));
-/// builder.add_node(2u8, Box::<str>::from("B"));
+/// builder.add_node(1u8, Node::new(Box::<str>::from("A")));
+/// builder.add_node(2u8, Node::new(Box::<str>::from("B")));
 /// builder.add_parent(2, 1);
-/// let graph = builder.build::<Node<_>>();
-/// assert_eq!(graph.node_count(), 2);
+///
+/// let graph = builder.build();
+/// assert_eq!(graph.parents_of(2), &[1]);
 /// ```
-pub struct GraphBuilder<Id, T> {
-    nodes: HashMap<Id, T>,
+pub struct GraphBuilder<Id, N>
+where
+    Id: Copy + Eq + Hash + Ord,
+    N: GraphNode,
+{
+    nodes: HashMap<Id, N>,
     child_to_parents: HashMap<Id, Vec<Id>>,
 }
 
-impl<Id, T> GraphBuilder<Id, T>
+impl<Id, N> Default for GraphBuilder<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
+    N: GraphNode,
 {
-    /// Creates a new graph builder.
     #[inline]
-    #[must_use]
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
             nodes: HashMap::new(),
             child_to_parents: HashMap::new(),
         }
     }
+}
+
+impl<Id, N> GraphBuilder<Id, N>
+where
+    Id: Copy + Eq + Hash + Ord,
+    N: GraphNode,
+{
+    /// Creates a new graph builder.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self
+    where
+        N: GraphNode,
+    {
+        Self::default()
+    }
 
     /// Builds the graph with normalized adjacency lists.
     #[inline]
     #[must_use]
-    pub fn build<N>(self) -> Graph<Id, N>
-    where
-        N: GraphNode<Payload = T> + DiGraphNode,
-    {
+    pub fn build(self) -> Graph<Id, N> {
         let mut parents = HashMap::with_capacity(self.child_to_parents.len());
         let mut children: HashMap<Id, Vec<Id>> = HashMap::new();
 
@@ -279,14 +279,8 @@ where
             child_list.dedup();
         }
 
-        let nodes = self
-            .nodes
-            .into_iter()
-            .map(|(id, payload)| (id, N::from_parts(payload, NodeDepth::ROOT)))
-            .collect();
-
         Graph {
-            nodes,
+            nodes: self.nodes,
             parents,
             children,
         }
@@ -295,7 +289,10 @@ where
     /// Pre-allocates capacity for expected node count.
     #[inline]
     #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self
+    where
+        N: GraphNode,
+    {
         Self {
             nodes: HashMap::with_capacity(capacity),
             child_to_parents: HashMap::with_capacity(capacity),
@@ -304,8 +301,8 @@ where
 
     /// Adds a node to the graph.
     #[inline]
-    pub fn add_node(&mut self, id: Id, payload: T) {
-        self.nodes.insert(id, payload);
+    pub fn add_node(&mut self, id: Id, node: N) {
+        self.nodes.insert(id, node);
     }
 
     /// Adds a parent relationship (child extends parent).
@@ -315,21 +312,9 @@ where
     }
 }
 
-impl<Id, T> Default for GraphBuilder<Id, T>
-where
-    Id: Copy + Eq + Hash + Ord,
-{
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 #[expect(
     clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::panic,
     reason = "Test code uses simplified patterns for clarity"
 )]
 mod tests {
@@ -342,7 +327,7 @@ mod tests {
         #[test]
         fn returns_empty_graph_when_no_nodes_added() {
             let builder = GraphBuilder::<u8, ()>::new();
-            let graph = builder.build::<Node<_>>();
+            let graph = builder.build();
             assert_eq!(
                 graph.node_count(),
                 0,
@@ -354,12 +339,12 @@ mod tests {
         #[test]
         fn dedups_parent_edges_when_duplicated() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            builder.add_node(2i32, Box::<str>::from("B"));
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            builder.add_node(2i32, Node::new(Box::<str>::from("B")));
             builder.add_parent(2i32, 1i32);
             builder.add_parent(2i32, 1i32);
 
-            let graph = builder.build::<Node<_>>();
+            let graph = builder.build();
             assert_eq!(
                 graph.parents_of(2i32),
                 &[1i32],
@@ -376,8 +361,8 @@ mod tests {
         #[test]
         fn parents_of_returns_empty_slice_when_missing() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            let graph = builder.build::<Node<_>>();
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            let graph = builder.build();
 
             assert_eq!(
                 graph.parents_of(1i32),
@@ -389,8 +374,8 @@ mod tests {
         #[test]
         fn children_of_returns_empty_slice_when_missing() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            let graph = builder.build::<Node<_>>();
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            let graph = builder.build();
 
             assert_eq!(
                 graph.children_of(1i32),
@@ -402,8 +387,8 @@ mod tests {
         #[test]
         fn get_returns_none_when_node_unknown() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            let graph = builder.build::<Node<_>>();
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            let graph = builder.build();
 
             assert!(
                 graph.get(2i32).is_none(),
@@ -414,9 +399,9 @@ mod tests {
         #[test]
         fn iter_returns_all_nodes() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            builder.add_node(2i32, Box::<str>::from("B"));
-            let graph = builder.build::<Node<_>>();
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            builder.add_node(2i32, Node::new(Box::<str>::from("B")));
+            let graph = builder.build();
 
             let count = graph.iter().count();
             assert_eq!(
@@ -424,106 +409,5 @@ mod tests {
                 "expected iterator to yield 2 nodes, got {count}",
             );
         }
-    }
-
-    mod compute_depths {
-        use super::*;
-
-        #[test]
-        fn returns_root_depth_as_zero() {
-            let depths = sample_depths();
-            assert_eq!(
-                depths[&1].as_usize(),
-                0,
-                "expected root depth 0, got {}",
-                depths[&1].as_usize()
-            );
-        }
-
-        #[test]
-        fn returns_single_parent_depth_as_one() {
-            let depths = sample_depths();
-            assert_eq!(
-                depths[&2].as_usize(),
-                1,
-                "expected depth 1 for single-parent node, got {}",
-                depths[&2].as_usize()
-            );
-        }
-
-        #[test]
-        fn returns_sibling_depth_as_one() {
-            let depths = sample_depths();
-            assert_eq!(
-                depths[&3].as_usize(),
-                1,
-                "expected depth 1 for sibling node, got {}",
-                depths[&3].as_usize()
-            );
-        }
-
-        #[test]
-        fn returns_max_parent_depth_plus_one_for_multi_parent() {
-            let depths = sample_depths();
-            assert_eq!(
-                depths[&4].as_usize(),
-                2,
-                "expected multi-parent depth 2, got {}",
-                depths[&4].as_usize()
-            );
-        }
-    }
-
-    mod update_depths {
-        use super::*;
-        use crate::graph::node::Node;
-
-        #[test]
-        fn updates_existing_node_depth() {
-            let mut builder = GraphBuilder::new();
-            builder.add_node(1, Box::<str>::from("A"));
-            let mut graph = builder.build::<Node<_>>();
-
-            let depths = HashMap::from([(1u8, NodeDepth::new(2))]);
-            graph.update_depths(depths);
-
-            let depth = match graph.get(1) {
-                Some(node) => node.depth().as_usize(),
-                None => panic!("expected node 1 to exist"),
-            };
-            assert_eq!(depth, 2, "expected updated depth 2, got {depth}");
-        }
-
-        #[test]
-        fn ignores_missing_nodes_when_updating() {
-            let mut builder = GraphBuilder::new();
-            builder.add_node(1, Box::<str>::from("A"));
-            let mut graph = builder.build::<Node<_>>();
-
-            let depths = HashMap::from([(2u8, NodeDepth::new(3))]);
-            graph.update_depths(depths);
-
-            assert!(
-                graph.get(2).is_none(),
-                "expected missing node to stay absent after update"
-            );
-        }
-    }
-    fn sample_depths() -> HashMap<u8, NodeDepth> {
-        use crate::graph::node::Node;
-        let mut builder = GraphBuilder::new();
-        builder.add_node(1, Box::<str>::from("A"));
-        builder.add_node(2, Box::<str>::from("B"));
-        builder.add_node(3, Box::<str>::from("C"));
-        builder.add_node(4, Box::<str>::from("D"));
-        builder.add_parent(2, 1);
-        builder.add_parent(3, 1);
-        builder.add_parent(4, 2);
-        builder.add_parent(4, 3);
-
-        let graph = builder.build::<Node<_>>();
-        let dag = crate::graph::DagGraph::try_from(graph)
-            .expect("expected sample DAG to be valid");
-        dag.graph().compute_depths(dag.topo_order())
     }
 }

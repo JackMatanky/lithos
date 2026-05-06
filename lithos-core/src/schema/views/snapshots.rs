@@ -152,27 +152,6 @@ impl SchemaVersion {
         &self.info
     }
 
-    /// Returns when this version was recorded in storage.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Returns hash metadata for staleness detection.
-    #[inline]
-    #[must_use]
-    pub fn hashes(&self) -> &HashRecord {
-        &self.hashes
-    }
-
-    /// Returns the schema format version string (e.g., `"1.0"`).
-    #[inline]
-    #[must_use]
-    pub fn version(&self) -> &str {
-        &self.version
-    }
-
     /// Returns the parent schema name from `extends`, if any.
     #[inline]
     #[must_use]
@@ -233,25 +212,6 @@ impl SchemaVersion {
     pub fn set_expanded_properties(&mut self, properties: PropertyMap) {
         self.expanded_properties = Some(properties);
     }
-
-    /// Clones this version with updated file info and hashes.
-    ///
-    /// Resets cached expanded properties to keep refresh behavior consistent
-    /// with raw-based reconstruction.
-    #[inline]
-    #[must_use]
-    pub fn with_metadata(&self, info: FileInfo, hashes: HashRecord) -> Self {
-        Self {
-            info,
-            hashes,
-            version: self.version.clone(),
-            extends: self.extends.clone(),
-            excludes: self.excludes.clone(),
-            bank_references: self.bank_references.clone(),
-            expanded_properties: None,
-            recorded_at: SystemTime::now(),
-        }
-    }
 }
 
 /// Implements [`Version`] for [`SchemaVersion`].
@@ -263,12 +223,12 @@ impl Version for SchemaVersion {
 
     #[inline]
     fn recorded_at(&self) -> SystemTime {
-        self.recorded_at()
+        self.recorded_at
     }
 
     #[inline]
     fn hashes(&self) -> &HashRecord {
-        self.hashes()
+        &self.hashes
     }
 
     #[inline]
@@ -279,7 +239,16 @@ impl Version for SchemaVersion {
 
     #[inline]
     fn with_metadata(&self, info: FileInfo, hashes: HashRecord) -> Self {
-        SchemaVersion::with_metadata(self, info, hashes)
+        Self {
+            info,
+            hashes,
+            version: self.version.clone(),
+            extends: self.extends.clone(),
+            excludes: self.excludes.clone(),
+            bank_references: self.bank_references.clone(),
+            expanded_properties: None,
+            recorded_at: SystemTime::now(),
+        }
     }
 }
 
@@ -306,11 +275,16 @@ impl VersionRead for SchemaVersion {
 
     #[inline]
     fn version(&self) -> &str {
-        self.version.as_ref()
+        &self.version
     }
 }
 
 /// Implements [`VersionRead`] for [`ArchivedSchemaVersion`] (zero-copy).
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "file_info() default panics - archived types use \
+              is_timestamp_match() directly"
+)]
 impl VersionRead for ArchivedSchemaVersion {
     #[inline]
     fn is_content_match(&self, hash: &Blake3Hash) -> bool {
@@ -366,6 +340,10 @@ pub struct PropertyBankVersion {
 
 impl PropertyBankVersion {
     /// Creates a new property bank version from a parsed [`RawPropertyBank`].
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible, but returns `Result` for future validation.
     #[inline]
     pub fn new(
         info: FileInfo,
@@ -386,56 +364,23 @@ impl PropertyBankVersion {
     pub fn info(&self) -> &FileInfo {
         &self.info
     }
-
-    /// Returns hash metadata for staleness detection.
-    #[inline]
-    #[must_use]
-    pub fn hashes(&self) -> &HashRecord {
-        &self.hashes
-    }
-
-    /// Returns the property bank format version string (e.g., `"1.0"`).
-    #[inline]
-    #[must_use]
-    pub fn version(&self) -> &str {
-        &self.version
-    }
-
-    /// Returns when this version was recorded in storage.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Clones this version with updated file statistics and hashes.
-    #[inline]
-    #[must_use]
-    pub fn with_metadata(&self, info: FileInfo, hashes: HashRecord) -> Self {
-        Self {
-            info,
-            hashes,
-            version: self.version.clone(),
-            recorded_at: SystemTime::now(),
-        }
-    }
 }
 
 /// Implements [`Version`] for [`PropertyBankVersion`].
 impl Version for PropertyBankVersion {
     #[inline]
     fn file_info(&self) -> &FileInfo {
-        self.info()
+        &self.info
     }
 
     #[inline]
     fn recorded_at(&self) -> SystemTime {
-        self.recorded_at()
+        self.recorded_at
     }
 
     #[inline]
     fn hashes(&self) -> &HashRecord {
-        self.hashes()
+        &self.hashes
     }
 
     #[inline]
@@ -446,7 +391,12 @@ impl Version for PropertyBankVersion {
 
     #[inline]
     fn with_metadata(&self, info: FileInfo, hashes: HashRecord) -> Self {
-        PropertyBankVersion::with_metadata(self, info, hashes)
+        Self {
+            info,
+            hashes,
+            version: self.version.clone(),
+            recorded_at: SystemTime::now(),
+        }
     }
 }
 
@@ -473,11 +423,16 @@ impl VersionRead for PropertyBankVersion {
 
     #[inline]
     fn version(&self) -> &str {
-        self.version.as_ref()
+        &self.version
     }
 }
 
 /// Implements [`VersionRead`] for [`ArchivedPropertyBankVersion`] (zero-copy).
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "file_info() default panics - archived types use \
+              is_timestamp_match() directly"
+)]
 impl VersionRead for ArchivedPropertyBankVersion {
     #[inline]
     fn is_content_match(&self, hash: &Blake3Hash) -> bool {
@@ -544,7 +499,7 @@ mod tests {
             let info = crate::fs::FileInfo::new(None, None, 100);
             let hashes = crate::schema::views::hashes::HashRecord::new(
                 crate::support::hash::Blake3Hash::new([0; 32]),
-                Default::default(),
+                crate::schema::views::RawPropertyMapHash::default(),
             );
 
             let version =
@@ -579,7 +534,7 @@ mod tests {
             let info = crate::fs::FileInfo::new(None, None, 100);
             let hashes = crate::schema::views::hashes::HashRecord::new(
                 crate::support::hash::Blake3Hash::new([0; 32]),
-                Default::default(),
+                crate::schema::views::RawPropertyMapHash::default(),
             );
 
             let version =

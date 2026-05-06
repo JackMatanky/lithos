@@ -30,6 +30,11 @@
 //! [`PathValidator`]. Bypassing it in adapter code creates path-traversal and
 //! symlink-escape vulnerabilities.
 
+#![allow(
+    clippy::pub_use,
+    reason = "Intentional re-exports for flat, ergonomic public API"
+)]
+
 /// Filesystem error types.
 pub mod error;
 /// Ergonomic conversions for filesystem entries.
@@ -55,6 +60,11 @@ pub mod writer;
 pub use error::{ParseError, PathValidationError};
 pub use file::{FileEntry, FileInfo, FileName};
 pub use path::{AbsolutePath, RelativePath};
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "FsReader alias clarifies this is the filesystem reader in \
+              re-exports"
+)]
 pub use reader::{FileTimestamp, Reader as FsReader};
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;

@@ -45,6 +45,14 @@ impl RelativePath {
         &self.0
     }
 
+    /// Returns the underlying path as a UTF-8 string slice if it is valid
+    /// UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
+
     /// Returns the filename component of this path if it exists.
     #[inline]
     #[must_use]
@@ -189,6 +197,14 @@ impl AbsolutePath {
     #[must_use]
     pub fn as_path(&self) -> &Path {
         &self.0
+    }
+
+    /// Returns the underlying path as a UTF-8 string slice if it is valid
+    /// UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
     }
 
     /// Returns the filename component of this path if it exists.

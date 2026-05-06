@@ -5,11 +5,11 @@
 //! # Examples
 //!
 //! ```
-//! use lithos_core::graph::{DagGraph, GraphBuilder};
+//! use lithos_core::graph::{DagGraph, GraphBuilder, Node};
 //!
 //! let mut builder = GraphBuilder::new();
-//! builder.add_node(1u8, Box::<str>::from("A"));
-//! builder.add_node(2u8, Box::<str>::from("B"));
+//! builder.add_node(1u8, Node::new(Box::<str>::from("A")));
+//! builder.add_node(2u8, Node::new(Box::<str>::from("B")));
 //! builder.add_parent(2, 1);
 //!
 //! let dag = DagGraph::try_from(builder.build()).unwrap();
@@ -19,9 +19,7 @@
 use std::hash::Hash;
 
 use crate::graph::{
-    Graph, GraphError,
-    node::{DiGraphNode, GraphNode},
-    sorting::topological_sort_with_nodes,
+    Graph, GraphError, node::GraphNode, sorting::topological_sort_with_nodes,
 };
 
 /// Validated DAG wrapper that owns the graph and caches topology.
@@ -35,18 +33,18 @@ use crate::graph::{
 /// use lithos_core::graph::{DagGraph, GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
-/// builder.add_node(1u8, Box::<str>::from("A"));
-/// builder.add_node(2u8, Box::<str>::from("B"));
+/// builder.add_node(1u8, Node::new(Box::<str>::from("A")));
+/// builder.add_node(2u8, Node::new(Box::<str>::from("B")));
 /// builder.add_parent(2, 1);
 ///
-/// let dag = DagGraph::try_from(builder.build::<Node<_>>()).unwrap();
+/// let dag = DagGraph::try_from(builder.build()).unwrap();
 /// assert_eq!(dag.topo_order(), &[1, 2]);
 /// ```
 #[derive(Debug, Clone)]
 pub struct DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
-    N: GraphNode + DiGraphNode,
+    N: GraphNode,
 {
     graph: Graph<Id, N>,
     topo_order: Vec<Id>,
@@ -56,7 +54,7 @@ where
 impl<Id, N> TryFrom<Graph<Id, N>> for DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
-    N: GraphNode + DiGraphNode,
+    N: GraphNode,
 {
     type Error = GraphError<Id>;
 
@@ -75,7 +73,7 @@ where
 impl<Id, N> DagGraph<Id, N>
 where
     Id: Copy + Eq + Hash + Ord,
-    N: GraphNode + DiGraphNode,
+    N: GraphNode,
 {
     /// Returns the cached topological order.
     #[inline]
@@ -127,12 +125,12 @@ mod tests {
         #[test]
         fn rejects_cycles() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            builder.add_node(2i32, Box::<str>::from("B"));
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            builder.add_node(2i32, Node::new(Box::<str>::from("B")));
             builder.add_parent(1i32, 2i32);
             builder.add_parent(2i32, 1i32);
 
-            let graph = builder.build::<Node<_>>();
+            let graph = builder.build();
             let result = DagGraph::try_from(graph);
 
             assert!(
@@ -144,10 +142,10 @@ mod tests {
         #[test]
         fn returns_missing_node_error_when_child_absent() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
             builder.add_parent(2i32, 1i32);
 
-            let graph = builder.build::<Node<_>>();
+            let graph = builder.build();
             let result = DagGraph::try_from(graph);
 
             assert!(
@@ -164,12 +162,12 @@ mod tests {
         #[test]
         fn returns_sorted_roots_for_disconnected_nodes() {
             let mut builder = GraphBuilder::new();
-            builder.add_node(1i32, Box::<str>::from("A"));
-            builder.add_node(2i32, Box::<str>::from("B"));
-            builder.add_node(3i32, Box::<str>::from("C"));
+            builder.add_node(1i32, Node::new(Box::<str>::from("A")));
+            builder.add_node(2i32, Node::new(Box::<str>::from("B")));
+            builder.add_node(3i32, Node::new(Box::<str>::from("C")));
             builder.add_parent(2i32, 1i32);
 
-            let dag = DagGraph::try_from(builder.build::<Node<_>>())
+            let dag = DagGraph::try_from(builder.build())
                 .expect("expected DAG to be valid");
             assert_eq!(
                 dag.roots(),

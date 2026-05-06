@@ -27,158 +27,6 @@ use super::{
     file::{FileEntry, FileInfo, FileName},
 };
 
-/// Input parameters for directory scanning operations.
-///
-/// Uses builder pattern for flexible configuration. All filters use AND
-/// semantics: if multiple filters are specified, all must match for a file to
-/// be included.
-///
-/// # Examples
-///
-/// ```
-/// use lithos_core::fs::scanner::DirScanInput;
-///
-/// // Simple glob pattern
-/// let input = DirScanInput::new().with_pattern("schemas/**/*.toml");
-///
-/// // Extension filter only
-/// let input = DirScanInput::new().with_extensions(&["toml", "yaml"]);
-///
-/// // Combined: pattern AND extensions (both must match)
-/// let input = DirScanInput::new()
-///     .with_pattern("schemas/**/*")
-///     .with_extensions(&["toml"])
-///     .recursive(true);
-/// ```
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "Three boolean flags with independent, clear semantics: \
-              include_dirs (output filter), follow_symlinks (traversal \
-              behavior), recursive (depth control). Converting to bitflags \
-              would reduce clarity."
-)]
-#[derive(Debug, Clone, Copy)]
-pub struct DirScanInput<'a> {
-    /// Optional glob pattern for matching paths (relative to scan directory).
-    pub pattern: Option<&'a str>,
-
-    /// Optional file extensions to filter (without dot, e.g., ["toml",
-    /// "yaml"]). When both pattern and extensions are specified, BOTH must
-    /// match (AND semantics).
-    pub extensions: Option<&'a [&'a str]>,
-
-    /// Whether to include directories in results (default: false).
-    pub include_dirs: bool,
-
-    /// Whether to follow symlinks (default: false).
-    pub follow_symlinks: bool,
-
-    /// Whether to scan recursively (default: true).
-    pub recursive: bool,
-}
-
-impl<'a> DirScanInput<'a> {
-    /// Creates a new scan input with defaults.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the glob pattern.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::scanner::DirScanInput;
-    ///
-    /// let input = DirScanInput::new().with_pattern("**/*.toml");
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn with_pattern(mut self, pattern: &'a str) -> Self {
-        self.pattern = Some(pattern);
-        self
-    }
-
-    /// Sets the extensions filter (AND with pattern if both specified).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::scanner::DirScanInput;
-    ///
-    /// let input = DirScanInput::new().with_extensions(&["toml", "yaml", "yml"]);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn with_extensions(mut self, extensions: &'a [&'a str]) -> Self {
-        self.extensions = Some(extensions);
-        self
-    }
-
-    /// Sets whether to include directories.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::scanner::DirScanInput;
-    ///
-    /// let input = DirScanInput::new().include_dirs(true);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn include_dirs(mut self, include: bool) -> Self {
-        self.include_dirs = include;
-        self
-    }
-
-    /// Sets whether to follow symlinks.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::scanner::DirScanInput;
-    ///
-    /// let input = DirScanInput::new().follow_symlinks(true);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn follow_symlinks(mut self, follow: bool) -> Self {
-        self.follow_symlinks = follow;
-        self
-    }
-
-    /// Sets whether to scan recursively.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::scanner::DirScanInput;
-    ///
-    /// // Non-recursive (only immediate children)
-    /// let input = DirScanInput::new().recursive(false);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn recursive(mut self, recursive: bool) -> Self {
-        self.recursive = recursive;
-        self
-    }
-}
-
-impl Default for DirScanInput<'_> {
-    fn default() -> Self {
-        Self {
-            pattern: None,
-            extensions: None,
-            include_dirs: false,
-            follow_symlinks: false,
-            recursive: true,
-        }
-    }
-}
-
 /// Standalone directory scanner for finding files matching criteria.
 ///
 /// Stores the root directory path and provides methods to scan for paths
@@ -186,7 +34,7 @@ impl Default for DirScanInput<'_> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use std::path::Path;
 ///
 /// use lithos_core::fs::scanner::{DirScanInput, DirScanner};
@@ -301,7 +149,7 @@ impl DirScanner {
     ///     .entries(DirScanInput::new().with_extensions(&["toml", "yaml"]))?;
     ///
     /// for entry in entries {
-    ///     println!("{}: {} bytes", entry.filename, entry.info.size());
+    ///     println!("{}: {} bytes", entry.filename.as_str(), entry.info.size());
     /// }
     /// # Ok::<(), lithos_core::fs::error::ParseError>(())
     /// ```
@@ -355,11 +203,12 @@ impl DirScanner {
             }
 
             // Get relative path for filtering
-            let relative =
-                path.strip_prefix(&self.path).map_err(|_| ParseError::Io {
+            let relative = path.strip_prefix(&self.path).map_err(|_err| {
+                ParseError::Io {
                     path: path.to_path_buf(),
                     source: std::io::Error::other("Path outside root"),
-                })?;
+                }
+            })?;
 
             // Skip the root directory itself
             if relative.as_os_str().is_empty() {
@@ -387,7 +236,7 @@ impl DirScanner {
         Ok(results)
     }
 
-    /// Builds a WalkDir iterator based on input configuration.
+    /// Builds a `WalkDir` iterator based on input configuration.
     fn build_walker(&self, input: &DirScanInput) -> WalkDir {
         let mut walker = WalkDir::new(&self.path);
 
@@ -406,12 +255,9 @@ impl DirScanner {
         include_dirs: bool,
     ) -> bool {
         let file_type = entry.file_type();
-
-        if include_dirs {
-            file_type.is_file() || file_type.is_dir() || file_type.is_symlink()
-        } else {
-            file_type.is_file() || file_type.is_symlink()
-        }
+        // Include entry if: (1) it's not a directory, OR (2) it's a directory
+        // and include_dirs is true
+        !file_type.is_dir() || include_dirs
     }
 
     /// Checks if path matches the extensions filter (if specified).
@@ -454,7 +300,168 @@ impl DirScanner {
     }
 }
 
+/// Input parameters for directory scanning operations.
+///
+/// Uses builder pattern for flexible configuration. All filters use AND
+/// semantics: if multiple filters are specified, all must match for a file to
+/// be included.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_core::fs::scanner::DirScanInput;
+///
+/// // Simple glob pattern
+/// let input = DirScanInput::new().with_pattern("schemas/**/*.toml");
+///
+/// // Extension filter only
+/// let input = DirScanInput::new().with_extensions(&["toml", "yaml"]);
+///
+/// // Combined: pattern AND extensions (both must match)
+/// let input = DirScanInput::new()
+///     .with_pattern("schemas/**/*")
+///     .with_extensions(&["toml"])
+///     .recursive(true);
+/// ```
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Three boolean flags with independent, clear semantics: \
+              include_dirs (output filter), follow_symlinks (traversal \
+              behavior), recursive (depth control). Converting to bitflags \
+              would reduce clarity."
+)]
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct DirScanInput<'params> {
+    /// Optional glob pattern for matching paths (relative to scan directory).
+    pub pattern: Option<&'params str>,
+
+    /// Optional file extensions to filter (without dot, e.g., `["toml",
+    /// "yaml"]`). When both pattern and extensions are specified, BOTH must
+    /// match (AND semantics).
+    pub extensions: Option<&'params [&'params str]>,
+
+    /// Whether to include directories in results (default: false).
+    pub include_dirs: bool,
+
+    /// Whether to follow symlinks (default: false).
+    pub follow_symlinks: bool,
+
+    /// Whether to scan recursively (default: true).
+    pub recursive: bool,
+}
+
+impl<'params> DirScanInput<'params> {
+    /// Creates a new scan input with defaults.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the glob pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::scanner::DirScanInput;
+    ///
+    /// let input = DirScanInput::new().with_pattern("**/*.toml");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn with_pattern(mut self, pattern: &'params str) -> Self {
+        self.pattern = Some(pattern);
+        self
+    }
+
+    /// Sets the extensions filter (AND with pattern if both specified).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::scanner::DirScanInput;
+    ///
+    /// let input = DirScanInput::new().with_extensions(&["toml", "yaml", "yml"]);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn with_extensions(
+        mut self,
+        extensions: &'params [&'params str],
+    ) -> Self {
+        self.extensions = Some(extensions);
+        self
+    }
+
+    /// Sets whether to include directories.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::scanner::DirScanInput;
+    ///
+    /// let input = DirScanInput::new().include_dirs(true);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn include_dirs(mut self, include: bool) -> Self {
+        self.include_dirs = include;
+        self
+    }
+
+    /// Sets whether to follow symlinks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::scanner::DirScanInput;
+    ///
+    /// let input = DirScanInput::new().follow_symlinks(true);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn follow_symlinks(mut self, follow: bool) -> Self {
+        self.follow_symlinks = follow;
+        self
+    }
+
+    /// Sets whether to scan recursively.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::scanner::DirScanInput;
+    ///
+    /// // Non-recursive (only immediate children)
+    /// let input = DirScanInput::new().recursive(false);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn recursive(mut self, recursive: bool) -> Self {
+        self.recursive = recursive;
+        self
+    }
+}
+
+impl Default for DirScanInput<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            pattern: None,
+            extensions: None,
+            include_dirs: false,
+            follow_symlinks: false,
+            recursive: true,
+        }
+    }
+}
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules use conventional helper function before nested mod \
+              ordering"
+)]
 mod tests {
     use std::path::PathBuf;
 
@@ -621,7 +628,7 @@ mod tests {
 
             // Only schemas/a.toml matches BOTH pattern AND extension
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths[0], PathBuf::from("schemas/a.toml"));
+            assert_eq!(paths.first(), Some(&PathBuf::from("schemas/a.toml")));
         }
     }
 
@@ -639,7 +646,7 @@ mod tests {
                 scanner.paths(DirScanInput::new().recursive(false)).unwrap();
 
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths[0], PathBuf::from("a.toml"));
+            assert_eq!(paths.first(), Some(&PathBuf::from("a.toml")));
         }
 
         #[test]
@@ -670,7 +677,7 @@ mod tests {
             let paths = scanner.paths(DirScanInput::new()).unwrap();
 
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths[0], PathBuf::from("file.toml"));
+            assert_eq!(paths.first(), Some(&PathBuf::from("file.toml")));
         }
 
         #[test]
@@ -702,9 +709,15 @@ mod tests {
             let entries = scanner.entries(DirScanInput::new()).unwrap();
 
             assert_eq!(entries.len(), 1);
-            assert_eq!(entries[0].path, PathBuf::from("a.toml"));
-            assert_eq!(entries[0].filename.as_str(), "a.toml");
-            assert_eq!(entries[0].info.size(), 12);
+            assert_eq!(
+                entries.first().map(|e| &e.path),
+                Some(&PathBuf::from("a.toml"))
+            );
+            assert_eq!(
+                entries.first().map(|e| e.filename.as_str()),
+                Some("a.toml")
+            );
+            assert_eq!(entries.first().map(|e| e.info.size()), Some(12));
         }
 
         #[test]
@@ -716,8 +729,14 @@ mod tests {
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
 
-            assert_eq!(entries[0].path, PathBuf::from("a.toml"));
-            assert_eq!(entries[1].path, PathBuf::from("z.toml"));
+            assert_eq!(
+                entries.first().map(|e| &e.path),
+                Some(&PathBuf::from("a.toml"))
+            );
+            assert_eq!(
+                entries.get(1).map(|e| &e.path),
+                Some(&PathBuf::from("z.toml"))
+            );
         }
     }
 

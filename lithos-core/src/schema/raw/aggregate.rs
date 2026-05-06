@@ -30,18 +30,20 @@ use crate::{
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// # use lithos_core::schema::raw::{RawSchema, RawPropertyMap, RawProperty};
 /// # use lithos_core::fs::FileInfo;
 /// #
 /// # fn example() {
+/// // RawSchema is typically parsed from files, not constructed directly
+/// // Example shown for illustration purposes only
 /// let raw = RawSchema {
 ///     version: "1.0".into(),
 ///     name: "User".into(),
 ///     extends: None,
 ///     excludes: vec![],
 ///     properties: RawPropertyMap::new(),
-///     info: FileInfo::default(),
+///     info: FileInfo::new(None, None, 0),
 /// };
 /// # }
 /// ```

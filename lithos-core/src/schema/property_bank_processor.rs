@@ -114,17 +114,16 @@ use crate::{
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
-        discovery::{DiscoveredFile, DiscoveredView, SchemaFileKind},
         error::{
-            SchemaFileError, SchemaIngestionError, SchemaLoaderError,
-            SchemaRepositoryError, SchemaStorageError,
+            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
+            SchemaStorageError,
         },
         property::PropertyName,
         raw::RawPropertyBank,
         storage::Repository,
         views::{
-            HashRecord, RawPropertyBankView, RawView as _,
-            contracts::RawViewRead,
+            HashRecord, RawPropertyBankView, RawView as _, RawViewRead as _,
+            contracts::Version as _,
         },
     },
     support::hash::Blake3Hash,
@@ -203,82 +202,49 @@ impl PropertyBankProcessor<Discovery, Unknown> {
         }
     }
 
-    /// Creates a branch from discovery data, bypassing redundant I/O.
+    /// Initial entry point: checks the repository for an existing view.
     ///
-    /// This method accepts `DiscoveredFile` data directly from the
-    /// [`DiscoveryEngine`](crate::schema::DiscoveryEngine), eliminating
-    /// the need to re-read file stats or re-query the repository.
-    ///
-    /// # Design Note
-    ///
-    /// This method processes a **single** property bank file because:
-    /// - The property bank is a singleton resource (only one per schema
-    ///   directory)
-    /// - Processing requires the full comparison pipeline (validate, parse,
-    ///   compare)
-    /// - The caller already has the specific file reference from discovery
-    ///
-    /// In contrast, schema files are processed in **batches** because:
-    /// - Multiple schemas can exist in a directory
-    /// - Batch processing enables efficient bulk operations
-    /// - The discovery engine naturally groups them together
+    /// This method gathers file metadata (created time, last modified, and byte
+    /// size) and queries the repository to decide whether the pipeline
+    /// starts as a `Missing` (new ingestion) or a `Present` (incremental
+    /// update) branch.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the discovered file is not a
-    /// property bank or has a view/kind mismatch.
+    /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Idiomatic option matching"
-    )]
-    pub(crate) fn from_discovery(
+    pub(crate) fn discover<R: Repository>(
+        self,
         path: &RelativePath,
-        discovered: &DiscoveredFile,
-    ) -> Result<ComparisonBranch, SchemaLoaderError> {
-        match discovered.kind {
-            SchemaFileKind::PropertyBank => {}
-            SchemaFileKind::Schema(_) => {
-                return Err(SchemaLoaderError::Ingestion(
-                    SchemaIngestionError::File(SchemaFileError::FileSystem {
-                        reason: format!(
-                            "discovered file at '{path}' is a schema, not a \
-                             property bank"
-                        )
-                        .into(),
-                    }),
-                ));
-            }
-        }
+        source: &FsReader,
+        config_path: &std::path::Path,
+        repository: &R,
+    ) -> Result<ComparisonBranch, SchemaLoaderError>
+    where
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        drop(self);
+        let cached_view = repository
+            .get_raw_property_bank_view(path)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-        match &discovered.view {
-            None => Ok(ComparisonBranch::Missing(Self::transition(
-                Parsed,
-                Missing {
-                    info: discovered.info,
+        let file_info = source
+            .info(config_path)
+            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        if let Some(view) = cached_view {
+            Ok(ComparisonBranch::Present(Self::transition(
+                Comparison,
+                Present {
+                    info: file_info,
+                    view,
                 },
-            ))),
-            Some(DiscoveredView::PropertyBank(view)) => {
-                Ok(ComparisonBranch::Present(Self::transition(
-                    Comparison,
-                    Present {
-                        info: discovered.info,
-                        view: view.clone(),
-                    },
-                )))
-            }
-            Some(DiscoveredView::Schema(_)) => {
-                Err(SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    SchemaFileError::FileSystem {
-                        reason: format!(
-                            "property bank at '{path}' has a schema view \
-                             (kind/view mismatch)"
-                        )
-                        .into(),
-                    },
-                )))
-            }
+            )))
+        } else {
+            Ok(ComparisonBranch::Missing(Self::transition(Parsed, Missing {
+                info: file_info,
+            })))
         }
     }
 }
@@ -298,13 +264,13 @@ impl Default for PropertyBankProcessor<Discovery, Unknown> {
 #[derive(Debug)]
 pub(crate) struct Comparison;
 
-/// Proven: View does not exist in repository; carries file stats.
+/// Proven: View does not exist in repository; carries file info.
 #[derive(Debug)]
 pub(crate) struct Missing {
     info: FileInfo,
 }
 
-/// Proven: View exists in repository; carries file stats and cached view.
+/// Proven: View exists in repository; carries file info and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
     info: FileInfo,
@@ -663,7 +629,8 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaRepositoryError::Storage)
+            .map_err(SchemaLoaderError::Repository)?;
 
         repository
             .save_raw_property_bank_view(
