@@ -33,6 +33,10 @@
   - `docs/design/README.md` + `docs/design/template.md`
 - Most `_bmad-output/implementation-artifacts/**`, `_bmad-output/test-artifacts/**`, and `_bmad-output/planning-artifacts/epics/**` are better treated as historical archive material.
 - All module `CONTEXT.md` files now share a consistent refinement pattern: canonical vocabulary, invariants, and explicit non-ownership terms to reduce cross-context drift.
+- `docs/index.md` has been rewritten to point to current authoritative sources and module context docs.
+- `docs/README.md` is now the canonical docs entrypoint.
+- Historical markers have been added to key `_bmad-output/` subtrees via local `README.md` files.
+- A full-file documentation matrix now exists at `docs/documentation-matrix.md` covering all files under `docs/` and `_bmad-output/` with keep/archive/move/delete decisions.
 
 ## Technical Decisions
 | Decision | Rationale |
@@ -40,12 +44,16 @@
 | Use a keep/migrate/archive/delete-candidate classification | Enables cleanup without losing potentially useful historical knowledge |
 | Treat `docs/adr/` as authoritative architecture baseline | ADRs are decision records and map well to long-term relevance |
 | Preserve BMAD artifacts in an archive boundary initially, not immediate deletion | Reduces risk while enabling a cleaner primary docs experience |
-| Use multi-context docs with `docs/CONTEXT-MAP.md` + per-context `docs/contexts/*/CONTEXT.md` | Matches repo architecture and Matt Pocock skill expectations while reducing cognitive load |
+| Use multi-context docs with root `CONTEXT-MAP.md` + module-local `CONTEXT.md` files | Matches grill-with-docs format and keeps domain language near code boundaries |
 | Place `CONTEXT-MAP.md` at project root | Aligns with grill-with-docs conventions for multi-context repositories |
 | Place each `CONTEXT.md` inside each module folder | Keeps domain context nearest module boundaries and reduces navigation friction |
 | Keep `docs/project-genesis/**` | User explicitly wants early ideation artifacts retained as historical reference |
 | Execute in strict order: refine `CONTEXT-MAP.md` + module `CONTEXT.md` first, then reorganize `docs/` | Context boundaries should drive information architecture, not vice versa |
 | In `CONTEXT-MAP.md`, list `DB` and `FS` as full contexts, but mark them as infrastructure under Relationships | Preserves explicit ownership while clarifying dependency role |
+| `docs/project-genesis/**` is historical-only while still kept in active tree | Preserves origin reasoning without making it authoritative for current architecture |
+| Approved target structure is purpose-first with top-level `adr`, `architecture`, `engineering`, `refs`, `specs`, `agents`, `history`, and `legacy` | Gives each subfolder clear bounded purpose and reduces drift into catch-all docs |
+| `history` and `legacy` are distinct and both required | Preserves provenance (`history`) while isolating superseded technical guidance (`legacy`) |
+| Distillation is mandatory before relocation to `history`/`legacy` | Prevents knowledge loss during cleanup and keeps active docs current |
 
 ## Issues Encountered
 | Issue | Resolution |

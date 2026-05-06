@@ -73,8 +73,65 @@
 - **Status:** in_progress
 - Actions taken:
   - Sequenced as next phase after context refinement completion.
+  - Committed context map + module context docs + project-genesis migration (`5d4b08f9`).
+  - Tightened schema/note/config context vocabulary and invariants based on follow-up review.
 - Files created/modified:
   - `task_plan.md` (updated)
+  - `lithos-core/src/schema/CONTEXT.md` (updated)
+  - `lithos-core/src/note/CONTEXT.md` (updated)
+  - `lithos-core/src/config/CONTEXT.md` (updated)
+  - `CONTEXT-MAP.md` (updated)
+
+### Phase 6: Next-Step Planning
+- **Status:** complete
+- Actions taken:
+  - Updated planning artifacts to reflect completed context pass and committed baseline.
+  - Defined next execution targets for docs reorganization and authoritative docs surface.
+- Files created/modified:
+  - `task_plan.md` (updated)
+  - `findings.md` (updated)
+  - `progress.md` (updated)
+
+### Phase 7: Docs Surface Finalization
+- **Status:** complete
+- Actions taken:
+  - Rewrote `docs/index.md` to remove stale BMAD-centric assumptions and point to authoritative docs.
+  - Added canonical docs entrypoint `docs/README.md` linked to `CONTEXT-MAP.md`.
+  - Added historical marker READMEs in `_bmad-output/` root and key historical subtrees.
+  - Generated full matrix for all files in `docs/` and `_bmad-output/` with keep/archive/move/delete dispositions.
+- Files created/modified:
+  - `docs/index.md` (updated)
+  - `docs/README.md` (created)
+  - `_bmad-output/README.md` (created)
+  - `_bmad-output/implementation-artifacts/README.md` (created)
+  - `_bmad-output/test-artifacts/README.md` (created)
+  - `_bmad-output/planning-artifacts/epics/README.md` (created)
+  - `_bmad-output/research/README.md` (created)
+  - `docs/documentation-matrix.md` (created)
+
+### Phase 8: Structure Approval and Governance Lock
+- **Status:** complete
+- Actions taken:
+  - Researched documentation organization best practices and reconciled with repo needs.
+  - Ran interactive structure design decisions and got approval on a purpose-first target tree.
+  - Captured anti-bloat governance rules in `docs/README.md`.
+  - Added matrix generation rules to enforce structure-driven classification.
+- Files created/modified:
+  - `docs/README.md` (updated)
+  - `docs/documentation-matrix.md` (updated)
+  - `task_plan.md` (updated)
+  - `findings.md` (updated)
+  - `progress.md` (updated)
+
+### Phase 9: Matrix Reclassification and Move Planning
+- **Status:** complete
+- Actions taken:
+  - Regenerated `docs/documentation-matrix.md` with explicit `move` targets under `docs/history/**` and `docs/legacy/**`.
+  - Enforced exclusion of `docs/refs/vault/**` from matrix generation.
+  - Added low-risk first move batch guidance to the matrix.
+- Files created/modified:
+  - `docs/documentation-matrix.md` (updated)
+  - `progress.md` (updated)
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |
@@ -90,11 +147,11 @@
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 5: Docs reorganization |
-| Where am I going? | Reorganize `docs/` guided by refined context boundaries |
+| Where am I? | Ready to execute low-risk move batch |
+| Where am I going? | Execute deterministic folder moves per matrix targets |
 | What's the goal? | Rationalize docs and design context/doc structure post-BMAD |
 | What have I learned? | Stable cleanup depends on context-first refinement; `project-genesis` is historical-only reference |
-| What have I done? | Completed inventory, classification, context scaffolding, sequence lock, and module context refinement |
+| What have I done? | Completed inventory, context refactor, docs governance lock, and full-file disposition matrix setup |
 
 ---
 *Update after completing each phase or encountering errors*

@@ -4,7 +4,7 @@
 Identify still-relevant documentation across `docs/` and `_bmad-output/`, define what to keep/archive/remove, and produce a clear target docs structure plus `CONTEXT.md`/`CONTEXT-MAP.md` plan aligned with Matt Pocock skills.
 
 ## Current Phase
-Phase 5
+Phase 9
 
 ## Phases
 
@@ -36,7 +36,7 @@ Phase 5
 - [x] Provide concise keep/archive matrix
 - [x] Provide concrete first-pass cleanup checklist
 - [x] Offer to implement file moves/creation in a follow-up step
-- **Status:** in_progress
+- **Status:** complete
 
 ### Phase 6: Context Refinement First (Execution Order Lock)
 - [x] Refine `CONTEXT-MAP.md` with canonical context names and relationships
@@ -45,9 +45,24 @@ Phase 5
 - **Status:** complete
 
 ### Phase 7: Docs Reorganization Second
-- [ ] Reorganize `docs/` guided by refined context boundaries
-- [ ] Preserve `docs/project-genesis/**` as historical-only with clear markers
-- [ ] Update indexes and links to point at the refined context model
+- [x] Reorganize `docs/` guided by refined context boundaries (entrypoints and historical markers)
+- [x] Preserve `docs/project-genesis/**` as historical-only with clear markers
+- [x] Update indexes and links to point at the refined context model
+- **Status:** complete
+
+### Phase 8: Finalize Authoritative Docs Surface
+- [x] Replace or rewrite `docs/index.md` to remove stale BMAD assumptions
+- [x] Define one canonical docs entrypoint (`docs/README.md`) and link to `CONTEXT-MAP.md`
+- [x] Mark historical BMAD trees with local READMEs (historical-only, non-authoritative)
+- [x] Publish a keep/archive/move matrix in `docs/` for future contributors
+- **Status:** complete
+
+### Phase 9: Target Structure Lock and Matrix Alignment
+- [x] Get explicit approval for purpose-first docs structure
+- [x] Encode approved structure and anti-bloat rules in `docs/README.md`
+- [x] Add matrix generation rules aligned with approved structure
+- [x] Reclassify matrix decisions to explicit `history`/`legacy` destinations where applicable
+- [ ] Execute matrix-driven folder moves in controlled batches
 - **Status:** in_progress
 
 ## Key Questions
