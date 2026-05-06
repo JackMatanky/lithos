@@ -3,7 +3,7 @@
 //! This module defines two representations for inline fields found in markdown:
 //!
 //! - [`RawInlineFieldToken`]: a zero-copy token holding the raw key and value
-//!   strings exactly as extracted by the scanner.
+//!   strings exactly as extracted by lexical collection.
 //! - [`RawInlineField`]: a typed field where the value has been interpreted as
 //!   a [`RawFieldValue`] (date, number, boolean, string, or list).
 //!

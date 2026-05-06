@@ -1,7 +1,7 @@
 //! CommonMark-oriented parser IR types.
 //!
 //! This module defines the parser-owned intermediate representation shared by
-//! stream adaptation, structure building, and scanner-facing extraction.
+//! stream adaptation, structure building, and lexical artifact extraction.
 //! The naming intentionally follows CommonMark terminology (`block`, `inline`,
 //! `list item`, `thematic break`, etc.) to avoid introducing project-specific
 //! jargon.

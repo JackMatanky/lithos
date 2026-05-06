@@ -1,8 +1,9 @@
 //! Derived inline text projection types.
 //!
 //! This module projects parser inline IR (`RangedEvent`) into stable text
-//! nodes. It is policy-agnostic: consumer layers (scanner, assembler, link
-//! handling) decide which nodes to include for their own use cases.
+//! nodes. It is policy-agnostic: consumer layers (lexical collection,
+//! assembler, link handling) decide which nodes to include for their own use
+//! cases.
 //!
 //! # The Text Contract
 //!

@@ -43,7 +43,7 @@
 //! | Error Type              | When to Use                                                            |
 //! | :---------------------- | :--------------------------------------------------------------------- |
 //! | [`NoteError`]           | Pure domain logic, entity constructors, and normalization methods.     |
-//! | [`NoteIngestError`]     | Readers, scanners, and parsers bridging raw bytes to structured facts. |
+//! | [`NoteIngestError`]     | Readers, lexical collectors, and parsers bridging raw bytes to structured facts. |
 //! | [`NoteRepositoryError`] | Storage adapters, indexing logic, and identity stability checks.       |
 //! | [`NoteLoadError`]       | Cross-cutting services coordinating the entire lifecycle.              |
 //!
