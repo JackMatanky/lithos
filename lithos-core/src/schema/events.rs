@@ -41,9 +41,8 @@ use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 use tracing::{debug, error, info, warn};
 
 use super::{
-    aggregate::{SchemaId, SchemaName},
-    bank::BankVersion,
     error::SchemaError,
+    identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyName},
 };
 
@@ -56,8 +55,8 @@ use super::{
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaCreated,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
@@ -90,8 +89,8 @@ impl SchemaCreated {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaCreated,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -120,8 +119,8 @@ impl SchemaCreated {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaResolved,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -153,8 +152,8 @@ impl SchemaResolved {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaResolved,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -183,8 +182,8 @@ impl SchemaResolved {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaDeleted,
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -216,8 +215,8 @@ impl SchemaDeleted {
     /// use std::time::SystemTime;
     ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaDeleted,
+    ///     identifier::{SchemaId, SchemaName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
@@ -312,10 +311,9 @@ impl PropertyRegistered {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
+/// use lithos_core::schema::events::PropertyBankLoaded;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let event =
-///     PropertyBankLoaded::new(3, BankVersion::initial(), SystemTime::now());
+/// let event = PropertyBankLoaded::new(3, SystemTime::now());
 /// assert_eq!(event.property_count, 3);
 /// # Ok(())
 /// # }
@@ -326,8 +324,6 @@ impl PropertyRegistered {
 pub struct PropertyBankLoaded {
     /// Number of properties in the bank after loading.
     pub property_count: usize,
-    /// Version of the property bank.
-    pub bank_version: BankVersion,
     /// Timestamp when the bank was loaded.
     #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
@@ -340,23 +336,17 @@ impl PropertyBankLoaded {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
+    /// use lithos_core::schema::events::PropertyBankLoaded;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let _event =
-    ///     PropertyBankLoaded::new(1, BankVersion::initial(), SystemTime::now());
+    /// let _event = PropertyBankLoaded::new(1, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(
-        property_count: usize,
-        bank_version: BankVersion,
-        timestamp: SystemTime,
-    ) -> Self {
+    pub fn new(property_count: usize, timestamp: SystemTime) -> Self {
         Self {
             property_count,
-            bank_version,
             timestamp,
         }
     }
@@ -369,8 +359,8 @@ impl PropertyBankLoaded {
 /// use std::time::SystemTime;
 ///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName},
 ///     events::{Events, SchemaCreated},
+///     identifier::{SchemaId, SchemaName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
@@ -523,8 +513,8 @@ pub enum StalenessReason {
     Modified,
     /// Schema file content hash changed.
     ContentChanged,
-    /// Property bank version changed (cascade).
-    BankVersionChanged,
+    /// Property bank changed (cascade).
+    PropertyBankChanged,
 }
 
 /// Pipeline event for property bank loading observability.
@@ -534,10 +524,7 @@ pub enum StalenessReason {
 #[non_exhaustive]
 pub enum PropertyBankEvent {
     /// Property bank is fresh (no changes).
-    Fresh {
-        /// Bank version.
-        version: BankVersion,
-    },
+    Fresh,
 
     /// Property bank is stale (changed).
     Stale {
@@ -552,15 +539,10 @@ pub enum PropertyBankEvent {
     Resolved {
         /// Number of properties in the bank.
         property_count: usize,
-        /// Bank version.
-        version: BankVersion,
     },
 
     /// Property bank persisted to database.
-    Persisted {
-        /// Bank version.
-        version: BankVersion,
-    },
+    Persisted,
 
     /// Property bank change triggered schema cascade.
     TriggeredCascade {
@@ -659,12 +641,10 @@ mod tests {
 
     #[test]
     fn property_bank_loaded_captures_payload() {
-        let version = BankVersion::initial();
         let timestamp = SystemTime::now();
-        let event = PropertyBankLoaded::new(42, version, timestamp);
+        let event = PropertyBankLoaded::new(42, timestamp);
 
         assert_eq!(event.property_count, 42);
-        assert_eq!(event.bank_version, version);
         assert_eq!(event.timestamp, timestamp);
     }
 
@@ -710,10 +690,8 @@ mod tests {
 
     #[test]
     fn property_bank_event_fresh() {
-        let event = PropertyBankEvent::Fresh {
-            version: BankVersion::initial(),
-        };
-        assert!(matches!(event, PropertyBankEvent::Fresh { .. }));
+        let event = PropertyBankEvent::Fresh;
+        assert!(matches!(event, PropertyBankEvent::Fresh));
     }
 
     #[test]
@@ -740,7 +718,7 @@ fn staleness_reason_str(reason: StalenessReason) -> &'static str {
         StalenessReason::New => "new",
         StalenessReason::Modified => "modified",
         StalenessReason::ContentChanged => "content_changed",
-        StalenessReason::BankVersionChanged => "bank_version_changed",
+        StalenessReason::PropertyBankChanged => "property_bank_changed",
     }
 }
 
@@ -946,10 +924,8 @@ impl SchemaEventHandler for LoggingHandler {
     #[inline]
     fn handle_property_bank(&self, event: &PropertyBankEvent) {
         match *event {
-            PropertyBankEvent::Fresh {
-                version,
-            } => {
-                debug!(bank_version = %version, "Property bank is fresh");
+            PropertyBankEvent::Fresh => {
+                debug!("Property bank is fresh");
             }
             PropertyBankEvent::Stale {
                 reason,
@@ -961,18 +937,14 @@ impl SchemaEventHandler for LoggingHandler {
             }
             PropertyBankEvent::Resolved {
                 property_count,
-                version,
             } => {
                 info!(
                     property_count = %property_count,
-                    bank_version = %version,
                     "Property bank resolved"
                 );
             }
-            PropertyBankEvent::Persisted {
-                version,
-            } => {
-                debug!(bank_version = %version, "Property bank persisted");
+            PropertyBankEvent::Persisted => {
+                debug!("Property bank persisted");
             }
             PropertyBankEvent::TriggeredCascade {
                 affected_schema_count,
@@ -1185,7 +1157,7 @@ impl SchemaEventHandler for EventCollector {
 #[cfg(test)]
 mod handler_tests {
     use super::*;
-    use crate::schema::{aggregate::SchemaId, bank::BankVersion};
+    use crate::schema::identifier::SchemaId;
 
     #[test]
     fn logging_handler_new() {
@@ -1239,11 +1211,19 @@ mod handler_tests {
         });
         handler.handle_schema(&SchemaEvent::ValidationError {
             name: "bad".into(),
-            error: crate::schema::error::SchemaError::EmptySchemaName,
+            error: crate::schema::error::SchemaError::Syntax(
+                crate::schema::error::SchemaSyntaxError::SchemaName(
+                    crate::schema::error::SchemaNameError::Empty,
+                ),
+            ),
         });
         handler.handle_schema(&SchemaEvent::ResolutionError {
             name: "bad".into(),
-            error: crate::schema::error::SchemaError::EmptySchemaName,
+            error: crate::schema::error::SchemaError::Syntax(
+                crate::schema::error::SchemaSyntaxError::SchemaName(
+                    crate::schema::error::SchemaNameError::Empty,
+                ),
+            ),
         });
     }
 
@@ -1251,20 +1231,15 @@ mod handler_tests {
     fn logging_handler_handles_all_property_bank_events() {
         let handler = LoggingHandler::new();
 
-        handler.handle_property_bank(&PropertyBankEvent::Fresh {
-            version: BankVersion::initial(),
-        });
+        handler.handle_property_bank(&PropertyBankEvent::Fresh);
         handler.handle_property_bank(&PropertyBankEvent::Stale {
             reason: StalenessReason::Modified,
         });
         handler.handle_property_bank(&PropertyBankEvent::ResolutionStarted);
         handler.handle_property_bank(&PropertyBankEvent::Resolved {
             property_count: 10,
-            version: BankVersion::initial(),
         });
-        handler.handle_property_bank(&PropertyBankEvent::Persisted {
-            version: BankVersion::initial(),
-        });
+        handler.handle_property_bank(&PropertyBankEvent::Persisted);
         handler.handle_property_bank(&PropertyBankEvent::TriggeredCascade {
             affected_schema_count: 5,
         });

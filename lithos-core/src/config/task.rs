@@ -677,15 +677,13 @@ impl TaskTag {
         let Some(tag_body) = text.strip_prefix('#') else {
             return Err(ConfigError::ValidationFailed {
                 field: "task_tags".into(),
-                message: "task tag must start with '#' and be non-empty"
-                    .to_owned()
-                    .into(),
+                message: "task tag must start with '#' and be non-empty".into(),
             });
         };
         if tag_body.is_empty() {
             return Err(ConfigError::ValidationFailed {
                 field: "task_tags".into(),
-                message: "task tag must be non-empty".to_owned().into(),
+                message: "task tag must be non-empty".into(),
             });
         }
 
@@ -693,9 +691,7 @@ impl TaskTag {
             if segment.is_empty() {
                 return Err(ConfigError::ValidationFailed {
                     field: "task_tags".into(),
-                    message: "task tag cannot contain empty segments"
-                        .to_owned()
-                        .into(),
+                    message: "task tag cannot contain empty segments".into(),
                 });
             }
             if !segment
@@ -706,7 +702,6 @@ impl TaskTag {
                     field: "task_tags".into(),
                     message: "task tag segments must be alphanumeric, '_' or \
                               '-'"
-                    .to_owned()
                     .into(),
                 });
             }
@@ -715,9 +710,7 @@ impl TaskTag {
         if tag_body.chars().any(|c| c.is_ascii() && c.is_ascii_whitespace()) {
             return Err(ConfigError::ValidationFailed {
                 field: "task_tags".into(),
-                message: "task tag must not contain whitespace"
-                    .to_owned()
-                    .into(),
+                message: "task tag must not contain whitespace".into(),
             });
         }
         Ok(Self(text.to_owned().into_boxed_str()))

@@ -20,7 +20,7 @@
       "type": "string"
     },
     "url": {
-      "$ref": "property_bank#/url"
+      "$ref": "#property_bank/url"
     },
     "subtype": {
       "multi": true,

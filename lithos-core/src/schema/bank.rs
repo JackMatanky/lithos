@@ -1,37 +1,35 @@
 //! PropertyBank domain aggregate for centralized property registration.
 //!
-//! Provides name-indexed property lookup with singleton persistence and
-//! versioning for incremental resolution.
+//! Provides name-indexed property lookup with singleton persistence.
 
-use std::{collections::BTreeMap, fmt::Display, time::SystemTime};
+use std::time::SystemTime;
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     error::SchemaError,
-    events::{Events, PropertyRegistered},
-    property::{Property, PropertyId, PropertyName},
+    property::{Property, PropertyMap, PropertyName},
+    raw::RawPropertyBank,
 };
 
 /// Registry of reusable Property definitions keyed by name.
 ///
-/// The `PropertyBank` acts as a singleton registry with versioned persistence.
-/// It is loaded first at program start and versioned for incremental
-/// resolution.
+/// The `PropertyBank` acts as a singleton registry with persisted state.
+/// It is loaded first at program start and stored on modification.
 ///
 /// # Storage Strategy
 ///
 /// The `PropertyBank` is a singleton registry persisted by the adapter layer.
 /// - **Lifecycle**: Loaded once at startup, persisted on modification
-/// - **Versioning**: `BankVersion` increments on any property change
-/// - **Storage**: `bank_metadata` and versioned `bank_property_by_*` tables
+/// - **Storage**: `property_bank` singleton table
 ///
 /// # Examples
 ///
 /// ```
 /// # use lithos_core::schema::bank::PropertyBank;
 /// # use lithos_core::schema::property::{
-/// #     Multiplicity, Optionality, Property, PropertyId, PropertyName,
+/// #     Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+/// #     PropertyName,
 /// # };
 /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,30 +37,24 @@ use super::{
 /// let name = PropertyName::try_new("is_active")?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let id = PropertyId::new();
-/// let property = Property::new(
-///     id,
-///     name.clone(),
-///     Optionality::Required,
-///     Multiplicity::Single,
-///     spec,
-/// );
+/// let property =
+///     Property::new(id, Optionality::Required, Multiplicity::Single, spec);
 ///
-/// bank.register(property)?;
+/// let mut properties = PropertyMap::new();
+/// properties.insert(name.clone(), property);
+/// let bank = PropertyBank::from(properties);
 /// assert!(bank.has(&name), "Bank should contain property name");
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PropertyBank {
-    /// Registered properties keyed by name.
-    ///
-    /// Stored as `BTreeMap` for deterministic iteration order.
-    properties: BTreeMap<PropertyName, Property>,
-    /// Version counter for staleness detection.
-    version: BankVersion,
-    /// Domain events pending emission.
-    pending_events: Option<Vec<Events>>,
+    /// Registered properties keyed by name (`PropertyMap` for O(1) lookup).
+    properties: PropertyMap,
+    /// Ingestion timestamp (private - not exposed in public API).
+    #[rkyv(with = AsUnixTime)]
+    recorded_at: SystemTime,
 }
 
 /// Design note: `PropertyBank` stores properties by name for consistent
@@ -81,190 +73,9 @@ impl PropertyBank {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            properties: BTreeMap::new(),
-            version: BankVersion::initial(),
-            pending_events: None,
+            properties: PropertyMap::new(),
+            recorded_at: SystemTime::now(),
         }
-    }
-
-    /// Build a `PropertyBank` from raw vault data.
-    ///
-    /// Preserves existing property IDs by name when `existing` is provided.
-    /// New properties (not found in existing by name) get generated IDs.
-    ///
-    /// Properties are loaded in deterministic name order.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if any property fails validation.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::{
-    ///     bank::PropertyBank,
-    ///     raw::RawPropertyBank,
-    /// };
-    ///
-    /// let raw = RawPropertyBank { properties: std::collections::HashMap::new() };
-    /// let bank = PropertyBank::from_raw(raw, None)?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
-    #[inline]
-    pub fn try_from_raw(
-        raw: super::raw::RawPropertyBank,
-        existing: Option<&Self>,
-    ) -> Result<Self, SchemaError> {
-        let mut bank = Self::new();
-
-        let mut entries: Vec<_> = raw.properties.into_iter().collect();
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
-
-        for (name, entry) in entries {
-            let prop_name = PropertyName::try_from(name)?;
-            let spec = entry.spec.try_into()?;
-            let multiplicity = if entry.multi {
-                super::property::Multiplicity::Many
-            } else {
-                super::property::Multiplicity::Single
-            };
-
-            // Reuse ID from existing bank if name matches
-            let id = existing
-                .and_then(|b| b.get(&prop_name))
-                .map_or_else(PropertyId::new, super::property::Property::id);
-
-            let property = Property::new(
-                id,
-                prop_name,
-                super::property::Optionality::Optional,
-                multiplicity,
-                spec,
-            );
-
-            bank.register(property)?;
-        }
-
-        // Emit PropertyBankLoaded event
-        let event = super::events::Events::PropertyBankLoaded(
-            super::events::PropertyBankLoaded::new(
-                bank.all().count(),
-                bank.version(),
-                SystemTime::now(),
-            ),
-        );
-        bank.add_event(event);
-
-        Ok(bank)
-    }
-
-    /// Reconstruct a `PropertyBank` from stored properties.
-    ///
-    /// This skips event emission and preserves the provided version.
-    pub(crate) fn try_reconstruct(
-        properties: Vec<Property>,
-        version: BankVersion,
-    ) -> Result<Self, SchemaError> {
-        let mut bank = Self::new();
-        bank.version = version;
-
-        for property in properties {
-            let name = property.name().clone();
-            if bank.properties.contains_key(&name) {
-                return Err(SchemaError::DuplicatePropertyName(
-                    name.as_str().into(),
-                ));
-            }
-            if bank.properties.values().any(|prop| prop.id() == property.id()) {
-                return Err(SchemaError::AlreadyExists(format!(
-                    "Property ID {} already registered under a different name",
-                    property.id()
-                )));
-            }
-            bank.properties.insert(name, property);
-        }
-
-        Ok(bank)
-    }
-
-    /// Returns the current `PropertyBank` version.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// let _version = bank.version();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn version(&self) -> BankVersion {
-        self.version
-    }
-
-    /// Register a property in the bank.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::{
-    ///     bank::PropertyBank,
-    ///     property::{
-    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
-    ///     },
-    ///     property_spec::{BoolSpec, PropertySpec},
-    /// };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let mut bank = PropertyBank::new();
-    ///
-    /// let name = PropertyName::try_new("is_active")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = PropertyId::new();
-    /// let property = Property::new(
-    ///     id,
-    ///     name,
-    ///     Optionality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    ///
-    /// bank.register(property)?;
-    /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn register(&mut self, property: Property) -> Result<(), SchemaError> {
-        let id = property.id();
-        let name = property.name().clone();
-
-        if let Some(existing) = self.properties.get(&name) {
-            if existing == &property {
-                return Ok(());
-            }
-            return Err(SchemaError::DuplicatePropertyName(
-                name.as_str().into(),
-            ));
-        }
-
-        if self.properties.values().any(|prop| prop.id() == id) {
-            return Err(SchemaError::AlreadyExists(format!(
-                "Property ID {id} already registered under a different name"
-            )));
-        }
-
-        self.properties.insert(name.clone(), property);
-        self.version = self.version.increment();
-
-        let event = Events::PropertyRegistered(PropertyRegistered::new(
-            id,
-            &name,
-            SystemTime::now(),
-        ));
-        self.add_event(event);
-        Ok(())
     }
 
     /// Lookup property by name (O(log n)).
@@ -301,7 +112,7 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
-        self.properties.contains_key(name)
+        self.properties.has(name)
     }
 
     /// Get all properties in the bank.
@@ -319,110 +130,14 @@ impl PropertyBank {
         self.properties.values()
     }
 
-    /// Returns a reference to pending domain events.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// let _events = bank.pending_events();
-    /// ```
     #[inline]
-    #[must_use]
-    pub fn pending_events(&self) -> &[Events] {
-        self.pending_events.as_deref().unwrap_or_default()
+    pub(super) fn set_properties(&mut self) -> &mut PropertyMap {
+        &mut self.properties
     }
 
-    /// Returns and clears pending domain events.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let mut bank = PropertyBank::new();
-    /// let _events = bank.take_events();
-    /// ```
     #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<Events> {
-        self.pending_events.take().unwrap_or_default()
-    }
-
-    /// Adds a domain event to the pending events collection.
-    #[inline]
-    fn add_event(&mut self, event: Events) {
-        self.pending_events.get_or_insert_with(Vec::new).push(event);
-    }
-
-    /// Compare this `PropertyBank` with another to find changed properties.
-    ///
-    /// Returns the names of properties that differ between the two banks.
-    /// A property is considered changed if:
-    /// - It exists in `other` but not in `self` (added)
-    /// - It exists in `self` but not in `other` (removed)
-    /// - The spec differs between `self` and `other` (modified)
-    ///
-    /// Property IDs are ignored for comparison (only name and spec matter).
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::bank::PropertyBank;
-    /// # use lithos_core::schema::property::{
-    /// #     Multiplicity, Optionality, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut bank1 = PropertyBank::new();
-    /// let mut bank2 = PropertyBank::new();
-    ///
-    /// let name = PropertyName::try_new("flag")?;
-    /// let prop1 = Property::new(
-    ///     PropertyId::new(),
-    ///     name.clone(),
-    ///     Optionality::Optional,
-    ///     Multiplicity::Single,
-    ///     PropertySpec::Bool(BoolSpec::default()),
-    /// );
-    /// bank1.register(prop1)?;
-    ///
-    /// // bank2 is empty, so "flag" is a changed property
-    /// let changed = bank1.diff_property_bank(&bank2);
-    /// assert_eq!(changed.len(), 1);
-    /// assert_eq!(changed.first().map(|n| n.as_ref()), Some("flag"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn diff_property_bank(&self, other: &Self) -> Vec<PropertyName> {
-        let mut changed = Vec::new();
-
-        // Check for added or modified properties (in self but different in
-        // other)
-        for (name, prop) in &self.properties {
-            if let Some(other_prop) = other.properties.get(name) {
-                // Property exists in both - check if spec changed
-                if prop.spec() != other_prop.spec()
-                    || prop.optionality() != other_prop.optionality()
-                    || prop.multiplicity() != other_prop.multiplicity()
-                {
-                    changed.push(name.clone());
-                }
-            } else {
-                // Property added (exists in self, not in other)
-                changed.push(name.clone());
-            }
-        }
-
-        // Check for removed properties (in other but not in self)
-        for name in other.properties.keys() {
-            if !self.properties.contains_key(name) {
-                changed.push(name.clone());
-            }
-        }
-
-        changed
+    pub(super) fn set_recorded_at(&mut self) -> &mut SystemTime {
+        &mut self.recorded_at
     }
 }
 
@@ -433,123 +148,42 @@ impl Default for PropertyBank {
     }
 }
 
-/// `PropertyBank` version counter for staleness detection.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::bank::BankVersion;
-///
-/// let version = BankVersion::initial();
-/// let next = version.increment();
-/// assert!(version.is_older_than(next));
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct BankVersion(u64);
-
-impl BankVersion {
-    /// Returns the initial version.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// assert_eq!(version.as_u64(), 0);
-    /// ```
+impl From<PropertyMap> for PropertyBank {
     #[inline]
-    #[must_use]
-    pub const fn initial() -> Self {
-        Self(0)
-    }
-
-    /// Returns the next version value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// let next = version.increment();
-    /// assert!(version.is_older_than(next));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn increment(self) -> Self {
-        Self(self.0.saturating_add(1))
-    }
-
-    /// Returns the version as a raw integer.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::initial();
-    /// assert_eq!(version.as_u64(), 0);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_u64(self) -> u64 {
-        self.0
-    }
-
-    /// Constructs a version from a raw integer.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let version = BankVersion::from_u64(5);
-    /// assert_eq!(version.as_u64(), 5);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_u64(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns true when this version is older than the other.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::BankVersion;
-    ///
-    /// let old = BankVersion::initial();
-    /// let new = old.increment();
-    /// assert!(old.is_older_than(new));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn is_older_than(self, other: Self) -> bool {
-        self.0 < other.0
+    fn from(properties: PropertyMap) -> Self {
+        Self {
+            properties,
+            recorded_at: SystemTime::now(),
+        }
     }
 }
 
-impl Default for BankVersion {
-    #[inline]
-    fn default() -> Self {
-        Self::initial()
-    }
-}
+impl TryFrom<RawPropertyBank> for PropertyBank {
+    type Error = SchemaError;
 
-impl Display for BankVersion {
+    /// Build a `PropertyBank` from raw vault data with fresh IDs.
+    ///
+    /// All properties get newly generated IDs (no ID preservation).
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if any property fails validation.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     bank::PropertyBank,
+    ///     raw::RawPropertyBank,
+    /// };
+    /// use std::convert::TryFrom;
+    ///
+    /// // RawPropertyBank is non-exhaustive, so this is demonstration only
+    /// let raw = load_raw_property_bank()?;
+    /// let bank = PropertyBank::try_from(raw)?;
+    /// ```
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v{}", self.0)
+    fn try_from(raw: RawPropertyBank) -> Result<Self, Self::Error> {
+        let properties = PropertyMap::try_from(raw.into_properties())?;
+        Ok(PropertyBank::from(properties))
     }
 }
 
@@ -570,7 +204,7 @@ mod tests {
             property::{
                 Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
-            property_spec::{BoolSpec, PropertySpec, StringSpec},
+            property_spec::{BoolSpec, PropertySpec},
         },
         *,
     };
@@ -581,110 +215,53 @@ mod tests {
         pub fn bank_with_property()
         -> Result<(PropertyBank, PropertyId), SchemaError> {
             let mut bank = PropertyBank::new();
+            let name = PropertyName::try_new("flag")?;
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                PropertyName::try_new("flag")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let id = property.id();
-            bank.register(property)?;
+            bank.properties.insert(name, property);
             Ok((bank, id))
         }
     }
 
     const TEST_PROPERTY_ID_A: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0701);
-    const TEST_PROPERTY_ID_B: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0702);
 
     mod property_bank {
-        use std::collections::HashMap;
-
         use super::*;
-        use crate::schema::raw::{
-            RawPropertyBank, RawPropertyBankEntry, RawPropertySpec,
-            RawStringSpec,
+        use crate::schema::{
+            property::{
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
+            },
+            property_spec::{PropertySpec, StringSpec},
         };
 
-        /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
+        /// 3.3-UNIT-023: `insert_is_idempotent_on_identical_name`.
         /// Priority: P1.
         #[test]
-        fn is_idempotent_on_identical_registration() {
+        fn insert_is_idempotent_on_identical_name() {
             // GIVEN: a PropertyBank and an existing property
             let mut bank = PropertyBank::new();
             let spec = PropertySpec::String(StringSpec::default());
             let name = PropertyName::try_new("test").expect("Valid name");
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name,
                 Optionality::Optional,
                 Multiplicity::Single,
                 spec,
             );
 
-            // WHEN: registering the same property twice
-            bank.register(prop.clone())
-                .expect("First registration should succeed");
-            bank.register(prop).expect("Second registration should succeed");
+            // WHEN: inserting the same property twice
+            bank.properties.insert(name.clone(), prop.clone());
+            bank.properties.insert(name, prop);
 
             // THEN: the count remains 1
             let count = bank.all().count();
-            assert_eq!(
-                count, 1,
-                "Expected 1 property after identical registrations"
-            );
-        }
-
-        /// Test: `rejects_same_id_different_content`.
-        /// Verifies that registering a property with the same ID but different
-        /// content fails with an error (HIGH-005 fix).
-        #[test]
-        fn rejects_same_id_different_content() {
-            // GIVEN: a PropertyBank with a registered property
-            let mut bank = PropertyBank::new();
-            let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
-
-            let spec1 = PropertySpec::String(StringSpec::default());
-            let name1 = PropertyName::try_new("status").expect("Valid name");
-            let prop1 = Property::new(
-                id,
-                name1,
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec1,
-            );
-
-            bank.register(prop1).expect("First registration should succeed");
-
-            // WHEN: attempting to register different content with same ID
-            let spec2 = PropertySpec::Bool(BoolSpec::default());
-            let name2 = PropertyName::try_new("priority").expect("Valid name");
-            let prop2 = Property::new(
-                id,
-                name2,
-                Optionality::Required,
-                Multiplicity::Many,
-                spec2,
-            );
-
-            let result = bank.register(prop2);
-
-            // THEN: registration should fail
-            assert!(
-                result.is_err(),
-                "Should reject same ID with different content"
-            );
-
-            assert!(
-                matches!(
-                    &result,
-                    Err(SchemaError::AlreadyExists(msg))
-                        if msg.contains("already registered under a different name")
-                ),
-                "Expected SchemaError::AlreadyExists, got: {result:?}"
-            );
+            assert_eq!(count, 1, "Expected 1 property after identical inserts");
         }
 
         /// 3.3-UNIT-020: `maintains_name_lookup_for_fast_access`.
@@ -700,82 +277,6 @@ mod tests {
                 bank.get(&name).is_some(),
                 "Registered property should be retrievable by name: 'flag'"
             );
-        }
-
-        /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
-        /// Priority: P1.
-        #[test]
-        fn rejects_duplicate_names_with_different_definitions() {
-            // GIVEN: a PropertyBank with a registered property
-            let mut bank = PropertyBank::new();
-            let spec1 = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::try_new("test").expect("Valid name");
-            let prop1 = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec1,
-            );
-            bank.register(prop1).expect("Initial registration should succeed");
-
-            // WHEN: registering a different definition with the same name
-            let spec2 = PropertySpec::Bool(BoolSpec::default());
-            let prop2 = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_B),
-                name,
-                Optionality::Optional,
-                Multiplicity::Single,
-                spec2,
-            );
-            let res = bank.register(prop2);
-
-            // THEN: it must return a DuplicatePropertyName error
-            assert!(
-                matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
-                "Duplicate property name should be rejected with \
-                 DuplicatePropertyName, got: {res:?}"
-            );
-        }
-
-        /// 3.3-UNIT-025: `from_raw_reuses_ids_by_name`.
-        /// Priority: P1.
-        #[test]
-        fn from_raw_reuses_ids_by_name() -> Result<(), SchemaError> {
-            let mut bank = PropertyBank::new();
-            let name = PropertyName::try_new("status")?;
-            let prop = Property::new(
-                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank.register(prop)?;
-
-            let mut properties = HashMap::new();
-            properties.insert("status".into(), RawPropertyBankEntry {
-                multi: false,
-                spec: RawPropertySpec::String(RawStringSpec::default()),
-            });
-
-            let raw = RawPropertyBank {
-                version: "1.0".into(),
-                properties,
-            };
-            let rebuilt = PropertyBank::try_from_raw(raw, Some(&bank))?;
-            let rebuilt_prop =
-                rebuilt.get(&name).expect("Expected rebuilt property");
-
-            let expected_id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
-            if rebuilt_prop.id() != expected_id {
-                return Err(SchemaError::ValidationFailed(format!(
-                    "Expected ID {expected_id}, got {}",
-                    rebuilt_prop.id()
-                )));
-            }
-
-            Ok(())
         }
 
         /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
@@ -804,49 +305,6 @@ mod tests {
 
             let result = bank.get(&name);
             assert!(result.is_some(), "Get should succeed: {result:?}");
-        }
-
-        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_pending_events_len_is_one() {
-            let (bank, _id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            assert_eq!(
-                bank.pending_events().len(),
-                1,
-                "Expected exactly 1 pending event"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_take_events_returns_one() {
-            let (mut bank, _id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            let events = bank.take_events();
-            assert_eq!(
-                events.len(),
-                1,
-                "take_events should return exactly 1 event after registration"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_pending_events_cleared_after_take() {
-            let (mut bank, _id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            let _events = bank.take_events();
-            assert!(
-                bank.pending_events().is_empty(),
-                "pending_events should be empty after take_events"
-            );
         }
 
         // E-01: Concurrency tests
@@ -911,129 +369,6 @@ mod tests {
             for handle in handles {
                 handle.join().expect("Thread join succeeded");
             }
-        }
-
-        #[test]
-        fn diff_property_bank_detects_added_property() {
-            use crate::schema::property_spec::{BoolSpec, PropertySpec};
-
-            let mut bank1 = PropertyBank::new();
-            let bank2 = PropertyBank::new();
-
-            let name =
-                PropertyName::try_new("flag").expect("Valid property name");
-            let prop = Property::new(
-                PropertyId::new(),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank1.register(prop).expect("Registration succeeds");
-
-            let changed = bank1.diff_property_bank(&bank2);
-            assert_eq!(changed.len(), 1, "Should detect one changed property");
-            assert_eq!(changed.first().map(PropertyName::as_ref), Some("flag"));
-        }
-
-        #[test]
-        fn diff_property_bank_detects_removed_property() {
-            use crate::schema::property_spec::{BoolSpec, PropertySpec};
-
-            let bank1 = PropertyBank::new();
-            let mut bank2 = PropertyBank::new();
-
-            let name =
-                PropertyName::try_new("flag").expect("Valid property name");
-            let prop = Property::new(
-                PropertyId::new(),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank2.register(prop).expect("Registration succeeds");
-
-            let changed = bank1.diff_property_bank(&bank2);
-            assert_eq!(changed.len(), 1, "Should detect one changed property");
-            assert_eq!(changed.first().map(PropertyName::as_ref), Some("flag"));
-        }
-
-        #[test]
-        fn diff_property_bank_no_changes_for_identical_banks() {
-            use crate::schema::property_spec::{BoolSpec, PropertySpec};
-
-            let mut bank1 = PropertyBank::new();
-            let mut bank2 = PropertyBank::new();
-
-            let name =
-                PropertyName::try_new("flag").expect("Valid property name");
-
-            // Add identical property to both banks (different IDs are OK)
-            let prop1 = Property::new(
-                PropertyId::new(),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank1.register(prop1).expect("Registration succeeds");
-
-            let prop2 = Property::new(
-                PropertyId::new(), // Different ID
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank2.register(prop2).expect("Registration succeeds");
-
-            let changed = bank1.diff_property_bank(&bank2);
-            assert_eq!(
-                changed.len(),
-                0,
-                "Should detect no changes for identical specs"
-            );
-        }
-
-        #[test]
-        fn diff_property_bank_detects_modified_spec() {
-            use crate::schema::property_spec::{
-                BoolSpec, PropertySpec, StringSpec,
-            };
-
-            let mut bank1 = PropertyBank::new();
-            let mut bank2 = PropertyBank::new();
-
-            let name =
-                PropertyName::try_new("field").expect("Valid property name");
-
-            // Add property with BoolSpec to bank1
-            let prop1 = Property::new(
-                PropertyId::new(),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::Bool(BoolSpec::default()),
-            );
-            bank1.register(prop1).expect("Registration succeeds");
-
-            // Add property with StringSpec to bank2 (different spec)
-            let prop2 = Property::new(
-                PropertyId::new(),
-                name.clone(),
-                Optionality::Optional,
-                Multiplicity::Single,
-                PropertySpec::String(StringSpec::default()),
-            );
-            bank2.register(prop2).expect("Registration succeeds");
-
-            let changed = bank1.diff_property_bank(&bank2);
-            assert_eq!(changed.len(), 1, "Should detect spec change");
-            assert_eq!(
-                changed.first().map(PropertyName::as_ref),
-                Some("field")
-            );
         }
     }
 }

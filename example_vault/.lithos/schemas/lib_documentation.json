@@ -1,22 +1,20 @@
 {
   "properties": {
     "aliases": {
-      "$ref": "property_bank#/aliases"
+      "$ref": "#property_bank/aliases"
     },
     "title": {
-      "$ref": "property_bank#/title"
+      "$ref": "#property_bank/title"
     },
     "application": {
       "type": "string"
     },
     "url": {
-      "$ref": "property_bank#/url"
+      "$ref": "#property_bank/url"
     },
     "type": {
       "type": "string",
-      "options": [
-        "documentation"
-      ]
+      "options": ["documentation"]
     }
   },
   "extends": "lib"

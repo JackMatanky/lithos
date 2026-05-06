@@ -1,34 +1,28 @@
 {
   "properties": {
     "title": {
-      "$ref": "property_bank#/title"
+      "$ref": "#property_bank/title"
     },
     "aliases": {
-      "$ref": "property_bank#/aliases"
+      "$ref": "#property_bank/aliases"
     },
     "country": {
       "multi": true,
       "type": "string"
     },
     "city": {
-      "$ref": "property_bank#/city"
+      "$ref": "#property_bank/city"
     },
     "url": {
-      "$ref": "property_bank#/url"
+      "$ref": "#property_bank/url"
     },
     "linkedin_url": {
-      "$ref": "property_bank#/url"
+      "$ref": "#property_bank/url"
     },
     "connection": {
       "multi": true,
       "type": "string",
-      "options": [
-        "education",
-        "null",
-        "personal",
-        "professional",
-        "work"
-      ]
+      "options": ["education", "null", "personal", "professional", "work"]
     },
     "source": {
       "type": "string",

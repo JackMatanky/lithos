@@ -1,971 +1,1175 @@
-//! Storage types for schema system (read models and raw file versions).
+//! Unified repository trait and implementation for schema persistence.
 //!
-//! This module contains all storage-related types for the schema system,
-//! organized from most commonly used to implementation details:
+//! This module provides both the [`Repository`] trait and its concrete
+//! implementation [`RedbRepository`], replacing the previous CQRS Command/Query
+//! pattern.
 //!
-//! ## Resolved Data Storage (Read Models)
+//! # Architecture
 //!
-//! Storage representations of processed domain data (read model pattern):
-//! - [`StoredSchema`] - Resolved schema read model (most commonly used)
-//! - [`StoredProperty`] - Property read model
-//! - [`StoredMetadata`] - Schema/bank metadata for staleness tracking
-//!
-//! ## Raw File Storage
-//!
-//! Versioned storage of source files (before parsing/resolution):
-//! - [`RawSchemaFile`] - Schema file with version history (up to 5 versions)
-//! - [`RawPropertyBankFile`] - Property bank file with version history
-//! - [`RawFileVersion`] - Single version of a raw file with compression
-//! - [`FileChange`] - Change detection for staleness checks
-//! - [`diff_raw_files()`] - Compare file versions for change detection
-//!
-//! ## Read Model Architecture
-//!
-//! The "Stored*" types follow the **read model pattern**:
-//! - **No behavior**: Only field accessors (getters)
-//! - **No events**: Event emission happens in [`crate::schema::loader`]
-//! - **No domain logic**: Pure data structures optimized for storage
-//! - **Zero-copy reads**: Uses `rkyv` for fast deserialization-free access
-//!
-//! ## Storage Tables
-//!
-//! Schema storage:
-//! - `schema_by_id` - Resolved schemas (rkyv-serialized `StoredSchema`)
-//! - `schema_metadata` - Staleness metadata (`StoredMetadata`)
-//! - `raw_schema_files` - Versioned raw files (`RawSchemaFile`)
-//!
-//! Property bank storage:
-//! - `bank_metadata` - Version/timestamp tracking
-//! - `bank_property_by_id` - ID-keyed property snapshots
-//! - `bank_property_by_name` - Name-keyed property snapshots
-//! - `raw_property_bank_file` - Versioned raw property bank file
+//! Following the unified Repository pattern from the architecture guide:
+//! - Single trait combining reads and writes
+//! - Zero-copy access via closure-based methods
+//! - Concrete `RedbRepository` using redb for persistence
 
-// Clippy false positive: Archive macro generates internal types that trigger
-// exhaustive_structs, but our public types are marked #[non_exhaustive].
-// This cannot be fixed without changes to rkyv.
-#![expect(
-    clippy::exhaustive_structs,
-    reason = "False positive from rkyv Archive macro - all public types use \
-              #[non_exhaustive]"
-)]
-
-use std::{io::Read as _, time::SystemTime};
-
-use rkyv::{
-    Archive, Deserialize, Serialize,
-    with::{AsUnixTime, Map},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
-    bank::{BankVersion, PropertyBank},
-    error::SchemaError,
-    id::SchemaId,
-    property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
-    property_spec::PropertySpec,
+    aggregate::Schema,
+    bank::PropertyBank,
+    error::{SchemaRepositoryError, SchemaStorageError},
+    identifier::{SchemaId, SchemaName},
+    index::{NameIdPairs, PathIdPairs, SchemaIndex},
+    inheritance::InheritanceGraph,
+    property::PropertyName,
+    views::{RawPropertyBankView, RawSchemaView, RawView as _},
+};
+use crate::{
+    db::{BatchReader, Database},
+    fs::RelativePath,
 };
 
-// ============================================================================
-// Resolved Data Storage (Read Models - Most Commonly Used)
-// ============================================================================
-
-/// Storage representation of a resolved schema (read model).
-///
-/// ## Read Model Pattern
-///
-/// This type is a **read model** - it has no behavior, no events, and no
-/// domain logic. It exists purely to store and retrieve resolved schema data.
-///
-/// - **No Methods**: Only field accessors (getters)
-/// - **No State Transitions**: Immutable after resolution
-/// - **No Events**: Event emission happens in [`crate::schema::loader`]
-///
-/// ## Storage
-///
-/// Persisted to the `schema_by_id` table using `rkyv` serialization.
-/// Contains all fields required for staleness checking and inheritance
-/// tree reconstruction.
-///
-/// This is now the primary schema type used throughout the system.
-/// Files are the source of truth; schemas are loaded, resolved, and stored
-/// as `StoredSchema` values.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StoredSchema {
-    /// Schema identity.
-    pub id: SchemaId,
-    /// Schema name (flattened from `SchemaName` newtype).
-    pub name: Box<str>,
-    /// Parent schema ID, for `SchemaTree` reconstruction.
-    pub parent_id: Option<SchemaId>,
-    /// Resolved properties (flattened).
-    pub properties: Vec<StoredProperty>,
+fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
+    SchemaRepositoryError::Storage(SchemaStorageError::Storage(error))
 }
 
-impl StoredSchema {
-    /// Create a new `StoredSchema` for testing purposes.
-    #[inline]
-    #[must_use]
-    pub fn new(
+/// Schema-to-properties usage map: `schema_id` → Vec<`property_name`>.
+///
+/// Used by `find_schemas_using_properties()` to return which schemas use which
+/// properties.
+pub type SchemaPropertyUsage = HashMap<SchemaId, Vec<PropertyName>>;
+
+/// Batch reader adapter for schema tables.
+pub trait BatchSchemaReader {
+    /// Storage-specific error type for batch reads.
+    type Error;
+
+    /// Finds multiple raw schema views by their file paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>;
+
+    /// Finds multiple schema IDs by their file paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
+
+    /// Gets the raw property bank view for a given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error>;
+
+    /// Gets the raw schema view for a given schema ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_raw_schema_view(
+        &self,
         id: SchemaId,
-        name: Box<str>,
-        parent_id: Option<SchemaId>,
-        properties: Vec<StoredProperty>,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            parent_id,
-            properties,
+    ) -> Result<Option<RawSchemaView>, Self::Error>;
+
+    /// Gets the topological graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
+}
+
+struct RedbBatchSchemaReader<'reader> {
+    reader: &'reader BatchReader,
+}
+
+impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
+    type Error = SchemaRepositoryError;
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
+
+        let mut results = HashMap::new();
+        for path in file_paths {
+            let path_key = path.as_path().to_string_lossy();
+            if let Some(id) = self
+                .reader
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+                .map_err(map_db_error)?
+                && let Some(view) = self
+                    .reader
+                    .get_owned_by_uuid::<RawSchemaView>(
+                        RAW_SCHEMA_VIEWS,
+                        id.into_uuid(),
+                    )
+                    .map_err(map_db_error)?
+            {
+                results.insert(path.clone(), view);
+            }
         }
+        Ok(results)
     }
-}
 
-/// Flat storage representation of a single property.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StoredProperty {
-    /// Property identity.
-    pub id: PropertyId,
-    /// Property name (flattened from `PropertyName` newtype).
-    pub name: Box<str>,
-    /// Whether the property is required (flattened from `Optionality`).
-    pub required: bool,
-    /// Whether the property accepts multiple values (flattened from
-    /// `Multiplicity`).
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    pub spec: PropertySpec,
-}
-
-impl StoredProperty {
-    /// Create a new `StoredProperty`.
     #[inline]
-    #[must_use]
-    pub fn new(
-        id: PropertyId,
-        name: Box<str>,
-        required: bool,
-        multi: bool,
-        spec: PropertySpec,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            required,
-            multi,
-            spec,
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let mut results = HashMap::new();
+        for path in file_paths {
+            let path_key = path.as_path().to_string_lossy();
+            if let Some(id) = self
+                .reader
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+                .map_err(map_db_error)?
+            {
+                results.insert(path.clone(), id);
+            }
         }
+        Ok(results)
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
+
+        let path_key = path.as_path().to_string_lossy();
+        self.reader
+            .get_owned::<RawPropertyBankView>(
+                RAW_PROPERTY_BANK_VIEW,
+                path_key.as_ref(),
+            )
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEWS;
+
+        self.reader
+            .get_owned_by_uuid::<RawSchemaView>(
+                RAW_SCHEMA_VIEWS,
+                id.into_uuid(),
+            )
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
+
+        self.reader
+            .get_owned::<InheritanceGraph<()>>(
+                SCHEMA_TOPOLOGICAL_GRAPH,
+                TOPOLOGICAL_GRAPH_KEY,
+            )
+            .map_err(map_db_error)
     }
 }
 
-/// Adapter storage representation of property bank metadata.
+/// Unified repository trait for schema domain persistence.
 ///
-/// # Timestamps
+/// Combines read and write operations in a single trait, following the
+/// unified Repository pattern from the architecture guide.
 ///
-/// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
-/// This stores timestamps as Unix epoch seconds internally while preserving
-/// `SystemTime`'s type safety.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StoredMetadata {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Blake3 hash of source file content (for accurate staleness detection).
-    pub source_file_hash: [u8; 32],
-    /// Filesystem birthtime (from `Metadata::created()`), if available.
-    #[rkyv(with = Map<AsUnixTime>)]
-    pub created_at: Option<SystemTime>,
-    /// Filesystem mtime (from `Metadata::modified()`), if available.
-    #[rkyv(with = Map<AsUnixTime>)]
-    pub modified_at: Option<SystemTime>,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-}
-
-impl StoredMetadata {
-    /// Build metadata for storage.
-    #[inline]
-    pub(crate) fn new(
-        bank_version: BankVersion,
-        source_file_hash: [u8; 32],
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
-        let recorded_at = SystemTime::now();
-        Self {
-            bank_version,
-            source_file_hash,
-            created_at,
-            modified_at,
-            recorded_at,
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Crate-Internal Storage Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Adapter storage representation of a property bank snapshot.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredPropertyBank {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-    /// Flattened properties in the bank.
-    pub properties: Vec<StoredProperty>,
-}
-
-impl TryFrom<StoredPropertyBank> for PropertyBank {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(stored: StoredPropertyBank) -> Result<Self, Self::Error> {
-        let properties: Result<Vec<_>, _> = stored
-            .properties
-            .into_iter()
-            .map(|sp| {
-                let prop_name = PropertyName::try_new(&sp.name)?;
-                let optionality = Optionality::from(sp.required);
-                let multiplicity = Multiplicity::from(sp.multi);
-                Ok(Property::new(
-                    sp.id,
-                    prop_name,
-                    optionality,
-                    multiplicity,
-                    sp.spec,
-                ))
-            })
-            .collect();
-        PropertyBank::try_reconstruct(properties?, stored.bank_version)
-    }
-}
-
-/// Adapter storage representation of a single bank property snapshot.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredBankProperty {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-    /// Flattened property payload.
-    pub property: StoredProperty,
-}
-
-impl StoredBankProperty {
-    /// Format a bank property key for the given version.
-    #[inline]
-    pub(crate) fn key(version: BankVersion, suffix: &str) -> String {
-        format!("{}:{suffix}", version.as_u64())
-    }
-
-    /// Format a bank property key prefix for the given version.
-    #[inline]
-    pub(crate) fn prefix(version: BankVersion) -> String {
-        format!("{}:", version.as_u64())
-    }
-}
-
-/// Child schema metadata stored in the `schema_children` multimap.
+/// # Type Parameters
 ///
-/// **Storage pattern:**
-/// - Table: `schema_children` (multimap)
-/// - Key: Parent `SchemaId` (as UUID string)
-/// - Values: Multiple `StoredChildSchema` entries (one per child)
+/// - `Error`: Storage-specific error type
 ///
-/// Each parent can have many children. This structure stores each child's
-/// inheritance metadata including which properties it excludes from the parent.
+/// # Naming Conventions
 ///
-/// **Cascade staleness:** When a parent schema changes, query this multimap
-/// to find all children that must be re-resolved.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredChildSchema {
-    /// Child schema ID.
-    pub child_id: SchemaId,
-    /// Property names this child excludes from parent's properties.
-    pub excludes: Vec<Box<str>>,
-    /// Timestamp when this inheritance relationship was last resolved.
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
-}
-
-impl StoredChildSchema {
-    /// Serialize to bytes for multimap storage.
-    ///
-    /// # Errors
-    /// Returns serialization error if rkyv encoding fails.
-    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, crate::db::DbError> {
-        rkyv::to_bytes(self).map(|bytes| bytes.to_vec()).map_err(
-            |e: rkyv::rancor::Error| {
-                crate::db::DbError::Serialization(e.to_string())
-            },
-        )
-    }
-}
-
-/// Parent schema reference, stored in `schema_parent` table.
-///
-/// **Storage pattern:**
-/// - Table: `schema_parent` (regular table, not multimap)
-/// - Key: Child `SchemaId` (as UUID string)
-/// - Value: `StoredParentSchema`
-///
-/// This table tracks ALL schemas (both roots and children):
-/// - Root schemas: `parent_id = None`
-/// - Child schemas: `parent_id = Some(parent_id)`
-///
-/// **Update optimization:** When updating a child's parent, this table
-/// provides O(1) lookup of the old parent plus the old excludes/timestamp
-/// needed to reconstruct the exact bytes for removing the old entry from
-/// the `schema_children` multimap.
-///
-/// **Data redundancy:** `excludes` and `resolved_at` are stored in both
-/// `schema_parent` and `schema_children`. This trades ~10KB of storage
-/// (for typical 100-schema vaults) for simpler, faster update logic.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredParentSchema {
-    /// Parent schema ID, or None for root schemas.
-    pub parent_id: Option<SchemaId>,
-    /// Property names excluded from parent (cached for multimap removal).
-    pub excludes: Vec<Box<str>>,
-    /// Timestamp when relationship was resolved (cached for multimap removal).
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
-}
-
-// ============================================================================
-// Raw File Storage (Public API)
-// ============================================================================
-
-/// Raw schema file with version history (up to 5 versions).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub struct RawSchemaFile {
-    /// File path relative to vault root.
-    file_path: String,
-    /// Version history (ring buffer, max 5 versions).
-    versions: RingBuffer<RawFileVersion, 5>,
-}
-
-impl RawSchemaFile {
-    /// Create a new raw schema file with initial version.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn new(
-        file_path: String,
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let mut versions = RingBuffer::new();
-        let version = RawFileVersion::new(content, created_at, modified_at)?;
-        versions.push(version);
-
-        Ok(Self {
-            file_path,
-            versions,
-        })
-    }
-
-    /// Add a new version (evicts oldest if at capacity).
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn add_version(
-        &mut self,
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<(), std::io::Error> {
-        let version = RawFileVersion::new(content, created_at, modified_at)?;
-        self.versions.push(version);
-        Ok(())
-    }
-
-    /// Get the current (most recent) version.
-    #[inline]
-    #[must_use]
-    pub fn current(&self) -> Option<&RawFileVersion> {
-        self.versions.current()
-    }
-
-    /// Get file path.
-    #[inline]
-    #[must_use]
-    pub fn file_path(&self) -> &str {
-        &self.file_path
-    }
-
-    /// Get version history iterator (oldest to newest).
-    #[inline]
-    pub fn versions(&self) -> impl Iterator<Item = &RawFileVersion> {
-        self.versions.iter()
-    }
-
-    /// Get version count.
-    #[inline]
-    #[must_use]
-    pub fn version_count(&self) -> usize {
-        self.versions.len()
-    }
-}
-
-/// Raw property bank file (singleton, up to 5 versions).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub struct RawPropertyBankFile {
-    /// Version history (ring buffer, max 5 versions).
-    versions: RingBuffer<RawFileVersion, 5>,
-}
-
-impl RawPropertyBankFile {
-    /// Create a new property bank file with initial version.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn new(
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let mut versions = RingBuffer::new();
-        let version = RawFileVersion::new(content, created_at, modified_at)?;
-        versions.push(version);
-
-        Ok(Self {
-            versions,
-        })
-    }
-
-    /// Add a new version (evicts oldest if at capacity).
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn add_version(
-        &mut self,
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<(), std::io::Error> {
-        let version = RawFileVersion::new(content, created_at, modified_at)?;
-        self.versions.push(version);
-        Ok(())
-    }
-
-    /// Get the current (most recent) version.
-    #[inline]
-    #[must_use]
-    pub fn current(&self) -> Option<&RawFileVersion> {
-        self.versions.current()
-    }
-
-    /// Get version history iterator (oldest to newest).
-    #[inline]
-    pub fn versions(&self) -> impl Iterator<Item = &RawFileVersion> {
-        self.versions.iter()
-    }
-
-    /// Get version count.
-    #[inline]
-    #[must_use]
-    pub fn version_count(&self) -> usize {
-        self.versions.len()
-    }
-}
-
-/// A single version of a raw file (content + metadata + hash).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub struct RawFileVersion {
-    /// Compressed file content (zstd level 3).
-    compressed_content: Vec<u8>,
-    /// Blake3 hash of uncompressed content.
-    content_hash: [u8; 32],
-    /// File creation timestamp (from filesystem).
-    #[rkyv(with = Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-    /// File modification timestamp (from filesystem).
-    #[rkyv(with = Map<AsUnixTime>)]
-    modified_at: Option<SystemTime>,
-    /// When this version was recorded in the database.
-    #[rkyv(with = AsUnixTime)]
-    recorded_at: SystemTime,
-}
-
-impl RawFileVersion {
-    /// Create a new file version from content and metadata.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    pub fn new(
-        content: &str,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let compressed_content = Self::compress(content)?;
-        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
-        let recorded_at = SystemTime::now();
-
-        Ok(Self {
-            compressed_content,
-            content_hash,
-            created_at,
-            modified_at,
-            recorded_at,
-        })
-    }
-
-    /// Get the Blake3 hash of the content.
-    #[inline]
-    #[must_use]
-    pub fn content_hash(&self) -> &[u8; 32] {
-        &self.content_hash
-    }
-
-    /// Get file creation timestamp.
-    #[inline]
-    #[must_use]
-    pub fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Get file modification timestamp.
-    #[inline]
-    #[must_use]
-    pub fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
-    }
-
-    /// Get database recording timestamp.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Decompress and return file content.
-    ///
-    /// # Errors
-    /// Returns error if decompression fails.
-    #[inline]
-    pub fn content(&self) -> Result<String, DecompressionError> {
-        Self::decompress(&self.compressed_content)
-    }
-
-    /// Get compressed size in bytes.
-    #[inline]
-    #[must_use]
-    pub fn compressed_size(&self) -> usize {
-        self.compressed_content.len()
-    }
-
-    /// Compress string content using zstd.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
-    fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
-        zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
-    }
-
-    /// Decompress zstd data to string.
-    ///
-    /// # Errors
-    /// Returns error if decompression fails or output is not UTF-8.
-    #[inline]
-    fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
-        let mut decompressed = Vec::new();
-        zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
-        String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
-    }
-}
-
-/// Type of change detected between two file versions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FileChange {
-    /// Content hash unchanged (file not modified).
-    Unchanged,
-    /// Content hash changed (file was modified).
-    Modified,
-    /// Same hash but different path (file was renamed).
-    Renamed,
-}
-
-/// Compare two file versions to detect changes.
-///
-/// This helper enables accurate change detection:
-/// - **Unchanged**: Hash matches, path matches → no action needed
-/// - **Modified**: Hash differs → re-parse and re-resolve
-/// - **Renamed**: Hash matches but path differs → update path, no re-parse
+/// Following the naming taxonomy from `docs/refs/rust/naming-taxonomy.md`:
+/// - **find_***: Optional reads (returns `Option<T>`)
+/// - **get_***: Required singleton reads
+/// - **list_***: Multiple item reads (returns `Vec<T>`)
+/// - **is_***: Boolean checks
+/// - **save**, **delete**: Write operations
+/// - **with_***: Zero-copy closure-based access
 ///
 /// # Examples
+///
+/// ```ignore
+/// use lithos_core::schema::Repository;
+///
+/// fn example<R: Repository>(repo: &R) -> Result<(), R::Error> {
+///     // Find optional schema
+///     if let Some(schema) = repo.find_schema_by_id(id)? {
+///         println!("Found: {}", schema.name);
+///     }
+///
+///     // List all schemas
+///     let schemas = repo.list_schemas()?;
+///
+///     // Save schemas
+///     repo.save_schemas(&schemas)?;
+///
+///     Ok(())
+/// }
 /// ```
-/// # use lithos_core::schema::storage::{RawFileVersion, FileChange, diff_raw_files};
-/// let v1 = RawFileVersion::new("content", None, None).unwrap();
-/// let v2 = RawFileVersion::new("content", None, None).unwrap();
-/// assert_eq!(diff_raw_files(&v1, &v2, "same.json", "same.json"), FileChange::Unchanged);
-///
-/// let v3 = RawFileVersion::new("changed", None, None).unwrap();
-/// assert_eq!(diff_raw_files(&v1, &v3, "file.json", "file.json"), FileChange::Modified);
-///
-/// assert_eq!(diff_raw_files(&v1, &v2, "old.json", "new.json"), FileChange::Renamed);
-/// ```
-#[inline]
-#[must_use]
-pub fn diff_raw_files(
-    cached: &RawFileVersion,
-    current: &RawFileVersion,
-    cached_path: &str,
-    current_path: &str,
-) -> FileChange {
-    if cached.content_hash() != current.content_hash() {
-        FileChange::Modified
-    } else if cached_path != current_path {
-        FileChange::Renamed
-    } else {
-        FileChange::Unchanged
-    }
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Methods grouped by category for better maintainability"
+)]
+pub trait Repository: Send + Sync {
+    /// Storage-specific error type.
+    type Error: std::error::Error + Send + Sync;
+
+    // ========================================================================
+    // Schema Read Operations
+    // ========================================================================
+
+    /// Finds a schema by ID.
+    ///
+    /// Returns `None` if the schema does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Schema>, Self::Error>;
+
+    /// Finds a schema ID by name.
+    ///
+    /// Returns `None` if no schema with the given name exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, Self::Error>;
+
+    /// Finds multiple schemas by IDs.
+    ///
+    /// Returns only the schemas that exist. Missing schemas are silently
+    /// skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, Self::Error>;
+
+    /// Lists all schemas.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error>;
+
+    /// Lists schema name-to-ID pairs.
+    ///
+    /// Useful for building name lookup tables without loading full schema data.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error>;
+
+    /// Lists schema path-to-ID pairs.
+    ///
+    /// Useful for discovery stage to detect deleted schemas without loading
+    /// full schema data.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error>;
+
+    /// Gets a unified index of all schemas.
+    ///
+    /// The index provides O(1) lookups by name, ID, and path. It is derived
+    /// from the repository's path and name tables.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the index construction fails.
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error>;
+
+    // ========================================================================
+    // Property Bank Read Operations
+    // ========================================================================
+
+    /// Gets the property bank singleton.
+    ///
+    /// Returns `None` if the property bank has not been initialized.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
+
+    /// Finds schemas that use any of the given property names.
+    ///
+    /// Returns a map of `schema_id` → Vec<`property_name`> for schemas
+    /// that reference at least one of the given properties.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<SchemaPropertyUsage, Self::Error>;
+
+    // ========================================================================
+    // Write Operations
+    // ========================================================================
+
+    /// Saves multiple schemas atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error>;
+
+    /// Saves the property bank singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), Self::Error>;
+
+    /// Deletes a schema by ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the deletion fails.
+    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error>;
+
+    // ========================================================================
+    // Raw View Operations (for staleness detection)
+    // ========================================================================
+
+    /// Gets the raw schema view for a given schema ID.
+    ///
+    /// Returns `None` if no view exists (schema never loaded).
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error>;
+
+    /// Saves a raw schema view.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error>;
+
+    /// Gets the raw property bank view.
+    ///
+    /// Returns `None` if no view exists (bank never loaded).
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error>;
+
+    /// Saves the raw property bank view.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+        view: &RawPropertyBankView,
+    ) -> Result<(), Self::Error>;
+
+    /// Finds a raw schema view by file path.
+    ///
+    /// Returns `None` if no view exists for the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_raw_schema_view_by_path(
+        &self,
+        file_path: &RelativePath,
+    ) -> Result<Option<RawSchemaView>, Self::Error>;
+
+    /// Finds the `SchemaId` for a file path.
+    ///
+    /// Returns `None` if no schema exists at that path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_id_by_path(
+        &self,
+        file_path: &RelativePath,
+    ) -> Result<Option<SchemaId>, Self::Error>;
+
+    /// Finds multiple raw schema views by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs a single
+    /// transaction. Returns a map of path → view for paths that have views.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>;
+
+    /// Finds multiple schema IDs by file paths (bulk query).
+    ///
+    /// More efficient than N individual queries as it performs a single
+    /// transaction. Returns a map of path → `SchemaId` for paths that have
+    /// schemas.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
+
+    /// Gets the topological graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the query fails.
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
+
+    /// Saves the topological graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the save fails.
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error>;
+
+    // ========================================================================
+    // Batch Operations (for complex multi-table queries)
+    // ========================================================================
+
+    /// Provides access to a batch reader for complex multi-table queries.
+    ///
+    /// This is a lower-level API for operations that need to read from
+    /// multiple tables in a single transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn with_batch_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
+
+    /// Provides access to a batch reader scoped to schema tables.
+    ///
+    /// This is a convenience wrapper that keeps schema pipelines from
+    /// depending on raw table names.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific error if the batch read fails.
+    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        for<'reader> F: FnOnce(
+            &'reader dyn BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>;
 }
 
-// ============================================================================
-// Supporting Types
-// ============================================================================
+// ========================================================================
+// RedbRepository Implementation
+// ========================================================================
 
-/// Decompression errors.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum DecompressionError {
-    /// I/O error during decompression.
-    #[error("decompression I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// Decompressed data is not valid UTF-8.
-    #[error("decompressed data is not valid UTF-8: {0}")]
-    InvalidUtf8(#[from] std::string::FromUtf8Error),
+/// Production repository implementation using redb.
+pub struct RedbRepository {
+    db: Arc<Database>,
 }
 
-// ============================================================================
-// Internal Implementation Details
-// ============================================================================
-
-/// Compression level (3 = balanced speed/ratio).
-const COMPRESSION_LEVEL: i32 = 3;
-
-/// Fixed-size ring buffer for versioned file storage (compile-time size, zero
-/// allocation).
-///
-/// This ring buffer uses `u8` indices for memory efficiency (5 versions max).
-/// All arithmetic and indexing is safe by design (modulo wraparound prevents
-/// out-of-bounds).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-struct RingBuffer<T, const N: usize> {
-    items: [Option<T>; N],
-    head: u8, // Next write position
-    len: u8,  // Current count (0..=N)
-}
-
-impl<T, const N: usize> RingBuffer<T, N> {
-    /// Create empty ring buffer.
+impl RedbRepository {
+    /// Creates a new `RedbRepository` with the given database.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::schema::RedbRepository;
+    /// use redb::Database;
+    ///
+    /// let db = Database::create("schemas.db")?;
+    /// let repo = RedbRepository::new(db);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
     #[inline]
-    const fn new() -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         Self {
-            items: [const { None }; N],
-            head: 0,
-            len: 0,
+            db,
         }
-    }
-
-    /// Push item (evicts oldest if full).
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn push(&mut self, item: T) {
-        self.items[self.head as usize] = Some(item);
-        self.head = (self.head + 1) % (N as u8);
-        if self.len < N as u8 {
-            self.len += 1;
-        }
-    }
-
-    /// Get most recent item.
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn current(&self) -> Option<&T> {
-        if self.len == 0 {
-            return None;
-        }
-        let idx = (self.head + (N as u8) - 1) % (N as u8);
-        self.items[idx as usize].as_ref()
-    }
-
-    /// Get item at index (0 = oldest, len-1 = newest).
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.len as usize {
-            return None;
-        }
-        let offset =
-            (self.head + (N as u8) - self.len + index as u8) % (N as u8);
-        self.items[offset as usize].as_ref()
-    }
-
-    /// Number of items.
-    #[inline]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 -> usize is always safe and lossless"
-    )]
-    const fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    /// Iterate over items (oldest to newest).
-    #[inline]
-    fn iter(&self) -> impl Iterator<Item = &T> {
-        (0..self.len()).filter_map(move |i| self.get(i))
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+impl Repository for RedbRepository {
+    type Error = SchemaRepositoryError;
+
+    // ========================================================================
+    // Schema Read Operations
+    // ========================================================================
+    #[inline]
+    fn find_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        self.db
+            .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_NAME;
+
+        self.db
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        ids.iter()
+            .filter_map(|id| {
+                match self
+                    .db
+                    .get_owned_by_uuid::<Schema>(SCHEMA_BY_ID, id.into_uuid())
+                {
+                    Ok(Some(schema)) => Some(Ok(schema)),
+                    Ok(None) => None,
+                    Err(e) => Some(Err(map_db_error(e))),
+                }
+            })
+            .collect()
+    }
+
+    #[inline]
+    fn list_schemas(&self) -> Result<Vec<Schema>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_BY_ID;
+
+        let pairs: Vec<(String, Schema)> =
+            self.db.list_key_value_pairs(SCHEMA_BY_ID).map_err(map_db_error)?;
+
+        Ok(pairs.into_iter().map(|(_id, schema)| schema).collect())
+    }
+
+    #[inline]
+    fn list_schema_name_id_pairs(&self) -> Result<NameIdPairs, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_NAME;
+
+        let pairs: Vec<_> = self
+            .db
+            .list_key_value_pairs(SCHEMA_ID_BY_NAME)
+            .map_err(map_db_error)?
+            .into_iter()
+            .map(|(name_str, id): (String, SchemaId)| {
+                SchemaName::try_new(&name_str)
+                    .map(|name| (name, id))
+                    .map_err(SchemaRepositoryError::from)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(pairs.into())
+    }
+
+    #[inline]
+    fn list_schema_path_id_pairs(&self) -> Result<PathIdPairs, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let pairs: Vec<_> = self
+            .db
+            .list_key_value_pairs(SCHEMA_ID_BY_PATH)
+            .map_err(map_db_error)?
+            .into_iter()
+            .map(|(path_str, id): (String, SchemaId)| {
+                RelativePath::try_from(path_str.as_str()).map(|path| (path, id))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                SchemaRepositoryError::Storage(SchemaStorageError::Corruption {
+                    reason: format!("invalid schema path in index: {error}")
+                        .into(),
+                })
+            })?;
+
+        Ok(pairs.into())
+    }
+
+    #[inline]
+    fn get_schema_index(&self) -> Result<SchemaIndex, Self::Error> {
+        use crate::schema::db_table::{SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH};
+
+        self.db
+            .batch_read(|reader| {
+                let name_pairs: Vec<_> = reader
+                    .list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_NAME)?
+                    .into_iter()
+                    .map(|(name_str, id)| {
+                        SchemaName::try_new(&name_str)
+                            .map(|name| (name, id))
+                            .map_err(|e| {
+                                crate::db::DbError::Database(e.to_string())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let path_pairs: Vec<_> = reader
+                    .list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_PATH)?
+                    .into_iter()
+                    .map(|(path_str, id)| {
+                        RelativePath::try_from(path_str.as_str())
+                            .map(|path| (path, id))
+                            .map_err(|e| {
+                                crate::db::DbError::Database(e.to_string())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                SchemaIndex::from_pairs(name_pairs, path_pairs)
+                    .map_err(|e| crate::db::DbError::Database(e.to_string()))
+            })
+            .map_err(map_db_error)
+    }
+
+    // ========================================================================
+    // Property Bank Read Operations
+    // ========================================================================
+
+    #[inline]
+    fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
+        use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
+
+        self.db
+            .get_owned::<PropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<SchemaPropertyUsage, Self::Error> {
+        use std::collections::{HashMap, HashSet};
+
+        // Convert property names to a set for fast lookup
+        let target_names: HashSet<&str> =
+            property_names.iter().map(PropertyName::as_str).collect();
+
+        // Scan all schemas and check which properties they use
+        let mut usage = HashMap::new();
+        let schemas = self.list_schemas()?;
+
+        for schema in schemas {
+            let mut matching_properties = Vec::new();
+
+            for name in schema.properties().keys() {
+                if target_names.contains(name.as_str()) {
+                    matching_properties.push(name.clone());
+                }
+            }
+
+            if !matching_properties.is_empty() {
+                usage.insert(*schema.id(), matching_properties);
+            }
+        }
+
+        Ok(usage)
+    }
+
+    // ========================================================================
+    // Write Operations
+    // ========================================================================
+
+    #[inline]
+    fn save_schemas(&self, schemas: &[&Schema]) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME};
+
+        self.db
+            .batch_write(|batch| {
+                for schema in schemas {
+                    // Save schema by ID
+                    batch.put_by_uuid(
+                        SCHEMA_BY_ID,
+                        schema.id().into_uuid(),
+                        *schema,
+                    )?;
+
+                    // Save name → ID mapping
+                    batch.put(
+                        SCHEMA_ID_BY_NAME,
+                        schema.name().as_str(),
+                        schema.id(),
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(map_db_error)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{PROPERTY_BANK, PROPERTY_BANK_KEY};
+
+        self.db
+            .batch_write(|batch| {
+                batch.put(PROPERTY_BANK, PROPERTY_BANK_KEY, bank)?;
+                Ok(())
+            })
+            .map_err(map_db_error)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{
+            RAW_SCHEMA_VIEWS, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_ID_BY_PATH,
+        };
+
+        let schema = self.find_schema_by_id(id)?;
+        let view = self.get_raw_schema_view(id)?;
+
+        self.db
+            .batch_write(|batch| {
+                batch.delete_by_uuid(SCHEMA_BY_ID, id.into_uuid())?;
+                batch.delete_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid())?;
+                if let Some(schema) = schema.as_ref() {
+                    batch.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
+                }
+                if let Some(view) = view.as_ref() {
+                    let path_key = view.file_path().as_path().to_string_lossy();
+                    batch.delete(SCHEMA_ID_BY_PATH, path_key.as_ref())?;
+                }
+                Ok(())
+            })
+            .map_err(map_db_error)?;
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // Batch Operations
+    // ========================================================================
+
+    #[inline]
+    fn with_batch_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
+    {
+        // Adapt the closure to convert SchemaRepositoryError -> DbError for
+        // batch_read, then convert DbError -> SchemaRepositoryError.
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "Explicitly matching all SchemaRepositoryError variants \
+                      would be fragile and unnecessary - we only care about \
+                      storage variant"
+        )]
+        let result = self.db.batch_read(|reader| {
+            f(reader).map_err(|schema_err| {
+                // Extract DbError if it's a Storage variant, otherwise create a
+                // generic error.
+                match schema_err {
+                    SchemaRepositoryError::Storage(
+                        SchemaStorageError::Storage(db_err),
+                    ) => db_err,
+                    _ => {
+                        // This shouldn't happen in practice since f should only
+                        // return Storage errors when using the reader
+                        crate::db::DbError::Database(schema_err.to_string())
+                    }
+                }
+            })
+        });
+
+        result.map_err(map_db_error)
+    }
+
+    #[inline]
+    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
+    where
+        for<'reader> F: FnOnce(
+            &'reader dyn BatchSchemaReader<Error = Self::Error>,
+        ) -> Result<R, Self::Error>,
+    {
+        self.with_batch_reader(|reader| {
+            let schema_reader = RedbBatchSchemaReader {
+                reader,
+            };
+            f(&schema_reader)
+        })
+    }
+
+    // ========================================================================
+    // Raw View Operations
+    // ========================================================================
+
+    #[inline]
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::RAW_SCHEMA_VIEWS;
+
+        self.db
+            .get_owned_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid())
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
+
+        self.db
+            .batch_write(|batch| {
+                let path_key = view.file_path().as_path().to_string_lossy();
+                batch.put_by_uuid(RAW_SCHEMA_VIEWS, id.into_uuid(), view)?;
+                batch.put(SCHEMA_ID_BY_PATH, path_key.as_ref(), &id)?;
+                Ok(())
+            })
+            .map_err(map_db_error)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
+
+        self.db
+            .get_owned(
+                RAW_PROPERTY_BANK_VIEW,
+                path.as_path().to_string_lossy().as_ref(),
+            )
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn save_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+        view: &RawPropertyBankView,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
+
+        self.db
+            .put(
+                RAW_PROPERTY_BANK_VIEW,
+                path.as_path().to_string_lossy().as_ref(),
+                view,
+            )
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_raw_schema_view_by_path(
+        &self,
+        file_path: &RelativePath,
+    ) -> Result<Option<RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let path_key = file_path.as_path().to_string_lossy();
+
+        // First lookup SchemaId by path
+        let id = self
+            .db
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+            .map_err(map_db_error)?;
+
+        match id {
+            Some(id) => self.get_raw_schema_view(id),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    fn find_schema_id_by_path(
+        &self,
+        file_path: &RelativePath,
+    ) -> Result<Option<SchemaId>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        let path_key = file_path.as_path().to_string_lossy();
+
+        self.db
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
+
+        // Perform all queries in a single read transaction
+        self.db
+            .batch_read(|reader| {
+                let mut results = HashMap::new();
+
+                for path in file_paths {
+                    let path_key = path.as_path().to_string_lossy();
+
+                    // Step 1: Look up SchemaId by path
+                    let Some(id) = reader.get_owned::<SchemaId>(
+                        SCHEMA_ID_BY_PATH,
+                        path_key.as_ref(),
+                    )?
+                    else {
+                        continue;
+                    };
+
+                    // Step 2: Look up RawSchemaView by ID
+                    if let Some(view) = reader
+                        .get_owned_by_uuid::<RawSchemaView>(
+                            RAW_SCHEMA_VIEWS,
+                            id.into_uuid(),
+                        )?
+                    {
+                        results.insert(path.clone(), view);
+                    }
+                }
+
+                Ok(results)
+            })
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
+
+        // Perform all queries in a single read transaction
+        self.db
+            .batch_read(|reader| {
+                let mut results = HashMap::new();
+
+                for path in file_paths {
+                    let path_key = path.as_path().to_string_lossy();
+                    if let Some(id) = reader.get_owned::<SchemaId>(
+                        SCHEMA_ID_BY_PATH,
+                        path_key.as_ref(),
+                    )? {
+                        results.insert(path.clone(), id);
+                    }
+                }
+
+                Ok(results)
+            })
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
+
+        self.db
+            .get_owned(SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY)
+            .map_err(map_db_error)
+    }
+
+    #[inline]
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::db_table::{
+            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
+        };
+
+        self.db
+            .put(SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY, graph)
+            .map_err(map_db_error)
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use tempfile::TempDir;
+
     use super::*;
+    use crate::schema::raw::RawSchema;
 
-    mod diff_raw_files_tests {
-        use super::*;
+    /// Helper to create test repository.
+    fn setup_test_repo() -> (TempDir, RedbRepository) {
+        use std::sync::Arc;
 
-        #[test]
-        fn unchanged_when_same_hash_and_path() {
-            let v1 = RawFileVersion::new("content", None, None).unwrap();
-            let v2 = RawFileVersion::new("content", None, None).unwrap();
+        use crate::db::Database;
 
-            let change = diff_raw_files(&v1, &v2, "file.json", "file.json");
-            assert_eq!(change, FileChange::Unchanged);
-        }
-
-        #[test]
-        fn modified_when_hash_differs() {
-            let v1 = RawFileVersion::new("old content", None, None).unwrap();
-            let v2 = RawFileVersion::new("new content", None, None).unwrap();
-
-            let change = diff_raw_files(&v1, &v2, "file.json", "file.json");
-            assert_eq!(change, FileChange::Modified);
-        }
-
-        #[test]
-        fn renamed_when_same_hash_different_path() {
-            let v1 = RawFileVersion::new("content", None, None).unwrap();
-            let v2 = RawFileVersion::new("content", None, None).unwrap();
-
-            let change = diff_raw_files(&v1, &v2, "old.json", "new.json");
-            assert_eq!(change, FileChange::Renamed);
-        }
-
-        #[test]
-        fn modified_trumps_renamed() {
-            let v1 = RawFileVersion::new("old", None, None).unwrap();
-            let v2 = RawFileVersion::new("new", None, None).unwrap();
-
-            // Different hash AND different path -> still Modified
-            let change = diff_raw_files(&v1, &v2, "old.json", "new.json");
-            assert_eq!(change, FileChange::Modified);
-        }
+        let tmp = TempDir::new().expect("create temp dir");
+        let db_path = tmp.path().join("test.db");
+        let db = Database::open(&db_path).expect("create database");
+        let repo = RedbRepository::new(Arc::new(db));
+        (tmp, repo)
     }
 
     #[test]
-    fn raw_file_version_roundtrip() {
-        let content = "schema: test\nproperties: []";
-        let version = RawFileVersion::new(content, None, None)
-            .expect("failed to create version");
+    fn find_raw_schema_views_by_paths_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
 
-        let decompressed = version.content().expect("failed to decompress");
-        assert_eq!(content, decompressed);
+        let paths = vec![
+            RelativePath::try_from("schemas/foo.json").unwrap(),
+            RelativePath::try_from("schemas/bar.json").unwrap(),
+        ];
+
+        let results = repo
+            .find_raw_schema_views_by_paths(&paths)
+            .expect("bulk query should succeed");
+
+        assert!(results.is_empty(), "should return empty map for no matches");
     }
 
     #[test]
-    fn raw_file_version_hash() {
-        let content = "test content";
-        let version1 = RawFileVersion::new(content, None, None)
-            .expect("failed to create version");
-        let version2 = RawFileVersion::new(content, None, None)
-            .expect("failed to create version");
+    fn find_schema_ids_by_paths_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
 
-        // Same content produces same hash
-        assert_eq!(version1.content_hash(), version2.content_hash());
+        let paths = vec![
+            RelativePath::try_from("schemas/foo.json").unwrap(),
+            RelativePath::try_from("schemas/bar.json").unwrap(),
+        ];
+
+        let results = repo
+            .find_schema_ids_by_paths(&paths)
+            .expect("bulk query should succeed");
+
+        assert!(results.is_empty(), "should return empty map for no matches");
     }
 
     #[test]
-    fn raw_file_version_compression() {
-        let content = "a".repeat(1000);
-        let version = RawFileVersion::new(&content, None, None)
-            .expect("failed to create version");
+    fn list_schema_path_id_pairs_returns_empty_for_no_matches() {
+        let (_tmp, repo) = setup_test_repo();
 
-        // Compression should reduce size significantly
-        assert!(
-            version.compressed_size() < content.len(),
-            "Compressed size should be smaller than original"
+        let results = repo
+            .list_schema_path_id_pairs()
+            .expect("list schema path/id pairs should succeed");
+
+        assert!(results.is_empty(), "should return empty list for no matches");
+    }
+
+    #[test]
+    fn list_schema_path_id_pairs_includes_saved_view() {
+        use crate::{
+            fs::FileInfo,
+            schema::views::{HashRecord, RawPropertyMapHash, SchemaVersion},
+            support::hash::Blake3Hash,
+        };
+
+        let (_tmp, repo) = setup_test_repo();
+
+        let raw_json = r#"{
+            "$version": "1.0",
+            "properties": {}
+        }"#;
+        let raw = serde_json::from_str::<RawSchema>(raw_json)
+            .expect("valid schema should deserialize")
+            .with_name("test".into());
+
+        let file_stats = FileInfo::new(None, None, 0);
+        let hashes = HashRecord::new(
+            Blake3Hash::new([0; 32]),
+            RawPropertyMapHash::default(),
         );
-    }
+        let version = SchemaVersion::new(file_stats, hashes, &raw).unwrap();
 
-    #[test]
-    fn raw_file_version_with_timestamps() {
-        let now = SystemTime::now();
-        let version = RawFileVersion::new("test", Some(now), Some(now))
-            .expect("failed to create version");
+        let schema_path = RelativePath::try_from("schemas/test.json").unwrap();
+        let view = RawSchemaView::new(schema_path.clone(), version);
+        let schema_id = SchemaId::new();
+        repo.save_raw_schema_view(schema_id, &view)
+            .expect("save view should succeed");
 
-        assert_eq!(version.created_at(), Some(now));
-        assert_eq!(version.modified_at(), Some(now));
-        assert!(version.recorded_at() >= now);
-    }
+        let results = repo
+            .list_schema_path_id_pairs()
+            .expect("list schema path/id pairs should succeed");
 
-    #[test]
-    fn raw_schema_file_creation() {
-        let file = RawSchemaFile::new(
-            "schemas/test.toml".into(),
-            "schema: test",
-            None,
-            None,
-        )
-        .expect("failed to create file");
-
-        assert_eq!(file.file_path(), "schemas/test.toml");
-        assert_eq!(file.version_count(), 1);
-        assert!(file.current().is_some());
-    }
-
-    #[test]
-    fn raw_schema_file_add_version() {
-        let mut file = RawSchemaFile::new(
-            "schemas/test.toml".into(),
-            "version 1",
-            None,
-            None,
-        )
-        .expect("failed to create file");
-
-        file.add_version("version 2", None, None)
-            .expect("failed to add version");
-
-        assert_eq!(file.version_count(), 2);
-        let current = file.current().expect("no current version");
-        let content = current.content().expect("failed to decompress");
-        assert_eq!(content, "version 2");
-    }
-
-    #[test]
-    fn raw_schema_file_version_limit() {
-        let mut file = RawSchemaFile::new("test.toml".into(), "v1", None, None)
-            .expect("failed to create file");
-
-        // Add 5 more versions (total 6, should evict oldest)
-        for i in 2i32..=6i32 {
-            file.add_version(&format!("v{i}"), None, None)
-                .expect("failed to add version");
-        }
-
-        // Should have exactly 5 versions (v2-v6, v1 evicted)
-        assert_eq!(file.version_count(), 5);
-
-        // Verify oldest is v2, newest is v6
-        let versions: Vec<_> = file.versions().collect();
-        assert_eq!(
-            versions.first().and_then(|v| v.content().ok()).as_deref(),
-            Some("v2")
-        );
-        assert_eq!(
-            versions.last().and_then(|v| v.content().ok()).as_deref(),
-            Some("v6")
-        );
-    }
-
-    #[test]
-    fn raw_property_bank_file_creation() {
-        let file = RawPropertyBankFile::new("properties: []", None, None)
-            .expect("failed to create file");
-
-        assert_eq!(file.version_count(), 1);
-        assert!(file.current().is_some());
-    }
-
-    #[test]
-    fn raw_property_bank_file_add_version() {
-        let mut file = RawPropertyBankFile::new("version 1", None, None)
-            .expect("failed to create file");
-
-        file.add_version("version 2", None, None)
-            .expect("failed to add version");
-
-        assert_eq!(file.version_count(), 2);
-        let current = file.current().expect("no current version");
-        let content = current.content().expect("failed to decompress");
-        assert_eq!(content, "version 2");
+        assert_eq!(results.len(), 1);
+        let (path, id) =
+            results.first().cloned().expect("should have one entry");
+        assert_eq!(id, schema_id);
+        assert_eq!(path, schema_path);
     }
 }

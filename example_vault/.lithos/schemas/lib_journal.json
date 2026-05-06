@@ -16,10 +16,10 @@
       "directory": "(52_organizations)/"
     },
     "year_published": {
-      "$ref": "property_bank#/year_published"
+      "$ref": "#property_bank/year_published"
     },
     "volume": {
-      "$ref": "property_bank#/volume"
+      "$ref": "#property_bank/volume"
     },
     "issue": {
       "type": "number",
@@ -34,7 +34,7 @@
       "step": 1.0
     },
     "doi": {
-      "$ref": "property_bank#/doi"
+      "$ref": "#property_bank/doi"
     }
   },
   "extends": "lib"

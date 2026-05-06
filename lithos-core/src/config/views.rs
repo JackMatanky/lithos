@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-use crate::config::vault::VaultId;
+use crate::{config::vault::VaultId, support::hash::Blake3Hash};
 
 // ----------------------------------------------------------- //
 //                     Raw Config Views                        //
@@ -143,7 +143,9 @@ impl RawGlobalConfigView {
             latest.is_timestamp_match(
                 meta.created_at,
                 meta.modified_at.unwrap_or(SystemTime::UNIX_EPOCH),
-            ) && latest.is_content_match(&meta.content_hash.unwrap_or([0; 32]))
+            ) && latest.is_content_match(
+                &meta.content_hash.unwrap_or(Blake3Hash::new([0; 32])),
+            )
         })
     }
 
@@ -164,7 +166,8 @@ impl RawGlobalConfigView {
     ) -> bool {
         self.latest_version().is_some_and(|latest| {
             let meta = &raw.metadata;
-            latest.content_hash() == &meta.content_hash.unwrap_or([0; 32])
+            latest.content_hash()
+                == &meta.content_hash.unwrap_or(Blake3Hash::new([0; 32]))
         })
     }
 
@@ -311,7 +314,9 @@ impl RawVaultConfigView {
             latest.is_timestamp_match(
                 meta.created_at,
                 meta.modified_at.unwrap_or(SystemTime::UNIX_EPOCH),
-            ) && latest.is_content_match(&meta.content_hash.unwrap_or([0; 32]))
+            ) && latest.is_content_match(
+                &meta.content_hash.unwrap_or(Blake3Hash::new([0; 32])),
+            )
         })
     }
 
@@ -332,7 +337,8 @@ impl RawVaultConfigView {
     ) -> bool {
         self.latest_version().is_some_and(|latest| {
             let meta = &raw.metadata;
-            latest.content_hash() == &meta.content_hash.unwrap_or([0; 32])
+            latest.content_hash()
+                == &meta.content_hash.unwrap_or(Blake3Hash::new([0; 32]))
         })
     }
 
@@ -386,7 +392,7 @@ impl RawVaultConfigView {
 ///
 /// let content = b"vault_path = \"/vault\"\nname = \"My Vault\"";
 /// let version = RawFileVersion::new(content)?;
-/// assert_eq!(version.content_hash().len(), 32);
+/// assert_eq!(version.content_hash().as_bytes().len(), 32);
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
@@ -401,7 +407,7 @@ pub struct RawFileVersion {
     /// BLAKE3 hash of the uncompressed content.
     ///
     /// Used for fast content-based change detection without decompressing.
-    content_hash: [u8; 32],
+    content_hash: Blake3Hash,
 
     /// Filesystem birthtime (file creation timestamp).
     ///
@@ -446,7 +452,7 @@ impl RawFileVersion {
         created_at: Option<SystemTime>,
         modified_at: SystemTime,
     ) -> Result<Self, std::io::Error> {
-        let content_hash = blake3::hash(content).into();
+        let content_hash = Blake3Hash::compute(content);
         let compressed_content = zstd::encode_all(content, 3)?;
         let recorded_at = SystemTime::now();
 
@@ -462,7 +468,7 @@ impl RawFileVersion {
     /// Returns the BLAKE3 content hash.
     #[inline]
     #[must_use]
-    pub fn content_hash(&self) -> &[u8; 32] {
+    pub const fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
     }
 
@@ -547,14 +553,14 @@ impl RawFileVersion {
     ///
     /// let content = b"vault_path = \"/vault\"";
     /// let version = RawFileVersion::new(content, None, SystemTime::now())?;
-    /// let hash = blake3::hash(content);
+    /// let hash = Blake3Hash::compute(content);
     ///
-    /// assert!(version.is_content_match(hash.as_bytes()));
+    /// assert!(version.is_content_match(&hash));
     /// ```
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, content_hash: &[u8; 32]) -> bool {
-        &self.content_hash == content_hash
+    pub fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+        self.content_hash == *content_hash
     }
 
     /// Checks if this version matches the given file state.
@@ -571,7 +577,7 @@ impl RawFileVersion {
     /// let mtime = SystemTime::now();
     /// let version = RawFileVersion::new(content, None, mtime)?;
     ///
-    /// assert!(version.matches(None, mtime, &blake3::hash(content).into()));
+    /// assert!(version.matches(None, mtime, &Blake3Hash::compute(content)));
     /// ```
     #[inline]
     #[must_use]
@@ -579,7 +585,7 @@ impl RawFileVersion {
         &self,
         created_at: Option<SystemTime>,
         modified_at: SystemTime,
-        content_hash: &[u8; 32],
+        content_hash: &Blake3Hash,
     ) -> bool {
         self.is_timestamp_match(created_at, modified_at)
             && self.is_content_match(content_hash)
@@ -652,7 +658,7 @@ mod tests {
         let version = RawFileVersion::new(content, None, mtime)
             .expect("version creation should succeed");
 
-        let expected_hash: [u8; 32] = blake3::hash(content).into();
+        let expected_hash = Blake3Hash::compute(content);
         assert_eq!(version.content_hash(), &expected_hash);
         assert_eq!(version.created_at(), None);
         assert_eq!(version.modified_at(), mtime);
@@ -673,7 +679,7 @@ mod tests {
     fn raw_file_version_matches() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
-        let hash = blake3::hash(content).into();
+        let hash = Blake3Hash::compute(content);
         let version = RawFileVersion::new(content, None, mtime)
             .expect("version creation should succeed");
 
@@ -684,7 +690,7 @@ mod tests {
         assert!(!version.matches(None, different_mtime, &hash));
 
         // Different hash should not match
-        let different_hash = blake3::hash(b"different").into();
+        let different_hash = Blake3Hash::compute(b"different");
         assert!(!version.matches(None, mtime, &different_hash));
     }
 

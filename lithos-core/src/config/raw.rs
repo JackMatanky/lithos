@@ -11,6 +11,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use super::{frontmatter::RawFrontmatter, logging::RawLogging};
+use crate::support::hash::Blake3Hash;
 
 // ----------------------------------------------------------- //
 //                  Raw Config Aggregate Root                  //
@@ -403,7 +404,7 @@ pub enum RawTrustedVaults {
 /// let metadata = RawConfigMetadata {
 ///     created_at: Some(SystemTime::now()),
 ///     modified_at: Some(SystemTime::now()),
-///     content_hash: Some([0u8; 32]),
+///     content_hash: Some(Blake3Hash::new([0u8; 32])),
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -420,7 +421,7 @@ pub struct RawConfigMetadata {
     /// BLAKE3 hash of raw file content (before parsing).
     ///
     /// Computed from raw file bytes during ingestion.
-    pub content_hash: Option<[u8; 32]>,
+    pub content_hash: Option<Blake3Hash>,
 }
 
 // ----------------------------------------------------------- //

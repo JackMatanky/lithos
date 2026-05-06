@@ -19,6 +19,8 @@ blake3.workspace = true
 rand.workspace = true
 regex.workspace = true
 glob.workspace = true
+walkdir.workspace = true
+rayon.workspace = true
 itoa = "1.0"
 ryu = "1.0"
 
@@ -73,10 +75,11 @@ name = "note_parsing"
 harness = false
 path = "benches/note_parsing.rs"
 
-[[bench]]
-name = "schema_loader"
-harness = false
-path = "benches/schema_loader.rs"
+# [[bench]]
+# name = "schema_loader"
+# harness = false
+# path = "benches/schema_loader.rs"
+# DISABLED: Pending migration to Repository pattern - see INTEGRATION_TESTS_TODO.md
 
 [features]
 default = []

@@ -75,9 +75,9 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{raw::{RawPropertySpec, RawBoolSpec}, property_spec::PropertySpec};
+    /// # use lithos_core::schema::{raw::property::RawPropertyInline, property_spec::PropertySpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let def = RawPropertySpec::Bool(RawBoolSpec);
+    /// let def: RawPropertyInline = serde_json::from_str(r#"{"type": "bool"}"#)?;
     /// let spec = PropertySpec::try_from(def)?;
     /// spec.validate(&serde_json::json!(true))?;
     /// # Ok(())
@@ -124,10 +124,12 @@ impl PropertySpec {
         value: &serde_json::Value,
         expected: &'static str,
     ) -> SchemaError {
-        SchemaError::InvalidType {
-            value: value.to_string(),
-            expected: expected.into(),
-        }
+        SchemaError::PropertyValue(
+            super::error::PropertyValueError::InvalidType {
+                value: value.to_string().into(),
+                expected: expected.into(),
+            },
+        )
     }
 
     #[inline]
@@ -195,7 +197,7 @@ impl ArchivedPropertySpec {
 // Conversions from Raw Types (Syntax → Domain)
 // ============================================================================
 
-impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
+impl TryFrom<crate::schema::raw::property::RawPropertyInline> for PropertySpec {
     type Error = SchemaError;
 
     /// Convert raw property spec (syntax layer) to validated domain spec.
@@ -208,16 +210,16 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
     /// required fields, etc.).
     #[inline]
     fn try_from(
-        raw: crate::schema::raw::RawPropertySpec,
+        raw: crate::schema::raw::property::RawPropertyInline,
     ) -> Result<Self, Self::Error> {
-        use crate::schema::raw::RawPropertySpec;
+        use crate::schema::raw::property::RawPropertyInline;
 
         match raw {
-            RawPropertySpec::Bool(def) => Ok(Self::Bool(def.try_into()?)),
-            RawPropertySpec::Date(def) => Ok(Self::Date(def.try_into()?)),
-            RawPropertySpec::File(def) => Ok(Self::File(def.try_into()?)),
-            RawPropertySpec::Number(def) => Ok(Self::Number(def.try_into()?)),
-            RawPropertySpec::String(def) => Ok(Self::String(def.try_into()?)),
+            RawPropertyInline::Bool(_) => Ok(Self::Bool(BoolSpec::default())),
+            RawPropertyInline::Date(def) => Ok(Self::Date(def.try_into()?)),
+            RawPropertyInline::File(def) => Ok(Self::File(def.try_into()?)),
+            RawPropertyInline::Number(def) => Ok(Self::Number(def.try_into()?)),
+            RawPropertyInline::String(def) => Ok(Self::String(def.try_into()?)),
         }
     }
 }
@@ -225,12 +227,17 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
 #[cfg(test)]
 mod tests {
     use super::PropertySpec;
-    use crate::schema::raw::{RawBoolSpec, RawPropertySpec};
+    use crate::schema::raw::property::RawPropertyInline;
 
     #[test]
     fn validate_dispatches_to_bool_spec() {
-        let spec = PropertySpec::try_from(RawPropertySpec::Bool(RawBoolSpec))
-            .expect("Expected default BoolSpec to validate");
+        let spec = PropertySpec::try_from(RawPropertyInline::Bool(
+            crate::schema::raw::bool::RawBoolProperty {
+                required: false,
+                multi: false,
+            },
+        ))
+        .expect("Expected default BoolSpec to validate");
         let result = spec.validate(&serde_json::Value::Bool(true));
         assert!(
             result.is_ok(),

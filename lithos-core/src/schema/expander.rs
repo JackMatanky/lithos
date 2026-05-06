@@ -4,11 +4,10 @@
 //! # Pipeline position
 //!
 //! ```text
-//! Ingestor → Vec<(SchemaId, RawSchema)>
+//! Ingestor → RawPropertyMap<RawProperty>
 //! RefExpander  ← here
-//! → Vec<(SchemaId, RefExpandedSchema)>
-//! Extender
-//! Resolver
+//! → PropertyMap
+//! Merger
 //! ```
 //!
 //! After `RefExpander` completes, the [`PropertyBank`] is no longer
@@ -16,61 +15,39 @@
 //!
 //! # Design
 //!
-//! - **Input**: stale `Vec<(SchemaId, RawSchema)>` + `&PropertyBank`
-//! - **Output**: `Vec<(SchemaId, RefExpandedSchema)>`
-//! - Properties in each `RefExpandedSchema` are **sorted by name** so
-//!   downstream components (`Extender`, `Resolver`) can use two-pointer merges
-//!   without re-sorting.
+//! - **Input**: `HashMap<PropertyName, RawPropertyRef>` + `&PropertyBank`
+//! - **Output**: `PropertyMap`
+//! - Expander only handles property bank references; inline properties are
+//!   validated elsewhere via `TryFrom` on `Property`.
+
+use std::collections::HashMap;
 
 use super::{
     bank::PropertyBank,
     error::SchemaError,
     property::{
-        BankPropertyRef, Multiplicity, Optionality, Property, PropertyId,
-        PropertyName,
+        Multiplicity, Optionality, Property, PropertyMap, PropertyName,
     },
     property_spec::PropertySpec,
-    raw::{RawProperty, RawPropertyRef, RawSchema},
+    raw::{
+        date::RawDateSpec, file::RawFileSpec, number::RawNumberSpec,
+        property::RawPropertyRef, string::RawStringSpec,
+    },
 };
-use crate::schema::aggregate::SchemaId;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RefExpandedSchema
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// A raw schema with all `$ref` pointers resolved against the property bank.
-///
-/// Properties are sorted by name for efficient merging by `Extender` and
-/// `Resolver`.
-///
-/// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `Loader` instead.
-#[doc(hidden)]
-#[derive(Clone)]
-#[non_exhaustive]
-pub struct RefExpandedSchema {
-    /// Schema name string (carried forward from `RawSchema`).
-    pub name: Box<str>,
-    /// Optional parent schema name (carried forward from `RawSchema.extends`).
-    pub extends: Option<Box<str>>,
-    /// Property names to exclude from the parent schema.
-    pub excludes: Vec<Box<str>>,
-    /// Fully resolved and sorted own properties.
-    pub properties: Vec<Property>,
-}
+type RefPropertyMap = HashMap<PropertyName, RawPropertyRef>;
+type ExpandedPropertyMap = PropertyMap;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  RefExpander
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Resolves raw `$ref` property pointers against the [`PropertyBank`] and
-/// validates inline property definitions.
+/// Resolves raw `$ref` property pointers against the [`PropertyBank`].
 ///
 /// Holds a shared reference to the bank so callers can pre-build the bank
 /// once and reuse the expander across multiple schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `Loader` instead.
+/// Do not depend on it in production code - use `Builder` instead.
 #[doc(hidden)]
 pub struct RefExpander<'bank> {
     bank: &'bank PropertyBank,
@@ -89,131 +66,62 @@ impl<'bank> RefExpander<'bank> {
         }
     }
 
-    /// Expand references for a batch of stale raw schemas.
-    ///
-    /// For each `(SchemaId, RawSchema)` pair, all properties are resolved
-    /// against the bank and the results are returned in the same order.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaError`] if any property fails validation or a `$ref`
-    /// path cannot be resolved.
-    ///
-    /// **Internal API**: Public for benchmarking only.
-    #[doc(hidden)]
+    /// Expand references for a single schema property map.
     #[inline]
-    pub fn expand_all(
+    pub fn expand_properties(
         &self,
-        schemas: Vec<(SchemaId, RawSchema)>,
-    ) -> Result<Vec<(SchemaId, RefExpandedSchema)>, SchemaError> {
-        schemas
-            .into_iter()
-            .map(|(id, raw)| {
-                let expanded = self.expand_schema(raw)?;
-                Ok((id, expanded))
+        properties: &RefPropertyMap,
+    ) -> Result<ExpandedPropertyMap, SchemaError> {
+        let mut expanded = PropertyMap::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is not required for property expansion"
+        )]
+        for (name, entry) in properties {
+            let prop = self.expand_property(entry)?;
+            expanded.insert(name.clone(), prop);
+        }
+
+        Ok(expanded)
+    }
+
+    /// Resolve a single raw property reference into a validated [`Property`].
+    #[inline]
+    pub(crate) fn expand_property(
+        &self,
+        entry: &RawPropertyRef,
+    ) -> Result<Property, SchemaError> {
+        let bank_name = entry.ref_path.target_name();
+        let base = self.bank.get(bank_name).ok_or_else(|| {
+            SchemaError::PropertyRef(super::error::PropertyRefError::NotFound {
+                reference: entry.ref_path.as_str().into(),
             })
-            .collect()
-    }
-
-    /// Expand references for a single [`RawSchema`].
-    fn expand_schema(
-        &self,
-        raw: RawSchema,
-    ) -> Result<RefExpandedSchema, SchemaError> {
-        // Collect and sort entries by name for deterministic output.
-        let mut entries: Vec<(Box<str>, RawProperty)> =
-            raw.properties.into_iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut properties = Vec::with_capacity(entries.len());
-        for (prop_name, entry) in entries {
-            properties.push(self.expand_property(&prop_name, entry)?);
-        }
-
-        Ok(RefExpandedSchema {
-            name: raw.name,
-            extends: raw.extends,
-            excludes: raw.excludes,
-            properties,
-        })
-    }
-
-    /// Resolve a single raw property entry into a validated [`Property`].
-    fn expand_property(
-        &self,
-        name: &str,
-        entry: RawProperty,
-    ) -> Result<Property, SchemaError> {
-        match entry {
-            RawProperty::Inline(inline) => {
-                let prop_name = PropertyName::try_new(name)?;
-                let spec = inline.spec.try_into()?;
-                let optionality = Optionality::from(inline.required);
-                let multiplicity = Multiplicity::from(inline.multi);
-                Ok(Property::new(
-                    PropertyId::new(),
-                    prop_name,
-                    optionality,
-                    multiplicity,
-                    spec,
-                ))
-            }
-
-            RawProperty::Ref(ref_entry) => {
-                Self::apply_ref_overrides(self.bank, name, &ref_entry)
-            }
-        }
-    }
-
-    /// Resolve a `$ref` entry: look up the base property in the bank, then
-    /// apply any `required`/`multi` and type-specific overrides.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaError::PropertyRefNotFound`] if the referenced property
-    /// is absent from the bank, or [`SchemaError::PropertyTypeMismatch`] if
-    /// any override field is incompatible with the base property type (R-10).
-    fn apply_ref_overrides(
-        bank: &PropertyBank,
-        name: &str,
-        ref_entry: &RawPropertyRef,
-    ) -> Result<Property, SchemaError> {
-        let prop_ref = BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
-        let base = bank.get(prop_ref.name()).ok_or_else(|| {
-            SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
         })?;
 
-        let optionality =
-            ref_entry.required.map_or(base.optionality(), Optionality::from);
-        let multiplicity =
-            ref_entry.multi.map_or(base.multiplicity(), Multiplicity::from);
+        let optionality = Self::optionality(base.optionality(), entry.required);
+        let multiplicity = Self::multiplicity(base.multiplicity(), entry.multi);
+        let spec = Self::spec(base.spec(), entry)?;
 
-        let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
-
-        let prop_name = PropertyName::try_new(name)?;
-        Ok(Property::new(base.id(), prop_name, optionality, multiplicity, spec))
+        Ok(Property::new(base.id(), optionality, multiplicity, spec))
     }
 
-    /// Apply type-specific spec overrides, rejecting type changes (R-10).
-    ///
-    /// Returns [`SchemaError::PropertyTypeMismatch`] if any override field
-    /// targets a type incompatible with the base spec type.
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on &PropertySpec with value patterns is idiomatic"
     )]
-    fn apply_spec_overrides(
+    fn spec(
         base: &PropertySpec,
         ref_entry: &RawPropertyRef,
     ) -> Result<PropertySpec, SchemaError> {
-        let has_number = ref_entry.number.min.is_some()
-            || ref_entry.number.max.is_some()
-            || ref_entry.number.step.is_some();
-        let has_string = ref_entry.string.options.is_some()
-            || ref_entry.string.pattern.is_some();
-        let has_date = ref_entry.date.format.is_some();
-        let has_file = ref_entry.file.directory.is_some()
-            || ref_entry.file.file_class.is_some();
+        let has_number = ref_entry.min.is_some()
+            || ref_entry.max.is_some()
+            || ref_entry.step.is_some();
+        let has_string =
+            ref_entry.options.is_some() || ref_entry.pattern.is_some();
+        let has_date = ref_entry.format.is_some();
+        let has_file =
+            ref_entry.directory.is_some() || ref_entry.file_class.is_some();
 
         match base {
             PropertySpec::Bool(_) => {
@@ -242,8 +150,13 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("number", "file"));
                 }
+                let overrides = RawNumberSpec {
+                    min: ref_entry.min,
+                    max: ref_entry.max,
+                    step: ref_entry.step,
+                };
                 Ok(PropertySpec::Number(
-                    spec.clone().apply_overrides(&ref_entry.number)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -257,8 +170,12 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("string", "file"));
                 }
+                let overrides = RawStringSpec {
+                    options: ref_entry.options.clone(),
+                    pattern: ref_entry.pattern.clone(),
+                };
                 Ok(PropertySpec::String(
-                    spec.clone().apply_overrides(&ref_entry.string)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -272,8 +189,11 @@ impl<'bank> RefExpander<'bank> {
                 if has_file {
                     return Err(type_mismatch("date", "file"));
                 }
+                let overrides = RawDateSpec {
+                    format: ref_entry.format.clone(),
+                };
                 Ok(PropertySpec::Date(
-                    spec.clone().apply_overrides(&ref_entry.date)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
 
@@ -287,20 +207,42 @@ impl<'bank> RefExpander<'bank> {
                 if has_date {
                     return Err(type_mismatch("file", "date"));
                 }
+                let overrides = RawFileSpec {
+                    directory: ref_entry.directory.clone(),
+                    file_class: ref_entry.file_class.clone(),
+                };
                 Ok(PropertySpec::File(
-                    spec.clone().apply_overrides(&ref_entry.file)?,
+                    spec.clone().apply_overrides(&overrides)?,
                 ))
             }
         }
+    }
+
+    #[inline]
+    #[must_use]
+    fn optionality(
+        base: Optionality,
+        override_val: Option<bool>,
+    ) -> Optionality {
+        override_val.map_or(base, Optionality::from)
+    }
+
+    #[inline]
+    #[must_use]
+    fn multiplicity(
+        base: Multiplicity,
+        override_val: Option<bool>,
+    ) -> Multiplicity {
+        override_val.map_or(base, Multiplicity::from)
     }
 }
 
 #[inline]
 fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
-    SchemaError::PropertyTypeMismatch {
+    SchemaError::PropertyRef(super::error::PropertyRefError::TypeMismatch {
         expected: expected.into(),
         actual: actual.into(),
-    }
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -310,64 +252,66 @@ fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Test module groups fixtures before test sub-modules for \
-              readability"
+    reason = "Test module groups fixtures before test sub-modules"
 )]
 mod tests {
-    use std::collections::HashMap;
-
     use uuid::Uuid;
 
     use super::*;
     use crate::schema::{
-        aggregate::SchemaId,
         bank::PropertyBank,
-        property::{Multiplicity, Optionality, PropertyId, PropertyName},
+        property::{PropertyId, PropertyMap, PropertyName},
         property_spec::{BoolSpec, PropertySpec},
-        raw::{
-            RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec, RawProperty,
-            RawPropertyInline, RawPropertyRef, RawPropertySpec, RawSchema,
-            RawStringSpec,
-        },
+        raw::property::RawPropertyRef,
     };
 
     mod fixtures {
         use super::*;
 
-        pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Ok(Property::new(
+        pub fn bool_property(
+            name: &str,
+        ) -> Result<(PropertyName, Property), SchemaError> {
+            let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
-                PropertyName::try_new(name)?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            ))
+            );
+            Ok((PropertyName::try_new(name)?, property))
         }
 
-        pub fn bank_with(prop: Property) -> Result<PropertyBank, SchemaError> {
-            let mut bank = PropertyBank::new();
-            bank.register(prop)?;
-            Ok(bank)
+        pub fn bank_with(entry: (PropertyName, Property)) -> PropertyBank {
+            let mut properties = PropertyMap::new();
+            properties.insert(entry.0, entry.1);
+            PropertyBank::from(properties)
         }
 
-        pub fn inline_bool_entry() -> RawProperty {
-            RawProperty::Inline(RawPropertyInline {
-                required: true,
-                multi: false,
-                spec: RawPropertySpec::Bool(RawBoolSpec),
-            })
+        pub fn ref_entry(ref_path: &str) -> RawPropertyRef {
+            let json = format!(r#"{{"$ref": "{ref_path}"}}"#);
+            serde_json::from_str(&json)
+                .expect("Test fixture should create valid RawPropertyRef")
         }
 
-        pub fn ref_entry(ref_path: &str) -> RawProperty {
-            RawProperty::Ref(RawPropertyRef {
-                ref_path: ref_path.into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec::default(),
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            })
+        pub fn ref_with_overrides(
+            ref_path: &str,
+            required: Option<bool>,
+            multi: Option<bool>,
+        ) -> RawPropertyRef {
+            use std::fmt::Write as _;
+
+            let mut json = format!(r#"{{"$ref": "{ref_path}""#);
+            if let Some(req) = required {
+                write!(json, r#", "required": {req}"#)
+                    .expect("write to string fails only on OOM");
+            }
+            if let Some(m) = multi {
+                write!(json, r#", "multi": {m}"#)
+                    .expect("write to string fails only on OOM");
+            }
+            json.push('}');
+
+            serde_json::from_str(&json)
+                .expect("Test fixture should create valid RawPropertyRef")
         }
     }
 
@@ -376,34 +320,22 @@ mod tests {
 
     #[expect(
         clippy::panic_in_result_fn,
-        reason = "Test functions use assert! macros which may panic; this is \
-                  standard test practice"
+        reason = "Test functions use assert! macros"
     )]
     mod expand_property {
         use super::*;
 
         #[test]
-        fn inline_bool_resolves_correctly() -> Result<(), SchemaError> {
-            let bank = PropertyBank::new();
-            let expander = RefExpander::new(&bank);
-            let prop = expander
-                .expand_property("flag", fixtures::inline_bool_entry())?;
-            assert_eq!(prop.name().as_str(), "flag");
-            assert_eq!(prop.optionality(), Optionality::Required);
-            assert_eq!(prop.multiplicity(), Multiplicity::Single);
-            Ok(())
-        }
-
-        #[test]
         fn ref_resolves_from_bank() -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
-            let bank = fixtures::bank_with(base)?;
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
-            let prop = expander.expand_property(
-                "status",
-                fixtures::ref_entry("property_bank#/status"),
-            )?;
-            assert_eq!(prop.name().as_str(), "status");
+            let name = PropertyName::try_new("alias")?;
+            let entry = fixtures::ref_entry("#property_bank/status");
+            let mut refs = HashMap::new();
+            refs.insert(name.clone(), entry);
+            let expanded_props = expander.expand_properties(&refs)?;
+            assert!(expanded_props.has(&name));
             Ok(())
         }
 
@@ -411,18 +343,19 @@ mod tests {
         fn ref_overrides_optionality_and_multiplicity()
         -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
-            let bank = fixtures::bank_with(base)?;
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
-            let entry = RawProperty::Ref(RawPropertyRef {
-                ref_path: "property_bank#/status".into(),
-                required: Some(false),
-                multi: Some(true),
-                number: RawNumberSpec::default(),
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            });
-            let prop = expander.expand_property("status", entry)?;
+            let entry = fixtures::ref_with_overrides(
+                "#property_bank/status",
+                Some(false),
+                Some(true),
+            );
+            let name = PropertyName::try_new("status")?;
+            let mut refs = HashMap::new();
+            refs.insert(name.clone(), entry);
+            let expanded_props = expander.expand_properties(&refs)?;
+            let prop =
+                expanded_props.get(&name).expect("expanded property exists");
             assert_eq!(prop.optionality(), Optionality::Optional);
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
             Ok(())
@@ -432,25 +365,26 @@ mod tests {
         fn ref_type_mismatch_returns_error() {
             let base =
                 fixtures::bool_property("status").expect("valid property");
-            let bank = fixtures::bank_with(base).expect("valid bank");
+            let bank = fixtures::bank_with(base);
             let expander = RefExpander::new(&bank);
-            let entry = RawProperty::Ref(RawPropertyRef {
-                ref_path: "property_bank#/status".into(),
-                required: None,
-                multi: None,
-                number: RawNumberSpec {
-                    min: Some(0.0f64),
-                    max: None,
-                    step: None,
-                },
-                string: RawStringSpec::default(),
-                date: RawDateSpec::default(),
-                file: RawFileSpec::default(),
-            });
-            let result = expander.expand_property("status", entry);
+            let json = r##"{
+                "$ref": "#property_bank/status",
+                "min": 0.0
+            }"##;
+            let entry: RawPropertyRef = serde_json::from_str(json)
+                .expect("Valid ref with number override should deserialize");
+            let name = PropertyName::try_new("status").expect("valid name");
+            let mut refs = HashMap::new();
+            refs.insert(name, entry);
+            let result = expander.expand_properties(&refs);
             assert!(
-                matches!(result, Err(SchemaError::PropertyTypeMismatch { .. })),
-                "Expected PropertyTypeMismatch, got: {result:?}"
+                matches!(
+                    result,
+                    Err(SchemaError::PropertyRef(
+                        crate::schema::error::PropertyRefError::TypeMismatch { .. }
+                    ))
+                ),
+                "Expected PropertyRef::TypeMismatch, got: {result:?}"
             );
         }
 
@@ -458,76 +392,20 @@ mod tests {
         fn ref_missing_in_bank_returns_error() {
             let bank = PropertyBank::new();
             let expander = RefExpander::new(&bank);
-            let entry = fixtures::ref_entry("property_bank#/missing");
-            let result = expander.expand_property("missing", entry);
+            let entry = fixtures::ref_entry("#property_bank/missing");
+            let name = PropertyName::try_new("missing").expect("valid name");
+            let mut refs = HashMap::new();
+            refs.insert(name, entry);
+            let result = expander.expand_properties(&refs);
             assert!(
-                matches!(result, Err(SchemaError::PropertyRefNotFound(_))),
-                "Expected PropertyRefNotFound, got: {result:?}"
+                matches!(
+                    result,
+                    Err(SchemaError::PropertyRef(
+                        crate::schema::error::PropertyRefError::NotFound { .. }
+                    ))
+                ),
+                "Expected PropertyRef::NotFound, got: {result:?}"
             );
-        }
-    }
-
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test functions use assert! macros; standard test practice"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Tests access known-fixed indices for clarity; bounds \
-                  guaranteed by test setup"
-    )]
-    mod expand_all {
-        use super::*;
-
-        #[test]
-        fn empty_batch_returns_empty() -> Result<(), SchemaError> {
-            let bank = PropertyBank::new();
-            let ref_expander = RefExpander::new(&bank);
-            let result = ref_expander.expand_all(vec![])?;
-            assert!(result.is_empty());
-            Ok(())
-        }
-
-        #[test]
-        fn properties_sorted_by_name() -> Result<(), SchemaError> {
-            let bank = PropertyBank::new();
-            let ref_expander = RefExpander::new(&bank);
-            let mut props = HashMap::new();
-            props.insert("z".into(), fixtures::inline_bool_entry());
-            props.insert("a".into(), fixtures::inline_bool_entry());
-            let raw = RawSchema {
-                version: crate::schema::raw::SCHEMA_VERSION.into(),
-                name: "test".into(),
-                extends: None,
-                excludes: Vec::new(),
-                properties: props,
-            };
-            let id = SchemaId::new();
-            let result = ref_expander.expand_all(vec![(id, raw)])?;
-            let expanded_schemas = &result[0].1;
-            assert_eq!(expanded_schemas.properties[0].name().as_str(), "a");
-            assert_eq!(expanded_schemas.properties[1].name().as_str(), "z");
-            Ok(())
-        }
-
-        #[test]
-        fn extends_and_excludes_carried_forward() -> Result<(), SchemaError> {
-            let bank = PropertyBank::new();
-            let ref_expander = RefExpander::new(&bank);
-            let raw = RawSchema {
-                version: crate::schema::raw::SCHEMA_VERSION.into(),
-                name: "child".into(),
-                extends: Some("parent".into()),
-                excludes: vec!["old-prop".into()],
-                properties: HashMap::new(),
-            };
-            let id = SchemaId::new();
-            let result = ref_expander.expand_all(vec![(id, raw)])?;
-            let expanded_schemas = &result[0].1;
-            assert_eq!(expanded_schemas.extends.as_deref(), Some("parent"));
-            assert_eq!(expanded_schemas.excludes.len(), 1);
-            assert_eq!(expanded_schemas.excludes[0].as_ref(), "old-prop");
-            Ok(())
         }
     }
 }

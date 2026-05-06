@@ -330,6 +330,59 @@ impl BatchReader {
         get_owned_tx(&self.tx, table, key)
     }
 
+    /// Zero-copy read using UUID as key within a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_by_uuid<V, F, R>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+        f: F,
+    ) -> Result<Option<R>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            >,
+        F: FnOnce(&rkyv::Archived<V>) -> R,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        read_archived_tx::<V, _, _>(&self.tx, table, key, f)
+    }
+
+    /// Full deserialization using UUID as key within a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_owned_by_uuid<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        get_owned_tx(&self.tx, table, key)
+    }
+
     /// Scan a table and return all owned values.
     ///
     /// # Errors
@@ -537,14 +590,23 @@ where
         Err(err) => return Err(DbError::Transaction(err.to_string())),
     };
 
-    let mut results = Vec::new();
+    // BUGFIX: Separate iteration from deserialization to avoid redb
+    // AccessGuard/rkyv conflict See: RKYV_BUG_ROOT_CAUSE_AND_FIX.md
+
+    // Step 1: Collect all byte buffers while AccessGuards are alive
+    let mut all_bytes = Vec::new();
     for result in table_ref.iter()? {
         let (_key, value): (_, redb::AccessGuard<&[u8]>) = result?;
         let bytes: &[u8] = value.value();
-
         let mut aligned = AlignedVec::<16>::new();
         aligned.extend_from_slice(bytes);
+        all_bytes.push(aligned);
+    }
+    // AccessGuards are now dropped
 
+    // Step 2: Deserialize after iteration is complete
+    let mut results = Vec::new();
+    for aligned in all_bytes {
         let archived =
             rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
@@ -579,16 +641,24 @@ where
         Err(err) => return Err(DbError::Transaction(err.to_string())),
     };
 
-    let mut results = Vec::new();
+    // BUGFIX: Separate iteration from deserialization to avoid redb
+    // AccessGuard/rkyv conflict See: RKYV_BUG_ROOT_CAUSE_AND_FIX.md
+
+    // Step 1: Collect all key-value byte buffers while AccessGuards are alive
+    let mut all_data = Vec::new();
     for result in table_ref.iter()? {
         let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
             result?;
         let key_str = key.value().to_owned();
-        let bytes: &[u8] = value.value();
-
         let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
+        aligned.extend_from_slice(value.value());
+        all_data.push((key_str, aligned));
+    }
+    // AccessGuards are now dropped
 
+    // Step 2: Deserialize after iteration is complete
+    let mut results = Vec::new();
+    for (key_str, aligned) in all_data {
         let archived =
             rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
@@ -750,16 +820,29 @@ where
         Err(err) => return Err(DbError::Transaction(err.to_string())),
     };
 
-    let mut results = Vec::new();
+    // BUGFIX: Separate redb iteration from rkyv deserialization to avoid
+    // AccessGuard lifetime issues that cause "subtree pointer overran range"
+    // errors. Collect all bytes first, then deserialize.
+    //
+    // Root cause: Mixing redb::AccessGuard iteration with rkyv deserialization
+    // in the same loop causes memory corruption on the 2nd iteration.
+    // See: RKYV_BUG_ROOT_CAUSE_AND_FIX.md
+
+    // Step 1: Collect all byte buffers while AccessGuards are alive
+    let mut all_bytes = Vec::new();
     for result in table_ref.iter()? {
         let (_key, value): (_, redb::AccessGuard<&[u8]>) = result?;
-        let bytes: &[u8] = value.value();
-
         let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
+        aligned.extend_from_slice(value.value());
+        all_bytes.push(aligned);
+    }
+    // AccessGuards are now dropped, safe to deserialize
 
+    // Step 2: Deserialize after iteration is complete
+    let mut results = Vec::new();
+    for aligned in &all_bytes {
         let archived =
-            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
+            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(aligned)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
         let deserialized =
             rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
@@ -791,16 +874,24 @@ where
         Err(err) => return Err(DbError::Transaction(err.to_string())),
     };
 
-    let mut results = Vec::new();
+    // BUGFIX: Same fix as scan_table_tx - separate iteration from
+    // deserialization See: RKYV_BUG_ROOT_CAUSE_AND_FIX.md
+
+    // Step 1: Collect all key-value byte buffers
+    let mut all_data = Vec::new();
     for result in table_ref.iter()? {
         let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
             result?;
         let key_str = key.value().to_owned();
-        let bytes: &[u8] = value.value();
-
         let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
+        aligned.extend_from_slice(value.value());
+        all_data.push((key_str, aligned));
+    }
+    // AccessGuards are now dropped
 
+    // Step 2: Deserialize after iteration is complete
+    let mut results = Vec::new();
+    for (key_str, aligned) in all_data {
         let archived =
             rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
@@ -864,17 +955,25 @@ where
     // starting with "abc".
     let end_bound = next_prefix(key_prefix);
 
-    let mut results = Vec::new();
+    // BUGFIX: Same fix as scan_table_tx - separate iteration from
+    // deserialization See: RKYV_BUG_ROOT_CAUSE_AND_FIX.md
+
+    // Step 1: Collect all key-value byte buffers
+    let mut all_data = Vec::new();
     let range = table_ref.range(key_prefix..end_bound.as_str())?;
     for result in range {
         let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
             result?;
         let key_str = key.value().to_owned();
-        let bytes: &[u8] = value.value();
-
         let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
+        aligned.extend_from_slice(value.value());
+        all_data.push((key_str, aligned));
+    }
+    // AccessGuards are now dropped
 
+    // Step 2: Deserialize after iteration is complete
+    let mut results = Vec::new();
+    for (key_str, aligned) in all_data {
         let archived =
             rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
