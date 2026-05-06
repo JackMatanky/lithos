@@ -51,6 +51,7 @@ pub(crate) fn build_scan_index(
             index.push(node.range());
         }
     }
+    index.sort_and_coalesce();
     index
 }
 
@@ -472,5 +473,128 @@ mod tests {
         let (tags, _fields, _refs) = out.into_parts();
         assert_eq!(tags.len(), 1);
         assert_eq!(tags.first().map(|tag| tag.value.as_ref()), Some("#ok"));
+    }
+
+    #[test]
+    fn collect_tags_ignores_alnum_prefixed_hash() {
+        let lexer = ArtifactLexer::new(Vec::<char>::new());
+        let source = "a#skip #ok";
+        let seq = TextSequence::from_nodes(vec![TextNode::new(
+            source.into(),
+            TextStyle::NONE,
+            TextContext::NONE,
+            SourceByteRange::try_from(0..source.len()).expect("range"),
+        )]);
+
+        let out =
+            lexer.collect(source, &seq, &DefaultScanPolicy).expect("collect");
+        let (tags, _fields, _refs) = out.into_parts();
+        assert_eq!(tags.len(), 1, "only standalone tag should be collected");
+        assert_eq!(
+            tags.first().map(|tag| tag.value.as_ref()),
+            Some("#ok"),
+            "standalone tag captured"
+        );
+    }
+
+    #[test]
+    fn collect_bare_field_only_at_line_start() {
+        let lexer = ArtifactLexer::new(Vec::<char>::new());
+        let source = "key:: value\ntext key:: no\n  indented:: yes";
+        let seq = TextSequence::from_nodes(vec![TextNode::new(
+            source.into(),
+            TextStyle::NONE,
+            TextContext::NONE,
+            SourceByteRange::try_from(0..source.len()).expect("range"),
+        )]);
+
+        let out =
+            lexer.collect(source, &seq, &DefaultScanPolicy).expect("collect");
+        let (_tags, fields, _refs) = out.into_parts();
+        assert_eq!(fields.len(), 2, "only line-start bare fields are allowed");
+        assert_eq!(fields.first().map(|field| field.key.as_ref()), Some("key"));
+        assert_eq!(
+            fields.get(1).map(|field| field.key.as_ref()),
+            Some("indented")
+        );
+    }
+
+    #[test]
+    fn collect_block_ref_requires_line_tail_whitespace_or_eol() {
+        let lexer = ArtifactLexer::new(Vec::<char>::new());
+        let source = "ok ^id\nbad ^id tail\nend ^last   ";
+        let seq = TextSequence::from_nodes(vec![TextNode::new(
+            source.into(),
+            TextStyle::NONE,
+            TextContext::NONE,
+            SourceByteRange::try_from(0..source.len()).expect("range"),
+        )]);
+
+        let out =
+            lexer.collect(source, &seq, &DefaultScanPolicy).expect("collect");
+        let (_tags, _fields, refs) = out.into_parts();
+        assert_eq!(
+            refs.len(),
+            2,
+            "block refs with non-whitespace tail excluded"
+        );
+        assert_eq!(refs.first().map(|item| item.id.as_ref()), Some("id"));
+        assert_eq!(refs.get(1).map(|item| item.id.as_ref()), Some("last"));
+    }
+
+    #[test]
+    fn collect_disjoint_ranges_do_not_leak_state() {
+        let lexer = ArtifactLexer::new(Vec::<char>::new());
+        let source = "#first\n[[skip:: hidden]]\n#second";
+        let nodes = vec![
+            TextNode::new(
+                "#first".into(),
+                TextStyle::NONE,
+                TextContext::NONE,
+                SourceByteRange::try_from(0..6).expect("range"),
+            ),
+            TextNode::new(
+                "#second".into(),
+                TextStyle::NONE,
+                TextContext::NONE,
+                SourceByteRange::try_from(25..32).expect("range"),
+            ),
+        ];
+        let seq = TextSequence::from_nodes(nodes);
+
+        let out =
+            lexer.collect(source, &seq, &DefaultScanPolicy).expect("collect");
+        let (tags, fields, refs) = out.into_parts();
+        assert_eq!(tags.len(), 2, "both disjoint visible ranges scanned");
+        assert!(
+            fields.is_empty(),
+            "excluded middle range not scanned for fields"
+        );
+        assert!(refs.is_empty(), "excluded middle range not scanned for refs");
+    }
+
+    #[test]
+    fn collect_emoji_field_uses_configured_markers() {
+        let lexer = ArtifactLexer::new(vec!['\u{2705}']);
+        let source = "\u{2705} done\n\u{1f4c5} date";
+        let seq = TextSequence::from_nodes(vec![TextNode::new(
+            source.into(),
+            TextStyle::NONE,
+            TextContext::NONE,
+            SourceByteRange::try_from(0..source.len()).expect("range"),
+        )]);
+
+        let out =
+            lexer.collect(source, &seq, &DefaultScanPolicy).expect("collect");
+        let (_tags, fields, _refs) = out.into_parts();
+        assert_eq!(fields.len(), 1, "only configured emoji marker is accepted");
+        assert_eq!(
+            fields.first().map(|field| field.key.as_ref()),
+            Some("\u{2705}")
+        );
+        assert_eq!(
+            fields.first().map(|field| field.value.as_ref()),
+            Some("done")
+        );
     }
 }
