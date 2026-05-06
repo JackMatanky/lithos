@@ -1,0 +1,226 @@
+{
+  "nodes": [
+    {
+      "id": "processor_noteprocessor",
+      "label": "NoteProcessor typestate pipeline",
+      "file_type": "code",
+      "source_file": "lithos-core/src/note/processor.rs",
+      "source_location": 41
+    },
+    {
+      "id": "aggregate_note",
+      "label": "Note",
+      "file_type": "code",
+      "source_file": "lithos-core/src/note/aggregate.rs"
+    },
+    {
+      "id": "parser_markdownparser",
+      "label": "MarkdownParser",
+      "file_type": "code",
+      "source_file": "lithos-core/src/note/parser/mod.rs",
+      "source_location": 117
+    },
+    {
+      "id": "config_aggregate_config",
+      "label": "Config",
+      "file_type": "code",
+      "source_file": "lithos-core/src/config/aggregate.rs",
+      "source_location": "29:1"
+    },
+    {
+      "id": "catalog_TemplateCatalog",
+      "label": "Template Catalog",
+      "file_type": "code",
+      "source_file": "lithos-core/src/template/catalog.rs"
+    },
+    {
+      "id": "loader_Loader",
+      "label": "Schema Loader",
+      "file_type": "code",
+      "source_file": "lithos-core/src/schema/loader.rs",
+      "source_location": 109
+    },
+    {
+      "id": "vault_processor",
+      "label": "VaultProcessor",
+      "file_type": "code",
+      "source_file": "lithos-core/src/vault/processor.rs",
+      "source_location": 33
+    }
+  ],
+  "edges": [
+    {
+      "source": "processor_noteprocessor",
+      "target": "parser_markdownparser",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "lithos-core/src/note/processor.rs",
+      "source_location": 458
+    },
+    {
+      "source": "aggregate_note",
+      "target": "aggregate_noteid",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/note/aggregate.rs"
+    },
+    {
+      "source": "parser_markdownparser",
+      "target": "parser_referencedefinitions",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/note/parser/mod.rs",
+      "source_location": 546
+    },
+    {
+      "source": "config_aggregate_config",
+      "target": "config_vault_metadata",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/config/aggregate.rs"
+    },
+    {
+      "source": "catalog_TemplateCatalog",
+      "target": "query_Query",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/template/catalog.rs"
+    },
+    {
+      "source": "loader_Loader",
+      "target": "expander_RefExpander",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/schema/loader.rs",
+      "source_location": 258
+    },
+    {
+      "source": "vault_processor",
+      "target": "fs_reader",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/vault/processor.rs",
+      "source_location": 303
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "note_ingestion_pipeline",
+      "label": "Note Ingestion Pipeline",
+      "nodes": [
+        "vault_vaultprocessor",
+        "processor_noteprocessor",
+        "parser_markdownparser",
+        "extractor_blockextractor",
+        "storage_redbrepository"
+      ],
+      "relation": "implement",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "lithos-core/tests/note_reader.rs"
+    },
+    {
+      "id": "note_domain_context",
+      "label": "Note Domain Context",
+      "nodes": [
+        "aggregate_note",
+        "aggregate_noteid",
+        "paths_notepath",
+        "frontmatter_frontmatter",
+        "tag_tag",
+        "link_link",
+        "heading_heading",
+        "structure_section",
+        "list_listitem",
+        "task_task",
+        "inline_fields_inlinefield"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "lithos-core/src/note/mod.rs"
+    },
+    {
+      "id": "parsing_pipeline",
+      "label": "Markdown Parsing Pipeline",
+      "nodes": [
+        "parser_markdownparser",
+        "parser_parsercontext",
+        "parser_docstructure",
+        "parser_referencedefinitions"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/note/parser/mod.rs"
+    },
+    {
+      "id": "config_domain_aggregate",
+      "label": "Config Domain Aggregate",
+      "nodes": [
+        "config_aggregate_config",
+        "config_vault_metadata",
+        "config_paths_paths",
+        "config_logging_logging",
+        "config_frontmatter_frontmatter",
+        "config_task_task"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/config/aggregate.rs"
+    },
+    {
+      "id": "template_composition_engine",
+      "label": "Template Composition Engine",
+      "nodes": [
+        "catalog_TemplateCatalog",
+        "emitter_Emitter",
+        "engine_TemplateEngine",
+        "aggregate_Template"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "lithos-core/src/template/mod.rs"
+    },
+    {
+      "id": "schema_ingestion_pipeline",
+      "label": "Schema Ingestion Pipeline",
+      "nodes": [
+        "loader_Loader",
+        "expander_RefExpander",
+        "extender_Extender",
+        "resolver_Resolver",
+        "db_command_Command"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "lithos-core/src/schema/loader.rs"
+    },
+    {
+      "id": "vault_metadata_management",
+      "label": "Vault Metadata Management",
+      "nodes": [
+        "vault_processor",
+        "vault_redb_repository",
+        "vault_file",
+        "vault_folder"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "lithos-core/src/vault/mod.rs"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

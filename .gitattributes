@@ -23,12 +23,6 @@
 # ----------------- Tabular & Structured Data ---------------- #
 *.csv         text
 *.json        text
-# *.geojson     text
-
-# --------------------- Jupyter Notebooks -------------------- #
-# Use JupyText diffing when not ignored
-*.ipynb       diff=jupytext
-*.ipynb       linguist-documentation
 
 # ------------------- Dependency Lockfiles ------------------- #
 # Helps reduce merge conflicts
@@ -72,7 +66,6 @@ uv.lock       merge=union
 # *.gdb         binary
 *.gpkg        binary
 
-
 # ----------------- ESRI Shapefile Components ---------------- #
 # All components of a shapefile must be treated as binary
 *.cpg         binary
@@ -90,16 +83,20 @@ uv.lock       merge=union
 # ------------------------------------------------------------ #
 #                 Optional: Git LFS Integration                #
 # ------------------------------------------------------------ #
-# Uncomment the patterns below if you intentionally track
-# specific assets with Git LFS. By default, the repo keeps
-# standard text/binary files in Git history.
+# Uncomment the patterns below to intentionally track specific
+# assets with Git LFS. By default, the repo keeps standard
+# text/binary files in Git history.
 
-# *.txt         filter=lfs diff=lfs merge=lfs -text
-# *.pdf         filter=lfs diff=lfs merge=lfs -text
-# *.gdb         filter=lfs diff=lfs merge=lfs -text
-# *.geojson     filter=lfs diff=lfs merge=lfs -text
-# *.parquet     filter=lfs diff=lfs merge=lfs -text
-# *.feather     filter=lfs diff=lfs merge=lfs -text
+# Graphify generated artifacts exceeding hook limits.
+graphify-out/*.json filter=lfs diff=lfs merge=lfs -text
+graphify-out/*.html filter=lfs diff=lfs merge=lfs -text
+
+# *.txt             filter=lfs diff=lfs merge=lfs -text
+# *.pdf             filter=lfs diff=lfs merge=lfs -text
+# *.gdb             filter=lfs diff=lfs merge=lfs -text
+# *.geojson         filter=lfs diff=lfs merge=lfs -text
+# *.parquet         filter=lfs diff=lfs merge=lfs -text
+# *.feather         filter=lfs diff=lfs merge=lfs -text
 
 # Compiled binaries (uncomment if storing release artifacts via LFS)
-# lithos        filter=lfs diff=lfs merge=lfs -text
+# lithos            filter=lfs diff=lfs merge=lfs -text
