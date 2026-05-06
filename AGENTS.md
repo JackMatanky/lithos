@@ -1,19 +1,5 @@
 # Lithos Rust - AI Agent Reference
 
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked as local markdown files under `.scratch/` in this repository. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Triage uses the default canonical label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Domain docs use a single-context layout for this repository. See `docs/agents/domain.md`.
-
 ## Critical Files - READ FIRST
 
 **MUST** review these files before starting any work:
@@ -319,3 +305,17 @@ Before marking any task complete:
 | `mise run test:watch`        | Watch mode: automatically run tests on file changes (alias: `tw`).                |
 | `mise run test:burn-in`      | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
 | `mise run test:changed`      | Run tests only for crates affected by changes (alias: `tc`).                      |
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local markdown files under `.scratch/<feature>/` in this repository. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the canonical label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain documentation uses a multi-context layout with a root `CONTEXT-MAP.md` that points to per-context `CONTEXT.md` files; ADRs are read per context as mapped. See `docs/agents/domain.md`.

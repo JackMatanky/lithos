@@ -1,19 +1,19 @@
-# Triage Labels
+# Triage labels
 
-This repo uses the canonical triage label vocabulary.
+This repository uses the canonical triage role vocabulary.
 
-## Canonical role mapping
+## Role to label mapping
 
-- `needs-triage` -> `needs-triage`
-- `needs-info` -> `needs-info`
-- `ready-for-agent` -> `ready-for-agent`
-- `ready-for-human` -> `ready-for-human`
-- `wontfix` -> `wontfix`
+- needs-triage -> `needs-triage`
+- needs-info -> `needs-info`
+- ready-for-agent -> `ready-for-agent`
+- ready-for-human -> `ready-for-human`
+- wontfix -> `wontfix`
 
-## Meaning
+## Semantics
 
-- `needs-triage`: Maintainer needs to evaluate.
-- `needs-info`: Waiting on reporter clarification.
+- `needs-triage`: Maintainer evaluation required.
+- `needs-info`: Waiting on reporter clarification or missing details.
 - `ready-for-agent`: Fully specified and AFK-agent ready.
-- `ready-for-human`: Needs human implementation.
-- `wontfix`: Will not be actioned.
+- `ready-for-human`: Requires human implementation.
+- `wontfix`: Not planned for implementation.
