@@ -1,5 +1,19 @@
 # Lithos Rust - AI Agent Reference
 
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local markdown files under `.scratch/` in this repository. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the default canonical label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain docs use a single-context layout for this repository. See `docs/agents/domain.md`.
+
 ## Critical Files - READ FIRST
 
 **MUST** review these files before starting any work:
