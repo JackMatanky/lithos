@@ -1,0 +1,698 @@
+{
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/note_lexical_policy_integration.rs": {
+    "mtime": 1778089849.77631,
+    "hash": "9fc4e9b07301d9d4f9ff7b74198b6f43"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/property_bank_processor.rs": {
+    "mtime": 1778089849.7766545,
+    "hash": "c323f8749891f5d2ca44f29decac9072"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/note_reader.rs": {
+    "mtime": 1778089849.7764878,
+    "hash": "10e64db3e4b338e546a74a8ea264c0de"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/schema_loader.rs": {
+    "mtime": 1778089849.7769642,
+    "hash": "36e232fa3d4ff913b2d44db1b5e0f84a"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/note_ingest.rs": {
+    "mtime": 1778089849.7761738,
+    "hash": "46cd0c36a1fe7add235b3ebc0601a1c3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/architecture.rs": {
+    "mtime": 1778089849.775799,
+    "hash": "4bae672992975e00b6cddbc110a7a16d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/schema_storage.rs": {
+    "mtime": 1778089849.7771428,
+    "hash": "7cfb6811a11a7f18d51325912bcbd2f6"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/tests/common/mod.rs": {
+    "mtime": 1778089849.776018,
+    "hash": "48dc21e351a4017c272db90f2ce942ac"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/db_storage.rs": {
+    "mtime": 1778089849.6769583,
+    "hash": "8f32a6e9951f341975c34532295e7832"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/db_key_handling.rs": {
+    "mtime": 1778089849.676773,
+    "hash": "c98bb5c4e7d9b13e5869def55173c3f8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/note_parsing.rs": {
+    "mtime": 1778089849.6772792,
+    "hash": "51baf8ff3aad8af36fe2773c0ffc3ce7"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/string_construction.rs": {
+    "mtime": 1778089849.6777163,
+    "hash": "31d0c2bb4cfb4eebb945a112d5a6a5d9"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/patterns.rs": {
+    "mtime": 1778089849.7605157,
+    "hash": "3ae6a2e42e796e28e13b8c30f34d6c3b"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/lib.rs": {
+    "mtime": 1778089849.7530391,
+    "hash": "8fbd34db50c298d45d935404acc3b75f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/bounds.rs": {
+    "mtime": 1778089849.7449975,
+    "hash": "096775d4d4b8a08e8c483411277186cf"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/prelude.rs": {
+    "mtime": 1778089849.76102,
+    "hash": "9e43583b2084b65e58673db87536af8e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/processor.rs": {
+    "mtime": 1778089849.7576594,
+    "hash": "03598916f364c676a65c31265da3e9ca"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/events.rs": {
+    "mtime": 1778089849.7538624,
+    "hash": "62a1ca02b1a4a0b66f423090251af18f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/inline_fields.rs": {
+    "mtime": 1778089849.7542946,
+    "hash": "45c0152aff9fc43eab035aaee9ac0f76"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/error.rs": {
+    "mtime": 1778089849.7537193,
+    "hash": "1a1f48cd048517ebd0aae525edd1edd1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/frontmatter.rs": {
+    "mtime": 1778089849.7540107,
+    "hash": "118bf74d1119a2f07e3b6efcca9347a3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/list.rs": {
+    "mtime": 1778089849.7547655,
+    "hash": "7890cad2bdf8719fb96a01b2c89f4039"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/paths.rs": {
+    "mtime": 1778089849.7571776,
+    "hash": "6b2f2894052ebf91ad103fb11c521851"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/link.rs": {
+    "mtime": 1778089849.7544513,
+    "hash": "5b85241a0653bbf06f8d441a9654cb7b"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/task.rs": {
+    "mtime": 1778089849.7597947,
+    "hash": "dab426b5d9c246d36b44b07585143255"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/aggregate.rs": {
+    "mtime": 1778089849.7533722,
+    "hash": "7bf017b2b0da6b23f55b30493b733cb7"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/mod.rs": {
+    "mtime": 1778089849.7549038,
+    "hash": "f89a3c8284e7a1e0bee59a3c10a2b49e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/tag.rs": {
+    "mtime": 1778089849.7596292,
+    "hash": "409fcecc2045a480634f318e855367a8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/value.rs": {
+    "mtime": 1778089849.7599425,
+    "hash": "8b108a6d1078fe11262b4be056bdfc94"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/storage.rs": {
+    "mtime": 1778089849.759377,
+    "hash": "31df23a402cb1440702f16cdab5d4036"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/position.rs": {
+    "mtime": 1778089849.7575111,
+    "hash": "3049cea93bf3557840de90183f1bb2ba"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/structure.rs": {
+    "mtime": 1778089849.7594888,
+    "hash": "954dc5b47d34479bd7f7bc363a02f062"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/heading.rs": {
+    "mtime": 1778089849.7541726,
+    "hash": "f2c41d7b3ebaf70efefabeff3bb6d7a4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/stream.rs": {
+    "mtime": 1778089849.756511,
+    "hash": "9a8d7d10ec63191c0f59ee08f2127007"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/types.rs": {
+    "mtime": 1778089849.757007,
+    "hash": "81fd4d5ec3d5ad3b6dda5266433f3bbd"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/config.rs": {
+    "mtime": 1778089849.7554903,
+    "hash": "2bc9f8b7724022e7401c3fda84d7e179"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/context_integration_test.rs": {
+    "mtime": 1778089849.755767,
+    "hash": "66e437cdc858d16b59dbdcd1d1ee430c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/references.rs": {
+    "mtime": 1778089849.7563417,
+    "hash": "c6bbe3807877b3607527dfb6ff52ffe1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/mod.rs": {
+    "mtime": 1778089849.7562032,
+    "hash": "8efab699eebd297b4e63115ce940da96"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/block.rs": {
+    "mtime": 1778089849.7553432,
+    "hash": "c62ec5c82dfa975835697dd7b12eb68f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/text.rs": {
+    "mtime": 1778089849.7568479,
+    "hash": "fe890dcdb80ee2f28f7efbdd65fd834f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/lexical.rs": {
+    "mtime": 1778089849.7558923,
+    "hash": "8f604edb5f8bb914e4a0830b42317877"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/structure.rs": {
+    "mtime": 1778089849.7566981,
+    "hash": "fff450eead75c0caabb77a4fd1764f24"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/assemble.rs": {
+    "mtime": 1778089849.7551749,
+    "hash": "f5f72768644a3d94b813df87a462ac7f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/parser/context.rs": {
+    "mtime": 1778089849.7556398,
+    "hash": "d1ad3380102b6e95dc0ec7047f1fbdb2"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/views/list.rs": {
+    "mtime": 1778089849.760201,
+    "hash": "729f68889ef71431ed1828491e47bc5a"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/views/mod.rs": {
+    "mtime": 1778089849.76032,
+    "hash": "644149d025ecc01b603bfe52ea72d40f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/inline_field.rs": {
+    "mtime": 1778089849.7583132,
+    "hash": "9286e15d7b6900d095a96b04e8b0dca4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/section.rs": {
+    "mtime": 1778089849.7588587,
+    "hash": "aaa5bfd248a9ded5deff13b60d466fda"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/block_ref.rs": {
+    "mtime": 1778089849.7579703,
+    "hash": "b739fc12ef15dd2729b1ccb6b50f69bb"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/frontmatter.rs": {
+    "mtime": 1778089849.7580967,
+    "hash": "3943c53ccd5bdd48e78c9173a4232d32"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/list.rs": {
+    "mtime": 1778089849.7585986,
+    "hash": "f69aa122894d5aa9a8b2d19e0fd28742"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/link.rs": {
+    "mtime": 1778089849.7584646,
+    "hash": "d406a8729920adfaabc8011479b9c16b"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/aggregate.rs": {
+    "mtime": 1778089849.7578201,
+    "hash": "e2f28d7043daf451f40eea24a758f52c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/mod.rs": {
+    "mtime": 1778089849.7587445,
+    "hash": "059a70305cfd24180ac9bd6ce8e5115d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/tag.rs": {
+    "mtime": 1778089849.7589781,
+    "hash": "ec2b5ca58316520ac618ed1357fbe373"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/value.rs": {
+    "mtime": 1778089849.7592142,
+    "hash": "30690b2bf101cb30aea18170deb0a017"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/raw/heading.rs": {
+    "mtime": 1778089849.758204,
+    "hash": "a0839f55245fce58938426c2fcfc46c4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/events.rs": {
+    "mtime": 1778089849.7457194,
+    "hash": "95dc97ac6ff1b95d6b51e1079a0bdf11"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/error.rs": {
+    "mtime": 1778089849.7455928,
+    "hash": "258a54a21c0ca27d3d886b95dc0a5051"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/frontmatter.rs": {
+    "mtime": 1778089849.7458444,
+    "hash": "c515e7a7e8be9ff4dccf68fea6daf55d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/ingestor.rs": {
+    "mtime": 1778089849.7461913,
+    "hash": "165be2225493a66b3a1683e2fe01fee1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/global.rs": {
+    "mtime": 1778089849.745989,
+    "hash": "49e59b04674fa67b08a47472fa1af349"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/raw.rs": {
+    "mtime": 1778089849.746875,
+    "hash": "14e1987cae3cc481e121711691740725"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/paths.rs": {
+    "mtime": 1778089849.7467153,
+    "hash": "5945681b7b6c0a4496d09e4b25efd4f2"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/logging.rs": {
+    "mtime": 1778089849.7464466,
+    "hash": "3850af0d0e1d439860c97f574343c014"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/task.rs": {
+    "mtime": 1778089849.7472727,
+    "hash": "0d317c956923c6326db29a173cd905a7"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/aggregate.rs": {
+    "mtime": 1778089849.7453403,
+    "hash": "53d69904ded11ce7e250eeaea01ec905"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/mod.rs": {
+    "mtime": 1778089849.7465658,
+    "hash": "5400946fac54aa0f8c2491372e481a1e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/views.rs": {
+    "mtime": 1778089849.74822,
+    "hash": "de9c6d876677f0729fb696fa3f641a83"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/value.rs": {
+    "mtime": 1778089849.7475493,
+    "hash": "0c8aad50ce62b569dbb12d275e15c6e2"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/storage.rs": {
+    "mtime": 1778089849.7470255,
+    "hash": "34d1a08e3dab48d581761e16a4048bb1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/loader.rs": {
+    "mtime": 1778089849.7463276,
+    "hash": "001bc59217c79c02352f7b8b4aeb6f80"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/vault.rs": {
+    "mtime": 1778089849.748052,
+    "hash": "61385f42c98f5227c59912f07fe9e92b"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/core.rs": {
+    "mtime": 1778089849.7520385,
+    "hash": "6fc44a0da1e0f6e45caf7e4f0358d3f8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/sorting.rs": {
+    "mtime": 1778089849.7527926,
+    "hash": "1c729af9443a9840e3edaad6e652a852"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/dag.rs": {
+    "mtime": 1778089849.75216,
+    "hash": "f36890695f3df8c70d1c12c7453ada4a"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/error.rs": {
+    "mtime": 1778089849.7522755,
+    "hash": "a59d70f2cc875f522cba6e9c52906ed8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/mod.rs": {
+    "mtime": 1778089849.7525296,
+    "hash": "f2aae0146c28c12aa1008e908c61fe70"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/graph/node.rs": {
+    "mtime": 1778089849.7526588,
+    "hash": "58adfc6963a6388cf874b97f6d4c3ded"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/events.rs": {
+    "mtime": 1778089849.7741222,
+    "hash": "adad7a2681715694c89b4dbad01624d1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/ports.rs": {
+    "mtime": 1778089849.774503,
+    "hash": "dd3c399f641371092f9006b09f716552"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/error.rs": {
+    "mtime": 1778089849.7739897,
+    "hash": "050fb5d26da071417540f930635ec050"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/command.rs": {
+    "mtime": 1778089849.7738507,
+    "hash": "c2d45419c5152a719468e7052982553e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/raw.rs": {
+    "mtime": 1778089849.774785,
+    "hash": "07f6429a175ea47ac682db82ffbaee55"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/query.rs": {
+    "mtime": 1778089849.774641,
+    "hash": "7223ea7613898c3a0482c467eb100a06"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/catalog.rs": {
+    "mtime": 1778089849.7737,
+    "hash": "97ffd2c29e390440964569a4ecac1785"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/aggregate.rs": {
+    "mtime": 1778089849.7732968,
+    "hash": "3986611f42d39d88c3021980c8f4e46c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/mod.rs": {
+    "mtime": 1778089849.7742438,
+    "hash": "d044d5c4ec56eba5d088fefb2fa6219f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/block.rs": {
+    "mtime": 1778089849.7734466,
+    "hash": "8d857d956a3a7c34eaa7832972ce202e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/value.rs": {
+    "mtime": 1778089849.7749047,
+    "hash": "f95dec5fb7e89f57628e029fa1ff84d0"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/command.rs": {
+    "mtime": 1778089849.772184,
+    "hash": "a3fafbb9f7ba81df86487f82b2e24e68"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/query.rs": {
+    "mtime": 1778089849.773126,
+    "hash": "f78b60eaf9fcf10a9785faf443a05366"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/mod.rs": {
+    "mtime": 1778089849.7729855,
+    "hash": "7afd79fd001d92e54b06a3d90010e6f4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/filters.rs": {
+    "mtime": 1778089849.7727041,
+    "hash": "f6a93c920816bbe49e8f3f55cc8c2c06"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/emitter.rs": {
+    "mtime": 1778089849.7723646,
+    "hash": "89e87a2875cf6ceec8357b95e01ca6d3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/adapter/engine.rs": {
+    "mtime": 1778089849.772544,
+    "hash": "15a566eae2a54fccb6e033dfe24a0a10"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/bank.rs": {
+    "mtime": 1778089849.7614884,
+    "hash": "312448d9ffed0b6328a9484655eb8b0c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_bank_processor.rs": {
+    "mtime": 1778089849.765833,
+    "hash": "331cacea73b0323b9ff5855240037668"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/schema_processor.rs": {
+    "mtime": 1778089849.7689555,
+    "hash": "a5e2948eea998646afb29193dd883356"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/events.rs": {
+    "mtime": 1778089849.7642756,
+    "hash": "d5f6452a3a53442dfba14b4d935eb6c5"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/error.rs": {
+    "mtime": 1778089849.7637956,
+    "hash": "f0d9d089099bc4155e02272c1a8dc8b4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property.rs": {
+    "mtime": 1778089849.7656534,
+    "hash": "fbb16423ce2910a0aabc48e5f6c13c77"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/discovery.rs": {
+    "mtime": 1778089849.7634583,
+    "hash": "d540ec627dd0a1c6ac46f24641f29c5a"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/index.rs": {
+    "mtime": 1778089849.765024,
+    "hash": "3ccac97516c80a0f7787d159980f47e0"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/aggregate.rs": {
+    "mtime": 1778089849.761323,
+    "hash": "417c25a907d7ce0893bff10a7a0a2519"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/mod.rs": {
+    "mtime": 1778089849.7654517,
+    "hash": "38f9332cd1499ba5818e32f1b15e3996"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/inheritance.rs": {
+    "mtime": 1778089849.7651846,
+    "hash": "ffc100b477091f70ec24c40825db83c4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/merger.rs": {
+    "mtime": 1778089849.765319,
+    "hash": "dd367e459f0161cc722b574939188fc1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/testing.rs": {
+    "mtime": 1778089849.769296,
+    "hash": "a9898f0a5e3376210d53c2e310612bc3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/identifier.rs": {
+    "mtime": 1778089849.764816,
+    "hash": "f1aea46238e4a229444acc66c2e64769"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/storage.rs": {
+    "mtime": 1778089849.7691472,
+    "hash": "b44386ee22dba3d7e38b5830d044f264"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/expander.rs": {
+    "mtime": 1778089849.7645323,
+    "hash": "e730db1b098dfbc1d94b2a0345046493"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/delta.rs": {
+    "mtime": 1778089849.762831,
+    "hash": "298ec2165df45b8055b772b9e1aabce5"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/builder.rs": {
+    "mtime": 1778089849.7626333,
+    "hash": "4ff2e360624282b18d9ab68be65d9037"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/bool.rs": {
+    "mtime": 1778089849.7661004,
+    "hash": "38d0eb49c4c86df0c11c1256a07ed766"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/number.rs": {
+    "mtime": 1778089849.7669542,
+    "hash": "77772c0eff0c5ef810be9c9d188b624f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/date.rs": {
+    "mtime": 1778089849.7665055,
+    "hash": "cc641a56b04abc18571ce74aac31ed8f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/mod.rs": {
+    "mtime": 1778089849.7667844,
+    "hash": "43e06a33b677cf9f821f4874fce22547"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/string.rs": {
+    "mtime": 1778089849.7671082,
+    "hash": "2ef4a175972ff37cdb034d7b73d99df4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/property_spec/file.rs": {
+    "mtime": 1778089849.7666717,
+    "hash": "fef37ba48129506634208fd1ae6a205c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/properties.rs": {
+    "mtime": 1778089849.7699811,
+    "hash": "7ed556b918375cc00a4b51ba55a7f05f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/raw.rs": {
+    "mtime": 1778089849.7701745,
+    "hash": "1906df88118c00dcd2b5bc5771f4c802"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/snapshots.rs": {
+    "mtime": 1778089849.7711542,
+    "hash": "efd1f96a2a316d474a6fa7f586fca3e5"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/hashes.rs": {
+    "mtime": 1778089849.7696521,
+    "hash": "542b4ab7f6cfb9ad479fdb791b1be371"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/mod.rs": {
+    "mtime": 1778089849.7698336,
+    "hash": "9f6d37fd4584667bb170cff3206d844e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/views/contracts.rs": {
+    "mtime": 1778089849.769461,
+    "hash": "5108c09f307ef22bdbfb2433897b64fa"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/bank.rs": {
+    "mtime": 1778089849.7674012,
+    "hash": "929c15f533dae8e3e71bc772dd680bc3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/bool.rs": {
+    "mtime": 1778089849.7675366,
+    "hash": "7fb7226fb11c106507b821e8f1a7074d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/number.rs": {
+    "mtime": 1778089849.7681777,
+    "hash": "858b1112adc56d094d6de109f9d6a7dc"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/version.rs": {
+    "mtime": 1778089849.7687151,
+    "hash": "91fea08f3ec09231f317057270c5c3e6"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/property.rs": {
+    "mtime": 1778089849.7683554,
+    "hash": "f409f8e393489da44310e3ba160cd4ff"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/aggregate.rs": {
+    "mtime": 1778089849.7672784,
+    "hash": "4768025be09896cf7ba31b40fd8d9e04"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/date.rs": {
+    "mtime": 1778089849.767662,
+    "hash": "26beeec4e383745c05886dd86428581d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/mod.rs": {
+    "mtime": 1778089849.768036,
+    "hash": "4c0e141ca1ef4988eec0bb46b967f509"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/string.rs": {
+    "mtime": 1778089849.768559,
+    "hash": "4960cb69939c17c6083f81b7d2cb462e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/raw/file.rs": {
+    "mtime": 1778089849.767791,
+    "hash": "73385c37d2aed878333b301f4719d9e4"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/support/mod.rs": {
+    "mtime": 1778089849.771489,
+    "hash": "2b16f9db907287108f4265d70ee6973d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/support/hash.rs": {
+    "mtime": 1778089849.7713506,
+    "hash": "6687f92bfbef4edac95c65f04efd849f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/error.rs": {
+    "mtime": 1778089849.7485096,
+    "hash": "c67c542eefbf2332222ee02831192fe2"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/mod.rs": {
+    "mtime": 1778089849.748643,
+    "hash": "21b53f823f51a0ffe6fd5b62c9c4b0a8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/writer.rs": {
+    "mtime": 1778089849.7492628,
+    "hash": "689a2c92b8778d8d7ee028d0c3440905"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/reader.rs": {
+    "mtime": 1778089849.7488434,
+    "hash": "8e915e6ae9a8dd48109640ec70553206"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/retry.rs": {
+    "mtime": 1778089849.7489965,
+    "hash": "a37d295dfddd794fefc7b7eeab61e3d6"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/mod.rs": {
+    "mtime": 1778089849.7448506,
+    "hash": "60e90cf0e359f2854454e89432cd46a6"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/_archive/error.rs": {
+    "mtime": 1772725189.8237612,
+    "hash": "53b73392873fe3c9611c30f5c295338b"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/_archive/services/template_ingestion.rs": {
+    "mtime": 1772746796.5671163,
+    "hash": "067bf98fdd6c4b0d44c8930ec4a412ec"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/_archive/services/note_ingestion.rs": {
+    "mtime": 1772746796.5673273,
+    "hash": "451592b21f1a94246e2bf41905f95054"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/_archive/services/schema_ingestion.rs": {
+    "mtime": 1772746796.5680542,
+    "hash": "4695ebf7adb3e7294a32e5f079bbe5a8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/application/_archive/services/mod.rs": {
+    "mtime": 1772725189.8341892,
+    "hash": "2a534f3fbec4b2bf4a3900c6f3d88aa8"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/types.rs": {
+    "mtime": 1778089849.7506318,
+    "hash": "725e533ec571fca7ab38c37f9ad1cf7a"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/error.rs": {
+    "mtime": 1778089849.7495997,
+    "hash": "934b173b187490d371f7a49d12aad76d"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/validator.rs": {
+    "mtime": 1778089849.7516527,
+    "hash": "cf3b4b3d757173b96d36773217178b74"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/scanner.rs": {
+    "mtime": 1778089849.7504992,
+    "hash": "b31cb617bf57f051d6edc6622437babb"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/path.rs": {
+    "mtime": 1778089849.7500532,
+    "hash": "039a421e0cc4d1b6415a6e4783d1cd6c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/mod.rs": {
+    "mtime": 1778089849.7498918,
+    "hash": "296dcd062e49b41b65d40b76dda224c1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/writer.rs": {
+    "mtime": 1778089849.7518764,
+    "hash": "e62d8a9a16068b6962aefb00434cc986"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/reader.rs": {
+    "mtime": 1778089849.7503402,
+    "hash": "34fca355362bee20a51de14bf6ed9779"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/file.rs": {
+    "mtime": 1778089849.7497594,
+    "hash": "d79655c73a334be9b63bcc3f24b9604f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/vault/processor.rs": {
+    "mtime": 1778089849.7753918,
+    "hash": "6798ee1cb0c204f6772e6c41c15ee624"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/vault/error.rs": {
+    "mtime": 1778089849.7750092,
+    "hash": "6721d74b489424003e7a39a5e093cdd0"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/vault/mod.rs": {
+    "mtime": 1778089849.7751217,
+    "hash": "27a7f48f5f426d6893b2e1909da66f4c"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/vault/storage.rs": {
+    "mtime": 1778089849.7755542,
+    "hash": "17fec8324a97e240ea111f6e5b231208"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/vault/model.rs": {
+    "mtime": 1778089849.775272,
+    "hash": "52d2527027b358bdfdcf4ce16dc2d2e3"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/proptest-regressions/note/value.txt": {
+    "mtime": 1778089849.744559,
+    "hash": "421f3c19da9f4eac9f7690f572be1528"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/proptest-regressions/schema/property.txt": {
+    "mtime": 1778089849.7446978,
+    "hash": "1457410e3bac3849b20b98d2ac70559e"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/README.md": {
+    "mtime": 1778089849.6762216,
+    "hash": "c698f34d6a1269fff21d4247a683e4c1"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/benches/RESULTS.md": {
+    "mtime": 1778089849.6764235,
+    "hash": "2ad6ad94d6233b4b88180c626f4babe2"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/note/CONTEXT.md": {
+    "mtime": 1778089849.753193,
+    "hash": "2f71c8dcb6d7e2e537cfea8bd7482baa"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/config/CONTEXT.md": {
+    "mtime": 1778089849.745155,
+    "hash": "8da37dc6bb85b3612a6daa5e9a7bd263"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/template/CONTEXT.md": {
+    "mtime": 1778089849.7719972,
+    "hash": "2e92907ef1941ca062502f05dadc719f"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/schema/CONTEXT.md": {
+    "mtime": 1778089849.7611744,
+    "hash": "b019d8a4ab8a11b69790e418b2f92555"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/db/CONTEXT.md": {
+    "mtime": 1778089849.7483752,
+    "hash": "31d6cc2114c9fe4445244f74dfe94e13"
+  },
+  "/Users/jack/Documents/41_personal/lithos/lithos-core/src/fs/CONTEXT.md": {
+    "mtime": 1778089849.749416,
+    "hash": "bccb36758e479c6d6581e0746989c357"
+  }
+}
