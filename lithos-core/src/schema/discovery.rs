@@ -4,9 +4,10 @@
 //! both the filesystem and database, consolidating all data needed for
 //! schema processing.
 
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, time::SystemTime};
 
 use crate::{
+    config::paths::SchemaConfigSpec
     fs::{DirScanInput, DirScanner, FileEntry, FileInfo, RelativePath},
     schema::{
         error::{
@@ -14,7 +15,7 @@ use crate::{
         },
         identifier::SchemaId,
         inheritance::InheritanceGraph,
-        views::contracts::RawViewRead,
+        views::{RawViewRead, RawSchemaView, RawPropertyBankView},
     },
 };
 
@@ -66,9 +67,9 @@ pub(crate) enum SchemaFileKind {
 #[derive(Debug, Clone)]
 pub(crate) enum DiscoveredView {
     /// Cached view of a schema file.
-    Schema(crate::schema::views::raw::RawSchemaView),
+    Schema(RawSchemaView),
     /// Cached view of a property bank file.
-    PropertyBank(crate::schema::views::raw::RawPropertyBankView),
+    PropertyBank(RawPropertyBankView),
 }
 
 impl DiscoveredView {
@@ -76,8 +77,8 @@ impl DiscoveredView {
     #[must_use]
     pub(crate) fn is_timestamp_match(
         &self,
-        created_at: Option<std::time::SystemTime>,
-        modified_at: Option<std::time::SystemTime>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
     ) -> bool {
         match self {
             Self::Schema(v) => v.is_timestamp_match(created_at, modified_at),
@@ -130,9 +131,6 @@ impl DiscoveredFile {
         self.view.is_none()
     }
 }
-
-/// Configuration specification for schema discovery.
-pub use crate::config::paths::SchemaConfigSpec;
 
 /// Unified discovery outcome containing all metadata from filesystem and DB.
 #[derive(Debug)]
