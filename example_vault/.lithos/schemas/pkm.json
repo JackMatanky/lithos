@@ -1,10 +1,10 @@
 {
   "properties": {
     "title": {
-      "$ref": "property_bank#/title"
+      "$ref": "#property_bank/title"
     },
     "aliases": {
-      "$ref": "property_bank#/aliases"
+      "$ref": "#property_bank/aliases"
     },
     "type": {
       "type": "string",
@@ -37,7 +37,7 @@
       }
     },
     "pillar": {
-      "$ref": "property_bank#/pillar"
+      "$ref": "#property_bank/pillar"
     },
     "category": {
       "multi": true,
@@ -70,7 +70,7 @@
       "directory": "(70_pkm)/"
     },
     "library": {
-      "$ref": "property_bank#/library"
+      "$ref": "#property_bank/library"
     }
   }
 }

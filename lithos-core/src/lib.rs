@@ -17,8 +17,11 @@ pub mod bounds;
 pub mod config;
 pub mod db;
 pub mod fs;
+pub mod graph;
 pub mod note;
+pub mod prelude;
 pub mod schema;
+pub mod support;
 pub mod template;
 pub mod vault;
 

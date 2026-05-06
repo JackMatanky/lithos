@@ -167,7 +167,7 @@ use criterion::{
 use lithos_core::{
     db::Database,
     schema::{
-        aggregate::SchemaName, property::PropertyName, property_spec::DateSpec,
+        identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
     },
     template::aggregate::{Template, TemplateName},
 };

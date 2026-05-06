@@ -12,76 +12,58 @@
     reason = "Test module re-exports port traits for test convenience"
 )]
 
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use lithos_core::{
     db::Database,
     schema::{
-        db_command, db_query,
-        id::{SchemaId, SchemaName},
-        ports,
+        aggregate::Schema,
+        identifier::SchemaName,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        storage::{StoredProperty, StoredSchema},
+        storage::{RedbRepository, Repository},
     },
 };
-// Re-export port traits - tests using wildcard import need these in scope
-pub use ports::{Command as CommandPort, Query as QueryPort};
 use tempfile::TempDir;
 
-/// Extension trait providing convenience methods for Query operations in tests.
-///
-/// Provides `find_by_name` as a convenience that combines `find_id_by_name` +
-/// `find_by_id`.
-pub trait QueryExt {
-    /// Find a schema by name (convenience wrapper for `find_id_by_name` +
-    /// `find_by_id`).
-    fn find_by_name(
-        &self,
-        name: &SchemaName,
-    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>>;
-}
-
-impl QueryExt for db_query::Query<'_> {
-    fn find_by_name(
-        &self,
-        name: &SchemaName,
-    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>> {
-        use ports::Query as _;
-        let Some(id) = self.find_id_by_name(name)? else {
-            return Ok(None);
-        };
-        Ok(self.find_by_id(id)?)
-    }
-}
-
-/// Extension trait providing convenience methods for Command operations in
+/// Extension trait providing convenience methods for Repository operations in
 /// tests.
 ///
-/// Provides `save` as a convenience that calls `save_many` with a single
-/// schema.
-pub trait CommandExt {
-    /// Save a single schema (convenience wrapper for `save_many`).
-    fn save(
+/// Provides `find_by_name` as a convenience that combines
+/// `find_schema_id_by_name` + `find_schema_by_id`.
+pub trait RepositoryExt {
+    /// Find a schema by name.
+    ///
+    /// Convenience wrapper for `find_schema_id_by_name` + `find_schema_by_id`.
+    fn find_by_name(
         &self,
-        schema: &StoredSchema,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>>;
 }
 
-impl CommandExt for db_command::Command<'_> {
-    fn save(
+impl<R> RepositoryExt for R
+where
+    R: Repository,
+    R::Error: 'static,
+{
+    fn find_by_name(
         &self,
-        schema: &StoredSchema,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use ports::Command as _;
-        Ok(self.save_many(std::slice::from_ref(schema))?)
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>> {
+        let Some(id) = self.find_schema_id_by_name(name)? else {
+            return Ok(None);
+        };
+        self.find_schema_by_id(id).map_err(Into::into)
     }
 }
 
 /// Standard test result type for integration tests.
 pub type TestResult<T = ()> = Result<T, Box<dyn Error>>;
+
+/// Named property tuple used by schema tests.
+pub type NamedProperty = (PropertyName, Property);
 
 // ----------------------------------------------------------- //
 //                    RAII Test Database                       //
@@ -94,8 +76,8 @@ pub type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 pub struct TestDb {
     /// Temporary directory (cleanup on drop).
     dir: TempDir,
-    /// Database instance.
-    db: Database,
+    /// Database instance wrapped in Arc for sharing with Repository.
+    db: Arc<Database>,
 }
 
 impl TestDb {
@@ -117,17 +99,17 @@ impl TestDb {
     pub fn new() -> TestResult<Self> {
         let dir = tempfile::tempdir()?;
         let db_path = dir.path().join("lithos.redb");
-        let db = Database::open(&db_path)?;
+        let db = Arc::new(Database::open(&db_path)?);
         Ok(Self {
             dir,
             db,
         })
     }
 
-    /// Get reference to the database.
+    /// Get reference to the database Arc (for cloning into Repository).
     #[inline]
     #[must_use]
-    pub const fn db(&self) -> &Database {
+    pub fn db(&self) -> &Arc<Database> {
         &self.db
     }
 
@@ -137,33 +119,121 @@ impl TestDb {
     pub fn path(&self) -> PathBuf {
         self.dir.path().join("lithos.redb")
     }
+
+    /// Reopen the database (simulates application restart).
+    ///
+    /// Closes the current database and opens a fresh instance.
+    /// This allows testing that state persists across sessions.
+    ///
+    /// **IMPORTANT**: All Arc clones from previous `db()` calls must be
+    /// dropped before calling this method, otherwise redb will fail with
+    /// "Database already open" error.
+    ///
+    /// # Errors
+    /// Returns error if database cannot be reopened (including if old
+    /// Arc clones are still held).
+    ///
+    /// # Panics
+    /// Panics if there are outstanding Arc strong references (indicates a
+    /// test bug where repositories weren't properly dropped).
+    pub fn reopen(&mut self) -> TestResult<Arc<Database>> {
+        let path = self.path();
+
+        // Check if we're the only owner (catch test bugs early)
+        let strong_count = Arc::strong_count(&self.db);
+        assert!(
+            strong_count == 1,
+            "Cannot reopen database: {strong_count} outstanding Arc \
+             references (expected 1). Did you forget to drop a Repository?"
+        );
+
+        // CRITICAL: We must drop the old Database BEFORE opening the new one
+        // since redb uses OS-level file locks that prevent concurrent access.
+        //
+        // Strategy:
+        // 1. Create dummy database at different path
+        // 2. Swap dummy with real, extracting the old Arc
+        // 3. Unwrap and drop the old Database (releases lock)
+        // 4. Drop the dummy
+        // 5. Open real database at original path
+
+        // Step 1: Create dummy database (different path to avoid lock conflict)
+        let dummy_path = self.dir.path().join("temp_dummy.redb");
+        let dummy_db = Arc::new(Database::open(&dummy_path)?);
+
+        // Step 2: Swap, getting the old Arc
+        let old_arc = std::mem::replace(&mut self.db, dummy_db);
+
+        // Step 3: Unwrap and drop (should always succeed since strong_count ==
+        // 1)
+        #[expect(
+            clippy::panic,
+            reason = "Test infrastructure - panic for impossible state is \
+                      appropriate"
+        )]
+        let old_database = Arc::try_unwrap(old_arc).unwrap_or_else(|_| {
+            panic!(
+                "Arc::try_unwrap failed despite strong_count == 1 - this is a \
+                 bug"
+            )
+        });
+        drop(old_database); // Releases the lock!
+
+        // Step 4 & 5: Open the real database (dummy is automatically dropped
+        // when we reassign self.db)
+        self.db = Arc::new(Database::open(&path)?);
+
+        Ok(Arc::clone(&self.db))
+    }
 }
 
 // ----------------------------------------------------------- //
-//                    CQRS Setup Helpers                       //
+//                    Repository Setup Helpers                 //
 // ----------------------------------------------------------- //
 
-/// Setup CQRS command and query adapters for a database.
+/// Create a Repository implementation for testing.
 ///
-/// Returns (command, query) pair for easy destructuring.
+/// Returns a `RedbRepository` that implements the unified Repository trait.
+/// This replaces the old CQRS pattern (command, query) with a single
+/// Repository interface combining both read and write operations.
 ///
 /// # Examples
 /// ```no_run
-/// # use tests::common::{setup_cqrs, TestDb, TestResult};
+/// # use tests::common::{setup_repository, TestDb, TestResult};
 /// # fn test() -> TestResult {
 /// let test_db = TestDb::new()?;
-/// let (command, query) = setup_cqrs(test_db.db());
+/// let repository = setup_repository(test_db.db());
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
 #[must_use]
-pub fn setup_cqrs(
-    db: &Database,
-) -> (db_command::Command<'_>, db_query::Query<'_>) {
-    let command = db_command::Command::new(db);
-    let query = db_query::Query::new(db);
-    (command, query)
+pub fn setup_repository(db: &Arc<Database>) -> RedbRepository {
+    RedbRepository::new(Arc::clone(db))
+}
+
+/// Legacy CQRS setup - DEPRECATED.
+///
+/// Returns two Repository instances (for backwards compatibility with old test
+/// code that destructured into (command, query)).
+///
+/// Both instances share the same underlying database, so writes from one are
+/// immediately visible to the other.
+///
+/// # Deprecated
+/// Use `setup_repository()` instead. The CQRS pattern has been replaced with
+/// a unified Repository trait that combines read and write operations.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use setup_repository() - CQRS pattern replaced with unified \
+            Repository trait"
+)]
+#[track_caller]
+#[must_use]
+pub fn setup_cqrs(db: &Arc<Database>) -> (RedbRepository, RedbRepository) {
+    let repo1 = RedbRepository::new(Arc::clone(db));
+    let repo2 = RedbRepository::new(Arc::clone(db));
+    (repo1, repo2)
 }
 
 // ----------------------------------------------------------- //
@@ -235,21 +305,8 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_bool(self) -> TestResult<Property> {
+    pub fn build_bool(self) -> TestResult<NamedProperty> {
         self.build_with_spec(PropertySpec::Bool(BoolSpec::default()))
-    }
-
-    /// Build a string property with custom spec.
-    ///
-    /// # Errors
-    /// Returns error if property name is invalid.
-    #[expect(
-        dead_code,
-        reason = "Will be used in CQRS tests with custom string specs"
-    )]
-    #[track_caller]
-    pub fn build_string(self, spec: StringSpec) -> TestResult<Property> {
-        self.build_with_spec(PropertySpec::String(spec))
     }
 
     /// Build a string property with default spec.
@@ -257,7 +314,7 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_string_default(self) -> TestResult<Property> {
+    pub fn build_string_default(self) -> TestResult<NamedProperty> {
         self.build_with_spec(PropertySpec::String(StringSpec::default()))
     }
 
@@ -266,10 +323,15 @@ impl PropertyBuilder {
     /// # Errors
     /// Returns error if property name is invalid.
     #[track_caller]
-    pub fn build_with_spec(self, spec: PropertySpec) -> TestResult<Property> {
+    pub fn build_with_spec(
+        self,
+        spec: PropertySpec,
+    ) -> TestResult<NamedProperty> {
         let name = PropertyName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        Ok(Property::new(id, name, self.optionality, self.multiplicity, spec))
+        let property =
+            Property::new(id, self.optionality, self.multiplicity, spec);
+        Ok((name, property))
     }
 }
 
@@ -282,12 +344,12 @@ impl PropertyBuilder {
 /// ```no_run
 /// # use tests::common::{bool_property, TestResult};
 /// # fn test() -> TestResult {
-/// let status = bool_property("is_active")?;
+/// let (_name, status) = bool_property("is_active")?;
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
-pub fn bool_property(name: &str) -> TestResult<Property> {
+pub fn bool_property(name: &str) -> TestResult<NamedProperty> {
     PropertyBuilder::new(name).build_bool()
 }
 
@@ -300,18 +362,24 @@ pub fn bool_property(name: &str) -> TestResult<Property> {
 /// ```no_run
 /// # use tests::common::{string_property, TestResult};
 /// # fn test() -> TestResult {
-/// let title = string_property("title")?;
+/// let (_name, title) = string_property("title")?;
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
-pub fn string_property(name: &str) -> TestResult<Property> {
+pub fn string_property(name: &str) -> TestResult<NamedProperty> {
     PropertyBuilder::new(name).build_string_default()
 }
 
 // ----------------------------------------------------------- //
 //                    Schema Builders                          //
 // ----------------------------------------------------------- //
+
+// NOTE: SchemaBuilder and assertion helpers commented out pending migration
+// from StoredSchema/StoredProperty to new Schema/Property aggregates.
+// See schema_incremental_resolution.rs for modern test patterns using Loader.
+
+/* DISABLED - Pending migration to new Schema aggregate
 
 /// Builder for creating test `StoredSchema` instances.
 ///
@@ -322,7 +390,7 @@ pub fn string_property(name: &str) -> TestResult<Property> {
 /// ```no_run
 /// # use tests::common::{SchemaBuilder, bool_property, TestResult};
 /// # fn test() -> TestResult {
-/// let prop = bool_property("status")?;
+/// let (_name, prop) = bool_property("status")?;
 /// let schema = SchemaBuilder::new("task").property(prop).build()?;
 /// # Ok(())
 /// # }
@@ -418,67 +486,6 @@ impl SchemaBuilder {
 //                    Assertion Helpers                        //
 // ----------------------------------------------------------- //
 
-/// Assert that two schemas are equal, with detailed error messages.
-///
-/// Compares:
-/// - Name
-/// - Parent ID
-/// - Property count
-/// - Individual properties
-///
-/// # Panics
-/// Panics if schemas are not equal with detailed diff message.
-#[expect(dead_code, reason = "Will be used in upcoming CQRS integration tests")]
-#[track_caller]
-pub fn assert_schema_eq(
-    actual: &StoredSchema,
-    expected: &StoredSchema,
-    context: &str,
-) {
-    assert_eq!(
-        actual.name.as_ref(),
-        expected.name.as_ref(),
-        "{context}: Schema names should match"
-    );
-    assert_eq!(
-        actual.parent_id, expected.parent_id,
-        "{context}: Parent IDs should match"
-    );
-    assert_eq!(
-        actual.properties.len(),
-        expected.properties.len(),
-        "{context}: Property counts should match"
-    );
-
-    // Compare properties (sorted by name for stable comparison)
-    let mut actual_props = actual.properties.clone();
-    let mut expected_props = expected.properties.clone();
-    actual_props.sort_by(|a, b| a.name.cmp(&b.name));
-    expected_props.sort_by(|a, b| a.name.cmp(&b.name));
-
-    for (actual_prop, expected_prop) in
-        actual_props.iter().zip(expected_props.iter())
-    {
-        assert_eq!(
-            actual_prop.name.as_ref(),
-            expected_prop.name.as_ref(),
-            "{context}: Property names should match"
-        );
-        assert_eq!(
-            actual_prop.required,
-            expected_prop.required,
-            "{context}: Property '{}' optionality should match",
-            actual_prop.name.as_ref()
-        );
-        assert_eq!(
-            actual_prop.multi,
-            expected_prop.multi,
-            "{context}: Property '{}' multiplicity should match",
-            actual_prop.name.as_ref()
-        );
-    }
-}
-
 /// Assert that schema properties are sorted by name.
 ///
 /// # Panics
@@ -530,3 +537,6 @@ pub fn assert_not_has_property(
         "{context}: Schema should NOT have property '{property_name}'"
     );
 }
+
+*/
+// End of disabled SchemaBuilder and assertion helpers

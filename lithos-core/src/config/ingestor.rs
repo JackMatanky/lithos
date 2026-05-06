@@ -21,6 +21,7 @@ use crate::{
         vault::VaultRoot,
     },
     fs::FsReader,
+    support::hash::Blake3Hash,
 };
 
 /// Configuration ingestion adapter.
@@ -112,7 +113,7 @@ impl Ingestor {
         let raw_bytes = self.global_source.read_bytes(&path)?;
 
         // Compute BLAKE3 hash from raw bytes
-        let content_hash = blake3::hash(&raw_bytes);
+        let content_hash = Blake3Hash::compute(&raw_bytes);
 
         // Parse TOML content using FsReader
         let mut config: RawGlobalConfig =
@@ -122,7 +123,7 @@ impl Ingestor {
         config.metadata = RawConfigMetadata {
             created_at,
             modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
+            content_hash: Some(content_hash),
         };
 
         Ok(Some(config))
@@ -162,7 +163,7 @@ impl Ingestor {
         let raw_bytes = self.vault_source.read_bytes(relative_path)?;
 
         // Compute BLAKE3 hash from raw bytes
-        let content_hash = blake3::hash(&raw_bytes);
+        let content_hash = Blake3Hash::compute(&raw_bytes);
 
         // Parse TOML content using FsReader
         let mut config: RawVaultConfig =
@@ -172,7 +173,7 @@ impl Ingestor {
         config.metadata = RawConfigMetadata {
             created_at,
             modified_at,
-            content_hash: Some(*content_hash.as_bytes()),
+            content_hash: Some(content_hash),
         };
 
         Ok(Some(config))

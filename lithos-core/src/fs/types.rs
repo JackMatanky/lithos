@@ -1,16 +1,44 @@
 //! File type markers and parsing helpers for structured formats.
 //!
-//! This module is internal to the `fs` crate. It defines zero-sized type
-//! markers for JSON, TOML, YAML, and Markdown together with their
-//! extension-detection and content-sniffing helpers. All parsing goes through
-//! [`crate::fs::reader::Reader::parse_structured`]; these types are not part
-//! of the public API.
+//! This module defines format classification ([`FormatKind`]) and zero-sized
+//! type markers for JSON, TOML, YAML, Markdown, and Binary formats. Format
+//! detection is based on file extensions and content sniffing.
+//!
+//! ## Public API
+//!
+//! - [`FormatKind`]: Enum representing supported file formats (re-exported at
+//!   `fs::reader`)
+//!
+//! ## Internal Utilities
+//!
+//! The module also contains internal parsing helpers (`Json`, `Toml`, `Yaml`,
+//! `Markdown`, `Binary`) used by
+//! [`crate::fs::reader::Reader::parse_structured`]. These are not part of the
+//! public API.
 
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
 
 use super::error::ParseError;
+
+/// Supported file formats for structured parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) enum FormatKind {
+    /// JSON format.
+    Json,
+    /// TOML format.
+    Toml,
+    /// YAML format.
+    Yaml,
+    /// Markdown format.
+    Markdown,
+    /// Binary format.
+    Binary,
+    /// Unknown or unsupported format.
+    Unknown,
+}
 
 /// Markdown file type marker.
 ///

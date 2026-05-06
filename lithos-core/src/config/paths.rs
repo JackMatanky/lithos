@@ -7,7 +7,7 @@
 //! # Always Valid Invariants
 //! - **Relative Paths**: Most paths must be vault-relative and cannot use `..`
 //!   to escape the vault root.
-//! - **File Names**: Filenames must not contain path separators.
+//! - **File Names**: FileNames must not contain path separators.
 //! - **Non-Empty**: Paths and filenames cannot be empty. Construction of these
 //!   types will fail if these invariants are violated.
 
@@ -16,11 +16,21 @@
     reason = "rkyv generates exhaustive archived structs"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use rkyv::{Archive, Deserialize, Serialize, with::AsString};
+use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
+use crate::fs::{FileName, RelativePath};
+
+#[expect(
+    clippy::expect_used,
+    reason = "Static defaults are compile-time literals expected to remain \
+              valid"
+)]
+fn default_relative_path(value: &'static str) -> RelativePath {
+    RelativePath::try_from(value).expect("default path literal must be valid")
+}
 
 // ----------------------------------------------------------- //
 //                   Resolved Path Aggregate                   //
@@ -185,7 +195,7 @@ impl Default for Schema {
     #[inline]
     fn default() -> Self {
         Self {
-            schemas_dir: RelativePath(PathBuf::from("schemas")),
+            schemas_dir: default_relative_path("schemas"),
         }
     }
 }
@@ -208,7 +218,12 @@ impl Schema {
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
-            schemas_dir: RelativePath::try_new(path)?,
+            schemas_dir: RelativePath::try_from(path).map_err(|e| {
+                ConfigError::ValidationFailed {
+                    field: "schemas_dir".into(),
+                    message: e.to_string().into(),
+                }
+            })?,
         })
     }
 
@@ -235,7 +250,7 @@ impl Default for Template {
     #[inline]
     fn default() -> Self {
         Self {
-            templates_dir: RelativePath(PathBuf::from("templates")),
+            templates_dir: default_relative_path("templates"),
         }
     }
 }
@@ -258,7 +273,12 @@ impl Template {
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
-            templates_dir: RelativePath::try_new(path)?,
+            templates_dir: RelativePath::try_from(path).map_err(|e| {
+                ConfigError::ValidationFailed {
+                    field: "templates_dir".into(),
+                    message: e.to_string().into(),
+                }
+            })?,
         })
     }
 
@@ -285,7 +305,7 @@ impl Default for Cache {
     #[inline]
     fn default() -> Self {
         Self {
-            cache_dir: RelativePath(PathBuf::from(".cache")),
+            cache_dir: default_relative_path(".cache"),
         }
     }
 }
@@ -308,7 +328,12 @@ impl Cache {
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
-            cache_dir: RelativePath::try_new(path)?,
+            cache_dir: RelativePath::try_from(path).map_err(|e| {
+                ConfigError::ValidationFailed {
+                    field: "cache_dir".into(),
+                    message: e.to_string().into(),
+                }
+            })?,
         })
     }
 
@@ -324,7 +349,7 @@ impl ArchivedCache {
     /// Return the cache directory.
     #[inline]
     #[must_use]
-    pub const fn cache_dir(&self) -> &ArchivedRelativePath {
+    pub const fn cache_dir(&self) -> &rkyv::Archived<RelativePath> {
         &self.cache_dir
     }
 }
@@ -359,7 +384,7 @@ impl PropertyBank {
     /// contains path separators.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        Ok(Self(FileName::try_new(value)?))
+        Ok(Self(FileName::new(value.into())))
     }
 
     /// Return the filename as a string slice.
@@ -401,298 +426,95 @@ impl std::fmt::Display for PropertyBank {
 }
 
 // ----------------------------------------------------------- //
-//               Low-Level Implementation Types                //
+//                    Schema Config Spec                       //
 // ----------------------------------------------------------- //
 
-/// A validated vault-relative path.
+/// Schema configuration specification for discovery engine.
 ///
-/// This type ensures that paths do not escape the vault root using `..`
-/// traversal and are kept relative for portability.
+/// This type provides a minimal, filesystem-focused view of schema
+/// configuration for the discovery engine. It contains only the paths
+/// needed for file scanning and discovery.
 ///
-/// # Invariants
+/// # Design Rationale
 ///
-/// - Must be a relative path.
-/// - Must not contain `..` (parent directory traversal).
-/// - Must not be empty.
+/// - **Minimizes imports**: Both fields are `RelativePath` (not `PropertyBank`
+///   type)
+/// - **Explicit paths**: `property_bank` is the full joined path, not just
+///   filename
+/// - **Discovery-focused**: Used by `DiscoveryEngine::run()` instead of full
+///   `Config`
 ///
 /// # Examples
 ///
 /// ```rust
-/// use lithos_core::config::paths::RelativePath;
+/// use std::path::PathBuf;
 ///
-/// let path = RelativePath::try_new("schemas/main.json".into())?;
-/// assert_eq!(path.as_path().to_str().unwrap(), "schemas/main.json");
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+///
+/// let directory = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+/// let property_bank =
+///     RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
+///         .unwrap();
+///
+/// let spec = SchemaConfigSpec::new(directory, property_bank);
+/// assert_eq!(spec.directory().as_path(), std::path::Path::new("schemas"));
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct RelativePath(
-    /// Internal path storage.
-    #[rkyv(with = AsString)]
-    PathBuf,
-);
+pub struct SchemaConfigSpec {
+    /// Directory containing schema files (e.g., "schemas").
+    directory: RelativePath,
+    /// Full path to property bank file (e.g., "`schemas/property_bank.json`").
+    property_bank: RelativePath,
+}
 
-impl RelativePath {
-    /// Creates a validated relative path.
+impl SchemaConfigSpec {
+    /// Creates a new schema configuration specification.
     ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
-    /// empty, or contains parent directory traversal (`..`).
-    #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        Self::validate_relative_path_invariants("path", &path)?;
-        Ok(Self(path))
-    }
-
-    /// Return the inner path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-
-    /// Private helper to validate relative path invariants.
-    fn validate_relative_path_invariants(
-        field: &'static str,
-        path: &Path,
-    ) -> Result<(), ConfigError> {
-        if path.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: field.into(),
-                message: format!("{field} cannot be empty").into(),
-            });
-        }
-        if path.is_absolute() {
-            return Err(ConfigError::ValidationFailed {
-                field: field.into(),
-                message: format!("{field} must be vault-relative").into(),
-            });
-        }
-        if path
-            .components()
-            .any(|component| component == std::path::Component::ParentDir)
-        {
-            return Err(ConfigError::ValidationFailed {
-                field: field.into(),
-                message: format!("{field} must not contain parent components")
-                    .into(),
-            });
-        }
-        Ok(())
-    }
-}
-
-impl ArchivedRelativePath {
-    /// Return the inner path as a standard library [`Path`].
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.0.as_str())
-    }
-}
-
-impl TryFrom<String> for RelativePath {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<RelativePath> for String {
-    #[inline]
-    fn from(value: RelativePath) -> Self {
-        value.0.to_string_lossy().into_owned()
-    }
-}
-
-impl std::fmt::Display for RelativePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
-/// A validated absolute path.
-///
-/// This type ensures that paths are fully resolved and absolute on the
-/// filesystem. It's the counterpart to [`RelativePath`] for cases where
-/// a complete, resolved path is required.
-///
-/// # Invariants
-///
-/// - Must be an absolute path.
-/// - Must not be empty.
-///
-/// # Examples
-///
-/// ```rust
-/// use lithos_core::config::paths::AbsolutePath;
-///
-/// let path = AbsolutePath::try_new("/vaults/notes".into())?;
-/// assert!(path.as_path().is_absolute());
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct AbsolutePath(
-    /// Internal path storage.
-    #[rkyv(with = AsString)]
-    PathBuf,
-);
-
-impl AbsolutePath {
-    /// Creates a validated absolute path.
+    /// # Arguments
     ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the path is not absolute
-    /// or is empty.
-    #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        if path.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "absolute_path".into(),
-                message: "path cannot be empty".into(),
-            });
-        }
-        if !path.is_absolute() {
-            return Err(ConfigError::ValidationFailed {
-                field: "absolute_path".into(),
-                message: format!(
-                    "path must be absolute: {}",
-                    path.to_string_lossy()
-                )
-                .into(),
-            });
-        }
-        Ok(Self(path))
-    }
-
-    /// Return the inner path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for AbsolutePath {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<AbsolutePath> for String {
-    #[inline]
-    fn from(path: AbsolutePath) -> Self {
-        path.0.to_string_lossy().into_owned()
-    }
-}
-
-impl std::fmt::Display for AbsolutePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
-/// A validated filename.
-///
-/// This type ensures that filenames are non-empty and do not contain
-/// path separators, ensuring they stay within their parent directory.
-///
-/// # Invariants
-///
-/// - Must not be empty.
-/// - Must not contain `/` or `\`.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct FileName(
-    /// Internal filename storage.
-    Box<str>,
-);
-
-impl FileName {
-    /// Creates a validated file name.
+    /// * `directory` - The schemas directory path
+    /// * `property_bank` - The full path to the property bank file (directory +
+    ///   filename)
     ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the name is empty or
-    /// contains path separators (`/` or `\`).
-    #[inline]
-    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        Self::validate_non_empty("file_name", &value)?;
-        if value.contains('/') || value.contains('\\') {
-            return Err(ConfigError::ValidationFailed {
-                field: "file_name".into(),
-                message: "file name must not contain path separators"
-                    .to_owned()
-                    .into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
-    /// Return the file name as a string slice.
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+    ///
+    /// let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+    /// let bank =
+    ///     RelativePath::try_from(PathBuf::from("schemas/bank.json")).unwrap();
+    /// let spec = SchemaConfigSpec::new(dir, bank);
+    /// ```
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn validate_non_empty(
-        field: &'static str,
-        value: &str,
-    ) -> Result<(), ConfigError> {
-        if value.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: field.into(),
-                message: format!("{field} cannot be empty").into(),
-            });
+    pub const fn new(
+        directory: RelativePath,
+        property_bank: RelativePath,
+    ) -> Self {
+        Self {
+            directory,
+            property_bank,
         }
-        Ok(())
     }
-}
 
-impl From<PropertyBank> for FileName {
+    /// Returns the schemas directory path.
     #[inline]
-    fn from(value: PropertyBank) -> Self {
-        value.0
+    #[must_use]
+    pub const fn directory(&self) -> &RelativePath {
+        &self.directory
     }
-}
 
-impl TryFrom<String> for FileName {
-    type Error = ConfigError;
-
+    /// Returns the full property bank file path.
     #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
+    #[must_use]
+    pub const fn property_bank(&self) -> &RelativePath {
+        &self.property_bank
     }
 }
-
-impl From<FileName> for String {
-    #[inline]
-    fn from(value: FileName) -> Self {
-        value.0.into()
-    }
-}
-
-// ----------------------------------------------------------- //
-//                            Tests                            //
-// ----------------------------------------------------------- //
 
 #[cfg(test)]
 mod tests {
@@ -708,30 +530,6 @@ mod tests {
 
         pub fn sample_property_bank() -> PropertyBank {
             PropertyBank::try_new("props.json").expect("valid file for fixture")
-        }
-    }
-
-    mod constructor {
-        use std::path::PathBuf;
-
-        use super::super::*;
-
-        #[test]
-        fn relative_path_rejects_empty() {
-            let result = RelativePath::try_new(PathBuf::from(""));
-            assert!(result.is_err(), "Expected validation error");
-        }
-
-        #[test]
-        fn relative_path_rejects_absolute() {
-            let result = RelativePath::try_new(PathBuf::from("/abs"));
-            assert!(result.is_err(), "Expected validation error");
-        }
-
-        #[test]
-        fn relative_path_rejects_parent_traversal() {
-            let result = RelativePath::try_new(PathBuf::from("a/../b"));
-            assert!(result.is_err(), "Expected validation error");
         }
     }
 
@@ -771,10 +569,51 @@ mod tests {
         #[test]
         fn schema_rejects_empty_paths() {
             let schemas_dir =
-                RelativePath::try_new(std::path::PathBuf::from(""));
-            let file_name = PropertyBank::try_new("");
+                RelativePath::try_from(std::path::PathBuf::from(""));
+            let file_name = FileName::try_from(std::path::Path::new(""));
             assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");
+        }
+    }
+
+    mod schema_config_spec {
+        use std::path::PathBuf;
+
+        use super::super::*;
+
+        /// Test `SchemaConfigSpec` construction.
+        #[test]
+        fn constructs_with_valid_paths() {
+            let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
+            let bank =
+                RelativePath::try_from(PathBuf::from("schemas/bank.json"))
+                    .unwrap();
+
+            let spec = SchemaConfigSpec::new(dir, bank);
+
+            assert_eq!(
+                spec.directory().as_path(),
+                std::path::Path::new("schemas")
+            );
+            assert_eq!(
+                spec.property_bank().as_path(),
+                std::path::Path::new("schemas/bank.json")
+            );
+        }
+
+        /// Test `SchemaConfigSpec` accessors.
+        #[test]
+        fn accessors_return_correct_values() {
+            let dir =
+                RelativePath::try_from(PathBuf::from("my-schemas")).unwrap();
+            let bank =
+                RelativePath::try_from(PathBuf::from("my-schemas/props.json"))
+                    .unwrap();
+
+            let spec = SchemaConfigSpec::new(dir.clone(), bank.clone());
+
+            assert_eq!(*spec.directory(), dir);
+            assert_eq!(*spec.property_bank(), bank);
         }
     }
 }

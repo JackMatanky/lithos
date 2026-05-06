@@ -11,17 +11,13 @@
     },
     "gender": {
       "type": "string",
-      "options": [
-        "female",
-        "male",
-        "other"
-      ]
+      "options": ["female", "male", "other"]
     },
     "date_birth": {
-      "$ref": "property_bank#/date_iso_8601"
+      "$ref": "#property_bank/date_iso_8601"
     },
     "date_death": {
-      "$ref": "property_bank#/date_iso_8601"
+      "$ref": "#property_bank/date_iso_8601"
     },
     "address": {
       "type": "string"
@@ -128,7 +124,7 @@
       "type": "string"
     },
     "organization": {
-      "$ref": "property_bank#/organization"
+      "$ref": "#property_bank/organization"
     },
     "job_title": {
       "multi": true,

@@ -8,8 +8,34 @@
     reason = "Schema* types are namespaced intentionally for clarity"
 )]
 
-/// Schema identifier value objects (SchemaId, SchemaName).
-pub mod id;
+/// Schema aggregate and identifier types.
+pub mod aggregate;
+/// Core identity types for the schema system.
+pub mod identifier;
+
+/// Unified repository trait and implementations for schema persistence.
+///
+/// Provides the `Repository` trait and `RedbRepository` implementation,
+/// replacing the old CQRS Command/Query pattern.
+pub mod storage;
+
+/// Testing and benchmarking utilities for pure unit tests.
+///
+/// Provides `InMemoryRepository` and test helpers to eliminate filesystem
+/// IO from unit tests while maintaining test extent.
+#[cfg(test)]
+pub mod testing;
+
+/// View types for staleness detection and versioned metadata tracking.
+///
+/// Provides versioned metadata containers ([`RawSchemaView`],
+/// [`RawPropertyBankView`]) that enable incremental updates by tracking content
+/// hashes, file timestamps, and version history. Views persist alongside domain
+/// aggregates to answer "Has this file changed?" without re-parsing.
+///
+/// [`RawSchemaView`]: views::RawSchemaView
+/// [`RawPropertyBankView`]: views::RawPropertyBankView
+pub mod views;
 
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
@@ -20,47 +46,34 @@ pub mod bank;
 /// documentation.
 #[doc(hidden)]
 pub mod expander;
+/// PropertyBank state machine for incremental loading and staleness detection.
+pub mod property_bank_processor;
 
-/// Database command adapter for schema CQRS write operations.
+/// Batch-based schema processor pipeline.
 ///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the command adapter while hiding from public
-/// documentation.
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// builder and tests to use the new batch processor.
 #[doc(hidden)]
-pub mod db_command;
-/// Database query adapter for schema CQRS read operations.
-///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the query adapter while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod db_query;
+pub mod schema_processor;
+
+/// Core inheritance graph types.
+pub mod inheritance;
+
+/// Schema index types for efficient lookups.
+pub(crate) mod index;
+
+/// Atomic schema discovery engine.
+pub(crate) mod discovery;
+
+/// Shared delta computation utilities for schema ingestion.
+pub(crate) mod delta;
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
 pub mod events;
-/// File ingestion pipeline for schemas and property banks.
-///
-/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks and tests to access the ingestor while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod ingestor;
-/// Storage types for raw file versions and resolved data (read models).
-pub mod storage;
 
-/// Schema inheritance-tree builder pipeline stage.
-///
-/// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
-/// benchmarks to measure individual pipeline stages while hiding from public
-/// documentation.
-#[doc(hidden)]
-pub mod extender;
-
-/// Schema loader — orchestrates file ingestion and resolution.
-pub mod loader;
-/// Schema ports for CQRS.
-pub mod ports;
+/// Facade for schema orchestration.
+pub mod builder;
 /// Property domain entities.
 pub mod property;
 /// Property specification variants.
@@ -68,70 +81,94 @@ pub mod property_spec;
 /// Raw schema input definitions.
 pub mod raw;
 
-/// Schema resolution service.
+/// Schema-level property merging for inheritance.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
 /// benchmarks to measure individual pipeline stages while hiding from public
 /// documentation.
 #[doc(hidden)]
-pub mod resolver;
+pub mod merger;
 
 pub(crate) mod db_table {
-    use redb::{MultimapTableDefinition, TableDefinition};
+    use redb::TableDefinition;
 
+    // ========================================================================
+    // Schema Storage Tables
+    // ========================================================================
+
+    /// Schema aggregates (key: `SchemaId` as UUID string, value:
+    /// rkyv-serialized `Schema`).
     pub(crate) const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_by_id");
+
+    /// Schema name→ID index (key: `SchemaName`, value: rkyv-serialized
+    /// `SchemaId`).
     pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_id_by_name");
-    pub(crate) const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_metadata");
-    pub(crate) const BANK_METADATA: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_metadata");
-    pub(crate) const BANK_PROPERTY_BY_ID: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_property_by_id");
-    pub(crate) const BANK_PROPERTY_BY_NAME: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("bank_property_by_name");
+
+    /// Maps schema filename to `SchemaId` for raw view lookup.
+    /// Key: filename with extension (e.g., "note.toml", "task.json")
+    /// Value: rkyv-serialized `SchemaId`.
+    pub(crate) const SCHEMA_ID_BY_PATH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_id_by_path");
+
+    // ========================================================================
+    // PropertyBank Storage
+    // ========================================================================
+
+    /// `PropertyBank` singleton (key: `PROPERTY_BANK_KEY`, value:
+    /// rkyv-serialized `PropertyBank`).
+    pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("property_bank");
+
+    /// Key for `PropertyBank` singleton table.
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 
-    // Raw file storage tables
-    /// Raw schema files (key: `file_path`, value: rkyv-serialized
-    /// `RawSchemaFile`).
-    pub(crate) const RAW_SCHEMA_FILES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_schema_files");
+    // ========================================================================
+    // Raw View Storage (for staleness detection)
+    // ========================================================================
 
-    /// Raw property bank file (singleton: key = `"property-bank"`).
-    pub(crate) const RAW_PROPERTY_BANK_FILE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_property_bank_file");
+    /// Raw schema views (key: `SchemaId` as UUID string, value: rkyv-serialized
+    /// `RawSchemaView`).
+    pub(crate) const RAW_SCHEMA_VIEWS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_schema_views");
 
-    /// Key for raw property bank singleton.
-    pub(crate) const RAW_PROPERTY_BANK_KEY: &str = "property-bank";
+    /// Raw property bank view (key: filename with extension, value:
+    /// rkyv-serialized `RawPropertyBankView`).
+    /// Key examples: "property-bank.toml", "property-bank.json".
+    pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_property_bank_view");
 
-    // Inheritance tracking tables
-    /// Multimap: parent `SchemaId` → multiple child schema records.
-    /// Enables O(1) cascade staleness queries: "find all children of parent P".
-    pub(crate) const SCHEMA_CHILDREN: MultimapTableDefinition<&str, &[u8]> =
-        MultimapTableDefinition::new("schema_children");
+    // ========================================================================
+    // Base Properties Storage (hydrated local properties)
+    // ========================================================================
 
-    /// Regular table: child `SchemaId` → parent schema reference.
-    /// Enables O(1) updates (know old parent to remove from multimap).
-    /// Also tracks all schemas including roots (`parent_id` = None).
-    pub(crate) const SCHEMA_PARENT: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_parent");
-}
+    /// Cached base properties for schema files.
+    ///
+    /// Stores the fully converted (hydrated) property map for each schema,
+    /// excluding any inherited properties. This enables skipping the
+    /// `RefExpander` when the property bank has not changed.
+    ///
+    /// Key: `SchemaId` as UUID string.
+    /// Value: rkyv-serialized `BasePropertiesView`.
+    #[expect(dead_code, reason = "Table will be used in future commits")]
+    pub(crate) const SCHEMA_BASE_PROPERTIES: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_base_properties");
 
-// --- Public API ---
-// Note: Generic wrapper boilerplate removed in Phase 6 Part B.
-// Applications now use concrete types (db_command::Command, db_query::Query)
-// directly.
+    // ========================================================================
+    // Inheritance Tracking Tables
+    // ========================================================================
 
-/// Compatibility re-exports for code using the old `aggregate` module path.
-///
-/// The Schema aggregate has been removed in Phase 7. Types previously in
-/// `schema::aggregate` are now in `schema::id`.
-///
-/// Note: This uses `pub use` for backward compatibility during the migration
-/// period. This module will be removed in a future phase.
-#[expect(clippy::pub_use, reason = "Temporary migration compatibility layer")]
-pub mod aggregate {
-    pub use super::id::{SchemaId, SchemaName};
+    /// Topologically sorted inheritance graph singleton.
+    ///
+    /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
+    /// Value: rkyv-serialized `InheritanceGraph<()>`.
+    ///
+    /// Contains DAG structure with `SchemaId` links and adjacency lists.
+    /// Rebuilt/patched when inheritance relationships change.
+    pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_topological_graph");
+
+    /// Key for `InheritanceGraph` singleton table.
+    pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 }

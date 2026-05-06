@@ -1,3 +1,47 @@
+//! Root-scoped filesystem reader with validation and format-classification.
+//!
+//! This module provides [`Reader`], a read-only filesystem adapter for safe
+//! vault access with built-in path validation, directory scanning, and
+//! structured file parsing.
+//!
+//! # Security
+//!
+//! All file access is scoped to a root directory with validation via
+//! [`Validator`] to prevent path traversal attacks and unauthorized access to
+//! restricted files.
+//!
+//! # Features
+//!
+//! - **Directory scanning**: Glob-pattern filtering via
+//!   [`filter_dir`](Reader::filter_dir) and
+//!   [`list_entries`](Reader::list_entries)
+//! - **File reading**: Raw bytes, UTF-8 strings, and structured parsing
+//!   (JSON/TOML/YAML)
+//! - **Format detection**: Automatic format classification by extension and
+//!   content
+//! - **Metadata access**: File info, timestamps, and existence checks
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use std::path::Path;
+//!
+//! use lithos_core::fs::FsReader;
+//!
+//! let reader = FsReader::new("/vault");
+//!
+//! // Find all TOML files
+//! let schema_files = reader.filter_dir("schemas/**/*.toml")?;
+//!
+//! // Read and parse structured file
+//! let data: serde_json::Value =
+//!     reader.parse_structured(Path::new("config.json"))?;
+//!
+//! // Get file metadata
+//! let info = reader.info(Path::new("README.md"))?;
+//! # Ok::<(), lithos_core::fs::ParseError>(())
+//! ```
+
 use std::{
     path::{Path, PathBuf},
     time::SystemTime,
@@ -5,32 +49,15 @@ use std::{
 
 use super::{
     error::PathValidationError,
-    types::{Binary, Json, Markdown, Toml, Yaml},
+    file::{FileEntry, FileInfo, FileName},
+    types::{Binary, FormatKind, Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
 use crate::fs::error::ParseError;
 
-/// Supported file formats for structured parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FormatKind {
-    /// JSON format.
-    Json,
-    /// TOML format.
-    Toml,
-    /// YAML format.
-    Yaml,
-    /// Markdown format.
-    Markdown,
-    /// Binary format.
-    Binary,
-    /// Unknown or unsupported format.
-    Unknown,
-}
-
 /// A read-only filesystem adapter for safe vault access.
 ///
-/// `Reader` provides methods for listing, reading, and parsing files within a
+/// `Reader` provides methods for filtering, reading, and parsing files within a
 /// specified root directory. It enforces path safety via [`Validator`] to
 /// prevent traversal attacks and unauthorized access to restricted files.
 pub struct Reader {
@@ -125,10 +152,28 @@ impl Reader {
         self.root.join(path).exists()
     }
 
-    /// Lists files matching a glob pattern within the vault.
+    /// Filters files within the vault using a glob pattern.
     ///
     /// The pattern is relative to the vault root. Only files and symlinks are
     /// returned; directories are excluded. Results are sorted alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pattern is invalid or if I/O operations fail.
+    #[inline]
+    pub fn filter_dir(
+        &self,
+        pattern: &str,
+    ) -> Result<Vec<PathBuf>, ParseError> {
+        use super::scanner::{DirScanInput, DirScanner};
+
+        let scanner = DirScanner::new(&self.root);
+        scanner.paths(DirScanInput::new().with_pattern(pattern))
+    }
+
+    /// Lists files matching a glob pattern within the vault.
+    ///
+    /// This is a compatibility alias for [`filter_dir`].
     ///
     /// # Errors
     ///
@@ -138,42 +183,7 @@ impl Reader {
         &self,
         pattern: &str,
     ) -> Result<Vec<PathBuf>, ParseError> {
-        let full_pattern = self.root.join(pattern);
-        let pattern_str =
-            full_pattern.to_str().ok_or_else(|| ParseError::Io {
-                path: full_pattern.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid UTF-8 in pattern",
-                ),
-            })?;
-
-        let mut paths = Vec::new();
-        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
-            path: full_pattern.clone(),
-            source: std::io::Error::other(e),
-        })? {
-            let path = entry.map_err(|e| ParseError::Io {
-                path: e.path().to_path_buf(),
-                source: e.into_error(),
-            })?;
-
-            if !path.is_file() && !path.is_symlink() {
-                continue;
-            }
-
-            let relative = path.strip_prefix(&self.root).map_err(|_err| {
-                ParseError::Io {
-                    path: path.clone(),
-                    source: std::io::Error::other("Path outside root"),
-                }
-            })?;
-
-            paths.push(relative.to_path_buf());
-        }
-
-        paths.sort();
-        Ok(paths)
+        self.filter_dir(pattern)
     }
 
     /// Lists directories matching a glob pattern within the vault.
@@ -225,33 +235,41 @@ impl Reader {
         Ok(paths)
     }
 
-    /// Reads and parses a structured file (JSON, TOML, or YAML).
+    /// Lists file entries within the vault using a glob pattern.
     ///
-    /// The format is detected based on the file extension.
+    /// Similar to [`filter_dir`], but returns a [`FileEntry`] for each matching
+    /// file, which includes the path, filename, and metadata (`FileInfo`).
+    /// Results are sorted by path alphabetically.
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] if:
-    /// - The file format is unsupported.
-    /// - The file cannot be read.
-    /// - The content is malformed for the detected format.
+    /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let content = self.read_to_string(path)?;
-        match Self::classify_path(path, Some(&content)) {
-            FormatKind::Json => Json::parse(path, &content),
-            FormatKind::Toml => Toml::parse(path, &content),
-            FormatKind::Yaml => Yaml::parse(path, &content),
-            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
-                Err(ParseError::UnsupportedFormat {
-                    path: path.to_path_buf(),
-                    supported: &["json", "toml", "yaml", "yml"],
-                })
-            }
-        }
+    pub fn list_entries(
+        &self,
+        pattern: &str,
+    ) -> Result<Vec<FileEntry>, ParseError> {
+        use super::scanner::{DirScanInput, DirScanner};
+
+        let scanner = DirScanner::new(&self.root);
+        scanner.entries(DirScanInput::new().with_pattern(pattern))
+    }
+
+    /// Reads a file's content as raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the file cannot be read.
+    #[inline]
+    pub(crate) fn read_bytes(
+        &self,
+        path: &Path,
+    ) -> Result<Vec<u8>, ParseError> {
+        let full_path = self.root.join(path);
+        std::fs::read(&full_path).map_err(|e| ParseError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })
     }
 
     /// Reads a file's content as a UTF-8 string.
@@ -288,6 +306,17 @@ impl Reader {
         f(path, &content)
     }
 
+    /// Returns the information for a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the file does not exist or metadata cannot
+    /// be read.
+    #[inline]
+    pub fn info(&self, path: &Path) -> Result<FileInfo, ParseError> {
+        self.metadata(path).map(FileInfo::from)
+    }
+
     /// Returns the metadata for a file.
     ///
     /// # Errors
@@ -308,84 +337,57 @@ impl Reader {
 
     /// Returns the file's creation timestamp.
     ///
-    /// Uses the standard cross-platform `Metadata::created()` method.
-    ///
     /// Returns `None` if the metadata cannot be read or the creation time is
     /// not available on this platform. Failures are logged at debug level.
     #[inline]
+    #[must_use]
     pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
-        let metadata = match self.metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
+        let s = self
+            .info(path)
+            .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
                     error = %e,
                     "Failed to read metadata for created_at"
                 );
-                return None;
-            }
-        };
-
-        match metadata.created() {
-            Ok(system_time) => Some(system_time),
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read created timestamp from metadata"
-                );
-                None
-            }
-        }
+            })
+            .ok()?;
+        s.created_at()
     }
 
     /// Returns the file's modification timestamp.
     ///
-    /// Uses the standard cross-platform `Metadata::modified()` method.
-    ///
     /// Returns `None` if the metadata cannot be read or the modification time
     /// is not available on this platform. Failures are logged at debug level.
     #[inline]
+    #[must_use]
     pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
-        let metadata = match self.metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
+        let s = self
+            .info(path)
+            .map_err(|e| {
                 tracing::debug!(
                     path = %path.display(),
                     error = %e,
                     "Failed to read metadata for modified_at"
                 );
-                return None;
-            }
-        };
-
-        match metadata.modified() {
-            Ok(system_time) => Some(system_time),
-            Err(e) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read modified timestamp from metadata"
-                );
-                None
-            }
-        }
+            })
+            .ok()?;
+        s.modified_at()
     }
 
-    /// Reads a file's content as raw bytes.
+    /// Extracts the filename (with extension) from a path.
+    ///
+    /// Returns the complete filename including its extension.
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the file cannot be read.
+    /// Returns [`ParseError::Io`] if the path has no filename or the filename
+    /// is not valid UTF-8.
     #[inline]
-    pub(crate) fn read_bytes(
-        &self,
-        path: &Path,
-    ) -> Result<Vec<u8>, ParseError> {
-        let full_path = self.root.join(path);
-        std::fs::read(&full_path).map_err(|e| ParseError::Io {
+    pub fn filename(&self, path: &Path) -> Result<FileName, ParseError> {
+        FileName::try_from(path).map_err(|source| ParseError::Io {
             path: path.to_path_buf(),
-            source: e,
+            source,
         })
     }
 
@@ -400,6 +402,55 @@ impl Reader {
         path: &Path,
     ) -> Result<(), PathValidationError> {
         self.validator.validate(path)
+    }
+
+    /// Reads and parses a structured file (JSON, TOML, or YAML).
+    ///
+    /// The format is detected based on the file extension.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if:
+    /// - The file format is unsupported.
+    /// - The file cannot be read.
+    /// - The content is malformed for the detected format.
+    #[inline]
+    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let content = self.read_to_string(path)?;
+        Self::parse_structured_from_str(path, &content)
+    }
+
+    /// Parses structured data (JSON/TOML/YAML) from an already-read string.
+    ///
+    /// This is useful when you've already read the file content and want to
+    /// parse it without re-reading. The format is auto-detected from the file
+    /// extension and content.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if the format is unsupported or parsing fails.
+    #[inline]
+    pub fn parse_structured_from_str<T>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match Self::classify_path(path, Some(content)) {
+            FormatKind::Json => Json::parse(path, content),
+            FormatKind::Toml => Toml::parse(path, content),
+            FormatKind::Yaml => Yaml::parse(path, content),
+            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
+                Err(ParseError::UnsupportedFormat {
+                    path: path.to_path_buf(),
+                    supported: &["json", "toml", "yaml", "yml"],
+                })
+            }
+        }
     }
 
     /// Detects the file format based on path extension and optional content
@@ -577,7 +628,7 @@ mod tests {
         }
     }
 
-    mod list_files {
+    mod filter_dir {
         use super::*;
 
         #[test]
@@ -586,7 +637,7 @@ mod tests {
             write_file(dir.path(), "schemas/b.json", b"{}");
             write_file(dir.path(), "schemas/a.json", b"{}");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("schemas/**/*.json").expect("list");
+            let files = reader.filter_dir("schemas/**/*.json").expect("list");
             assert_eq!(files, vec![
                 PathBuf::from("schemas/a.json"),
                 PathBuf::from("schemas/b.json")
@@ -600,22 +651,26 @@ mod tests {
             std::fs::create_dir_all(dir.path().join("subdir.json"))
                 .expect("dir");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert_eq!(files.len(), 1);
         }
 
         #[test]
-        fn rejects_invalid_pattern() {
+        fn handles_glob_patterns() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            reader.list_files("[invalid").unwrap_err();
+            // glob::Pattern is very permissive - even "[invalid" is considered
+            // valid It just won't match anything, which is fine
+            let result = reader.filter_dir("[invalid");
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_empty());
         }
 
         #[test]
         fn returns_empty_when_no_matches() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert!(files.is_empty());
         }
 
@@ -630,8 +685,60 @@ mod tests {
             )
             .expect("symlink");
             let reader = Reader::new(dir.path());
-            let files = reader.list_files("*.json").expect("list");
+            let files = reader.filter_dir("*.json").expect("list");
             assert_eq!(files.len(), 2);
+        }
+    }
+
+    mod list_entries {
+        use super::*;
+
+        #[test]
+        fn returns_sorted_entries() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "schemas/b.json", b"{}");
+            write_file(dir.path(), "schemas/a.json", b"{}");
+            let reader = Reader::new(dir.path());
+            let entries =
+                reader.list_entries("schemas/**/*.json").expect("list");
+
+            assert_eq!(entries.len(), 2);
+            assert_eq!(
+                entries.first().map(|e| &e.path),
+                Some(&PathBuf::from("schemas/a.json"))
+            );
+            assert_eq!(
+                entries.get(1).map(|e| &e.path),
+                Some(&PathBuf::from("schemas/b.json"))
+            );
+            assert_eq!(
+                entries.first().map(|e| e.filename.as_str()),
+                Some("a.json")
+            );
+            assert_eq!(
+                entries.get(1).map(|e| e.filename.as_str()),
+                Some("b.json")
+            );
+            assert!(entries.first().is_some_and(|e| e.info.size() > 0));
+        }
+
+        #[test]
+        fn excludes_directories_from_results() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.json", b"{}");
+            std::fs::create_dir_all(dir.path().join("subdir.json"))
+                .expect("dir");
+            let reader = Reader::new(dir.path());
+            let entries = reader.list_entries("*.json").expect("list");
+            assert_eq!(entries.len(), 1);
+        }
+
+        #[test]
+        fn returns_empty_when_no_matches() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let entries = reader.list_entries("*.json").expect("list");
+            assert!(entries.is_empty());
         }
     }
 

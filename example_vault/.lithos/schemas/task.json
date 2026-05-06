@@ -1,7 +1,7 @@
 {
   "properties": {
     "date": {
-      "$ref": "property_bank#/date_iso_8601"
+      "$ref": "#property_bank/date_iso_8601"
     },
     "task_start": {
       "type": "date",
@@ -13,28 +13,25 @@
     },
     "due_do": {
       "type": "string",
-      "options": [
-        "do",
-        "due"
-      ]
+      "options": ["do", "due"]
     },
     "pillar": {
-      "$ref": "property_bank#/pillar"
+      "$ref": "#property_bank/pillar"
     },
     "goal": {
-      "$ref": "property_bank#/goal"
+      "$ref": "#property_bank/goal"
     },
     "context": {
-      "$ref": "property_bank#/context"
+      "$ref": "#property_bank/context"
     },
     "project": {
-      "$ref": "property_bank#/project"
+      "$ref": "#property_bank/project"
     },
     "parent_task": {
-      "$ref": "property_bank#/parent_task"
+      "$ref": "#property_bank/parent_task"
     },
     "status": {
-      "$ref": "property_bank#/task_status"
+      "$ref": "#property_bank/task_status"
     },
     "type": {
       "type": "string",
@@ -48,13 +45,13 @@
       ]
     },
     "organization": {
-      "$ref": "property_bank#/organization"
+      "$ref": "#property_bank/organization"
     },
     "contact": {
-      "$ref": "property_bank#/contact"
+      "$ref": "#property_bank/contact"
     },
     "library": {
-      "$ref": "property_bank#/library"
+      "$ref": "#property_bank/library"
     }
   }
 }

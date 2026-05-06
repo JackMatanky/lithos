@@ -772,6 +772,7 @@ dependencies = [
  "proptest",
  "pulldown-cmark",
  "rand 0.8.5",
+ "rayon",
  "redb",
  "regex",
  "rkyv",
@@ -785,6 +786,7 @@ dependencies = [
  "toml",
  "tracing",
  "uuid",
+ "walkdir",
  "zstd",
 ]
 

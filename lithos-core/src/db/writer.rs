@@ -281,6 +281,51 @@ impl BatchWriter {
         delete_key_tx(&mut self.tx, table, key)
     }
 
+    /// Insert or update a value with UUID key within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if serialization or transaction fails.
+    #[inline]
+    pub fn put_by_uuid<V>(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+    }
+
+    /// Delete a value by UUID key within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb table operation fails.
+    #[inline]
+    pub fn delete_by_uuid(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<bool, DbError> {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        delete_key_tx(&mut self.tx, table, key)
+    }
+
     /// Insert a value into a multimap within the batch transaction using a
     /// table definition.
     ///
@@ -401,6 +446,33 @@ impl ReadWriteUnitOfWork {
         get_owned_tx(&self.tx, table, key)
     }
 
+    /// Read a value with UUID key and deserialize to an owned value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_owned_by_uuid<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        get_owned_tx(&self.tx, table, key)
+    }
+
     /// Insert or update a value within the transaction using a table
     /// definition.
     ///
@@ -428,6 +500,34 @@ impl ReadWriteUnitOfWork {
         serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
     }
 
+    /// Insert or update a value with UUID key within the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if serialization or transaction fails.
+    #[inline]
+    pub fn put_by_uuid<V>(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+    }
+
     /// Delete a value by key within the transaction using a table definition.
     ///
     /// # Errors
@@ -439,6 +539,23 @@ impl ReadWriteUnitOfWork {
         table: TableDefinition<&str, &[u8]>,
         key: &str,
     ) -> Result<bool, DbError> {
+        delete_key_tx(&mut self.tx, table, key)
+    }
+
+    /// Delete a value by UUID key within the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb table operation fails.
+    #[inline]
+    pub fn delete_by_uuid(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<bool, DbError> {
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
         delete_key_tx(&mut self.tx, table, key)
     }
 

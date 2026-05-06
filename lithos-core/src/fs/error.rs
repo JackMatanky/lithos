@@ -135,6 +135,25 @@ pub enum PathValidationError {
     #[error("Validator root must be absolute, got: {0}")]
     RelativeRoot(std::path::PathBuf),
 }
+
+/// Errors that can occur during [`DirEntry`](std::fs::DirEntry) conversions.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "DirEntry prefix clarifies this is for std::fs::DirEntry \
+              conversions"
+)]
+pub enum DirEntryError {
+    /// Invalid UTF-8 in path.
+    #[error("Invalid UTF-8 in path: {0}")]
+    InvalidUtf8(String),
+
+    /// I/O error during conversion.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
