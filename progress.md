@@ -74,7 +74,38 @@
   - **Improved testability**: Each method has unit test surface
 
 ### Phase 3: Refactor DiscoveryEngine
-- **Status:** pending
+- **Status:** complete
+- **Started:** 2026-05-06
+- **Completed:** 2026-05-06
+
+- Actions taken:
+  - Renamed `DiscoveryOutcome` → `DiscoveryResult` for clarity
+  - Created new types:
+    - `SchemaDiscovery` - file entry + optional cached state
+    - `PropertyBankDiscovery` - file entry + optional view
+    - `SchemaCachedState` - ID + view for existing schemas
+    - `CachedState` - temporary helper for DB results
+  - Decomposed `DiscoveryEngine::run()` into 5 focused methods:
+    - `scan_filesystem()` - Returns Vec<FileEntry>
+    - `separate_property_bank()` - O(n) single pass classification
+    - `query_cached_state()` - Single DB transaction (batch reader)
+    - `build_result()` - Combine filesystem + DB data
+    - `detect_deleted_schemas()` - Iterator-based deletion detection
+  - Removed `FileDiscovery` wrapper type (redundant HashMap wrapper)
+  - Updated `run()` orchestration method (now 15 lines, was 93)
+  - Updated test to use new `DiscoveryResult` structure
+  - Verified all tests pass: `mise run test:unit:schema`
+
+- Files created/modified:
+  - lithos-core/src/schema/discovery.rs (REFACTORED) - New type structure + decomposed methods
+  - task_plan.md (updated) - Marked Phase 3 complete
+  - progress.md (updated) - This file
+
+- Test Results:
+  - ✅ 250 tests run, all passed
+  - ✅ 77 doctests passed
+  - ✅ Zero failures, zero errors
+  - Performance: Same (single FS scan, single DB transaction preserved)
 
 ### Phase 4: Refactor Builder to Use DiscoveryEngine
 - **Status:** pending

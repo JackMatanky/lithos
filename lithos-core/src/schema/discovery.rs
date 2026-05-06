@@ -4,174 +4,110 @@
 //! both the filesystem and database, consolidating all data needed for
 //! schema processing.
 
-use std::{collections::{HashMap, HashSet}, time::SystemTime};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    config::paths::SchemaConfigSpec
-    fs::{DirScanInput, DirScanner, FileEntry, FileInfo, RelativePath},
+    config::paths::SchemaConfigSpec,
+    fs::{DirScanInput, DirScanner, FileEntry, RelativePath},
     schema::{
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
         identifier::SchemaId,
         inheritance::InheritanceGraph,
-        views::{RawViewRead, RawSchemaView, RawPropertyBankView},
+        views::{RawPropertyBankView, RawSchemaView},
     },
 };
 
-/// Discovered files from filesystem scan.
+// ═════════════════════════════════════════════════════════════════════════════
+//  Discovery Result Types
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Cached state for an existing schema file.
 ///
-/// Newtype wrapper around `HashMap<RelativePath, FileEntry>` for type safety
-/// and to provide domain-specific query methods.
+/// This type only exists for schemas that have been previously ingested.
+#[derive(Debug, Clone)]
+pub(crate) struct SchemaCachedState {
+    /// Schema ID from previous ingestion.
+    pub(crate) id: SchemaId,
+    /// Cached view for staleness detection.
+    pub(crate) view: RawSchemaView,
+}
+
+/// Discovery data for a single schema file.
+///
+/// Combines filesystem metadata with optional cached state from the database.
+#[derive(Debug, Clone)]
+pub(crate) struct SchemaDiscovery {
+    /// File entry from filesystem scan (path, filename, info).
+    pub(crate) entry: FileEntry,
+    /// Cached state from database (None for new files).
+    pub(crate) cached: Option<SchemaCachedState>,
+}
+
+/// Discovery data for the property bank file.
+///
+/// Combines filesystem metadata with optional cached view from the database.
+#[derive(Debug, Clone)]
+pub(crate) struct PropertyBankDiscovery {
+    /// File entry from filesystem scan (path, filename, info).
+    pub(crate) entry: FileEntry,
+    /// Cached view from database (None if never ingested).
+    pub(crate) view: Option<RawPropertyBankView>,
+}
+
+/// Result of atomic discovery combining filesystem scan and database state.
+///
+/// This type replaces the previous `DiscoveryOutcome` with a clearer structure
+/// that separates schemas from property bank and makes new vs existing files
+/// explicit via the `cached` field.
 #[derive(Debug)]
-struct FileDiscovery(HashMap<RelativePath, FileEntry>);
-
-impl FileDiscovery {
-    /// Returns an iterator over all entries.
-    fn iter(&self) -> impl Iterator<Item = (&RelativePath, &FileEntry)> {
-        self.0.iter()
-    }
-
-    /// Extracts the property bank entry if present.
-    fn extract_property_bank(
-        &mut self,
-        expected_path: &RelativePath,
-    ) -> Option<FileEntry> {
-        self.0.remove(expected_path)
-    }
-
-    /// Returns the number of remaining files (after property bank extraction).
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Consumes self and returns the inner HashMap.
-    fn into_inner(self) -> HashMap<RelativePath, FileEntry> {
-        self.0
-    }
+pub(crate) struct DiscoveryResult {
+    /// Discovered schema files (path → discovery data).
+    pub(crate) schemas: HashMap<RelativePath, SchemaDiscovery>,
+    /// Discovered property bank file (if present).
+    pub(crate) property_bank: Option<PropertyBankDiscovery>,
+    /// Inheritance graph from database (if exists).
+    pub(crate) graph: Option<InheritanceGraph<()>>,
+    /// Schema IDs that exist in DB but not on filesystem (deleted files).
+    pub(crate) deleted_ids: Vec<SchemaId>,
 }
 
-/// File kind for discovery results.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SchemaFileKind {
-    /// Regular schema file with its stable schema ID.
-    Schema(SchemaId),
-    /// Property bank singleton file.
-    PropertyBank,
-}
-
-/// A cached view of a schema file or property bank.
-///
-/// This enum allows polymorphic handling of cached metadata from the database
-/// during discovery.
-#[derive(Debug, Clone)]
-pub(crate) enum DiscoveredView {
-    /// Cached view of a schema file.
-    Schema(RawSchemaView),
-    /// Cached view of a property bank file.
-    PropertyBank(RawPropertyBankView),
-}
-
-impl DiscoveredView {
-    /// Checks if timestamps match between this cached view and provided times.
-    #[must_use]
-    pub(crate) fn is_timestamp_match(
-        &self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> bool {
-        match self {
-            Self::Schema(v) => v.is_timestamp_match(created_at, modified_at),
-            Self::PropertyBank(v) => {
-                v.is_timestamp_match(created_at, modified_at)
-            }
-        }
-    }
-}
-
-/// Unified discovery data for a single file (schema or property bank).
-///
-/// This structure eliminates duplication by using the `RawView` trait.
-/// Both `RawPropertyBankView` and `RawSchemaView` implement `RawView`,
-/// allowing polymorphic handling of cached metadata.
-#[derive(Debug, Clone)]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "Internal data structure"
-)]
-pub(crate) struct DiscoveredFile {
-    /// File kind information.
-    pub(crate) kind: SchemaFileKind,
-    /// Cached view from DB (None if never loaded).
-    pub(crate) view: Option<DiscoveredView>,
-    /// Current file information from filesystem.
-    pub(crate) info: FileInfo,
-}
-
-impl DiscoveredFile {
-    /// Checks if timestamps match between cached view and current file.
-    ///
-    /// Returns `false` if no cached view exists.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Idiomatic option matching is preferred"
-    )]
-    #[must_use]
-    pub(crate) fn is_timestamp_match(&self) -> bool {
-        let Some(view) = self.view.as_ref() else {
-            return false;
-        };
-        view.is_timestamp_match(self.info.created_at(), self.info.modified_at())
-    }
-
-    /// Returns `true` if this file has no cached view (first time seen).
+impl DiscoveryResult {
+    /// Returns `true` if any schema files were discovered.
     #[inline]
     #[must_use]
-    pub(crate) fn is_new(&self) -> bool {
-        self.view.is_none()
-    }
-}
-
-/// Unified discovery outcome containing all metadata from filesystem and DB.
-#[derive(Debug)]
-pub(crate) struct DiscoveryOutcome {
-    /// Map of all discovered files (schemas and property bank).
-    pub(crate) files: HashMap<RelativePath, DiscoveredFile>,
-    /// The current inheritance graph from the database.
-    pub(crate) graph: Option<InheritanceGraph<()>>,
-    /// List of schema IDs that exist in the database but not on filesystem.
-    pub(crate) deleted_schemas: Vec<SchemaId>,
-}
-
-impl DiscoveryOutcome {
-    /// Returns an iterator over all discovered schema files.
-    pub(crate) fn schema_files(
-        &self,
-    ) -> impl Iterator<Item = (&RelativePath, &DiscoveredFile)> {
-        self.files
-            .iter()
-            .filter(|(_, f)| matches!(f.kind, SchemaFileKind::Schema(_)))
-    }
-
-    /// Returns the discovered property bank file, if any.
-    pub(crate) fn property_bank(
-        &self,
-    ) -> Option<(&RelativePath, &DiscoveredFile)> {
-        self.files
-            .iter()
-            .find(|(_, f)| matches!(f.kind, SchemaFileKind::PropertyBank))
-    }
-
-    /// Returns `true` if any schema files were discovered.
     pub(crate) fn has_schemas(&self) -> bool {
-        self.schema_files().next().is_some()
+        !self.schemas.is_empty()
     }
 
-    /// Returns `true` if this is a cold-start discovery (no cached views).
+    /// Returns `true` if this is a cold-start discovery (no cached data).
+    #[must_use]
     pub(crate) fn is_cold_start(&self) -> bool {
-        self.graph.is_none() || self.files.values().all(|f| f.view.is_none())
+        self.graph.is_none()
+            && self.schemas.values().all(|s| s.cached.is_none())
+            && self.property_bank.as_ref().map_or(true, |pb| pb.view.is_none())
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Cached State Helper
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Cached state from database (result of batch query).
+///
+/// This is a temporary struct used to pass DB query results from
+/// `query_cached_state()` to `build_result()`.
+struct CachedState {
+    graph: Option<InheritanceGraph<()>>,
+    property_bank_view: Option<RawPropertyBankView>,
+    schema_views: HashMap<RelativePath, RawSchemaView>,
+    schema_ids: HashMap<RelativePath, SchemaId>,
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Discovery Engine
+// ═════════════════════════════════════════════════════════════════════════════
 
 /// Orchestrates atomic discovery of schemas and property bank.
 ///
@@ -182,10 +118,11 @@ pub(crate) struct DiscoveryEngine;
 impl DiscoveryEngine {
     /// Performs an atomic discovery run.
     ///
-    /// This method executes the following pipeline:
-    /// 1. Scanning filesystem for schemas and property bank
-    /// 2. Fetching all matching cached views from database in one transaction
-    /// 3. Combining filesystem and database state into a unified outcome
+    /// This method orchestrates the discovery pipeline:
+    /// 1. Scan filesystem for schema files
+    /// 2. Separate property bank from schemas
+    /// 3. Query DB for all cached state (single transaction)
+    /// 4. Combine filesystem + DB data into result
     ///
     /// # Errors
     ///
@@ -194,85 +131,37 @@ impl DiscoveryEngine {
         spec: &SchemaConfigSpec,
         repo: &R,
         vault_root: &std::path::Path,
-    ) -> Result<DiscoveryOutcome, SchemaLoaderError>
+    ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
         R: crate::schema::storage::Repository,
         R::Error: Into<SchemaRepositoryError>,
     {
-        // Step 1: Scan filesystem for all schema files and property bank
-        let mut discovered = Self::scan_filesystem(spec, vault_root)?;
+        // Step 1: Scan filesystem
+        let entries = Self::scan_filesystem(spec, vault_root)?;
 
-        // Step 2: Extract property bank with O(1) lookup
-        let property_bank_path = spec.property_bank();
-        let property_bank_entry =
-            discovered.extract_property_bank(property_bank_path);
+        // Step 2: Separate property bank from schemas (O(n) single pass)
+        let (property_bank_entry, schema_entries) =
+            Self::separate_property_bank(entries, spec.property_bank());
 
-        // Step 3: Extract paths for database queries (only schemas remain)
-        let schema_paths: Vec<RelativePath> =
-            discovered.iter().map(|(path, _)| path.clone()).collect();
+        // Step 3: Query DB for all cached state (single transaction)
+        let cached_state = Self::query_cached_state(
+            repo,
+            &property_bank_entry,
+            &schema_entries,
+            spec.property_bank(),
+        )?;
 
-        // Step 4: Perform all database queries in a single atomic batch read
-        let (graph, bank_view, mut views_by_path, mut ids_by_path) = repo
-            .with_batch_schema_reader(|batch_reader| {
-                let graph = batch_reader.get_topological_graph()?;
-
-                let bank_view = property_bank_entry.as_ref().and_then(|_| {
-                    batch_reader
-                        .get_raw_property_bank_view(property_bank_path)
-                        .ok()
-                });
-
-                let views = batch_reader
-                    .find_raw_schema_views_by_paths(&schema_paths)?;
-                let ids =
-                    batch_reader.find_schema_ids_by_paths(&schema_paths)?;
-
-                Ok((graph, bank_view, views, ids))
-            })
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-
-        // Step 5: Build discovered files map
-        let mut files = HashMap::new();
-
-        // Add property bank if found
-        if let Some(entry) = property_bank_entry {
-            files.insert(property_bank_path.clone(), DiscoveredFile {
-                kind: SchemaFileKind::PropertyBank,
-                view: bank_view.map(DiscoveredView::PropertyBank),
-                info: entry.info,
-            });
-        }
-
-        let mut filesystem_ids = HashSet::new();
-
-        // Add schema files
-        for (path, entry) in discovered.into_inner() {
-            let id = ids_by_path.remove(&path).unwrap_or_else(SchemaId::new);
-            let view = views_by_path.remove(&path).map(DiscoveredView::Schema);
-
-            filesystem_ids.insert(id);
-
-            files.insert(path, DiscoveredFile {
-                kind: SchemaFileKind::Schema(id),
-                view,
-                info: entry.info,
-            });
-        }
-
-        let deleted_schemas =
-            Self::detect_deleted_schemas(graph.as_ref(), &filesystem_ids);
-
-        Ok(DiscoveryOutcome {
-            files,
-            graph,
-            deleted_schemas,
-        })
+        // Step 4: Combine filesystem + DB state into result
+        Self::build_result(property_bank_entry, schema_entries, cached_state)
     }
 
-    /// Scans the filesystem for schema files and property bank.
+    // ─────────────────────────────────────────────────────────────────────────
+    // Filesystem Operations
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Scans filesystem for schema files.
     ///
-    /// Returns `FileDiscovery` containing all discovered files (schemas and
-    /// property bank).
+    /// Returns `Vec<FileEntry>` for efficient processing (no HashMap overhead).
     ///
     /// # Errors
     ///
@@ -280,15 +169,13 @@ impl DiscoveryEngine {
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
         vault_root: &std::path::Path,
-    ) -> Result<FileDiscovery, SchemaLoaderError> {
+    ) -> Result<Vec<FileEntry>, SchemaLoaderError> {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
-
-        // Scan directory with extension filter (DirScanner handles filtering)
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
-        let scanner = DirScanner::new(vault_root);
-        let entries = scanner
+
+        DirScanner::new(vault_root)
             .entries(
                 DirScanInput::new()
                     .with_pattern(&pattern)
@@ -301,19 +188,32 @@ impl DiscoveryEngine {
                         source: std::io::Error::other(e),
                     },
                 ))
-            })?;
+            })
+    }
 
-        // Convert to HashMap for O(1) lookups
-        let mut files = HashMap::new();
+    /// Separates property bank from schema files (O(n) single pass).
+    ///
+    /// Returns owned `FileEntry` values for efficient processing.
+    fn separate_property_bank(
+        entries: Vec<FileEntry>,
+        property_bank_path: &RelativePath,
+    ) -> (Option<FileEntry>, Vec<(RelativePath, FileEntry)>) {
+        let mut property_bank = None;
+        let mut schemas = Vec::with_capacity(entries.len());
+
         for entry in entries {
-            let Ok(relative_path) = RelativePath::try_from(entry.path.clone())
-            else {
+            let Ok(path) = RelativePath::try_from(entry.path.clone()) else {
                 continue;
             };
-            files.insert(relative_path, entry);
+
+            if path == *property_bank_path {
+                property_bank = Some(entry);
+            } else {
+                schemas.push((path, entry));
+            }
         }
 
-        if files.is_empty() {
+        if schemas.is_empty() && property_bank.is_none() {
             tracing::info!(
                 "No schema files found; schema processing skipped. Add a \
                  schema file (json, yaml, or toml) to enable schema \
@@ -321,9 +221,122 @@ impl DiscoveryEngine {
             );
         }
 
-        Ok(FileDiscovery(files))
+        (property_bank, schemas)
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Database Operations
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Queries all cached state from DB in single transaction.
+    ///
+    /// Performance: Single batch read with closure (hot path stays inline).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if database queries fail.
+    fn query_cached_state<R>(
+        repo: &R,
+        property_bank_entry: &Option<FileEntry>,
+        schema_entries: &[(RelativePath, FileEntry)],
+        property_bank_path: &RelativePath,
+    ) -> Result<CachedState, SchemaLoaderError>
+    where
+        R: crate::schema::storage::Repository,
+        R::Error: Into<SchemaRepositoryError>,
+    {
+        let schema_paths: Vec<_> =
+            schema_entries.iter().map(|(path, _)| path.clone()).collect();
+
+        repo.with_batch_schema_reader(|batch_reader| {
+            let graph = batch_reader.get_topological_graph()?;
+
+            let property_bank_view =
+                property_bank_entry.as_ref().and_then(|_| {
+                    batch_reader
+                        .get_raw_property_bank_view(property_bank_path)
+                        .ok()
+                });
+
+            let schema_views =
+                batch_reader.find_raw_schema_views_by_paths(&schema_paths)?;
+            let schema_ids =
+                batch_reader.find_schema_ids_by_paths(&schema_paths)?;
+
+            Ok(CachedState {
+                graph,
+                property_bank_view,
+                schema_views,
+                schema_ids,
+            })
+        })
+        .map_err(|e| SchemaLoaderError::Repository(e.into()))
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Result Construction
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Builds final DiscoveryResult from filesystem + DB data.
+    ///
+    /// Performance: Single pass over schema_entries; no intermediate
+    /// allocations.
+    fn build_result(
+        property_bank_entry: Option<FileEntry>,
+        schema_entries: Vec<(RelativePath, FileEntry)>,
+        cached: CachedState,
+    ) -> Result<DiscoveryResult, SchemaLoaderError> {
+        // Build property bank discovery
+        let property_bank =
+            property_bank_entry.map(|entry| PropertyBankDiscovery {
+                entry,
+                view: cached.property_bank_view,
+            });
+
+        // Build schema discoveries with cached state lookup
+        let mut schemas = HashMap::with_capacity(schema_entries.len());
+        let mut filesystem_ids = HashSet::with_capacity(schema_entries.len());
+
+        for (path, entry) in schema_entries {
+            let cached_state =
+                if let Some(view) = cached.schema_views.get(&path) {
+                    let id = cached
+                        .schema_ids
+                        .get(&path)
+                        .copied()
+                        .unwrap_or_else(SchemaId::new);
+                    filesystem_ids.insert(id);
+                    Some(SchemaCachedState {
+                        id,
+                        view: view.clone(),
+                    })
+                } else {
+                    None
+                };
+
+            schemas.insert(path, SchemaDiscovery {
+                entry,
+                cached: cached_state,
+            });
+        }
+
+        // Detect deleted schemas
+        let deleted_ids = Self::detect_deleted_schemas(
+            cached.graph.as_ref(),
+            &filesystem_ids,
+        );
+
+        Ok(DiscoveryResult {
+            schemas,
+            property_bank,
+            graph: cached.graph,
+            deleted_ids,
+        })
+    }
+
+    /// Detects schemas deleted from filesystem but still in DB.
+    ///
+    /// Performance: O(n) where n = graph size.
     fn detect_deleted_schemas(
         graph: Option<&InheritanceGraph<()>>,
         filesystem_ids: &HashSet<SchemaId>,
@@ -332,14 +345,11 @@ impl DiscoveryEngine {
             return Vec::new();
         };
 
-        let mut deleted_ids = Vec::new();
-        for id in graph.topo_order() {
-            if !filesystem_ids.contains(id) {
-                deleted_ids.push(*id);
-            }
-        }
-
-        deleted_ids
+        graph
+            .topo_order()
+            .filter(|id| !filesystem_ids.contains(id))
+            .copied()
+            .collect()
     }
 }
 
@@ -369,10 +379,10 @@ mod tests {
         );
 
         let repo = InMemoryRepository::new();
-        let outcome = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
+        let result = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
 
-        assert_eq!(outcome.files.len(), 2);
-        assert!(outcome.property_bank().is_some());
-        assert_eq!(outcome.schema_files().count(), 1);
+        assert_eq!(result.schemas.len(), 1);
+        assert!(result.property_bank.is_some());
+        assert!(result.has_schemas());
     }
 }

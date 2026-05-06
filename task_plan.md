@@ -28,25 +28,15 @@ Phase 3
 - [x] Document the new unified flow
 - **Status:** complete
 
-### Phase 2: Design Unified Discovery API
-- [ ] Design DiscoveryEngine API to support all use cases
-- [ ] Define what discovery data builder.rs needs
-- [ ] Define what discovery data property_bank_processor.rs needs
-- [ ] Define what discovery data schema_processor.rs needs
-- [ ] Plan how to eliminate `discover_files()` from builder.rs
-- [ ] Plan how to eliminate `discover()` from property_bank_processor.rs
-- [ ] Plan how to eliminate discovery logic from schema_processor.rs
-- [ ] Document the new unified flow
-- **Status:** pending
-
 ### Phase 3: Refactor DiscoveryEngine
-- [ ] Extend DiscoveryEngine to provide all needed discovery data
-- [ ] Ensure DiscoveryEngine efficiently uses DirScanner
-- [ ] Ensure DiscoveryEngine efficiently uses Repository batch operations
-- [ ] Add methods to DiscoveryOutcome for querying discovered data
-- [ ] Write tests for new DiscoveryEngine capabilities
-- [ ] Verify all tests pass: `mise run test:unit:schema`
-- **Status:** pending
+- [x] Rename `DiscoveryOutcome` → `DiscoveryResult`
+- [x] Create new types: `SchemaDiscovery`, `PropertyBankDiscovery`, `SchemaCachedState`, `CachedState`
+- [x] Decompose `run()` into 5 focused methods: scan_filesystem, separate_property_bank, query_cached_state, build_result, detect_deleted_schemas
+- [x] Update `run()` method signature and implementation
+- [x] Remove `FileDiscovery` wrapper type
+- [x] Update tests for new structure
+- [x] Run `mise run test:unit:schema` - ALL TESTS PASS
+- **Status:** complete
 
 ### Phase 4: Refactor Builder to Use DiscoveryEngine
 - [ ] Replace `discover_files()` with DiscoveryEngine call
