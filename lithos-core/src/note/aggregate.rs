@@ -709,9 +709,12 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
+            parser::{
+                lexical::{ArtifactLexer, DefaultScanPolicy},
+                text::{TextContext, TextNode, TextSequence, TextStyle},
+            },
             position::{SourceByteOffset, SourceByteRange},
             raw::{RawListItem, RawListItemText, RawListKind},
-            scanner::{NoteScanner, ScannedArtifact},
         },
     };
 
@@ -864,27 +867,20 @@ mod tests {
         spec: &TaskConfigSpec,
         emoji_markers: &[char],
     ) -> ListItem {
-        let scanner = NoteScanner::new(emoji_markers.to_vec());
+        let lexer = ArtifactLexer::new(emoji_markers.to_vec());
         let start = SourceByteOffset::new(0);
         let end = SourceByteOffset::try_from(raw_text.len()).unwrap_or(start);
         let range = SourceByteRange::new(start, end).expect("valid test range");
-
-        let artifacts = scanner
-            .scan_block(raw_text, SourceByteOffset::new(0))
+        let projection = TextSequence::from_nodes(vec![TextNode::new(
+            raw_text.into(),
+            TextStyle::NONE,
+            TextContext::NONE,
+            range.clone(),
+        )]);
+        let artifacts = lexer
+            .collect(raw_text, &projection, &DefaultScanPolicy)
             .expect("scan artifacts");
-
-        let mut tags = Vec::new();
-        let mut inline_fields = Vec::new();
-
-        for artifact in artifacts {
-            match artifact {
-                ScannedArtifact::Tag(tag) => tags.push(tag),
-                ScannedArtifact::InlineField(field) => {
-                    inline_fields.push(field);
-                }
-                ScannedArtifact::BlockRef(_) => {}
-            }
-        }
+        let (tags, inline_fields, _block_refs) = artifacts.into_parts();
 
         let is_checkbox =
             if raw_text.contains("[x]") || raw_text.contains("[X]") {

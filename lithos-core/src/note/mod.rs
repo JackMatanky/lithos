@@ -81,8 +81,6 @@ pub mod events;
 pub mod paths;
 /// Shared position primitives for the Note context.
 pub mod position;
-/// Unified scanning utilities.
-pub mod scanner;
 /// Shared primitive for dynamic note values.
 pub mod value;
 

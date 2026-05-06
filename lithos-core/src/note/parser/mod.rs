@@ -98,10 +98,10 @@ use crate::{
     note::{
         error::NoteIngestError,
         parser::{
-            assemble::RawAssembler, context::ParserContext, structure::DocTree,
+            assemble::RawAssembler, context::ParserContext,
+            lexical::ArtifactLexer, structure::DocTree,
         },
         raw::RawNote,
-        scanner::NoteScanner,
     },
 };
 
@@ -140,8 +140,8 @@ impl MarkdownParser {
         } else {
             Box::new([])
         };
-        let scanner = NoteScanner::new(emoji_markers);
-        let mut assembler = RawAssembler::new(source, scanner);
+        let lexer = ArtifactLexer::new(emoji_markers);
+        let mut assembler = RawAssembler::new(source, lexer);
         assembler.process_doc_tree(&tree)?;
         Ok(assembler.finish())
     }

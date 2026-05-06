@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use super::{
     block::{Block, BlockKind, Closed, ContainerBlockKind, LeafBlockKind},
-    lexical::{DefaultScanPolicy, scan_projection},
+    lexical::{ArtifactLexer, DefaultScanPolicy, LexicalArtifacts},
     structure::{Complete, DocTree, TraversalEvent},
     text::TextSequence,
     types::{
@@ -25,22 +25,21 @@ use crate::note::{
         RawListItem, RawListKind, RawNote, RawSection, RawSectionKind,
         frontmatter::RawFrontmatterFormat,
     },
-    scanner::{NoteScanner, ScannedRawArtifacts},
 };
 
 pub(crate) struct RawAssembler<'source> {
     source: &'source str,
-    scanner: NoteScanner,
+    lexer: ArtifactLexer,
     out: RawNote<'source>,
 }
 
 impl<'source> RawAssembler<'source> {
     #[inline]
     #[must_use]
-    pub(crate) fn new(source: &'source str, scanner: NoteScanner) -> Self {
+    pub(crate) fn new(source: &'source str, lexer: ArtifactLexer) -> Self {
         Self {
             source,
-            scanner,
+            lexer,
             out: RawNote::new(
                 None,
                 Vec::with_capacity(4),
@@ -168,6 +167,7 @@ impl<'source> RawAssembler<'source> {
 
         let projection = TextSequence::from_events(&events);
         let scanned = self.scan_projection(&projection)?;
+        let (tags, inline_fields, _block_refs) = scanned.into_parts();
         let item_text_range =
             projection.covering_range().unwrap_or(range.clone());
 
@@ -181,8 +181,8 @@ impl<'source> RawAssembler<'source> {
                 item_text_range,
             ),
             range.clone(),
-            scanned.tags,
-            scanned.inline_fields,
+            tags,
+            inline_fields,
         );
 
         self.out.accept_list_item(item);
@@ -209,6 +209,7 @@ impl<'source> RawAssembler<'source> {
                 self.extract_links_from_events(events);
                 let projection = TextSequence::from_events(events);
                 let scanned = self.scan_projection(&projection)?;
+                let (tags, inline_fields, block_refs) = scanned.into_parts();
                 let text = projection.as_displayable_text();
                 let trimmed = text.trim();
                 let heading_text = if trimmed.len() == text.len() {
@@ -228,9 +229,9 @@ impl<'source> RawAssembler<'source> {
                     range,
                     depth,
                 ));
-                self.out.tags.extend(scanned.tags);
-                self.out.inline_fields.extend(scanned.inline_fields);
-                self.out.block_refs.extend(scanned.block_refs);
+                self.out.tags.extend(tags);
+                self.out.inline_fields.extend(inline_fields);
+                self.out.block_refs.extend(block_refs);
             }
             LeafBlockKind::Paragraph {
                 events,
@@ -238,14 +239,15 @@ impl<'source> RawAssembler<'source> {
                 self.extract_links_from_events(events);
                 let projection = TextSequence::from_events(events);
                 let scanned = self.scan_projection(&projection)?;
+                let (tags, inline_fields, block_refs) = scanned.into_parts();
                 self.out.sections.push(RawSection::new(
                     RawSectionKind::Paragraph,
                     range,
                     depth,
                 ));
-                self.out.tags.extend(scanned.tags);
-                self.out.inline_fields.extend(scanned.inline_fields);
-                self.out.block_refs.extend(scanned.block_refs);
+                self.out.tags.extend(tags);
+                self.out.inline_fields.extend(inline_fields);
+                self.out.block_refs.extend(block_refs);
             }
             LeafBlockKind::Frontmatter {
                 format,
@@ -289,14 +291,10 @@ impl<'source> RawAssembler<'source> {
     fn scan_projection(
         &self,
         projection: &TextSequence,
-    ) -> Result<ScannedRawArtifacts<'source>, NoteIngestError> {
-        scan_projection(
-            &self.scanner,
-            self.source,
-            projection,
-            &DefaultScanPolicy,
-        )
-        .map_err(NoteIngestError::Domain)
+    ) -> Result<LexicalArtifacts<'source>, NoteIngestError> {
+        self.lexer
+            .collect(self.source, projection, &DefaultScanPolicy)
+            .map_err(NoteIngestError::Domain)
     }
 
     fn extract_links_from_events(&mut self, events: &[RangedEvent<'source>]) {

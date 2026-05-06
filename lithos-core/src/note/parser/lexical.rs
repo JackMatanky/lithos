@@ -8,7 +8,6 @@ use crate::note::{
     error::NoteError,
     position::{SourceByteOffset, SourceByteRange, SourceByteRangeIndex},
     raw::{RawBlockRef, RawInlineFieldToken, RawTag},
-    scanner::{NoteScanner, ScannedRawArtifacts},
 };
 
 #[expect(
@@ -404,37 +403,6 @@ fn parse_bare_field(line: &str) -> Option<(&str, &str, usize)> {
     let val = after.trim();
     let consumed = key_len.saturating_add(2).saturating_add(after.len());
     Some((key, val, consumed))
-}
-
-pub(crate) fn scan_projection<'source>(
-    scanner: &NoteScanner,
-    source: &'source str,
-    projection: &TextSequence,
-    policy: &dyn ScanPolicy,
-) -> Result<ScannedRawArtifacts<'source>, NoteError> {
-    let index = build_scan_index(projection, policy);
-    let scanned_artifacts = scanner.scan_ranges(source, &index)?;
-
-    let lexer = ArtifactLexer::new(Vec::<char>::new());
-    let out = lexer.collect(source, projection, policy)?;
-    let (tags, inline_fields, block_refs) = out.into_parts();
-    debug_assert_eq!(
-        tags.len(),
-        scanned_artifacts.tags.len(),
-        "parser lexer tag count diverged from scanner parity path"
-    );
-    debug_assert_eq!(
-        inline_fields.len(),
-        scanned_artifacts.inline_fields.len(),
-        "parser lexer inline field count diverged from scanner parity path"
-    );
-    debug_assert_eq!(
-        block_refs.len(),
-        scanned_artifacts.block_refs.len(),
-        "parser lexer block ref count diverged from scanner parity path"
-    );
-
-    Ok(scanned_artifacts)
 }
 
 #[cfg(test)]
