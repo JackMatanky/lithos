@@ -1,3 +1,192 @@
-# Progress Log
+# Progress Log: Config Typestate Refactoring
 
-- Created planning files for Template Module Redesign.
+---
+
+## Session: 2026-05-06
+
+### Initial Analysis (10:30)
+
+**Objective**: Understand current figment usage and design replacement.
+
+**Actions**:
+1. ✅ Loaded planning-with-files skill
+2. ✅ Ran session catchup (no previous context)
+3. ✅ Read `config/loader.rs` to find figment usage
+4. ✅ Read `config/ingestor.rs` to understand file loading
+5. ✅ Searched for existing typestate patterns in codebase
+6. ✅ Read `note/processor.rs` (lines 1-150)
+7. ✅ Read `schema/property_bank_processor.rs` (lines 1-200)
+
+**Discoveries**:
+- Figment only used in single method: `Loader::merge_raw_configs()` (25 lines)
+- Note processor uses simple single-dimension typestate
+- Property bank processor uses complex dual-dimension typestate
+- Config merging is much simpler than either pattern
+
+**Key Insight**:
+> After analyzing the code, typestate pattern is **overkill** for config merging. It's a pure function with no side effects. Direct field-level merge helpers are more appropriate.
+
+**Files Created**:
+- `task_plan.md` - Original plan (now needs revision)
+- `findings.md` - Analysis and revised approach
+- `progress.md` - This file
+
+**Decision**:
+- User confirmed: implement typestate pattern for clarity/expressivity
+- Pattern consistency valued over simplicity
+
+**Next Steps**:
+1. ✅ Update findings.md with typestate design proposal
+2. ✅ Update task_plan.md to reflect typestate approach
+3. ⏳ **GET USER APPROVAL** on proposed design before implementation
+4. (blocked) Implement processor.rs after approval
+5. (blocked) Update loader.rs after approval
+
+**Current Status**: WAITING FOR USER DESIGN APPROVAL
+
+---
+
+### Design Approval Request (11:00)
+
+**Proposed Typestate Design** (documented in findings.md):
+
+**Stages**:
+- `Defaults` → start with `RawConfig::default()`
+- `GlobalMerge` → after merging optional global config
+- `VaultMerge` → after merging optional vault config
+- `Completed` → terminal state with final merged config
+
+**Statuses**:
+- `WithDefaults { config: RawConfig }`
+- `WithGlobal { config: RawConfig }`
+- `WithVault { config: RawConfig }`
+- `Ready { config: RawConfig }`
+
+**API**:
+```rust
+ConfigProcessor::<Defaults, WithDefaults>::new()
+  .merge_global(Option<&RawGlobalConfig>)
+  .merge_vault(Option<&RawVaultConfig>)
+  .finalize()
+  .into_config() -> RawConfig
+```
+
+**Questions for User**:
+1. Is this the right level of granularity for stages?
+2. Should we have separate stages for "missing global" vs "present global"?
+3. Do status types need to carry more than just the config?
+4. Should we use branch enums like property_bank_processor?
+
+**USER APPROVED** (11:15):
+1. ✅ Option A: Full pipeline typestate
+2. ✅ 4 staleness cases (Fresh, BothStale, GlobalStale, VaultStale)
+3. ✅ Pattern like property_bank_processor (dual-dimension)
+4. ✅ Add property analysis stage
+
+**Design Finalized**:
+- 6 stages: Discovery → Comparison → Analysis → Merge → Construction → Completed
+- 2 branch enums: ComparisonBranch (4 variants), AnalysisBranch (2 variants)
+- Property-level change detection (like property_bank_processor)
+- Fast path optimization (fresh configs skip rebuild)
+
+**Next Action**:
+Begin Phase 2 - Implement processor.rs with approved design
+
+---
+
+## Phase 1 Complete ✅ (11:20)
+
+**Deliverables**:
+- ✅ `findings.md` with complete analysis and approved design
+- ✅ `task_plan.md` updated with 5 phases
+- ✅ Design specification: 6 stages, 4 staleness branches, property analysis
+- ✅ Pattern decision: Dual-dimension typestate like property_bank_processor
+
+**Key Design Points**:
+- Pipeline stages: Discovery → Comparison → Analysis → Merge → Construction → Completed
+- Staleness branches: Fresh | BothStale | GlobalStale | VaultStale
+- Property analysis: Field-level change detection (logging, paths, task, frontmatter)
+- Fast paths: Fresh configs skip rebuild, NoChanges skip merge
+- Optimization: Metadata-only updates when properties unchanged
+
+**Ready for Phase 2**: Implementation of processor.rs
+
+---
+
+## Session: Phase 2 - Implementation
+
+### Design Correction (11:25)
+
+**User Feedback**: Missing `views.rs` integration in design!
+
+**Actions**:
+1. ✅ Re-read `config/views.rs` (722 lines)
+2. ✅ Updated design in findings.md with view types
+3. ✅ Incorporated `RawGlobalConfigView` / `RawVaultConfigView` into status types
+4. ✅ Documented view-based staleness detection flow
+5. ✅ Clarified property analysis uses view decompression for comparison
+
+**Key Corrections**:
+- Discovery stage loads views from repository (not just raw configs)
+- Comparison uses `view.is_fresh(raw)` for staleness detection
+- Analysis decompresses view versions to compare field-level data
+- NoChanges path updates views without rebuilding Config
+- Each status type carries relevant views for its stage
+
+**Updated Design Elements**:
+- `Discovered` status has `global_view` / `vault_view` fields
+- All stale statuses carry views for comparison in Analysis stage
+- `NoChanges` status includes raw configs for view update
+- Property analysis compares BLAKE3 hashes per field
+
+**Design Now Complete**: Ready to implement after this correction
+
+_Awaiting user approval to proceed with corrected design..._
+
+---
+
+### Architecture Pivot (11:30)
+
+**User Proposes Alternative Design**:
+
+Instead of monolithic processor with 4 staleness branches, use:
+1. **Unified Discovery Engine** - Separate orchestrator (not typestate)
+2. **Single-File Processor** - Reusable typestate for one config file
+3. **Parallel Execution** - Run processor for global + vault simultaneously
+4. **Merger + Construction** - Combine outcomes after processing
+
+**Key Insight**:
+Global and vault configs are processed independently with identical logic.
+Why have 4 staleness branches when you can have 2 parallel processors?
+
+**Advantages**:
+- Composability: One processor handles both types
+- Parallelism: No shared state, can run concurrently
+- Clarity: Each component has single responsibility
+- Testability: Single-file processor easier to test in isolation
+
+**Updated findings.md** with new design proposal.
+
+**Questions for User**:
+1. Generics vs enum for config type in processor?
+2. Property analysis field sets differ (global vs vault) - how to handle?
+3. View updates in processor or merger?
+4. ConfigField enum or per-type tracking?
+
+**Status**: Design revision in progress, awaiting user feedback on questions
+
+---
+
+## Test Results
+
+_No tests run yet_
+
+---
+
+## Build Status
+
+_No builds run yet_
+
+---
+
+**Last Updated**: 2026-05-06 10:35
