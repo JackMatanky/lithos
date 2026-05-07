@@ -248,10 +248,7 @@ impl ConfigType for VaultConfig {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfigFieldHashes {
-    inner: std::collections::HashMap<
-        ConfigField,
-        crate::support::hash::Blake3Hash,
-    >,
+    inner: crate::support::hash::Blake3HashIndex<ConfigField>,
 }
 
 impl ConfigFieldHashes {
@@ -260,7 +257,7 @@ impl ConfigFieldHashes {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            inner: std::collections::HashMap::new(),
+            inner: crate::support::hash::Blake3HashIndex::default(),
         }
     }
 
@@ -271,7 +268,7 @@ impl ConfigFieldHashes {
         field: ConfigField,
         hash: crate::support::hash::Blake3Hash,
     ) {
-        self.inner.insert(field, hash);
+        let _previous = self.inner.insert(field, hash);
     }
 
     /// Returns the hash for a field, if present.
@@ -318,11 +315,7 @@ impl ConfigFieldHashes {
     pub fn diff(&self, new: &Self) -> HashSet<ConfigField> {
         let mut changed = HashSet::new();
 
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Field order irrelevant for change detection"
-        )]
-        for (field, new_hash) in &new.inner {
+        for (field, new_hash) in new.inner.iter() {
             if self.inner.get(field) != Some(new_hash) {
                 changed.insert(field.clone());
             }
@@ -862,7 +855,7 @@ mod tests {
         let hashes = GlobalConfig::compute_field_hashes(&raw);
 
         // Logging field is present and should be hashed
-        assert!(hashes.inner.contains_key(&ConfigField::Logging));
+        assert!(hashes.contains(&ConfigField::Logging));
     }
 
     #[test]
@@ -871,7 +864,7 @@ mod tests {
         let hashes = GlobalConfig::compute_field_hashes(&raw);
 
         // Paths always present (has default)
-        assert!(hashes.inner.contains_key(&ConfigField::Paths));
+        assert!(hashes.contains(&ConfigField::Paths));
     }
 
     #[test]
@@ -880,8 +873,8 @@ mod tests {
         let hashes = GlobalConfig::compute_field_hashes(&raw);
 
         // Frontmatter and Task are None, should not be in hash map
-        assert!(!hashes.inner.contains_key(&ConfigField::Frontmatter));
-        assert!(!hashes.inner.contains_key(&ConfigField::Task));
+        assert!(!hashes.contains(&ConfigField::Frontmatter));
+        assert!(!hashes.contains(&ConfigField::Task));
     }
 
     #[test]
@@ -890,9 +883,9 @@ mod tests {
         let hashes = VaultConfig::compute_field_hashes(&raw);
 
         // Paths always present
-        assert!(hashes.inner.contains_key(&ConfigField::Paths));
+        assert!(hashes.contains(&ConfigField::Paths));
         // Logging is None in fixture
-        assert!(!hashes.inner.contains_key(&ConfigField::Logging));
+        assert!(!hashes.contains(&ConfigField::Logging));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
