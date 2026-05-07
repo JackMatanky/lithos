@@ -180,6 +180,49 @@
 
 ---
 
+## Phase 6: Architecture Redesign (17:00)
+
+**Time**: 17:00
+**Status**: ⏳ READY TO START - User decisions received
+
+### User Decisions (Design Problems)
+
+User identified that I was mechanically fixing errors without addressing root causes:
+
+1. ✅ **Remove RawConfig completely** - Merge `RawGlobalConfig` + `RawVaultConfig` → `Config` directly
+2. ✅ **Remove RawConfigMetadata** - It's just `FileInfo` from `fs/file.rs`
+3. ✅ **Move Raw* types to raw.rs** - `RawFrontmatter` and `RawLogging` don't match conventions
+4. ✅ **Create discovery.rs** - Similar to `schema/discovery.rs` (ingestion + DB batch fetch)
+5. ✅ **Rename loader.rs → builder.rs** - Match schema pattern
+6. ✅ **Move Config::build() to builder** - Config should only have `new()` method
+
+### Tasks
+
+- [ ] Remove RawConfig type from raw.rs
+- [ ] Remove RawConfigMetadata type from raw.rs
+- [ ] Move RawFrontmatter from frontmatter.rs to raw.rs
+- [ ] Move RawLogging from logging.rs to raw.rs
+- [ ] Create discovery.rs module (similar to schema/discovery.rs)
+- [ ] Rename loader.rs → builder.rs
+- [ ] Move Config::build() method to builder module
+- [ ] Update Config to only have new() constructor
+- [ ] Update all imports and callsites
+- [ ] Run full test suite
+- [ ] Update findings.md/progress.md
+
+### Blocked Items Fixed (17:00)
+
+✅ **Pre-commit hooks all pass** - Fixed immediate compilation errors:
+- Removed `#[cfg(bench)]` → use `#[cfg(test)]`
+- Fixed moved values in merger tests
+- Fixed shadowed variables
+- Fixed unfulfilled lint expectations
+- Staged testing.rs module
+
+**All 17 pre-commit checks pass** (hygiene, validation, security, quality, tests)
+
+---
+
 ## Post-Completion Fixes (16:45)
 
 **Time**: 16:45
@@ -189,7 +232,7 @@ Applied fixes based on user feedback:
 
 ### Fix 1: CONTEXT.md Updated (commit d50ff897)
 - ✅ Added Environment Config language definition
-- ✅ Added Local (Vault) Config language definition  
+- ✅ Added Local (Vault) Config language definition
 - ✅ Updated Precedence Chain: Environment < Local (Vault)
 - ✅ Added invariants about vault overriding environment
 - ✅ Added examples with actual file paths
@@ -217,4 +260,3 @@ Applied fixes based on user feedback:
 - ✅ All view tests pass (7 tests)
 - ✅ Full test suite passes
 - ✅ Code consistent with schema/views patterns
-

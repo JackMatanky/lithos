@@ -121,6 +121,9 @@ pub mod processor;
 pub mod raw;
 /// Task configuration schema and validation.
 pub mod task;
+/// Testing utilities (InMemoryRepository).
+#[cfg(test)]
+pub mod testing;
 /// Field specification and value validation types.
 pub mod value;
 /// View types for config staleness tracking.

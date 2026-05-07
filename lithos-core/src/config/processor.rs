@@ -73,10 +73,7 @@
 //! # }
 //! ```
 
-use std::{
-    collections::{HashMap, HashSet},
-    marker::PhantomData,
-};
+use std::{collections::HashSet, marker::PhantomData};
 
 use crate::config::{
     error::ConfigError,
@@ -119,10 +116,10 @@ impl ConfigType for GlobalConfig {
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
         use crate::support::hash::Blake3Hash;
 
-        let mut hashes = HashMap::new();
+        let mut hashes = ConfigFieldHashes::new();
 
         // Hash logging field if present
-        if let Some(logging) = &raw.logging {
+        if let Some(logging) = raw.logging.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -142,7 +139,7 @@ impl ConfigType for GlobalConfig {
         hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
 
         // Hash frontmatter field if present
-        if let Some(frontmatter) = &raw.frontmatter {
+        if let Some(frontmatter) = raw.frontmatter.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -153,7 +150,7 @@ impl ConfigType for GlobalConfig {
         }
 
         // Hash task field if present
-        if let Some(task) = &raw.task {
+        if let Some(task) = raw.task.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -163,9 +160,7 @@ impl ConfigType for GlobalConfig {
             hashes.insert(ConfigField::Task, Blake3Hash::compute(&json));
         }
 
-        ConfigFieldHashes {
-            inner: hashes,
-        }
+        hashes
     }
 }
 
@@ -179,17 +174,13 @@ impl ConfigType for VaultConfig {
     type View = RawVaultConfigView;
 
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Pattern matching semantics are clear"
-    )]
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
         use crate::support::hash::Blake3Hash;
 
-        let mut hashes = HashMap::new();
+        let mut hashes = ConfigFieldHashes::new();
 
         // Hash logging field if present
-        if let Some(ref logging) = raw.logging {
+        if let Some(logging) = raw.logging.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -209,7 +200,7 @@ impl ConfigType for VaultConfig {
         hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
 
         // Hash frontmatter field if present
-        if let Some(ref frontmatter) = raw.frontmatter {
+        if let Some(frontmatter) = raw.frontmatter.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -220,7 +211,7 @@ impl ConfigType for VaultConfig {
         }
 
         // Hash task field if present
-        if let Some(ref task) = raw.task {
+        if let Some(task) = raw.task.as_ref() {
             #[expect(
                 clippy::expect_used,
                 reason = "Config types are always serializable"
@@ -230,9 +221,7 @@ impl ConfigType for VaultConfig {
             hashes.insert(ConfigField::Task, Blake3Hash::compute(&json));
         }
 
-        ConfigFieldHashes {
-            inner: hashes,
-        }
+        hashes
     }
 }
 

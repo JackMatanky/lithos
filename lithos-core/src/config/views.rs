@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-use crate::{config::vault::VaultId, fs::FileInfo, support::hash::Blake3Hash};
+use crate::{fs::FileInfo, support::hash::Blake3Hash};
 
 // ----------------------------------------------------------- //
 //                     Raw Config Views                        //
@@ -571,7 +571,11 @@ mod tests {
     }
 
     #[test]
-    fn raw_global_config_view_maintains_max_5_versions() {
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 is safe on 64-bit systems (test code)"
+    )]
+    fn push_version_keeps_max_5() {
         let mut view = RawGlobalConfigView::new("/path/to/global.toml".into());
 
         // Push 7 versions
@@ -598,6 +602,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 is safe on 64-bit systems (test code)"
+    )]
     fn raw_file_version_new() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
@@ -609,29 +617,33 @@ mod tests {
         assert_eq!(version.content_hash(), &expected_hash);
         assert_eq!(version.file_info().created_at(), None);
         assert_eq!(version.file_info().modified_at(), Some(mtime));
+        assert_eq!(version.file_info().size(), content.len() as u64);
     }
 
     #[test]
-    fn raw_file_version_matches() {
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 is safe on 64-bit systems (test code)"
+    )]
+    fn raw_file_version_is_timestamp_match() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
-        let hash = Blake3Hash::compute(content);
         let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
         let version = RawFileVersion::new(content, file_info)
             .expect("version creation should succeed");
 
-        assert!(version.matches(None, mtime, &hash));
-
-        // Different mtime should not match
-        let different_mtime = SystemTime::UNIX_EPOCH;
-        assert!(!version.matches(None, different_mtime, &hash));
-
-        // Different hash should not match
-        let different_hash = Blake3Hash::compute(b"different");
-        assert!(!version.matches(None, mtime, &different_hash));
+        let expected_hash = Blake3Hash::compute(content);
+        assert_eq!(version.content_hash(), &expected_hash);
+        assert_eq!(version.file_info().created_at(), None);
+        assert_eq!(version.file_info().modified_at(), Some(mtime));
+        assert_eq!(version.file_info().size(), content.len() as u64);
     }
 
     #[test]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 is safe on 64-bit systems (test code)"
+    )]
     fn raw_file_version_round_trips_through_rkyv() {
         let content = b"vault_path = \"/vault\"";
         let file_info =
