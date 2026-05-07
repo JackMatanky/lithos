@@ -122,7 +122,10 @@ use std::collections::HashMap;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{schema::property::PropertyName, support::hash::Blake3Hash};
+use crate::{
+    schema::property::PropertyName,
+    support::hash::{Blake3Hash, Blake3HashIndex},
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  HashRecord
@@ -277,59 +280,52 @@ impl ArchivedHashRecord {
 
 /// Per-property hash map computed from [`RawPropertyMap`].
 ///
-/// Newtype wrapper around `HashMap<PropertyName, Blake3Hash>` for type safety.
+/// Newtype wrapper around `Blake3HashIndex<PropertyName>` for type safety.
 /// Used in [`HashRecord`] and [`BasePropertiesView`].
 ///
 /// Computed via [`RawPropertyMap::compute_hashes()`] during ingestion.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-pub struct RawPropertyMapHash(HashMap<PropertyName, Blake3Hash>);
+pub struct RawPropertyMapHash(Blake3HashIndex<PropertyName>);
 
 #[expect(dead_code, reason = "Hash map helpers are consumed incrementally")]
 impl RawPropertyMapHash {
-    /// Returns a reference to the inner hash map.
     #[inline]
     #[must_use]
-    pub(crate) fn as_inner(&self) -> &HashMap<PropertyName, Blake3Hash> {
+    pub(crate) const fn as_inner(&self) -> &Blake3HashIndex<PropertyName> {
         &self.0
     }
 
-    /// Returns a mutable reference to the inner hash map.
     #[inline]
     #[must_use]
     pub(crate) fn as_inner_mut(
         &mut self,
-    ) -> &mut HashMap<PropertyName, Blake3Hash> {
+    ) -> &mut Blake3HashIndex<PropertyName> {
         &mut self.0
     }
 
-    /// Returns a reference to the value corresponding to the key, if any.
     #[inline]
     #[must_use]
     pub(crate) fn get(&self, key: &PropertyName) -> Option<&Blake3Hash> {
         self.0.get(key)
     }
 
-    /// Returns the number of elements in the map.
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// Returns `true` if the map contains no elements.
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// Returns an iterator over all keys in the map.
     #[inline]
-    pub fn keys(&self) -> impl Iterator<Item = &PropertyName> {
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &PropertyName> {
         self.0.keys()
     }
 
-    /// Returns an iterator over all key-value pairs in the map.
     #[inline]
     pub(crate) fn iter(
         &self,
@@ -337,14 +333,12 @@ impl RawPropertyMapHash {
         self.0.iter()
     }
 
-    /// Returns `true` if the map contains a value for the specified key.
     #[inline]
     #[must_use]
-    pub fn contains_key(&self, key: &PropertyName) -> bool {
+    pub(crate) fn contains_key(&self, key: &PropertyName) -> bool {
         self.0.contains_key(key)
     }
 
-    /// Inserts a key-value pair into the map.
     #[inline]
     pub(crate) fn insert(
         &mut self,
@@ -358,14 +352,21 @@ impl RawPropertyMapHash {
 impl Default for RawPropertyMapHash {
     #[inline]
     fn default() -> Self {
-        Self(HashMap::new())
+        Self(Blake3HashIndex::default())
     }
 }
 
 impl From<HashMap<PropertyName, Blake3Hash>> for RawPropertyMapHash {
     #[inline]
     fn from(map: HashMap<PropertyName, Blake3Hash>) -> Self {
-        Self(map)
+        Self(Blake3HashIndex::from(map))
+    }
+}
+
+impl From<Blake3HashIndex<PropertyName>> for RawPropertyMapHash {
+    #[inline]
+    fn from(index: Blake3HashIndex<PropertyName>) -> Self {
+        Self(index)
     }
 }
 
