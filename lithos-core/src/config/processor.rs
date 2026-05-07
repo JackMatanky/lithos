@@ -326,8 +326,8 @@ impl ConfigFieldHashes {
 
 /// Config field identifier for change tracking.
 ///
-/// Represents the top-level fields in `RawConfig` that can be independently
-/// hashed for incremental analysis.
+/// Represents top-level sections that can be independently hashed for
+/// incremental analysis.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ConfigField {

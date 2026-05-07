@@ -337,60 +337,6 @@ impl Global {
     }
 }
 
-impl TryFrom<&super::raw::RawConfig> for Global {
-    type Error = ConfigError;
-
-    /// Convert raw configuration into validated Global config.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConfigError`] if any field fails validation.
-    #[inline]
-    fn try_from(raw: &super::raw::RawConfig) -> Result<Self, Self::Error> {
-        // Convert logging (use default if not present)
-        let logging = raw
-            .logging
-            .as_ref()
-            .map(|l| Logging::try_from(l.clone()))
-            .transpose()?
-            .unwrap_or_default();
-
-        // Convert paths to global::Paths (without cache)
-        let paths = Paths::try_from(&raw.paths)?;
-
-        // Convert trusted vaults (None if not present)
-        let trusted_vaults = raw
-            .trusted_vaults
-            .as_ref()
-            .map(|tv| TrustedVaults::try_from(tv.clone()))
-            .transpose()?;
-
-        // Convert frontmatter (use default if not present)
-        let frontmatter = raw
-            .frontmatter
-            .as_ref()
-            .map(|f| Frontmatter::try_from(f.clone()))
-            .transpose()?
-            .unwrap_or_default();
-
-        // Convert task (None if not present)
-        let task =
-            raw.task.as_ref().map(|t| Task::try_from(t.clone())).transpose()?;
-
-        // Version will be set by Command layer when recording
-        let version = GlobalVersion::initial();
-
-        Ok(Self::new(
-            version,
-            logging,
-            paths,
-            trusted_vaults,
-            frontmatter,
-            task,
-        ))
-    }
-}
-
 /// Trusted vaults configuration supporting list or map format.
 ///
 /// This enum allows defining trusted vaults either as a simple list of paths

@@ -282,9 +282,9 @@ mod tests {
 
     /// Helper to setup test config for a given temp directory.
     fn setup_test_config(temp: &TempDir) -> Config {
-        let raw = crate::config::raw::RawConfig::default();
-        Config::build(
-            &raw,
+        crate::config::builder::build_from_layers(
+            None,
+            None,
             crate::config::vault::VaultId::new(),
             crate::config::vault::VaultRoot::try_new(temp.path().to_path_buf())
                 .unwrap(),

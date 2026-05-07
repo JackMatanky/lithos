@@ -229,7 +229,7 @@ User identified that I was mechanically fixing errors without addressing root ca
   - [x] Removed ingestor.rs
   - [x] Commit created (`18104f32`)
 
-**Phase C: RawConfig Removal 🔄 IN PROGRESS**
+**Phase C: RawConfig Removal ✅ COMPLETE**
 - [x] Run GitNexus impact analysis for `RawConfig`, `RawConfigMetadata`, `Config::build`
   - [x] `Config::build` risk = **CRITICAL** (warned; proceeding in small slices)
   - [x] `RawConfigMetadata` risk = LOW
@@ -240,24 +240,40 @@ User identified that I was mechanically fixing errors without addressing root ca
   - [x] Updated `processor.rs` and `merger.rs` test fixtures
   - [x] Updated `views.rs` freshness checks to use `FileInfo` + computed content hash
   - [x] `cargo test --lib` passing (988)
-- [ ] Remove RawConfig type
-- [ ] Update Config::build() signature
-- [ ] Update merger.rs, aggregate.rs, global.rs, vault.rs
-- [ ] Rename loader.rs → builder.rs
-- [ ] Move Config::build() to builder
-- [ ] Update all tests (~50 files)
-- [ ] Run full test suite
+- [x] Remove RawConfig type
+- [x] Update Config::build() signature
+- [x] Update merger.rs, aggregate.rs, global.rs, vault.rs
+- [x] Rename loader.rs → builder.rs
+- [x] Move Config::build() to builder
+- [x] Update all tests (~50 files)
+- [x] Run full test suite
 - [ ] Stage and commit
 
-**Current Task**: Migrate build path off `RawConfig` (before deleting type)
+**Current Task**: Final branch hygiene + commit preparation
 
 ### Phase 6C Progress (current slice)
 
 - [x] Added `Config::build_from_layers(global, vault, vault_id, vault_root, version)`
 - [x] Updated `ConfigMerger::rebuild_with_configs` to call `build_from_layers`
 - [x] Verified with `cargo test --lib` (988 passing)
-- [ ] Remove remaining `RawConfig` callsites in tests/modules
-- [ ] Delete `RawConfig` struct and conversion impls from `raw.rs`
+- [~] Remove remaining `RawConfig` callsites in tests/modules
+  - [x] Removed `TryFrom<&RawConfig>` impls from `global.rs` and `vault.rs`
+  - [x] Migrated `config/aggregate.rs` test fixtures to `build_from_layers`
+  - [x] Migrated `note/aggregate.rs` test helpers to `RawVaultConfig` + `build_from_layers`
+  - [x] Remove `RawConfig` references in `config/merger.rs` tests and helper
+  - [x] Remove `Config::build(&RawConfig, ...)` and `RawConfig` DTO/conversions
+- [x] Delete `RawConfig` struct and conversion impls from `raw.rs`
+- [x] Rename `loader.rs` → `builder.rs`
+- [x] Move `Config::build_from_layers` out of aggregate into builder module
+- [x] Update all callsites/docs to `config::builder`
+- [x] Run full verification (`mise run verify`)
+
+### Phase 6D Status (post-verify)
+
+- [x] `mise run verify` passed after builder migration
+- [x] Planning files updated with final verification checkpoint
+- [x] `gitnexus_detect_changes(scope: all)` run before commit prep
+- [ ] Final diff review + commit
 
 **Rationale for Order**:
 1. discovery.rs uses FileInfo (not RawConfigMetadata) - enables clean metadata removal

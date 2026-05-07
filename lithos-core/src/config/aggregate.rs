@@ -7,7 +7,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use rkyv::with::Skip;
-use tracing::instrument;
 
 use super::{
     error::ConfigError,
@@ -15,9 +14,8 @@ use super::{
     frontmatter::{Frontmatter, FrontmatterConfigSpec},
     logging::Logging,
     paths::{ArchivedPaths, Paths},
-    raw,
     task::{Task, TaskConfigSpec, TemporalSlot},
-    vault::{Metadata, VaultId, VaultRoot},
+    vault::Metadata,
 };
 
 /// Fully-resolved and validated configuration for a vault.
@@ -45,6 +43,39 @@ pub struct Config {
 }
 
 impl Config {
+    /// Construct a validated Config aggregate from validated parts.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Constructor collects validated domain components"
+    )]
+    #[inline]
+    #[must_use]
+    pub(crate) fn new(
+        version: Version,
+        vault_metadata: Metadata,
+        logging: Logging,
+        paths: Paths,
+        frontmatter: Frontmatter,
+        task: Task,
+    ) -> Self {
+        let mut config = Self {
+            version,
+            vault_metadata,
+            logging,
+            paths,
+            frontmatter,
+            task,
+            pending_events: vec![],
+        };
+
+        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
+            "merged",
+            chrono::Utc::now().timestamp(),
+        )));
+
+        config
+    }
+
     /// Return the vault metadata.
     #[inline]
     #[must_use]
@@ -226,114 +257,6 @@ impl Config {
         self
     }
 
-    /// Build validated Config from Figment-merged raw configuration.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if the raw configuration fails validation rules.
-    #[inline]
-    #[instrument(
-        skip(raw, vault_root),
-        level = "debug",
-        fields(operation = "build_config", vault_id = %vault_id, version = %version)
-    )]
-    pub fn build(
-        raw: &raw::RawConfig,
-        vault_id: VaultId,
-        vault_root: VaultRoot,
-        version: Version,
-    ) -> Result<Self, ConfigError> {
-        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
-
-        let logging = raw
-            .logging
-            .as_ref()
-            .map(|x| x.clone().try_into())
-            .transpose()?
-            .unwrap_or_default();
-
-        let paths = (&raw.paths).try_into()?;
-
-        let frontmatter = raw
-            .frontmatter
-            .as_ref()
-            .map(|x| x.clone().try_into())
-            .transpose()?
-            .unwrap_or_default();
-
-        let task = raw
-            .task
-            .as_ref()
-            .map(|x| Task::try_from_raw(x.clone()))
-            .transpose()?
-            .unwrap_or_default();
-
-        let mut config = Self {
-            version,
-            frontmatter,
-            paths,
-            logging,
-            task,
-            vault_metadata,
-            pending_events: vec![],
-        };
-
-        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-            "merged",
-            chrono::Utc::now().timestamp(),
-        )));
-
-        Ok(config)
-    }
-
-    /// Build validated config from layered raw sources.
-    ///
-    /// Precedence: defaults < global < vault.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if validation fails while constructing domain
-    /// types.
-    #[inline]
-    pub fn build_from_layers(
-        global: Option<&raw::RawGlobalConfig>,
-        vault: Option<&raw::RawVaultConfig>,
-        vault_id: VaultId,
-        vault_root: VaultRoot,
-        version: Version,
-    ) -> Result<Self, ConfigError> {
-        let logging = vault.and_then(|v| v.logging.clone()).or_else(|| {
-            let g = global?;
-            g.logging.clone()
-        });
-        let frontmatter =
-            vault.and_then(|v| v.frontmatter.clone()).or_else(|| {
-                let g = global?;
-                g.frontmatter.clone()
-            });
-        let task = vault.and_then(|v| v.task.clone()).or_else(|| {
-            let g = global?;
-            g.task.clone()
-        });
-
-        let paths = raw::RawPathsConfig::merge(
-            global.map_or_else(raw::RawPathsConfig::default, |g| {
-                g.paths.clone().into()
-            }),
-            vault.map_or_else(raw::RawPathsConfig::default, |v| {
-                v.paths.clone().into()
-            }),
-        );
-
-        let merged = raw::RawConfig {
-            logging,
-            paths,
-            trusted_vaults: global.and_then(|g| g.trusted_vaults.clone()),
-            frontmatter,
-            task,
-        };
-
-        Self::build(&merged, vault_id, vault_root, version)
-    }
-
     /// Returns a reference to pending domain events.
     #[inline]
     #[must_use]
@@ -443,7 +366,7 @@ pub(crate) mod fixtures {
     use super::*;
     use crate::config::{
         raw::{RawFrontmatter, RawLogging},
-        vault::{AppVersion, VaultName},
+        vault::{AppVersion, VaultId, VaultName, VaultRoot},
     };
 
     pub fn vault_id() -> VaultId {
@@ -480,8 +403,12 @@ pub(crate) mod fixtures {
     }
 
     pub fn merged_config_with_sample_overrides() -> Config {
-        let raw = raw::RawConfig {
-            paths: raw::RawPathsConfig {
+        let vault = crate::config::raw::RawVaultConfig {
+            vault_path: "/vault".to_owned(),
+            logging: Some(RawLogging {
+                log_level: Some("debug".to_owned()),
+            }),
+            paths: crate::config::raw::RawVaultPaths {
                 schemas_dir: Some("schemas".to_owned()),
                 templates_dir: Some("custom_templates".to_owned()),
                 property_bank_file: Some("property_bank.json".to_owned()),
@@ -495,14 +422,11 @@ pub(crate) mod fixtures {
                 file_class_key: Some("type".to_owned()),
                 title_key: Some("title".to_owned()),
             }),
-            logging: Some(RawLogging {
-                log_level: Some("debug".to_owned()),
-            }),
-            task: None,
-            trusted_vaults: None,
+            ..Default::default()
         };
-        Config::build(
-            &raw,
+        crate::config::builder::build_from_layers(
+            None,
+            Some(&vault),
             vault_id(),
             vault_root("/vault"),
             Version::initial(),
@@ -511,9 +435,9 @@ pub(crate) mod fixtures {
     }
 
     pub fn merged_config_with_empty_inputs() -> Config {
-        let raw = raw::RawConfig::default();
-        Config::build(
-            &raw,
+        crate::config::builder::build_from_layers(
+            None,
+            None,
             vault_id(),
             vault_root("/vault"),
             Version::initial(),
@@ -562,9 +486,9 @@ mod tests {
 
         #[test]
         fn builds_handles_missing_global_sets_vault_path() {
-            let raw = raw::RawConfig::default();
-            let config = Config::build(
-                &raw,
+            let config = crate::config::builder::build_from_layers(
+                None,
+                None,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
                 Version::initial(),
@@ -578,9 +502,9 @@ mod tests {
 
         #[test]
         fn build_handles_missing_global_applies_global_defaults() {
-            let raw = raw::RawConfig::default();
-            let config = Config::build(
-                &raw,
+            let config = crate::config::builder::build_from_layers(
+                None,
+                None,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
                 Version::initial(),
@@ -669,9 +593,9 @@ mod tests {
 
         #[test]
         fn builds_config_from_empty_raw() {
-            let raw = raw::RawConfig::default();
-            let config = Config::build(
-                &raw,
+            let config = crate::config::builder::build_from_layers(
+                None,
+                None,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
                 Version::initial(),
@@ -689,8 +613,9 @@ mod tests {
 
         #[test]
         fn applies_paths_fields_from_raw() {
-            let raw = raw::RawConfig {
-                paths: raw::RawPathsConfig {
+            let vault = crate::config::raw::RawVaultConfig {
+                vault_path: "/vault".to_owned(),
+                paths: crate::config::raw::RawVaultPaths {
                     cache_dir: Some(".lithos-cache".to_owned()),
                     schemas_dir: Some("my-schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
@@ -698,8 +623,9 @@ mod tests {
                 },
                 ..Default::default()
             };
-            let config = Config::build(
-                &raw,
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
                 Version::initial(),
@@ -739,16 +665,18 @@ mod tests {
 
         #[test]
         fn to_schema_spec_respects_custom_paths() {
-            let raw = raw::RawConfig {
-                paths: raw::RawPathsConfig {
+            let vault = crate::config::raw::RawVaultConfig {
+                vault_path: "/vault".to_owned(),
+                paths: crate::config::raw::RawVaultPaths {
                     schemas_dir: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
                     ..Default::default()
                 },
                 ..Default::default()
             };
-            let config = Config::build(
-                &raw,
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
                 Version::initial(),

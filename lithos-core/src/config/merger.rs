@@ -7,10 +7,9 @@
 //! The merger handles all 9 outcome combinations and produces the final
 //! domain `Config` object with proper view persistence.
 
-#[cfg(test)]
-use crate::config::raw::{RawConfig, RawPathsConfig};
 use crate::config::{
     aggregate::{Config, Version},
+    builder,
     error::ConfigError,
     processor::{GlobalConfig, ProcessorOutcome, VaultConfig},
     raw::{RawGlobalConfig, RawVaultConfig},
@@ -241,7 +240,7 @@ where
             .unwrap_or_else(Version::initial);
 
         // Build domain config from layered raw sources
-        let config = Config::build_from_layers(
+        let config = builder::build_from_layers(
             global,
             vault,
             self.vault_id,
@@ -255,64 +254,6 @@ where
             .map_err(Into::into)?;
 
         Ok(config)
-    }
-
-    /// Merge raw configs with field-level precedence.
-    ///
-    /// Precedence order (highest wins):
-    /// 1. Vault config (highest)
-    /// 2. Global config
-    /// 3. Defaults (lowest)
-    #[cfg(test)]
-    #[expect(
-        clippy::unused_self,
-        reason = "Method keeps self for API consistency with other \
-                  ConfigMerger methods"
-    )]
-    fn merge_raw_configs(
-        &self,
-        global: Option<&RawGlobalConfig>,
-        vault: Option<&RawVaultConfig>,
-    ) -> RawConfig {
-        // Start with defaults
-        let mut result = RawConfig::default();
-
-        // Layer 1: Apply global overrides
-        if let Some(g) = global {
-            if g.logging.is_some() {
-                result.logging.clone_from(&g.logging);
-            }
-            result.paths = g.paths.clone().into();
-            if g.trusted_vaults.is_some() {
-                result.trusted_vaults.clone_from(&g.trusted_vaults);
-            }
-            if g.frontmatter.is_some() {
-                result.frontmatter.clone_from(&g.frontmatter);
-            }
-            if g.task.is_some() {
-                result.task.clone_from(&g.task);
-            }
-        }
-
-        // Layer 2: Apply vault overrides (highest priority)
-        if let Some(v) = vault {
-            if v.logging.is_some() {
-                result.logging.clone_from(&v.logging);
-            }
-            // Merge paths properly (vault paths override global paths)
-            let global_paths = result.paths.clone();
-            let vault_paths: RawPathsConfig = v.paths.clone().into();
-            result.paths = RawPathsConfig::merge(global_paths, vault_paths);
-
-            if v.frontmatter.is_some() {
-                result.frontmatter.clone_from(&v.frontmatter);
-            }
-            if v.task.is_some() {
-                result.task.clone_from(&v.task);
-            }
-        }
-
-        result
     }
 }
 
@@ -330,12 +271,9 @@ mod tests {
 
     use super::*;
     use crate::config::{
-        aggregate::{Config, Version},
+        aggregate::Version,
         processor::ProcessorOutcome,
-        raw::{
-            RawConfig, RawGlobalConfig, RawGlobalPaths, RawVaultConfig,
-            RawVaultPaths,
-        },
+        raw::{RawGlobalConfig, RawGlobalPaths, RawVaultConfig, RawVaultPaths},
         testing::InMemoryRepository,
         vault::VaultRoot,
     };
@@ -379,72 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn merge_raw_configs_with_no_inputs_returns_default_struct() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        let merger = ConfigMerger::new(vault_id, vault_root, &storage);
-
-        // No global or vault - should return RawConfig::default()
-        let result = merger.merge_raw_configs(None, None);
-
-        // RawConfig::default() has default RawPathsConfig
-        // Actual path defaults are applied in Config::build()
-        assert!(result.logging.is_none());
-        assert!(result.frontmatter.is_none());
-        assert!(result.task.is_none());
-    }
-
-    #[test]
-    fn merge_raw_configs_global_overrides_defaults() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        let merger = ConfigMerger::new(vault_id, vault_root, &storage);
-
-        let global = create_test_global_config();
-        let result = merger.merge_raw_configs(Some(&global), None);
-
-        // Global paths should override defaults
-        assert_eq!(
-            result.paths.templates_dir.as_ref().unwrap(),
-            "global-templates"
-        );
-        assert_eq!(
-            result.paths.schemas_dir.as_ref().unwrap(),
-            "global-schemas"
-        );
-    }
-
-    #[test]
-    fn merge_raw_configs_vault_overrides_global() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        let merger = ConfigMerger::new(vault_id, vault_root, &storage);
-
-        let global = create_test_global_config();
-        let vault = create_test_vault_config();
-        let result = merger.merge_raw_configs(Some(&global), Some(&vault));
-
-        // Vault templates_dir should win
-        assert_eq!(
-            result.paths.templates_dir.as_ref().unwrap(),
-            "vault-templates"
-        );
-        // Global schemas_dir should remain (vault didn't override)
-        assert_eq!(
-            result.paths.schemas_dir.as_ref().unwrap(),
-            "global-schemas"
-        );
-        // Vault cache_dir should be present
-        assert_eq!(result.paths.cache_dir.as_ref().unwrap(), ".cache");
-    }
-
-    #[test]
     fn merge_both_use_cached_loads_from_db() {
         let vault_id = VaultId::new();
         let vault_root = create_test_vault_root();
@@ -455,8 +327,9 @@ mod tests {
         storage
             .save_config(
                 vault_id,
-                &Config::build(
-                    &RawConfig::from(config),
+                &builder::build_from_layers(
+                    Some(&config),
+                    None,
                     vault_id,
                     vault_root.clone(),
                     Version::initial(),
@@ -555,8 +428,9 @@ mod tests {
         storage
             .save_config(
                 vault_id,
-                &Config::build(
-                    &RawConfig::from(config.clone()),
+                &builder::build_from_layers(
+                    Some(&config),
+                    None,
                     vault_id,
                     vault_root.clone(),
                     Version::initial(),

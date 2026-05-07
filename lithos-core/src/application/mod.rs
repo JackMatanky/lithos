@@ -39,4 +39,4 @@
 // re-implementation.
 // NOTE: Schema loader moved to schema module (schema::loader) as part of Phase
 // 6.
-// NOTE: Config service removed - use config::loader::Loader directly.
+// NOTE: Config service removed - use config::builder::Builder directly.

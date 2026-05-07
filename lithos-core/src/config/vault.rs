@@ -245,46 +245,6 @@ impl Vault {
     }
 }
 
-impl TryFrom<&super::raw::RawConfig> for Vault {
-    type Error = super::error::ConfigError;
-
-    /// Convert raw configuration into validated Vault config.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConfigError`] if any field fails validation.
-    #[inline]
-    fn try_from(raw: &super::raw::RawConfig) -> Result<Self, Self::Error> {
-        // Convert logging (None if not present)
-        let logging = raw
-            .logging
-            .as_ref()
-            .map(|l| super::logging::Logging::try_from(l.clone()))
-            .transpose()?;
-
-        // Convert paths to vault::Paths (includes cache)
-        let paths = Paths::try_from(&raw.paths)?;
-
-        // Convert frontmatter (None if not present)
-        let frontmatter = raw
-            .frontmatter
-            .as_ref()
-            .map(|f| super::frontmatter::Frontmatter::try_from(f.clone()))
-            .transpose()?;
-
-        // Convert task (None if not present)
-        let task = raw
-            .task
-            .as_ref()
-            .map(|t| super::task::Task::try_from(t.clone()))
-            .transpose()?;
-
-        // Version will be set by Command layer when recording
-        let version = VaultVersion::initial();
-
-        Ok(Self::new(version, logging, paths, frontmatter, task))
-    }
-}
 /// Metadata for a specific vault.
 ///
 /// This struct holds the identity, root path, and versioning information

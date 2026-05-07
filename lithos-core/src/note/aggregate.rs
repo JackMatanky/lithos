@@ -717,7 +717,7 @@ mod tests {
     use crate::{
         config::{
             aggregate::Config,
-            raw::{RawConfig, RawFieldSpec, RawTaskConfig},
+            raw::{RawFieldSpec, RawTaskConfig, RawVaultConfig},
             task::TaskConfigSpec,
             vault::{VaultId, VaultRoot},
         },
@@ -919,7 +919,8 @@ mod tests {
     }
 
     fn test_config_with_task_tag() -> Config {
-        let raw = RawConfig {
+        let raw = RawVaultConfig {
+            vault_path: "/vault".to_owned(),
             task: Some(RawTaskConfig {
                 use_emoji: Some(true),
                 task_tags: Some(vec!["#task".into()]),
@@ -946,8 +947,9 @@ mod tests {
             ..Default::default()
         };
 
-        Config::build(
-            &raw,
+        crate::config::builder::build_from_layers(
+            None,
+            Some(&raw),
             VaultId::new(),
             VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                 .expect("vault root"),
@@ -966,7 +968,8 @@ mod tests {
             pattern: None,
         });
 
-        let raw = RawConfig {
+        let raw = RawVaultConfig {
+            vault_path: "/vault".to_owned(),
             task: Some(RawTaskConfig {
                 enabled: Some(true),
                 task_tags: Some(vec!["#task".into()]),
@@ -980,8 +983,9 @@ mod tests {
             ..Default::default()
         };
 
-        Config::build(
-            &raw,
+        crate::config::builder::build_from_layers(
+            None,
+            Some(&raw),
             VaultId::new(),
             VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                 .expect("vault root"),

@@ -1,6 +1,6 @@
 //! Raw (serde) configuration input types (DTOs).
 //!
-//! This module defines the [`RawConfig`] and supporting types used for
+//! This module defines raw config DTOs and supporting types used for
 //! deserialization from TOML/YAML/JSON files before validation.
 
 #![allow(
@@ -11,34 +11,6 @@
 use std::collections::HashMap;
 
 use crate::fs::FileInfo;
-
-// ----------------------------------------------------------- //
-//                  Raw Config Aggregate Root                  //
-// ----------------------------------------------------------- //
-
-/// Unified raw configuration for Figment merge.
-///
-/// This struct is the merge target for per-file raw configs.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawConfig {
-    /// Logging configuration.
-    pub logging: Option<RawLogging>,
-
-    /// Path configuration (deeply mergeable across layers).
-    #[serde(default)]
-    pub paths: RawPathsConfig,
-
-    /// Trusted vaults (global-only, ignored at vault layer).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub trusted_vaults: Option<RawTrustedVaults>,
-
-    /// Frontmatter configuration.
-    pub frontmatter: Option<RawFrontmatter>,
-
-    /// Task configuration.
-    pub task: Option<RawTaskConfig>,
-}
 
 /// Raw config parsed from the global config file.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -99,48 +71,6 @@ pub struct RawVaultConfig {
     /// Populated during discovery/parsing. Not serialized to TOML.
     #[serde(skip)]
     pub metadata: Option<FileInfo>,
-}
-
-impl From<(RawGlobalConfig, RawVaultConfig)> for RawConfig {
-    #[inline]
-    fn from((global, vault): (RawGlobalConfig, RawVaultConfig)) -> Self {
-        Self {
-            logging: vault.logging.or(global.logging),
-            paths: RawPathsConfig::merge(
-                global.paths.into(),
-                vault.paths.into(),
-            ),
-            trusted_vaults: global.trusted_vaults,
-            frontmatter: vault.frontmatter.or(global.frontmatter),
-            task: vault.task.or(global.task),
-        }
-    }
-}
-
-impl From<RawGlobalConfig> for RawConfig {
-    #[inline]
-    fn from(global: RawGlobalConfig) -> Self {
-        Self {
-            logging: global.logging,
-            paths: global.paths.into(),
-            trusted_vaults: global.trusted_vaults,
-            frontmatter: global.frontmatter,
-            task: global.task,
-        }
-    }
-}
-
-impl From<RawVaultConfig> for RawConfig {
-    #[inline]
-    fn from(vault: RawVaultConfig) -> Self {
-        Self {
-            logging: vault.logging,
-            paths: vault.paths.into(),
-            trusted_vaults: None,
-            frontmatter: vault.frontmatter,
-            task: vault.task,
-        }
-    }
 }
 
 /// Raw path configuration input.
@@ -424,17 +354,19 @@ mod tests {
                 log_level = "info"
             "#;
 
-            let parsed: Result<RawConfig, _> = toml::from_str(toml);
+            let parsed: Result<RawGlobalConfig, _> = toml::from_str(toml);
             assert!(parsed.is_ok(), "Unknown keys should be ignored");
         }
     }
 
-    mod unified_raw_config {
+    mod raw_config_files {
         use super::*;
 
         #[test]
-        fn raw_config_deserializes_from_toml() {
+        fn raw_vault_config_deserializes_from_toml() {
             let toml = r#"
+                vault_path = "/vault"
+
                 [paths]
                 schemas_dir = "custom-schemas"
                 templates_dir = "custom-templates"
@@ -443,7 +375,7 @@ mod tests {
                 log_level = "debug"
             "#;
 
-            let raw: RawConfig = toml::from_str(toml).unwrap();
+            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
             assert_eq!(
                 raw.paths.schemas_dir.as_deref(),
                 Some("custom-schemas")
@@ -459,23 +391,24 @@ mod tests {
         }
 
         #[test]
-        fn raw_config_supports_partial_paths() {
+        fn raw_vault_config_supports_partial_paths() {
             let toml = r#"
+                vault_path = "/vault"
+
                 [paths]
                 cache_dir = ".cache"
                 # schemas_dir omitted - will merge from lower layer
             "#;
 
-            let raw: RawConfig = toml::from_str(toml).unwrap();
+            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
             assert_eq!(raw.paths.cache_dir.as_deref(), Some(".cache"));
             assert_eq!(raw.paths.schemas_dir, None);
         }
 
         #[test]
-        fn raw_config_defaults_to_empty() {
-            let raw = RawConfig::default();
+        fn raw_global_config_defaults_to_empty() {
+            let raw = RawGlobalConfig::default();
 
-            assert!(raw.paths.cache_dir.is_none());
             assert!(raw.paths.schemas_dir.is_none());
             assert!(raw.paths.property_bank_file.is_none());
             assert!(raw.paths.templates_dir.is_none());
@@ -486,24 +419,25 @@ mod tests {
         }
 
         #[test]
-        fn raw_paths_config_all_fields_optional() {
+        fn raw_global_paths_config_all_fields_optional() {
             let toml = "
                 [paths]
                 # All fields omitted - should deserialize successfully
             ";
 
-            let raw: RawConfig = toml::from_str(toml).unwrap();
+            let raw: RawGlobalConfig = toml::from_str(toml).unwrap();
             let fs = raw.paths;
 
-            assert!(fs.cache_dir.is_none());
             assert!(fs.schemas_dir.is_none());
             assert!(fs.property_bank_file.is_none());
             assert!(fs.templates_dir.is_none());
         }
 
         #[test]
-        fn raw_config_with_all_sections() {
+        fn raw_vault_config_with_all_sections() {
             let toml = r#"
+                vault_path = "/vault"
+
                 [paths]
                 schemas_dir = "schemas"
                 cache_dir = ".cache"
@@ -515,7 +449,7 @@ mod tests {
                 title_key = "title"
             "#;
 
-            let raw: RawConfig = toml::from_str(toml).unwrap();
+            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
             assert_eq!(raw.paths.schemas_dir.as_deref(), Some("schemas"));
             assert_eq!(raw.paths.cache_dir.as_deref(), Some(".cache"));
             assert!(raw.logging.is_some());
@@ -523,22 +457,26 @@ mod tests {
         }
 
         #[test]
-        fn raw_config_serializes_and_roundtrips() {
-            let original = RawConfig {
-                paths: RawPathsConfig {
+        fn raw_vault_config_serializes_and_roundtrips() {
+            let original = RawVaultConfig {
+                vault_path: "/vault".to_owned(),
+                paths: RawVaultPaths {
                     cache_dir: Some(".cache".to_owned()),
                     schemas_dir: Some("schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
                     templates_dir: Some("templates".to_owned()),
                 },
+                name: None,
+                version: None,
                 frontmatter: None,
                 logging: None,
                 task: None,
-                trusted_vaults: None,
+                metadata: None,
             };
 
             let toml_string = toml::to_string(&original).unwrap();
-            let deserialized: RawConfig = toml::from_str(&toml_string).unwrap();
+            let deserialized: RawVaultConfig =
+                toml::from_str(&toml_string).unwrap();
 
             assert_eq!(deserialized.paths.cache_dir, original.paths.cache_dir);
             assert_eq!(

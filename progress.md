@@ -183,6 +183,28 @@ _No tests run yet_
 
 ---
 
+## Session: Phase 6C continuation (2026-05-07)
+
+### RawConfig removal slice - low risk first
+
+**Actions**:
+1. ✅ Ran `gitnexus_impact` before edits:
+   - `Config::build` = HIGH risk (19 direct callers)
+   - `Global::try_from` = LOW risk
+   - `Vault::try_from` = LOW risk
+2. ✅ Removed `TryFrom<&RawConfig>` impl from `config/global.rs`
+3. ✅ Removed `TryFrom<&RawConfig>` impl from `config/vault.rs`
+4. ✅ Refactored `Config::build_from_layers` to avoid intermediate `RawConfig`
+5. ✅ Migrated aggregate test fixtures to layered build API
+6. ✅ Migrated `note/aggregate.rs` test helpers to `RawVaultConfig` + layered build
+7. ✅ Re-ran `cargo test --lib` (988 passed)
+
+**Scope reduction outcome**:
+- `RawConfig` references in `lithos-core/src` dropped from 36 to 21.
+- Remaining references are concentrated in `config/aggregate.rs`, `config/merger.rs` tests/helper, and `config/raw.rs`.
+
+---
+
 ## Build Status
 
 _No builds run yet_
@@ -834,3 +856,84 @@ All success criteria met. Ready for integration.
 - cargo test --lib: 988 passed
 
 **Next:** remove remaining RawConfig callsites, then delete RawConfig type + impls
+
+### 18:35 - Phase 6C Slice 3 started (merger/raw cleanup)
+
+**Pre-edit impact checks:**
+- `RawConfig` upstream risk: LOW (`gitnexus_impact`)
+- `merge_raw_configs` symbol not found in GitNexus index (likely stale index for this test-only helper); proceeding with cautious incremental edits + tests.
+
+**Planned in this slice:**
+1. Remove `RawConfig` test helper usage from `config/merger.rs`
+2. Remove legacy `Config::build(&RawConfig, ...)` callsites
+3. Delete `RawConfig` DTO + conversions from `raw.rs`
+
+**Completed in slice:**
+1. ✅ Removed `merge_raw_configs` helper and related `RawConfig` tests/imports from `config/merger.rs`
+2. ✅ Removed legacy `Config::build(&RawConfig, ...)` from `config/aggregate.rs`
+3. ✅ Removed `RawConfig` struct and conversion impls from `config/raw.rs`
+4. ✅ Updated raw DTO tests to target `RawGlobalConfig`/`RawVaultConfig`
+5. ✅ Updated processor doc comment to remove stale `RawConfig` mention
+
+**Verification:**
+- ✅ `cargo test --lib` passes: 985 passed, 0 failed
+- ✅ `rg "\\bRawConfig\\b" lithos-core/src` returns no matches
+
+### 18:50 - Phase 6D started (builder module migration)
+
+**Goal of this slice:**
+1. Rename `config/loader.rs` → `config/builder.rs`
+2. Move layered config construction out of `Config` impl into builder module
+3. Update module/docs/callsites to use `config::builder`
+
+**Error encountered (attempt 1):**
+- `cargo test --lib` failed after migration.
+- Root cause: removed `raw` module import in `aggregate.rs`, but tests still referenced `raw::RawVaultConfig` and `raw::RawVaultPaths` shorthand.
+- Additional warning: unused `Config` import in `config/merger.rs` tests.
+- Resolution in progress: switch test references to `crate::config::raw::...` and clean imports.
+
+**Error encountered (attempt 2):**
+- `mise run verify` failed in lint/integration gates.
+- Root causes:
+  1) integration tests still imported `RawConfig` and called removed `Config::build(...)`
+  2) `aggregate.rs` fixture module missed explicit `VaultId`/`VaultRoot` imports
+  3) clippy denied `Config::new` for `too_many_arguments`
+
+**Fixes applied:**
+- Updated integration tests to call `config::builder::build_from_layers(None, None, ...)`:
+  - `tests/note_ingest.rs`
+  - `tests/note_reader.rs`
+  - `tests/schema_loader.rs`
+  - `tests/property_bank_processor.rs`
+- Added fixture imports in `config/aggregate.rs` for `VaultId` and `VaultRoot`.
+- Added targeted `#[expect(clippy::too_many_arguments, ...)]` on `Config::new`.
+
+**Error encountered (attempt 3):**
+- `verify` still failed: integration tests could not access `builder::build_from_layers` because it was `pub(crate)`.
+- Fix: changed to `pub fn build_from_layers(...)` and removed now-unused `Config` import in `tests/note_ingest.rs`.
+
+### 19:05 - Verification green after Phase 6D fixes
+
+**Final verification run:**
+- ✅ `mise run verify` passed end-to-end (fmt, lint, unit, integration, doctests)
+- ✅ Unit tests: 986/986 passed
+- ✅ Integration tests: 36/36 passed
+- ✅ Doc tests: 157 passed, 0 failed
+
+**Outcome:**
+- Builder migration and `RawConfig` removal path are now stable under full quality gates.
+- Remaining work is branch hygiene (final review + commit), not code correctness.
+
+### 19:15 - Commit prep checks and planning sync
+
+**Actions:**
+- ✅ Loaded `planning-with-files` skill and ran session catchup script.
+- ✅ Ran `gitnexus_detect_changes(scope: all)` per repo policy before commit.
+- ✅ Updated `task_plan.md` to mark Phase 6C complete and track final commit-prep task.
+- ✅ Updated `findings.md` with detect-changes checkpoint and risk interpretation.
+
+**Detect-changes result:**
+- Risk: `critical`
+- Changed symbols: 73
+- Affected processes: 16
+- Interpretation: broad, intentional refactor surface (core config + tests + docs); runtime quality gates are green.

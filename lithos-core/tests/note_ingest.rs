@@ -2,8 +2,7 @@
 
 use lithos_core::{
     config::{
-        aggregate::Config,
-        raw::RawConfig,
+        builder,
         vault::{VaultId, VaultRoot},
     },
     db::Database,
@@ -22,8 +21,9 @@ mod tests {
         let unique = format!("lithos_note_ingest_{}", std::process::id());
         let root = std::env::temp_dir().join(unique);
         std::fs::create_dir_all(root.join("notes")).expect("create notes dir");
-        let config = Config::build(
-            &RawConfig::default(),
+        let config = builder::build_from_layers(
+            None,
+            None,
             VaultId::new(),
             VaultRoot::try_new(root.clone()).expect("vault root"),
             lithos_core::config::aggregate::Version::initial(),

@@ -190,6 +190,45 @@ pub(crate) fn merge_all(
 
 **User Decision**: Implement typestate pattern for clarity and expressivity, even though simpler approaches exist.
 
+---
+
+## Phase 6C Incremental Migration Notes (2026-05-07)
+
+- `Config::build` remains high-risk (`gitnexus_impact`: HIGH, 19 direct callers), so migration continues via low-risk slices.
+- Removed unused low-risk adapters:
+  - `impl TryFrom<&RawConfig> for Global`
+  - `impl TryFrom<&RawConfig> for Vault`
+- Reduced cross-context `RawConfig` coupling in tests:
+  - `config/aggregate.rs` fixtures/tests now call `Config::build_from_layers(...)`
+  - `note/aggregate.rs` test helpers now build from `RawVaultConfig` layers
+- `Config::build_from_layers(...)` no longer constructs an intermediate `RawConfig`; it now validates/constructs domain fields directly.
+- Residual `RawConfig` usage is now concentrated in:
+  - `config/aggregate.rs` (`Config::build(&RawConfig, ...)` legacy entrypoint)
+  - `config/merger.rs` test helper and related tests
+  - `config/raw.rs` DTO + conversion impls + raw DTO tests
+
+### Phase 6C Slice 3 updates
+
+- Removed `RawConfig`-based helper/tests from `config/merger.rs`.
+- Removed legacy `Config::build(&RawConfig, ...)` from `config/aggregate.rs`.
+- Deleted `RawConfig` DTO and its conversion impls from `config/raw.rs`.
+- Reworked raw DTO tests to validate `RawGlobalConfig` / `RawVaultConfig` directly.
+- Remaining references to `RawConfig` in `lithos-core/src` are now zero (code path fully migrated).
+- Verification after deletion: `cargo test --lib` passed (985/0).
+
+### Phase 6D verification checkpoint
+
+- Renamed `config/loader.rs` to `config/builder.rs` and migrated callsites/docs to `config::builder`.
+- Moved layered construction API from `Config` impl to builder module (`build_from_layers`).
+- Added `Config::new(...)` as the aggregate constructor boundary.
+- Full quality gate now passes after migration: `mise run verify` green (unit + integration + doctests).
+
+### Pre-commit scope check
+
+- Ran `gitnexus_detect_changes(scope: all)` before commit prep.
+- Reported risk level: `critical`, driven by broad symbol touch count (docs + tests + config core module edits).
+- Runtime validation evidence remains green (`mise run verify` all pass), so the change set appears intentionally wide but behaviorally stable.
+
 **Rationale**: Pattern consistency across contexts (note, schema, config) improves codebase navigability and maintains architectural coherence.
 
 ### Typestate Design for Config Processing (DRAFT - NEEDS APPROVAL)

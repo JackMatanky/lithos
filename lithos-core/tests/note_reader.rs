@@ -32,7 +32,7 @@ mod tests {
     use lithos_core::{
         config::{
             aggregate::Config,
-            raw::RawConfig,
+            builder,
             task::StatusSymbol,
             vault::{VaultId, VaultRoot},
         },
@@ -56,10 +56,10 @@ mod tests {
     }
 
     fn test_config(root: PathBuf) -> TestResult<Config> {
-        let raw = RawConfig::default();
         let root = VaultRoot::try_new(root)?;
-        Ok(Config::build(
-            &raw,
+        Ok(builder::build_from_layers(
+            None,
+            None,
             VaultId::new(),
             root,
             lithos_core::config::aggregate::Version::initial(),

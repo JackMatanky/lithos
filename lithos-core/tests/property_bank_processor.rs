@@ -17,7 +17,7 @@ use common::*;
 use lithos_core::{
     config::{
         aggregate::Config,
-        raw::RawConfig,
+        builder,
         vault::{VaultId, VaultRoot},
     },
     fs::{FsReader, RelativePath},
@@ -37,10 +37,10 @@ fn write_file(root: &Path, relative: &Path, content: &str) -> TestResult {
 
 /// Create a test config for a vault root.
 fn test_config(root: &Path) -> TestResult<Config> {
-    let raw = RawConfig::default();
     let root = VaultRoot::try_new(root.to_path_buf())?;
-    let config = Config::build(
-        &raw,
+    let config = builder::build_from_layers(
+        None,
+        None,
         VaultId::new(),
         root,
         lithos_core::config::aggregate::Version::initial(),

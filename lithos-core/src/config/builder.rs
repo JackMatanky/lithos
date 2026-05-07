@@ -1,16 +1,16 @@
-//! Configuration loading orchestration with hybrid staleness detection.
+//! Configuration building orchestration with hybrid staleness detection.
 //!
-//! This module provides the [`Loader`] struct which orchestrates the complete
+//! This module provides the [`Builder`] struct which orchestrates the complete
 //! configuration loading pipeline:
 //!
 //! 1. **Load raw views** from database (cached file state)
 //! 2. **Ingest raw configs** from filesystem
 //! 3. **Detect staleness** via timestamp + content hash comparison
-//! 4. **Merge configs** using Figment when stale
-//! 5. **Build domain** via `Config::build`
+//! 4. **Merge configs** when stale
+//! 5. **Build domain** via builder-level construction
 //! 6. **Persist** updated views and config to database
 //!
-//! The loader implements efficient staleness tracking by comparing:
+//! The builder implements efficient staleness tracking by comparing:
 //! - File modification timestamps (fast check)
 //! - BLAKE3 content hashes (accurate change detection)
 //!
@@ -23,19 +23,69 @@ use tracing::instrument;
 
 use crate::{
     config::{
-        aggregate::Config,
+        aggregate::{Config, Version},
         discovery::DiscoveryEngine,
         error::{ConfigError, ConfigIngestError},
+        frontmatter::Frontmatter,
+        logging::Logging,
         merger::ConfigMerger,
+        paths::Paths,
         processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
-        raw::{RawGlobalConfig, RawVaultConfig},
+        raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
         storage::Repository,
+        task::Task,
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
 };
 
-/// Configuration loader with hybrid staleness detection.
+/// Build validated config from layered raw sources.
+///
+/// Precedence: defaults < global < vault.
+///
+/// # Errors
+/// Returns [`ConfigError`] if validation fails while constructing domain
+/// types.
+#[inline]
+pub fn build_from_layers(
+    global: Option<&RawGlobalConfig>,
+    vault: Option<&RawVaultConfig>,
+    vault_id: VaultId,
+    vault_root: VaultRoot,
+    version: Version,
+) -> Result<Config, ConfigError> {
+    let vault_metadata =
+        super::vault::Metadata::new(vault_id, vault_root, None, None)?;
+
+    let logging = vault.and_then(|v| v.logging.clone()).or_else(|| {
+        let g = global?;
+        g.logging.clone()
+    });
+    let frontmatter = vault.and_then(|v| v.frontmatter.clone()).or_else(|| {
+        let g = global?;
+        g.frontmatter.clone()
+    });
+    let task = vault.and_then(|v| v.task.clone()).or_else(|| {
+        let g = global?;
+        g.task.clone()
+    });
+
+    let paths = RawPathsConfig::merge(
+        global.map_or_else(RawPathsConfig::default, |g| g.paths.clone().into()),
+        vault.map_or_else(RawPathsConfig::default, |v| v.paths.clone().into()),
+    );
+
+    let logging =
+        logging.map(Logging::try_from).transpose()?.unwrap_or_default();
+    let paths = Paths::try_from(&paths)?;
+    let frontmatter =
+        frontmatter.map(Frontmatter::try_from).transpose()?.unwrap_or_default();
+    let task = task.map(Task::try_from_raw).transpose()?.unwrap_or_default();
+
+    Ok(Config::new(version, vault_metadata, logging, paths, frontmatter, task))
+}
+
+/// Configuration builder with hybrid staleness detection.
 ///
 /// Coordinates the full configuration loading pipeline:
 /// - File discovery (filesystem + database)
@@ -46,38 +96,38 @@ use crate::{
 ///
 /// # Architecture
 ///
-/// The loader owns the orchestration pipeline but delegates to:
+/// The builder owns the orchestration pipeline but delegates to:
 /// - `DiscoveryEngine`: File discovery and database query
 /// - `Repository`: Database persistence and retrieval
-/// - `Config::build`: Domain validation and construction
+/// - `build_from_layers`: Domain validation and construction
 ///
 /// # Examples
 ///
 /// ```rust,no_run
 /// use std::path::PathBuf;
 ///
-/// use lithos_core::config::{loader::Loader, storage::RedbStorage};
+/// use lithos_core::config::{builder::Builder, storage::RedbStorage};
 ///
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let vault_root = PathBuf::from("/vault");
 /// // let repo = RedbStorage::new(...);
-/// // let loader = Loader::new(vault_root, repo);
-/// // let config = loader.load()?;
+/// // let builder = Builder::new(vault_root, repo);
+/// // let config = builder.load()?;
 /// # Ok(())
 /// # }
 /// ```
-pub struct Loader<R> {
+pub struct Builder<R> {
     /// Vault root path for config resolution.
     vault_root: PathBuf,
     /// Repository for database persistence.
     repository: R,
 }
 
-impl<R> Loader<R>
+impl<R> Builder<R>
 where
     R: Repository,
 {
-    /// Create a new loader for the given vault root.
+    /// Create a new builder for the given vault root.
     ///
     /// # Parameters
     ///
@@ -89,12 +139,12 @@ where
     /// ```rust,no_run
     /// use std::path::PathBuf;
     ///
-    /// use lithos_core::config::{loader::Loader, storage::RedbStorage};
+    /// use lithos_core::config::{builder::Builder, storage::RedbStorage};
     ///
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let vault_root = PathBuf::from("/vault");
     /// // let repo = RedbStorage::new(...);
-    /// // let loader = Loader::new(vault_root, repo);
+    /// // let builder = Builder::new(vault_root, repo);
     /// # Ok(())
     /// # }
     /// ```
@@ -120,7 +170,7 @@ where
     ///
     /// Returns [`ConfigError`] if:
     /// - File ingestion fails (I/O error, parse error)
-    /// - Figment merge fails (incompatible layers)
+    /// - Merging/building fails due to invalid values
     /// - Domain validation fails (invalid config)
     /// - Database operations fail
     ///
@@ -129,13 +179,13 @@ where
     /// ```rust,no_run
     /// use std::path::PathBuf;
     ///
-    /// use lithos_core::config::{loader::Loader, storage::RedbStorage};
+    /// use lithos_core::config::{builder::Builder, storage::RedbStorage};
     ///
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let vault_root = PathBuf::from("/vault");
     /// // let repo = RedbStorage::new(...);
-    /// // let loader = Loader::new(vault_root, repo);
-    /// // let config = loader.load()?;
+    /// // let builder = Builder::new(vault_root, repo);
+    /// // let config = builder.load()?;
     /// # Ok(())
     /// # }
     /// ```

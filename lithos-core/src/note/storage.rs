@@ -602,7 +602,6 @@ mod tests {
     use crate::{
         config::{
             aggregate::Config,
-            raw::RawConfig,
             vault::{VaultId, VaultRoot},
         },
         note::{
@@ -613,8 +612,9 @@ mod tests {
     };
 
     fn test_config() -> Result<Config, String> {
-        Config::build(
-            &RawConfig::default(),
+        crate::config::builder::build_from_layers(
+            None,
+            None,
             VaultId::new(),
             VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                 .map_err(|e| e.to_string())?,

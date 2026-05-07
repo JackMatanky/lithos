@@ -27,7 +27,7 @@
 //!
 //! ```rust,no_run
 //! # use lithos_core::config::{
-//! #     loader::Loader,
+//! #     builder::Builder,
 //! #     storage::RedbStorage,
 //! #     vault::VaultRoot,
 //! # };
@@ -36,12 +36,12 @@
 //! # let vault_root = std::path::Path::new("/path/to/vault");
 //! # let db_path = std::path::Path::new("/tmp/test.redb");
 //! # let db = Database::open(db_path)?;
-//! // 1. Create loader with repository
+//! // 1. Create builder with repository
 //! let storage = RedbStorage::new(&db);
-//! let loader = Loader::new(vault_root, storage);
+//! let builder = Builder::new(vault_root, storage);
 //!
 //! // 2. Load configuration (with automatic staleness detection)
-//! let config = loader.load()?;
+//! let config = builder.load()?;
 //!
 //! // 3. Use the validated configuration
 //! assert!(config.paths().cache.cache_dir().as_path().is_relative());
@@ -62,8 +62,8 @@
 //! ## Processing Pipeline
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
-//! - [`loader`] - Orchestrates: ingest → process → merge → persist
-//! - [`ingestor`] - File discovery and TOML parsing
+//! - [`builder`] - Orchestrates: discover → process → merge → persist
+//! - [`discovery`] - File discovery and cached-view lookup
 //!
 //! ## Storage & Views
 //! - [`storage`] - Unified Repository trait and redb implementation
@@ -101,6 +101,8 @@ pub mod storage;
 //                  Supporting Domain Modules                  //
 // ----------------------------------------------------------- //
 
+/// Configuration build orchestration with hybrid staleness detection.
+pub mod builder;
 /// Consolidated discovery logic for config files.
 pub(crate) mod discovery;
 /// Configuration error types.
@@ -109,8 +111,6 @@ pub mod error;
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
-/// Configuration loading orchestration with hybrid staleness detection.
-pub mod loader;
 /// Logging configuration types.
 pub mod logging;
 /// Config merging orchestration for processor outcomes.
