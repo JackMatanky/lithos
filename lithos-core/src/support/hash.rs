@@ -187,13 +187,6 @@ impl<K: Eq + Hash> Blake3HashIndex<K> {
     /// Returns `true` if the index contains `key`.
     #[inline]
     #[must_use]
-    pub(crate) fn has(&self, key: &K) -> bool {
-        self.0.contains_key(key)
-    }
-
-    /// Returns `true` if the index contains `key`.
-    #[inline]
-    #[must_use]
     pub(crate) fn contains_key(&self, key: &K) -> bool {
         self.0.contains_key(key)
     }
@@ -463,8 +456,8 @@ mod tests {
             let index = Blake3HashIndex::compute(map);
 
             assert_eq!(index.len(), 2);
-            assert!(index.has(&"a".to_owned()));
-            assert!(index.has(&"b".to_owned()));
+            assert!(index.contains_key(&"a".to_owned()));
+            assert!(index.contains_key(&"b".to_owned()));
         }
     }
 
