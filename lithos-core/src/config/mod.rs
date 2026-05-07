@@ -105,6 +105,8 @@ pub mod ingestor;
 pub mod loader;
 /// Logging configuration types.
 pub mod logging;
+/// Config merging orchestration for processor outcomes.
+pub mod merger;
 /// Single-file typestate processor for config processing.
 pub mod processor;
 /// Raw (serde) configuration input types.

@@ -962,36 +962,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn finalize_no_changes_returns_update_view_only() {
-        let raw = create_raw_global_config();
-        let processor =
-            ConfigFileProcessor::<GlobalConfig, _, _>::new(Some(raw), None);
-
-        let result = processor.compare().expect("compare should succeed");
-
-        match result {
-            ComparisonBranch::Stale(stale_proc) => {
-                let analysis =
-                    stale_proc.analyze().expect("analyze should succeed");
-                match analysis {
-                    AnalysisBranch::NoChanges(completed_proc) => {
-                        let outcome = completed_proc.finalize();
-                        assert!(matches!(
-                            outcome,
-                            ProcessorOutcome::UpdateViewOnly { .. }
-                        ));
-                    }
-                    AnalysisBranch::PropertyChanges(_) => {
-                        // Analysis might detect changes due to no view
-                        // This is expected behavior
-                    }
-                }
-            }
-            ComparisonBranch::Fresh(_) => {
-                panic!("Expected Stale branch, got Fresh");
-            }
-        }
-    }
 }

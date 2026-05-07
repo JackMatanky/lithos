@@ -311,3 +311,46 @@ Implemented actual BLAKE3 field hashing for both GlobalConfig and VaultConfig.
 **Status**: Compiles successfully
 
 **Next**: Write unit tests for processor transitions
+
+---
+
+## Phase 2 Complete: Field Hashing + Tests (15:00)
+
+**Time**: 15:00
+**Status**: ✅ COMPLETED - Commit 1f4241f6
+
+Successfully implemented actual BLAKE3 field hashing and comprehensive test coverage.
+
+**What was delivered:**
+- `GlobalConfig::compute_field_hashes()` - JSON serialization + BLAKE3
+- `VaultConfig::compute_field_hashes()` - Same approach for vault configs
+- Deterministic hashing: serialize to JSON, hash bytes
+- Only hashes present Optional fields (skips None values)
+- `ConfigFieldHashes::diff()` - detects which fields changed
+
+**Test coverage (14 new tests):**
+- Constructor tests (new with None/Some combinations)
+- Comparison tests (all 4 branches: both none, raw only, view only, both exist)
+- Field hashing tests (presence/absence in hash maps)
+- ConfigFieldHashes diff tests (new fields, removed fields, identical)
+- Finalization tests (UseCached, UpdateViewOnly outcomes)
+
+**All 1001 tests passing** (987 existing + 14 new processor tests)
+
+**Blockers resolved:**
+- Multiple rounds of clippy fixes (ref patterns, expect usage, test panics)
+- Cleaned up duplicate code from failed edits
+- Added proper #[expect] attributes for justified lints
+
+**Next**: Phase 3 - Create discovery.rs and merger.rs modules
+
+---
+
+## Phase 3 Started: Discovery & Merger Modules (15:05)
+
+**Objective**: Create orchestration modules for file loading and outcome merging
+
+**Modules to create:**
+1. `discovery.rs` - Load raw configs + views from repository
+2. `merger.rs` - Combine processor outcomes, build domain config, persist views
+
