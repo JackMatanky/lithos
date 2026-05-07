@@ -144,10 +144,6 @@ pub enum ConfigQueryError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigIngestError {
-    /// Figment provider or extraction error.
-    #[error("Config ingestion failed: {0}")]
-    Figment(Box<figment::Error>),
-
     /// I/O error reading config file.
     #[error("Failed to read config file {path}: {source}")]
     Io {
@@ -187,13 +183,6 @@ impl From<DbError> for ConfigError {
     #[inline]
     fn from(error: DbError) -> Self {
         Self::Storage(error.to_string().into())
-    }
-}
-
-impl From<figment::Error> for ConfigIngestError {
-    #[inline]
-    fn from(error: figment::Error) -> Self {
-        Self::Figment(Box::new(error))
     }
 }
 

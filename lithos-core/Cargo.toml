@@ -39,7 +39,6 @@ serde_yaml.workspace = true
 # Template & Parsing (domain logic, sync)
 minijinja.workspace = true
 pulldown-cmark.workspace = true
-figment.workspace = true
 
 # Safe temporary file creation (used by atomic_write in production code)
 tempfile.workspace = true
