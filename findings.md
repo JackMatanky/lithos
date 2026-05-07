@@ -967,3 +967,49 @@ fn merge_raw_configs_with_both()
 
 **Last Updated**: 2026-05-06
 **Status**: Analysis complete, plan revised
+
+---
+
+## Post-Completion Corrections (16:45)
+
+**Time**: 16:45
+**Status**: ✅ CORRECTIONS APPLIED
+
+### Issues Fixed
+
+1. **CONTEXT.md Updated**:
+   - Added Environment Config language (system-wide from env vars/global files)
+   - Added Local (Vault) Config language (vault-specific overrides)
+   - Updated Precedence Chain: Environment Config < Local (Vault) Config
+   - Added examples with actual file paths
+
+2. **RawFileVersion Fixed**:
+   - ✅ Removed compressed_content field (not needed for config views)
+   - ✅ Replaced created_at + modified_at with FileInfo struct
+   - ✅ Updated new() constructor to take FileInfo
+   - ✅ Removed decompress() method
+   - ✅ Updated is_timestamp_match() to use file_info
+   - ✅ Added file_info() accessor method
+   - ✅ All 7 view tests pass
+
+3. **RawVaultConfigView Fixed**:
+   - ✅ Removed vault_id field (domain concern, not view concern)
+   - ✅ Updated new() to not take vault_id parameter
+   - ✅ Removed vault_id() accessor method
+   - ✅ Updated storage trait: save_raw_vault_view() takes vault_id separately
+   - ✅ Updated all callers
+
+### Commits
+
+- Commit d50ff897: docs(config): update CONTEXT.md with environment/local config language
+- Commit 1685dbf5: fix(config): update RawFileVersion to use FileInfo
+- Commit c0912e0c: fix(config): remove vault_id from RawVaultConfigView
+
+### Final Verification
+
+- ✅ All 1032 tests pass
+- ✅ All view tests pass (7 tests)
+- ✅ Full test suite passes
+- ✅ RawFileVersion now uses FileInfo (consistent with schema/views)
+- ✅ RawVaultConfigView no longer has domain-specific vault_id
+
