@@ -31,46 +31,51 @@ use rkyv::{Archive, Deserialize, Serialize};
     Serialize,
     Deserialize,
 )]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Blake3Hash is descriptive and clear"
-)]
 #[rkyv(derive(Debug))]
-pub struct Blake3Hash([u8; 32]);
+pub(crate) struct Blake3Hash([u8; 32]);
 
 impl Blake3Hash {
     /// Creates a new hash from raw bytes.
     #[inline]
     #[must_use]
-    pub const fn new(bytes: [u8; 32]) -> Self {
+    #[cfg(test)]
+    pub(crate) const fn new(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
 
     /// Computes a hash directly from raw bytes.
     #[inline]
     #[must_use]
-    pub fn from_bytes(bytes: &[u8]) -> Self {
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
         Self(*blake3::hash(bytes).as_bytes())
     }
 
-    /// Computes a BLAKE3 hash using the value's hashing strategy.
+    /// Computes a BLAKE3 hash using the provided input strategy.
     #[inline]
     #[must_use]
-    pub fn compute<T: Blake3Hashable + ?Sized>(value: &T) -> Self {
-        value.compute_hash()
+    pub(crate) fn compute<I>(input: I) -> Self
+    where
+        I: Into<HashInput>,
+    {
+        match input.into() {
+            HashInput::Bytes(bytes) | HashInput::Structured(bytes) => {
+                Self::from_bytes(&bytes)
+            }
+            HashInput::Text(text) => Self::from_bytes(text.as_bytes()),
+        }
     }
 
     /// Returns the underlying bytes.
     #[inline]
     #[must_use]
-    pub const fn as_bytes(&self) -> &[u8; 32] {
+    pub(crate) const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 
     /// Checks if this hash matches another hash.
     #[inline]
     #[must_use]
-    pub fn is_match(&self, other: &Self) -> bool {
+    pub(crate) fn is_match(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
@@ -79,7 +84,7 @@ impl ArchivedBlake3Hash {
     /// Check if archived hash matches (for zero-copy staleness checks).
     #[inline]
     #[must_use]
-    pub fn is_match(&self, hash: &Blake3Hash) -> bool {
+    pub(crate) fn is_match(&self, hash: &Blake3Hash) -> bool {
         self.0
             .iter()
             .zip(hash.as_bytes().iter())
@@ -106,56 +111,58 @@ impl AsRef<[u8; 32]> for Blake3Hash {
 /// This wraps `HashMap<K, Blake3Hash>` so call sites can use a domain-specific
 /// type with helper methods for change detection.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-pub struct Blake3HashIndex<K: Eq + Hash>(HashMap<K, Blake3Hash>);
+pub(crate) struct Blake3HashIndex<K: Eq + Hash>(HashMap<K, Blake3Hash>);
 
+#[expect(dead_code, reason = "Crate-internal hash index API is staged")]
 impl<K: Eq + Hash> Blake3HashIndex<K> {
     /// Creates a new hash index from an existing hash map.
     #[inline]
     #[must_use]
-    pub const fn new(map: HashMap<K, Blake3Hash>) -> Self {
+    pub(crate) const fn new(map: HashMap<K, Blake3Hash>) -> Self {
         Self(map)
     }
 
     /// Returns a reference to the inner hash map.
     #[inline]
     #[must_use]
-    pub const fn as_inner(&self) -> &HashMap<K, Blake3Hash> {
+    pub(crate) const fn as_inner(&self) -> &HashMap<K, Blake3Hash> {
         &self.0
     }
 
     /// Returns a mutable reference to the inner hash map.
     #[inline]
     #[must_use]
-    pub fn as_inner_mut(&mut self) -> &mut HashMap<K, Blake3Hash> {
+    pub(crate) fn as_inner_mut(&mut self) -> &mut HashMap<K, Blake3Hash> {
         &mut self.0
     }
 
     /// Consumes the index and returns the inner hash map.
     #[inline]
     #[must_use]
-    pub fn into_inner(self) -> HashMap<K, Blake3Hash> {
+    pub(crate) fn into_inner(self) -> HashMap<K, Blake3Hash> {
         self.0
     }
 
     /// Creates an empty hash index.
     #[inline]
     #[must_use]
-    pub fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self(HashMap::new())
     }
 
-    /// Computes a hash index from a keyed map of hashable values.
+    /// Computes a hash index from keyed values.
     ///
-    /// Each value is hashed via its [`Blake3Hashable`] implementation.
+    /// Values are converted into [`HashInput`] and hashed via
+    /// [`Blake3Hash::compute`].
     #[inline]
     #[must_use]
-    pub fn compute<V>(map: HashMap<K, V>) -> Self
+    pub(crate) fn compute<V>(map: HashMap<K, V>) -> Self
     where
-        V: Blake3Hashable,
+        V: Into<HashInput>,
     {
         Self(
             map.into_iter()
-                .map(|(key, value)| (key, value.compute_hash()))
+                .map(|(k, v)| (k, Blake3Hash::compute(v.into())))
                 .collect(),
         )
     }
@@ -163,62 +170,67 @@ impl<K: Eq + Hash> Blake3HashIndex<K> {
     /// Returns the hash for `key`, if present.
     #[inline]
     #[must_use]
-    pub fn get(&self, key: &K) -> Option<&Blake3Hash> {
+    pub(crate) fn get(&self, key: &K) -> Option<&Blake3Hash> {
         self.0.get(key)
     }
 
     /// Inserts a key-hash pair into the index.
     #[inline]
-    pub fn insert(&mut self, key: K, hash: Blake3Hash) -> Option<Blake3Hash> {
+    pub(crate) fn insert(
+        &mut self,
+        key: K,
+        hash: Blake3Hash,
+    ) -> Option<Blake3Hash> {
         self.0.insert(key, hash)
     }
 
     /// Returns `true` if the index contains `key`.
     #[inline]
     #[must_use]
-    pub fn has(&self, key: &K) -> bool {
+    pub(crate) fn has(&self, key: &K) -> bool {
         self.0.contains_key(key)
     }
 
     /// Returns `true` if the index contains `key`.
     #[inline]
     #[must_use]
-    pub fn contains_key(&self, key: &K) -> bool {
+    pub(crate) fn contains_key(&self, key: &K) -> bool {
         self.0.contains_key(key)
     }
 
     /// Returns the number of hashes in the index.
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 
     /// Returns `true` if the index contains no hashes.
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
     /// Returns an iterator over all keys.
     #[inline]
-    pub fn keys(&self) -> impl Iterator<Item = &K> {
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &K> {
         self.0.keys()
     }
 
     /// Returns an iterator over all key-hash pairs.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &Blake3Hash)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&K, &Blake3Hash)> {
         self.0.iter()
     }
 }
 
+#[expect(dead_code, reason = "Diff helpers are not yet wired into all paths")]
 impl<K: Clone + Eq + Hash> Blake3HashIndex<K> {
     /// Returns keys that are new or whose hashes differ from `old`.
     #[inline]
     #[must_use]
-    pub fn changed_keys(&self, old: &Self) -> HashSet<K> {
+    pub(crate) fn changed_keys(&self, old: &Self) -> HashSet<K> {
         let mut changed = HashSet::new();
 
         for (key, hash) in self.iter() {
@@ -233,7 +245,7 @@ impl<K: Clone + Eq + Hash> Blake3HashIndex<K> {
     /// Returns keys that exist in `old` but not in `self`.
     #[inline]
     #[must_use]
-    pub fn removed_keys(&self, old: &Self) -> HashSet<K> {
+    pub(crate) fn removed_keys(&self, old: &Self) -> HashSet<K> {
         let mut removed = HashSet::new();
 
         for key in old.keys() {
@@ -253,6 +265,7 @@ impl<K: Eq + Hash> Default for Blake3HashIndex<K> {
     }
 }
 
+#[expect(dead_code, reason = "Archived index comparison is used selectively")]
 impl<K> ArchivedBlake3HashIndex<K>
 where
     K: Archive + Eq + Hash,
@@ -261,14 +274,14 @@ where
     /// Returns the number of hashes in the archived index.
     #[inline]
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 
     /// Returns `true` if the archived index contains no hashes.
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
@@ -278,7 +291,7 @@ where
     /// not always directly comparable with their owned source types.
     #[inline]
     #[must_use]
-    pub fn is_match_by<F>(
+    pub(crate) fn is_match_by<F>(
         &self,
         index: &Blake3HashIndex<K>,
         mut keys_match: F,
@@ -306,96 +319,93 @@ where
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Blake3HashIndex<K>
-where
-    K: Eq + Hash,
-    V: Blake3Hashable,
-{
+impl<K: Eq + Hash> From<HashMap<K, Blake3Hash>> for Blake3HashIndex<K> {
     #[inline]
-    fn from(map: HashMap<K, V>) -> Self {
-        Self::compute(map)
+    fn from(map: HashMap<K, Blake3Hash>) -> Self {
+        Self::new(map)
     }
 }
 
-/// Type that can be hashed into a [`Blake3Hash`].
+/// Hash input strategy for [`Blake3Hash::compute`].
+pub(crate) enum HashInput {
+    /// Hash raw bytes without transformation.
+    Bytes(Vec<u8>),
+    /// Hash text as UTF-8 bytes.
+    Text(String),
+    /// Hash structured data from pre-serialized bytes.
+    Structured(Vec<u8>),
+}
+
+impl<'data> From<&'data [u8]> for HashInput {
+    #[inline]
+    fn from(value: &'data [u8]) -> Self {
+        Self::Bytes(value.to_vec())
+    }
+}
+
+impl<'data, const N: usize> From<&'data [u8; N]> for HashInput {
+    #[inline]
+    fn from(value: &'data [u8; N]) -> Self {
+        Self::Bytes(value.to_vec())
+    }
+}
+
+impl<'data> From<&'data Vec<u8>> for HashInput {
+    #[inline]
+    fn from(value: &'data Vec<u8>) -> Self {
+        Self::Bytes(value.clone())
+    }
+}
+
+impl<'data> From<&'data str> for HashInput {
+    #[inline]
+    fn from(value: &'data str) -> Self {
+        Self::Text(value.to_owned())
+    }
+}
+
+impl<'data> From<&'data String> for HashInput {
+    #[inline]
+    fn from(value: &'data String) -> Self {
+        Self::Text(value.clone())
+    }
+}
+
+impl From<Vec<u8>> for HashInput {
+    #[inline]
+    fn from(value: Vec<u8>) -> Self {
+        Self::Bytes(value)
+    }
+}
+
+impl From<String> for HashInput {
+    #[inline]
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+/// Creates a byte-hash input strategy.
+#[inline]
+#[must_use]
+#[cfg(test)]
+pub(crate) fn hash_bytes(bytes: &[u8]) -> HashInput {
+    HashInput::Bytes(bytes.to_vec())
+}
+
+/// Creates a structured-hash input strategy.
 ///
-/// Implementors define their hashing strategy, such as raw byte hashing or
-/// structured serialization.
-pub trait Blake3Hashable {
-    /// Computes a hash for this value.
-    fn compute_hash(&self) -> Blake3Hash;
-}
-
-/// Wrapper that hashes values via JSON serialization.
-#[derive(Debug, Clone, Copy)]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "JsonHash is explicit about structured hashing strategy"
-)]
-pub struct JsonHash<T>(T);
-
-impl<T> JsonHash<T> {
-    /// Creates a JSON-hashed wrapper.
-    #[inline]
-    #[must_use]
-    pub const fn new(value: T) -> Self {
-        Self(value)
-    }
-}
-
-impl<T> Blake3Hashable for JsonHash<T>
+/// Uses JSON serialization and falls back to debug formatting.
+#[inline]
+#[must_use]
+pub(crate) fn hash_structured<T>(value: &T) -> HashInput
 where
     T: serde::Serialize + std::fmt::Debug,
 {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        if let Ok(json) = serde_json::to_vec(&self.0) {
-            Blake3Hash::from_bytes(&json)
-        } else {
-            Blake3Hash::from_bytes(format!("{:?}", &self.0).as_bytes())
-        }
-    }
-}
-
-impl Blake3Hashable for [u8] {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        Blake3Hash::from_bytes(self)
-    }
-}
-
-impl Blake3Hashable for Vec<u8> {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        Blake3Hash::from_bytes(self.as_slice())
-    }
-}
-
-impl Blake3Hashable for str {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        Blake3Hash::from_bytes(self.as_bytes())
-    }
-}
-
-impl Blake3Hashable for String {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        Blake3Hash::from_bytes(self.as_bytes())
-    }
-}
-
-impl<const N: usize> Blake3Hashable for [u8; N] {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        Blake3Hash::from_bytes(self.as_slice())
-    }
-}
-
-impl Blake3Hashable for Blake3Hash {
-    #[inline]
-    fn compute_hash(&self) -> Blake3Hash {
-        *self
+    if let Ok(json) = serde_json::to_vec(value) {
+        HashInput::Structured(json)
+    } else {
+        HashInput::Structured(format!("{value:?}").into_bytes())
     }
 }
 
@@ -420,7 +430,7 @@ mod tests {
         #[test]
         fn should_compute_from_data() {
             let data = b"hello world";
-            let hash = Blake3Hash::compute(data);
+            let hash = Blake3Hash::compute(hash_bytes(data));
             let expected = blake3::hash(data);
             assert_eq!(
                 hash.as_bytes(),
@@ -432,10 +442,10 @@ mod tests {
         #[test]
         fn should_compute_from_hashable_value() {
             let value = vec![1i32, 2i32, 3i32];
-            let hash = Blake3Hash::compute(&JsonHash::new(&value));
+            let hash = Blake3Hash::compute(hash_structured(&value));
 
             let json = serde_json::to_string(&value).unwrap();
-            let expected = Blake3Hash::compute(json.as_bytes());
+            let expected = Blake3Hash::compute(hash_bytes(json.as_bytes()));
 
             assert_eq!(hash, expected, "JSON hash mismatch");
         }
@@ -447,8 +457,8 @@ mod tests {
         #[test]
         fn should_compute_index_from_hashable_values() {
             let mut map = std::collections::HashMap::new();
-            map.insert("a".to_owned(), JsonHash::new(vec![1i32, 2i32]));
-            map.insert("b".to_owned(), JsonHash::new(vec![3i32, 4i32]));
+            map.insert("a".to_owned(), hash_structured(&vec![1i32, 2i32]));
+            map.insert("b".to_owned(), hash_structured(&vec![3i32, 4i32]));
 
             let index = Blake3HashIndex::compute(map);
 
@@ -463,14 +473,14 @@ mod tests {
 
         #[test]
         fn is_match_should_return_true_when_identical() {
-            let hash = Blake3Hash::compute(b"test");
+            let hash = Blake3Hash::compute(hash_bytes(b"test"));
             assert!(hash.is_match(&hash), "Identical hashes should match");
         }
 
         #[test]
         fn is_match_should_return_false_when_different() {
-            let hash1 = Blake3Hash::compute(b"test1");
-            let hash2 = Blake3Hash::compute(b"test2");
+            let hash1 = Blake3Hash::compute(hash_bytes(b"test1"));
+            let hash2 = Blake3Hash::compute(hash_bytes(b"test2"));
             assert!(
                 !hash1.is_match(&hash2),
                 "Different hashes should not match"
@@ -483,7 +493,7 @@ mod tests {
 
         #[test]
         fn archived_is_match_should_return_true_when_identical() {
-            let hash = Blake3Hash::compute(b"test");
+            let hash = Blake3Hash::compute(hash_bytes(b"test"));
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash)
                 .expect("Failed to serialize");
             let archived =
@@ -498,8 +508,8 @@ mod tests {
 
         #[test]
         fn archived_is_match_should_return_false_when_different() {
-            let hash1 = Blake3Hash::compute(b"test1");
-            let hash2 = Blake3Hash::compute(b"test2");
+            let hash1 = Blake3Hash::compute(hash_bytes(b"test1"));
+            let hash2 = Blake3Hash::compute(hash_bytes(b"test2"));
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash1)
                 .expect("Failed to serialize");
             let archived =
@@ -525,7 +535,7 @@ mod tests {
 
         #[test]
         fn should_support_as_ref_array() {
-            let hash = Blake3Hash::compute(b"test");
+            let hash = Blake3Hash::compute(hash_bytes(b"test"));
             let bytes: &[u8; 32] = hash.as_ref();
             assert_eq!(bytes, hash.as_bytes());
         }

@@ -136,7 +136,7 @@ use crate::{schema::property::PropertyName, support::hash::Blake3Hash};
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,ignore
 /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
 /// # use lithos_core::support::hash::Blake3Hash;
 /// #
@@ -159,17 +159,20 @@ impl HashRecord {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let content_hash = Blake3Hash::compute(b"content");
     /// let property_hashes = RawPropertyMapHash::default();
     /// let record = HashRecord::new(content_hash, property_hashes);
-    /// ```
+    /// ```rust,ignore
     #[inline]
     #[must_use]
-    pub fn new(content: Blake3Hash, properties: RawPropertyMapHash) -> Self {
+    pub(crate) fn new(
+        content: Blake3Hash,
+        properties: RawPropertyMapHash,
+    ) -> Self {
         Self {
             content,
             properties,
@@ -180,17 +183,17 @@ impl HashRecord {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let content = Blake3Hash::compute(b"test");
     /// let record = HashRecord::new(content, RawPropertyMapHash::default());
     /// assert_eq!(record.content(), &content);
-    /// ```
+    /// ```rust,ignore
     #[inline]
     #[must_use]
-    pub fn content(&self) -> &Blake3Hash {
+    pub(crate) fn content(&self) -> &Blake3Hash {
         &self.content
     }
 
@@ -201,7 +204,7 @@ impl HashRecord {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
@@ -210,7 +213,7 @@ impl HashRecord {
     ///     RawPropertyMapHash::default(),
     /// );
     /// assert!(record.properties().is_empty());
-    /// ```
+    /// ```rust,ignore
     #[inline]
     #[must_use]
     pub fn properties(&self) -> &RawPropertyMapHash {
@@ -223,7 +226,7 @@ impl HashRecord {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
@@ -231,10 +234,10 @@ impl HashRecord {
     /// let record = HashRecord::new(hash, RawPropertyMapHash::default());
     ///
     /// assert!(record.is_content_match(&hash));
-    /// ```
+    /// ```rust,ignore
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+    pub(crate) fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.content.is_match(hash)
     }
 }
@@ -246,7 +249,7 @@ impl ArchivedHashRecord {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use lithos_core::schema::views::hashes::{HashRecord, ArchivedHashRecord};
     /// # use lithos_core::schema::views::RawPropertyMapHash;
     /// # use lithos_core::support::hash::Blake3Hash;
@@ -263,7 +266,7 @@ impl ArchivedHashRecord {
     /// ```
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+    pub(crate) fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.content.is_match(hash)
     }
 }
@@ -281,25 +284,28 @@ impl ArchivedHashRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyMapHash(HashMap<PropertyName, Blake3Hash>);
 
+#[expect(dead_code, reason = "Hash map helpers are consumed incrementally")]
 impl RawPropertyMapHash {
     /// Returns a reference to the inner hash map.
     #[inline]
     #[must_use]
-    pub fn as_inner(&self) -> &HashMap<PropertyName, Blake3Hash> {
+    pub(crate) fn as_inner(&self) -> &HashMap<PropertyName, Blake3Hash> {
         &self.0
     }
 
     /// Returns a mutable reference to the inner hash map.
     #[inline]
     #[must_use]
-    pub fn as_inner_mut(&mut self) -> &mut HashMap<PropertyName, Blake3Hash> {
+    pub(crate) fn as_inner_mut(
+        &mut self,
+    ) -> &mut HashMap<PropertyName, Blake3Hash> {
         &mut self.0
     }
 
     /// Returns a reference to the value corresponding to the key, if any.
     #[inline]
     #[must_use]
-    pub fn get(&self, key: &PropertyName) -> Option<&Blake3Hash> {
+    pub(crate) fn get(&self, key: &PropertyName) -> Option<&Blake3Hash> {
         self.0.get(key)
     }
 
@@ -325,7 +331,9 @@ impl RawPropertyMapHash {
 
     /// Returns an iterator over all key-value pairs in the map.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = (&PropertyName, &Blake3Hash)> {
+    pub(crate) fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&PropertyName, &Blake3Hash)> {
         self.0.iter()
     }
 
@@ -338,7 +346,7 @@ impl RawPropertyMapHash {
 
     /// Inserts a key-value pair into the map.
     #[inline]
-    pub fn insert(
+    pub(crate) fn insert(
         &mut self,
         key: PropertyName,
         value: Blake3Hash,

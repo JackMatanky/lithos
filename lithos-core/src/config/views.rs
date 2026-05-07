@@ -450,7 +450,7 @@ impl RawFileVersion {
     /// Returns the BLAKE3 content hash.
     #[inline]
     #[must_use]
-    pub const fn content_hash(&self) -> &Blake3Hash {
+    pub(crate) const fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
     }
 
@@ -510,7 +510,7 @@ impl RawFileVersion {
     /// ```
     #[inline]
     #[must_use]
-    pub fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
+    pub(crate) fn is_content_match(&self, content_hash: &Blake3Hash) -> bool {
         self.content_hash == *content_hash
     }
 
@@ -533,7 +533,11 @@ impl RawFileVersion {
     /// ```
     #[inline]
     #[must_use]
-    pub fn matches(
+    #[expect(
+        dead_code,
+        reason = "Convenience comparator retained for staleness helpers"
+    )]
+    pub(crate) fn matches(
         &self,
         created_at: Option<SystemTime>,
         modified_at: SystemTime,

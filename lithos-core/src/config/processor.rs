@@ -236,7 +236,7 @@ impl ConfigType for VaultConfig {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,ignore
 /// use lithos_core::{
 ///     config::processor::{ConfigField, ConfigFieldHashes},
 ///     support::hash::Blake3Hash,
@@ -266,7 +266,7 @@ impl ConfigFieldHashes {
 
     /// Inserts a field hash.
     #[inline]
-    pub fn insert(
+    pub(crate) fn insert(
         &mut self,
         field: ConfigField,
         hash: crate::support::hash::Blake3Hash,
@@ -277,7 +277,11 @@ impl ConfigFieldHashes {
     /// Returns the hash for a field, if present.
     #[inline]
     #[must_use]
-    pub fn get(
+    #[expect(
+        dead_code,
+        reason = "Reserved for upcoming field-hash diff wiring"
+    )]
+    pub(crate) fn get(
         &self,
         field: &ConfigField,
     ) -> Option<&crate::support::hash::Blake3Hash> {
@@ -293,7 +297,11 @@ impl ConfigFieldHashes {
 
     /// Returns an iterator over all field-hash pairs.
     #[inline]
-    pub fn iter(
+    #[expect(
+        dead_code,
+        reason = "Reserved for upcoming field-hash diff wiring"
+    )]
+    pub(crate) fn iter(
         &self,
     ) -> impl Iterator<Item = (&ConfigField, &crate::support::hash::Blake3Hash)>
     {

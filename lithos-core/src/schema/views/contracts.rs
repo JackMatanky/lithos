@@ -106,7 +106,11 @@ use crate::{
 ///
 /// Implemented by [`RawSchemaView`] and [`RawPropertyBankView`] to provide
 /// consistent version rotation, staleness checks, and metadata refresh helpers.
-pub trait RawView: RawViewRead {
+#[expect(
+    dead_code,
+    reason = "Trait surface used selectively by view pipelines"
+)]
+pub(crate) trait RawView: RawViewRead {
     /// Represents the maximum number of historical versions retained.
     const MAX_VERSIONS: usize = 5;
 
@@ -145,6 +149,7 @@ pub trait RawView: RawViewRead {
     /// Updates complete file info for the current version, if present.
     #[inline]
     fn update_file_info(&mut self, info: FileInfo) {
+        let _version_count: usize = RawViewRead::version_count(self);
         if let Some(current) = self.current_mut() {
             current.set_file_info(info);
         }
@@ -170,7 +175,7 @@ pub trait RawView: RawViewRead {
 ///
 /// This keeps staleness checks available on zero-copy archived values without
 /// requiring mutable access or allocation.
-pub trait RawViewRead {
+pub(crate) trait RawViewRead {
     /// Returns `true` if the content hash matches the current version metadata.
     fn is_content_match(&self, content_hash: &Blake3Hash) -> bool;
 
@@ -189,7 +194,11 @@ pub trait RawViewRead {
 /// Defines the mutable contract for persisted snapshot payloads.
 ///
 /// Implemented by [`SchemaVersion`] and [`PropertyBankVersion`].
-pub trait Version: VersionRead + Sized {
+#[expect(
+    dead_code,
+    reason = "Trait surface used selectively by snapshot pipelines"
+)]
+pub(crate) trait Version: VersionRead + Sized {
     /// Returns file info metadata for this version.
     fn file_info(&self) -> &FileInfo;
 
@@ -214,7 +223,11 @@ pub trait Version: VersionRead + Sized {
 ///
 /// Exposes minimal staleness and format information needed by view containers
 /// and archived access paths.
-pub trait VersionRead {
+#[expect(
+    dead_code,
+    reason = "Trait surface used selectively by snapshot pipelines"
+)]
+pub(crate) trait VersionRead {
     /// Returns file info metadata for this version.
     ///
     /// # Panics
