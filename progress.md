@@ -817,3 +817,20 @@ All success criteria met. Ready for integration.
 - cargo test --lib: 988 passed, 0 failed
 
 **Next:** remove RawConfig type and refactor Config::build chain (critical blast radius)
+
+
+### 18:20 - Phase 6C Slice 2 (migrate build path off RawConfig)
+
+**Completed:**
+- Added `Config::build_from_layers(...)` in aggregate.rs
+- Updated merger rebuild path to use layered build directly
+- Kept existing `Config::build(&RawConfig, ...)` temporarily for compatibility while removing callsites
+
+**Why this order:**
+- Critical blast radius on `Config::build` required incremental migration
+- Production merge flow now no longer depends on assembling `RawConfig`
+
+**Verification:**
+- cargo test --lib: 988 passed
+
+**Next:** remove remaining RawConfig callsites, then delete RawConfig type + impls

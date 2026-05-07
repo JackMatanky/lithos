@@ -249,7 +249,15 @@ User identified that I was mechanically fixing errors without addressing root ca
 - [ ] Run full test suite
 - [ ] Stage and commit
 
-**Current Task**: Remove `RawConfig` type and refactor `Config::build` call chain
+**Current Task**: Migrate build path off `RawConfig` (before deleting type)
+
+### Phase 6C Progress (current slice)
+
+- [x] Added `Config::build_from_layers(global, vault, vault_id, vault_root, version)`
+- [x] Updated `ConfigMerger::rebuild_with_configs` to call `build_from_layers`
+- [x] Verified with `cargo test --lib` (988 passing)
+- [ ] Remove remaining `RawConfig` callsites in tests/modules
+- [ ] Delete `RawConfig` struct and conversion impls from `raw.rs`
 
 **Rationale for Order**:
 1. discovery.rs uses FileInfo (not RawConfigMetadata) - enables clean metadata removal

@@ -285,6 +285,55 @@ impl Config {
         Ok(config)
     }
 
+    /// Build validated config from layered raw sources.
+    ///
+    /// Precedence: defaults < global < vault.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] if validation fails while constructing domain
+    /// types.
+    #[inline]
+    pub fn build_from_layers(
+        global: Option<&raw::RawGlobalConfig>,
+        vault: Option<&raw::RawVaultConfig>,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+        version: Version,
+    ) -> Result<Self, ConfigError> {
+        let logging = vault.and_then(|v| v.logging.clone()).or_else(|| {
+            let g = global?;
+            g.logging.clone()
+        });
+        let frontmatter =
+            vault.and_then(|v| v.frontmatter.clone()).or_else(|| {
+                let g = global?;
+                g.frontmatter.clone()
+            });
+        let task = vault.and_then(|v| v.task.clone()).or_else(|| {
+            let g = global?;
+            g.task.clone()
+        });
+
+        let paths = raw::RawPathsConfig::merge(
+            global.map_or_else(raw::RawPathsConfig::default, |g| {
+                g.paths.clone().into()
+            }),
+            vault.map_or_else(raw::RawPathsConfig::default, |v| {
+                v.paths.clone().into()
+            }),
+        );
+
+        let merged = raw::RawConfig {
+            logging,
+            paths,
+            trusted_vaults: global.and_then(|g| g.trusted_vaults.clone()),
+            frontmatter,
+            task,
+        };
+
+        Self::build(&merged, vault_id, vault_root, version)
+    }
+
     /// Returns a reference to pending domain events.
     #[inline]
     #[must_use]

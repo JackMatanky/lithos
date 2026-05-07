@@ -7,11 +7,13 @@
 //! The merger handles all 9 outcome combinations and produces the final
 //! domain `Config` object with proper view persistence.
 
+#[cfg(test)]
+use crate::config::raw::{RawConfig, RawPathsConfig};
 use crate::config::{
     aggregate::{Config, Version},
     error::ConfigError,
     processor::{GlobalConfig, ProcessorOutcome, VaultConfig},
-    raw::{RawConfig, RawGlobalConfig, RawPathsConfig, RawVaultConfig},
+    raw::{RawGlobalConfig, RawVaultConfig},
     storage::Repository,
     vault::{VaultId, VaultRoot},
 };
@@ -229,9 +231,6 @@ where
     where
         R::Error: Into<ConfigError>,
     {
-        // Merge raw configs with precedence: defaults < global < vault
-        let result = self.merge_raw_configs(global, vault);
-
         // Determine next version
         let next_version = self
             .repository
@@ -241,9 +240,10 @@ where
             .transpose()?
             .unwrap_or_else(Version::initial);
 
-        // Build domain config
-        let config = Config::build(
-            &result,
+        // Build domain config from layered raw sources
+        let config = Config::build_from_layers(
+            global,
+            vault,
             self.vault_id,
             self.vault_root.clone(),
             next_version,
@@ -263,6 +263,7 @@ where
     /// 1. Vault config (highest)
     /// 2. Global config
     /// 3. Defaults (lowest)
+    #[cfg(test)]
     #[expect(
         clippy::unused_self,
         reason = "Method keeps self for API consistency with other \
@@ -331,7 +332,10 @@ mod tests {
     use crate::config::{
         aggregate::{Config, Version},
         processor::ProcessorOutcome,
-        raw::{RawGlobalConfig, RawGlobalPaths, RawVaultConfig, RawVaultPaths},
+        raw::{
+            RawConfig, RawGlobalConfig, RawGlobalPaths, RawVaultConfig,
+            RawVaultPaths,
+        },
         testing::InMemoryRepository,
         vault::VaultRoot,
     };

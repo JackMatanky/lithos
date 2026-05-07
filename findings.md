@@ -1237,3 +1237,13 @@ Decision: proceed with low-risk slice first (`RawConfigMetadata`), then tackle c
 9. ❌ Fix as_conversions (lines 583, 604, 619, 638) - IN PROGRESS
 10. Run pre-commit to verify all clippy warnings fixed
 11. Commit with proper message (no --no-verify)
+
+
+## Phase 6C Slice 2: Start migration off RawConfig (18:20)
+
+- Added `Config::build_from_layers(...)` to `config/aggregate.rs`.
+- `build_from_layers` applies precedence directly: defaults < global < vault.
+- Updated `ConfigMerger::rebuild_with_configs` to call `build_from_layers` instead of `merge_raw_configs` + `Config::build`.
+- This reduces production-path dependency on `RawConfig` before full type removal.
+
+Verification: `cargo test --lib` -> 988 passed.
