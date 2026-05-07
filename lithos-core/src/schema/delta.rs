@@ -25,7 +25,7 @@ use crate::{
         },
         views::RawPropertyMapHash,
     },
-    support::hash::Blake3Hash,
+    support::hash::{Blake3Hash, JsonHash},
 };
 
 /// Delta for schema-level `excludes` lists.
@@ -353,7 +353,7 @@ where
         let mut upserts = HashMap::new();
 
         for (name, entry) in self.properties.iter() {
-            let hash = Blake3Hash::compute_json(entry);
+            let hash = Blake3Hash::compute(&JsonHash::new(entry));
             current_hashes.insert(name.clone(), hash);
             if self.previous_hashes.get(name) != Some(&hash) {
                 upserts.insert(name.clone(), entry.clone());
@@ -399,9 +399,10 @@ mod tests {
                 let p_name = name(name_str);
                 let entry_value = serde_json::json!({"type": "string"});
                 let entry = RawPropertyBankEntry(inline_string());
-                hashes
-                    .as_inner_mut()
-                    .insert(p_name.clone(), Blake3Hash::compute_json(&entry));
+                hashes.as_inner_mut().insert(
+                    p_name.clone(),
+                    Blake3Hash::compute(&JsonHash::new(&entry)),
+                );
                 properties.insert((*name_str).to_owned(), entry_value);
             }
 
@@ -608,9 +609,10 @@ mod tests {
                 serde_json::from_value(map_raw).expect("valid map");
 
             // Previous hash for same name but different content (bool type)
-            let old_hash = Blake3Hash::compute_json(&serde_json::json!({
-                "type": "bool"
-            }));
+            let old_hash =
+                Blake3Hash::compute(&JsonHash::new(&serde_json::json!({
+                    "type": "bool"
+                })));
             let mut previous_hashes = RawPropertyMapHash::default();
             previous_hashes
                 .as_inner_mut()
@@ -656,7 +658,7 @@ mod tests {
             let entry_json = serde_json::json!({"type": "string"});
             let entry: RawProperty =
                 serde_json::from_value(entry_json.clone()).expect("valid");
-            let hash = Blake3Hash::compute_json(&entry);
+            let hash = Blake3Hash::compute(&JsonHash::new(&entry));
 
             let map_json = serde_json::json!({
                 "stable": entry_json

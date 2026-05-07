@@ -39,7 +39,7 @@ use crate::{
         error::SchemaError, identifier::SchemaName, property::PropertyName,
         views::RawPropertyMapHash,
     },
-    support::hash::Blake3Hash,
+    support::hash::{Blake3Hash, JsonHash},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ impl<T> RawPropertyMap<T> {
         self.inner
             .iter()
             .map(|(name, value)| {
-                (name.clone(), Blake3Hash::compute_json(value))
+                (name.clone(), Blake3Hash::compute(&JsonHash::new(value)))
             })
             .collect::<HashMap<PropertyName, Blake3Hash>>()
             .into()
@@ -643,11 +643,11 @@ mod tests {
             assert_eq!(hashes.len(), 2);
             assert_eq!(
                 hashes.get(&PropertyName::try_new("a").unwrap()),
-                Some(&Blake3Hash::compute_json(&"1".to_owned()))
+                Some(&Blake3Hash::compute(&JsonHash::new("1".to_owned())))
             );
             assert_eq!(
                 hashes.get(&PropertyName::try_new("b").unwrap()),
-                Some(&Blake3Hash::compute_json(&"2".to_owned()))
+                Some(&Blake3Hash::compute(&JsonHash::new("2".to_owned())))
             );
         }
 
