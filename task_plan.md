@@ -224,10 +224,22 @@ User identified that I was mechanically fixing errors without addressing root ca
   - [x] Remove module declaration from mod.rs
   - [x] All 988 tests pass (5 ingestor tests removed)
 - [x] Run tests and verify - ALL PASS
-- [ ] Stage and commit (clean checkpoint before big RawConfig removal) 🚧 NEXT
+- [x] Stage and commit (clean checkpoint before big RawConfig removal)
+  - [x] Integrated discovery into loader
+  - [x] Removed ingestor.rs
+  - [x] Commit created (`18104f32`)
 
-**Phase C: RawConfig Removal ⏸️ BLOCKED (Awaiting Phase B)**
-- [ ] Remove RawConfigMetadata (use FileInfo directly)
+**Phase C: RawConfig Removal 🔄 IN PROGRESS**
+- [x] Run GitNexus impact analysis for `RawConfig`, `RawConfigMetadata`, `Config::build`
+  - [x] `Config::build` risk = **CRITICAL** (warned; proceeding in small slices)
+  - [x] `RawConfigMetadata` risk = LOW
+  - [x] `RawConfig` risk = LOW
+- [x] Remove RawConfigMetadata (use FileInfo directly)
+  - [x] `raw.rs` metadata fields now `Option<FileInfo>`
+  - [x] `RawConfigMetadata` type removed from `raw.rs`
+  - [x] Updated `processor.rs` and `merger.rs` test fixtures
+  - [x] Updated `views.rs` freshness checks to use `FileInfo` + computed content hash
+  - [x] `cargo test --lib` passing (988)
 - [ ] Remove RawConfig type
 - [ ] Update Config::build() signature
 - [ ] Update merger.rs, aggregate.rs, global.rs, vault.rs
@@ -237,7 +249,7 @@ User identified that I was mechanically fixing errors without addressing root ca
 - [ ] Run full test suite
 - [ ] Stage and commit
 
-**Current Task**: Creating DiscoveryEngine in discovery.rs (Phase B)
+**Current Task**: Remove `RawConfig` type and refactor `Config::build` call chain
 
 **Rationale for Order**:
 1. discovery.rs uses FileInfo (not RawConfigMetadata) - enables clean metadata removal

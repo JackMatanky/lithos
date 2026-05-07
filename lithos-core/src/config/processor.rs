@@ -736,9 +736,7 @@ impl<T: ConfigType> ConfigFileProcessor<T, Completed, PropertyChanges<T>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::raw::{
-        RawConfigMetadata, RawGlobalPaths, RawLogging, RawVaultPaths,
-    };
+    use crate::config::raw::{RawGlobalPaths, RawLogging, RawVaultPaths};
 
     // ─────────────────────────────────────────────────────────────────────────────
     //  Test Fixtures
@@ -751,7 +749,7 @@ mod tests {
             trusted_vaults: None,
             frontmatter: None,
             task: None,
-            metadata: RawConfigMetadata::default(),
+            metadata: None,
         }
     }
 
@@ -764,7 +762,7 @@ mod tests {
             paths: RawVaultPaths::default(),
             frontmatter: None,
             task: None,
-            metadata: RawConfigMetadata::default(),
+            metadata: None,
         }
     }
 

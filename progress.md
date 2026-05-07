@@ -797,3 +797,23 @@ All success criteria met. Ready for integration.
 ✅ Clean checkpoint achieved
 
 **Phase 6B Complete** - Ready to commit before Phase 6C (RawConfig removal)
+
+
+### 18:05 - Phase 6C Slice 1 (RawConfigMetadata removal)
+
+**Impact analysis run (GitNexus):**
+- Config::build upstream risk: CRITICAL (60 impacted symbols)
+- RawConfigMetadata risk: LOW
+- RawConfig risk: LOW
+
+**Changes completed:**
+- raw.rs: metadata fields moved to Option<FileInfo>
+- raw.rs: RawConfigMetadata type removed
+- processor.rs tests: metadata fixtures updated to None
+- merger.rs tests: metadata fixtures updated to None
+- views.rs: freshness checks now use FileInfo timestamps + computed raw hash
+
+**Verification:**
+- cargo test --lib: 988 passed, 0 failed
+
+**Next:** remove RawConfig type and refactor Config::build chain (critical blast radius)

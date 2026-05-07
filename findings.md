@@ -1167,6 +1167,42 @@ Based on user decisions, need to:
 
 ---
 
+## Phase 6C Slice 1: RawConfigMetadata Removal (18:05)
+
+### Impact Analysis (GitNexus)
+
+- `Config::build` upstream impact: **CRITICAL** (60 impacted symbols, 5 processes, 5 modules)
+- `RawConfig` upstream impact: LOW
+- `RawConfigMetadata` upstream impact: LOW
+
+Decision: proceed with low-risk slice first (`RawConfigMetadata`), then tackle critical `Config::build` refactor in smaller steps.
+
+### Changes Applied
+
+1. `raw.rs`
+   - `RawGlobalConfig.metadata` changed from `RawConfigMetadata` to `Option<FileInfo>`
+   - `RawVaultConfig.metadata` changed from `RawConfigMetadata` to `Option<FileInfo>`
+   - Removed `RawConfigMetadata` type entirely
+
+2. `processor.rs` tests
+   - Removed `RawConfigMetadata` import
+   - Updated fixtures to `metadata: None`
+
+3. `merger.rs` tests
+   - Removed `RawConfigMetadata` import
+   - Updated fixtures to `metadata: None`
+
+4. `views.rs`
+   - Reworked freshness checks to use `Option<FileInfo>` timestamp checks
+   - Added content-hash fallback by hashing serialized raw config (`toml::to_string` + `Blake3Hash::compute`)
+
+### Verification
+
+- `cargo test --lib` passes: **988 passed, 0 failed**
+- No remaining `RawConfigMetadata` usages in `lithos-core/src`
+
+---
+
 ## Pre-commit Fixes Applied (17:00)
 
 **Status**: ✅ COMPLETE - All hooks pass

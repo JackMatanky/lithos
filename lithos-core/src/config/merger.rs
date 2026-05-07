@@ -331,10 +331,7 @@ mod tests {
     use crate::config::{
         aggregate::{Config, Version},
         processor::ProcessorOutcome,
-        raw::{
-            RawConfigMetadata, RawGlobalConfig, RawGlobalPaths, RawVaultConfig,
-            RawVaultPaths,
-        },
+        raw::{RawGlobalConfig, RawGlobalPaths, RawVaultConfig, RawVaultPaths},
         testing::InMemoryRepository,
         vault::VaultRoot,
     };
@@ -355,7 +352,7 @@ mod tests {
             trusted_vaults: None,
             frontmatter: None,
             task: None,
-            metadata: RawConfigMetadata::default(),
+            metadata: None,
         }
     }
 
@@ -373,7 +370,7 @@ mod tests {
             },
             frontmatter: None,
             task: None,
-            metadata: RawConfigMetadata::default(),
+            metadata: None,
         }
     }
 
