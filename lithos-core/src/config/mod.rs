@@ -101,14 +101,14 @@ pub mod storage;
 //                  Supporting Domain Modules                  //
 // ----------------------------------------------------------- //
 
+/// Consolidated discovery logic for config files.
+pub(crate) mod discovery;
 /// Configuration error types.
 pub mod error;
 /// Configuration domain events.
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
-/// Configuration file ingestion (Figment-based parsing).
-pub mod ingestor;
 /// Configuration loading orchestration with hybrid staleness detection.
 pub mod loader;
 /// Logging configuration types.

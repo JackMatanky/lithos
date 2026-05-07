@@ -260,6 +260,7 @@ impl Reader {
     /// # Errors
     ///
     /// Returns [`ParseError::Io`] if the file cannot be read.
+    #[cfg(test)]
     #[inline]
     pub(crate) fn read_bytes(
         &self,

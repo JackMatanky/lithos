@@ -10,7 +10,7 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::ConfigError;
+use super::{error::ConfigError, raw::RawLogging};
 // ----------------------------------------------------------- //
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
@@ -105,18 +105,6 @@ impl LogLevel {
             Self::Trace => "trace",
         }
     }
-}
-
-// ----------------------------------------------------------- //
-//                         Input Dtos                          //
-// ----------------------------------------------------------- //
-
-/// Raw logging configuration (unvalidated input from config files).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawLogging {
-    /// Logging verbosity level.
-    pub log_level: Option<String>,
 }
 
 // ----------------------------------------------------------- //

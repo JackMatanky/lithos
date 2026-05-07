@@ -10,7 +10,6 @@
 
 use std::{collections::HashMap, time::SystemTime};
 
-use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 use crate::support::hash::Blake3Hash;
 
 // ----------------------------------------------------------- //
@@ -243,6 +242,32 @@ impl From<RawVaultPaths> for RawPathsConfig {
             property_bank_file: paths.property_bank_file,
         }
     }
+}
+
+/// Raw frontmatter configuration (unvalidated input).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawFrontmatter {
+    /// Frontmatter key for file classification.
+    pub file_class_key: Option<String>,
+    /// Frontmatter key for aliases.
+    pub alias_key: Option<String>,
+    /// Frontmatter key for tags.
+    pub tags_key: Option<String>,
+    /// Frontmatter key for title.
+    pub title_key: Option<String>,
+    /// Frontmatter key for created date.
+    pub date_created_key: Option<String>,
+    /// Frontmatter key for modified date.
+    pub date_modified_key: Option<String>,
+}
+
+/// Raw logging configuration (unvalidated input from config files).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawLogging {
+    /// Logging verbosity level.
+    pub log_level: Option<String>,
 }
 
 /// Raw task configuration input.

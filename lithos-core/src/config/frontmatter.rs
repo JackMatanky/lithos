@@ -5,7 +5,7 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::ConfigError;
+use super::{error::ConfigError, raw::RawFrontmatter};
 // ----------------------------------------------------------- //
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
@@ -234,28 +234,6 @@ impl AsRef<str> for FrontmatterKey {
     fn as_ref(&self) -> &str {
         self.as_str()
     }
-}
-
-// ----------------------------------------------------------- //
-//                         Input Dtos                          //
-// ----------------------------------------------------------- //
-
-/// Raw frontmatter configuration (unvalidated input).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawFrontmatter {
-    /// Frontmatter key for file classification.
-    pub file_class_key: Option<String>,
-    /// Frontmatter key for aliases.
-    pub alias_key: Option<String>,
-    /// Frontmatter key for tags.
-    pub tags_key: Option<String>,
-    /// Frontmatter key for title.
-    pub title_key: Option<String>,
-    /// Frontmatter key for created date.
-    pub date_created_key: Option<String>,
-    /// Frontmatter key for modified date.
-    pub date_modified_key: Option<String>,
 }
 
 // ----------------------------------------------------------- //

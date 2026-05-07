@@ -736,9 +736,8 @@ impl<T: ConfigType> ConfigFileProcessor<T, Completed, PropertyChanges<T>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        logging::RawLogging,
-        raw::{RawConfigMetadata, RawGlobalPaths, RawVaultPaths},
+    use crate::config::raw::{
+        RawConfigMetadata, RawGlobalPaths, RawLogging, RawVaultPaths,
     };
 
     // ─────────────────────────────────────────────────────────────────────────────

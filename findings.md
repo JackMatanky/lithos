@@ -1094,6 +1094,77 @@ Based on user decisions, need to:
 5. Move Config::build() to builder module
 6. Update Config to only have new() method
 
+### RawConfig Usage Analysis (17:05)
+
+**Key Usages Found:**
+
+1. **merger.rs** - `merge_raw_configs()` returns `RawConfig`, merges fields
+2. **aggregate.rs** - `Config::build()` takes `&RawConfig` parameter
+3. **global.rs** - `Global::try_from(&RawConfig)` conversion
+4. **vault.rs** - `Vault::try_from(&RawConfig)` conversion
+5. **raw.rs** - `From<RawGlobalConfig>` and `From<RawVaultConfig>` conversions
+6. **Tests** - Many tests use `RawConfig::default()` or construct from global/vault
+
+**Impact Assessment:**
+
+- **High Impact**: `Config::build()` signature changes from `&RawConfig` → needs new approach
+- **Medium Impact**: merger.rs needs to merge RawGlobalConfig + RawVaultConfig directly
+- **Low Impact**: Conversions can be replaced with direct field access
+
+**Refactoring Strategy (REVISED per user guidance):**
+
+1. **Create discovery.rs FIRST** (enables clean metadata handling)
+   - Pattern after schema/discovery.rs structure
+   - Key differences from ingestor.rs:
+     * Use FsReader.info() instead of created_at()/modified_at() separately
+     * Return FileInfo directly (not RawConfigMetadata)
+     * Batch DB queries for views in single transaction
+     * Return discovery data for typestate routing
+
+2. **Plug DiscoveryEngine into loader.rs** (replace ingestor)
+   - Remove ingestor.rs dependency
+   - Use DiscoveryEngine::run() for file + DB discovery
+
+3. **Then remove RawConfig/RawConfigMetadata** (after discovery is clean)
+   - Change `Config::build()` to take `Option<RawGlobalConfig>` + `Option<RawVaultConfig>`
+   - Move merging logic into `Config::build()` or builder
+   - Update `Global::try_from()` and `Vault::try_from()` to take separate configs
+   - Remove `From<RawGlobalConfig/RawVaultConfig> for RawConfig` impls
+   - Update tests to use separate configs
+
+### Discovery Engine Pattern Analysis (17:20)
+
+**schema/discovery.rs Key Patterns:**
+
+1. **Result Types**:
+   - `SchemaCachedState` - ID + view for existing files
+   - `SchemaDiscovery` - FileEntry + Optional<CachedState>
+   - `DiscoveryResult` - Aggregates all discovery data
+
+2. **Engine Structure**:
+   - Single `run()` method orchestrates pipeline
+   - Filesystem scan → Batch DB query → Combine results
+   - Uses FileEntry (path + FileInfo) from DirScanner
+
+3. **Key Methods**:
+   - `scan_filesystem()` - DirScanner with pattern/extensions
+   - `query_cached_state()` - Single transaction for all DB reads
+   - `build_result()` - Combines filesystem + DB data
+
+**config/ingestor.rs Current Approach:**
+
+1. **Separate methods** for global and vault
+2. **Individual timestamp calls**: `created_at()`, `modified_at()`
+3. **Builds RawConfigMetadata** manually
+4. **Returns parsed configs** (not discovery data)
+
+**Needed Changes for discovery.rs:**
+
+1. Use `FsReader.info()` → returns `FileInfo` directly
+2. Return discovery data (FileInfo + Optional<View>), not parsed configs
+3. Batch DB queries in single transaction
+4. Support global + vault in one discovery run
+
 ---
 
 ## Pre-commit Fixes Applied (17:00)

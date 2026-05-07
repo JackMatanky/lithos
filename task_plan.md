@@ -196,19 +196,53 @@ User identified that I was mechanically fixing errors without addressing root ca
 5. ✅ **Rename loader.rs → builder.rs** - Match schema pattern
 6. ✅ **Move Config::build() to builder** - Config should only have `new()` method
 
-### Tasks
+### Tasks (REVISED STRATEGY - User Guidance)
 
-- [ ] Remove RawConfig type from raw.rs
-- [ ] Remove RawConfigMetadata type from raw.rs
-- [ ] Move RawFrontmatter from frontmatter.rs to raw.rs
-- [ ] Move RawLogging from logging.rs to raw.rs
-- [ ] Create discovery.rs module (similar to schema/discovery.rs)
+**Phase A: Consolidation ✅ DONE (17:10-17:15)**
+- [x] Move RawFrontmatter and RawLogging to raw.rs
+- [x] Update all imports and tests
+- [x] Verify all 993 tests pass
+- [x] Commit consolidation
+
+**Phase B: Discovery Engine ✅ COMPLETE (17:20-17:50)**
+- [x] Analyze schema/discovery.rs and config/ingestor.rs patterns
+- [x] Create config/discovery.rs with DiscoveryEngine (320 lines)
+  - [x] Define result types (GlobalDiscovery, VaultDiscovery, DiscoveryResult)
+  - [x] Implement filesystem scanning (FsReader.info() not created_at/modified_at)
+  - [x] Batch DB query stub (TODO: needs Repository trait methods)
+  - [x] Return discovery data with FileInfo (enables RawConfigMetadata removal)
+  - [x] All 993 tests pass, committed
+- [x] Plug DiscoveryEngine into loader.rs (replace ingestor usage)
+  - [x] Analyze loader.rs current usage of ingestor
+  - [x] Replace ingestor.global_config() with DiscoveryEngine::run()
+  - [x] Parse configs from FileEntry using FsReader.parse_structured()
+  - [x] Extract views from discovery result
+  - [x] Remove Ingestor field from Loader struct
+  - [x] All 993 tests pass
+- [x] Remove ingestor.rs (obsolete after discovery.rs)
+  - [x] Remove file from repository (git rm)
+  - [x] Remove module declaration from mod.rs
+  - [x] All 988 tests pass (5 ingestor tests removed)
+- [x] Run tests and verify - ALL PASS
+- [ ] Stage and commit (clean checkpoint before big RawConfig removal) 🚧 NEXT
+
+**Phase C: RawConfig Removal ⏸️ BLOCKED (Awaiting Phase B)**
+- [ ] Remove RawConfigMetadata (use FileInfo directly)
+- [ ] Remove RawConfig type
+- [ ] Update Config::build() signature
+- [ ] Update merger.rs, aggregate.rs, global.rs, vault.rs
 - [ ] Rename loader.rs → builder.rs
-- [ ] Move Config::build() method to builder module
-- [ ] Update Config to only have new() constructor
-- [ ] Update all imports and callsites
+- [ ] Move Config::build() to builder
+- [ ] Update all tests (~50 files)
 - [ ] Run full test suite
-- [ ] Update findings.md/progress.md
+- [ ] Stage and commit
+
+**Current Task**: Creating DiscoveryEngine in discovery.rs (Phase B)
+
+**Rationale for Order**:
+1. discovery.rs uses FileInfo (not RawConfigMetadata) - enables clean metadata removal
+2. Smaller incremental change - easier to test and commit
+3. Clean checkpoint before large RawConfig refactor
 
 ### Blocked Items Fixed (17:00)
 

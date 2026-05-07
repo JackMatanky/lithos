@@ -393,8 +393,7 @@ pub(crate) mod fixtures {
 
     use super::*;
     use crate::config::{
-        frontmatter::RawFrontmatter,
-        logging::RawLogging,
+        raw::{RawFrontmatter, RawLogging},
         vault::{AppVersion, VaultName},
     };
 

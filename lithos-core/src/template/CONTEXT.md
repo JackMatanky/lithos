@@ -16,11 +16,24 @@ _Avoid_: globals, ambient state
 The final note content produced by rendering a template asset.
 _Avoid_: draft output, raw text blob
 
+**Template Runtime**:
+The imperative execution environment exposed to the template during rendering. Provides interactive capabilities (prompts, suggesters) and data access (structured queries).
+_Avoid_: minijinja env, god object
+
+**Template Frontmatter**:
+The declarative configuration block at the top of a template file defining static schema dependencies and inputs.
+_Avoid_: yaml config, script metadata
+
+**Structured Query**:
+An engine-agnostic, SQL-like builder representation for data retrieval.
+_Avoid_: query string, raw db query
+
 ## Invariants
 
 - Template assets are validated before use in generation workflows.
 - Rendering behavior is deterministic for the same template asset and render context.
 - Template usage is constrained by configuration and schema semantics.
+- Runtime schema discovery is strictly limited to child schemas of those explicitly declared in the template frontmatter.
 
 ## Not Owned Here
 

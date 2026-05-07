@@ -21,29 +21,33 @@ use std::path::PathBuf;
 
 use tracing::instrument;
 
-use crate::config::{
-    aggregate::Config,
-    error::ConfigError,
-    ingestor::Ingestor,
-    merger::ConfigMerger,
-    processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
-    storage::Repository,
-    vault::{VaultId, VaultRoot},
+use crate::{
+    config::{
+        aggregate::Config,
+        discovery::DiscoveryEngine,
+        error::{ConfigError, ConfigIngestError},
+        merger::ConfigMerger,
+        processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
+        raw::{RawGlobalConfig, RawVaultConfig},
+        storage::Repository,
+        vault::{VaultId, VaultRoot},
+    },
+    fs::FsReader,
 };
 
 /// Configuration loader with hybrid staleness detection.
 ///
 /// Coordinates the full configuration loading pipeline:
-/// - File discovery and ingestion
+/// - File discovery (filesystem + database)
 /// - Staleness detection (timestamps + content hash)
-/// - Figment-based merging
+/// - Config merging (global + vault precedence)
 /// - Domain validation
 /// - Database persistence
 ///
 /// # Architecture
 ///
 /// The loader owns the orchestration pipeline but delegates to:
-/// - `Ingestor`: File discovery and raw config parsing
+/// - `DiscoveryEngine`: File discovery and database query
 /// - `Repository`: Database persistence and retrieval
 /// - `Config::build`: Domain validation and construction
 ///
@@ -65,8 +69,6 @@ use crate::config::{
 pub struct Loader<R> {
     /// Vault root path for config resolution.
     vault_root: PathBuf,
-    /// Configuration ingestor for file operations.
-    ingestor: Ingestor,
     /// Repository for database persistence.
     repository: R,
 }
@@ -99,12 +101,8 @@ where
     #[inline]
     #[must_use]
     pub fn new<P: Into<PathBuf>>(vault_root: P, repository: R) -> Self {
-        let vault_root = vault_root.into();
-        let ingestor = Ingestor::new(&vault_root);
-
         Self {
-            vault_root,
-            ingestor,
+            vault_root: vault_root.into(),
             repository,
         }
     }
@@ -157,15 +155,38 @@ where
         // Step 2: Get or create vault ID
         let vault_id = self.get_or_create_vault_id()?;
 
-        // Step 3: Ingest raw configs from files
-        let global_raw = self.ingestor.global_config()?;
-        let vault_raw = self.ingestor.vault_config(&vault_root)?;
+        // Step 3: Run discovery engine (filesystem + database)
+        let discovery = DiscoveryEngine::run(&vault_root, &self.repository)?;
 
-        // Step 4: Get cached views from repository
-        let global_view =
-            self.repository.get_raw_global_view().map_err(Into::into)?;
-        let vault_view =
-            self.repository.get_raw_vault_view(vault_id).map_err(Into::into)?;
+        // Step 4: Parse raw configs from discovered files
+        let global_raw = if let Some(entry) = discovery.global().entry() {
+            let reader = FsReader::from_system_root();
+            Some(
+                reader
+                    .parse_structured::<RawGlobalConfig>(&entry.path)
+                    .map_err(ConfigIngestError::from)
+                    .map_err(ConfigError::from)?,
+            )
+        } else {
+            None
+        };
+
+        let vault_raw = if let Some(_entry) = discovery.vault().entry() {
+            let reader = FsReader::new(vault_root.as_path());
+            let relative_path = std::path::Path::new(".lithos/lithos.toml");
+            Some(
+                reader
+                    .parse_structured::<RawVaultConfig>(relative_path)
+                    .map_err(ConfigIngestError::from)
+                    .map_err(ConfigError::from)?,
+            )
+        } else {
+            None
+        };
+
+        // Extract views from discovery
+        let global_view = discovery.global().view().cloned();
+        let vault_view = discovery.vault().view().cloned();
 
         // Step 5: Process global config
         let global_processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(

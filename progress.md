@@ -728,3 +728,72 @@ All success criteria met. Ready for integration.
 - ✅ All view tests pass (7 tests)
 - ✅ cargo doc builds successfully
 - ✅ Code consistent with schema/views patterns
+
+
+## Phase 6: Architecture Redesign (2026-05-07)
+
+### 17:10 - Moved Raw* Types to raw.rs
+
+**Completed**:
+- Moved RawFrontmatter from frontmatter.rs to raw.rs
+- Moved RawLogging from logging.rs to raw.rs
+- Removed old struct definitions, kept TryFrom impls
+- Updated imports in aggregate.rs and processor.rs tests
+- All 993 tests pass
+
+**Next**: Remove RawConfig and RawConfigMetadata types (high impact change)
+
+
+### 17:25 - Created Discovery Engine
+
+**Completed**:
+- Created discovery.rs module (320 lines)
+- Defined result types: GlobalDiscovery, VaultDiscovery, DiscoveryResult
+- Implemented filesystem scanning with FileInfo (not created_at/modified_at separately)
+- Added DB query stub (TODO: needs Repository trait extension)
+- Pattern follows schema/discovery.rs structure
+- All 993 tests pass
+
+**Key Design**:
+- Uses FileEntry (path + filename + FileInfo) from fs module
+- Returns discovery data (not parsed configs) for typestate routing
+- Enables clean RawConfigMetadata removal (FileInfo used directly)
+- Batch DB queries stubbed (Repository needs get_raw_global_view/get_raw_vault_view methods)
+
+**Next**: Plug DiscoveryEngine into loader.rs to replace ingestor usage
+
+
+### 17:45 - Integrated DiscoveryEngine into loader.rs
+
+**Completed**:
+- Replaced Ingestor with DiscoveryEngine in loader.rs
+- Updated Loader struct (removed ingestor field)
+- Replaced ingestor.global_config()/vault_config() with DiscoveryEngine::run()
+- Parse configs from FileEntry using FsReader.parse_structured()
+- Extract views from discovery result
+- All 993 tests pass
+
+**Key Changes**:
+- Loader no longer owns Ingestor, uses DiscoveryEngine directly
+- Discovery runs once, returns filesystem + DB data atomically
+- Parsing happens in loader (not in discovery/ingestor)
+- Cleaner separation: discovery finds files, loader parses them
+
+**Next**: Remove ingestor.rs module (now obsolete)
+
+
+### 17:50 - Removed ingestor.rs module
+
+**Completed**:
+- Removed ingestor.rs file (git rm)
+- Removed module declaration from mod.rs
+- All 988 tests pass (5 ingestor tests removed with module)
+
+**Summary of Phase 6B**:
+✅ Created discovery.rs (320 lines) - atomic filesystem + DB discovery
+✅ Integrated into loader.rs - replaced Ingestor usage
+✅ Removed obsolete ingestor.rs module
+✅ All tests pass
+✅ Clean checkpoint achieved
+
+**Phase 6B Complete** - Ready to commit before Phase 6C (RawConfig removal)
