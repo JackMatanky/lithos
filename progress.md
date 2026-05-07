@@ -354,3 +354,39 @@ Successfully implemented actual BLAKE3 field hashing and comprehensive test cove
 1. `discovery.rs` - Load raw configs + views from repository
 2. `merger.rs` - Combine processor outcomes, build domain config, persist views
 
+
+---
+
+## Phase 3a Complete: Merger Module (15:30)
+
+**Time**: 15:30
+**Status**: ✅ COMPLETED - Commit 3005b880
+
+Created ConfigMerger for combining processor outcomes into final domain Config.
+
+**What was delivered:**
+- `ConfigMerger::new()` - construct with vault context + repository
+- `ConfigMerger::merge()` - handles all 9 outcome combinations
+- Field-level merging: defaults < global < vault (vault wins)
+- Version management: `Version::initial()` or `.next()` for increments
+- Path merging via `RawPathsConfig::merge(global, vault)`
+
+**Match arms (9 cases):**
+1. Both UseCached → load_cached_config()
+2. Both UpdateViewOnly → update_both_views_and_load()
+3. Global UpdateViewOnly, Vault UseCached → update_global_view_and_load()
+4. Global UseCached, Vault UpdateViewOnly → update_vault_view_and_load()
+5. Vault Rebuild, Global UseCached → rebuild with defaults for global
+6. Vault Rebuild, Global UpdateViewOnly → rebuild with both
+7. Vault Rebuild, Global Rebuild → rebuild with both
+8. Global Rebuild, Vault UseCached → rebuild with defaults for vault
+9. Global Rebuild, Vault UpdateViewOnly → rebuild with both
+
+**TODOs marked:**
+- View update helper methods (update_both_views_and_load, etc.)
+- Currently stub to load_cached_config() - will implement after loader integration
+
+**All 1033 tests pass** (merger compiles clean, no new tests yet)
+
+**Next**: Add merger unit tests (Phase 3b)
+
