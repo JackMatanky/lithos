@@ -241,3 +241,73 @@ _No builds run yet_
 - ⏳ TODO: Implement actual field hashing in ConfigType::compute_field_hashes
 
 **Next**: Implement IsConfigViewFresh trait for view types
+
+---
+
+## Commit 3: feat(config): implement single-file typestate processor (dc9dfbdc)
+
+**Time**: 14:30
+**Status**: ✅ COMPLETED - Processor module fully implemented and committed
+
+Successfully created and committed `config/processor.rs` (664 lines) with full typestate pattern.
+
+**What was implemented:**
+- Generic `ConfigFileProcessor<T, P, S>` working for both global and vault configs
+- `ConfigType` trait enabling zero-cost abstraction
+- `GlobalConfig` and `VaultConfig` marker types
+- 3 processing stages: Comparison → Analysis → Completed
+- 5 status types: Unknown, Fresh, Stale, NoChanges, PropertyChanges, Ready
+- 2 branch enums (ComparisonBranch, AnalysisBranch) for compile-time safety
+- ProcessorOutcome enum: UseCached | UpdateViewOnly | Rebuild
+- ConfigFieldHashes for field-level change tracking
+- IsConfigViewFresh trait with implementations for both view types
+
+**Key architectural decisions:**
+- Trait-based generics (not enums) for true zero-cost abstraction
+- Processor stays pure (no I/O) - discovery and merging handled externally
+- Branch enums force exhaustive pattern matching at call sites
+- Field hashing returns defaults (TODO: implement actual computation)
+- View freshness delegates to existing `is_fresh()` methods
+
+**Test coverage:**
+- All 987 unit tests pass
+- 3 integration tests pass
+- 193 doctests pass
+- Added basic comparison branch test
+
+**Blockers resolved:**
+- Fixed all clippy lints (pattern matching, same-name methods, non-exhaustive enums)
+- Fixed doctest compilation (added missing imports, wildcard patterns for #[non_exhaustive])
+
+**Next steps:**
+- Implement actual field hashing in ConfigType::compute_field_hashes()
+- Create discovery.rs module (orchestrates file loading + view fetching)
+- Create merger.rs module (combines outcomes, builds domain, persists views)
+- Update loader.rs to use processor instead of figment
+
+
+---
+
+## Field Hashing Implementation (14:45)
+
+**Time**: 14:45
+**Status**: ✅ COMPLETED
+
+Implemented actual BLAKE3 field hashing for both GlobalConfig and VaultConfig.
+
+**What was implemented:**
+- `GlobalConfig::compute_field_hashes()` - Hashes logging, paths, frontmatter, task fields
+- `VaultConfig::compute_field_hashes()` - Hashes same fields with vault-specific paths
+- Uses JSON serialization + BLAKE3 for deterministic hashing
+- Only hashes present Optional fields (skips None)
+- Paths field always hashed (has default value)
+
+**Implementation approach:**
+- Serialize each field to JSON for deterministic representation
+- Compute BLAKE3 hash of JSON bytes
+- Store in HashMap<ConfigField, Blake3Hash>
+- Missing fields = not in hash map (enables diff detection)
+
+**Status**: Compiles successfully
+
+**Next**: Write unit tests for processor transitions

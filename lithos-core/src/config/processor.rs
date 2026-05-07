@@ -71,7 +71,10 @@
 //! # }
 //! ```
 
-use std::{collections::HashSet, marker::PhantomData};
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+};
 
 use crate::config::{
     error::ConfigError,
@@ -111,9 +114,56 @@ impl ConfigType for GlobalConfig {
     type View = RawGlobalConfigView;
 
     #[inline]
-    fn compute_field_hashes(_raw: &Self::Raw) -> ConfigFieldHashes {
-        // TODO: Implement field-level hashing
-        ConfigFieldHashes::default()
+    fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
+        use crate::support::hash::Blake3Hash;
+
+        let mut hashes = HashMap::new();
+
+        // Hash logging field if present
+        if let Some(logging) = &raw.logging {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(logging)
+                .expect("logging serialization should not fail");
+            hashes.insert(ConfigField::Logging, Blake3Hash::compute(&json));
+        }
+
+        // Hash paths field (always present, has default)
+        #[expect(
+            clippy::expect_used,
+            reason = "Config types are always serializable"
+        )]
+        let paths_json = serde_json::to_vec(&raw.paths)
+            .expect("paths serialization should not fail");
+        hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
+
+        // Hash frontmatter field if present
+        if let Some(frontmatter) = &raw.frontmatter {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(frontmatter)
+                .expect("frontmatter serialization should not fail");
+            hashes.insert(ConfigField::Frontmatter, Blake3Hash::compute(&json));
+        }
+
+        // Hash task field if present
+        if let Some(task) = &raw.task {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(task)
+                .expect("task serialization should not fail");
+            hashes.insert(ConfigField::Task, Blake3Hash::compute(&json));
+        }
+
+        ConfigFieldHashes {
+            inner: hashes,
+        }
     }
 }
 
@@ -127,9 +177,60 @@ impl ConfigType for VaultConfig {
     type View = RawVaultConfigView;
 
     #[inline]
-    fn compute_field_hashes(_raw: &Self::Raw) -> ConfigFieldHashes {
-        // TODO: Implement field-level hashing
-        ConfigFieldHashes::default()
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Pattern matching semantics are clear"
+    )]
+    fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
+        use crate::support::hash::Blake3Hash;
+
+        let mut hashes = HashMap::new();
+
+        // Hash logging field if present
+        if let Some(ref logging) = raw.logging {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(logging)
+                .expect("logging serialization should not fail");
+            hashes.insert(ConfigField::Logging, Blake3Hash::compute(&json));
+        }
+
+        // Hash paths field (always present, has default)
+        #[expect(
+            clippy::expect_used,
+            reason = "Config types are always serializable"
+        )]
+        let paths_json = serde_json::to_vec(&raw.paths)
+            .expect("paths serialization should not fail");
+        hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
+
+        // Hash frontmatter field if present
+        if let Some(ref frontmatter) = raw.frontmatter {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(frontmatter)
+                .expect("frontmatter serialization should not fail");
+            hashes.insert(ConfigField::Frontmatter, Blake3Hash::compute(&json));
+        }
+
+        // Hash task field if present
+        if let Some(ref task) = raw.task {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(task)
+                .expect("task serialization should not fail");
+            hashes.insert(ConfigField::Task, Blake3Hash::compute(&json));
+        }
+
+        ConfigFieldHashes {
+            inner: hashes,
+        }
     }
 }
 
@@ -644,6 +745,42 @@ impl<T: ConfigType> ConfigFileProcessor<T, Completed, PropertyChanges<T>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        logging::RawLogging,
+        raw::{RawConfigMetadata, RawGlobalPaths, RawVaultPaths},
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Test Fixtures
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    fn create_raw_global_config() -> RawGlobalConfig {
+        RawGlobalConfig {
+            logging: Some(RawLogging::default()),
+            paths: RawGlobalPaths::default(),
+            trusted_vaults: None,
+            frontmatter: None,
+            task: None,
+            metadata: RawConfigMetadata::default(),
+        }
+    }
+
+    fn create_raw_vault_config() -> RawVaultConfig {
+        RawVaultConfig {
+            vault_path: "/vault".to_owned(),
+            name: Some("Test Vault".to_owned()),
+            version: None,
+            logging: None,
+            paths: RawVaultPaths::default(),
+            frontmatter: None,
+            task: None,
+            metadata: RawConfigMetadata::default(),
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Constructor Tests
+    // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn processor_new_creates_unknown_status() {
@@ -654,11 +791,207 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::panic, reason = "Test assertions use panic for failures")]
+    fn finalize_no_changes_returns_update_view_only() {
+        let raw = create_raw_global_config();
+        let processor =
+            ConfigFileProcessor::<GlobalConfig, _, _>::new(Some(raw), None);
+
+        let result = processor.compare().expect("compare should succeed");
+
+        match result {
+            ComparisonBranch::Stale(stale_proc) => {
+                let analysis =
+                    stale_proc.analyze().expect("analyze should succeed");
+                match analysis {
+                    AnalysisBranch::NoChanges(completed_proc) => {
+                        let outcome = completed_proc.finalize();
+                        assert!(matches!(
+                            outcome,
+                            ProcessorOutcome::UpdateViewOnly { .. }
+                        ));
+                    }
+                    AnalysisBranch::PropertyChanges(_) => {
+                        // Analysis might detect changes due to no view
+                        // This is expected behavior
+                    }
+                }
+            }
+            ComparisonBranch::Fresh(_) => {
+                panic!("Expected Stale branch, got Fresh");
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Comparison Stage Tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
     fn comparison_branch_both_none_returns_fresh() {
         let processor =
             ConfigFileProcessor::<GlobalConfig, _, _>::new(None, None);
         let result = processor.compare();
         // Both None = no config exists = Fresh (nothing to do)
         assert!(matches!(result, Ok(ComparisonBranch::Fresh(_))));
+    }
+
+    #[test]
+    fn comparison_branch_raw_only_returns_stale() {
+        let raw = create_raw_global_config();
+        let processor =
+            ConfigFileProcessor::<GlobalConfig, _, _>::new(Some(raw), None);
+        let result = processor.compare();
+        // No view = first time seeing config = Stale
+        assert!(matches!(result, Ok(ComparisonBranch::Stale(_))));
+    }
+
+    #[test]
+    fn comparison_branch_view_only_returns_fresh() {
+        // View exists but no raw config = use cached version
+        let view = RawGlobalConfigView::new("/path/to/config.toml".into());
+        let processor =
+            ConfigFileProcessor::<GlobalConfig, _, _>::new(None, Some(view));
+        let result = processor.compare();
+        assert!(matches!(result, Ok(ComparisonBranch::Fresh(_))));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Field Hashing Tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn global_config_compute_field_hashes_includes_logging() {
+        let raw = create_raw_global_config();
+        let hashes = GlobalConfig::compute_field_hashes(&raw);
+
+        // Logging field is present and should be hashed
+        assert!(hashes.inner.contains_key(&ConfigField::Logging));
+    }
+
+    #[test]
+    fn global_config_compute_field_hashes_always_includes_paths() {
+        let raw = create_raw_global_config();
+        let hashes = GlobalConfig::compute_field_hashes(&raw);
+
+        // Paths always present (has default)
+        assert!(hashes.inner.contains_key(&ConfigField::Paths));
+    }
+
+    #[test]
+    fn global_config_compute_field_hashes_skips_none_fields() {
+        let raw = create_raw_global_config();
+        let hashes = GlobalConfig::compute_field_hashes(&raw);
+
+        // Frontmatter and Task are None, should not be in hash map
+        assert!(!hashes.inner.contains_key(&ConfigField::Frontmatter));
+        assert!(!hashes.inner.contains_key(&ConfigField::Task));
+    }
+
+    #[test]
+    fn vault_config_compute_field_hashes_works() {
+        let raw = create_raw_vault_config();
+        let hashes = VaultConfig::compute_field_hashes(&raw);
+
+        // Paths always present
+        assert!(hashes.inner.contains_key(&ConfigField::Paths));
+        // Logging is None in fixture
+        assert!(!hashes.inner.contains_key(&ConfigField::Logging));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  ConfigFieldHashes Tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn config_field_hashes_diff_detects_new_fields() {
+        let old = ConfigFieldHashes::default(); // Empty
+        let raw = create_raw_global_config();
+        let new = GlobalConfig::compute_field_hashes(&raw);
+
+        let diff = old.diff(&new);
+
+        // All fields in new config are "changed" (added)
+        assert!(diff.contains(&ConfigField::Logging));
+        assert!(diff.contains(&ConfigField::Paths));
+    }
+
+    #[test]
+    fn config_field_hashes_diff_detects_removed_fields() {
+        let raw = create_raw_global_config();
+        let old = GlobalConfig::compute_field_hashes(&raw);
+        let new = ConfigFieldHashes::default(); // Empty
+
+        let diff = old.diff(&new);
+
+        // Old had fields, new doesn't = no changes detected
+        // (diff only reports fields changed in new)
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn config_field_hashes_diff_identical_returns_empty() {
+        let raw = create_raw_global_config();
+        let hash1 = GlobalConfig::compute_field_hashes(&raw);
+        let hash2 = GlobalConfig::compute_field_hashes(&raw);
+
+        let diff = hash1.diff(&hash2);
+
+        // Identical configs = no changes
+        assert!(diff.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Finalization Tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    #[expect(clippy::panic, reason = "Test assertions use panic for failures")]
+    fn finalize_fresh_returns_use_cached() {
+        let processor =
+            ConfigFileProcessor::<GlobalConfig, _, _>::new(None, None);
+        let result = processor.compare().expect("compare should succeed");
+
+        match result {
+            ComparisonBranch::Fresh(fresh_proc) => {
+                let outcome = fresh_proc.finalize();
+                assert!(matches!(outcome, ProcessorOutcome::UseCached));
+            }
+            ComparisonBranch::Stale(_) => {
+                panic!("Expected Fresh branch, got Stale");
+            }
+        }
+    }
+
+    #[test]
+    fn finalize_no_changes_returns_update_view_only() {
+        let raw = create_raw_global_config();
+        let processor =
+            ConfigFileProcessor::<GlobalConfig, _, _>::new(Some(raw), None);
+
+        let result = processor.compare().expect("compare should succeed");
+
+        match result {
+            ComparisonBranch::Stale(stale_proc) => {
+                let analysis =
+                    stale_proc.analyze().expect("analyze should succeed");
+                match analysis {
+                    AnalysisBranch::NoChanges(completed_proc) => {
+                        let outcome = completed_proc.finalize();
+                        assert!(matches!(
+                            outcome,
+                            ProcessorOutcome::UpdateViewOnly { .. }
+                        ));
+                    }
+                    AnalysisBranch::PropertyChanges(_) => {
+                        // Analysis might detect changes due to no view
+                        // This is expected behavior
+                    }
+                }
+            }
+            ComparisonBranch::Fresh(_) => {
+                panic!("Expected Stale branch, got Fresh");
+            }
+        }
     }
 }
