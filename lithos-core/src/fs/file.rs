@@ -171,6 +171,7 @@ impl TryFrom<PathBuf> for FileName {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct FileInfo {
     /// File creation timestamp (birthtime).

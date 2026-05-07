@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-use crate::{config::vault::VaultId, support::hash::Blake3Hash};
+use crate::{config::vault::VaultId, fs::FileInfo, support::hash::Blake3Hash};
 
 // ----------------------------------------------------------- //
 //                     Raw Config Views                        //
@@ -406,26 +406,13 @@ impl RawVaultConfigView {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct RawFileVersion {
-    /// Compressed raw TOML content (zstd).
-    ///
-    /// Stored compressed to reduce database size. Typical config files
-    /// compress well (70-80% reduction).
-    compressed_content: Vec<u8>,
+    /// File metadata (timestamps + size).
+    file_info: FileInfo,
 
     /// BLAKE3 hash of the uncompressed content.
     ///
-    /// Used for fast content-based change detection without decompressing.
+    /// Used for fast content-based change detection.
     content_hash: Blake3Hash,
-
-    /// Filesystem birthtime (file creation timestamp).
-    ///
-    /// None if the filesystem doesn't support birthtime.
-    #[rkyv(with = rkyv::with::Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-
-    /// Filesystem mtime (last modification timestamp).
-    #[rkyv(with = AsUnixTime)]
-    modified_at: SystemTime,
 
     /// Wall-clock timestamp when this version was recorded to DB.
     #[rkyv(with = AsUnixTime)]
@@ -445,30 +432,27 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use lithos_core::config::views::RawFileVersion;
+    /// use lithos_core::fs::FileInfo;
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
+    /// let file_info = FileInfo::new(None, Some(SystemTime::now()), content.len() as u64);
     /// let version = RawFileVersion::new(
     ///     content,
-    ///     None,
-    ///     SystemTime::now(),
+    ///     file_info,
     /// )?;
     /// ```
     #[inline]
     pub fn new(
         content: &[u8],
-        created_at: Option<SystemTime>,
-        modified_at: SystemTime,
+        file_info: FileInfo,
     ) -> Result<Self, std::io::Error> {
         let content_hash = Blake3Hash::compute(content);
-        let compressed_content = zstd::encode_all(content, 3)?;
         let recorded_at = SystemTime::now();
 
         Ok(Self {
-            compressed_content,
+            file_info,
             content_hash,
-            created_at,
-            modified_at,
             recorded_at,
         })
     }
@@ -480,45 +464,11 @@ impl RawFileVersion {
         &self.content_hash
     }
 
-    /// Returns the file creation timestamp, if available.
+    /// Returns the file metadata (timestamps + size).
     #[inline]
     #[must_use]
-    pub fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Returns the file modification timestamp.
-    #[inline]
-    #[must_use]
-    pub fn modified_at(&self) -> SystemTime {
-        self.modified_at
-    }
-
-    /// Returns the recording timestamp.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Decompresses and returns the raw TOML content.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if decompression fails (corruption or invalid data).
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use lithos_core::config::views::RawFileVersion;
-    ///
-    /// let version = RawFileVersion::new(b"vault_path = \"/vault\"", None, std::time::SystemTime::now())?;
-    /// let content = version.decompress()?;
-    /// assert_eq!(content, b"vault_path = \"/vault\"");
-    /// ```
-    #[inline]
-    pub fn decompress(&self) -> Result<Vec<u8>, std::io::Error> {
-        zstd::decode_all(self.compressed_content.as_slice())
+    pub const fn file_info(&self) -> &FileInfo {
+        &self.file_info
     }
 
     /// Checks if timestamps match (fast staleness check).
@@ -530,11 +480,13 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use lithos_core::config::views::RawFileVersion;
+    /// use lithos_core::fs::FileInfo;
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
     /// let mtime = SystemTime::now();
-    /// let version = RawFileVersion::new(content, None, mtime)?;
+    /// let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
+    /// let version = RawFileVersion::new(content, file_info)?;
     ///
     /// assert!(version.is_timestamp_match(None, mtime));
     /// ```
@@ -545,7 +497,8 @@ impl RawFileVersion {
         created_at: Option<SystemTime>,
         modified_at: SystemTime,
     ) -> bool {
-        self.created_at == created_at && self.modified_at == modified_at
+        self.file_info.created_at() == created_at
+            && self.file_info.modified_at() == Some(modified_at)
     }
 
     /// Checks if content hash matches (accurate staleness check).
@@ -583,7 +536,8 @@ impl RawFileVersion {
     ///
     /// let content = b"vault_path = \"/vault\"";
     /// let mtime = SystemTime::now();
-    /// let version = RawFileVersion::new(content, None, mtime)?;
+    /// let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
+    /// let version = RawFileVersion::new(content, file_info)?;
     ///
     /// assert!(version.matches(None, mtime, &Blake3Hash::compute(content)));
     /// ```
@@ -619,9 +573,10 @@ mod tests {
     #[test]
     fn raw_global_config_view_push_version() {
         let mut view = RawGlobalConfigView::new("/path/to/global.toml".into());
-        let version1 =
-            RawFileVersion::new(b"content1", None, SystemTime::now())
-                .expect("version creation should succeed");
+
+        let file_info = FileInfo::new(None, Some(SystemTime::now()), 7);
+        let version1 = RawFileVersion::new(b"content1", file_info)
+            .expect("version creation should succeed");
 
         view.push_version(version1.clone());
         assert_eq!(view.versions().len(), 1);
@@ -635,12 +590,13 @@ mod tests {
         // Push 7 versions
         for i in 0i32..7i32 {
             let content = format!("content{i}");
-            let version = RawFileVersion::new(
-                content.as_bytes(),
+            let file_info = FileInfo::new(
                 None,
-                SystemTime::now(),
-            )
-            .expect("version creation should succeed");
+                Some(SystemTime::now()),
+                content.len() as u64,
+            );
+            let version = RawFileVersion::new(content.as_bytes(), file_info)
+                .expect("version creation should succeed");
             view.push_version(version);
         }
 
@@ -663,24 +619,14 @@ mod tests {
     fn raw_file_version_new() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
-        let version = RawFileVersion::new(content, None, mtime)
+        let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
+        let version = RawFileVersion::new(content, file_info)
             .expect("version creation should succeed");
 
         let expected_hash = Blake3Hash::compute(content);
         assert_eq!(version.content_hash(), &expected_hash);
-        assert_eq!(version.created_at(), None);
-        assert_eq!(version.modified_at(), mtime);
-    }
-
-    #[test]
-    fn raw_file_version_decompress() {
-        let content = b"vault_path = \"/vault\"";
-        let version = RawFileVersion::new(content, None, SystemTime::now())
-            .expect("version creation should succeed");
-
-        let decompressed =
-            version.decompress().expect("decompression should succeed");
-        assert_eq!(decompressed, content);
+        assert_eq!(version.file_info().created_at(), None);
+        assert_eq!(version.file_info().modified_at(), Some(mtime));
     }
 
     #[test]
@@ -688,7 +634,8 @@ mod tests {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
         let hash = Blake3Hash::compute(content);
-        let version = RawFileVersion::new(content, None, mtime)
+        let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
+        let version = RawFileVersion::new(content, file_info)
             .expect("version creation should succeed");
 
         assert!(version.matches(None, mtime, &hash));
@@ -705,7 +652,9 @@ mod tests {
     #[test]
     fn raw_file_version_round_trips_through_rkyv() {
         let content = b"vault_path = \"/vault\"";
-        let original = RawFileVersion::new(content, None, SystemTime::now())
+        let file_info =
+            FileInfo::new(None, Some(SystemTime::now()), content.len() as u64);
+        let original = RawFileVersion::new(content, file_info)
             .expect("version creation should succeed");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
@@ -720,11 +669,6 @@ mod tests {
                 .expect("deserialization should succeed");
 
         assert_eq!(deserialized.content_hash, original.content_hash);
-        assert_eq!(deserialized.created_at, original.created_at);
-        assert_eq!(deserialized.modified_at, original.modified_at);
-        assert_eq!(
-            deserialized.compressed_content,
-            original.compressed_content
-        );
+        assert_eq!(deserialized.file_info, original.file_info);
     }
 }
