@@ -37,10 +37,12 @@
 //!
 //! # Examples
 //!
+//! ## Basic Usage
+//!
 //! ```rust,no_run
 //! use lithos_core::config::{
 //!     processor::{
-//!         ConfigFileProcessor, GlobalConfig,
+//!         ConfigFileProcessor, GlobalConfig, ProcessorOutcome,
 //!         ComparisonBranch, AnalysisBranch,
 //!     },
 //!     raw::RawGlobalConfig,

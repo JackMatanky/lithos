@@ -10,10 +10,14 @@
 //!
 //! # Features
 //!
+//! - **Typestate Processing**: Single-file processors with compile-time state
+//!   transitions for global and vault configs.
+//! - **Field-Level Change Detection**: BLAKE3 hashing of individual config
+//!   fields for incremental updates.
 //! - **Hybrid Staleness Detection**: Combines timestamp checks (fast) with
-//!   BLAKE3 content hashing (accurate) to detect configuration changes.
-//! - **Layered Ingestion**: Merges defaults, global settings, and vault
-//!   overrides using Figment.
+//!   content hashing (accurate) to detect configuration changes.
+//! - **Precedence Merging**: Vault configs override global configs override
+//!   defaults, with field-level granularity.
 //! - **Always Valid Invariants**: Strict type-driven validation at the domain
 //!   boundary.
 //! - **Unified Repository**: Single trait for all persistence operations.
@@ -55,11 +59,15 @@
 //! - [`vault`] - Vault-specific overrides and metadata
 //! - [`paths`] - Validated path configurations
 //!
-//! ## Orchestration & Storage
-//! - [`loader`] - Configuration loading with hybrid staleness detection
-//! - [`storage`] - Unified Repository trait and redb implementation
+//! ## Processing Pipeline
+//! - [`processor`] - Typestate processor for single config files
+//! - [`merger`] - Combines processor outcomes with precedence rules
+//! - [`loader`] - Orchestrates: ingest → process → merge → persist
 //! - [`ingestor`] - File discovery and TOML parsing
-//! - [`views`] - Raw config views for staleness tracking
+//!
+//! ## Storage & Views
+//! - [`storage`] - Unified Repository trait and redb implementation
+//! - [`views`] - Raw config views for staleness tracking with version history
 //!
 //! ## Supporting Modules
 //! - [`task`] - Task-specific schema and validation

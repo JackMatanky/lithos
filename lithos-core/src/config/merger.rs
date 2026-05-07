@@ -50,7 +50,7 @@ where
 
     /// Merge processor outcomes into final Config.
     ///
-    /// Handles all 9 combinations of (UseCached | UpdateViewOnly | Rebuild) ×
+    /// Handles all 9 combinations of (`UseCached` | `UpdateViewOnly` | Rebuild) ×
     /// 2.
     ///
     /// # Errors
@@ -236,7 +236,7 @@ where
             .repository
             .get_active_version(self.vault_id)
             .map_err(Into::into)?
-            .map(|v| v.next())
+            .map(super::aggregate::Version::next)
             .transpose()?
             .unwrap_or_else(Version::initial);
 
@@ -556,7 +556,7 @@ mod tests {
         let vault_outcome = ProcessorOutcome::UseCached;
 
         let result = merger.merge(global_outcome, vault_outcome);
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 
     #[test]
