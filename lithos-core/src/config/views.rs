@@ -221,9 +221,6 @@ impl RawGlobalConfigView {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct RawVaultConfigView {
-    /// Vault identifier this config belongs to.
-    vault_id: VaultId,
-
     /// Path to the vault config file (`.lithos/lithos.toml`).
     file_path: Box<str>,
 
@@ -241,28 +238,18 @@ impl RawVaultConfigView {
     /// ```ignore
     /// use lithos_core::config::{vault::VaultId, views::RawVaultConfigView};
     ///
-    /// let vault_id = VaultId::new();
     /// let view = RawVaultConfigView::new(
-    ///     vault_id,
     ///     "/vault/.lithos/lithos.toml".into(),
     /// );
     /// assert!(view.versions().is_empty());
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(vault_id: VaultId, file_path: Box<str>) -> Self {
+    pub fn new(file_path: Box<str>) -> Self {
         Self {
-            vault_id,
             file_path,
             versions: Vec::new(),
         }
-    }
-
-    /// Returns the vault ID for this config.
-    #[inline]
-    #[must_use]
-    pub fn vault_id(&self) -> VaultId {
-        self.vault_id
     }
 
     /// Returns the file path for the vault config.
@@ -605,12 +592,7 @@ mod tests {
 
     #[test]
     fn raw_vault_config_view_new() {
-        let vault_id = VaultId::new();
-        let view = RawVaultConfigView::new(
-            vault_id,
-            "/vault/.lithos/lithos.toml".into(),
-        );
-        assert_eq!(view.vault_id(), vault_id);
+        let view = RawVaultConfigView::new("/vault/.lithos/lithos.toml".into());
         assert_eq!(view.file_path(), "/vault/.lithos/lithos.toml");
         assert!(view.versions().is_empty());
     }

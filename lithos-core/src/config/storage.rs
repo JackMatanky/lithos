@@ -276,6 +276,7 @@ pub trait Repository: Send + Sync {
     /// Returns a storage-specific error if serialization or storage fails.
     fn save_raw_vault_view(
         &self,
+        vault_id: VaultId,
         view: &RawVaultConfigView,
     ) -> Result<(), Self::Error>;
 }
@@ -534,9 +535,10 @@ impl Repository for RedbStorage<'_> {
     #[inline]
     fn save_raw_vault_view(
         &self,
+        vault_id: VaultId,
         view: &RawVaultConfigView,
     ) -> Result<(), Self::Error> {
-        let key = view.vault_id().to_string();
+        let key = vault_id.to_string();
         self.db.batch_write(|tx| {
             tx.put(super::db_table::RAW_VAULT_CONFIG_VIEW, &key, view)
         })

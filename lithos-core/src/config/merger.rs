@@ -50,8 +50,8 @@ where
 
     /// Merge processor outcomes into final Config.
     ///
-    /// Handles all 9 combinations of (`UseCached` | `UpdateViewOnly` | Rebuild) ×
-    /// 2.
+    /// Handles all 9 combinations of (`UseCached` | `UpdateViewOnly` | Rebuild)
+    /// × 2.
     ///
     /// # Errors
     ///
@@ -472,6 +472,7 @@ mod tests {
 
         fn save_raw_vault_view(
             &self,
+            _vault_id: VaultId,
             _view: &RawVaultConfigView,
         ) -> Result<(), Self::Error> {
             Ok(())
