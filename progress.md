@@ -390,3 +390,44 @@ Created ConfigMerger for combining processor outcomes into final domain Config.
 
 **Next**: Add merger unit tests (Phase 3b)
 
+
+---
+
+## Phase 3b Complete: Merger Tests (16:00)
+
+**Time**: 16:00
+**Status**: ✅ COMPLETED - Commit 79f19d42
+
+Added comprehensive test coverage for ConfigMerger with all 9 outcome combinations.
+
+**Test Coverage (13 tests):**
+1. Both UseCached → loads from DB (success case)
+2. Both UseCached → error when no config exists
+3. Global rebuild, Vault cached → creates new config (version 1)
+4. Vault rebuild, Global cached → creates new config (version 1)
+5. Both rebuild → merges with vault precedence
+6. Version incrementing → goes from 1 to 2 on rebuild
+7. Both UpdateViewOnly → loads cached without version bump
+8. Defaults only → returns RawConfig::default()
+9. Global overrides defaults → applies global paths
+10. Vault overrides global → vault templates_dir wins
+
+**Test Infrastructure Created:**
+- `TestStorage` struct: in-memory Repository for testing
+- Implements all 12 Repository trait methods
+- Uses `Arc<Mutex<HashMap>>` for thread-safe config/version storage
+- Provides minimal implementation (most methods return Ok(None))
+- Real implementations for: get_config, save_config, get_active_version
+
+**All 1043 tests pass** (1033 existing + 10 new merger tests)
+
+**Fixes during implementation:**
+- ProcessorOutcome::Rebuild uses `changed_fields: HashSet`, not `hashes`
+- Version::initial() for version 1, not raw integer
+- Config::build() signature: takes &RawConfig, VaultId, VaultRoot, Version
+- save_config() returns Version, not ()
+- Paths access: template.templates_dir (field), schema.schemas_dir() (method)
+- Repository trait: save_raw_vault_view doesn't take vault_id parameter
+
+**Next**: Phase 4 - Update loader.rs to use processor+merger pipeline
+
