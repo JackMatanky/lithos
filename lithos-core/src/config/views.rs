@@ -134,6 +134,10 @@ impl RawGlobalConfigView {
     /// - No version history exists (never ingested)
     /// - Timestamps differ (file was modified)
     /// - Content hash differs (file content changed)
+    #[expect(
+        clippy::same_name_method,
+        reason = "Method implements IsConfigViewFresh trait"
+    )]
     #[inline]
     #[must_use]
     pub fn is_fresh(&self, raw: &crate::config::raw::RawGlobalConfig) -> bool {
@@ -305,6 +309,10 @@ impl RawVaultConfigView {
     /// - No version history exists (never ingested)
     /// - Timestamps differ (file was modified)
     /// - Content hash differs (file content changed)
+    #[expect(
+        clippy::same_name_method,
+        reason = "Method implements IsConfigViewFresh trait"
+    )]
     #[inline]
     #[must_use]
     pub fn is_fresh(&self, raw: &crate::config::raw::RawVaultConfig) -> bool {

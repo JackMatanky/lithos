@@ -105,6 +105,8 @@ pub mod ingestor;
 pub mod loader;
 /// Logging configuration types.
 pub mod logging;
+/// Single-file typestate processor for config processing.
+pub mod processor;
 /// Raw (serde) configuration input types.
 pub mod raw;
 /// Task configuration schema and validation.
