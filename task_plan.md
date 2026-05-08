@@ -157,7 +157,7 @@
 ---
 
 **Last Updated**: 2026-05-07
-**Status**: ✅ COMPLETE
+**Status**: ⚠️ REOPENED FOR TECHNICAL GAP REVIEW
 
 ## Final Summary
 
@@ -273,7 +273,36 @@ User identified that I was mechanically fixing errors without addressing root ca
 - [x] `mise run verify` passed after builder migration
 - [x] Planning files updated with final verification checkpoint
 - [x] `gitnexus_detect_changes(scope: all)` run before commit prep
-- [ ] Final diff review + commit
+- [x] Final diff review + commit
+
+### Phase 6E: Post-commit technical reassessment ✅ COMPLETE
+
+- [x] Re-opened per user review: prior completion status was premature
+- [x] Audit outstanding TODOs across config pipeline
+- [x] Identify architectural mismatches vs intended responsibilities
+- [x] Implement missing processor analysis logic (view-backed content-hash check for `NoChanges`)
+- [x] Implement merger view update paths (remove stubs)
+- [x] Re-evaluate component naming/responsibility (`ConfigMerger` vs resolver)
+- [x] Refactor builder to orchestrate resolver + persistence cleanly
+- [x] Add tests proving `NoChanges` path works without forced rebuild
+- [x] Re-run full verification and update completion status
+
+### Phase 6E verification checkpoint
+
+- [x] Targeted config tests pass (`processor`, `merger`, `discovery` filters)
+- [x] Full quality gate passes (`mise run verify`)
+- [x] Final architecture-boundary refactor (naming + role split)
+  - [x] Renamed `ConfigMerger` to `ConfigResolver`
+  - [x] Split persistence responsibility: resolver now emits `ResolutionPlan`, builder executes repository/view/config persistence
+
+### Phase 6E closeout checkpoint (2026-05-08)
+
+- [x] Re-ran full quality gate after boundary split (`mise run verify`)
+- [x] Ran GitNexus scope check before commit prep (`gitnexus_detect_changes(scope: all)`)
+  - changed symbols: 51
+  - changed files: 8
+  - risk level: low
+- [x] Planning files synchronized (`task_plan.md`, `findings.md`, `progress.md`)
 
 **Rationale for Order**:
 1. discovery.rs uses FileInfo (not RawConfigMetadata) - enables clean metadata removal

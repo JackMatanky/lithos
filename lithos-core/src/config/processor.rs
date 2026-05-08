@@ -101,6 +101,9 @@ pub trait ConfigType {
     /// Used for incremental analysis - determines which specific fields
     /// changed.
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes;
+
+    /// Returns true when view content hash matches raw content.
+    fn content_hash_matches(view: &Self::View, raw: &Self::Raw) -> bool;
 }
 
 /// Marker type for global config processing.
@@ -162,6 +165,11 @@ impl ConfigType for GlobalConfig {
 
         hashes
     }
+
+    #[inline]
+    fn content_hash_matches(view: &Self::View, raw: &Self::Raw) -> bool {
+        view.content_hash_matches(raw)
+    }
 }
 
 /// Marker type for vault config processing.
@@ -222,6 +230,11 @@ impl ConfigType for VaultConfig {
         }
 
         hashes
+    }
+
+    #[inline]
+    fn content_hash_matches(view: &Self::View, raw: &Self::Raw) -> bool {
+        view.content_hash_matches(raw)
     }
 }
 
@@ -294,10 +307,6 @@ impl ConfigFieldHashes {
 
     /// Returns an iterator over all field-hash pairs.
     #[inline]
-    #[expect(
-        dead_code,
-        reason = "Reserved for upcoming field-hash diff wiring"
-    )]
     pub(crate) fn iter(
         &self,
     ) -> impl Iterator<Item = (&ConfigField, &crate::support::hash::Blake3Hash)>
@@ -633,45 +642,18 @@ impl<T: ConfigType> ConfigFileProcessor<T, Analysis, Stale<T>> {
     /// Returns [`ConfigError`] if hash computation fails.
     #[inline]
     pub fn analyze(self) -> Result<AnalysisBranch<T>, ConfigError> {
-        // Compute field hashes for new config
-        let _new_hashes = T::compute_field_hashes(&self.status.raw);
-
-        // Get old field hashes from view (if exists)
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "Borrowing semantics are clear in context"
-        )]
-        let changed_fields: HashSet<ConfigField> = match &self.status.view {
-            Some(_view) => {
-                // TODO: Extract field hashes from view's latest version
-                // For now, assume all fields changed if view exists
-                // This will be implemented when we add field_hashes to
-                // RawFileVersion
-                let _old_hashes = ConfigFieldHashes::default();
-                // changed_fields = old_hashes.diff(&new_hashes);
-
-                // Temporary: assume all fields changed
-                vec![
-                    ConfigField::Logging,
-                    ConfigField::Paths,
-                    ConfigField::Task,
-                    ConfigField::Frontmatter,
-                ]
-                .into_iter()
-                .collect()
-            }
-            None => {
-                // No view means first load - all fields are "changed"
-                vec![
-                    ConfigField::Logging,
-                    ConfigField::Paths,
-                    ConfigField::Task,
-                    ConfigField::Frontmatter,
-                ]
-                .into_iter()
-                .collect()
-            }
-        };
+        let changed_fields: HashSet<ConfigField> =
+            match self.status.view.as_ref() {
+                Some(view)
+                    if T::content_hash_matches(view, &self.status.raw) =>
+                {
+                    HashSet::new()
+                }
+                _ => T::compute_field_hashes(&self.status.raw)
+                    .iter()
+                    .map(|(field, _)| field.clone())
+                    .collect(),
+            };
 
         if changed_fields.is_empty() {
             // Only metadata (timestamps/content hash) changed
@@ -736,25 +718,35 @@ impl<T: ConfigType> ConfigFileProcessor<T, Completed, PropertyChanges<T>> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
-    use crate::config::raw::{RawGlobalPaths, RawLogging, RawVaultPaths};
+    use crate::{
+        config::{
+            raw::{RawGlobalPaths, RawLogging, RawVaultPaths},
+            views::RawFileVersion,
+        },
+        fs::FileInfo,
+    };
 
     // ─────────────────────────────────────────────────────────────────────────────
     //  Test Fixtures
     // ─────────────────────────────────────────────────────────────────────────────
 
     fn create_raw_global_config() -> RawGlobalConfig {
+        let now = SystemTime::now();
         RawGlobalConfig {
             logging: Some(RawLogging::default()),
             paths: RawGlobalPaths::default(),
             trusted_vaults: None,
             frontmatter: None,
             task: None,
-            metadata: None,
+            metadata: Some(FileInfo::new(None, Some(now), 0)),
         }
     }
 
     fn create_raw_vault_config() -> RawVaultConfig {
+        let now = SystemTime::now();
         RawVaultConfig {
             vault_path: "/vault".to_owned(),
             name: Some("Test Vault".to_owned()),
@@ -763,8 +755,19 @@ mod tests {
             paths: RawVaultPaths::default(),
             frontmatter: None,
             task: None,
-            metadata: None,
+            metadata: Some(FileInfo::new(None, Some(now), 0)),
         }
+    }
+
+    fn global_view_for(raw: &RawGlobalConfig) -> RawGlobalConfigView {
+        let mut view = RawGlobalConfigView::new("/tmp/global.toml".into());
+        let content =
+            toml::to_string(raw).expect("raw global should serialize");
+        let file_info = raw.metadata.expect("metadata must exist");
+        let version =
+            RawFileVersion::new(content.as_bytes(), file_info).expect("valid");
+        view.push_version(version);
+        view
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -823,6 +826,30 @@ mod tests {
         let result = processor.compare();
         // Both None = no config exists = Fresh (nothing to do)
         assert!(matches!(result, Ok(ComparisonBranch::Fresh(_))));
+    }
+
+    #[test]
+    #[expect(clippy::panic, reason = "Test branch assertion uses panic")]
+    fn analyze_stale_timestamp_same_content_returns_no_changes() {
+        let mut raw = create_raw_global_config();
+        let view = global_view_for(&raw);
+
+        // simulate mtime-only drift while content stays the same
+        raw.metadata = Some(FileInfo::new(None, Some(SystemTime::now()), 1));
+
+        let processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(
+            Some(raw),
+            Some(view),
+        );
+
+        let comparison = processor.compare().expect("compare should succeed");
+        let stale = match comparison {
+            ComparisonBranch::Stale(stale) => stale,
+            ComparisonBranch::Fresh(_) => panic!("expected stale"),
+        };
+
+        let analysis = stale.analyze().expect("analysis should succeed");
+        assert!(matches!(analysis, AnalysisBranch::NoChanges(_)));
     }
 
     #[test]

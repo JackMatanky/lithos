@@ -229,6 +229,90 @@ pub(crate) fn merge_all(
 - Reported risk level: `critical`, driven by broad symbol touch count (docs + tests + config core module edits).
 - Runtime validation evidence remains green (`mise run verify` all pass), so the change set appears intentionally wide but behaviorally stable.
 
+---
+
+## Post-commit reassessment (user-requested)
+
+The prior "complete" mark was technically premature. A focused audit found real functional gaps:
+
+1. `config/processor.rs` has incomplete analysis logic:
+   - `TODO` at `lithos-core/src/config/processor.rs:645`.
+   - Current behavior assumes all fields changed when a view exists, so `NoChanges` is effectively unreachable for stale-view comparisons.
+   - This defeats the intended incremental optimization.
+
+2. `config/merger.rs` still contains persistence stubs:
+   - `TODO` at `lithos-core/src/config/merger.rs:195`, `lithos-core/src/config/merger.rs:208`, `lithos-core/src/config/merger.rs:220`.
+   - View-update branches currently fall back to `load_cached_config()` without writing refreshed views.
+
+3. `config/discovery.rs` still has a repository integration TODO:
+   - `TODO` at `lithos-core/src/config/discovery.rs:313` claims view-query methods are missing, but `Repository` already has `get_raw_global_view` and `get_raw_vault_view`.
+   - This indicates design drift between implementation and comments/assumptions.
+
+4. Responsibility boundaries need tightening:
+   - Current `ConfigMerger` both resolves outcomes and performs rebuild/persistence.
+   - User intent: merger/resolver should resolve settings from already-constructed field inputs, while builder orchestrates final resolved `Config` construction.
+
+Conclusion: code compiles and tests pass, but architecture + behavior are not fully aligned with intended end-state.
+
+### Phase 6E implementation notes (in progress)
+
+- `processor.rs` gap reduced:
+  - Added a type-level hook `content_hash_matches(view, raw)` to `ConfigType`.
+  - Analysis now emits `NoChanges` when stale timestamp + equal content hash is detected.
+  - Added regression coverage for this path (`analyze_stale_timestamp_same_content_returns_no_changes`).
+
+- `merger.rs` TODO stubs removed:
+  - `update_both_views_and_load`, `update_global_view_and_load`, `update_vault_view_and_load` now update raw views before loading cached config.
+  - Added helper conversion from raw configs to `RawFileVersion` with explicit validation errors when metadata is missing.
+
+- `discovery.rs` TODO drift corrected:
+  - Replaced placeholder query with real repository view reads.
+  - Vault view lookup now resolves `VaultId` from path mapping first.
+
+Remaining alignment work: responsibility split (`ConfigMerger` as resolver vs builder orchestration boundary).
+
+### Phase 6E validation findings
+
+- Implementation uncovered a latent test-double defect:
+  - `InMemoryRepository` stored global views in a `HashMap<VaultId, ...>` but keyed reads/writes with fresh `VaultId::new()` values.
+  - This made global-view retrieval nondeterministically impossible for update flows.
+- Corrected by modeling global view as singleton state (`Option<RawGlobalConfigView>`), which matches domain semantics (single environment config view).
+
+- After fixes:
+  - targeted config tests pass,
+  - full `mise run verify` passes.
+
+Remaining work is now architectural (naming and stricter role boundaries), not correctness of current implemented flows.
+
+### Naming alignment
+
+- Renamed `ConfigMerger` to `ConfigResolver` to match intended responsibility language.
+- Current resolver still performs persistence actions for update/rebuild flows; further separation into pure resolution vs persistence orchestration remains optional follow-up depending on desired strictness.
+
+Verification after rename/update work:
+- `cargo test -p lithos-core config::merger::tests` passed.
+- `mise run verify` passed.
+
+### Boundary split completed
+
+- `config/merger.rs` was refactored from side-effecting orchestration into pure resolution.
+- `ConfigResolver` now emits `ResolutionPlan` (`UseCached`, `UpdateViews`, `Rebuild`) instead of touching repository state.
+- Persistence and construction responsibilities moved to `config/builder.rs`:
+  - cached config loading,
+  - view update persistence,
+  - rebuild versioning + save flow.
+- This aligns with intent: resolver resolves outcomes; builder orchestrates I/O + construction boundaries.
+
+### Scope/risk checkpoint after boundary split (2026-05-08)
+
+- Ran `gitnexus_detect_changes(scope: all)` before commit preparation.
+- Current result reports:
+  - changed symbols: 51
+  - changed files: 8
+  - risk level: low
+  - affected indexed processes: 0 in this run
+- Interpretation: residual change set is concentrated and lower-risk than earlier broad migration checkpoints.
+
 **Rationale**: Pattern consistency across contexts (note, schema, config) improves codebase navigability and maintains architectural coherence.
 
 ### Typestate Design for Config Processing (DRAFT - NEEDS APPROVAL)

@@ -211,6 +211,31 @@ _No builds run yet_
 
 ---
 
+## Session: Phase 6E boundary split completion (2026-05-08)
+
+**Objective**: Complete architecture-boundary follow-up by separating resolver decision logic from builder persistence orchestration.
+
+**Actions**:
+1. ✅ Reworked `config/merger.rs` into pure resolver:
+   - `ConfigResolver` now computes `ResolutionPlan`
+   - Removed repository access and persistence side effects
+2. ✅ Moved persistence/build execution into `config/builder.rs`:
+   - Added `execute_plan`, `load_cached_config`, `update_*_view`, `rebuild_with_configs`
+   - Kept raw-version serialization helpers at builder boundary
+3. ✅ Updated builder pipeline to resolve then execute plan
+4. ✅ Ran targeted tests:
+   - `cargo test -p lithos-core config::merger::tests`
+   - `cargo test -p lithos-core config::builder::tests`
+5. ✅ Ran full quality gate:
+   - `mise run verify` passed (unit + integration + e2e + doctests)
+
+**Result**:
+- Responsibility split now matches intended architecture:
+  - Resolver = pure outcome resolution
+  - Builder = orchestration/persistence/construction
+
+---
+
 **Last Updated**: 2026-05-07 11:40
 
 ---
@@ -937,3 +962,92 @@ All success criteria met. Ready for integration.
 - Changed symbols: 73
 - Affected processes: 16
 - Interpretation: broad, intentional refactor surface (core config + tests + docs); runtime quality gates are green.
+
+### 19:30 - Reopened after user technical review
+
+**Trigger:** User flagged incomplete work despite green verification.
+
+**Review actions:**
+- ✅ Re-loaded `planning-with-files` skill and resumed file-based tracking.
+- ✅ Audited TODO markers in `config/processor.rs`, `config/merger.rs`, `config/discovery.rs`.
+- ✅ Cross-checked repository trait support against discovery TODO assumptions.
+
+**Confirmed gaps:**
+- `processor.rs`: analysis step still has placeholder logic (`TODO`) and currently over-reports changes.
+- `merger.rs`: view-update branches are stubs and do not persist updated views.
+- `discovery.rs`: TODO is stale/misaligned with current `Repository` trait capabilities.
+- Architecture mismatch: responsibilities between merger/resolver and builder need stricter separation.
+
+**Status update:**
+- Previous completion claim is now treated as premature.
+- Workstream reopened for Phase 6E reassessment + implementation completion.
+
+### 19:55 - Phase 6E implementation started
+
+**Implemented:**
+- `processor.rs`: removed placeholder analyze behavior; now uses view content-hash match to emit `NoChanges` when content is unchanged and only metadata differs.
+- `processor.rs`: added `ConfigType::content_hash_matches(...)` and concrete impls for global/vault.
+- `processor.rs`: added regression test `analyze_stale_timestamp_same_content_returns_no_changes`.
+
+- `merger.rs`: implemented `update_both_views_and_load`, `update_global_view_and_load`, `update_vault_view_and_load` to persist new raw file versions before loading cached config.
+- `merger.rs`: added conversion helpers from raw configs to `RawFileVersion` with validation errors on missing metadata.
+
+- `discovery.rs`: replaced stale TODO stub; now queries repository views using `get_raw_global_view`/`get_raw_vault_view` and resolves vault id via path mapping.
+
+**Issue encountered:**
+- First targeted test command used multiple test filters in one invocation and failed CLI parsing.
+- Resolution: run module-specific filters sequentially.
+
+### 20:10 - Stabilization and verification
+
+**Additional issue encountered:**
+- `config::merger::tests::merge_both_rebuild_merges_with_vault_precedence` failed after view-update implementation.
+- Root cause: `InMemoryRepository` global-view storage keyed by fresh `VaultId::new()` on both save/get, producing non-deterministic misses.
+
+**Fix applied:**
+- Updated `InMemoryRepository` global-view backing store to a single `Option<RawGlobalConfigView>` (global singleton semantics) rather than `HashMap<VaultId, ...>`.
+- Updated merger tests to seed global + vault views before `UpdateViewOnly` path assertions.
+
+**Verification:**
+- ✅ Targeted tests pass:
+  - `cargo test -p lithos-core config::processor::tests`
+  - `cargo test -p lithos-core config::merger::tests`
+  - `cargo test -p lithos-core config::discovery::tests`
+- ✅ Full verification green: `mise run verify`
+  - unit: 988/988 passed
+  - integration: 36/36 passed
+  - doc tests passed
+
+### 20:20 - Naming boundary adjustment
+
+**Action:**
+- Renamed `ConfigMerger` to `ConfigResolver` to better reflect role intent.
+- Updated callsites and local tests in config context.
+
+**Note:**
+- `gitnexus_rename` only applied text edits in `builder.rs`, so symbol definition and test callsites were completed manually in `merger.rs`.
+
+### 20:30 - Post-rename verification
+
+**Verification actions:**
+- ✅ Ran `cargo test -p lithos-core config::merger::tests`
+- ✅ Ran full quality gate: `mise run verify`
+
+**Result:**
+- Full suite remains green after resolver rename and view-update implementation.
+- Unit suite now reports 988 passing tests.
+
+### 20:45 - Phase 6E closeout sync
+
+**Actions:**
+- ✅ Re-ran planning catchup flow and synchronized planning files.
+- ✅ Ran `gitnexus_detect_changes(scope: all)` before commit prep.
+  - changed symbols: 51
+  - changed files: 8
+  - risk level: low
+  - affected processes: 0
+- ✅ Updated `task_plan.md` status from in-progress to complete for Phase 6E.
+- ✅ Updated `findings.md` with post-split scope/risk checkpoint.
+
+**Outcome:**
+- Planning-with-files artifacts are now consistent with the implemented boundary split and latest verification/scope evidence.

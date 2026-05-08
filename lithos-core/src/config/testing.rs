@@ -70,8 +70,7 @@ pub struct InMemoryRepository {
     vaults: Arc<RwLock<HashMap<VaultId, Vault>>>,
     configs: Arc<RwLock<HashMap<VaultId, Config>>>,
     active_versions: Arc<RwLock<HashMap<VaultId, Version>>>,
-    global_views:
-        Arc<RwLock<HashMap<VaultId, super::views::RawGlobalConfigView>>>,
+    global_views: Arc<RwLock<Option<super::views::RawGlobalConfigView>>>,
     vault_views:
         Arc<RwLock<HashMap<VaultId, super::views::RawVaultConfigView>>>,
     vault_id_mappings: Arc<RwLock<HashMap<VaultRoot, VaultId>>>,
@@ -87,7 +86,7 @@ impl InMemoryRepository {
             vaults: Arc::new(RwLock::new(HashMap::new())),
             configs: Arc::new(RwLock::new(HashMap::new())),
             active_versions: Arc::new(RwLock::new(HashMap::new())),
-            global_views: Arc::new(RwLock::new(HashMap::new())),
+            global_views: Arc::new(RwLock::new(None)),
             vault_views: Arc::new(RwLock::new(HashMap::new())),
             vault_id_mappings: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -241,7 +240,7 @@ impl Repository for InMemoryRepository {
                 message: "Lock poisoned".into(),
             }
         })?;
-        Ok(views.get(&VaultId::new()).cloned())
+        Ok(views.clone())
     }
 
     fn save_raw_global_view(
@@ -254,7 +253,7 @@ impl Repository for InMemoryRepository {
                 message: "Lock poisoned".into(),
             }
         })?;
-        views.insert(VaultId::new(), view.clone());
+        *views = Some(view.clone());
         Ok(())
     }
 

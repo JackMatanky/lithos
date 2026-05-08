@@ -15,7 +15,7 @@ use std::path::Path;
 use crate::{
     config::{
         error::ConfigIngestError,
-        vault::VaultRoot,
+        vault::{VaultId, VaultRoot},
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
     fs::{FileEntry, FileInfo, FileName, FsReader},
@@ -149,9 +149,27 @@ impl DiscoveryEngine {
         // Step 1: Scan filesystem for config files
         let (global_entry, vault_entry) = Self::scan_filesystem(vault_root)?;
 
-        // Step 2: Query DB for cached views (single transaction)
-        let (global_view, vault_view) =
-            Self::query_cached_views(repo, vault_root)?;
+        // Step 2: Resolve vault id for view lookup and query cached views.
+        let vault_id =
+            repo.find_vault_id_by_path(vault_root).map_err(|error| {
+                ConfigIngestError::Io {
+                    path: std::path::PathBuf::from("<db:vault_id_by_path>"),
+                    source: std::io::Error::other(error.to_string()),
+                }
+            })?;
+
+        let (global_view, vault_view) = match vault_id {
+            Some(vault_id) => Self::query_cached_views(repo, vault_id)?,
+            None => (
+                repo.get_raw_global_view().map_err(|error| {
+                    ConfigIngestError::Io {
+                        path: std::path::PathBuf::from("<db:raw_global_view>"),
+                        source: std::io::Error::other(error.to_string()),
+                    }
+                })?,
+                None,
+            ),
+        };
 
         // Step 3: Combine into discovery result
         Ok(Self::build_result(
@@ -295,14 +313,9 @@ impl DiscoveryEngine {
         reason = "Return type matches discovery pattern; will be used by \
                   loader"
     )]
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "Stubbed for now; will return Result when Repository has \
-                  view methods"
-    )]
     fn query_cached_views<R>(
-        _repo: &R,
-        _vault_root: &VaultRoot,
+        repo: &R,
+        vault_id: VaultId,
     ) -> Result<
         (Option<RawGlobalConfigView>, Option<RawVaultConfigView>),
         ConfigIngestError,
@@ -310,10 +323,22 @@ impl DiscoveryEngine {
     where
         R: crate::config::storage::Repository,
     {
-        // TODO: Repository doesn't have methods to query views directly yet
-        // For now, return None for both views
-        // This will be implemented when we refactor the Repository trait
-        Ok((None, None))
+        let global_view = repo.get_raw_global_view().map_err(|error| {
+            ConfigIngestError::Io {
+                path: std::path::PathBuf::from("<db:raw_global_view>"),
+                source: std::io::Error::other(error.to_string()),
+            }
+        })?;
+
+        let vault_view =
+            repo.get_raw_vault_view(vault_id).map_err(|error| {
+                ConfigIngestError::Io {
+                    path: std::path::PathBuf::from("<db:raw_vault_view>"),
+                    source: std::io::Error::other(error.to_string()),
+                }
+            })?;
+
+        Ok((global_view, vault_view))
     }
 
     // ─────────────────────────────────────────────────────────────────────────

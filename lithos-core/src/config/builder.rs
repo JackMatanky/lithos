@@ -28,13 +28,14 @@ use crate::{
         error::{ConfigError, ConfigIngestError},
         frontmatter::Frontmatter,
         logging::Logging,
-        merger::ConfigMerger,
+        merger::{ConfigResolver, ResolutionPlan},
         paths::Paths,
         processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
         raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
         storage::Repository,
         task::Task,
         vault::{VaultId, VaultRoot},
+        views::RawFileVersion,
     },
     fs::FsReader,
 };
@@ -267,9 +268,200 @@ where
             },
         };
 
-        // Step 7: Merge outcomes into final config
-        let merger = ConfigMerger::new(vault_id, vault_root, &self.repository);
-        merger.merge(global_outcome, vault_outcome)
+        // Step 7: Resolve outcomes, then execute persistence/build plan
+        let resolver = ConfigResolver::new();
+        let plan = resolver.resolve(global_outcome, vault_outcome)?;
+        self.execute_plan(vault_id, &vault_root, plan)
+    }
+
+    fn execute_plan(
+        &self,
+        vault_id: VaultId,
+        vault_root: &VaultRoot,
+        plan: ResolutionPlan,
+    ) -> Result<Config, ConfigError>
+    where
+        R::Error: Into<ConfigError>,
+    {
+        match plan {
+            ResolutionPlan::UseCached => self.load_cached_config(vault_id),
+            ResolutionPlan::UpdateViews {
+                global,
+                vault,
+            } => {
+                if let Some(global) = global {
+                    self.update_global_view(&global)?;
+                }
+                if let Some(vault) = vault {
+                    self.update_vault_view(vault_id, &vault)?;
+                }
+                self.load_cached_config(vault_id)
+            }
+            ResolutionPlan::Rebuild {
+                global,
+                vault,
+            } => self.rebuild_with_configs(
+                vault_id,
+                vault_root,
+                global.as_ref(),
+                vault.as_ref(),
+            ),
+        }
+    }
+
+    fn load_cached_config(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Config, ConfigError>
+    where
+        R::Error: Into<ConfigError>,
+    {
+        let version = self
+            .repository
+            .get_active_version(vault_id)
+            .map_err(Into::into)?
+            .ok_or(ConfigError::ValidationFailed {
+                field: "config".into(),
+                message: "No active config version found".into(),
+            })?;
+
+        self.repository
+            .get_config(vault_id, version)
+            .map_err(Into::into)?
+            .ok_or(ConfigError::ValidationFailed {
+                field: "config".into(),
+                message: "Config not found in database".into(),
+            })
+    }
+
+    fn update_global_view(
+        &self,
+        raw: &RawGlobalConfig,
+    ) -> Result<(), ConfigError>
+    where
+        R::Error: Into<ConfigError>,
+    {
+        let mut view = self
+            .repository
+            .get_raw_global_view()
+            .map_err(Into::into)?
+            .ok_or(ConfigError::ValidationFailed {
+                field: "global_view".into(),
+                message: "expected cached global view for metadata-only update"
+                    .into(),
+            })?;
+
+        let version = Self::raw_global_to_version(raw)?;
+        view.push_version(version);
+        self.repository.save_raw_global_view(&view).map_err(Into::into)
+    }
+
+    fn update_vault_view(
+        &self,
+        vault_id: VaultId,
+        raw: &RawVaultConfig,
+    ) -> Result<(), ConfigError>
+    where
+        R::Error: Into<ConfigError>,
+    {
+        let mut view = self
+            .repository
+            .get_raw_vault_view(vault_id)
+            .map_err(Into::into)?
+            .ok_or(ConfigError::ValidationFailed {
+                field: "vault_view".into(),
+                message: "expected cached vault view for metadata-only update"
+                    .into(),
+            })?;
+
+        let version = Self::raw_vault_to_version(raw)?;
+        view.push_version(version);
+        self.repository.save_raw_vault_view(vault_id, &view).map_err(Into::into)
+    }
+
+    fn rebuild_with_configs(
+        &self,
+        vault_id: VaultId,
+        vault_root: &VaultRoot,
+        global: Option<&RawGlobalConfig>,
+        vault: Option<&RawVaultConfig>,
+    ) -> Result<Config, ConfigError>
+    where
+        R::Error: Into<ConfigError>,
+    {
+        let next_version = self
+            .repository
+            .get_active_version(vault_id)
+            .map_err(Into::into)?
+            .map(super::aggregate::Version::next)
+            .transpose()?
+            .unwrap_or_else(Version::initial);
+
+        let config = build_from_layers(
+            global,
+            vault,
+            vault_id,
+            vault_root.clone(),
+            next_version,
+        )?;
+
+        self.repository.save_config(vault_id, &config).map_err(Into::into)?;
+
+        Ok(config)
+    }
+
+    fn raw_global_to_version(
+        raw: &RawGlobalConfig,
+    ) -> Result<RawFileVersion, ConfigError> {
+        let file_info = raw.metadata.ok_or(ConfigError::ValidationFailed {
+            field: "global.metadata".into(),
+            message: "missing file metadata for global config view update"
+                .into(),
+        })?;
+        let content = toml::to_string(raw).map_err(|error| {
+            ConfigError::ValidationFailed {
+                field: "global".into(),
+                message: format!(
+                    "failed to serialize global raw config: {error}"
+                )
+                .into(),
+            }
+        })?;
+        RawFileVersion::new(content.as_bytes(), file_info).map_err(|error| {
+            ConfigError::ValidationFailed {
+                field: "global".into(),
+                message: format!(
+                    "failed to record global raw version: {error}"
+                )
+                .into(),
+            }
+        })
+    }
+
+    fn raw_vault_to_version(
+        raw: &RawVaultConfig,
+    ) -> Result<RawFileVersion, ConfigError> {
+        let file_info = raw.metadata.ok_or(ConfigError::ValidationFailed {
+            field: "vault.metadata".into(),
+            message: "missing file metadata for vault config view update"
+                .into(),
+        })?;
+        let content = toml::to_string(raw).map_err(|error| {
+            ConfigError::ValidationFailed {
+                field: "vault".into(),
+                message: format!(
+                    "failed to serialize vault raw config: {error}"
+                )
+                .into(),
+            }
+        })?;
+        RawFileVersion::new(content.as_bytes(), file_info).map_err(|error| {
+            ConfigError::ValidationFailed {
+                field: "vault".into(),
+                message: format!("failed to record vault raw version: {error}")
+                    .into(),
+            }
+        })
     }
 
     /// Get or create vault ID for the vault root.

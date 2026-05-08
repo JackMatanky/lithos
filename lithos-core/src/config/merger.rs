@@ -1,81 +1,67 @@
-//! Config merging orchestration for processor outcomes.
+//! Config resolution for processor outcomes.
 //!
-//! This module combines the outcomes from parallel config file processors
-//! (global and vault) and merges them according to precedence rules:
-//! defaults < global < vault (vault has highest priority).
-//!
-//! The merger handles all 9 outcome combinations and produces the final
-//! domain `Config` object with proper view persistence.
+//! This module combines outcomes from parallel config file processors
+//! (environment + local) and resolves them into an executable plan.
 
 use crate::config::{
-    aggregate::{Config, Version},
-    builder,
     error::ConfigError,
     processor::{GlobalConfig, ProcessorOutcome, VaultConfig},
     raw::{RawGlobalConfig, RawVaultConfig},
-    storage::Repository,
-    vault::{VaultId, VaultRoot},
 };
 
-/// Config merger for combining processor outcomes.
-///
-/// Takes the results from both global and vault processors and:
-/// 1. Determines the merge strategy based on outcomes
-/// 2. Merges raw configs with proper precedence (vault wins)
-/// 3. Builds the domain `Config` object
-/// 4. Persists views and config to repository
-pub struct ConfigMerger<'repo, R> {
-    vault_id: VaultId,
-    vault_root: VaultRoot,
-    repository: &'repo R,
+/// Action plan emitted by [`ConfigResolver`].
+#[non_exhaustive]
+pub enum ResolutionPlan {
+    /// Both inputs are fresh; load cached config.
+    UseCached,
+    /// Raw content is unchanged but views must be updated.
+    UpdateViews {
+        /// Environment config raw layer when view sync is required.
+        global: Option<RawGlobalConfig>,
+        /// Local config raw layer when view sync is required.
+        vault: Option<RawVaultConfig>,
+    },
+    /// At least one source changed semantically; rebuild final config.
+    Rebuild {
+        /// Environment config raw layer for rebuild.
+        global: Option<RawGlobalConfig>,
+        /// Local config raw layer for rebuild.
+        vault: Option<RawVaultConfig>,
+    },
 }
 
-impl<'repo, R> ConfigMerger<'repo, R>
-where
-    R: Repository,
-{
-    /// Create a new merger.
+/// Config resolver for combining processor outcomes.
+#[derive(Default)]
+#[non_exhaustive]
+pub struct ConfigResolver;
+
+impl ConfigResolver {
+    /// Create a new resolver.
     #[inline]
     #[must_use]
-    pub fn new(
-        vault_id: VaultId,
-        vault_root: VaultRoot,
-        repository: &'repo R,
-    ) -> Self {
-        Self {
-            vault_id,
-            vault_root,
-            repository,
-        }
+    pub const fn new() -> Self {
+        Self
     }
 
-    /// Merge processor outcomes into final Config.
+    /// Resolve processor outcomes into an executable plan.
     ///
-    /// Handles all 9 combinations of (`UseCached` | `UpdateViewOnly` | Rebuild)
-    /// × 2.
+    /// Handles all 9 combinations of (`UseCached` | `UpdateViewOnly` |
+    /// `Rebuild`) × 2.
     ///
     /// # Errors
     ///
-    /// Returns error if:
-    /// - Merging fails (incompatible configs)
-    /// - Domain validation fails
-    /// - Database persistence fails
+    /// Currently no error branches are emitted, but this keeps the API
+    /// extensible for future validation.
     #[inline]
-    pub fn merge(
-        self,
+    pub fn resolve(
+        &self,
         global_outcome: ProcessorOutcome<GlobalConfig>,
         vault_outcome: ProcessorOutcome<VaultConfig>,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<ResolutionPlan, ConfigError> {
         use ProcessorOutcome::{Rebuild, UpdateViewOnly, UseCached};
 
-        match (global_outcome, vault_outcome) {
-            // Both fresh - load from DB
-            (UseCached, UseCached) => self.load_cached_config(),
-
-            // Metadata-only updates - sync views, keep config
+        let plan = match (global_outcome, vault_outcome) {
+            (UseCached, UseCached) => ResolutionPlan::UseCached,
             (
                 UpdateViewOnly {
                     raw: global,
@@ -83,31 +69,38 @@ where
                 UpdateViewOnly {
                     raw: vault,
                 },
-            ) => self.update_both_views_and_load(global, vault),
+            ) => ResolutionPlan::UpdateViews {
+                global: Some(global),
+                vault: Some(vault),
+            },
             (
                 UpdateViewOnly {
                     raw: global,
                 },
                 UseCached,
-            ) => self.update_global_view_and_load(global),
+            ) => ResolutionPlan::UpdateViews {
+                global: Some(global),
+                vault: None,
+            },
             (
                 UseCached,
                 UpdateViewOnly {
                     raw: vault,
                 },
-            ) => self.update_vault_view_and_load(vault),
-
-            // Vault rebuild - always rebuild full config
+            ) => ResolutionPlan::UpdateViews {
+                global: None,
+                vault: Some(vault),
+            },
             (
                 UseCached,
                 Rebuild {
                     raw: vault,
                     ..
                 },
-            ) => {
-                // Vault changed, global fresh - use defaults for global
-                self.rebuild_with_configs(None, Some(&vault))
-            }
+            ) => ResolutionPlan::Rebuild {
+                global: None,
+                vault: Some(vault),
+            },
             (
                 UpdateViewOnly {
                     raw: global,
@@ -116,11 +109,8 @@ where
                     raw: vault,
                     ..
                 },
-            ) => {
-                // Both configs available (metadata or rebuild)
-                self.rebuild_with_configs(Some(&global), Some(&vault))
-            }
-            (
+            )
+            | (
                 Rebuild {
                     raw: global,
                     ..
@@ -129,23 +119,8 @@ where
                     raw: vault,
                     ..
                 },
-            ) => {
-                // Both configs rebuilt
-                self.rebuild_with_configs(Some(&global), Some(&vault))
-            }
-
-            // Global rebuild only, vault cached/metadata-only
-            (
-                Rebuild {
-                    raw: global,
-                    ..
-                },
-                UseCached,
-            ) => {
-                // Global changed, vault fresh - use defaults for vault
-                self.rebuild_with_configs(Some(&global), None)
-            }
-            (
+            )
+            | (
                 Rebuild {
                     raw: global,
                     ..
@@ -153,117 +128,25 @@ where
                 UpdateViewOnly {
                     raw: vault,
                 },
-            ) => {
-                // Global rebuilt, vault metadata only
-                self.rebuild_with_configs(Some(&global), Some(&vault))
-            }
-        }
-    }
+            ) => ResolutionPlan::Rebuild {
+                global: Some(global),
+                vault: Some(vault),
+            },
+            (
+                Rebuild {
+                    raw: global,
+                    ..
+                },
+                UseCached,
+            ) => ResolutionPlan::Rebuild {
+                global: Some(global),
+                vault: None,
+            },
+        };
 
-    /// Load cached config from repository.
-    fn load_cached_config(&self) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
-        let version = self
-            .repository
-            .get_active_version(self.vault_id)
-            .map_err(Into::into)?
-            .ok_or(ConfigError::ValidationFailed {
-                field: "config".into(),
-                message: "No active config version found".into(),
-            })?;
-
-        self.repository
-            .get_config(self.vault_id, version)
-            .map_err(Into::into)?
-            .ok_or(ConfigError::ValidationFailed {
-                field: "config".into(),
-                message: "Config not found in database".into(),
-            })
-    }
-
-    /// Update both views and load cached config.
-    fn update_both_views_and_load(
-        &self,
-        _global: RawGlobalConfig,
-        _vault: RawVaultConfig,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
-        // TODO: Implement view updates
-        // For now, just load cached config
-        self.load_cached_config()
-    }
-
-    /// Update global view and load cached config.
-    fn update_global_view_and_load(
-        &self,
-        _global: RawGlobalConfig,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
-        // TODO: Implement view update
-        self.load_cached_config()
-    }
-
-    /// Update vault view and load cached config.
-    fn update_vault_view_and_load(
-        &self,
-        _vault: RawVaultConfig,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
-        // TODO: Implement view update
-        self.load_cached_config()
-    }
-
-    /// Rebuild config from raw configs.
-    fn rebuild_with_configs(
-        &self,
-        global: Option<&RawGlobalConfig>,
-        vault: Option<&RawVaultConfig>,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
-        // Determine next version
-        let next_version = self
-            .repository
-            .get_active_version(self.vault_id)
-            .map_err(Into::into)?
-            .map(super::aggregate::Version::next)
-            .transpose()?
-            .unwrap_or_else(Version::initial);
-
-        // Build domain config from layered raw sources
-        let config = builder::build_from_layers(
-            global,
-            vault,
-            self.vault_id,
-            self.vault_root.clone(),
-            next_version,
-        )?;
-
-        // Persist config
-        self.repository
-            .save_config(self.vault_id, &config)
-            .map_err(Into::into)?;
-
-        Ok(config)
+        Ok(plan)
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tests
-// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -271,17 +154,9 @@ mod tests {
 
     use super::*;
     use crate::config::{
-        aggregate::Version,
         processor::ProcessorOutcome,
         raw::{RawGlobalConfig, RawGlobalPaths, RawVaultConfig, RawVaultPaths},
-        testing::InMemoryRepository,
-        vault::VaultRoot,
     };
-
-    fn create_test_vault_root() -> VaultRoot {
-        VaultRoot::try_new("/tmp/test-vault".into())
-            .expect("vault root creation failed")
-    }
 
     fn create_test_global_config() -> RawGlobalConfig {
         RawGlobalConfig {
@@ -306,7 +181,7 @@ mod tests {
             logging: None,
             paths: RawVaultPaths {
                 templates_dir: Some("vault-templates".into()),
-                schemas_dir: None, // Will inherit from global
+                schemas_dir: None,
                 cache_dir: Some(".cache".into()),
                 property_bank_file: None,
             },
@@ -317,141 +192,33 @@ mod tests {
     }
 
     #[test]
-    fn merge_both_use_cached_loads_from_db() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        // Pre-save a config
-        let config = create_test_global_config();
-        storage
-            .save_config(
-                vault_id,
-                &builder::build_from_layers(
-                    Some(&config),
-                    None,
-                    vault_id,
-                    vault_root.clone(),
-                    Version::initial(),
-                )
-                .unwrap(),
-            )
-            .expect("Failed to save config");
-
-        let merger = ConfigMerger::new(vault_id, vault_root, &storage);
-
-        let global_outcome = ProcessorOutcome::UseCached;
-        let vault_outcome = ProcessorOutcome::UseCached;
-
-        let result = merger.merge(global_outcome, vault_outcome);
-        assert!(result.is_ok());
-        let loaded = result.unwrap();
-        assert_eq!(loaded.version().value(), 1);
+    fn resolve_both_use_cached_returns_use_cached() {
+        let resolver = ConfigResolver::new();
+        let result = resolver
+            .resolve(ProcessorOutcome::UseCached, ProcessorOutcome::UseCached);
+        assert!(matches!(result.unwrap(), ResolutionPlan::UseCached));
     }
 
     #[test]
-    fn merge_both_use_cached_no_config_returns_error() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
+    fn resolve_both_rebuild_returns_rebuild_with_both_layers() {
+        let resolver = ConfigResolver::new();
+        let expected_global = create_test_global_config();
+        let expected_vault = create_test_vault_config();
 
-        let merger = ConfigMerger::new(vault_id, vault_root, &storage);
-
-        let global_outcome = ProcessorOutcome::UseCached;
-        let vault_outcome = ProcessorOutcome::UseCached;
-
-        let result = merger.merge(global_outcome, vault_outcome);
-        result.unwrap_err();
-    }
-
-    #[test]
-    fn merge_both_rebuild_merges_with_vault_precedence() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        let merger = ConfigMerger::new(vault_id, vault_root.clone(), &storage);
-
-        let global = create_test_global_config();
-        let vault = create_test_vault_config();
-
-        let global_outcome = ProcessorOutcome::Rebuild {
-            raw: global,
-            changed_fields: HashSet::new(),
-        };
-        let vault_outcome = ProcessorOutcome::Rebuild {
-            raw: vault,
-            changed_fields: HashSet::new(),
-        };
-
-        let result = merger.merge(global_outcome, vault_outcome);
-        assert!(result.is_ok());
-
-        let config = result.unwrap();
-        // Vault should win for templates_dir
-        assert_eq!(
-            config
-                .paths()
-                .template
-                .templates_dir
-                .as_ref()
-                .display()
-                .to_string(),
-            "vault-templates"
+        let result = resolver.resolve(
+            ProcessorOutcome::Rebuild {
+                raw: expected_global,
+                changed_fields: HashSet::new(),
+            },
+            ProcessorOutcome::Rebuild {
+                raw: expected_vault,
+                changed_fields: HashSet::new(),
+            },
         );
 
-        let global_outcome2 = ProcessorOutcome::UpdateViewOnly {
-            raw: create_test_global_config(),
-        };
-        let vault_outcome2 = ProcessorOutcome::UpdateViewOnly {
-            raw: create_test_vault_config(),
-        };
-
-        // Create new merger since merge() consumes self
-        let merger2 = ConfigMerger::new(vault_id, vault_root, &storage);
-        let result2 = merger2.merge(global_outcome2, vault_outcome2);
-        assert!(result2.is_ok());
-        let loaded = result2.unwrap();
-        assert_eq!(loaded.version().value(), 1);
-    }
-
-    #[test]
-    fn merge_version_increments_on_rebuild() {
-        let vault_id = VaultId::new();
-        let vault_root = create_test_vault_root();
-        let storage = InMemoryRepository::new();
-
-        let merger = ConfigMerger::new(vault_id, vault_root.clone(), &storage);
-
-        // Save initial config
-        let config = create_test_global_config();
-        storage
-            .save_config(
-                vault_id,
-                &builder::build_from_layers(
-                    Some(&config),
-                    None,
-                    vault_id,
-                    vault_root.clone(),
-                    Version::initial(),
-                )
-                .unwrap(),
-            )
-            .expect("Failed to save initial config");
-
-        // Rebuild with both configs
-        let vault = create_test_vault_config();
-        let global_outcome = ProcessorOutcome::Rebuild {
-            raw: config,
-            changed_fields: HashSet::new(),
-        };
-        let vault_outcome = ProcessorOutcome::Rebuild {
-            raw: vault,
-            changed_fields: HashSet::new(),
-        };
-
-        let result = merger.merge(global_outcome, vault_outcome);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().version().value(), 2);
+        assert!(matches!(result.unwrap(), ResolutionPlan::Rebuild {
+            global: Some(_),
+            vault: Some(_),
+        }));
     }
 }
