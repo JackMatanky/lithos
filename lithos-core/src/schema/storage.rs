@@ -1135,7 +1135,7 @@ mod tests {
     fn list_schema_path_id_pairs_includes_saved_view() {
         use crate::{
             fs::FileInfo,
-            schema::views::{HashRecord, RawPropertyMapHash, SchemaVersion},
+            schema::views::{HashRecord, RawPropertyHashIndex, SchemaVersion},
             support::hash::Blake3Hash,
         };
 
@@ -1152,7 +1152,7 @@ mod tests {
         let file_stats = FileInfo::new(None, None, 0);
         let hashes = HashRecord::new(
             Blake3Hash::new([0; 32]),
-            RawPropertyMapHash::default(),
+            RawPropertyHashIndex::default(),
         );
         let version = SchemaVersion::new(file_stats, hashes, &raw).unwrap();
 

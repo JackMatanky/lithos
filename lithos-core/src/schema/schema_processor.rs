@@ -79,8 +79,8 @@ use crate::{
         raw::RawSchema,
         storage::Repository,
         views::{
-            RawPropertyMapHash, RawSchemaView, RawView as _, RawViewRead as _,
-            contracts::Version as _,
+            RawPropertyHashIndex, RawSchemaView, RawView as _,
+            RawViewRead as _, contracts::Version as _,
         },
     },
     support::hash::Blake3Hash,
@@ -1862,7 +1862,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         let file_info = *payload.raw.info();
                         let hashes = crate::schema::views::HashRecord::new(
                             payload.content_hash,
-                            property_hashes,
+                            property_hashes.into(),
                         );
                         let version = crate::schema::views::SchemaVersion::new(
                             file_info,
@@ -1916,7 +1916,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 payload.raw.excludes(),
                             );
 
-                            let empty_hashes = RawPropertyMapHash::default();
+                            let empty_hashes = RawPropertyHashIndex::default();
                             let old_property_hashes = payload
                                 .view
                                 .current()
@@ -2038,7 +2038,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let file_info = *raw.info();
         let hashes = crate::schema::views::HashRecord::new(
             content_hash,
-            property_hashes,
+            property_hashes.into(),
         );
         crate::schema::views::SchemaVersion::new(file_info, hashes, raw)
             .map_err(SchemaLoaderError::Ingestion)
@@ -2897,7 +2897,7 @@ fn stage_variant_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::views::RawPropertyMapHash;
+    use crate::schema::views::RawPropertyHashIndex;
 
     #[test]
     fn extends_change_kind_unchanged_can_update() {
@@ -2991,7 +2991,7 @@ mod tests {
         let file_info = crate::fs::FileInfo::new(None, None, 0);
         let hashes = crate::schema::views::HashRecord::new(
             content_hash,
-            RawPropertyMapHash::default(),
+            RawPropertyHashIndex::default(),
         );
         let version =
             crate::schema::views::SchemaVersion::new(file_info, hashes, &raw)

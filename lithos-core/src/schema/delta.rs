@@ -23,7 +23,7 @@ use crate::{
             RawPropertyBank, RawPropertyInline, RawPropertyMap, RawSchema,
             property::{RawProperty, RawPropertyBankEntry},
         },
-        views::RawPropertyMapHash,
+        views::RawPropertyHashIndex,
     },
     support::hash::{Blake3Hash, hash_structured},
 };
@@ -218,7 +218,7 @@ impl PropertyDelta {
 /// This is the core engine used by both schema and property-bank delta flows.
 pub(crate) struct PropertyDeltaEngine<'data, T> {
     properties: &'data RawPropertyMap<T>,
-    previous_hashes: &'data RawPropertyMapHash,
+    previous_hashes: &'data RawPropertyHashIndex,
 }
 
 impl<'data, T> PropertyDeltaEngine<'data, T> {
@@ -227,7 +227,7 @@ impl<'data, T> PropertyDeltaEngine<'data, T> {
     #[must_use]
     fn for_map(
         properties: &'data RawPropertyMap<T>,
-        previous_hashes: &'data RawPropertyMapHash,
+        previous_hashes: &'data RawPropertyHashIndex,
     ) -> Self {
         Self {
             properties,
@@ -242,7 +242,7 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     #[must_use]
     pub(crate) fn for_schema(
         schema: &'data RawSchema,
-        previous_hashes: &'data RawPropertyMapHash,
+        previous_hashes: &'data RawPropertyHashIndex,
     ) -> Self {
         Self::for_map(schema.properties(), previous_hashes)
     }
@@ -306,7 +306,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     #[must_use]
     pub(crate) fn for_property_bank(
         bank: &'data RawPropertyBank,
-        previous_hashes: &'data RawPropertyMapHash,
+        previous_hashes: &'data RawPropertyHashIndex,
     ) -> Self {
         Self::for_map(bank.properties(), previous_hashes)
     }
@@ -320,7 +320,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     #[inline]
     pub(crate) fn diff_property_bank(
         &self,
-    ) -> Result<(PropertyDelta, RawPropertyMapHash), SchemaLoaderError> {
+    ) -> Result<(PropertyDelta, RawPropertyHashIndex), SchemaLoaderError> {
         let (raw_upserts, removals, property_hashes) =
             self.compute_change_set();
 
@@ -348,8 +348,9 @@ where
     /// 4. sort removals deterministically.
     fn compute_change_set(
         &self,
-    ) -> (HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyMapHash) {
-        let mut current_hashes = RawPropertyMapHash::default();
+    ) -> (HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyHashIndex)
+    {
+        let mut current_hashes = RawPropertyHashIndex::default();
         let mut upserts = HashMap::new();
 
         for (name, entry) in self.properties.iter() {
@@ -391,9 +392,9 @@ mod tests {
 
         pub(crate) fn property_bank_fixture(
             names: &[&str],
-        ) -> (RawPropertyBank, RawPropertyMapHash) {
+        ) -> (RawPropertyBank, RawPropertyHashIndex) {
             let mut properties = serde_json::Map::new();
-            let mut hashes = RawPropertyMapHash::default();
+            let mut hashes = RawPropertyHashIndex::default();
 
             for name_str in names {
                 let p_name = name(name_str);
@@ -613,7 +614,7 @@ mod tests {
                 Blake3Hash::compute(hash_structured(&serde_json::json!({
                     "type": "bool"
                 })));
-            let mut previous_hashes = RawPropertyMapHash::default();
+            let mut previous_hashes = RawPropertyHashIndex::default();
             previous_hashes
                 .as_inner_mut()
                 .insert(fixtures::name("prop"), old_hash);
@@ -634,7 +635,7 @@ mod tests {
                 serde_json::from_value(serde_json::json!({}))
                     .expect("empty map");
 
-            let mut previous_hashes = RawPropertyMapHash::default();
+            let mut previous_hashes = RawPropertyHashIndex::default();
             previous_hashes
                 .as_inner_mut()
                 .insert(fixtures::name("old"), Blake3Hash::new([0u8; 32]));
@@ -666,7 +667,7 @@ mod tests {
             let map: RawPropertyMap<RawProperty> =
                 serde_json::from_value(map_json).expect("valid map");
 
-            let mut previous_hashes = RawPropertyMapHash::default();
+            let mut previous_hashes = RawPropertyHashIndex::default();
             previous_hashes.insert(fixtures::name("stable"), hash);
 
             let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
@@ -683,7 +684,7 @@ mod tests {
             let (bank, hashes) = fixtures::property_bank_fixture(&["a"]);
 
             // Force a change in "a" by providing an empty previous hash set
-            let empty_hashes = RawPropertyMapHash::default();
+            let empty_hashes = RawPropertyHashIndex::default();
             let engine =
                 PropertyDeltaEngine::for_property_bank(&bank, &empty_hashes);
             let result =

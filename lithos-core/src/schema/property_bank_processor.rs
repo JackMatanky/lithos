@@ -708,7 +708,7 @@ impl PropertyBankProcessor<Construction, New> {
 
         let property_hashes = self.status.raw.properties().compute_hashes();
         let raw_hash =
-            HashRecord::new(self.status.content_hash, property_hashes);
+            HashRecord::new(self.status.content_hash, property_hashes.into());
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,

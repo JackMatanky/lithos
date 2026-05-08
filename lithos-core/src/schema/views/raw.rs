@@ -415,7 +415,7 @@ mod tests {
         use super::*;
         use crate::schema::{
             raw::{RawPropertyMap, RawSchemaVersion},
-            views::RawPropertyMapHash,
+            views::RawPropertyHashIndex,
         };
 
         #[test]
@@ -424,7 +424,7 @@ mod tests {
             let info = FileInfo::new(None, None, 100);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
-                RawPropertyMapHash::default(),
+                RawPropertyHashIndex::default(),
             );
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
@@ -457,7 +457,7 @@ mod tests {
             let info = FileInfo::new(None, None, 100);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
-                RawPropertyMapHash::default(),
+                RawPropertyHashIndex::default(),
             );
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
@@ -483,7 +483,7 @@ mod tests {
         use super::*;
         use crate::schema::{
             raw::{RawPropertyMap, RawSchemaVersion},
-            views::RawPropertyMapHash,
+            views::RawPropertyHashIndex,
         };
 
         #[test]
@@ -493,7 +493,7 @@ mod tests {
             let info = FileInfo::new(None, None, 100);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
-                RawPropertyMapHash::default(),
+                RawPropertyHashIndex::default(),
             );
             let raw = RawPropertyBank {
                 version: RawSchemaVersion::default(),

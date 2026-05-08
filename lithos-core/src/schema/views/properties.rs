@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::RawPropertyMapHash;
+use super::RawPropertyHashIndex;
 use crate::schema::property::PropertyMap;
 
 /// Cached base properties for a schema file.
@@ -31,7 +31,7 @@ pub struct BasePropertiesView {
 
     /// Per-property hashes matching the current snapshot.
     /// Must match `RawSchemaView.current().hashes().properties()`.
-    hash: RawPropertyMapHash,
+    hash: RawPropertyHashIndex,
 
     /// When this cache entry was recorded.
     #[rkyv(with = rkyv::with::AsUnixTime)]
@@ -42,7 +42,7 @@ impl BasePropertiesView {
     /// Creates a new `BasePropertiesView`.
     #[inline]
     #[must_use]
-    pub fn new(properties: PropertyMap, hash: RawPropertyMapHash) -> Self {
+    pub fn new(properties: PropertyMap, hash: RawPropertyHashIndex) -> Self {
         Self {
             properties,
             hash,
@@ -60,7 +60,7 @@ impl BasePropertiesView {
     /// Returns the per-property hashes.
     #[inline]
     #[must_use]
-    pub const fn hash(&self) -> &RawPropertyMapHash {
+    pub const fn hash(&self) -> &RawPropertyHashIndex {
         &self.hash
     }
 

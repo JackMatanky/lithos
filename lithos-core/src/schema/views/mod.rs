@@ -228,7 +228,7 @@ pub mod snapshots;
 
 // Re-export commonly used types for ergonomic access
 pub(crate) use contracts::{RawView, RawViewRead};
-pub use hashes::{HashRecord, RawPropertyMapHash};
+pub use hashes::{HashRecord, RawPropertyHashIndex};
 pub use properties::BasePropertiesView;
 pub use raw::{RawPropertyBankView, RawSchemaView};
 pub use snapshots::{PropertyBankVersion, SchemaVersion};

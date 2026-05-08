@@ -140,11 +140,11 @@ use crate::{
 /// # Examples
 ///
 /// ```rust,ignore
-/// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
+/// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
 /// # use lithos_core::support::hash::Blake3Hash;
 /// #
 /// let content_hash = Blake3Hash::compute(b"content");
-/// let record = HashRecord::new(content_hash, RawPropertyMapHash::default());
+/// let record = HashRecord::new(content_hash, RawPropertyHashIndex::default());
 ///
 /// assert!(record.is_content_match(&content_hash));
 /// ```
@@ -154,7 +154,7 @@ pub struct HashRecord {
     content: Blake3Hash,
 
     /// Per-property Blake3 hashes for incremental resolution.
-    properties: RawPropertyMapHash,
+    properties: RawPropertyHashIndex,
 }
 
 impl HashRecord {
@@ -163,18 +163,18 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
+    /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let content_hash = Blake3Hash::compute(b"content");
-    /// let property_hashes = RawPropertyMapHash::default();
+    /// let property_hashes = RawPropertyHashIndex::default();
     /// let record = HashRecord::new(content_hash, property_hashes);
     /// ```rust,ignore
     #[inline]
     #[must_use]
     pub(crate) fn new(
         content: Blake3Hash,
-        properties: RawPropertyMapHash,
+        properties: RawPropertyHashIndex,
     ) -> Self {
         Self {
             content,
@@ -187,11 +187,11 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
+    /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let content = Blake3Hash::compute(b"test");
-    /// let record = HashRecord::new(content, RawPropertyMapHash::default());
+    /// let record = HashRecord::new(content, RawPropertyHashIndex::default());
     /// assert_eq!(record.content(), &content);
     /// ```rust,ignore
     #[inline]
@@ -208,18 +208,18 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
+    /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let record = HashRecord::new(
     ///     Blake3Hash::compute(b"c"),
-    ///     RawPropertyMapHash::default(),
+    ///     RawPropertyHashIndex::default(),
     /// );
     /// assert!(record.properties().is_empty());
     /// ```rust,ignore
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &RawPropertyMapHash {
+    pub fn properties(&self) -> &RawPropertyHashIndex {
         &self.properties
     }
 
@@ -230,11 +230,11 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use lithos_core::schema::views::{HashRecord, RawPropertyMapHash};
+    /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
     /// # use lithos_core::support::hash::Blake3Hash;
     /// #
     /// let hash = Blake3Hash::compute(b"test");
-    /// let record = HashRecord::new(hash, RawPropertyMapHash::default());
+    /// let record = HashRecord::new(hash, RawPropertyHashIndex::default());
     ///
     /// assert!(record.is_content_match(&hash));
     /// ```rust,ignore
@@ -254,12 +254,12 @@ impl ArchivedHashRecord {
     ///
     /// ```rust,ignore
     /// # use lithos_core::schema::views::hashes::{HashRecord, ArchivedHashRecord};
-    /// # use lithos_core::schema::views::RawPropertyMapHash;
+    /// # use lithos_core::schema::views::RawPropertyHashIndex;
     /// # use lithos_core::support::hash::Blake3Hash;
     /// # use rkyv::access;
     /// #
     /// let hash = Blake3Hash::compute(b"test");
-    /// let record = HashRecord::new(hash, RawPropertyMapHash::default());
+    /// let record = HashRecord::new(hash, RawPropertyHashIndex::default());
     /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&record).unwrap();
     /// let archived =
     ///     rkyv::access::<ArchivedHashRecord, rkyv::rancor::Error>(&bytes)
@@ -275,7 +275,7 @@ impl ArchivedHashRecord {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  RawPropertyMapHash
+//  RawPropertyHashIndex
 // ─────────────────────────────────────────────────────────────────────
 
 /// Per-property hash map computed from [`RawPropertyMap`].
@@ -285,10 +285,10 @@ impl ArchivedHashRecord {
 ///
 /// Computed via [`RawPropertyMap::compute_hashes()`] during ingestion.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-pub struct RawPropertyMapHash(Blake3HashIndex<PropertyName>);
+pub struct RawPropertyHashIndex(Blake3HashIndex<PropertyName>);
 
 #[expect(dead_code, reason = "Hash map helpers are consumed incrementally")]
-impl RawPropertyMapHash {
+impl RawPropertyHashIndex {
     #[inline]
     #[must_use]
     pub(crate) const fn as_inner(&self) -> &Blake3HashIndex<PropertyName> {
@@ -349,21 +349,21 @@ impl RawPropertyMapHash {
     }
 }
 
-impl Default for RawPropertyMapHash {
+impl Default for RawPropertyHashIndex {
     #[inline]
     fn default() -> Self {
         Self(Blake3HashIndex::default())
     }
 }
 
-impl From<HashMap<PropertyName, Blake3Hash>> for RawPropertyMapHash {
+impl From<HashMap<PropertyName, Blake3Hash>> for RawPropertyHashIndex {
     #[inline]
     fn from(map: HashMap<PropertyName, Blake3Hash>) -> Self {
         Self(Blake3HashIndex::from(map))
     }
 }
 
-impl From<Blake3HashIndex<PropertyName>> for RawPropertyMapHash {
+impl From<Blake3HashIndex<PropertyName>> for RawPropertyHashIndex {
     #[inline]
     fn from(index: Blake3HashIndex<PropertyName>) -> Self {
         Self(index)
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn hash_record_content_matches() {
         let hash = Blake3Hash::compute(b"test");
-        let record = HashRecord::new(hash, RawPropertyMapHash::default());
+        let record = HashRecord::new(hash, RawPropertyHashIndex::default());
 
         assert!(record.is_content_match(&hash));
         assert!(!record.is_content_match(&Blake3Hash::compute(b"other")));

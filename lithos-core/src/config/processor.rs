@@ -244,7 +244,7 @@ impl ConfigType for VaultConfig {
 
 /// Per-field hash map for incremental config analysis.
 ///
-/// Similar to schema's `RawPropertyMapHash`, this enables detecting which
+/// Similar to schema's `RawPropertyHashIndex`, this enables detecting which
 /// specific config fields changed without reparsing the entire file.
 ///
 /// # Examples

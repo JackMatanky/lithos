@@ -499,7 +499,7 @@ mod tests {
             let info = crate::fs::FileInfo::new(None, None, 100);
             let hashes = crate::schema::views::hashes::HashRecord::new(
                 crate::support::hash::Blake3Hash::new([0; 32]),
-                crate::schema::views::RawPropertyMapHash::default(),
+                crate::schema::views::RawPropertyHashIndex::default(),
             );
 
             let version =
@@ -534,7 +534,7 @@ mod tests {
             let info = crate::fs::FileInfo::new(None, None, 100);
             let hashes = crate::schema::views::hashes::HashRecord::new(
                 crate::support::hash::Blake3Hash::new([0; 32]),
-                crate::schema::views::RawPropertyMapHash::default(),
+                crate::schema::views::RawPropertyHashIndex::default(),
             );
 
             let version =

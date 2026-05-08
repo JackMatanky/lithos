@@ -37,9 +37,8 @@ use super::{
 use crate::{
     schema::{
         error::SchemaError, identifier::SchemaName, property::PropertyName,
-        views::RawPropertyMapHash,
     },
-    support::hash::{Blake3Hash, hash_structured},
+    support::hash::{Blake3Hash, Blake3HashIndex, hash_structured},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,7 +227,7 @@ impl<T> RawPropertyMap<T> {
     /// Computes per-property hashes for the map values.
     #[inline]
     #[must_use]
-    pub fn compute_hashes(&self) -> RawPropertyMapHash
+    pub(crate) fn compute_hashes(&self) -> Blake3HashIndex<PropertyName>
     where
         T: serde::Serialize + std::fmt::Debug,
     {
