@@ -1,9 +1,15 @@
+---
+title: 02-raw-property-map-emits-hash-index
+category: enhancement
+state: ready-for-human
+---
+
 # Raw Property Map emits hash index
 
-- Label: `needs-triage`
-- Type: `AFK`
-- Category: `enhancement`
-- State: `ready-for-human`
+## Related
+
+- `.scratch/hash-index-refactor/issue-001-hash-index-visibility-propagation.md`
+- `.scratch/visibility-hardening/issue-001-crate-visibility-policy-and-rollout.md`
 
 ## What to build
 

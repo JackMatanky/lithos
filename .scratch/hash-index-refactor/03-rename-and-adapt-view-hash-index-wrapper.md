@@ -1,13 +1,19 @@
-# Rename and adapt view hash index wrapper
+---
+title: 03-rename-and-adapt-view-hash-index-wrapper
+category: enhancement
+state: ready-for-human
+---
 
-- Label: `needs-triage`
-- Type: `AFK`
-- Category: `enhancement`
-- State: `ready-for-human`
+# Rename and adapt view hash index wrapper
 
 ## Blocked by
 
-- `.scratch/hash-index-refactor/issue-001-raw-property-map-emits-hash-index.md`
+- `.scratch/hash-index-refactor/issue-002-raw-property-map-emits-hash-index.md`
+
+## Related
+
+- `.scratch/hash-index-refactor/issue-001-hash-index-visibility-propagation.md`
+- `.scratch/visibility-hardening/issue-001-crate-visibility-policy-and-rollout.md`
 
 ## What to build
 
