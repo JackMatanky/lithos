@@ -2,6 +2,8 @@
 
 - Label: `needs-triage`
 - Type: `AFK`
+- Category: `enhancement`
+- State: `needs-triage`
 
 ## Parent
 
