@@ -62,8 +62,8 @@ Consolidate filesystem primitives into fs/ as infrastructure building blocks, an
 
 **fs/ (Infrastructure - building blocks):**
 - Path types: `AbsolutePath`, `RelativePath`, `FilePath`, `DirPath`
-- Zero-copy views: `FilenameRef<'a>`, `DirnameRef<'a>`, `FileExtensionRef<'a>`, `ParentDir<'a>`
-- Owned components: `Filename`, `Dirname` (using suffix pattern: no suffix = owned)
+- Zero-copy views: `FileNameRef<'a>`, `DirNameRef<'a>`, `BaseNameRef<'a>`, `FileExtensionRef<'a>`, `ParentDir<'a>`
+- Owned components: `FileName`, `DirName`, `BaseName` (using suffix pattern: no suffix = owned, `Ref` suffix = borrowed)
 - Metadata: `FsTimes`, `FileMetadata`, `DirMetadata` (split from FileInfo)
 - Runtime entities: `FsFile`, `FsDir`, `FsEntry`
 - Format detection: `FileFormat` (refactored from FormatKind, public, rkyv-enabled)
@@ -71,15 +71,15 @@ Consolidate filesystem primitives into fs/ as infrastructure building blocks, an
 
 **vault/ (Domain - inode-based tracking):**
 - Identifiers: `FileId(UuidV7)`, `DirId(UuidV7)`
-- Storage entities: `StoredFile`, `StoredDir` (compose fs/ primitives)
+- Storage entities: `FileView`, `DirView`, `FsEntryView` (compose fs/ primitives)
 - Database keys: `NormalizedPath` (vault-relative, forward-slash normalized)
 - Repository: CRUD + query methods (by path, basename, parent, format)
-- Processor: File discovery pipeline (FsReader → StoredFile/StoredDir → save)
+- Processor: File discovery pipeline (FsReader → FileView/DirView → save)
 
 **Deleted types (redundant):**
 - `vault::VaultPath` → Use `NormalizedPath` for storage keys, `RelativePath` for validation
-- `vault::VaultFile` → Replace with `StoredFile`
-- `vault::VaultFolder` → Replace with `StoredDir`
+- `vault::VaultFile` → Replace with `FileView`
+- `vault::VaultFolder` → Replace with `DirView`
 - `fs::FileEntry` → Replace with `FsFile`
 - `fs::FileInfo` → Rename to `FileMetadata` (file-specific), extract `FsTimes`
 
@@ -88,19 +88,21 @@ Consolidate filesystem primitives into fs/ as infrastructure building blocks, an
 ```rust
 // fs/path.rs
 pub struct AbsolutePath(PathBuf);           // Validated absolute path
-pub struct RelativePath(PathBuf);           // Validated relative path
-pub struct FilePath(AbsolutePath);          // Absolute path + file validation
-pub struct DirPath(AbsolutePath);           // Absolute path for directory
+pub struct RelativePath(PathBuf);           // Validated relative path (no .., no absolute)
+pub struct FilePath(RelativePath);          // Vault-relative file path
+pub struct DirPath(RelativePath);           // Vault-relative directory path
 
 // fs/path.rs - Zero-copy borrowed views
-pub struct FilenameRef<'a>(&'a OsStr);      // Borrowed filename view
-pub struct DirnameRef<'a>(&'a OsStr);       // Borrowed dirname view
+pub struct FileNameRef<'a>(&'a OsStr);      // Borrowed filename view
+pub struct DirNameRef<'a>(&'a OsStr);       // Borrowed dirname view
+pub struct BaseNameRef<'a>(&'a OsStr);      // Borrowed basename view (file stem)
 pub struct FileExtensionRef<'a>(&'a OsStr); // Borrowed extension view
 pub enum ParentDir<'a> { Root, Path(&'a Path) }
 
 // fs/file.rs - Owned components
-pub struct Filename(Box<str>);              // Owned filename (UTF-8)
-pub struct Dirname(Box<str>);               // Owned dirname (UTF-8)
+pub struct FileName(Box<str>);              // Owned filename (UTF-8)
+pub struct DirName(Box<str>);               // Owned dirname (UTF-8)
+pub struct BaseName(Box<str>);              // Owned basename (UTF-8, Obsidian terminology)
 
 // fs/file.rs - Metadata components
 pub struct FsTimes {
@@ -145,8 +147,8 @@ pub enum FileFormat {
 pub struct FileId(UuidV7);
 pub struct DirId(UuidV7);
 
-// vault/model.rs - Storage entities
-pub struct StoredFile {
+// vault/model.rs - Storage entities (View suffix matches codebase pattern)
+pub struct FileView {
     id: FileId,
     parent_id: Option<DirId>,
     name: String,                           // Just filename (no path)
@@ -155,11 +157,25 @@ pub struct StoredFile {
     content_hash: Option<Blake3Hash>,
 }
 
-pub struct StoredDir {
+pub struct DirView {
     id: DirId,
     parent_id: Option<DirId>,
     name: String,                           // Just dirname (no path)
     metadata: DirMetadata,
+}
+
+// vault/model.rs - Unified entry view
+pub enum FsEntryView {
+    File(FileView),
+    Dir(DirView),
+}
+
+impl FsEntryView {
+    pub fn id_bytes(&self) -> &[u8; 16];
+    pub fn parent_id(&self) -> Option<DirId>;
+    pub fn name(&self) -> &str;
+    pub fn is_file(&self) -> bool;
+    pub fn is_dir(&self) -> bool;
 }
 
 // vault/model.rs - Database key
@@ -170,8 +186,8 @@ pub struct NormalizedPath(String);          // Vault-relative, forward slashes
 
 **Primary inode tables:**
 ```rust
-Table<FileId, StoredFile>                   // [u8; 16] → StoredFile bytes
-Table<DirId, StoredDir>                     // [u8; 16] → StoredDir bytes
+Table<FileId, FileView>                     // [u8; 16] → FileView bytes
+Table<DirId, DirView>                       // [u8; 16] → DirView bytes
 ```
 
 **Path index tables:**
@@ -182,7 +198,7 @@ Table<NormalizedPath, DirId>                // "2024/daily" → DirId
 
 **Query optimization indexes (multimap):**
 ```rust
-MultimapTable<Basename, FileId>             // "note" → [FileId, ...]
+MultimapTable<BaseName, FileId>             // "note" → [FileId, ...]
 MultimapTable<Parent, FileId>               // "2024/daily" → [FileId, ...]
 MultimapTable<FileFormat, FileId>           // Markdown → [FileId, ...]
 ```
@@ -200,8 +216,8 @@ MultimapTable<FileFormat, FileId>           // Markdown → [FileId, ...]
 3. For each entry:
    - Extract vault-relative path
    - Lookup parent DirId from cache (O(1))
-   - If directory: create StoredDir, save to DB, cache DirId
-   - If file: detect format, optionally hash content, create StoredFile, save to DB
+   - If directory: create DirView, save to DB, cache DirId
+   - If file: detect format, optionally hash content, create FileView, save to DB
 4. Update all indexes (path, basename, parent, format) during save
 
 **Performance characteristics:**
@@ -229,8 +245,9 @@ MultimapTable<FileFormat, FileId>           // Markdown → [FileId, ...]
 impl Repository {
     // Exact lookups (O(1) hash)
     fn find_file_by_path(&self, path: &NormalizedPath) -> Option<FileId>;
-    fn get_file(&self, id: FileId) -> Result<StoredFile, Error>;
-    fn get_dir(&self, id: DirId) -> Result<StoredDir, Error>;
+    fn get_file(&self, id: FileId) -> Result<FileView, Error>;
+    fn get_dir(&self, id: DirId) -> Result<DirView, Error>;
+    fn get_entry(&self, id_bytes: &[u8; 16]) -> Result<FsEntryView, Error>;
 
     // Indexed queries (O(1) multimap lookup)
     fn find_files_by_basename(&self, basename: &str) -> Vec<FileId>;
@@ -239,24 +256,26 @@ impl Repository {
     fn list_files_by_format(&self, format: FileFormat) -> Vec<FileId>;
 
     // Full scans (O(n))
-    fn list_all_files(&self) -> Vec<StoredFile>;
-    fn list_all_dirs(&self) -> Vec<StoredDir>;
+    fn list_all_files(&self) -> Vec<FileView>;
+    fn list_all_dirs(&self) -> Vec<DirView>;
 }
 ```
 
 ### Migration Strategy
 
 **Phase 1: Create new types in fs/ (no breaking changes)**
-- Add FilePath, DirPath, FsFile, FsDir to fs/path.rs and fs/file.rs
-- Add zero-copy views: FilenameRef, DirnameRef, FileExtensionRef, ParentDir
+- Add FilePath(RelativePath), DirPath(RelativePath) to fs/path.rs
+- Add FsFile, FsDir, FsEntry to fs/file.rs
+- Add zero-copy views: FileNameRef, DirNameRef, BaseNameRef, FileExtensionRef, ParentDir
+- Add owned components: FileName, DirName, BaseName
 - Split FileInfo → FsTimes + FileMetadata + DirMetadata
 - Refactor FormatKind → FileFormat (public, rkyv derives)
 - Keep old types temporarily for backward compat
 
 **Phase 2: Create vault storage layer (parallel to existing)**
-- Implement FileId, DirId, StoredFile, StoredDir, NormalizedPath
+- Implement FileId, DirId, FileView, DirView, FsEntryView, NormalizedPath
 - Create new storage tables (FILES_BY_ID, DIRS_BY_ID, etc.)
-- Implement Repository trait with new signatures
+- Implement Repository trait with new signatures (including get_entry)
 - Implement RedbRepository adapter
 - Add multimap indexes incrementally
 
@@ -284,16 +303,18 @@ impl Repository {
 ### What Makes a Good Test
 
 **Test external behavior, not implementation details:**
-- Test that `StoredFile::from_fs` correctly extracts metadata from FsFile
+- Test that `FileView::from_fs` correctly extracts metadata from FsFile
 - Test that `Repository::find_files_by_basename("note")` returns all matching FileIds
-- Test that parent directory renames only update path index (not StoredFile records)
+- Test that parent directory renames only update path index (not FileView records)
+- Test that `FsEntryView::id_bytes()` returns correct bytes for both File and Dir variants
 - **Don't test**: Internal HashMap structure, walkdir iteration order, cache hit rates
 
 **Test domain invariants:**
 - FileId/DirId uniqueness (no collisions)
 - Parent links form valid tree (no cycles, no orphans)
-- Path index consistency (NormalizedPath → FileId matches StoredFile.name)
+- Path index consistency (NormalizedPath → FileId matches FileView.name)
 - Format detection determinism (same extension → same FileFormat)
+- FsEntryView correctly distinguishes File vs Dir variants
 
 **Test edge cases:**
 - Empty directories (no files)
@@ -305,16 +326,16 @@ impl Repository {
 ### Modules to Test
 
 **fs/path.rs:**
-- FilePath/DirPath validation (absolute paths only, UTF-8 enforcement)
+- FilePath/DirPath wrapping RelativePath (vault-scoped validation)
 - RelativePath validation (no .., no absolute paths)
-- Zero-copy view extraction (FilenameRef, ParentDir)
+- Zero-copy view extraction (FileNameRef, BaseNameRef, ParentDir)
 - Conversions between path types
 
 **fs/file.rs:**
 - FsTimes timestamp extraction from std::fs::Metadata
 - FileMetadata/DirMetadata construction
 - FsFile/FsDir from DirEntry conversion
-- Filename/Dirname owned component creation
+- FileName/DirName/BaseName owned component creation
 
 **fs/types.rs:**
 - FileFormat::from_extension coverage (all supported extensions)
@@ -323,19 +344,22 @@ impl Repository {
 
 **vault/model.rs:**
 - FileId/DirId generation (UuidV7 monotonicity)
-- StoredFile::from_fs conversion preserves all metadata
+- FileView::from_fs conversion preserves all metadata
+- FsEntryView enum correctly wraps FileView and DirView
+- FsEntryView helper methods (id_bytes, parent_id, name, is_file, is_dir)
 - NormalizedPath normalization rules (slash conversion, case preservation)
 - NormalizedPath::basename(), parent() extraction
 
 **vault/storage.rs:**
 - Repository CRUD operations (save, get, delete)
+- Repository::get_entry returns correct FsEntryView variant
 - Index consistency (path index matches primary table)
 - Multimap queries (basename, parent, format)
 - Transaction rollback on error
 - Batch operations (save multiple files atomically)
 
 **vault/processor.rs:**
-- Full vault scan produces complete StoredFile/StoredDir set
+- Full vault scan produces complete FileView/DirView set
 - Parent DirIds correctly linked (child.parent_id points to parent)
 - Walkdir ordering guarantees parent-before-child
 - Empty directory handling
@@ -356,12 +380,12 @@ impl Repository {
 **Storage tests:**
 - Existing: `schema/storage.rs` tests for RedbRepository
 - Pattern: tempfile DB, save/load round-trip, index consistency
-- Mirror for vault/storage.rs with StoredFile/StoredDir
+- Mirror for vault/storage.rs with FileView/DirView/FsEntryView
 
 **Processor tests:**
 - Existing: `vault/processor.rs` has typestate transition tests
 - Pattern: Mock FsReader, verify state machine transitions
-- Extend to verify new StoredFile/StoredDir creation
+- Extend to verify new FileView/DirView creation
 
 ---
 
@@ -387,10 +411,14 @@ impl Repository {
 ### Naming Conventions
 
 **Suffix pattern for owned vs borrowed:**
-- No suffix = owned (`Filename`, `Dirname`)
-- `Ref` suffix = borrowed (`FilenameRef<'a>`, `DirnameRef<'a>`)
+- No suffix = owned (`FileName`, `DirName`, `BaseName`)
+- `Ref` suffix = borrowed (`FileNameRef<'a>`, `DirNameRef<'a>`, `BaseNameRef<'a>`)
 
 This follows Rust conventions (e.g., `Path` vs `PathBuf`, `str` vs `String`) while making ownership explicit through naming.
+
+**Terminology choices:**
+- `BaseName` follows **Obsidian terminology** (filename without extension) rather than Rust's `file_stem()`, since this is domain-aligned and more intuitive for users
+- `*View` suffix for storage entities follows existing codebase pattern (`RawSchemaView`, `ListView`)
 
 ### Performance Implications
 
@@ -414,8 +442,8 @@ This refactoring provides infrastructure for Obsidian-compatible APIs:
 - `Vault.getFiles()` → `Repository::list_all_files()`
 - `Vault.getMarkdownFiles()` → `Repository::list_markdown_files()`
 - `Vault.getAbstractFileByPath(path)` → `Repository::find_file_by_path(path)`
-- `TFile.parent` → `StoredFile.parent_id` → `Repository::get_dir(parent_id)`
-- `TFile.basename` → Extracted from `StoredFile.name` via `Filename::basename()`
+- `TFile.parent` → `FileView.parent_id` → `Repository::get_dir(parent_id)`
+- `TFile.basename` → Extracted from `FileView.name` via `BaseName` type
 - `TFile.extension` → `FileFormat` enum (richer than string extension)
 
 Future work can build higher-level abstractions on this storage layer.
