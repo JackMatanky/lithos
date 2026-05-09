@@ -1,7 +1,10 @@
 ---
 title: 03-rename-and-adapt-view-hash-index-wrapper
 category: enhancement
-state: ready-for-human
+label: ready-for-human
+status: completed
+date_created:
+date_completed:
 ---
 
 # Rename and adapt view hash index wrapper

@@ -1,10 +1,13 @@
 ---
-parent: UUIDv7 Hardening PRD
-labels: needs-triage
+title: 01-uuidv7-support-type
+category: enhancement
+label: ready-for-human
 status: completed
 date_created: 2026-05-06
 date_completed: 2026-05-06
 ---
+
+# UUIDv7 Support Type
 
 ## Parent
 
@@ -77,6 +80,18 @@ Unit tests for `lithos-core/src/support/uuid.rs`:
 - [x] All 8 unit tests pass (new_creates_v7_uuid, parse_accepts_valid_v7, parse_rejects_non_v7, parse_rejects_invalid_string, try_from_uuid_rejects_non_v7, roundtrip_into_from_uuid, display_matches_inner_uuid, default_is_v7)
 - [x] No behavioral changes outside `support` module
 - [x] API hardened: `from_uuid_unchecked` removed, only validated construction available
+
+## Non-goals (explicit for Step 1)
+
+- Do not migrate `SchemaId`, `NoteId`, etc. yet
+- Do not modify `db/reader.rs` or `db/writer.rs` signatures yet
+- Do not introduce macro generation yet
+
+## Exit criteria for Step 1
+
+- `UuidV7` and `UuidV7Error` compile and are exported
+- All Step-1 unit tests pass
+- No behavioral changes outside `support` module
 
 ## Blocked by
 

@@ -1,10 +1,13 @@
 ---
-parent: UUIDv7 Hardening PRD
-labels: needs-triage
+title: 02-id-wrapper-migrations
+category: enhancement
+label: ready-for-human
 status: completed
 date_created: 2026-05-06
 date_completed: 2026-05-06
 ---
+
+# ID Wrapper Migrations
 
 ## Parent
 
@@ -132,3 +135,4 @@ Add internal helper to reduce repeated UUID key encoding boilerplate:
 - Maintains context isolation (distinct types prevent cross-context ID usage)
 - GitNexus impact check was unavailable (`Not connected`) - proceeded with compile/test verification
 - Error encountered: initial `mise run verify` failed at lint due to benchmark call sites - resolved by updating benchmarks
+- Boundary policy: raw input structs may still carry `uuid::Uuid` (e.g., template raw input), but domain IDs use `UuidV7` wrappers

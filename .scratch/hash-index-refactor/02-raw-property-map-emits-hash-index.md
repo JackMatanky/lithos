@@ -1,7 +1,10 @@
 ---
 title: 02-raw-property-map-emits-hash-index
 category: enhancement
-state: ready-for-human
+label: ready-for-human
+status: completed
+date_created:
+date_completed:
 ---
 
 # Raw Property Map emits hash index

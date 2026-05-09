@@ -1,8 +1,13 @@
 ---
-parent: UUIDv7 Hardening PRD
+title: 03-uuid-v7-macro
+category: enhancement
 labels: needs-triage
 status: pending
+date_created: 2026-05-06
+date_completed:
 ---
+
+# UUIDv7 Macro
 
 ## Parent
 
@@ -21,6 +26,13 @@ The macro should generate for each wrapper type (e.g., `SchemaId`, `NoteId`, etc
 - UUID v7 methods: `from_uuid_v7`, `as_uuid_v7`, `into_uuid_v7`
 - Convenience passthroughs: `as_uuid()` (returns `&Uuid`), `into_uuid()` (returns `Uuid`)
 - Trait impls: `Display`, `Default`, `From<UuidV7>`, `From<Self> for Uuid`
+- rkyv derives at wrapper level (not delegated to inner `UuidV7` alone)
+
+### Context
+
+This is the only pending step. All other steps (1, 3-8) are complete:
+- Step 1: UuidV7 support type implemented and tested
+- Step 3-8: All ID wrappers migrated, DB APIs updated, API hardened, benchmarks fixed
 
 ### Usage Example
 

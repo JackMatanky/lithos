@@ -1,7 +1,10 @@
 ---
 title: 01-hash-index-visibility-propagation
 category: enhancement
-state: ready-for-human
+label: ready-for-human
+status: completed
+date_created:
+date_completed:
 ---
 
 # Hash index visibility propagation
