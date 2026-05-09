@@ -3,8 +3,8 @@ title: 01-hash-index-visibility-propagation
 category: enhancement
 label: ready-for-human
 status: completed
-date_created:
-date_completed:
+date_created: 2026-05-08T14:28:32+03:00
+date_completed: 2026-05-08T13:47:11+03:00
 ---
 
 # Hash index visibility propagation
