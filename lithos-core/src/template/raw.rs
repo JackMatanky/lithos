@@ -79,7 +79,7 @@ impl TryFrom<RawTemplate> for Template {
 
         let mut template = Template::try_new(&name, extends, blocks, inputs)?;
         if let Some(id) = raw.id {
-            template.id = TemplateId::try_from_uuid(id).map_err(|e| {
+            template.id = TemplateId::try_from(id).map_err(|e| {
                 TemplateError::ValidationFailed(format!(
                     "template id must be UUID v7: {e}"
                 ))

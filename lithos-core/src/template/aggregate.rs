@@ -64,18 +64,6 @@ impl TemplateId {
     pub const fn as_uuid_v7(&self) -> &UuidV7 {
         &self.0
     }
-
-    /// Validates and wraps a UUID as template identity.
-    ///
-    /// # Errors
-    ///
-    /// Returns `UuidV7Error` when `uuid` is not version 7.
-    #[inline]
-    pub fn try_from_uuid(
-        uuid: Uuid,
-    ) -> Result<Self, crate::support::UuidV7Error> {
-        Ok(Self(UuidV7::try_from_uuid(uuid)?))
-    }
 }
 
 impl Default for TemplateId {
@@ -97,7 +85,7 @@ impl TryFrom<Uuid> for TemplateId {
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
-        Self::try_from_uuid(value)
+        Ok(Self(UuidV7::try_from(value)?))
     }
 }
 

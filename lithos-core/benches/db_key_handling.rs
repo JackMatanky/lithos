@@ -236,7 +236,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     let test_key = test_uuid.to_string();
     db.put_by_uuid(
         TEMPLATES_TABLE,
-        UuidV7::try_from_uuid(test_uuid).expect("Uuid::now_v7 should be v7"),
+        UuidV7::try_from(test_uuid).expect("Uuid::now_v7 should be v7"),
         &"test_value".to_owned(),
     )
     .expect("put_by_uuid");
@@ -269,7 +269,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Optimized: UUID-native put
     group.bench_function("put_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = UuidV7::try_from_uuid(Uuid::now_v7())
+            let uuid = UuidV7::try_from(Uuid::now_v7())
                 .expect("Uuid::now_v7 should be v7");
             db.put_by_uuid(
                 TEMPLATES_TABLE,
@@ -293,7 +293,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Optimized: UUID-native delete
     group.bench_function("delete_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = UuidV7::try_from_uuid(Uuid::now_v7())
+            let uuid = UuidV7::try_from(Uuid::now_v7())
                 .expect("Uuid::now_v7 should be v7");
             db.put_by_uuid(TEMPLATES_TABLE, uuid, &"temp".to_owned())
                 .expect("setup");

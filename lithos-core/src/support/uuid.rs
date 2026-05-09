@@ -51,23 +51,8 @@ impl UuidV7 {
     /// v7.
     #[inline]
     pub fn parse(input: &str) -> Result<Self, UuidV7Error> {
-        let uuid = Uuid::parse_str(input).map_err(UuidV7Error::Parse)?;
-        Self::try_from_uuid(uuid)
-    }
-
-    /// Validates that a UUID is version 7.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UuidV7Error::WrongVersion`] when `uuid` is not version 7.
-    #[inline]
-    pub fn try_from_uuid(uuid: Uuid) -> Result<Self, UuidV7Error> {
-        if uuid.get_version() == Some(Version::SortRand) {
-            return Ok(Self(uuid));
-        }
-        Err(UuidV7Error::WrongVersion {
-            got: uuid.get_version(),
-        })
+        let uuid = Uuid::try_parse(input).map_err(UuidV7Error::Parse)?;
+        Self::try_from(uuid)
     }
 
     /// Returns the inner UUID by reference.
@@ -103,8 +88,13 @@ impl TryFrom<Uuid> for UuidV7 {
     type Error = UuidV7Error;
 
     #[inline]
-    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
-        Self::try_from_uuid(value)
+    fn try_from(uuid: Uuid) -> Result<Self, Self::Error> {
+        if uuid.get_version() == Some(Version::SortRand) {
+            return Ok(Self(uuid));
+        }
+        Err(UuidV7Error::WrongVersion {
+            got: uuid.get_version(),
+        })
     }
 }
 
@@ -170,14 +160,15 @@ mod tests {
 
     #[test]
     fn parse_rejects_invalid_string() {
-        UuidV7::parse("not-a-uuid").unwrap_err();
+        let err = UuidV7::parse("not-a-uuid").unwrap_err();
+        assert!(matches!(err, UuidV7Error::Parse(_)));
     }
 
     #[test]
-    fn try_from_uuid_rejects_non_v7() {
+    fn try_from_rejects_non_v7() {
         let uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos");
         assert!(matches!(
-            UuidV7::try_from_uuid(uuid),
+            UuidV7::try_from(uuid),
             Err(UuidV7Error::WrongVersion { .. })
         ));
     }
@@ -186,7 +177,7 @@ mod tests {
     fn roundtrip_into_from_uuid() {
         let id = UuidV7::new();
         let raw: Uuid = id.into();
-        let id2 = UuidV7::try_from_uuid(raw).expect("roundtrip should work");
+        let id2 = UuidV7::try_from(raw).expect("roundtrip should work");
         assert_eq!(id, id2);
     }
 

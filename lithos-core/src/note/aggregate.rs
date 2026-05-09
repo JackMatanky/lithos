@@ -124,7 +124,7 @@ impl TryFrom<Uuid> for NoteId {
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
-        Ok(Self(UuidV7::try_from_uuid(value)?))
+        Ok(Self(UuidV7::try_from(value)?))
     }
 }
 

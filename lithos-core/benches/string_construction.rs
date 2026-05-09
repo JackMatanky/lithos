@@ -412,7 +412,7 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             black_box(score_str);
 
             // Task 2: UUID-native database operations
-            let template_uuid = UuidV7::try_from_uuid(Uuid::now_v7())
+            let template_uuid = UuidV7::try_from(Uuid::now_v7())
                 .expect("Uuid::now_v7 should be v7");
             let name = TemplateName::try_from("workflow-template")
                 .expect("valid name");

@@ -90,7 +90,7 @@ impl TryFrom<Uuid> for SchemaId {
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
-        Ok(Self(UuidV7::try_from_uuid(value)?))
+        Ok(Self(UuidV7::try_from(value)?))
     }
 }
 

@@ -1005,7 +1005,7 @@ mod tests {
                     id: 10,
                     name: "Note".to_owned(),
                 };
-                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                let id_v7 = crate::support::UuidV7::try_from(id)
                     .expect("generated uuid should be v7");
 
                 db.put_by_uuid(USERS_TABLE, id_v7, &value)
@@ -1026,7 +1026,7 @@ mod tests {
                     id: 11,
                     name: "Delete".to_owned(),
                 };
-                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                let id_v7 = crate::support::UuidV7::try_from(id)
                     .expect("generated uuid should be v7");
 
                 db.put_by_uuid(USERS_TABLE, id_v7, &value)
@@ -1052,7 +1052,7 @@ mod tests {
                     id: 12,
                     name: "Nova".to_owned(),
                 };
-                let id_v7 = crate::support::UuidV7::try_from_uuid(id)
+                let id_v7 = crate::support::UuidV7::try_from(id)
                     .expect("generated uuid should be v7");
 
                 db.put_by_uuid(USERS_TABLE, id_v7, &value)
