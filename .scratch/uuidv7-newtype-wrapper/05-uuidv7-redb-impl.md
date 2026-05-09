@@ -1,7 +1,7 @@
 ---
 title: 05-uuidv7-redb-impl
 category: enhancement
-label: needs-triage
+label: ready-for-agent
 status: pending
 date_created: 2026-05-09
 ---

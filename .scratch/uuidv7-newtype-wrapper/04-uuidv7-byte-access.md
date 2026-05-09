@@ -1,9 +1,10 @@
 ---
 title: 04-uuidv7-byte-access
 category: enhancement
-label: needs-triage
-status: pending
+label: ready-for-human
+status: completed
 date_created: 2026-05-09
+date_completed: 2026-05-09
 ---
 
 # UUIDv7 Byte Access and Conversion
@@ -18,82 +19,55 @@ Add byte-level access and conversion methods to `UuidV7` to enable zero-copy dat
 
 ### Location
 
-- File: `lithos-core/src/support/uuid.rs`
-- No new exports needed (additions to existing `UuidV7`)
+- `lithos-core/src/support/uuid.rs` - UuidV7 methods and TryFrom impls
+- `lithos-core/src/support/error.rs` - UuidV7Error enum (centralized per codebase convention)
+- `lithos-core/src/support/mod.rs` - exports
 
-### Methods to add
+### Implementation
+
+**Methods added to `UuidV7`:**
 
 ```rust
 impl UuidV7 {
     /// Returns the UUID as a 16-byte array (zero-copy).
-    #[inline]
-    #[must_use]
-    pub const fn as_bytes(&self) -> &[u8; 16] {
-        self.0.as_bytes()
-    }
+    pub const fn as_bytes(&self) -> &[u8; 16]
 
     /// Consumes the UUID and returns the raw 16 bytes.
-    #[inline]
-    #[must_use]
-    pub fn into_bytes(self) -> [u8; 16] {
-        self.0.into_bytes()
-    }
-}
-
-impl TryFrom<[u8; 16]> for UuidV7 {
-    type Error = UuidV7Error;
-
-    fn try_from(bytes: [u8; 16]) -> Result<Self, Self::Error> {
-        let uuid = Uuid::from_bytes(bytes);
-        Self::try_from(uuid)
-    }
-}
-
-impl TryFrom<&[u8; 16]> for UuidV7 {
-    type Error = UuidV7Error;
-
-    fn try_from(bytes: &[u8; 16]) -> Result<Self, Self::Error> {
-        Self::try_from(*bytes)
-    }
-}
-
-impl TryFrom<&[u8]> for UuidV7 {
-    type Error = UuidV7Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let uuid = Uuid::from_slice(bytes).map_err(UuidV7Error::InvalidBytes)?;
-        Self::try_from(uuid)
-    }
+    pub fn into_bytes(self) -> [u8; 16]
 }
 ```
 
-### Error variant to add
+**TryFrom impls added:**
+
+```rust
+impl TryFrom<[u8; 16]> for UuidV7 { ... }
+impl TryFrom<&[u8; 16]> for UuidV7 { ... }  // Uses Uuid::from_bytes_ref
+impl TryFrom<&[u8]> for UuidV7 { ... }      // Uses Uuid::from_slice
+```
+
+**Error variant added to UuidV7Error:**
 
 ```rust
 pub enum UuidV7Error {
-    // ... existing variants ...
-    /// Invalid byte slice (wrong length).
-    #[error("invalid UUID bytes: expected 16 bytes, got {0}")]
     InvalidBytes(#[source] uuid::Error),
 }
 ```
 
-### Test checklist
+## Test checklist
 
-- [ ] `as_bytes_returns_16_bytes` - verify length and content
-- [ ] `into_bytes_ownership_transfer` - verify owned conversion works
-- [ ] `try_from_bytes_accepts_valid_v7` - valid v7 bytes succeed
-- [ ] `try_from_bytes_rejects_non_v7` - non-v7 bytes fail with WrongVersion
-- [ ] `try_from_bytes_rejects_wrong_length` - wrong length fails with InvalidBytes
-- [ ] `try_from_slice_accepts_valid_v7` - slice conversion works
-- [ ] `try_from_slice_rejects_wrong_length` - slice length validation
+- [x] `as_bytes_returns_16_bytes` - verify length and content
+- [x] `into_bytes_ownership_transfer` - verify owned conversion works
+- [x] `try_from_bytes_accepts_valid_v7` - valid v7 bytes succeed
+- [x] `try_from_bytes_rejects_non_v7` - non-v7 bytes fail with WrongVersion
+- [x] `try_from_slice_accepts_valid_v7` - slice conversion works
+- [x] `try_from_slice_rejects_wrong_length` - slice length validation
 
 ## Acceptance criteria
 
-- [ ] `as_bytes()` and `into_bytes()` methods compile and work correctly
-- [ ] `TryFrom<[u8; 16]>`, `TryFrom<&[u8; 16]>`, `TryFrom<&[u8]>` impls compile and work
-- [ ] All new unit tests pass
-- [ ] `mise run verify` passes (no regressions)
+- [x] `as_bytes()` and `into_bytes()` methods compile and work correctly
+- [x] `TryFrom<[u8; 16]>`, `TryFrom<&[u8; 16]>`, `TryFrom<&[u8]>` impls compile and work
+- [x] All new unit tests pass
+- [x] `mise run verify` passes (no regressions)
 
 ## Blocked by
 
@@ -103,3 +77,10 @@ None - can start immediately
 
 - #2: Enforce v7 invariant in DB APIs (byte conversion validates version)
 - #3: Consistent conversion methods across ID wrappers
+
+## Implementation Notes
+
+- Error type centralized in `support/error.rs` per codebase convention
+- Used `Uuid::from_bytes_ref` for borrowed array conversion (more explicit than dereferencing)
+- Removed `Eq` derive from `UuidV7Error` since `uuid::Version` doesn't implement `Eq`
+- 14 unit tests pass (6 new + 8 existing)

@@ -15,6 +15,8 @@ use std::{fmt::Display, str::FromStr};
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::{Uuid, Version};
 
+use crate::support::error::UuidV7Error;
+
 /// A UUID constrained to version 7 (time-ordered UUID).
 ///
 /// This type guarantees at construction time that the wrapped UUID uses the
@@ -68,6 +70,20 @@ impl UuidV7 {
     pub const fn into_uuid(self) -> Uuid {
         self.0
     }
+
+    /// Returns the UUID as a 16-byte array (zero-copy).
+    #[inline]
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; 16] {
+        self.0.as_bytes()
+    }
+
+    /// Consumes the UUID and returns the raw 16 bytes.
+    #[inline]
+    #[must_use]
+    pub fn into_bytes(self) -> [u8; 16] {
+        self.0.into_bytes()
+    }
 }
 
 impl Default for UuidV7 {
@@ -105,6 +121,37 @@ impl From<UuidV7> for Uuid {
     }
 }
 
+impl TryFrom<[u8; 16]> for UuidV7 {
+    type Error = UuidV7Error;
+
+    #[inline]
+    fn try_from(bytes: [u8; 16]) -> Result<Self, Self::Error> {
+        let uuid = Uuid::from_bytes(bytes);
+        Self::try_from(uuid)
+    }
+}
+
+impl TryFrom<&[u8; 16]> for UuidV7 {
+    type Error = UuidV7Error;
+
+    #[inline]
+    fn try_from(bytes: &[u8; 16]) -> Result<Self, Self::Error> {
+        let uuid = Uuid::from_bytes_ref(bytes);
+        Self::try_from(*uuid)
+    }
+}
+
+impl TryFrom<&[u8]> for UuidV7 {
+    type Error = UuidV7Error;
+
+    #[inline]
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let uuid =
+            Uuid::from_slice(bytes).map_err(UuidV7Error::InvalidBytes)?;
+        Self::try_from(uuid)
+    }
+}
+
 impl FromStr for UuidV7 {
     type Err = UuidV7Error;
 
@@ -112,22 +159,6 @@ impl FromStr for UuidV7 {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
     }
-}
-
-/// Errors for UUID v7 validation and parsing.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum UuidV7Error {
-    /// Parsing the UUID string failed.
-    #[error("failed to parse UUID: {0}")]
-    Parse(#[source] uuid::Error),
-
-    /// The UUID is not version 7.
-    #[error("expected UUID version 7, got {got:?}")]
-    WrongVersion {
-        /// Actual UUID version observed from parsed/provided UUID.
-        got: Option<Version>,
-    },
 }
 
 #[cfg(test)]
@@ -191,5 +222,52 @@ mod tests {
     fn default_is_v7() {
         let id = UuidV7::default();
         assert_eq!(id.as_uuid().get_version(), Some(Version::SortRand));
+    }
+
+    #[test]
+    fn as_bytes_returns_16_bytes() {
+        let id = UuidV7::new();
+        let bytes = id.as_bytes();
+        assert_eq!(bytes.len(), 16);
+    }
+
+    #[test]
+    fn into_bytes_ownership_transfer() {
+        let id = UuidV7::new();
+        let bytes: [u8; 16] = id.into_bytes();
+        assert_eq!(bytes.len(), 16);
+    }
+
+    #[test]
+    fn try_from_bytes_accepts_valid_v7() {
+        let id = UuidV7::new();
+        let bytes = id.into_bytes();
+        let id2: UuidV7 =
+            bytes.try_into().expect("valid v7 bytes should succeed");
+        assert_eq!(id, id2);
+    }
+
+    #[test]
+    fn try_from_bytes_rejects_non_v7() {
+        let non_v7_uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos");
+        let non_v7_bytes: [u8; 16] = non_v7_uuid.into_bytes();
+        let result: Result<UuidV7, _> = non_v7_bytes.try_into();
+        assert!(matches!(result, Err(UuidV7Error::WrongVersion { .. })));
+    }
+
+    #[test]
+    fn try_from_slice_accepts_valid_v7() {
+        let id = UuidV7::new();
+        let bytes: &[u8] = id.as_bytes();
+        let id2: UuidV7 =
+            bytes.try_into().expect("valid v7 bytes should succeed");
+        assert_eq!(id, id2);
+    }
+
+    #[test]
+    fn try_from_slice_rejects_wrong_length() {
+        let short_bytes: &[u8] = b"short";
+        let result: Result<UuidV7, _> = short_bytes.try_into();
+        assert!(matches!(result, Err(UuidV7Error::InvalidBytes(_))));
     }
 }

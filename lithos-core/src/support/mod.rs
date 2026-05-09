@@ -8,10 +8,14 @@
     reason = "support module re-exports stable primitive types intentionally"
 )]
 
+/// Error types for support primitives.
+pub mod error;
+
 /// BLAKE3 hashing utilities and types.
 pub mod hash;
 
 /// UUID v7 support primitive shared across contexts.
 pub mod uuid;
 
-pub use uuid::{UuidV7, UuidV7Error};
+pub use error::UuidV7Error;
+pub use uuid::UuidV7;
