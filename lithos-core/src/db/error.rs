@@ -1,3 +1,30 @@
+#![allow(
+    clippy::pattern_type_mismatch,
+    reason = "Match on reference vs value in kind() method"
+)]
+
+/// Error classification for stable branching without backend-specific matching.
+/// Provides a stable API for error handling that doesn't depend on
+/// backend-specific error types. Use `DbError::kind()` to classify errors.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DbErrorKind {
+    /// Database-level operation failed (open, create, etc.).
+    Database,
+    /// Storage backend operation failed (I/O, corruption, etc.).
+    Storage,
+    /// Transaction operation failed (begin, commit, rollback, etc.).
+    Transaction,
+    /// Table operation failed (open, insert, get, etc.).
+    Table,
+    /// Commit operation failed.
+    Commit,
+    /// Serialization to bytes failed.
+    Serialization,
+    /// Deserialization from bytes failed.
+    Deserialization,
+}
+
 /// Database error types.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
@@ -39,6 +66,32 @@ pub enum DbError {
 }
 
 impl DbError {
+    /// Classify error for stable branching without backend-specific matching.
+    ///
+    /// Returns a stable error kind that callers can use for control flow
+    /// without depending on backend-specific error types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::db::{DbError, DbErrorKind};
+    ///
+    /// let err = DbError::Serialization("failed".into());
+    /// assert_eq!(err.kind(), DbErrorKind::Serialization);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn kind(&self) -> DbErrorKind {
+        match self {
+            Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
+            Self::Transaction(_) => DbErrorKind::Transaction,
+            Self::Table(_) | Self::NotFound => DbErrorKind::Table,
+            Self::Serialization(_) => DbErrorKind::Serialization,
+            Self::Deserialization(_) => DbErrorKind::Deserialization,
+            Self::Corruption(_) => DbErrorKind::Storage,
+        }
+    }
+
     /// Returns true if this error might be transient and worth retrying.
     ///
     /// Transient errors include:
@@ -133,16 +186,137 @@ impl From<redb::CommitError> for DbError {
 mod tests {
     use super::*;
 
+    mod kind {
+        use super::*;
+
+        /// `DbError::kind()` returns `DbErrorKind::Database` for Database
+        /// variant.
+        ///
+        /// Behavior: Error classification via `kind()` provides stable API
+        /// for callers to branch on error type without coupling to redb.
+        /// Verification: Create `DbError::Database`, call `kind()`, assert
+        /// returns `DbErrorKind::Database`.
+        #[test]
+        fn database_variant_returns_database_kind() {
+            let err = DbError::Database("test".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Database);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Database` for Open variant.
+        #[test]
+        fn open_variant_returns_database_kind() {
+            let err = DbError::Open("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Database);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Transaction` for Transaction
+        /// variant.
+        #[test]
+        fn transaction_variant_returns_transaction_kind() {
+            let err = DbError::Transaction("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Transaction);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Table` for Table variant.
+        #[test]
+        fn table_variant_returns_table_kind() {
+            let err = DbError::Table("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Table);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Serialization` for
+        /// Serialization variant.
+        #[test]
+        fn serialization_variant_returns_serialization_kind() {
+            let err = DbError::Serialization("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Serialization);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Deserialization` for
+        /// Deserialization variant.
+        #[test]
+        fn deserialization_variant_returns_deserialization_kind() {
+            let err = DbError::Deserialization("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Deserialization);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Storage` for Corruption
+        /// variant.
+        #[test]
+        fn corruption_variant_returns_storage_kind() {
+            let err = DbError::Corruption("test error".to_owned());
+            assert_eq!(err.kind(), DbErrorKind::Storage);
+        }
+
+        /// `DbError::kind()` returns `DbErrorKind::Table` for `NotFound`
+        /// variant.
+        #[test]
+        fn notfound_variant_returns_table_kind() {
+            let err = DbError::NotFound;
+            assert_eq!(err.kind(), DbErrorKind::Table);
+        }
+    }
+
+    mod is_transient {
+        use super::*;
+
+        /// Corruption errors are never transient.
+        #[test]
+        fn corruption_is_not_transient() {
+            let err = DbError::Corruption("data corrupted".to_owned());
+            assert!(!err.is_transient());
+        }
+
+        /// Deserialization errors are never transient.
+        #[test]
+        fn deserialization_is_not_transient() {
+            let err = DbError::Deserialization("invalid data".to_owned());
+            assert!(!err.is_transient());
+        }
+
+        /// Serialization errors are never transient.
+        #[test]
+        fn serialization_is_not_transient() {
+            let err = DbError::Serialization("cannot serialize".to_owned());
+            assert!(!err.is_transient());
+        }
+
+        /// `NotFound` errors are never transient.
+        #[test]
+        fn notfound_is_not_transient() {
+            let err = DbError::NotFound;
+            assert!(!err.is_transient());
+        }
+
+        /// Database locked errors are transient.
+        #[test]
+        fn database_locked_is_transient() {
+            let err = DbError::Database("database is locked".to_owned());
+            assert!(err.is_transient());
+        }
+
+        /// Transaction conflict errors are transient.
+        #[test]
+        fn transaction_conflict_is_transient() {
+            let err = DbError::Transaction("transaction conflict".to_owned());
+            assert!(err.is_transient());
+        }
+    }
+
+    /// Converting `redb::DatabaseError` to `DbError` preserves error metadata.
     #[test]
-    fn db_error_converts_from_redb_errors() {
+    fn redb_database_error_converts_with_correct_kind() {
         let db_err = redb::DatabaseError::from(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "test",
         ));
         let result: DbError = db_err.into();
+
         assert!(
             result.to_string().contains("database error"),
             "Expected database error conversion message, got: {result}"
         );
+
+        assert_eq!(result.kind(), DbErrorKind::Database);
     }
 }
