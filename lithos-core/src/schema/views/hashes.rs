@@ -141,7 +141,7 @@ use crate::{
 ///
 /// ```rust,ignore
 /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
-/// # use lithos_core::support::hash::Blake3Hash;
+/// # use crate::support::hash::Blake3Hash;
 /// #
 /// let content_hash = Blake3Hash::compute(b"content");
 /// let record = HashRecord::new(content_hash, RawPropertyHashIndex::default());
@@ -164,7 +164,7 @@ impl HashRecord {
     ///
     /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use crate::support::hash::Blake3Hash;
     /// #
     /// let content_hash = Blake3Hash::compute(b"content");
     /// let property_hashes = RawPropertyHashIndex::default();
@@ -188,7 +188,7 @@ impl HashRecord {
     ///
     /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use crate::support::hash::Blake3Hash;
     /// #
     /// let content = Blake3Hash::compute(b"test");
     /// let record = HashRecord::new(content, RawPropertyHashIndex::default());
@@ -209,7 +209,7 @@ impl HashRecord {
     ///
     /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use crate::support::hash::Blake3Hash;
     /// #
     /// let record = HashRecord::new(
     ///     Blake3Hash::compute(b"c"),
@@ -231,7 +231,7 @@ impl HashRecord {
     ///
     /// ```rust,ignore
     /// # use lithos_core::schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use crate::support::hash::Blake3Hash;
     /// #
     /// let hash = Blake3Hash::compute(b"test");
     /// let record = HashRecord::new(hash, RawPropertyHashIndex::default());
@@ -255,7 +255,7 @@ impl ArchivedHashRecord {
     /// ```rust,ignore
     /// # use lithos_core::schema::views::hashes::{HashRecord, ArchivedHashRecord};
     /// # use lithos_core::schema::views::RawPropertyHashIndex;
-    /// # use lithos_core::support::hash::Blake3Hash;
+    /// # use crate::support::hash::Blake3Hash;
     /// # use rkyv::access;
     /// #
     /// let hash = Blake3Hash::compute(b"test");

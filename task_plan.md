@@ -14,8 +14,13 @@ Research `rkyv` crate documentation and best practices and create comprehensive 
 7. [x] Phase 7: Investigate integration between `rkyv` and other crates (like `redb`, `memmap2`, `moka`) within the project.
 8. [x] Phase 8: Create `06-integrations.md` file with detailed integration strategies.
 
+9. [x] Phase 9: Launch subagents to research deep/exact links for `rkyv` documentation (docs.rs and rkyv.org) and gather deeper applicability context.
+10. [x] Phase 10: Launch subagent to compile an index of components offered by `rkyv` and their specific features.
+11. [x] Phase 11: Update files `01-06` to incorporate deep links, clearer explanations, and broader applicability sections.
+12. [x] Phase 12: Create `07-components.md` with an index of `rkyv` components.
+
 ## Current State
-All additional phases (6-8) have been completed. The existing markdown files (`01-05`) have been injected with references and concrete code examples. A new `06-integrations.md` file has been authored, capturing exactly how `rkyv` maps into `redb` and other systems. The entire suite of documentation should now be extremely detailed and actionable.
+All additional phases (9-12) requested by the user are complete. Exact links have been added to the docs, applicability sections added, and `07-components.md` created.
 
 ## Errors Encountered
 None so far.

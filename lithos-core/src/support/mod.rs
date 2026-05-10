@@ -1,21 +1,21 @@
-//! Shared support utilities and infrastructure primitives.
+//! Crate-private implementation support for `lithos-core`.
 //!
-//! This module contains cross-cutting concerns like hashing and
-//! serialization helpers that are used across multiple bounded contexts.
-
-#![expect(
-    clippy::pub_use,
-    reason = "support module re-exports stable primitive types intentionally"
-)]
-
-/// Error types for support primitives.
-pub mod error;
+//! This module is the internal "engine room" for helpers that are useful
+//! across multiple internal modules but are not part of the public contract
+//! surface. Items here may change freely as implementation needs evolve.
+//!
+//! Boundary rule:
+//! - Public, stable contracts belong in `crate::utils`.
+//! - `crate::support` stays crate-private and must not be exposed to external
+//!   consumers.
 
 /// BLAKE3 hashing utilities and types.
-pub mod hash;
+pub(crate) mod hash;
 
-/// UUID v7 support primitive shared across contexts.
-pub mod uuid;
-
-pub use error::UuidV7Error;
-pub use uuid::UuidV7;
+#[expect(
+    unused_imports,
+    reason = "crate-private support facade keeps ergonomic internal imports"
+)]
+pub(crate) use hash::{
+    Blake3Hash, Blake3HashIndex, HashInput, hash_structured,
+};

@@ -21,7 +21,7 @@ pub mod graph;
 pub mod note;
 pub mod prelude;
 pub mod schema;
-pub mod support;
+pub(crate) mod support;
 pub mod template;
 pub mod utils;
 pub mod vault;

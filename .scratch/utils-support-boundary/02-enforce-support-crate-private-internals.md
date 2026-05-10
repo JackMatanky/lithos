@@ -14,9 +14,9 @@ After `UuidV7` cutover, make `support` strictly crate-private and internal-only 
 
 ## Acceptance criteria
 
-- [ ] `support` visibility is crate-private from crate root and cannot be consumed as a public API.
-- [ ] `support/mod.rs` no longer exposes `uuid`; only internal support modules remain (including hash internals).
-- [ ] The crate compiles with no external/public call paths requiring `lithos_core::support::*`.
+- [x] `support` visibility is crate-private from crate root and cannot be consumed as a public API.
+- [x] `support/mod.rs` no longer exposes `uuid`; only internal support modules remain (including hash internals).
+- [x] The crate compiles with no external/public call paths requiring `lithos_core::support::*`.
 
 ## Blocked by
 
@@ -29,3 +29,19 @@ After `UuidV7` cutover, make `support` strictly crate-private and internal-only 
 - Category confirmed as `enhancement`; state moved to `ready-for-agent` per maintainer override.
 - This slice remains sequenced after issue 01 to avoid premature visibility breaks.
 - Enforcement target is strict: `support` crate-private with no public `lithos_core::support::*` surface.
+
+## Implementation Notes (2026-05-10)
+
+- Updated crate root visibility from `pub mod support;` to `pub(crate) mod support;` in `lithos-core/src/lib.rs`.
+- Reduced `lithos-core/src/support/mod.rs` to crate-private internals only, keeping `pub(crate) mod hash;` and removing `uuid`/`error` exposure.
+- Removed legacy files `lithos-core/src/support/uuid.rs` and `lithos-core/src/support/error.rs` after UUID contract migration to `utils`.
+- Updated crate-private rustdoc import snippets in `lithos-core/src/schema/views/hashes.rs` from `lithos_core::support::hash::Blake3Hash` to `crate::support::hash::Blake3Hash`.
+- Expanded `lithos-core/src/support/mod.rs` module docs to clearly define `support` as crate-private internal "engine room" and document boundary rules vs `utils`.
+- Added crate-private ergonomic re-exports in `lithos-core/src/support/mod.rs`:
+  - `Blake3Hash`
+  - `Blake3HashIndex`
+  - `HashInput`
+  - `hash_structured`
+- Verified with:
+  - `cargo check -p lithos-core`
+  - `cargo test -p lithos-core --doc`

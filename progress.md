@@ -19,6 +19,10 @@ Create reference documentation for `rkyv` crate.
 - Extracted references and deep code examples from `docs/refs/crates/rkyv.md` and integrated them into the `01-05` files.
 - Investigated `lithos-core` implementations for `redb` and `rkyv`.
 - Added `06-integrations.md` covering `redb`, `mmap2`, and `moka` integrations specific to the repository.
+- Launched additional subagents to research exact links (`docs.rs/rkyv/latest` and specific `rkyv.org` deep links).
+- Updated existing files to replace general links with explicit deep links.
+- Added explicit applicability guidelines (`rkyv` vs `serde`, when to validate, etc.) across the docs.
+- Compiled an index of `rkyv` components and wrote `07-components.md`.
 
 ## Next Steps
 - Task fully complete. All updated documentation is ready for review.
