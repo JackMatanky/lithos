@@ -46,7 +46,7 @@ This document provides a comprehensive taxonomy of method and function naming co
 
 - `UpperCamelCase`: Treat as one word → `Uuid` not `UUID`, `HttpRequest` not `HTTPRequest`
 - `snake_case`: Lowercase → `is_xid_start` not `is_XID_start`
-- Single letters only at end → `btree_map` not `b_tree_map`
+- **Underscore placement**: Avoid underscores between single letters at the start or middle of a name → `btree_map` not `b_tree_map`, `stdin` not `st_d_in`.
 
 ---
 
@@ -99,12 +99,12 @@ Mutex::into_inner() -> T
 | Pattern                      | Signature                         | Example                        |
 | ---------------------------- | --------------------------------- | ------------------------------ |
 | **Infallible**               | `fn new(...) -> Self`             | `Property::new(name, spec)`    |
-| **Fallible**                 | `fn try_new(...) -> Result<...>`  | `SchemaName::try_new(s)?`      |
-| **Parsing Constructor**      | `fn parse(...) -> Result<...>`    | `SchemaId::parse(s)?`          |
+| **Fallible**                 | `fn try_new(...) -> Result<Self, E>` | `SchemaName::try_new(s)`       |
+| **Parsing Constructor**      | `fn parse(...) -> Result<Self, E>` | `SchemaId::parse(s)`           |
 | **Conversion Constructor**   | `fn from_*(...) -> Self`          | `from_raw()`, `from_bytes()`   |
 | **With Config/Capacity**     | `fn with_*(...) -> Self`          | `Vec::with_capacity(100)`      |
-| **I/O Resources**            | `fn open(...) -> Result<...>`     | `File::open()`, `Mmap::open()` |
-| **Network Resources**        | `fn connect(...)`, `fn bind(...)` | `TcpStream::connect()`         |
+| **I/O Resources**            | `fn open(...) -> Result<Self, E>` | `File::open()`, `Mmap::open()` |
+| **Network Resources**        | `fn connect(...) -> Result<Self, E>` | `TcpStream::connect()`      |
 | **Builder Pattern (fluent)** | `fn with_*(...) -> Self`          | `builder.with_name("x")`       |
 
 ```rust
@@ -151,11 +151,16 @@ impl SchemaBuilder {
 
 **Rule**: The `get_` prefix is **not used** for simple field accessors in Rust.
 
+### Accessor Return Types
+
+- **`Copy` types**: Return by value (e.g., `fn id(&self) -> u32`).
+- **Non-`Copy` types**: Return by reference (e.g., `fn name(&self) -> &str`).
+
 ```rust
 // ✅ GOOD: Direct field name
-pub fn name(&self) -> &SchemaName { &self.name }
+pub fn name(&self) -> &SchemaName { &self.name }            // Non-Copy: Reference
 pub fn name_mut(&mut self) -> &mut SchemaName { &mut self.name }
-pub fn id(&self) -> SchemaId { self.id }
+pub fn id(&self) -> SchemaId { self.id }                   // Copy: Value
 
 // ❌ BAD: Unnecessary get_ prefix
 pub fn get_name(&self) -> &SchemaName { &self.name }
@@ -308,20 +313,10 @@ expect_err(msg) -> E                   // Panic if Ok with message
 
 ### Error Type Naming
 
-**Pattern: Verb + Object + Error** (consistent word order)
-
-```rust
-// ✅ GOOD: Consistent verb-object-error order
-ParseBoolError
-ParseIntError
-ParseFloatError
-JoinPathsError
-StripPrefixError
-RecvTimeoutError
-
-// ❌ BAD: Inconsistent order (stdlib legacy)
-AddrParseError  // Should be ParseAddrError
-```
+1. **Operation Errors**: Follow **Verb + Object + Error** (consistent word order).
+   - `ParseBoolError`, `ParseIntError`, `JoinPathsError`, `StripPrefixError`.
+2. **Domain Errors**: Follow **Domain + Error**.
+   - `SchemaError`, `NoteError`, `VaultError`.
 
 **Error trait implementation:**
 
@@ -347,10 +342,10 @@ The Repository pattern provides data access abstraction. Use these method names 
 | Method            | Return Type            | Semantics                            | Examples                           |
 | ----------------- | ---------------------- | ------------------------------------ | ---------------------------------- |
 | **`find_*`**      | `Result<Option<T>, E>` | Optional entity lookup               | `find_by_id`, `find_by_name`       |
-| **`get`**         | `Result<Option<T>, E>` | Fallible lookup with bounds checking | `Vec::get`, `HashMap::get`         |
-| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all entities               | `list()`, `list_by_parent`         |
+| **`get_*`**       | `Result<T, E>`         | Required singleton lookup            | `get_by_id`, `get_config`          |
+| **`list_*`**      | `Result<Vec<T>, E>`    | Enumerate multiple entities          | `list()`, `list_by_parent`         |
 | **`filter_*`**    | `Result<Vec<T>, E>`    | Filtered subset of entities          | `filter_stale()`, `filter_valid()` |
-| **`find_many_*`** | `Result<HashMap<K,V>>` | Bulk lookup by keys                  | `find_many_by_ids`                 |
+| **`find_many_*`** | `Result<HashMap<K,V>,E>`| Bulk optional lookup by keys        | `find_many_by_ids`                 |
 | **`with_*`**      | `Result<Option<R>, E>` | Zero-copy closure-based access       | `with_archived`, `with_metadata`   |
 | **`is_*`**        | `Result<bool, E>`      | Boolean query (single)               | `is_stale`, `is_empty`             |
 | **`has_*`**       | `Result<bool, E>`      | Possession check (single)            | `has_parent`, `has_default`        |
@@ -359,23 +354,23 @@ The Repository pattern provides data access abstraction. Use these method names 
 | **`count_*`**     | `Result<usize, E>`     | Cardinality queries                  | `count()`, `count_by_status`       |
 | **`exists`**      | `Result<bool, E>`      | Existence check (single)             | `exists(id)`                       |
 
-#### `find_*` vs `get` Distinction
+#### `find_*` vs `get_*` Distinction
 
-**Rule**: Use `find_*` for **entity lookup**, `get` for **collection access with bounds checking**.
+**Rule**: Use `find_*` when the entity may not exist (returns `Option`). Use `get_*` when the entity **must** exist or is a required singleton (returns `T` or errors if missing).
 
 ```rust
-// ✅ find_* for entity lookup (repository pattern)
+// ✅ find_* for optional lookup
 fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
-fn find_by_name(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
 
-// ✅ get for collection access (HashMap, Vec pattern)
-fn get(&self, key: &K) -> Option<&V>;  // Like HashMap::get
-Vec::get(index) -> Option<&T>           // Like Vec::get
+// ✅ get_* for required lookup
+fn get_by_id(&self, id: SchemaId) -> Result<Schema, Self::Error>;
 ```
 
 #### Zero-Copy `with_*` Pattern
 
-For performance-critical paths (LSP queries, hot database reads), use closure-scoped access:
+For performance-critical paths (LSP queries, hot database reads), use closure-scoped access.
+
+**Precision Note**: The return type `R` from the closure **must be owned** (it cannot borrow from the `Archived` data because the archive reference is dropped when the closure returns).
 
 ```rust
 // ✅ GOOD: Closure-based zero-copy access
@@ -483,34 +478,36 @@ impl TryFrom<RawSchema> for Schema {
 
 ### Repository Pattern Methods
 
-| Method Pattern          | Return Type             | Example                        |
-| ----------------------- | ----------------------- | ------------------------------ |
-| `find_by_id(id)`        | `Result<Option<T>, E>`  | `find_by_id(schema_id)`        |
-| `find_by_name(name)`    | `Result<Option<T>, E>`  | `find_by_name(&name)`          |
-| `list()`                | `Result<Vec<T>, E>`     | `list()`                       |
-| `list_by_parent(id)`    | `Result<Vec<T>, E>`     | `list_by_parent(parent_id)`    |
-| `find_many_by_ids(ids)` | `Result<HashMap<K,V>>>` | `find_many_by_ids(&ids)`       |
-| `with_archived(id, f)`  | `Result<Option<R>, E>`  | `with_archived(id, \|s\| ...)` |
-| `save(entity)`          | `Result<(), E>`         | `save(&schema)`                |
-| `save_many(entities)`   | `Result<(), E>`         | `save_many(&schemas)`          |
-| `delete(id)`            | `Result<(), E>`         | `delete(schema_id)`            |
-| `delete_many(ids)`      | `Result<(), E>`         | `delete_many(&ids)`            |
-| `is_stale(...)`         | `Result<bool, E>`       | `is_stale(id)`                 |
-| `exists(id)`            | `Result<bool, E>`       | `exists(id)`                   |
+| Pattern          | Return Type            | Example                        |
+| ---------------- | ---------------------- | ------------------------------ |
+| `find_by_id(id)` | `Result<Option<T>, E>` | `find_by_id(schema_id)`        |
+| `get_by_id(id)`  | `Result<T, E>`         | `get_by_id(schema_id)`         |
+| `find_by_name(n)`| `Result<Option<T>, E>` | `find_by_name(&name)`          |
+| `list()`         | `Result<Vec<T>, E>`    | `list()`                       |
+| `list_by_*(val)` | `Result<Vec<T>, E>`    | `list_by_parent(parent_id)`    |
+| `find_many(ids)` | `Result<HashMap<K,V>,E>`| `find_many_by_ids(&ids)`      |
+| `with_*(id, f)`  | `Result<Option<R>, E>` | `with_archived(id, \|s\| ...)` |
+| `save(entity)`   | `Result<(), E>`        | `save(&schema)`                |
+| `save_many(ents)`| `Result<(), E>`        | `save_many(&schemas)`          |
+| `delete(id)`     | `Result<(), E>`        | `delete(schema_id)`            |
+| `delete_many(ids)`| `Result<(), E>`       | `delete_many(&ids)`            |
+| `is_stale(id)`   | `Result<bool, E>`      | `is_stale(id)`                 |
+| `count_*(...)`   | `Result<usize, E>`     | `count_by_status(s)`           |
+| `exists(id)`     | `Result<bool, E>`      | `exists(id)`                   |
 
 ### Conversion Methods
 
-| Pattern            | Cost      | Ownership           | Example                   |
-| ------------------ | --------- | ------------------- | ------------------------- |
-| `as_bytes()`       | Free      | borrowed → borrowed | `str::as_bytes()`         |
-| `as_str()`         | Free      | borrowed → borrowed | `Path::as_os_str()`       |
-| `to_lowercase()`   | Expensive | borrowed → owned    | `str::to_lowercase()`     |
-| `to_string()`      | Expensive | borrowed → owned    | `Path::to_str()`          |
-| `into_bytes()`     | Variable  | owned → owned       | `String::into_bytes()`    |
-| `into_inner()`     | Variable  | wrapper → inner     | `BufReader::into_inner()` |
-| `try_new(value)`   | Fallible  | -                   | `SchemaName::try_new()`   |
-| `parse(s)`         | Fallible  | -                   | `SchemaId::parse()`       |
-| `with_capacity(n)` | Config    | -                   | `Vec::with_capacity()`    |
+| Pattern            | Cost        | Ownership           | Example                   |
+| ------------------ | ----------- | ------------------- | ------------------------- |
+| `as_bytes()`       | Free        | borrowed → borrowed | `str::as_bytes()`         |
+| `as_str()`         | Free        | borrowed → borrowed | `Path::as_os_str()`       |
+| `to_lowercase()`   | Allocation  | borrowed → owned    | `str::to_lowercase()`     |
+| `to_string()`      | Allocation  | borrowed → owned    | `Path::to_str()`          |
+| `into_bytes()`     | Consumes    | owned → owned       | `String::into_bytes()`    |
+| `into_inner()`     | Consumes    | wrapper → inner     | `BufReader::into_inner()` |
+| `try_new(value)`   | Fallible    | -                   | `SchemaName::try_new()`   |
+| `parse(s)`         | Fallible    | -                   | `SchemaId::parse()`       |
+| `with_capacity(n)` | Allocation  | -                   | `Vec::with_capacity()`    |
 
 ### Constructor Patterns
 
