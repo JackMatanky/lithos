@@ -14,9 +14,9 @@ Create `lithos-core/src/utils/` as the outward-facing contract surface for share
 
 ## Acceptance criteria
 
-- [ ] `UuidV7` and `UuidV7Error` live under `lithos-core/src/utils/` and are re-exported for ergonomic usage as `crate::utils::UuidV7`.
-- [ ] All code, macro, docs, and test references to `support::UuidV7` are migrated to `utils` paths, including `db::uuid` macro usage.
-- [ ] Verification passes for the updated surface (compile + relevant tests/doc tests for changed paths).
+- [x] `UuidV7` and `UuidV7Error` live under `lithos-core/src/utils/` and are re-exported for ergonomic usage as `crate::utils::UuidV7`.
+- [x] All code, macro, docs, and test references to `support::UuidV7` are migrated to `utils` paths, including `db::uuid` macro usage.
+- [x] Verification passes for the updated surface (compile + relevant tests/doc tests for changed paths).
 
 ## Blocked by
 
@@ -29,3 +29,15 @@ None - can start immediately
 - Category confirmed as `enhancement`; state moved to `ready-for-agent` per maintainer override.
 - Scope is implementation-ready: create `utils` contract surface, move `UuidV7`, and complete hard cutover of call sites (code, macros, docs, tests).
 - Keep ergonomic path as `crate::utils::UuidV7` with module path availability.
+
+## Implementation Notes (2026-05-10)
+
+- Implemented `lithos-core/src/utils/mod.rs` and set canonical ergonomic re-export path to `crate::utils::UuidV7` and `crate::utils::UuidV7Error`.
+- Added module-level docs and `clippy::pub_use` expectation in `utils/mod.rs` to document intentional re-exports of stable contract types.
+- Moved/copied UUID contract components to `lithos-core/src/utils/uuid.rs` and `lithos-core/src/utils/error.rs`.
+- Updated remaining `support::UuidV7` call sites in code and benches, including schema identifiers/properties and db benchmark imports.
+- Updated `db::uuid` usage path to rely on `utils::UuidV7` contract type.
+- Verified with:
+  - `cargo test -p lithos-core db::uuid::tests::wrapper_redb_value_impl_compiles`
+  - `cargo test -p lithos-core utils::uuid::tests::parse_accepts_valid_v7`
+  - `cargo check -p lithos-core`

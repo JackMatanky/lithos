@@ -23,6 +23,7 @@ pub mod prelude;
 pub mod schema;
 pub mod support;
 pub mod template;
+pub mod utils;
 pub mod vault;
 
 /// Serialization utilities for rkyv integration.

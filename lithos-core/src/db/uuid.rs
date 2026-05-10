@@ -41,7 +41,7 @@ macro_rules! impl_redb_uuid {
             where
                 Self: 'bytes,
             {
-                let Ok(uuid) = $crate::support::UuidV7::try_from(data) else {
+                let Ok(uuid) = $crate::utils::UuidV7::try_from(data) else {
                     panic!("UUID data from database must be valid UUIDv7");
                 };
 
@@ -81,7 +81,7 @@ mod tests {
     use super::*;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct TestId(crate::support::UuidV7);
+    struct TestId(crate::utils::UuidV7);
 
     impl_redb_uuid!(TestId);
 

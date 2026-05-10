@@ -169,8 +169,8 @@ use lithos_core::{
     schema::{
         identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
     },
-    support::UuidV7,
     template::aggregate::{Template, TemplateName},
+    utils::UuidV7,
 };
 use redb::TableDefinition;
 use tempfile::TempDir;

@@ -163,7 +163,7 @@
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use lithos_core::{db::Database, support::UuidV7};
+use lithos_core::{db::Database, utils::UuidV7};
 use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;

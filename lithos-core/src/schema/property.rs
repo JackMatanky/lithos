@@ -44,7 +44,7 @@ use super::{
     property_spec::PropertySpec,
     raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
 };
-use crate::support::uuid::UuidV7;
+use crate::utils::UuidV7;
 
 /// Map of properties keyed by name.
 ///
@@ -576,7 +576,7 @@ impl From<UuidV7> for PropertyId {
 }
 
 impl TryFrom<Uuid> for PropertyId {
-    type Error = crate::support::UuidV7Error;
+    type Error = crate::utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {

@@ -31,7 +31,7 @@ use super::{
     events::{Events, TemplateCreated},
     value::InputSpec,
 };
-use crate::support::UuidV7;
+use crate::utils::UuidV7;
 
 /// Template identity constrained to UUID v7.
 #[derive(
@@ -81,7 +81,7 @@ impl From<TemplateId> for Uuid {
 }
 
 impl TryFrom<Uuid> for TemplateId {
-    type Error = crate::support::UuidV7Error;
+    type Error = crate::utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {

@@ -38,7 +38,7 @@ use crate::{
         inline_fields::InlineFieldKey,
         raw::{RawInlineFieldToken, RawListDepth, RawListItem, RawListKind},
     },
-    support::UuidV7,
+    utils::UuidV7,
 };
 
 /// Unique identifier for a list item (UUID v7).

@@ -33,7 +33,7 @@ use super::{
 };
 use crate::{
     config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
-    support::UuidV7,
+    utils::UuidV7,
 };
 
 /// Stable identifier for a note.
@@ -83,10 +83,10 @@ impl NoteId {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::support::UuidV7Error`] if parsing fails or UUID is not
+    /// Returns [`crate::utils::UuidV7Error`] if parsing fails or UUID is not
     /// v7.
     #[inline]
-    pub fn parse(id: &str) -> Result<Self, crate::support::UuidV7Error> {
+    pub fn parse(id: &str) -> Result<Self, crate::utils::UuidV7Error> {
         Ok(Self(UuidV7::parse(id)?))
     }
 
@@ -120,7 +120,7 @@ impl From<NoteId> for Uuid {
 }
 
 impl TryFrom<Uuid> for NoteId {
-    type Error = crate::support::UuidV7Error;
+    type Error = crate::utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {

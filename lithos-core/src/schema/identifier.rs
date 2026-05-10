@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::{
     fs::RelativePath,
     schema::error::{SchemaError, SchemaNameError, SchemaSyntaxError},
-    support::uuid::UuidV7,
+    utils::UuidV7,
 };
 
 // ============================================================================
@@ -86,7 +86,7 @@ impl From<UuidV7> for SchemaId {
 }
 
 impl TryFrom<Uuid> for SchemaId {
-    type Error = crate::support::UuidV7Error;
+    type Error = crate::utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
