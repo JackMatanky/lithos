@@ -14,9 +14,9 @@ Create one ADR that records the module-boundary governance for `utils` and `supp
 
 ## Acceptance criteria
 
-- [ ] ADR states the canonical semantics: `utils` is outward-facing contract surface; `support` is crate-private internal implementation.
-- [ ] ADR defines dependency allowlist policy and admission criteria, including ADR-only exceptions.
-- [ ] ADR defines the public API rule for third-party types in `utils` and captures hard-cutover rationale.
+- [x] ADR states the canonical semantics: `utils` is outward-facing contract surface; `support` is crate-private internal implementation.
+- [x] ADR defines dependency allowlist policy and admission criteria, including ADR-only exceptions.
+- [x] ADR defines the public API rule for third-party types in `utils` and captures hard-cutover rationale.
 
 ## Blocked by
 
@@ -29,3 +29,10 @@ None - can start immediately
 - Category confirmed as `enhancement`; state moved to `ready-for-agent` per maintainer override.
 - ADR scope is settled: single ADR covering semantics, visibility policy, dependency allowlist/admission criteria, API exposure rules, and hard-cutover rationale.
 - ADR is intentionally independent and can be drafted in parallel with implementation slices.
+
+## Implementation Notes (2026-05-10)
+
+- Added ADR `docs/adr/015-utils-support-boundary-governance.md` using repository ADR numbering.
+- ADR records canonical boundary semantics (`utils` public contract surface, `support` crate-private internals).
+- ADR captures dependency allowlist governance and ADR-only exception path.
+- ADR captures `utils` public API rule for third-party type exposure and hard-cutover/low-churn rationale.

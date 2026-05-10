@@ -14,9 +14,9 @@ Ensure both `lithos-core/src/utils/CONTEXT.md` and `lithos-core/src/support/CONT
 
 ## Acceptance criteria
 
-- [ ] `lithos-core/src/utils/CONTEXT.md` exists and defines `utils` as outward-facing utility contract surface.
-- [ ] `lithos-core/src/support/CONTEXT.md` exists and defines `support` as crate-private internal implementation area.
-- [ ] `CONTEXT-MAP.md` references both new/updated context documents accurately.
+- [x] `lithos-core/src/utils/CONTEXT.md` exists and defines `utils` as outward-facing utility contract surface.
+- [x] `lithos-core/src/support/CONTEXT.md` exists and defines `support` as crate-private internal implementation area.
+- [x] `CONTEXT-MAP.md` references both new/updated context documents accurately.
 
 ## Blocked by
 
@@ -30,3 +30,10 @@ Ensure both `lithos-core/src/utils/CONTEXT.md` and `lithos-core/src/support/CONT
 - Category normalized from `documentation` to canonical `enhancement` role.
 - State moved to `ready-for-agent` per maintainer override.
 - Slice remains dependent on both implementation enforcement and ADR completion so context docs reflect finalized policy language.
+
+## Implementation Notes (2026-05-10)
+
+- Added `lithos-core/src/utils/CONTEXT.md` using context glossary format, including boundary language for utility contracts and allowlist governance.
+- Added `lithos-core/src/support/CONTEXT.md` using context glossary format, including crate-private boundary semantics and support facade terminology.
+- Updated `CONTEXT-MAP.md` to include new `Utils` and `Support` contexts.
+- Added relationship entries describing context consumption of `Utils`, crate-internal usage of `Support`, and promotion path from support internals to utils contracts.

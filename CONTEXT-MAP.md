@@ -8,6 +8,8 @@
 - [Template](./lithos-core/src/template/CONTEXT.md) - defines template assets and rendering constraints for note generation
 - [DB](./lithos-core/src/db/CONTEXT.md) - infrastructure context for persistence, transactions, and zero-copy data access
 - [FS](./lithos-core/src/fs/CONTEXT.md) - infrastructure context for safe file discovery, reads, and writes
+- [Utils](./lithos-core/src/utils/CONTEXT.md) - outward-facing utility contracts and dependency governance for reusable primitives
+- [Support](./lithos-core/src/support/CONTEXT.md) - crate-private implementation internals and internal support facade
 - [CLI](./lithos-cli/src/CONTEXT.md) - command-line entrypoints and user-facing orchestration of core contexts
 
 ## Relationships
@@ -22,3 +24,6 @@
 - **Note, Schema, Template -> DB (infrastructure)**: Business contexts persist/query through repository contracts backed by DB infrastructure
 - **Note, Schema, Template -> FS (infrastructure)**: Business contexts ingest and materialize file-backed state through FS abstractions
 - **Config -> FS (infrastructure)**: Configuration loading depends on filesystem sources and path rules
+- **Note, Schema, Template, Config, DB -> Utils**: Contexts consume stable outward-facing utility contracts
+- **DB, Schema, Config -> Support (internal)**: Internal modules consume crate-private support internals
+- **Support -> Utils (promotion path)**: Stabilized, outward-facing internals move from support into utils by explicit governance decisions
