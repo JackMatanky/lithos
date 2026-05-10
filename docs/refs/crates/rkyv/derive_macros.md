@@ -1,6 +1,6 @@
-# Archive in rkyv
+# rkyv Derive Macros
 
-## Derive Macro Archive
+## `Archive`
 
 [Source](https://docs.rs/rkyv/latest/rkyv/derive.Archive.html)
 
@@ -13,6 +13,34 @@
 ```
 
 Derives `Archive` for the labeled type.
+
+## `Deserialize`
+
+[Source](https://docs.rs/rkyv/latest/rkyv/derive.Deserialize.html)
+
+```rust
+#[derive(Deserialize)]
+{
+    // Attributes available to this derive:
+    #[rkyv]
+}
+```
+
+Derives `Deserialize` for the labeled type.
+
+## `Serialize`
+
+[Source](https://docs.rs/rkyv/latest/rkyv/derive.Serialize.html)
+
+```rust
+#[derive(Serialize)]
+{
+    // Attributes available to this derive:
+    #[rkyv]
+}
+```
+
+Derives `Serialize` for the labeled type.
 
 ## Attributes
 
@@ -30,8 +58,8 @@ Additional arguments can be specified using `#[rkyv(..)]`, which accepts the fol
 - `{archive, serialize, deserialize}_bounds(..)`: Adds additional bounds to trait implementations. This can be useful for recursive types, where bounds may need to be omitted to prevent recursive trait impls.
 - `bytecheck(..)`: Passed through to the underlying `CheckBytes` derive for the archived type.
 - `as = ..`: Uses the given archived type instead of generating a new one. This is useful for types which are `Portable` and/or generic over their parameters.
-- `archived = ..`: Changes the name of the generated archived type. By default, archived types are named “Archived” + `the name of the type`.
-- `resolver = ..`: Changes the name of the generated resolver type. By default, resolver types are named `the name of the type` + “Resolver”.
+- `archived = ..`: Changes the name of the generated archived type. By default, archived types are named "Archived" + `the name of the type`.
+- `resolver = ..`: Changes the name of the generated resolver type. By default, resolver types are named `the name of the type` + "Resolver".
 - `remote = ..`: Generate a remote derive for the annotated type instead of a regular derive.
 
 ### Fields only
