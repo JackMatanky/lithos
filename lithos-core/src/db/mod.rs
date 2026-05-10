@@ -36,6 +36,7 @@
 mod error;
 mod reader;
 pub mod retry;
+mod uuid;
 mod writer;
 
 use std::path::Path;
@@ -43,6 +44,7 @@ use std::path::Path;
 pub use error::DbError;
 pub use reader::BatchReader;
 use redb::ReadableDatabase as _;
+pub use uuid::UuidV7DbType;
 pub use writer::BatchWriter;
 
 /// Concrete database type wrapping redb.
