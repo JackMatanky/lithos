@@ -33,7 +33,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 serde_yaml = "0.9"
 toml = "0.8"
-redb = "3.1"
+redb = "4.1"
 rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1", "unaligned"] }
 uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 
