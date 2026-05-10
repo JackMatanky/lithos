@@ -17,7 +17,7 @@ section: "Implementation Standards"
 - [ADR 002: Storage Pattern](../../../docs/adr/002-storage-pattern.md) - Unified Repository traits architecture
 - [ADR 003: Serialization Strategy](../../../docs/adr/003-serialization-strategy.md) - Raw/Domain/View shapes model
 - [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md) - Multi-phase pipeline patterns
-- [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md) - Method naming conventions
+- [Rust Naming Taxonomy](../../naming-taxonomy.md) - Method naming conventions
 - [Rust Idioms Reference](../../../docs/refs/rust/idioms.md) - General Rust patterns (ownership, strings, etc.)
 - [Rust Style Guide](../../../docs/refs/rust/style.md) - Code style and documentation
 
@@ -392,7 +392,7 @@ const CONFIG_VAULT: TableDefinition<&str, &[u8]> = TableDefinition::new("config_
 
 ### Method Naming (Critical - Read Taxonomy)
 
-**ALL methods MUST follow:** [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md)
+**ALL methods MUST follow:** [Rust Naming Taxonomy](../../naming-taxonomy.md)
 
 **Quick Reference:**
 

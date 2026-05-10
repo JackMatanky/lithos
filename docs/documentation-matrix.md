@@ -318,7 +318,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/refs/rust/canonical-best-practices.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/rust/idioms.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/rust/module-system.md` | keep | aligned with approved target structure | `` |
-| `docs/refs/rust/naming-taxonomy.md` | keep | aligned with approved target structure | `` |
+| `docs/naming-taxonomy.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/rust/quality-tooling.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/rust/rust_analyzer/style_guide.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/rust/rust_analyzer/testing.md` | keep | aligned with approved target structure | `` |

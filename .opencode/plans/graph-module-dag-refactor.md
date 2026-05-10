@@ -1179,7 +1179,7 @@ fn graph_persists_and_reloads_correctly() {
 ## References
 
 - [DAG Research Task Results](/.opencode/tasks/dag-research.md) (if saved)
-- [Rust Naming Taxonomy](/docs/refs/rust/naming-taxonomy.md)
+- [Rust Naming Taxonomy](/docs/naming-taxonomy.md)
 - [Architecture Decisions](/docs/adr/)
 - [Property Bank Processor](lithos-core/src/schema/property_bank_processor.rs) (pattern reference)
 

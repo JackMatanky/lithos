@@ -772,7 +772,7 @@ Once user confirms preferences:
 
 - **Research Document**: See research agent output in this conversation
 - **Roadmap**: `.opencode/plans/schema-processor-lean-modular-performance-roadmap.md`
-- **Naming Taxonomy**: `docs/refs/rust/naming-taxonomy.md`
+- **Naming Taxonomy**: `docs/naming-taxonomy.md`
 - **Rust Idioms**: `docs/refs/rust/idioms.md`
 - **IndexSet Docs**: https://docs.rs/indexmap/latest/indexmap/set/struct.IndexSet.html
 - **Rust API Guidelines**: https://rust-lang.github.io/api-guidelines/

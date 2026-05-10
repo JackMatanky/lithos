@@ -27,3 +27,8 @@
 - **Note, Schema, Template, Config, DB -> Utils**: Contexts consume stable outward-facing utility contracts
 - **DB, Schema, Config -> Support (internal)**: Internal modules consume crate-private support internals
 - **Support -> Utils (promotion path)**: Stabilized, outward-facing internals move from support into utils by explicit governance decisions
+
+## Global Invariants
+
+- **Filesystem Isolation**: All interaction with the filesystem MUST happen through the `FS` context via `FsReader`.
+- **Unified Repository Pattern**: Business contexts (Note, Schema, Template, Config) MUST define their own Repository traits to decouple domain logic from infrastructure.

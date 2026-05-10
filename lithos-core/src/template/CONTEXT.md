@@ -34,6 +34,7 @@ _Avoid_: query string, raw db query
 - Rendering behavior is deterministic for the same template asset and render context.
 - Template usage is constrained by configuration and schema semantics.
 - Runtime schema discovery is strictly limited to child schemas of those explicitly declared in the template frontmatter.
+- Defines a unified `Repository` trait for all persistence operations.
 
 ## Not Owned Here
 

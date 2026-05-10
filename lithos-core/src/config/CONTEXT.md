@@ -36,6 +36,7 @@ _Avoid_: raw settings map, generic config blob
 - Downstream contexts consume resolved config, not raw source fragments.
 - Contexts consume narrowed Config Specs rather than directly consuming full resolved config.
 - Local (vault) config always overrides environment config for the same keys.
+- Defines a unified `Repository` trait for all persistence operations.
 
 ## Examples
 

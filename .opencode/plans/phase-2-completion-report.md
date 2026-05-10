@@ -179,7 +179,7 @@ test result: ok. 802 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 **Decision**: `text()` not `get_text()`, `is_scannable()` not `scannable()`
 
 **Rationale**:
-- Follows Rust naming conventions (see [naming-taxonomy.md](docs/refs/rust/naming-taxonomy.md))
+- Follows Rust naming conventions (see [naming-taxonomy.md](docs/naming-taxonomy.md))
 - `text()` is a simple getter (no `get_` prefix needed)
 - `is_scannable()` is a boolean predicate (`is_` prefix required)
 

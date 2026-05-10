@@ -208,7 +208,7 @@ impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
 ///
 /// # Naming Conventions
 ///
-/// Following the naming taxonomy from `docs/refs/rust/naming-taxonomy.md`:
+/// Following the naming taxonomy from `docs/naming-taxonomy.md`:
 /// - **find_***: Optional reads (returns `Option<T>`)
 /// - **get_***: Required singleton reads
 /// - **list_***: Multiple item reads (returns `Vec<T>`)

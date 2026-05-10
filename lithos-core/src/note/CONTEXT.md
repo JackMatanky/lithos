@@ -30,6 +30,7 @@ _Avoid_: pointer, reference line
 - Parsed note identity remains stable across persistence operations.
 - Extracted structures are derived through explicit parsing boundaries.
 - File Class values are schema-name references used for note metadata validation.
+- Defines a unified `Repository` trait for all persistence operations.
 
 ## Not Owned Here
 
