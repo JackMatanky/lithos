@@ -1,7 +1,7 @@
 # rkyv Reference Guide
 
 **Version:** 0.8.x
-**Official Docs:** [https://docs.rs/rkyv](https://docs.rs/rkyv)
+**Official Docs:** [https://docs.rs/rkyv/latest/rkyv/](https://docs.rs/rkyv/latest/rkyv/)
 **Guide:** [https://rkyv.org/](https://rkyv.org/)
 **Repository:** [https://github.com/rkyv/rkyv](https://github.com/rkyv/rkyv)
 **License:** MIT
@@ -11,11 +11,17 @@ This folder contains documentation and best practices for using the `rkyv` (arch
 ## Contents
 
 1. [Core Concepts & Zero-Copy Patterns](01-core-concepts.md)
-2. [Best Practices & Effective Usage](02-best-practices.md)
-3. [Validation (`access` vs `access_unchecked`)](03-validation.md)
-4. [Format Control & Compatibility](04-format-control.md)
-5. [Pitfalls, Alignment Issues, & Anti-Patterns](05-pitfalls-and-patterns.md)
-6. [Integrations (redb, mmap, etc.)](06-integrations.md)
+2. [Components Index](02-components.md)
+3. [Best Practices & Effective Usage](03-best-practices.md)
+4. [Validation (`access` vs `access_unchecked`)](04-validation.md)
+5. [Format Control & Compatibility](05-format-control.md)
+6. [Pitfalls, Alignment Issues, & Anti-Patterns](06-pitfalls-and-patterns.md)
+7. [Integrations (redb, mmap, etc.)](07-integrations.md)
+
+## Applicability: rkyv vs Serde
+
+- **Use `rkyv` when:** Performance and load times are your absolute top priority, especially for large datasets, IPC, or embedded databases (like `redb`). `rkyv` skips the parsing step entirely by mapping bytes directly into memory.
+- **Use `serde` when:** You need cross-language interoperability, human-readable formats (JSON, TOML), or dynamic/schema-evolving capabilities, where the CPU overhead of parsing is acceptable.
 
 ## TL;DR
 

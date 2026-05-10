@@ -2,7 +2,8 @@
 
 When you serialize a type with `rkyv`, the configuration chosen dictates the persistent byte format. Changing `rkyv` configuration flags later strictly results in breaking changes for all previously persisted data.
 
-**Ref:** [rkyv Format Control](https://rkyv.org/)
+**Ref:** [rkyv Format Control Guide](https://rkyv.org/format.html)
+**Ref:** [Format Control Features](https://docs.rs/rkyv/latest/rkyv/#format-control)
 
 ## Endianness
 - Options: `little_endian` (default) or `big_endian`.
@@ -14,6 +15,8 @@ rkyv = { version = "0.8", features = ["little_endian"] }
 ```
 
 ## Alignment
+**Ref:** [Alignment Deep-Dive](https://rkyv.org/format/alignment.html)
+
 - Options: `aligned` or `unaligned`.
 - **`aligned`** (Default): Runs faster in-memory as the CPU natively fetches aligned words. However, it *will crash* if an aligned struct is mapped onto a misaligned byte offset within a larger buffer.
 - **`unaligned`**: Incurs a slight performance penalty but prevents alignment faults. **Highly recommended or mandatory** for memory-mapped files via the OS, since standard file buffering does not guarantee strict struct alignment.
@@ -34,3 +37,7 @@ rkyv = { version = "0.8", features = ["unaligned"] }
 [dependencies]
 rkyv = { version = "0.8", features = ["pointer_width_32"] }
 ```
+
+## Lithos Guideline: Format Contracts
+In Lithos, we treat format control features as an immutable contract for `redb` storage. Once a database schema is finalized, changing alignment or endianness will instantly corrupt existing user databases.
+- Always ensure `unaligned` is used if memory mapping buffers from disk, as standard OS reads cannot guarantee struct alignment.

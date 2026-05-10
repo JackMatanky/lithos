@@ -20,7 +20,7 @@ let deserialized: Transaction = rkyv::deserialize(archived).unwrap();
 let amount = archived.amount;
 ```
 
-## Self-Referential Types vs Closures
+## Lithos Guideline: The `with_archived` Pattern
 A common mistake when writing Repository traits is attempting to return an `Archived` guard directly from a data store (like `redb`). This creates impossible lifetime requirements and self-referential struct issues in Rust because the reference to `Archived` cannot outlive the database transaction guard.
 
 **Anti-Pattern (Avoid):**
@@ -30,7 +30,7 @@ fn get_archived(&self, id: Id) -> Result<Option<&Archived<T>>, Error>;
 ```
 
 **Best Practice (Zero-Copy Closure):**
-Instead, utilize a closure-based zero-copy extraction pattern. This keeps the lifetime of the borrow contained entirely within the method execution.
+Instead, utilize a closure-based zero-copy extraction pattern. This keeps the lifetime of the borrow contained entirely within the method execution. This is a mandatory pattern for all Lithos Repository and Query traits.
 ```rust
 fn with_archived<F, R>(&self, id: Id, f: F) -> Result<Option<R>, Error>
 where

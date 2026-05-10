@@ -18,11 +18,11 @@ let bytes = to_bytes_with_alloc::<_, rkyv::rancor::Error>(&my_struct, arena.acqu
 ## Batch Writes
 In storage-backed contexts (e.g., when persisting to `redb`), commit and transaction boundaries are expensive. It is much more efficient to batch your serializations and writes into a single transaction rather than hyper-optimizing individual serializations incrementally.
 
-## Isolate to Explicit Storage Models
-Do **not** indiscriminately apply `#[derive(Archive)]` over your entire domain model.
-- Doing so tightly couples your domain logic to your persistence format.
+## Lithos Guideline: Storage Model Isolation
+In `lithos-core`, **do not** indiscriminately apply `#[derive(Archive)]` over your entire domain model (e.g., `Note` or `Schema`).
+- Doing so tightly couples your core business logic to your persistence format.
 - Minor refactors in the domain will result in catastrophic breaking changes for your persisted data.
-- **Solution**: Restrict `rkyv` usage to explicit DTOs or Storage Records (e.g., `NoteRecord`). Map your domain objects to these DTOs strictly at the storage boundary.
+- **Solution**: Restrict `rkyv` usage to explicit storage DTOs (e.g., inside `db_table.rs` or `views.rs`). The `Repository` implementations must map domain objects to these DTOs strictly at the storage boundary.
 
 ## Leverage `CopyOptimization` Safely
 If you have structs composed exclusively of `Copy` primitives and marked `#[repr(C)]`, implement `CopyOptimization::enable()`. This instructs `rkyv` to bypass full piece-by-piece serialization and simply perform a blazing-fast bulk memory copy of the struct.
@@ -43,6 +43,8 @@ impl rkyv::Archive for Vector3 {
 
 ## Optimize Indirection with `#[with(Inline)]`
 By default, `rkyv` may place fields behind relative pointers. Using `#[with(Inline)]` wrapper types forces `rkyv` to store smaller fields sequentially rather than referencing them via a pointer.
+**Ref:** [rkyv Wrapper Types Guide](https://rkyv.org/derive-macro-features/wrapper-types.html)
+
 - This dramatically improves cache locality for primitive fields.
 - Conversely, ensure you keep larger, bulky fields pointer-based to prevent struct bloating and excessive inline copying.
 
