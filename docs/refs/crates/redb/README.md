@@ -8,7 +8,9 @@ redb is a simple, portable, high-performance, ACID, embedded key-value store.
 - [Error Handling & Safety](errors_safety.md)
 - [Maintenance & Operations](maintenance.md)
 - [Advanced Patterns](advanced.md)
+- [rkyv Integration](rkyv-integration.md)
 - [Comparison with Alternatives](comparisons.md)
+- [Internal Design](design.md)
 
 ## Core Principles
 - **ACID Compliance:** Atomic, Consistent, Isolated, Durable.

@@ -6,4 +6,4 @@ Source: https://docs.rs/redb/latest/redb/struct.AccessGuard.html
 Access data directly via `AccessGuard`.
 
 ## insert_reserve
-Avoid intermediate allocations for large values.
+Avoid intermediate allocations for large values by reserving space and writing directly into the database page buffer.

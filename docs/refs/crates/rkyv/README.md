@@ -10,13 +10,7 @@ This folder contains documentation and best practices for using the `rkyv` (arch
 
 ## Contents
 
-1. [Core Concepts & Zero-Copy Patterns](01-core-concepts.md)
-2. [Format Control & Compatibility](02-format-control.md)
-3. [Validation (`access` vs `access_unchecked`)](03-validation.md)
-4. [Components Index](04-components.md)
-5. [Best Practices & Effective Usage](05-best-practices.md)
-6. [Pitfalls, Alignment Issues, & Anti-Patterns](06-pitfalls-and-patterns.md)
-7. [Integrations (redb, mmap, etc.)](07-integrations.md)
+- [rkyv Core Guide](GUIDE.md) - The standard introductory guide covering motivation, architecture, and format.
 
 ## Applicability: rkyv vs Serde
 
