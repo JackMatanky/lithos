@@ -1,5 +1,11 @@
 # rkyv Reference Guide
 
+**Version:** 0.8.x
+**Official Docs:** [https://docs.rs/rkyv](https://docs.rs/rkyv)
+**Guide:** [https://rkyv.org/](https://rkyv.org/)
+**Repository:** [https://github.com/rkyv/rkyv](https://github.com/rkyv/rkyv)
+**License:** MIT
+
 This folder contains documentation and best practices for using the `rkyv` (archive) zero-copy deserialization framework within the Lithos project. It serves as a persistent reference derived from official documentation and project-specific guidelines.
 
 ## Contents
@@ -9,6 +15,7 @@ This folder contains documentation and best practices for using the `rkyv` (arch
 3. [Validation (`access` vs `access_unchecked`)](03-validation.md)
 4. [Format Control & Compatibility](04-format-control.md)
 5. [Pitfalls, Alignment Issues, & Anti-Patterns](05-pitfalls-and-patterns.md)
+6. [Integrations (redb, mmap, etc.)](06-integrations.md)
 
 ## TL;DR
 

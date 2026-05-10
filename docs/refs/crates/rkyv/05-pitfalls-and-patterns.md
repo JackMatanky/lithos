@@ -10,12 +10,23 @@ Calling `rkyv::deserialize(archived)` negates almost all benefits of using `rkyv
 - **Why**: Deserializing forces the allocation of standard native types (e.g., allocating a heap `String` out of an `ArchivedString`).
 - **Rule**: Fall back to `deserialize` exclusively as an escape hatch for code paths that must logically mutate the data. For all read-only paths, access fields directly via `Archived<T>`.
 
+```rust
+let archived: &ArchivedTransaction = ...;
+
+// ANTI-PATTERN: Heap allocation!
+let deserialized: Transaction = rkyv::deserialize(archived).unwrap();
+
+// GOOD: Zero-copy access
+let amount = archived.amount;
+```
+
 ## Self-Referential Types vs Closures
-A common mistake when writing Repository traits is attempting to return an `Archived` guard directly from a data store. This creates impossible lifetime requirements and self-referential struct issues in Rust.
+A common mistake when writing Repository traits is attempting to return an `Archived` guard directly from a data store (like `redb`). This creates impossible lifetime requirements and self-referential struct issues in Rust because the reference to `Archived` cannot outlive the database transaction guard.
 
 **Anti-Pattern (Avoid):**
 ```rust
-fn get_archived(&self, id: Id) -> Result<Option<Guard>, Error>;
+// Fails compilation because the DB Guard is dropped at the end of the function
+fn get_archived(&self, id: Id) -> Result<Option<&Archived<T>>, Error>;
 ```
 
 **Best Practice (Zero-Copy Closure):**
@@ -23,7 +34,12 @@ Instead, utilize a closure-based zero-copy extraction pattern. This keeps the li
 ```rust
 fn with_archived<F, R>(&self, id: Id, f: F) -> Result<Option<R>, Error>
 where
-    F: for<'a> FnOnce(&'a Archived<T>) -> R;
+    F: for<'a> FnOnce(&'a Archived<T>) -> R
+{
+    self.db.get::<T, _, _>(TABLE, id, |archived| {
+        f(archived) // Access happens here while DB transaction is held
+    })
+}
 ```
 
 ## Cyclic Graphs
