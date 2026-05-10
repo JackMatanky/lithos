@@ -1,9 +1,10 @@
 ---
 title: 04-context-docs-for-utils-and-support
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 date_created: 2026-05-10
+date_completed: 2026-05-10
 ---
 
 # Add context docs for `utils` and `support`, update context map

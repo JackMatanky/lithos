@@ -1,9 +1,10 @@
 ---
 title: 03-adr-utils-support-boundary-governance
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 date_created: 2026-05-10
+date_completed: 2026-05-10
 ---
 
 # Write ADR for `utils`/`support` boundary governance

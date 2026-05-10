@@ -1,9 +1,10 @@
 ---
 title: 02-enforce-support-crate-private-internals
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 date_created: 2026-05-10
+date_completed: 2026-05-10
 ---
 
 # Enforce `support` as crate-private internals

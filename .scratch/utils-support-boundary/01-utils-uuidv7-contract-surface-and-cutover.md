@@ -1,9 +1,10 @@
 ---
 title: 01-utils-uuidv7-contract-surface-and-cutover
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 date_created: 2026-05-10
+date_completed: 2026-05-10
 ---
 
 # Create `utils` contract surface and cut over all `UuidV7` consumers
