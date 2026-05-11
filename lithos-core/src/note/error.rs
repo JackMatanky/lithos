@@ -171,7 +171,7 @@ impl From<StructureError> for NoteIngestError {
 ///
 /// Distinguishes between failures in the ingestion, domain validation,
 /// and persistence phases of the note lifecycle.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum NoteLoadError {
     /// The file could not be read or its basic syntax was invalid.
@@ -407,7 +407,7 @@ pub enum NoteParseError {
 }
 
 /// Errors surfaced by the persistence and repository layer.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum NoteRepositoryError {
     /// Note requested by unique identifier was not found.
@@ -793,14 +793,16 @@ mod tests {
 
         #[test]
         fn db_error_to_load_error_chain() {
-            let db_err = DbError::Table("test failure".into());
+            let io_err = std::io::Error::other("test failure");
+            let storage_err = redb::StorageError::from(io_err);
+            let db_err = DbError::Table(redb::TableError::from(storage_err));
             let load_err: NoteLoadError = db_err.into();
 
             assert!(
                 matches!(
                     &load_err,
                     NoteLoadError::Persistence(NoteRepositoryError::Storage(source))
-                    if source.to_string() == "table error: test failure"
+                    if source.to_string().contains("test failure")
                 ),
                 "Expected Persistence(Storage) error chain, got: {load_err:?}"
             );

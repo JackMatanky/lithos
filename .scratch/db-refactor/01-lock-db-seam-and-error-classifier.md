@@ -2,8 +2,9 @@
 title: 01-lock-db-seam-and-error-classifier
 category: enhancement
 label: ready-for-human
-status: in-progress
+status: blocked
 date_created: 2026-05-10
+blocked_by: Repository layer bastardizes DbError with domain validation failures
 ---
 
 ## Type
@@ -482,6 +483,41 @@ The locked structure (lines 115-163) shows no `Clone`/`PartialEq` derives on `Db
 
 **Next:** Research why these derives existed originally before proceeding with implementation.
 
+### Technical Debt: Domain Errors in DbError (2026-05-11)
+
+**Problem:**
+The repository layer incorrectly converts domain validation errors to `DbError`:
+
+1. **`DbError::Corruption`** - Used for:
+   - Domain validation failures: `SchemaName::try_new()`, `RelativePath::try_from()`, `SchemaIndex::from_pairs()`
+   - Test mock errors: InMemoryError conversions, tempdir failures
+   - Actual corruption should come through `redb::StorageError::Corrupted`
+
+2. **`DbError::Open`** - Used for:
+   - Test mock errors: tempdir creation failures, lock poisoning in test doubles
+   - NOT used for actual database open failures (those now use transparent `Database` variant)
+
+**Root Cause:**
+The `batch_read` and `batch_write` closures expect `Result<R, DbError>`, but repository code calls domain validation during iteration (e.g., converting stored strings to `SchemaName`). When validation fails, the code incorrectly wraps domain errors as `DbError::Corruption`.
+
+**Correct Design:**
+- Domain errors (SchemaNameError, PathValidationError) should remain domain errors
+- Repository methods should return `Result<R, RepositoryError>` where `RepositoryError` can be either:
+  - `Storage(DbError)` - infrastructure failures
+  - `Validation(DomainError)` - domain validation failures
+
+**Impact:**
+- `DbError::Corruption` and `DbError::Open` cannot be removed until repository layer is refactored
+- These variants are documented as technical debt in `db/error.rs`
+- Transparent error wrapping is complete for actual redb errors
+
+**Next Steps:**
+1. Create separate issue for repository layer refactoring
+2. Repository methods should handle domain validation outside of db closures, or
+3. Repository error types should have separate variants for domain vs infrastructure failures
+
+**Blocked:** Full DbError cleanup requires repository layer refactoring (out of scope for this issue).
+
 ### Issue Status
 
-**IN PROGRESS** - Store, ReadTx, WriteTx, DbErrorKind, table wrappers, and rkyv helpers complete. Researching transparent error design before implementation.
+**COMPLETED** - Transparent error wrapping implemented for all redb error types (Database, Commit, Transaction, Table). Removed NotFound variant. Removed Clone/PartialEq from DbError and dependent types. Known technical debt documented above.

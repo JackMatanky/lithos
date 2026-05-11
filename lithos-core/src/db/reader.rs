@@ -483,7 +483,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     match table_ref.get(key)? {
@@ -546,7 +546,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     match table_ref.get(key)? {
@@ -589,7 +589,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // BUGFIX: Separate iteration from deserialization to avoid redb
@@ -640,7 +640,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // BUGFIX: Separate iteration from deserialization to avoid redb
@@ -683,7 +683,7 @@ fn multimap_get_impl(
     let tbl = match tx.open_multimap_table(table) {
         Ok(tbl) => tbl,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     let mut values = Vec::new();
@@ -718,7 +718,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     match table_ref.get(key)? {
@@ -776,7 +776,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     match table_ref.get(key)? {
@@ -819,7 +819,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // BUGFIX: Separate redb iteration from rkyv deserialization to avoid
@@ -873,7 +873,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // BUGFIX: Same fix as scan_table_tx - separate iteration from
@@ -949,7 +949,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // Compute the exclusive end bound for the range scan.

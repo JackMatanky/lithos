@@ -644,10 +644,10 @@ impl From<InMemoryError> for super::error::SchemaRepositoryError {
         let db_error = match err {
             InMemoryError::Internal {
                 message,
-            } => super::super::db::DbError::Database(message.into()),
+            } => super::super::db::DbError::Corruption(message.into()),
             InMemoryError::LockPoisoned {
                 context,
-            } => super::super::db::DbError::Database(format!(
+            } => super::super::db::DbError::Corruption(format!(
                 "Lock poisoned: {context}"
             )),
         };

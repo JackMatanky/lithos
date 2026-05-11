@@ -172,7 +172,8 @@ mod tests {
             || {
                 attempts += 1;
                 if attempts < 3 {
-                    Err(DbError::Database("database is locked".into()))
+                    let io_err = std::io::Error::other("database is locked");
+                    Err(DbError::Database(redb::DatabaseError::from(io_err)))
                 } else {
                     Ok("success")
                 }
@@ -196,7 +197,8 @@ mod tests {
             },
             || {
                 attempts += 1;
-                Err(DbError::Database("database is locked".into()))
+                let io_err = std::io::Error::other("database is locked");
+                Err(DbError::Database(redb::DatabaseError::from(io_err)))
             },
         );
 

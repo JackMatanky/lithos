@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use uuid::Uuid;
 
 use crate::{
-    db::{BatchReader, BatchWriter, Database, DbError},
+    db::{BatchReader, BatchWriter, Database},
     note::{
         LIST_VIEWS_BY_NOTE_ID, NOTE_ID_BY_PATH, NOTES_BY_ID,
         aggregate::{Note, NoteId},
@@ -536,7 +536,18 @@ impl Repository for RedbRepository<'_> {
         self.db
             .batch_read(|reader| {
                 let batch = RedbBatchNoteReader::new(reader);
-                f(batch).map_err(|err| DbError::Table(err.to_string()))
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    clippy::unreachable,
+                    reason = "Batch closures only perform db operations; \
+                              non-Storage variants indicate programming error"
+                )]
+                f(batch).map_err(|err| match err {
+                    NoteRepositoryError::Storage(db_err) => db_err,
+                    other => unreachable!(
+                        "batch operation returned non-storage error: {other}"
+                    ),
+                })
             })
             .map_err(NoteRepositoryError::Storage)
     }
@@ -551,7 +562,18 @@ impl Repository for RedbRepository<'_> {
         self.db
             .batch_write(|writer| {
                 let mut batch = RedbBatchNoteWriter::new(writer);
-                f(&mut batch).map_err(|err| DbError::Table(err.to_string()))
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    clippy::unreachable,
+                    reason = "Batch closures only perform db operations; \
+                              non-Storage variants indicate programming error"
+                )]
+                f(&mut batch).map_err(|err| match err {
+                    NoteRepositoryError::Storage(db_err) => db_err,
+                    other => unreachable!(
+                        "batch operation returned non-storage error: {other}"
+                    ),
+                })
             })
             .map_err(NoteRepositoryError::Storage)
     }
@@ -604,6 +626,7 @@ mod tests {
             aggregate::Config,
             vault::{VaultId, VaultRoot},
         },
+        db::DbError,
         note::{
             aggregate::{Note, NoteId},
             paths::NotePath,
@@ -639,7 +662,9 @@ mod tests {
     #[test]
     fn save_persists_path() -> Result<(), NoteRepositoryError> {
         let dir = tempdir().map_err(|err| {
-            NoteRepositoryError::Storage(DbError::Table(err.to_string()))
+            NoteRepositoryError::Storage(DbError::Open(format!(
+                "temp dir: {err}"
+            )))
         })?;
         let db_path = dir.path().join("notes.redb");
         let db =
@@ -682,7 +707,9 @@ mod tests {
     #[test]
     fn delete_note_removes_note() -> Result<(), NoteRepositoryError> {
         let dir = tempdir().map_err(|err| {
-            NoteRepositoryError::Storage(DbError::Table(err.to_string()))
+            NoteRepositoryError::Storage(DbError::Open(format!(
+                "temp dir: {err}"
+            )))
         })?;
         let db_path = dir.path().join("notes.redb");
         let db =

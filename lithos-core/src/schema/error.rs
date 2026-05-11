@@ -358,7 +358,7 @@ pub enum SchemaSyntaxError {
 }
 
 /// Storage-related errors for schema persistence.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaStorageError {
     /// Returned when the database layer fails.
@@ -1182,15 +1182,15 @@ mod tests {
 
         #[test]
         fn db_error_converts_into_schema_repository_error() {
-            let db_error = DbError::NotFound;
+            let db_error = DbError::Serialization("test".into());
             let repo_error: SchemaRepositoryError = db_error.into();
 
             assert!(
                 matches!(
                     repo_error,
-                    SchemaRepositoryError::Database(DbError::NotFound)
+                    SchemaRepositoryError::Database(DbError::Serialization(_))
                 ),
-                "Expected DbError::NotFound to convert into \
+                "Expected DbError::Serialization to convert into \
                  SchemaRepositoryError::Database"
             );
         }

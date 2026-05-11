@@ -779,7 +779,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     match table_ref.get(key)? {
@@ -829,7 +829,7 @@ where
     let table_ref = match tx.open_table(table) {
         Ok(table_ref) => table_ref,
         Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(err) => return Err(DbError::Transaction(err.to_string())),
+        Err(err) => return Err(err.into()),
     };
 
     // Compute the exclusive end bound for the range scan.
@@ -1176,7 +1176,11 @@ mod tests {
 
             let result = db.batch_write(|batch| {
                 batch.put(USERS_TABLE, "temp", &temp_value)?;
-                Err(DbError::Transaction(String::from("intentional")))
+                let io_err = std::io::Error::other("intentional");
+                let storage_err = redb::StorageError::from(io_err);
+                Err(DbError::Transaction(redb::TransactionError::from(
+                    storage_err,
+                )))
             });
 
             assert!(result.is_err());
@@ -1249,7 +1253,11 @@ mod tests {
             let result: Result<(), DbError> =
                 db.read_write_unit_of_work(|tx| {
                     tx.put(COUNTER_TABLE, "counter", &42u64)?;
-                    Err(DbError::Transaction(String::from("intentional")))
+                    let io_err = std::io::Error::other("intentional");
+                    let storage_err = redb::StorageError::from(io_err);
+                    Err(DbError::Transaction(redb::TransactionError::from(
+                        storage_err,
+                    )))
                 });
 
             assert!(result.is_err());

@@ -185,7 +185,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::Open` if the database cannot be opened or created.
+    /// Returns `DbError::Database` if the database cannot be opened or created.
     ///
     /// # Examples
     ///
@@ -201,8 +201,7 @@ impl Database {
     /// ```
     #[inline]
     pub fn open(path: &Path) -> Result<Self, DbError> {
-        let inner = redb::Database::create(path)
-            .map_err(|e| DbError::Open(e.to_string()))?;
+        let inner = redb::Database::create(path)?;
         Ok(Self {
             inner,
         })
@@ -215,7 +214,7 @@ impl Database {
     /// Returns `DbError::Transaction` if the transaction cannot be started.
     #[inline]
     pub fn begin_read(&self) -> Result<redb::ReadTransaction, DbError> {
-        self.inner.begin_read().map_err(|e| DbError::Transaction(e.to_string()))
+        self.inner.begin_read().map_err(Into::into)
     }
 }
 

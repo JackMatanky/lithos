@@ -27,19 +27,23 @@ pub enum DbErrorKind {
 
 /// Database error types.
 #[non_exhaustive]
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error)]
 pub enum DbError {
-    /// Database operation failed.
-    #[error("database error: {0}")]
-    Database(String),
+    /// Failed to open or create database.
+    #[error(transparent)]
+    Database(#[from] redb::DatabaseError),
 
-    /// Database file not found or cannot be opened.
-    #[error("failed to open database: {0}")]
-    Open(String),
+    /// Commit operation failed.
+    #[error(transparent)]
+    Commit(#[from] redb::CommitError),
 
-    /// Key not found in database.
-    #[error("key not found")]
-    NotFound,
+    /// Transaction operation failed.
+    #[error(transparent)]
+    Transaction(#[from] redb::TransactionError),
+
+    /// Table operation failed.
+    #[error(transparent)]
+    Table(#[from] redb::TableError),
 
     /// Serialization failed.
     #[error("serialization error: {0}")]
@@ -49,20 +53,31 @@ pub enum DbError {
     #[error("deserialization error: {0}")]
     Deserialization(String),
 
-    /// Data corruption detected.
+    /// TECHNICAL DEBT: Database open/setup failure (test mocks only).
     ///
-    /// This error indicates that the database is in an inconsistent state,
-    /// such as missing required metadata or referential integrity violations.
-    #[error("data corruption detected: {0}")]
+    /// This variant should be removed. It's currently used only in test mocks
+    /// for non-database errors (tempdir failures, lock poisoning). Test code
+    /// should use appropriate test error types instead of `DbError`.
+    ///
+    /// See: `.scratch/db-refactor/` for tracking issue.
+    #[error("database open failed: {0}")]
+    Open(String),
+
+    /// TECHNICAL DEBT: Data corruption or domain validation failure.
+    ///
+    /// This variant conflates two different error types:
+    /// 1. Actual data corruption (should come through
+    ///    `redb::StorageError::Corrupted`)
+    /// 2. Domain validation failures (e.g., `SchemaNameError`,
+    ///    `PathValidationError`)
+    ///
+    /// Domain errors should NOT be converted to `DbError`. The repository layer
+    /// needs refactoring to properly handle domain validation failures separate
+    /// from infrastructure errors.
+    ///
+    /// See: `.scratch/db-refactor/` for tracking issue.
+    #[error("data corruption: {0}")]
     Corruption(String),
-
-    /// Transaction failed.
-    #[error("transaction error: {0}")]
-    Transaction(String),
-
-    /// Table operation failed.
-    #[error("table error: {0}")]
-    Table(String),
 }
 
 impl DbError {
@@ -84,8 +99,9 @@ impl DbError {
     pub fn kind(&self) -> DbErrorKind {
         match self {
             Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
+            Self::Commit(_) => DbErrorKind::Commit,
             Self::Transaction(_) => DbErrorKind::Transaction,
-            Self::Table(_) | Self::NotFound => DbErrorKind::Table,
+            Self::Table(_) => DbErrorKind::Table,
             Self::Serialization(_) => DbErrorKind::Serialization,
             Self::Deserialization(_) => DbErrorKind::Deserialization,
             Self::Corruption(_) => DbErrorKind::Storage,
@@ -109,8 +125,13 @@ impl DbError {
     /// ```
     /// use lithos_core::db::DbError;
     ///
-    /// let io_error = DbError::Database("database is locked".into());
+    /// let redb_err = redb::DatabaseError::from(std::io::Error::new(
+    ///     std::io::ErrorKind::Other,
+    ///     "database is locked",
+    /// ));
+    /// let io_error = DbError::Database(redb_err);
     /// // Note: actual transient detection depends on error message analysis
+    /// assert!(io_error.is_transient());
     ///
     /// let corruption = DbError::Corruption("data corrupted".into());
     /// assert!(!corruption.is_transient());
@@ -124,61 +145,46 @@ impl DbError {
     pub fn is_transient(&self) -> bool {
         match self {
             // Database errors might be transient (locked, I/O)
-            Self::Database(msg) => {
-                let lower = msg.to_lowercase();
-                lower.contains("locked")
-                    || lower.contains("busy")
-                    || lower.contains("i/o error")
-                    || lower.contains("temporarily unavailable")
+            Self::Database(redb_err) => {
+                let msg = redb_err.to_string().to_lowercase();
+                msg.contains("locked")
+                    || msg.contains("busy")
+                    || msg.contains("i/o error")
+                    || msg.contains("temporarily unavailable")
+            }
+            // Commit errors might be transient (I/O)
+            Self::Commit(redb_err) => {
+                let msg = redb_err.to_string().to_lowercase();
+                msg.contains("locked")
+                    || msg.contains("busy")
+                    || msg.contains("i/o error")
+                    || msg.contains("temporarily unavailable")
             }
             // Transaction errors might be transient (conflicts)
-            Self::Transaction(msg) => {
-                let lower = msg.to_lowercase();
-                lower.contains("conflict") || lower.contains("locked")
+            Self::Transaction(redb_err) => {
+                let msg = redb_err.to_string().to_lowercase();
+                msg.contains("conflict") || msg.contains("locked")
+            }
+            // Table errors might be transient (I/O)
+            Self::Table(redb_err) => {
+                let msg = redb_err.to_string().to_lowercase();
+                msg.contains("locked")
+                    || msg.contains("busy")
+                    || msg.contains("i/o error")
             }
             // All other errors are permanent (not retryable)
             Self::Corruption(_)
             | Self::Deserialization(_)
             | Self::Serialization(_)
-            | Self::NotFound
-            | Self::Open(_)
-            | Self::Table(_) => false,
+            | Self::Open(_) => false,
         }
-    }
-}
-
-impl From<redb::DatabaseError> for DbError {
-    #[inline]
-    fn from(e: redb::DatabaseError) -> Self {
-        Self::Database(e.to_string())
-    }
-}
-
-impl From<redb::TransactionError> for DbError {
-    #[inline]
-    fn from(e: redb::TransactionError) -> Self {
-        Self::Transaction(e.to_string())
-    }
-}
-
-impl From<redb::TableError> for DbError {
-    #[inline]
-    fn from(e: redb::TableError) -> Self {
-        Self::Table(e.to_string())
     }
 }
 
 impl From<redb::StorageError> for DbError {
     #[inline]
     fn from(e: redb::StorageError) -> Self {
-        Self::Database(e.to_string())
-    }
-}
-
-impl From<redb::CommitError> for DbError {
-    #[inline]
-    fn from(e: redb::CommitError) -> Self {
-        Self::Transaction(e.to_string())
+        Self::Database(redb::DatabaseError::from(e))
     }
 }
 
@@ -198,14 +204,9 @@ mod tests {
         /// returns `DbErrorKind::Database`.
         #[test]
         fn database_variant_returns_database_kind() {
-            let err = DbError::Database("test".to_owned());
-            assert_eq!(err.kind(), DbErrorKind::Database);
-        }
-
-        /// `DbError::kind()` returns `DbErrorKind::Database` for Open variant.
-        #[test]
-        fn open_variant_returns_database_kind() {
-            let err = DbError::Open("test error".to_owned());
+            let redb_err =
+                redb::DatabaseError::from(std::io::Error::other("test"));
+            let err = DbError::Database(redb_err);
             assert_eq!(err.kind(), DbErrorKind::Database);
         }
 
@@ -213,14 +214,19 @@ mod tests {
         /// variant.
         #[test]
         fn transaction_variant_returns_transaction_kind() {
-            let err = DbError::Transaction("test error".to_owned());
+            let io_err = std::io::Error::other("test error");
+            let storage_err = redb::StorageError::from(io_err);
+            let err =
+                DbError::Transaction(redb::TransactionError::from(storage_err));
             assert_eq!(err.kind(), DbErrorKind::Transaction);
         }
 
         /// `DbError::kind()` returns `DbErrorKind::Table` for Table variant.
         #[test]
         fn table_variant_returns_table_kind() {
-            let err = DbError::Table("test error".to_owned());
+            let io_err = std::io::Error::other("test error");
+            let storage_err = redb::StorageError::from(io_err);
+            let err = DbError::Table(redb::TableError::from(storage_err));
             assert_eq!(err.kind(), DbErrorKind::Table);
         }
 
@@ -246,14 +252,6 @@ mod tests {
         fn corruption_variant_returns_storage_kind() {
             let err = DbError::Corruption("test error".to_owned());
             assert_eq!(err.kind(), DbErrorKind::Storage);
-        }
-
-        /// `DbError::kind()` returns `DbErrorKind::Table` for `NotFound`
-        /// variant.
-        #[test]
-        fn notfound_variant_returns_table_kind() {
-            let err = DbError::NotFound;
-            assert_eq!(err.kind(), DbErrorKind::Table);
         }
     }
 
@@ -281,29 +279,29 @@ mod tests {
             assert!(!err.is_transient());
         }
 
-        /// `NotFound` errors are never transient.
-        #[test]
-        fn notfound_is_not_transient() {
-            let err = DbError::NotFound;
-            assert!(!err.is_transient());
-        }
-
         /// Database locked errors are transient.
         #[test]
         fn database_locked_is_transient() {
-            let err = DbError::Database("database is locked".to_owned());
+            let redb_err = redb::DatabaseError::from(std::io::Error::other(
+                "database is locked",
+            ));
+            let err = DbError::Database(redb_err);
             assert!(err.is_transient());
         }
 
         /// Transaction conflict errors are transient.
         #[test]
         fn transaction_conflict_is_transient() {
-            let err = DbError::Transaction("transaction conflict".to_owned());
+            let io_err = std::io::Error::other("transaction conflict");
+            let storage_err = redb::StorageError::from(io_err);
+            let err =
+                DbError::Transaction(redb::TransactionError::from(storage_err));
             assert!(err.is_transient());
         }
     }
 
-    /// Converting `redb::DatabaseError` to `DbError` preserves error metadata.
+    /// Converting `redb::DatabaseError` to `DbError` preserves error metadata
+    /// and classifies correctly.
     #[test]
     fn redb_database_error_converts_with_correct_kind() {
         let db_err = redb::DatabaseError::from(std::io::Error::new(
@@ -312,11 +310,96 @@ mod tests {
         ));
         let result: DbError = db_err.into();
 
+        // Transparent wrapping means Display shows redb message directly
         assert!(
-            result.to_string().contains("database error"),
-            "Expected database error conversion message, got: {result}"
+            !result.to_string().is_empty(),
+            "Expected non-empty error message, got: {result}"
         );
 
         assert_eq!(result.kind(), DbErrorKind::Database);
+    }
+
+    /// `DbError::Database` wraps `redb::DatabaseError` transparently without
+    /// string conversion.
+    ///
+    /// Behavior: Transparent wrapping preserves full error context via
+    /// #[error(transparent)]. The Display impl delegates directly to the wrapped
+    /// redb error, maintaining full diagnostic information.
+    /// Verification: Create `redb::DatabaseError`, convert to `DbError`,
+    /// verify Display output matches redb error (not generic wrapper message).
+    #[test]
+    fn database_error_wraps_redb_transparently() {
+        let io_err =
+            std::io::Error::new(std::io::ErrorKind::NotFound, "db not found");
+        let redb_err = redb::DatabaseError::from(io_err);
+        let redb_msg = redb_err.to_string();
+
+        let db_err: DbError = redb_err.into();
+
+        // Verify kind classification works
+        assert_eq!(db_err.kind(), DbErrorKind::Database);
+
+        // Verify transparent wrapping: Display should show redb error directly
+        // (not "database error: <redb message>")
+        let db_msg = db_err.to_string();
+        assert_eq!(
+            db_msg, redb_msg,
+            "Expected transparent Display to match redb error message"
+        );
+    }
+
+    /// `DbError::Commit` wraps `redb::CommitError` transparently.
+    ///
+    /// Behavior: Transparent wrapping for commit failures preserves full
+    /// context via #[error(transparent)].
+    /// Verification: Create `redb::CommitError`, convert to `DbError`,
+    /// verify Display matches redb message and kind is Commit.
+    #[test]
+    fn commit_error_wraps_redb_transparently() {
+        let io_err = std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "commit failed",
+        );
+        let storage_err = redb::StorageError::from(io_err);
+        let redb_err = redb::CommitError::from(storage_err);
+        let redb_msg = redb_err.to_string();
+
+        let db_err: DbError = redb_err.into();
+
+        assert_eq!(db_err.kind(), DbErrorKind::Commit);
+
+        let db_msg = db_err.to_string();
+        assert_eq!(
+            db_msg, redb_msg,
+            "Expected transparent Display to match redb commit error"
+        );
+    }
+
+    /// `DbError::Transaction` wraps `redb::TransactionError` transparently.
+    #[test]
+    fn transaction_error_wraps_redb_transparently() {
+        let io_err = std::io::Error::other("transaction failed");
+        let storage_err = redb::StorageError::from(io_err);
+        let redb_err = redb::TransactionError::from(storage_err);
+        let redb_msg = redb_err.to_string();
+
+        let db_err: DbError = redb_err.into();
+
+        assert_eq!(db_err.kind(), DbErrorKind::Transaction);
+        assert_eq!(db_err.to_string(), redb_msg);
+    }
+
+    /// `DbError::Table` wraps `redb::TableError` transparently.
+    #[test]
+    fn table_error_wraps_redb_transparently() {
+        let io_err = std::io::Error::other("table failed");
+        let storage_err = redb::StorageError::from(io_err);
+        let redb_err = redb::TableError::from(storage_err);
+        let redb_msg = redb_err.to_string();
+
+        let db_err: DbError = redb_err.into();
+
+        assert_eq!(db_err.kind(), DbErrorKind::Table);
+        assert_eq!(db_err.to_string(), redb_msg);
     }
 }

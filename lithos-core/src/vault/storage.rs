@@ -3,7 +3,7 @@
 //! Stores vault file and folder entries as rkyv-serialized domain types.
 
 use crate::{
-    db::{BatchReader, BatchWriter, Database, DbError},
+    db::{BatchReader, BatchWriter, Database},
     vault::{
         VAULT_FILES_BY_PATH, VAULT_FOLDERS_BY_PATH,
         error::VaultRepositoryError,
@@ -427,7 +427,18 @@ impl Repository for RedbRepository<'_> {
         self.db
             .batch_read(|reader| {
                 let batch = RedbBatchVaultReader::new(reader);
-                f(batch).map_err(|err| DbError::Table(err.to_string()))
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    clippy::unreachable,
+                    reason = "Batch closures only perform db operations; \
+                              non-Storage variants indicate programming error"
+                )]
+                f(batch).map_err(|err| match err {
+                    VaultRepositoryError::Storage(db_err) => db_err,
+                    other => unreachable!(
+                        "batch operation returned non-storage error: {other}"
+                    ),
+                })
             })
             .map_err(VaultRepositoryError::Storage)
     }
@@ -442,7 +453,18 @@ impl Repository for RedbRepository<'_> {
         self.db
             .batch_write(|writer| {
                 let mut batch = RedbBatchVaultWriter::new(writer);
-                f(&mut batch).map_err(|err| DbError::Table(err.to_string()))
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    clippy::unreachable,
+                    reason = "Batch closures only perform db operations; \
+                              non-Storage variants indicate programming error"
+                )]
+                f(&mut batch).map_err(|err| match err {
+                    VaultRepositoryError::Storage(db_err) => db_err,
+                    other => unreachable!(
+                        "batch operation returned non-storage error: {other}"
+                    ),
+                })
             })
             .map_err(VaultRepositoryError::Storage)
     }

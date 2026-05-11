@@ -673,7 +673,7 @@ impl Repository for RedbRepository {
                         SchemaName::try_new(&name_str)
                             .map(|name| (name, id))
                             .map_err(|e| {
-                                crate::db::DbError::Database(e.to_string())
+                                crate::db::DbError::Corruption(e.to_string())
                             })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -685,13 +685,13 @@ impl Repository for RedbRepository {
                         RelativePath::try_from(path_str.as_str())
                             .map(|path| (path, id))
                             .map_err(|e| {
-                                crate::db::DbError::Database(e.to_string())
+                                crate::db::DbError::Corruption(e.to_string())
                             })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
                 SchemaIndex::from_pairs(name_pairs, path_pairs)
-                    .map_err(|e| crate::db::DbError::Database(e.to_string()))
+                    .map_err(|e| crate::db::DbError::Corruption(e.to_string()))
             })
             .map_err(map_db_error)
     }
@@ -846,7 +846,7 @@ impl Repository for RedbRepository {
                     _ => {
                         // This shouldn't happen in practice since f should only
                         // return Storage errors when using the reader
-                        crate::db::DbError::Database(schema_err.to_string())
+                        crate::db::DbError::Corruption(schema_err.to_string())
                     }
                 }
             })
