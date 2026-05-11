@@ -518,6 +518,108 @@ The `batch_read` and `batch_write` closures expect `Result<R, DbError>`, but rep
 
 **Blocked:** Full DbError cleanup requires repository layer refactoring (out of scope for this issue).
 
+### Transparent Error Implementation Complete (2026-05-11)
+
+**Commit:** `c634e368` - `refactor(db)!: implement transparent error wrapping for redb`
+
+#### What Was Implemented
+
+**Transparent redb error wrapping:**
+- `Database(#[from] redb::DatabaseError)` - Database-level operations
+- `Commit(#[from] redb::CommitError)` - Commit failures
+- `Transaction(#[from] redb::TransactionError)` - Transaction errors
+- `Table(#[from] redb::TableError)` - Table operations
+
+**Cleanup:**
+- ✅ Removed `DbError::NotFound` - Never used in real code; domain layers return `Ok(None)` for missing keys
+- ✅ Fixed `Database::open()` - Now uses transparent `Database` variant instead of string-based `Open`
+- ✅ Removed `Clone`/`PartialEq` from `DbError`, `NoteRepositoryError`, `NoteLoadError`, `SchemaStorageError`
+  - Required because redb errors don't implement these traits
+  - No actual `.clone()` or `==` usage found (verified via grep)
+
+**Updated error handling:**
+- All `DbError::Transaction(e.to_string())` → `.into()` conversions in `db/reader.rs`, `db/writer.rs`, `db/mod.rs`
+- Batch operation error unwrapping: replaced `panic!()` with `unreachable!()` + `#[expect(...)]` with reasons
+- Test mocks updated to construct proper redb errors
+
+**Tests:** 1022 passing, `mise run verify` passes, all pre-commit hooks passed
+
+#### Final DbError Structure
+
+```rust
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum DbError {
+    /// Database operation failed (transparent).
+    #[error(transparent)]
+    Database(#[from] redb::DatabaseError),
+
+    /// Commit operation failed (transparent).
+    #[error(transparent)]
+    Commit(#[from] redb::CommitError),
+
+    /// Transaction operation failed (transparent).
+    #[error(transparent)]
+    Transaction(#[from] redb::TransactionError),
+
+    /// Table operation failed (transparent).
+    #[error(transparent)]
+    Table(#[from] redb::TableError),
+
+    /// Serialization failed.
+    #[error("serialization error: {0}")]
+    Serialization(String),
+
+    /// Deserialization or validation failed.
+    #[error("deserialization error: {0}")]
+    Deserialization(String),
+
+    /// TECHNICAL DEBT: Test mock errors only.
+    /// Should be removed - test code should use appropriate test error types.
+    #[error("database open failed: {0}")]
+    Open(String),
+
+    /// TECHNICAL DEBT: Domain validation failures misused as DbError.
+    /// Should be domain errors (SchemaNameError, PathValidationError).
+    /// Repository layer needs refactoring.
+    #[error("data corruption: {0}")]
+    Corruption(String),
+}
+```
+
+#### Known Technical Debt (Documented in Code)
+
+**`DbError::Corruption`** - Misused for:
+- Domain validation failures during repository load (`SchemaName::try_new()`, `RelativePath::try_from()`)
+- Test mock errors (InMemoryError conversions, tempdir failures)
+- **Should be**: Only actual corruption via `redb::StorageError::Corrupted`
+
+**`DbError::Open`** - Misused for:
+- Test setup failures (tempdir creation, lock poisoning in test doubles)
+- **Should be**: Removed entirely (actual open errors use transparent `Database` variant)
+
+**Root Cause:**
+Repository `batch_read`/`batch_write` closures expect `Result<R, DbError>`, but repository code performs domain validation inside closures (e.g., converting stored strings to `SchemaName`). Domain validation failures get incorrectly wrapped as `DbError::Corruption`.
+
+**Proper Fix Requires:**
+1. Repository methods handle validation outside db closures, OR
+2. Repository error types have separate variants for domain vs infrastructure failures
+
+**Tracked as:** Out of scope for issue-01; requires broader repository layer refactoring
+
+#### Breaking Changes
+
+- **BREAKING:** Removed `Clone` and `PartialEq` from `DbError` and all dependent error types
+  - Impact: Error types can no longer be cloned or compared for equality
+  - Justification: redb errors don't implement these traits; no actual usage found in codebase
+  - Error handling uses `?` operator (move semantics), not cloning
+
+#### Clippy Compliance
+
+All `unreachable!()` uses approved with `#[expect(clippy::wildcard_enum_match_arm, clippy::unreachable, reason = "...")]`:
+- `note/storage.rs`: Batch operations only return Storage errors
+- `vault/storage.rs`: Batch operations only return Storage errors
+
 ### Issue Status
 
-**COMPLETED** - Transparent error wrapping implemented for all redb error types (Database, Commit, Transaction, Table). Removed NotFound variant. Removed Clone/PartialEq from DbError and dependent types. Known technical debt documented above.
+**COMPLETED** - All transparent error wrapping implemented and committed. Technical debt documented in code and tracked for future repository layer refactoring.
