@@ -116,6 +116,63 @@ impl SchemaRepository for SchemaRedbRepository {
             })
             .map_err(SchemaStorageV2Error::from)
     }
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        paths: &[crate::fs::RelativePath],
+    ) -> Result<
+        Vec<Option<crate::schema::views::RawSchemaView>>,
+        SchemaStorageV2Error,
+    > {
+        use crate::schema::storage_v2::tables::{
+            RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH,
+        };
+
+        self.store
+            .read(|tx| {
+                // Open both tables
+                let path_table =
+                    match tx.inner.open_table(SCHEMA_ID_BY_PATH.definition()) {
+                        Ok(t) => t,
+                        Err(redb::TableError::TableDoesNotExist(_)) => {
+                            return Ok(paths.iter().map(|_| None).collect());
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
+
+                let view_table =
+                    match tx.inner.open_table(RAW_SCHEMA_VIEWS.definition()) {
+                        Ok(t) => t,
+                        Err(redb::TableError::TableDoesNotExist(_)) => {
+                            return Ok(paths.iter().map(|_| None).collect());
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
+
+                let mut results = Vec::with_capacity(paths.len());
+                for path in paths {
+                    // Step 1: path → SchemaId lookup
+                    let path_str = path.as_path().to_string_lossy().to_string();
+                    let id_guard = path_table.get(path_str)?;
+
+                    let view = if let Some(id_bytes) = id_guard {
+                        // Step 2: SchemaId → RawSchemaView lookup
+                        let id: SchemaId = deserialize(id_bytes.value())?;
+                        let view_guard = view_table.get(&id)?;
+                        view_guard
+                            .map(|g| deserialize(g.value()))
+                            .transpose()?
+                    } else {
+                        None
+                    };
+
+                    results.push(view);
+                }
+                Ok(results)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
 }
 
 #[cfg(test)]
@@ -392,5 +449,229 @@ mod tests {
 
         let results = repo.find_many_schemas_by_id(&[]).unwrap();
         assert!(results.is_empty());
+    }
+
+    mod cross_table_batch {
+        use super::*;
+        use crate::{
+            db::serialize,
+            fs::{FileInfo, RelativePath},
+            schema::{
+                raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
+                views::{
+                    RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
+                    raw::RawSchemaView,
+                },
+            },
+            support::hash::Blake3Hash,
+        };
+
+        /// Cross-table batch read: path → `SchemaId` → `RawSchemaView`.
+        ///
+        /// Behavior: Given paths, lookup IDs in `SCHEMA_ID_BY_PATH`, then fetch
+        /// views from `RAW_SCHEMA_VIEWS` in single transaction.
+        /// Verification: Inserting path→ID→view mappings, then batch read
+        /// returns views in correct order.
+        #[test]
+        fn finds_views_by_paths_in_single_transaction() {
+            use crate::schema::storage_v2::tables::{
+                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH,
+            };
+
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+
+            // Setup: Insert test data
+            let path1 = RelativePath::try_from("schemas/note.json").unwrap();
+            let path2 = RelativePath::try_from("schemas/task.json").unwrap();
+            let id1 = SchemaId::new();
+            let id2 = SchemaId::new();
+
+            let view1 = {
+                let info = FileInfo::new(None, None, 100);
+                let hashes = HashRecord::new(
+                    Blake3Hash::new([1; 32]),
+                    RawPropertyHashIndex::default(),
+                );
+                let raw = RawSchema {
+                    version: RawSchemaVersion::default(),
+                    name: "Note".into(),
+                    extends: None,
+                    excludes: vec![],
+                    properties: RawPropertyMap::new(),
+                    info: FileInfo::new(None, None, 0),
+                };
+                let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+                RawSchemaView::new(path1.clone(), version)
+            };
+
+            let view2 = {
+                let info = FileInfo::new(None, None, 200);
+                let hashes = HashRecord::new(
+                    Blake3Hash::new([2; 32]),
+                    RawPropertyHashIndex::default(),
+                );
+                let raw = RawSchema {
+                    version: RawSchemaVersion::default(),
+                    name: "Task".into(),
+                    extends: None,
+                    excludes: vec![],
+                    properties: RawPropertyMap::new(),
+                    info: FileInfo::new(None, None, 0),
+                };
+                let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+                RawSchemaView::new(path2.clone(), version)
+            };
+
+            store
+                .write(|tx| {
+                    let mut path_table =
+                        tx.inner.open_table(SCHEMA_ID_BY_PATH.definition())?;
+                    let mut view_table =
+                        tx.inner.open_table(RAW_SCHEMA_VIEWS.definition())?;
+
+                    // Insert path → ID mappings
+                    let path1_str =
+                        path1.as_path().to_string_lossy().to_string();
+                    let path2_str =
+                        path2.as_path().to_string_lossy().to_string();
+                    path_table
+                        .insert(path1_str, serialize(&id1)?.as_slice())?;
+                    path_table
+                        .insert(path2_str, serialize(&id2)?.as_slice())?;
+
+                    // Insert ID → view mappings
+                    view_table.insert(&id1, serialize(&view1)?.as_slice())?;
+                    view_table.insert(&id2, serialize(&view2)?.as_slice())?;
+
+                    Ok(())
+                })
+                .unwrap();
+
+            // Execute
+            let repo = SchemaRedbRepository::new(store);
+            let results = repo
+                .find_raw_schema_views_by_paths(&[path1.clone(), path2.clone()])
+                .unwrap();
+
+            // Verify
+            assert_eq!(results.len(), 2);
+            assert!(results.first().and_then(Option::as_ref).is_some());
+            assert!(results.get(1).and_then(Option::as_ref).is_some());
+
+            let found1 = results.first().and_then(Option::as_ref).unwrap();
+            let found2 = results.get(1).and_then(Option::as_ref).unwrap();
+            assert_eq!(found1.path(), &path1);
+            assert_eq!(found2.path(), &path2);
+        }
+
+        /// Empty batch succeeds.
+        ///
+        /// Behavior: Calling with empty slice returns empty results.
+        /// Verification: Result vector is empty.
+        #[test]
+        fn empty_batch_succeeds() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let results = repo.find_raw_schema_views_by_paths(&[]).unwrap();
+            assert!(results.is_empty());
+        }
+
+        /// Missing paths return None.
+        ///
+        /// Behavior: Paths not in `SCHEMA_ID_BY_PATH` return None.
+        /// Verification: All results are None for non-existent paths.
+        #[test]
+        fn missing_paths_return_none() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let path1 = RelativePath::try_from("schemas/missing.json").unwrap();
+            let path2 =
+                RelativePath::try_from("schemas/also-missing.json").unwrap();
+
+            let results =
+                repo.find_raw_schema_views_by_paths(&[path1, path2]).unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert!(results.first().and_then(Option::as_ref).is_none());
+            assert!(results.get(1).and_then(Option::as_ref).is_none());
+        }
+
+        /// Partial found: mix of Some/None.
+        ///
+        /// Behavior: Some paths exist, others don't - preserves order.
+        /// Verification: Existing path returns Some, missing returns None.
+        #[test]
+        fn partial_found_preserves_order() {
+            use crate::schema::storage_v2::tables::{
+                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH,
+            };
+
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+
+            let existing_path =
+                RelativePath::try_from("schemas/note.json").unwrap();
+            let missing_path =
+                RelativePath::try_from("schemas/missing.json").unwrap();
+            let id = SchemaId::new();
+
+            let view = {
+                let info = FileInfo::new(None, None, 100);
+                let hashes = HashRecord::new(
+                    Blake3Hash::new([1; 32]),
+                    RawPropertyHashIndex::default(),
+                );
+                let raw = RawSchema {
+                    version: RawSchemaVersion::default(),
+                    name: "Note".into(),
+                    extends: None,
+                    excludes: vec![],
+                    properties: RawPropertyMap::new(),
+                    info: FileInfo::new(None, None, 0),
+                };
+                let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+                RawSchemaView::new(existing_path.clone(), version)
+            };
+
+            store
+                .write(|tx| {
+                    let mut path_table =
+                        tx.inner.open_table(SCHEMA_ID_BY_PATH.definition())?;
+                    let mut view_table =
+                        tx.inner.open_table(RAW_SCHEMA_VIEWS.definition())?;
+
+                    let path_str =
+                        existing_path.as_path().to_string_lossy().to_string();
+                    path_table.insert(path_str, serialize(&id)?.as_slice())?;
+                    view_table.insert(&id, serialize(&view)?.as_slice())?;
+
+                    Ok(())
+                })
+                .unwrap();
+
+            let repo = SchemaRedbRepository::new(store);
+            let results = repo
+                .find_raw_schema_views_by_paths(&[
+                    existing_path.clone(),
+                    missing_path,
+                ])
+                .unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert!(results.first().and_then(Option::as_ref).is_some());
+            assert!(results.get(1).and_then(Option::as_ref).is_none());
+
+            let found = results.first().and_then(Option::as_ref).unwrap();
+            assert_eq!(found.path(), &existing_path);
+        }
     }
 }

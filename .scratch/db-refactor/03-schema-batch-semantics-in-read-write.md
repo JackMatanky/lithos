@@ -76,10 +76,23 @@ fn find_many_schemas_by_id(&self, ids: &[SchemaId]) -> Result<Vec<Option<Schema>
 - [x] Implementation uses single read transaction for all lookups
 - [x] Unit tests verify batch semantics (commit/rollback behavior)
 
-### Phase 2 (out of scope - separate issue)
+### Phase 2 (multi-table batch operations)
 
-- Add SCHEMA_ID_BY_PATH and RAW_SCHEMA_VIEWS tables to tables.rs
-- Implement cross-table batch read: path → SchemaId → RawSchemaView
+**Tables to add:**
+- `SCHEMA_ID_BY_PATH: PathTable<&[u8]>` - path (string key) to SchemaId mapping
+  - Note: Update PathTable to be generic over Path/PathBuf at construction ("parse, don't validate")
+- `RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]>` - raw views by schema ID (serialized)
+
+**Batch operation to implement:**
+- Given `&[RelativePath]`, lookup each in SCHEMA_ID_BY_PATH, then fetch corresponding RAW_SCHEMA_VIEWS in same transaction
+
+**Acceptance criteria:**
+- [x] PathTable updated to use `String` keys (not `&'static str`) for runtime paths
+- [x] SCHEMA_ID_BY_PATH table added to tables.rs
+- [x] RAW_SCHEMA_VIEWS table added to tables.rs
+- [x] Batch method for cross-table read: paths → schema IDs → raw views
+- [x] Tests verify single transaction, atomic behavior, correct ordering
+- [x] Return type changed from HashMap to Vec<Option<T>> for consistency with Phase 1
 
 ## Blocked by
 

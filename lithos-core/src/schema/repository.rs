@@ -2,7 +2,8 @@
 
 use crate::{
     db::DbError,
-    schema::{aggregate::Schema, identifier::SchemaId},
+    fs::RelativePath,
+    schema::{aggregate::Schema, identifier::SchemaId, views::RawSchemaView},
 };
 
 /// Error type for schema storage operations in the v2 seam.
@@ -78,4 +79,21 @@ pub trait SchemaRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error>;
+
+    /// Find raw schema views by file paths in a single transaction.
+    ///
+    /// Performs cross-table batch read: lookups paths in `SCHEMA_ID_BY_PATH`,
+    /// then fetches corresponding views from `RAW_SCHEMA_VIEWS`.
+    ///
+    /// Returns a vector in the same order as the input paths.
+    /// Missing views return `None` in the corresponding position.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        paths: &[RelativePath],
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error>;
 }

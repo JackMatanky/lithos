@@ -82,12 +82,19 @@ impl<K: UuidV7DbType + 'static, V: Key + 'static> UuidMultimap<K, V> {
     }
 }
 
-/// Table with static string keys, typically representing file paths.
+/// Table with string keys, typically representing file paths.
 ///
-/// Specialized for `&'static str` keys, enforcing the convention that paths
-/// are represented as string keys within the database.
+/// Uses `String` keys to support runtime path lookups (as opposed to
+/// compile-time static strings). This is the correct choice for path-based
+/// indices where keys come from filesystem discovery.
+///
+/// # Design Note
+///
+/// Earlier versions used `&'static str` keys, which prevented inserting runtime
+/// paths. The "parse, don't validate" principle here means: validate paths are
+/// proper at the call site, then store them as strings in the database.
 pub struct PathTable<V: Value + 'static> {
-    definition: TableDefinition<'static, &'static str, V>,
+    definition: TableDefinition<'static, String, V>,
 }
 
 impl<V: Value + 'static> PathTable<V> {
@@ -114,9 +121,7 @@ impl<V: Value + 'static> PathTable<V> {
     /// Use this to open the table in a transaction.
     #[inline]
     #[must_use]
-    pub const fn definition(
-        &self,
-    ) -> TableDefinition<'static, &'static str, V> {
+    pub const fn definition(&self) -> TableDefinition<'static, String, V> {
         self.definition
     }
 }
