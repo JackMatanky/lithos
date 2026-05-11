@@ -15,11 +15,11 @@ edition = "2024"
 rust-version = "1.92"
 authors = ["Jack"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jack/lithos-rust"
+repository = "https://github.com/jack/lithos"
 description = "A CLI-first templating and schema system for Obsidian vaults"
 
 [workspace.dependencies]
-# Core Runtime
+# Async & Runtime
 tokio = { version = "1.49", features = ["macros"] }
 async-trait = "0.1"
 rayon = "1.10"
@@ -29,12 +29,17 @@ clap = { version = "4.5", features = ["env"] }
 miette = { version = "7.6", features = ["fancy"] }
 
 # Data & Persistence
+redb = "4.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 serde_yaml = "0.9"
 toml = "0.8"
-redb = "4.1"
-rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1", "unaligned"] }
+rkyv = { version = "0.8", features = [
+  "bytecheck",
+  "std",
+  "uuid-1",
+  "unaligned",
+] }
 uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 
 # Application Logic
@@ -74,134 +79,221 @@ unsafe_code = "forbid"
 missing_docs = "deny"
 
 [workspace.lints.clippy]
-# --- Category Groups ---
+# ---------------------- Category Groups ---------------------- #
 pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
 correctness = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
 
-# --- Allow Overrides (Exceptions to Pedantic/Restriction) ---
-blanket_clippy_restriction_lints = "allow"
-unseparated_literal_suffix = "allow"
-implicit_return = "allow"
-question_mark_used = "allow"
-single_call_fn = "allow"
-min_ident_chars = "allow"
-missing_docs_in_private_items = "allow"
-print_stderr = "allow"
-shadow_reuse = "allow"
-shadow_same = "allow"
-std_instead_of_core = "allow"
-std_instead_of_alloc = "allow"
+# ------------ Allowed (Exceptions & Relaxations) ------------- #
+# Style & Formatting
+# Permits absolute paths to clarify external type origins.
 absolute_paths = "allow"
-mod_module_files = "allow"
+# Permits `pub(crate)` shorthand over `pub(in crate)` for cleaner visibility.
 pub_with_shorthand = "allow"
+# Prefers semicolons outside block expressions for visual consistency.
+semicolon_inside_block = "allow"
+# Permits numeric suffixes without underscores (e.g., 1u32) for small literals.
+unseparated_literal_suffix = "allow"
 
+# Structure & Architecture
+# Prevents warnings on broad restriction groups, allowing cherry-picked rules.
+blanket_clippy_restriction_lints = "allow"
+# Permits both `mod.rs` and `folder/mod.rs` module conventions.
+mod_module_files = "allow"
+# Permits `std` library types instead of `alloc` for std environments.
+std_instead_of_alloc = "allow"
+# Permits `std` library types instead of `core` for std environments.
+std_instead_of_core = "allow"
 
-# --- Warn Overrides (Best Practices) ---
+# Idioms & Patterns
+# Permits omitting `return` to embrace idiomatic trailing expressions.
+implicit_return = "allow"
+# Permits `?` for error propagation instead of explicit matching.
+question_mark_used = "allow"
+# Permits shadowing when transforming data (e.g., `let x = x.trim()`).
+shadow_reuse = "allow"
+# Permits shadowing with the same name/type to rebind immutables as mutable.
+shadow_same = "allow"
+# Permits single-call functions to encourage logical modularization.
+single_call_fn = "allow"
+
+# Documentation & Naming
+# Permits short variable names (like `i`, `x`) standard in tight algorithms.
+min_ident_chars = "allow"
+# Avoids maintenance overhead of requiring docs for internal details.
+missing_docs_in_private_items = "allow"
+
+# Output & Logging
+# Permits `eprintln!` for direct stderr output, useful in CLI tools.
+print_stderr = "allow"
+
+# ---------- Warnings (Best Practices & Suggestions) ---------- #
+# Type Conversions
+# Flags `as` casts to encourage safer explicit `.try_into()` conversions.
 as_conversions = "warn"
+# Warns when casting could lose data, prompting explicit checking.
 cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
+# Warns on float-to-int or float precision loss to prevent subtle math bugs.
 cast_precision_loss = "warn"
-missing_inline_in_public_items = "warn"
-else_if_without_else = "warn"
-allow_attributes_without_reason = "deny"
-as_underscore = "deny"
-as_pointer_underscore = "deny"
-undocumented_unsafe_blocks = "deny"
-panic_in_result_fn = "deny"
-exit = "deny"
-print_stdout = "deny"
-shadow_unrelated = "deny"
-cognitive_complexity = "deny"
-too_many_lines = "deny"
-too_many_arguments = "deny"
-type_complexity = "deny"
-excessive_nesting = "deny"
-struct_excessive_bools = "deny"
-fn_params_excessive_bools = "deny"
-large_enum_variant = "deny"
-result_large_err = "deny"
-large_types_passed_by_value = "deny"
-missing_errors_doc = "deny"
-missing_panics_doc = "deny"
-unused_self = "deny"
-str_to_string = "deny"
-unwrap_used = "deny"
-expect_used = "deny"
-todo = "deny"
-unimplemented = "deny"
-dbg_macro = "deny"
-panic = "deny"
-unreachable = "deny"
-indexing_slicing = "deny"
-arithmetic_side_effects = "deny"
-disallowed_methods = "deny"
+# Warns on signed-to-unsigned casts to catch potential negative wrapping.
+cast_sign_loss = "warn"
 
-# --- Performance & Zero-Copy Lints ---
-# Reuses existing heap capacity with a.clone_from(&b) instead of reallocating.
-assigning_clones = "deny"
-# Detects redundant allocations like &Box<T> or Box<Arc<T>>.
-redundant_allocation = "deny"
-# Flags .collect::<Vec<_>>() when lazy iteration is sufficient.
+# APIs & Control Flow
+# Encourages exhaustive `if/else` chains so edge cases aren't ignored.
+else_if_without_else = "warn"
+# Suggests `#[inline]` on public items to aid cross-crate LTO performance.
+missing_inline_in_public_items = "warn"
+
+# --------------- Denials (Strict Enforcements) --------------- #
+# Error Handling & Panics
+# Forbids `std::process::exit` to ensure graceful shutdown and error propagation.
+exit = "deny"
+# Forbids `.expect()` to force robust error handling instead of panicking.
+expect_used = "deny"
+# Requires docs for functions returning `Result` to show exact failure modes.
+missing_errors_doc = "deny"
+# Requires documentation for any panicking code to clearly surface API risks.
+missing_panics_doc = "deny"
+# Forbids explicit `panic!` to ensure the CLI degrades gracefully.
+panic = "deny"
+# Prevents hidden panics in `Result` functions, maintaining API safety.
+panic_in_result_fn = "deny"
+# Forbids `todo!` macro in committed code to ensure feature completeness.
+todo = "deny"
+# Forbids `unimplemented!` to prevent shipping half-finished code paths.
+unimplemented = "deny"
+# Forbids `unreachable!` to prevent runtime crashes on invariant breaks.
+unreachable = "deny"
+# Forbids `.unwrap()` to enforce strict `Result` matching and error propagation.
+unwrap_used = "deny"
+
+# Code Quality & Complexity
+# Forces `#![allow(...)]` to have a `reason` so exceptions are understood.
+allow_attributes_without_reason = "deny"
+# Limits structural complexity (nesting/branches) for readability.
+cognitive_complexity = "deny"
+# Prevents deep block nesting (arrow anti-pattern) to improve code scanning.
+excessive_nesting = "deny"
+# Limits boolean parameters to prevent confusing call sites.
+fn_params_excessive_bools = "deny"
+# Flags massive enum variants to avoid memory bloat from variant padding.
+large_enum_variant = "deny"
+# Prevents copying large structs on the stack, forcing pass-by-reference.
+large_types_passed_by_value = "deny"
+# Prevents large `Err` variants which needlessly bloat `Result` type sizes.
+result_large_err = "deny"
+# Limits boolean fields in structs to encourage explicit state machine enums.
+struct_excessive_bools = "deny"
+# Restricts function signature lengths, encouraging configuration structs.
+too_many_arguments = "deny"
+# Limits function length to encourage modular, single-responsibility functions.
+too_many_lines = "deny"
+# Prevents deeply nested types, encouraging descriptive type aliases.
+type_complexity = "deny"
+
+# Memory & Safety Validation
+# Prevents unexpected integer overflow/underflow, enforcing safe math.
+arithmetic_side_effects = "deny"
+# Forbids `arr[index]` to prevent out-of-bounds panics, forcing `.get()`.
+indexing_slicing = "deny"
+# Requires `// SAFETY:` comments on `unsafe` blocks to document contracts.
+undocumented_unsafe_blocks = "deny"
+
+# Clean Code & Anti-Patterns
+# Forbids `as _` pointer casts to explicitly define the target pointer type.
+as_pointer_underscore = "deny"
+# Forbids `as _` casts to explicitly define the target numeric type.
+as_underscore = "deny"
+# Forbids leaving `dbg!` in committed code to keep standard output clean.
+dbg_macro = "deny"
+# Enforces project-specific bans defined in the `clippy.toml` configuration.
+disallowed_methods = "deny"
+# Prevents rogue `println!` usage, forcing the `tracing` logging framework.
+print_stdout = "deny"
+# Forbids shadowing a variable with a completely different type/concept.
+shadow_unrelated = "deny"
+# Prefers `.to_owned()` on string literals to clarify cloning intent.
+str_to_string = "deny"
+# Flags unused `self` parameters to suggest associated functions.
+unused_self = "deny"
+
+# ----------- Performance & Zero-Copy Lints (Deny) ------------ #
+# Allocations & Boxing
+# Prevents `Box<Vec<T>>` or `Box<String>` to avoid double heap indirection.
+box_collection = "deny"
+# Prefers `String::new()` over `"".to_string()` to bypass dynamic allocation.
+manual_string_new = "deny"
+# Flags `.collect::<Vec<_>>()` when chained iterators suffice without allocs.
 needless_collect = "deny"
-# Detects vec![...] that is immediately sliced, avoiding a heap allocation.
+# Detects completely redundant allocations like `&Box<T>` or `Box<Arc<T>>`.
+redundant_allocation = "deny"
+# Detects `.to_owned()` calls when a simple reference or `Cow` would work.
+unnecessary_to_owned = "deny"
+# Detects `vec![...]` that is immediately sliced, preventing heap allocations.
 useless_vec = "deny"
+
+# String Formatting & Parsing
+# Prevents nested `format!` inside `println!`, avoiding temporary allocations.
+format_in_format_args = "deny"
+# Flags `.to_string()` on types with zero-copy display or conversion paths.
+inefficient_to_string = "deny"
 # Prefers 'c' over "c" in string methods for faster character searching.
 single_char_pattern = "deny"
-# Uses Atomic* types instead of Mutex<T> for small primitives (lower overhead).
-mutex_atomic = "deny"
-# Ensures RwLock write locks are only used when mutation actually occurs.
-readonly_write_lock = "deny"
-# Replaces contains_key + insert with entry to avoid double lookups.
-map_entry = "deny"
-# Suggests push over push_str for single characters to avoid string parsing.
+# Suggests `.push(c)` over `.push_str("c")` to skip string parsing overhead.
 string_extend_chars = "deny"
-# Prefers String::new() over "".to_string() to avoid unnecessary allocation.
-manual_string_new = "deny"
-# Prevents Box<Vec<T>> or Box<String> which adds double heap indirection.
-box_collection = "deny"
-# Use .any() instead of .find().is_some() for clearer optimization intent.
-search_is_some = "deny"
-# Prefers .cloned()/.copied() over manual closures for internal optimizations.
-map_clone = "deny"
-# Prevents nested format! calls inside println!, avoiding temporary strings.
-format_in_format_args = "deny"
-# Uses Display implementation directly instead of calling .to_string().
+# Uses `Display` in format macros instead of eagerly calling `.to_string()`.
 to_string_in_format_args = "deny"
-# Detects .to_owned()/.to_string() when a reference or Cow would suffice.
-unnecessary_to_owned = "deny"
-# Flags .to_string() on types with more efficient display or conversion paths.
-inefficient_to_string = "deny"
 
-# --- Performance & Optimization (Warn) ---
-# Passes small Copy types (like Id) by value to improve register usage.
-trivially_copy_pass_by_ref = "warn"
-# Minimizes lock critical sections to reduce thread contention.
-significant_drop_tightening = "warn"
-# Move .cloned() calls after .take(n) to avoid unnecessary clones.
+# Iteration & Data Structures
+# Reuses heap capacity with `a.clone_from(&b)` instead of reallocating memory.
+assigning_clones = "deny"
+# Prefers `.cloned()` over map closures for internal iterator optimizations.
+map_clone = "deny"
+# Replaces `contains_key` + `insert` with `.entry()` to avoid double lookups.
+map_entry = "deny"
+# Uses `.any()` instead of `.find().is_some()` to clarify intent.
+search_is_some = "deny"
+
+# Concurrency & Locking
+# Uses `Atomic*` types instead of `Mutex<T>` to lower threading overhead.
+mutex_atomic = "deny"
+# Ensures `RwLock` write locks are requested only when mutation occurs.
+readonly_write_lock = "deny"
+
+# ------------- Performance & Optimization (Warn) ------------- #
+# Iteration & Flow
+# Moves `.cloned()` after `.take(n)` to avoid cloning dropped items.
 iter_overeager_cloned = "warn"
-# Suggests Vec::with_capacity() or vec![...] instead of new() + push().
-vec_init_then_push = "warn"
-# Detects suboptimal patterns (e.g., manual loops) for resizing vectors.
-slow_vector_initialization = "warn"
-# Moves large arrays to the heap or static to avoid stack overflows.
-large_stack_arrays = "warn"
-# Replaces manual nested loops with the more optimized .flatten() iterator.
+# Replaces manual nested iteration logic with the optimized `.flatten()`.
 manual_flatten = "warn"
-# Uses let-else to flatten error paths and improve branch predictability.
+# Suggests `let-else` to flatten error paths and improve branch predictability.
 manual_let_else = "warn"
-# Prefers impl Trait over Box<dyn Trait> for static dispatch performance.
+
+# Memory & Footprint
+# Recommends moving massive arrays to the heap to avoid fatal stack overflows.
+large_stack_arrays = "warn"
+# Detects suboptimal vector resize loops, suggesting `resize` or `extend`.
+slow_vector_initialization = "warn"
+# Passes tiny `Copy` types by value instead of reference to optimize CPU.
+trivially_copy_pass_by_ref = "warn"
+# Suggests `Vec::with_capacity()` over `new()` + sequential `push()` calls.
+vec_init_then_push = "warn"
+
+# Functions & APIs
+# Prefers `impl Trait` arguments to enforce faster static dispatch.
 impl_trait_in_params = "warn"
-# Uses write! macro into a String instead of push_str(&format!(..)).
+
+# Strings
+# Recommends `write!` into a buffer over temporary `push_str(&format!(..))`.
 format_push_string = "warn"
 
 [profile.release]
 opt-level = 3
-lto = "fat"           # OPTIMIZED: Full LTO for maximum binary size reduction
-codegen-units = 1       # OPTIMIZED: Maximum optimization per compilation unit
-panic = "abort"         # OPTIMIZED: Remove panic handling overhead
-strip = "symbols"        # OPTIMIZED: Remove debug symbols
+lto = "fat"       # OPTIMIZED: Full LTO for maximum binary size reduction
+codegen-units = 1 # OPTIMIZED: Maximum optimization per compilation unit
+panic = "abort"   # OPTIMIZED: Remove panic handling overhead
+strip = "symbols" # OPTIMIZED: Remove debug symbols
 
 [profile.dev]
 opt-level = 0
