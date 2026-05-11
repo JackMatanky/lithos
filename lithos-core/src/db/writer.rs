@@ -42,7 +42,7 @@ impl Database {
                 >,
             >,
     {
-        serialize_and_put::<V>(&self.inner, table, key, value)
+        serialize_and_put::<V>(self.inner(), table, key, value)
     }
 
     /// Insert or update a value with UUID key in a table definition.
@@ -72,7 +72,7 @@ impl Database {
             >,
     {
         with_uuid_v7_key(id, |key| {
-            serialize_and_put::<V>(&self.inner, table, key, value)
+            serialize_and_put::<V>(self.inner(), table, key, value)
         })
     }
 
@@ -89,7 +89,7 @@ impl Database {
         table: TableDefinition<&str, &[u8]>,
         key: &str,
     ) -> Result<bool, DbError> {
-        delete_key(&self.inner, table, key)
+        delete_key(self.inner(), table, key)
     }
 
     /// Delete a value by UUID key in a table definition.
@@ -108,7 +108,7 @@ impl Database {
         table: TableDefinition<&str, &[u8]>,
         id: UuidV7,
     ) -> Result<bool, DbError> {
-        with_uuid_v7_key(id, |key| delete_key(&self.inner, table, key))
+        with_uuid_v7_key(id, |key| delete_key(self.inner(), table, key))
     }
 
     /// Execute multiple writes in a batch with a single commit.
@@ -143,7 +143,7 @@ impl Database {
     where
         F: FnOnce(&mut BatchWriter) -> Result<(), DbError>,
     {
-        batch_write_impl(&self.inner, f)
+        batch_write_impl(self.inner(), f)
     }
 
     /// Execute a read-write unit of work with both read and write operations.
@@ -185,7 +185,7 @@ impl Database {
     where
         F: FnOnce(&mut ReadWriteUnitOfWork) -> Result<R, DbError>,
     {
-        read_write_uow_impl(&self.inner, f)
+        read_write_uow_impl(self.inner(), f)
     }
 
     /// Insert a value into a multimap table definition (1:N relationship).
@@ -200,7 +200,7 @@ impl Database {
         key: &str,
         value: &str,
     ) -> Result<(), DbError> {
-        multimap_insert_impl(&self.inner, table, key, value)
+        multimap_insert_impl(self.inner(), table, key, value)
     }
 
     /// Remove a value from a multimap table definition.
@@ -217,7 +217,7 @@ impl Database {
         key: &str,
         value: &str,
     ) -> Result<bool, DbError> {
-        multimap_remove_impl(&self.inner, table, key, value)
+        multimap_remove_impl(self.inner(), table, key, value)
     }
 }
 

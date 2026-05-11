@@ -620,6 +620,14 @@ All `unreachable!()` uses approved with `#[expect(clippy::wildcard_enum_match_ar
 - `note/storage.rs`: Batch operations only return Storage errors
 - `vault/storage.rs`: Batch operations only return Storage errors
 
+### Reorganization (2026-05-11)
+
+Moved `Store` and `Database` implementations from `db/mod.rs` to `db/core.rs` to keep the module entry point clean and focused on exports.
+
+**Files Created/Modified:**
+- `lithos-core/src/db/core.rs`: Contains `Store` and `Database` implementations.
+- `lithos-core/src/db/mod.rs`: Now only contains module declarations and re-exports.
+
 ### Issue Status
 
 **COMPLETED** - All transparent error wrapping implemented and committed. Technical debt documented in code and tracked for future repository layer refactoring.

@@ -44,7 +44,7 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        read_archived::<V, _, _>(&self.inner, table, key, f)
+        read_archived::<V, _, _>(self.inner(), table, key, f)
     }
 
     /// Full deserialization from a specific table definition (COLD PATH).
@@ -69,7 +69,7 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        deserialize_owned::<V>(&self.inner, table, key)
+        deserialize_owned::<V>(self.inner(), table, key)
     }
 
     /// Zero-copy read using UUID as key (HOT PATH - eliminates allocation).
@@ -95,7 +95,7 @@ impl Database {
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
         with_uuid_v7_key(id, |key| {
-            read_archived::<V, _, _>(&self.inner, table, key, f)
+            read_archived::<V, _, _>(self.inner(), table, key, f)
         })
     }
 
@@ -122,7 +122,7 @@ impl Database {
             >,
     {
         with_uuid_v7_key(id, |key| {
-            deserialize_owned::<V>(&self.inner, table, key)
+            deserialize_owned::<V>(self.inner(), table, key)
         })
     }
 
@@ -140,7 +140,7 @@ impl Database {
         table: MultimapTableDefinition<&str, &str>,
         key: &str,
     ) -> Result<Vec<String>, DbError> {
-        multimap_get_impl(&self.inner, table, key)
+        multimap_get_impl(self.inner(), table, key)
     }
 
     /// List all values in a table definition (owned).
@@ -163,7 +163,7 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        scan_table::<V>(&self.inner, table)
+        scan_table::<V>(self.inner(), table)
     }
 
     /// Scan a table and return key-value pairs as owned types.
@@ -188,7 +188,7 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        scan_table_key_value::<V>(&self.inner, table)
+        scan_table_key_value::<V>(self.inner(), table)
     }
 
     /// Scan a table range matching a key prefix and return key-value pairs.
@@ -235,7 +235,7 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        scan_range_impl::<V>(&self.inner, table, key_prefix)
+        scan_range_impl::<V>(self.inner(), table, key_prefix)
     }
 
     /// Execute multiple read operations within a single transaction.
@@ -267,7 +267,7 @@ impl Database {
     where
         F: FnOnce(&BatchReader) -> Result<R, DbError>,
     {
-        let tx = self.inner.begin_read()?;
+        let tx = self.inner().begin_read()?;
         let reader = BatchReader::new(tx);
         f(&reader)
     }
