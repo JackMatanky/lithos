@@ -436,6 +436,52 @@ The following lint warnings were resolved during the verification process:
 - `lithos-core/src/db/mod.rs` - Added Store, exports
 - `lithos-core/src/db/error.rs` - Added DbErrorKind, kind() method
 
+### Transparent Error Implementation Research (2026-05-11)
+
+#### Analysis: Direct redb Error Wrapping
+
+**Problem Identified:**
+Initial implementation used Arc-wrapped transparent wrappers to maintain `Clone`/`PartialEq` compatibility. This deviated from the PRD which specifies direct wrapping: `Database(redb::DatabaseError)` not `DatabaseTransparent(Arc<redb::DatabaseError>)`.
+
+**redb Error Traits:**
+- ✅ Implement: `Debug`, `Display`, `Error`
+- ❌ Do NOT implement: `Clone`, `PartialEq`
+
+**Current State Analysis:**
+- `DbError` derives `Clone` + `PartialEq` but is never cloned or compared (grep verified)
+- `NoteError` and `SchemaError` embed `DbError` via `Storage(#[from] DbError)`
+- Both derive `Clone` + `PartialEq` but never use these traits (grep verified)
+- Errors are propagated via `?` operator (move semantics), not cloned
+
+**PRD Requirement:**
+The locked structure (lines 115-163) shows no `Clone`/`PartialEq` derives on `DbError`. The PRD intentionally removes these to enable direct redb error wrapping.
+
+#### Implementation Plan
+
+**Phase 1: Update DbError (TDD)**
+1. Write test for `Database(redb::DatabaseError)` direct wrapping
+2. Add `Commit(redb::CommitError)` variant (new)
+3. Add `Storage(redb::StorageError)` variant (replaces `Corruption`)
+4. Update `Database`, `Transaction`, `Table` to wrap redb types directly
+5. Remove `Open`, `NotFound`, `Corruption` variants (deprecated)
+6. Update `From` impls to wrap redb errors without `.to_string()`
+7. Update `is_transient()` to match on redb error structure (no string parsing)
+8. Remove `Clone` and `PartialEq` derives from `DbError`
+
+**Phase 2: Update Domain Errors**
+9. Remove `Clone`/`PartialEq` from 13 `NoteError` types (note/error.rs)
+10. Remove `Clone`/`PartialEq` from 7 `SchemaError` types (schema/error.rs)
+11. Remove from `TemplateError` and `ConfigError` if they embed `DbError`
+
+**Phase 3: Verification**
+12. Run `mise run verify` - all tests must pass
+13. Verify no compilation errors
+14. Document final implementation
+
+**Risk Assessment:** Low - No actual usage of `.clone()` or `==` found. Standard error handling uses `?` operator. Follows Rust best practices (errors rarely need Clone/PartialEq).
+
+**Next:** Research why these derives existed originally before proceeding with implementation.
+
 ### Issue Status
 
-**IN PROGRESS** - Store, ReadTx, WriteTx, DbErrorKind, table wrappers, and rkyv helpers complete. Transparent error implementation in progress (researching proper PRD-compliant approach).
+**IN PROGRESS** - Store, ReadTx, WriteTx, DbErrorKind, table wrappers, and rkyv helpers complete. Researching transparent error design before implementation.
