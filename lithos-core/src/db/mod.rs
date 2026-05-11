@@ -1,7 +1,7 @@
 //! Persistence infrastructure for rebuildable domain projections.
 //!
 //! This module provides a zero-copy database layer built on [`redb`] and
-//! [`rkyv`]. It follows a "Storage-Adapter" pattern where domain repositories
+//! `rkyv`. It follows a "Storage-Adapter" pattern where domain repositories
 //! use these primitives to persist and query state without direct coupling to
 //! the underlying database implementation.
 //!

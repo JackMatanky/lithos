@@ -18,9 +18,10 @@ use super::UuidV7DbType;
 ///
 /// # Why this exists
 ///
-/// Many domain IDs are `UUIDv7s`. Formatting a UUID as a 36-byte string for
-/// every lookup is expensive in hot paths (e.g., LSP indexing). This wrapper
-/// allows using the 16-byte raw UUID representation directly as a key.
+/// Many domain IDs are [`UuidV7`](crate::utils::UuidV7)s. Formatting a UUID as
+/// a 36-byte string for every lookup is expensive in hot paths (e.g., LSP
+/// indexing). This wrapper allows using the 16-byte raw UUID representation
+/// directly as a key.
 pub struct UuidTable<K: UuidV7DbType + 'static, V: Value + 'static> {
     definition: TableDefinition<'static, K, V>,
 }

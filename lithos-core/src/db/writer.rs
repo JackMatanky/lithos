@@ -158,7 +158,7 @@ impl Database {
     /// transaction, ensuring consistency for operations like "read current
     /// value, compute next value, write new value".
     ///
-    /// The closure receives a [`ReadWriteUnitOfWork`] that supports both read
+    /// The closure receives a `ReadWriteUnitOfWork` that supports both read
     /// and write operations.
     ///
     /// # Errors

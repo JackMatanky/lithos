@@ -1,6 +1,7 @@
-//! `UUIDv7` `redb` integration.
+//! [`UuidV7`](crate::utils::UuidV7) `redb` integration.
 //!
-//! Provides wrapper-first DB key support for `UuidV7`-backed ID types.
+//! Provides wrapper-first DB key support for
+//! [`UuidV7`](crate::utils::UuidV7)-backed ID types.
 
 mod sealed {
     pub trait Sealed {}
@@ -8,11 +9,12 @@ mod sealed {
 
 use redb::{Key, Value};
 
-/// Marker trait for domain ID wrappers that are valid `UUIDv7` DB key types.
+/// Marker trait for domain ID wrappers that are valid
+/// [`UuidV7`](crate::utils::UuidV7) DB key types.
 pub trait UuidV7DbType: sealed::Sealed + Value + Key {}
 
-/// Derive macro to implement `redb::Value` and `redb::Key` for `UuidV7`
-/// wrappers.
+/// Derive macro to implement `redb::Value` and `redb::Key` for
+/// [`UuidV7`](crate::utils::UuidV7) wrappers.
 ///
 /// Usage:
 /// ```ignore
@@ -22,8 +24,8 @@ pub trait UuidV7DbType: sealed::Sealed + Value + Key {}
 /// impl_redb_uuid!(crate::note::identifier::NoteId);
 /// ```
 ///
-/// Assumes the wrapper is a tuple struct with `UuidV7` as the first field:
-/// `pub struct SchemaId(UuidV7);`.
+/// Assumes the wrapper is a tuple struct with [`UuidV7`](crate::utils::UuidV7)
+/// as the first field: `pub struct SchemaId(UuidV7);`.
 #[macro_export]
 macro_rules! impl_redb_uuid {
     ($wrapper:ty) => {

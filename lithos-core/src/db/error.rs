@@ -5,7 +5,7 @@
 
 /// Error classification for stable branching without backend-specific matching.
 /// Provides a stable API for error handling that doesn't depend on
-/// backend-specific error types. Use `DbError::kind()` to classify errors.
+/// backend-specific error types. Use [`DbError::kind`] to classify errors.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbErrorKind {
@@ -116,7 +116,6 @@ impl DbError {
     /// Non-transient errors that should NOT be retried:
     /// - Corruption
     /// - Deserialization/validation errors
-    /// - Missing data (`NotFound`)
     ///
     /// See [`retry_on_transient`](crate::db::retry::retry_on_transient) for
     /// usage.
