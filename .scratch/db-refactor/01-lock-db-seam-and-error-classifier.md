@@ -2,7 +2,7 @@
 title: 01-lock-db-seam-and-error-classifier
 category: enhancement
 label: ready-for-human
-status: blocked
+status: completed
 date_created: 2026-05-10
 blocked_by: Repository layer bastardizes DbError with domain validation failures
 ---
@@ -64,12 +64,16 @@ impl Store {
     pub fn open(path: &Path) -> Result<Self, DbError>;
 
     /// Execute read-only operations within a transaction.
-    pub fn read<R>(&self, f: impl FnOnce(&ReadTx) -> Result<R, DbError>) -> Result<R, DbError>;
+    pub fn read<R, F>(&self, f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(&ReadTx) -> Result<R, DbError>;
 
     /// Execute read-write operations within a transaction.
     ///
     /// Automatically commits on Ok, rolls back on Err.
-    pub fn write<R>(&self, f: impl FnOnce(&mut WriteTx) -> Result<R, DbError>) -> Result<R, DbError>;
+    pub fn write<R, F>(&self, f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(&mut WriteTx) -> Result<R, DbError>;
 }
 
 // db/read.rs
