@@ -521,8 +521,8 @@ mod tests {
         ///
         /// Behavior: Converting `redb::DatabaseError` to `DbError` preserves
         /// the original error metadata (no string flattening).
-        /// Verification: Convert `DatabaseError`, verify `kind()` returns Database,
-        /// verify error can be downcasted back to redb type.
+        /// Verification: Convert `DatabaseError`, verify `kind()` returns
+        /// Database, verify error can be downcasted back to redb type.
         #[test]
         fn database_error_wraps_transparently() {
             let redb_err = redb::DatabaseError::TransactionInProgress;
@@ -543,9 +543,8 @@ mod tests {
         #[test]
         fn transaction_error_wraps_transparently() {
             // Need to create a redb::TransactionError - use Storage variant
-            let storage_err = redb::StorageError::Io(std::io::Error::other(
-                "test",
-            ));
+            let storage_err =
+                redb::StorageError::Io(std::io::Error::other("test"));
             let redb_err = redb::TransactionError::Storage(storage_err);
             let db_err: DbError = redb_err.into();
 
@@ -563,9 +562,8 @@ mod tests {
         /// `From<redb::TableError>` wraps error transparently.
         #[test]
         fn table_error_wraps_transparently() {
-            let storage_err = redb::StorageError::Io(std::io::Error::other(
-                "test",
-            ));
+            let storage_err =
+                redb::StorageError::Io(std::io::Error::other("test"));
             let redb_err = redb::TableError::Storage(storage_err);
             let db_err: DbError = redb_err.into();
 
@@ -579,9 +577,8 @@ mod tests {
         /// `From<redb::CommitError>` wraps error transparently.
         #[test]
         fn commit_error_wraps_transparently() {
-            let storage_err = redb::StorageError::Io(std::io::Error::other(
-                "test",
-            ));
+            let storage_err =
+                redb::StorageError::Io(std::io::Error::other("test"));
             let redb_err = redb::CommitError::Storage(storage_err);
             let db_err: DbError = redb_err.into();
 
@@ -595,9 +592,8 @@ mod tests {
         /// `From<redb::StorageError>` wraps error transparently.
         #[test]
         fn storage_error_wraps_transparently() {
-            let redb_err = redb::StorageError::Io(std::io::Error::other(
-                "test",
-            ));
+            let redb_err =
+                redb::StorageError::Io(std::io::Error::other("test"));
             let db_err: DbError = redb_err.into();
 
             assert_eq!(db_err.kind(), DbErrorKind::Storage);
