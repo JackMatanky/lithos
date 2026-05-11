@@ -2,8 +2,9 @@
 title: 03-schema-batch-semantics-in-read-write
 category: enhancement
 label: ready-for-agent
-status: open
+status: closed
 date_created: 2026-05-10
+date_completed: 2026-05-11
 ---
 
 ## Type
@@ -68,12 +69,12 @@ fn find_many_schemas_by_id(&self, ids: &[SchemaId]) -> Result<Vec<Option<Schema>
 - Rollback: failed serialization prevents any writes
 - Persistence: valid batch, reopen store, schemas still retrievable
 
-- [ ] `save_many_schemas` method added to `SchemaRepository` trait
-- [ ] Implementation uses single write transaction for all schemas
-- [ ] Atomic commit/rollback: if any schema fails to serialize, no schemas are persisted
-- [ ] `find_many_schemas_by_id` method added to `SchemaRepository` trait
-- [ ] Implementation uses single read transaction for all lookups
-- [ ] Unit tests verify batch semantics (commit/rollback behavior)
+- [x] `save_many_schemas` method added to `SchemaRepository` trait
+- [x] Implementation uses single write transaction for all schemas
+- [x] Atomic commit/rollback: if any schema fails to serialize, no schemas are persisted
+- [x] `find_many_schemas_by_id` method added to `SchemaRepository` trait
+- [x] Implementation uses single read transaction for all lookups
+- [x] Unit tests verify batch semantics (commit/rollback behavior)
 
 ### Phase 2 (out of scope - separate issue)
 

@@ -51,4 +51,31 @@ pub trait SchemaRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaStorageV2Error>;
+
+    /// Save multiple schemas in a single transaction.
+    ///
+    /// If any schema fails to serialize, the entire batch rolls back.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_many_schemas(
+        &self,
+        schemas: &[Schema],
+    ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Find multiple schemas by ID in a single transaction.
+    ///
+    /// Returns a vector in the same order as the input IDs.
+    /// Missing schemas return `None` in the corresponding position.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_many_schemas_by_id(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error>;
 }
