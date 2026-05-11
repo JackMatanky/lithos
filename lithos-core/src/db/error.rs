@@ -53,29 +53,27 @@ pub enum DbError {
     #[error("deserialization error: {0}")]
     Deserialization(String),
 
-    /// TECHNICAL DEBT: Database open/setup failure (test mocks only).
+    /// TECHNICAL DEBT: Compatibility variant for mock testing and setup
+    /// failures.
     ///
-    /// This variant should be removed. It's currently used only in test mocks
-    /// for non-database errors (tempdir failures, lock poisoning). Test code
-    /// should use appropriate test error types instead of `DbError`.
+    /// # Note
     ///
-    /// See: `.scratch/db-refactor/` for tracking issue.
+    /// This variant is reserved for internal testing infrastructure (e.g.,
+    /// tempdir failures, lock poisoning) and is slated for removal in favor
+    /// of specialized test error types.
     #[error("database open failed: {0}")]
     Open(String),
 
     /// TECHNICAL DEBT: Data corruption or domain validation failure.
     ///
-    /// This variant conflates two different error types:
-    /// 1. Actual data corruption (should come through
-    ///    `redb::StorageError::Corrupted`)
-    /// 2. Domain validation failures (e.g., `SchemaNameError`,
-    ///    `PathValidationError`)
+    /// # Warning
     ///
-    /// Domain errors should NOT be converted to `DbError`. The repository layer
-    /// needs refactoring to properly handle domain validation failures separate
-    /// from infrastructure errors.
+    /// This variant currently conflates low-level infrastructure failures
+    /// (e.g., `redb::StorageError::Corrupted`) with high-level domain
+    /// validation failures (e.g., invalid schema names).
     ///
-    /// See: `.scratch/db-refactor/` for tracking issue.
+    /// Domain-specific errors should ideally be handled at the Repository
+    /// layer and not converted to a [`DbError`].
     #[error("data corruption: {0}")]
     Corruption(String),
 }
@@ -83,7 +81,7 @@ pub enum DbError {
 impl DbError {
     /// Classify error for stable branching without backend-specific matching.
     ///
-    /// Returns a stable error kind that callers can use for control flow
+    /// Returns a stable [`DbErrorKind`] that callers can use for control flow
     /// without depending on backend-specific error types.
     ///
     /// # Examples
@@ -119,6 +117,9 @@ impl DbError {
     /// - Corruption
     /// - Deserialization/validation errors
     /// - Missing data (`NotFound`)
+    ///
+    /// See [`retry_on_transient`](crate::db::retry::retry_on_transient) for
+    /// usage.
     ///
     /// # Examples
     ///

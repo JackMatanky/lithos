@@ -1,7 +1,13 @@
-//! Database write operations.
+//! Internal write operations and batching infrastructure.
 //!
-//! This module contains all write and batch-write operations, keeping
-//! transactions properly scoped and centralized.
+//! This module provides the implementation for single and batch write
+//! operations.
+//!
+//! # Atomicity
+//!
+//! Write operations are atomic. If a closure (passed to `batch_write` or
+//! `read_write_unit_of_work`) returns an `Err`, the entire transaction is
+//! automatically rolled back.
 
 use redb::{MultimapTableDefinition, ReadableTable as _, TableDefinition};
 
@@ -23,8 +29,8 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Serialization` - Serialization failed
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Serialization`] - Serialization failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn put<V>(
         &self,
@@ -52,8 +58,8 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Serialization` - Serialization failed
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Serialization`] - Serialization failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn put_by_uuid<V>(
         &self,
@@ -82,7 +88,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn delete(
         &self,
@@ -118,7 +124,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Transaction` - Transaction operation failed
+    /// - [`DbError::Transaction`] - Transaction operation failed
     /// - Propagates errors from batch operations
     ///
     /// # Examples
@@ -157,7 +163,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Transaction` - Transaction operation failed
+    /// - [`DbError::Transaction`] - Transaction operation failed
     /// - Propagates errors from read or write operations
     ///
     /// # Examples
@@ -192,7 +198,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn multimap_insert(
         &self,
@@ -209,7 +215,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn multimap_remove(
         &self,
@@ -426,7 +432,7 @@ impl ReadWriteUnitOfWork {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if deserialization or transaction fails.
+    /// Returns [`DbError`] if deserialization or transaction fails.
     #[inline]
     pub fn get_owned<V>(
         &self,

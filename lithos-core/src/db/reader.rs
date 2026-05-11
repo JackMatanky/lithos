@@ -1,7 +1,13 @@
-//! Database read operations.
+//! Internal read operations and performance-critical access paths.
 //!
-//! This module contains all zero-copy read operations using closure-based APIs
-//! to keep transactions properly scoped.
+//! This module provides the implementation for zero-copy and owned reads.
+//!
+//! # Transaction Strategy
+//!
+//! To ensure safety, all read operations check that the underlying data
+//! is properly aligned. Redb typically stores data page-aligned, allowing
+//! for a fast, truly zero-copy path. If data is unaligned, a temporary
+//! aligned copy is created to satisfy `rkyv`'s safety requirements.
 
 use redb::{
     MultimapTableDefinition, ReadableDatabase as _, ReadableTable as _,
@@ -27,8 +33,8 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Deserialization` - Data validation failed
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Deserialization`] - Data validation failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn get<V, F, R>(
         &self,
@@ -51,8 +57,9 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::Deserialization` - Data validation or deserialization failed
-    /// - `DbError::Transaction` - Transaction or table operation failed
+    /// - [`DbError::Deserialization`] - Data validation or deserialization
+    ///   failed
+    /// - [`DbError::Transaction`] - Transaction or table operation failed
     #[inline]
     pub fn get_owned<V>(
         &self,
@@ -147,7 +154,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn list_owned<V>(
         &self,
@@ -172,7 +179,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn list_key_value_pairs<V>(
         &self,
@@ -218,7 +225,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn scan_range<V>(
         &self,
@@ -389,7 +396,7 @@ impl BatchReader {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn list_owned<V>(
         &self,
@@ -414,7 +421,7 @@ impl BatchReader {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn list_key_value_pairs<V>(
         &self,
@@ -441,7 +448,7 @@ impl BatchReader {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if transaction or deserialization fails.
+    /// Returns [`DbError`] if transaction or deserialization fails.
     #[inline]
     pub fn scan_range<V>(
         &self,

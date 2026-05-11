@@ -4,19 +4,35 @@ use redb::ReadableDatabase as _;
 
 use crate::db::{error::DbError, read::ReadTx, write::WriteTx};
 
-/// Transaction-scoped database handle.
+/// Thread-safe database handle for scoped transactions.
 ///
-/// Provides closure-based transaction API with automatic commit/rollback.
-/// New code should use `Store`; `Database` is kept for migration compatibility.
+/// The `Store` is the primary entry point for the DB module. It manages the
+/// physical database file and provides high-level, closure-based APIs for read
+/// and write transactions.
+///
+/// # Concurrency
+///
+/// This type is `Send + Sync` and can be shared freely between threads (e.g.,
+/// in an `Arc`). It uses `redb` internally, which supports multi-reader,
+/// single-writer concurrency.
+///
+/// # Transaction Scoping
+///
+/// Transactions are strictly scoped to the provided closure. This prevents
+/// accidental deadlocks and ensures that zero-copy references (which point to
+/// memory-mapped database pages) cannot escape the transaction lifetime.
 #[derive(Debug)]
 pub struct Store {
     inner: redb::Database,
 }
 
-/// Concrete database type wrapping redb.
+/// Standalone database handle for migration and low-level access.
 ///
-/// Provides zero-copy read/write primitives using rkyv serialization.
-/// Follows the `std::fs::File` pattern with concrete methods instead of traits.
+/// `Database` provides methods that manage their own transaction lifetimes.
+/// While convenient for simple operations, new code should prefer [`Store`]
+/// for better control over transaction boundaries and atomicity.
+///
+/// Like [`Store`], this type is `Send + Sync`.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Database {
@@ -28,7 +44,8 @@ impl Store {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::Database` if the database cannot be opened or created.
+    /// Returns [`DbError::Database`] if the database cannot be opened or
+    /// created.
     #[inline]
     pub fn open(path: &Path) -> Result<Self, DbError> {
         let inner = redb::Database::create(path)?;
@@ -41,7 +58,7 @@ impl Store {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if the transaction fails or the closure returns an
+    /// Returns [`DbError`] if the transaction fails or the closure returns an
     /// error.
     #[inline]
     pub fn read<R>(
@@ -61,7 +78,7 @@ impl Store {
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if the transaction fails or the closure returns an
+    /// Returns [`DbError`] if the transaction fails or the closure returns an
     /// error.
     #[inline]
     pub fn write<R>(
@@ -88,7 +105,8 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::Database` if the database cannot be opened or created.
+    /// Returns [`DbError::Database`] if the database cannot be opened or
+    /// created.
     ///
     /// # Examples
     ///
@@ -114,7 +132,7 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::Transaction` if the transaction cannot be started.
+    /// Returns [`DbError::Transaction`] if the transaction cannot be started.
     #[inline]
     pub fn begin_read(&self) -> Result<redb::ReadTransaction, DbError> {
         self.inner.begin_read().map_err(Into::into)

@@ -9,7 +9,7 @@
 
 /// Read-only transaction wrapper.
 ///
-/// Provides scoped access to read-only database operations.
+/// Provides scoped access to read-only database operations within a [`Store`].
 pub struct ReadTx {
     pub(crate) inner: redb::ReadTransaction,
 }

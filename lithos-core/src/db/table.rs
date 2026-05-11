@@ -13,10 +13,14 @@ use super::UuidV7DbType;
 
 /// Table with UUID keys implementing [`UuidV7DbType`].
 ///
-/// Enforces type safety by requiring keys to implement the UUID marker trait.
+/// This wrapper specializes in UUID-keyed tables to eliminate the performance
+/// bottleneck of string formatting.
 ///
-/// Use with domain ID wrapper types (e.g., `SchemaId`, `NoteId`) that implement
-/// `UuidV7DbType` via the `impl_redb_uuid!` macro.
+/// # Why this exists
+///
+/// Many domain IDs are `UUIDv7s`. Formatting a UUID as a 36-byte string for
+/// every lookup is expensive in hot paths (e.g., LSP indexing). This wrapper
+/// allows using the 16-byte raw UUID representation directly as a key.
 pub struct UuidTable<K: UuidV7DbType + 'static, V: Value + 'static> {
     definition: TableDefinition<'static, K, V>,
 }
@@ -46,13 +50,10 @@ impl<K: UuidV7DbType + 'static, V: Value + 'static> UuidTable<K, V> {
 
 /// Multimap table with UUID keys implementing [`UuidV7DbType`].
 ///
-/// Allows multiple values per key. Enforces type safety by requiring keys
-/// to implement the UUID marker trait.
+/// Specialized for 1:N relationships indexed by UUID.
 ///
-/// Note: Multimap values must implement `redb::Key` (not `Value`).
-///
-/// Use with domain ID wrapper types (e.g., `SchemaId`, `NoteId`) that implement
-/// `UuidV7DbType` via the `impl_redb_uuid!` macro.
+/// Use this when a single domain ID (e.g., `SchemaId`) needs to look up
+/// multiple related values (e.g., `NoteId`s) without performing multiple scans.
 pub struct UuidMultimap<K: UuidV7DbType + 'static, V: Key + 'static> {
     definition: MultimapTableDefinition<'static, K, V>,
 }
@@ -80,17 +81,10 @@ impl<K: UuidV7DbType + 'static, V: Key + 'static> UuidMultimap<K, V> {
     }
 }
 
-/// Table with static string keys (typically file paths).
+/// Table with static string keys, typically representing file paths.
 ///
-/// Specialized for `&'static str` keys, commonly used for file path lookups.
-///
-/// # Examples
-///
-/// ```
-/// use lithos_core::db::PathTable;
-///
-/// const PATHS: PathTable<&str> = PathTable::new("file_paths");
-/// ```
+/// Specialized for `&'static str` keys, enforcing the convention that paths
+/// are represented as string keys within the database.
 pub struct PathTable<V: Value + 'static> {
     definition: TableDefinition<'static, &'static str, V>,
 }
@@ -102,6 +96,7 @@ impl<V: Value + 'static> PathTable<V> {
     ///
     /// ```
     /// use lithos_core::db::PathTable;
+    /// # use redb::TableDefinition;
     ///
     /// const FILES: PathTable<&str> = PathTable::new("file_metadata");
     /// ```
@@ -134,6 +129,7 @@ impl<V: Value + 'static> PathTable<V> {
 ///
 /// ```
 /// use lithos_core::db::Table;
+/// # use redb::TableDefinition;
 ///
 /// const COUNTERS: Table<&str, u64> = Table::new("counters");
 /// ```
@@ -148,6 +144,7 @@ impl<K: Key + 'static, V: Value + 'static> Table<K, V> {
     ///
     /// ```
     /// use lithos_core::db::Table;
+    /// # use redb::TableDefinition;
     ///
     /// const SETTINGS: Table<&str, &str> = Table::new("app_settings");
     /// ```

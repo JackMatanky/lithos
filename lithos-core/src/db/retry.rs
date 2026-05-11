@@ -1,7 +1,12 @@
-//! Retry logic for transient database errors.
+//! Resilience strategy for transient database errors.
 //!
-//! Provides exponential backoff retry strategy for operations that might
-//! fail due to temporary conditions like database locks or I/O errors.
+//! Provides exponential backoff for operations that fail due to temporary
+//! system conditions. This is primarily used to handle:
+//! - **Concurrency Contention**: Multiple processes trying to lock the DB.
+//! - **Transient I/O**: Temporary filesystem unavailability (e.g., during
+//!   backups).
+//! - **Transaction Conflicts**: Occasional race conditions in high-concurrency
+//!   writes.
 
 use std::time::Duration;
 
@@ -40,7 +45,7 @@ impl Default for RetryConfig {
 ///
 /// # Errors
 ///
-/// Returns the last error if all retry attempts fail, or immediately
+/// Returns the last [`DbError`] if all retry attempts fail, or immediately
 /// returns non-transient errors without retrying.
 ///
 /// # Examples
