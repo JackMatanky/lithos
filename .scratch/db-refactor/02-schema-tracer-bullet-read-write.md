@@ -16,7 +16,7 @@ AFK
 
 ## What to build
 
-Implement a Schema tracer-bullet vertical slice using the new seam: one complete Schema read path and one complete Schema write path through `schema/repository.rs`, `schema/storage/read.rs`, `schema/storage/write.rs`, and `schema/storage/tables.rs`, backed by `db::Store` and DB helpers.
+Implement a Schema tracer-bullet vertical slice using the new seam: one complete Schema read path and one complete Schema write path through `schema/repository.rs` (trait), `schema/storage_v2/tables.rs` (table definition), `schema/storage_v2/write.rs` (save_schema impl), and `schema/storage_v2/read.rs` (find_schema_by_id impl), backed by `db::Store` and DB helpers.
 
 This slice demonstrates the new transaction pattern, transparent error handling, and type-safe table wrappers before broader migration.
 
@@ -24,16 +24,21 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 
 ### 1. Seam Architecture
 - **Trait**: `SchemaRepository` defined in `schema/repository.rs`.
-- **Adapter**: `SchemaRedbRepository` defined in `schema/storage/mod.rs`.
-- **Naming**: Using `Schema*` prefix temporarily to avoid conflicts with existing `Repository` / `RedbRepository` in `schema/storage.rs`. These will be renamed back after the legacy implementation is deleted in Issue-09.
+- **Adapter**: `SchemaRedbRepository` defined in `schema/storage_v2/mod.rs`.
+- **Naming**:
+  - Module: `storage_v2` → rename to `storage` after legacy migration
+  - Trait: `SchemaRepository` → rename to `Repository` after legacy migration
+  - Adapter: `SchemaRedbRepository` → rename to `RedbRepository` after legacy migration
 - **Error Type**: `struct SchemaStorageError(DbError)` — newtype wrapper over `DbError`, expandable later.
 
 ### 2. Storage Layout
-- `schema/storage/tables.rs`:
-    - Defines `const SCHEMAS: UuidTable<SchemaId, Schema>`.
+- **`schema/storage_v2/`** — Temporary directory name (will rename to `storage` after legacy migration).
+- `schema/storage_v2/tables.rs`:
+    - Defines `const SCHEMAS: UuidTable<SchemaId, &[u8]>` — uses `&[u8]` as value type, serialized via rkyv helpers.
     - Contains `impl_redb_uuid!(SchemaId);` to keep the domain identifier pure from storage-specific trait implementations.
-- `schema/storage/read.rs`: Implements read logic using `Store::read`.
-- `schema/storage/write.rs`: Implements write logic using `Store::write`.
+- `schema/storage_v2/mod.rs`: Declares the `SchemaRedbRepository` struct and re-exports modules.
+- `schema/storage_v2/read.rs`: Contains `impl SchemaRepository for SchemaRedbRepository` block with `find_schema_by_id` method.
+- `schema/storage_v2/write.rs`: Contains `impl SchemaRepository for SchemaRedbRepository` block with `save_schema` method.
 
 ### 3. Tracer Bullet Operations
 - **Write**: `save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError>`
@@ -45,15 +50,17 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 - Write test using `SchemaRepository::save_schema` and `find_schema_by_id` — fails because trait doesn't exist.
 
 **Phase 2: Write Path**
-- Create `tables.rs` with `impl_redb_uuid!(SchemaId)` and `const SCHEMAS`.
-- Create `write.rs` with `save_schema(tx, schema)` using `db::rkyv::serialize`.
+- Create `tables.rs` with `impl_redb_uuid!(SchemaId)` and `const SCHEMAS: UuidTable<SchemaId, &[u8]>`.
 - Create `mod.rs` with `SchemaRedbRepository { store: Arc<Store> }`.
-- Delegate `save_schema` to `store.write(|tx| save_schema(tx, schema))`.
+- Create `write.rs` with `impl SchemaRepository for SchemaRedbRepository` block containing `save_schema` method — uses `store.write(|tx| ...)` with inline rkyv serialization and table insert.
 
 **Phase 3: Read Path**
-- Create `read.rs` with `find_schema_by_id(tx, id)` using `db::rkyv::deserialize`.
-- Add `find_schema_by_id` to `SchemaRedbRepository`.
+- Create `read.rs` with `impl SchemaRepository for SchemaRedbRepository` block containing `find_schema_by_id` method — uses `store.read(|tx| ...)` with inline table get and rkyv deserialize.
 - Verify roundtrip: save → find → matches.
+
+**Visibility Guidelines**
+- Trait methods: `pub` (part of public interface).
+- Adapter struct: `pub` (part of public interface).
 
 **Phase 4: Transaction Semantics**
 - Test rollback: invalid save fails, previous state preserved.
@@ -65,9 +72,11 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 ## Acceptance criteria
 
 - [ ] `trait SchemaRepository` exists in `schema/repository.rs` with `save_schema` and `find_schema_by_id`.
-- [ ] `schema/storage/tables.rs` exists and defines `const SCHEMAS: UuidTable<SchemaId, Schema>`.
-- [ ] `SchemaId` implements required redb traits via `impl_redb_uuid!` within `schema/storage/tables.rs` (not `identifier.rs`).
-- [ ] `SchemaRedbRepository` adapter exists in `schema/storage/mod.rs` and delegates to implementation modules.
+- [ ] `schema/storage_v2/tables.rs` exists and defines `const SCHEMAS: UuidTable<SchemaId, &[u8]>`.
+- [ ] `SchemaId` implements required redb traits via `impl_redb_uuid!` within `schema/storage_v2/tables.rs` (not `identifier.rs`).
+- [ ] `SchemaRedbRepository` struct defined in `schema/storage_v2/mod.rs`.
+- [ ] `impl SchemaRepository for SchemaRedbRepository` in `schema/storage_v2/write.rs` with `save_schema`.
+- [ ] `impl SchemaRepository for SchemaRedbRepository` in `schema/storage_v2/read.rs` with `find_schema_by_id`.
 - [ ] Implementation uses `Store::read` and `Store::write` with the rkyv helpers from `db::rkyv`.
 - [ ] `save_schema` correctly auto-commits and `find_schema_by_id` returns the persisted record.
 - [ ] Tests validate behavior at the Interface level (exercising `SchemaRedbRepository`) and confirm basic rollback/commit semantics via `Store`.
