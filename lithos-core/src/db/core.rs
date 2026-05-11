@@ -1,3 +1,10 @@
+//! Core database handles and transaction scaffolding.
+//!
+//! This module provides the primary [`Store`] handle for managing database
+//! connections and scoped transactions. It also contains the legacy
+//! [`Database`] handle which is maintained for backwards compatibility during
+//! migration.
+
 use std::path::Path;
 
 use redb::ReadableDatabase as _;
