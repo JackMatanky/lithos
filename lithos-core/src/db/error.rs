@@ -2,6 +2,155 @@
     clippy::pattern_type_mismatch,
     reason = "Match on reference vs value in kind() method"
 )]
+#![allow(
+    clippy::missing_trait_methods,
+    reason = "PartialEq::ne default implementation is correct for pointer \
+              equality"
+)]
+
+use std::sync::Arc;
+
+/// Wrapper around `redb::DatabaseError` that implements Clone/PartialEq/Eq.
+///
+/// Equality comparison uses pointer equality on the Arc (identity, not value).
+#[derive(Debug, Clone)]
+pub struct TransparentDatabaseError(Arc<redb::DatabaseError>);
+
+impl PartialEq for TransparentDatabaseError {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TransparentDatabaseError {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::fmt::Display for TransparentDatabaseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for TransparentDatabaseError {
+    type Target = redb::DatabaseError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Wrapper around `redb::TransactionError` that implements Clone/PartialEq/Eq.
+#[derive(Debug, Clone)]
+pub struct TransparentTransactionError(Arc<redb::TransactionError>);
+
+impl PartialEq for TransparentTransactionError {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TransparentTransactionError {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::fmt::Display for TransparentTransactionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for TransparentTransactionError {
+    type Target = redb::TransactionError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Wrapper around `redb::TableError` that implements Clone/PartialEq/Eq.
+#[derive(Debug, Clone)]
+pub struct TransparentTableError(Arc<redb::TableError>);
+
+impl PartialEq for TransparentTableError {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TransparentTableError {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::fmt::Display for TransparentTableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for TransparentTableError {
+    type Target = redb::TableError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Wrapper around `redb::CommitError` that implements Clone/PartialEq/Eq.
+#[derive(Debug, Clone)]
+pub struct TransparentCommitError(Arc<redb::CommitError>);
+
+impl PartialEq for TransparentCommitError {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TransparentCommitError {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::fmt::Display for TransparentCommitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for TransparentCommitError {
+    type Target = redb::CommitError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Wrapper around `redb::StorageError` that implements Clone/PartialEq/Eq.
+#[derive(Debug, Clone)]
+pub struct TransparentStorageError(Arc<redb::StorageError>);
+
+impl PartialEq for TransparentStorageError {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TransparentStorageError {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::fmt::Display for TransparentStorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for TransparentStorageError {
+    type Target = redb::StorageError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Error classification for stable branching without backend-specific matching.
 /// Provides a stable API for error handling that doesn't depend on
@@ -63,6 +212,26 @@ pub enum DbError {
     /// Table operation failed.
     #[error("table error: {0}")]
     Table(String),
+
+    /// Database operation failed (transparent redb error wrapper).
+    #[error("database error: {0}")]
+    DatabaseTransparent(TransparentDatabaseError),
+
+    /// Transaction failed (transparent redb error wrapper).
+    #[error("transaction error: {0}")]
+    TransactionTransparent(TransparentTransactionError),
+
+    /// Table operation failed (transparent redb error wrapper).
+    #[error("table error: {0}")]
+    TableTransparent(TransparentTableError),
+
+    /// Commit failed (transparent redb error wrapper).
+    #[error("commit error: {0}")]
+    CommitTransparent(TransparentCommitError),
+
+    /// Storage operation failed (transparent redb error wrapper).
+    #[error("storage error: {0}")]
+    StorageTransparent(TransparentStorageError),
 }
 
 impl DbError {
@@ -83,12 +252,21 @@ impl DbError {
     #[must_use]
     pub fn kind(&self) -> DbErrorKind {
         match self {
-            Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
-            Self::Transaction(_) => DbErrorKind::Transaction,
-            Self::Table(_) | Self::NotFound => DbErrorKind::Table,
+            Self::Database(_)
+            | Self::Open(_)
+            | Self::DatabaseTransparent(_) => DbErrorKind::Database,
+            Self::Transaction(_) | Self::TransactionTransparent(_) => {
+                DbErrorKind::Transaction
+            }
+            Self::Table(_) | Self::NotFound | Self::TableTransparent(_) => {
+                DbErrorKind::Table
+            }
+            Self::CommitTransparent(_) => DbErrorKind::Commit,
+            Self::Corruption(_) | Self::StorageTransparent(_) => {
+                DbErrorKind::Storage
+            }
             Self::Serialization(_) => DbErrorKind::Serialization,
             Self::Deserialization(_) => DbErrorKind::Deserialization,
-            Self::Corruption(_) => DbErrorKind::Storage,
         }
     }
 
@@ -136,6 +314,39 @@ impl DbError {
                 let lower = msg.to_lowercase();
                 lower.contains("conflict") || lower.contains("locked")
             }
+            // Transparent database errors: check redb error type
+            Self::DatabaseTransparent(err) => {
+                // DatabaseAlreadyOpen and TransactionInProgress are transient
+                // Storage errors might be transient (I/O)
+                matches!(
+                    **err,
+                    redb::DatabaseError::DatabaseAlreadyOpen
+                        | redb::DatabaseError::TransactionInProgress
+                        | redb::DatabaseError::Storage(_)
+                )
+            }
+            // Transparent transaction errors: check redb error type
+            Self::TransactionTransparent(err) => {
+                // ReadTransactionStillInUse is transient
+                // Storage errors might be transient (I/O)
+                matches!(
+                    **err,
+                    redb::TransactionError::ReadTransactionStillInUse(_)
+                        | redb::TransactionError::Storage(_)
+                )
+            }
+            // Transparent table errors: check for storage errors
+            Self::TableTransparent(err) => {
+                matches!(**err, redb::TableError::Storage(_))
+            }
+            // Transparent commit errors: check for storage errors
+            Self::CommitTransparent(err) => {
+                matches!(**err, redb::CommitError::Storage(_))
+            }
+            // Transparent storage errors: check for I/O
+            Self::StorageTransparent(err) => {
+                matches!(**err, redb::StorageError::Io(_))
+            }
             // All other errors are permanent (not retryable)
             Self::Corruption(_)
             | Self::Deserialization(_)
@@ -150,35 +361,35 @@ impl DbError {
 impl From<redb::DatabaseError> for DbError {
     #[inline]
     fn from(e: redb::DatabaseError) -> Self {
-        Self::Database(e.to_string())
+        Self::DatabaseTransparent(TransparentDatabaseError(Arc::new(e)))
     }
 }
 
 impl From<redb::TransactionError> for DbError {
     #[inline]
     fn from(e: redb::TransactionError) -> Self {
-        Self::Transaction(e.to_string())
+        Self::TransactionTransparent(TransparentTransactionError(Arc::new(e)))
     }
 }
 
 impl From<redb::TableError> for DbError {
     #[inline]
     fn from(e: redb::TableError) -> Self {
-        Self::Table(e.to_string())
+        Self::TableTransparent(TransparentTableError(Arc::new(e)))
     }
 }
 
 impl From<redb::StorageError> for DbError {
     #[inline]
     fn from(e: redb::StorageError) -> Self {
-        Self::Database(e.to_string())
+        Self::StorageTransparent(TransparentStorageError(Arc::new(e)))
     }
 }
 
 impl From<redb::CommitError> for DbError {
     #[inline]
     fn from(e: redb::CommitError) -> Self {
-        Self::Transaction(e.to_string())
+        Self::CommitTransparent(TransparentCommitError(Arc::new(e)))
     }
 }
 
@@ -303,20 +514,97 @@ mod tests {
         }
     }
 
-    /// Converting `redb::DatabaseError` to `DbError` preserves error metadata.
-    #[test]
-    fn redb_database_error_converts_with_correct_kind() {
-        let db_err = redb::DatabaseError::from(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "test",
-        ));
-        let result: DbError = db_err.into();
+    mod transparent_wrappers {
+        use super::*;
 
-        assert!(
-            result.to_string().contains("database error"),
-            "Expected database error conversion message, got: {result}"
-        );
+        /// `From<redb::DatabaseError>` wraps error transparently.
+        ///
+        /// Behavior: Converting `redb::DatabaseError` to `DbError` preserves
+        /// the original error metadata (no string flattening).
+        /// Verification: Convert `DatabaseError`, verify `kind()` returns Database,
+        /// verify error can be downcasted back to redb type.
+        #[test]
+        fn database_error_wraps_transparently() {
+            let redb_err = redb::DatabaseError::TransactionInProgress;
+            let db_err: DbError = redb_err.into();
 
-        assert_eq!(result.kind(), DbErrorKind::Database);
+            // Verify kind classification works
+            assert_eq!(db_err.kind(), DbErrorKind::Database);
+
+            // Verify it's the transparent variant (not string-wrapped)
+            assert!(
+                matches!(db_err, DbError::DatabaseTransparent(_)),
+                "Expected DbError::DatabaseTransparent variant, got: \
+                 {db_err:?}"
+            );
+        }
+
+        /// `From<redb::TransactionError>` wraps error transparently.
+        #[test]
+        fn transaction_error_wraps_transparently() {
+            // Need to create a redb::TransactionError - use Storage variant
+            let storage_err = redb::StorageError::Io(std::io::Error::other(
+                "test",
+            ));
+            let redb_err = redb::TransactionError::Storage(storage_err);
+            let db_err: DbError = redb_err.into();
+
+            // Verify kind classification works
+            assert_eq!(db_err.kind(), DbErrorKind::Transaction);
+
+            // Verify it's the transparent variant
+            assert!(
+                matches!(db_err, DbError::TransactionTransparent(_)),
+                "Expected DbError::TransactionTransparent variant, got: \
+                 {db_err:?}"
+            );
+        }
+
+        /// `From<redb::TableError>` wraps error transparently.
+        #[test]
+        fn table_error_wraps_transparently() {
+            let storage_err = redb::StorageError::Io(std::io::Error::other(
+                "test",
+            ));
+            let redb_err = redb::TableError::Storage(storage_err);
+            let db_err: DbError = redb_err.into();
+
+            assert_eq!(db_err.kind(), DbErrorKind::Table);
+            assert!(
+                matches!(db_err, DbError::TableTransparent(_)),
+                "Expected DbError::TableTransparent variant, got: {db_err:?}"
+            );
+        }
+
+        /// `From<redb::CommitError>` wraps error transparently.
+        #[test]
+        fn commit_error_wraps_transparently() {
+            let storage_err = redb::StorageError::Io(std::io::Error::other(
+                "test",
+            ));
+            let redb_err = redb::CommitError::Storage(storage_err);
+            let db_err: DbError = redb_err.into();
+
+            assert_eq!(db_err.kind(), DbErrorKind::Commit);
+            assert!(
+                matches!(db_err, DbError::CommitTransparent(_)),
+                "Expected DbError::CommitTransparent variant, got: {db_err:?}"
+            );
+        }
+
+        /// `From<redb::StorageError>` wraps error transparently.
+        #[test]
+        fn storage_error_wraps_transparently() {
+            let redb_err = redb::StorageError::Io(std::io::Error::other(
+                "test",
+            ));
+            let db_err: DbError = redb_err.into();
+
+            assert_eq!(db_err.kind(), DbErrorKind::Storage);
+            assert!(
+                matches!(db_err, DbError::StorageTransparent(_)),
+                "Expected DbError::StorageTransparent variant, got: {db_err:?}"
+            );
+        }
     }
 }

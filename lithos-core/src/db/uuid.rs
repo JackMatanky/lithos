@@ -2,7 +2,7 @@
 //!
 //! Provides wrapper-first DB key support for `UuidV7`-backed ID types.
 
-mod sealed {
+pub(crate) mod sealed {
     pub trait Sealed {}
 }
 
