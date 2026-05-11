@@ -1,7 +1,17 @@
 //! rkyv serialization helpers for db module.
 //!
 //! These helpers provide safe serialization/deserialization for persistent
-//! storage. They enforce validation and handle alignment automatically.
+//! storage. They enforce strict validation and handle memory alignment
+//! automatically.
+//!
+//! # Architecture Constraints
+//!
+//! - **Strict Validation**: All deserialization paths use `rkyv::access` (which
+//!   invokes bytecheck). `access_unchecked` is explicitly forbidden to prevent
+//!   undefined behavior from corrupt database pages.
+//! - **Alignment**: `rkyv` 0.8 requires 16-byte alignment. These helpers
+//!   abstract the complexity of `AlignedVec` and pointer arithmetic away from
+//!   domain code.
 
 #![allow(
     dead_code,
@@ -17,6 +27,9 @@ use rkyv::{
 use crate::db::DbError;
 
 /// Serialize a value to rkyv-aligned bytes.
+///
+/// Ensures the resulting buffer uses `AlignedVec` to meet `rkyv`'s 16-byte
+/// alignment requirements for zero-copy access later.
 ///
 /// # Errors
 ///
@@ -37,6 +50,12 @@ where
 }
 
 /// Deserialize rkyv bytes with validation (copies data).
+///
+/// Converts a raw byte slice into an owned domain type. This enables the
+/// **Two-Phase Iteration Pattern** required by `redb` to prevent lifetime
+/// conflicts:
+/// 1. Collect raw bytes from `redb::AccessGuard` items into memory.
+/// 2. Deserialize those bytes into owned instances.
 ///
 /// # Errors
 ///
@@ -61,9 +80,12 @@ where
 
 /// Access archived data via zero-copy closure.
 ///
-/// Handles alignment automatically:
-/// - Fast path: Direct access if bytes are 16-byte aligned
-/// - Slow path: Copy to `AlignedVec` if not aligned
+/// Handles alignment automatically without exposing pointer arithmetic to
+/// callers:
+/// - **Fast path**: Direct, allocation-free access if the input slice happens
+///   to fall on a 16-byte boundary (common for `redb` pages).
+/// - **Slow path**: Allocates and copies to an `AlignedVec` before access if
+///   the slice is unaligned.
 ///
 /// # Errors
 ///
