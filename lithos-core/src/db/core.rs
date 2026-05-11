@@ -68,10 +68,10 @@ impl Store {
     /// Returns [`DbError`] if the transaction fails or the closure returns an
     /// error.
     #[inline]
-    pub fn read<R>(
-        &self,
-        f: impl FnOnce(&ReadTx) -> Result<R, DbError>,
-    ) -> Result<R, DbError> {
+    pub fn read<R, F>(&self, f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(&ReadTx) -> Result<R, DbError>,
+    {
         let tx = self.inner.begin_read()?;
         let read_tx = ReadTx {
             inner: tx,
@@ -88,10 +88,10 @@ impl Store {
     /// Returns [`DbError`] if the transaction fails or the closure returns an
     /// error.
     #[inline]
-    pub fn write<R>(
-        &self,
-        f: impl FnOnce(&mut WriteTx) -> Result<R, DbError>,
-    ) -> Result<R, DbError> {
+    pub fn write<R, F>(&self, f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(&mut WriteTx) -> Result<R, DbError>,
+    {
         let tx = self.inner.begin_write()?;
         let mut write_tx = WriteTx {
             inner: tx,

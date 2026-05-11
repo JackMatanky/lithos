@@ -43,17 +43,6 @@
 //! # }
 //! ```
 
-#![allow(
-    clippy::pub_use,
-    clippy::impl_trait_in_params,
-    reason = "This module intentionally re-exports a small public surface \
-              (db::DbError, db::BatchWriter) for ergonomic crate consumers"
-)]
-#![allow(
-    clippy::module_name_repetitions,
-    reason = "DbError is intentionally explicit at the crate API boundary"
-)]
-
 mod core;
 mod error;
 mod read;

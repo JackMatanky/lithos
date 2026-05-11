@@ -1,8 +1,3 @@
-#![allow(
-    clippy::pattern_type_mismatch,
-    reason = "Match on reference vs value in kind() method"
-)]
-
 /// Error classification for stable branching without backend-specific matching.
 /// Provides a stable API for error handling that doesn't depend on
 /// backend-specific error types. Use [`DbError::kind`] to classify errors.
