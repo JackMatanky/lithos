@@ -52,7 +52,7 @@ use crate::{
     Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-pub struct SchemaId(UuidV7);
+pub struct SchemaId(pub(crate) UuidV7);
 
 impl SchemaId {
     /// Creates a new UUID v7-based `SchemaId`.

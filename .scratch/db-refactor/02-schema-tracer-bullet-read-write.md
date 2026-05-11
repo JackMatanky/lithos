@@ -2,8 +2,9 @@
 title: 02-schema-tracer-bullet-read-write
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-10
+date_completed: 2026-05-11
 ---
 
 ## Type
@@ -29,7 +30,9 @@ This slice demonstrates the new transaction pattern, transparent error handling,
   - Module: `storage_v2` → rename to `storage` after legacy migration
   - Trait: `SchemaRepository` → rename to `Repository` after legacy migration
   - Adapter: `SchemaRedbRepository` → rename to `RedbRepository` after legacy migration
-- **Error Type**: `struct SchemaStorageError(DbError)` — newtype wrapper over `DbError`, expandable later.
+- **Error Type**: `struct SchemaStorageV2Error(DbError)` in `schema/repository.rs` — newtype wrapper over `DbError` to differentiate from domain errors.
+- **Sync**: All operations are synchronous (not `async`).
+- **Tests**: Unit tests must live in the same file as the code they are testing (standard Rust convention).
 
 ### 2. Storage Layout
 - **`schema/storage_v2/`** — Temporary directory name (will rename to `storage` after legacy migration).
@@ -41,10 +44,14 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 - `schema/storage_v2/write.rs`: Contains `impl SchemaRepository for SchemaRedbRepository` block with `save_schema` method.
 
 ### 3. Tracer Bullet Operations
-- **Write**: `save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError>`
-- **Read**: `find_schema_by_id(&self, id: SchemaId) -> Result<Option<Schema>, SchemaStorageError>`
+- **Write**: `fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error>`
+- **Read**: `fn find_schema_by_id(&self, id: SchemaId) -> Result<Option<Schema>, SchemaStorageV2Error>`
 
-### 4. TDD Implementation Plan
+### 4. Implementation Details
+- **Constructor**: `SchemaRedbRepository` must provide `pub fn new(store: Arc<Store>) -> Self`.
+- **Transaction Pattern**: Logic must be inline in the `impl` block, utilizing `Store::read` and `Store::write` closures directly.
+
+### 5. TDD Implementation Plan
 
 **Phase 1: Define Trait Interface**
 - Write test using `SchemaRepository::save_schema` and `find_schema_by_id` — fails because trait doesn't exist.
@@ -71,16 +78,39 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 
 ## Acceptance criteria
 
-- [ ] `trait SchemaRepository` exists in `schema/repository.rs` with `save_schema` and `find_schema_by_id`.
-- [ ] `schema/storage_v2/tables.rs` exists and defines `const SCHEMAS: UuidTable<SchemaId, &[u8]>`.
-- [ ] `SchemaId` implements required redb traits via `impl_redb_uuid!` within `schema/storage_v2/tables.rs` (not `identifier.rs`).
-- [ ] `SchemaRedbRepository` struct defined in `schema/storage_v2/mod.rs`.
-- [ ] `impl SchemaRepository for SchemaRedbRepository` in `schema/storage_v2/write.rs` with `save_schema`.
-- [ ] `impl SchemaRepository for SchemaRedbRepository` in `schema/storage_v2/read.rs` with `find_schema_by_id`.
-- [ ] Implementation uses `Store::read` and `Store::write` with the rkyv helpers from `db::rkyv`.
-- [ ] `save_schema` correctly auto-commits and `find_schema_by_id` returns the persisted record.
-- [ ] Tests validate behavior at the Interface level (exercising `SchemaRedbRepository`) and confirm basic rollback/commit semantics via `Store`.
-- [ ] `mise run verify` passes with no lint warnings or test failures.
+- [x] `trait SchemaRepository` exists in `schema/repository.rs` with `save_schema` and `find_schema_by_id`.
+- [x] `struct SchemaStorageV2Error(DbError)` defined in `schema/repository.rs`.
+- [x] `schema/storage_v2/tables.rs` exists and defines `const SCHEMAS: UuidTable<SchemaId, &[u8]>`.
+- [x] `SchemaId` implements required redb traits via `impl_redb_uuid!` within `schema/storage_v2/tables.rs` (not `identifier.rs`).
+- [x] `SchemaRedbRepository` struct and `pub fn new(store: Arc<Store>) -> Self` defined in `schema/storage_v2/mod.rs`.
+- [x] `impl SchemaRepository for SchemaRedbRepository` in `schema/storage_v2/core.rs` with `save_schema` and `find_schema_by_id`.
+- [x] Unit tests for storage logic exist in `schema/storage_v2/core.rs`.
+- [x] Implementation is synchronous (no `async` markers on trait or methods).
+- [x] Implementation uses `Store::read` and `Store::write` with the rkyv helpers from `db::rkyv`.
+- [x] `save_schema` correctly auto-commits and `find_schema_by_id` returns the persisted record.
+- [x] Tests validate behavior at the Interface level (exercising `SchemaRedbRepository`) and confirm basic rollback/commit semantics via `Store`.
+- [x] `mise run verify` passes with no lint warnings or test failures.
+
+## Implementation Notes
+
+### Deviation from Original Plan
+- **File structure**: Instead of `read.rs` and `write.rs` as separate files, implemented `core.rs` containing both read and write implementations in a single module.
+- **Reason**: Rust's E0119 error prevents splitting `impl Trait for Type` across multiple files. The delegation pattern (mod.rs re-exports core.rs) was used instead.
+
+### Actual Implementation Structure
+```
+schema/storage_v2/
+├── mod.rs      # Struct declaration + re-exports
+├── core.rs     # Full impl block with read + write methods + tests
+└── tables.rs   # Table definitions + impl_redb_uuid! macro
+```
+
+### What Was NOT Implemented (Out of Scope)
+- GetRepository and SetRepository - these are separate future issues
+
+### Verification
+- All acceptance criteria met
+- `mise run verify` passes with no warnings
 
 ## Blocked by
 

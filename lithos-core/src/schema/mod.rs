@@ -19,6 +19,11 @@ pub mod identifier;
 /// replacing the old CQRS Command/Query pattern.
 pub mod storage;
 
+/// Repository trait for the new seam.
+pub mod repository;
+/// Redb-backed repository implementation for the new seam.
+pub mod storage_v2;
+
 /// Testing and benchmarking utilities for pure unit tests.
 ///
 /// Provides `InMemoryRepository` and test helpers to eliminate filesystem

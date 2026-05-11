@@ -34,7 +34,8 @@ use crate::db::DbError;
 /// # Errors
 ///
 /// Returns [`DbError::Serialization`] if `rkyv` fails to serialize the value.
-pub(crate) fn serialize<V>(value: &V) -> Result<AlignedVec, DbError>
+#[inline]
+pub fn serialize<V>(value: &V) -> Result<AlignedVec, DbError>
 where
     V: Archive
         + for<'ser> Serialize<
@@ -61,7 +62,8 @@ where
 ///
 /// Returns [`DbError::Deserialization`] if byte validation or deserialization
 /// fails.
-pub(crate) fn deserialize<V>(bytes: &[u8]) -> Result<V, DbError>
+#[inline]
+pub fn deserialize<V>(bytes: &[u8]) -> Result<V, DbError>
 where
     V: Archive,
     V::Archived: Portable
@@ -90,7 +92,8 @@ where
 /// # Errors
 ///
 /// Returns [`DbError::Deserialization`] if byte validation fails.
-pub(crate) fn with_archived<V, F, R>(bytes: &[u8], f: F) -> Result<R, DbError>
+#[inline]
+pub fn with_archived<V, F, R>(bytes: &[u8], f: F) -> Result<R, DbError>
 where
     V: Archive,
     V::Archived: Portable

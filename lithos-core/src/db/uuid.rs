@@ -3,7 +3,8 @@
 //! Provides wrapper-first DB key support for
 //! [`UuidV7`](crate::utils::UuidV7)-backed ID types.
 
-mod sealed {
+#[doc(hidden)]
+pub mod sealed {
     pub trait Sealed {}
 }
 
@@ -24,8 +25,15 @@ pub trait UuidV7DbType: sealed::Sealed + Value + Key {}
 /// impl_redb_uuid!(crate::note::identifier::NoteId);
 /// ```
 ///
-/// Assumes the wrapper is a tuple struct with [`UuidV7`](crate::utils::UuidV7)
-/// as the first field: `pub struct SchemaId(UuidV7);`.
+/// # Requirements
+///
+/// The wrapper must be a tuple struct with [`UuidV7`](crate::utils::UuidV7)
+/// as the first field. The inner field **must be accessible from `db::uuid`**
+/// (e.g., `pub(crate) pub struct SchemaId(pub(crate) UuidV7);`).
+///
+/// This is necessary because the macro needs to:
+/// - Construct the type: `Self(uuid)`
+/// - Access bytes: `value.0.as_bytes()`
 #[macro_export]
 macro_rules! impl_redb_uuid {
     ($wrapper:ty) => {
@@ -73,8 +81,8 @@ macro_rules! impl_redb_uuid {
             }
         }
 
-        impl $crate::db::uuid::sealed::Sealed for $wrapper {}
-        impl $crate::db::uuid::UuidV7DbType for $wrapper {}
+        impl $crate::db::sealed::Sealed for $wrapper {}
+        impl $crate::db::UuidV7DbType for $wrapper {}
     };
 }
 
