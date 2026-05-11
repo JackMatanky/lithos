@@ -1,11 +1,21 @@
+# -----------------------------------------------------------------------------
+# Filename:    lithos/lithos-core/Cargo.toml
+# Docs:        https://doc.rust-lang.org/cargo/reference/manifest.html
+# Description: Package manifest for the Lithos core crate, defining the domain
+#              logic, infrastructure, and crate-specific dependencies.
+# -----------------------------------------------------------------------------
+
 [package]
 name = "lithos-core"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
-license.workspace = true
-repository.workspace = true
+edition.workspace = true
 description = "Core domain and infrastructure for Lithos"
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 # Persistence (zero-copy serialization)
