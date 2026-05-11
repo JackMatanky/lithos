@@ -79,214 +79,105 @@ unsafe_code = "forbid"
 missing_docs = "deny"
 
 [workspace.lints.clippy]
-# ---------------------- Category Groups ---------------------- #
+# ------------------------------------------------------------- #
+#                        Lint Categories                        #
+# ------------------------------------------------------------- #
+# Note: `correctness` is deny by default. The `restriction` group is explicitly omitted.
+#       `complexity` and `perf` are defined as deny for elevated guardrails.
+# `correctness`: code that is outright wrong or useless. (default: deny)
+# `suspicious`: code that is most likely wrong or useless. (default: warn)
+# `style`: code that should be written in a more idiomatic way. (default: warn)
+# `complexity`: code that does something simple but in a complex way (default: warn)
+complexity = { level = "deny", priority = -1 }
+# `perf`: code that can be written to run faster (default: warn)
+perf = { level = "deny", priority = -1 }
+# `pedantic`: lints which are rather strict or have occasional false positives (default: allow)
 pedantic = { level = "warn", priority = -1 }
-restriction = { level = "warn", priority = -1 }
-correctness = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
+# `restriction`: lints which prevent the use of language and library features (default: allow)
+# `nursery`: new lints that are still under development (default: allow)
+# `cargo`: lints for the cargo manifest (default: allow)
+cargo = { level = "warn", priority = -1 }
 
-# ------------ Allowed (Exceptions & Relaxations) ------------- #
-# Style & Formatting
-# Permits absolute paths to clarify external type origins.
-absolute_paths = "allow"
-# Permits `pub(crate)` shorthand over `pub(in crate)` for cleaner visibility.
-pub_with_shorthand = "allow"
-# Prefers semicolons outside block expressions for visual consistency.
-semicolon_inside_block = "allow"
-# Permits numeric suffixes without underscores (e.g., 1u32) for small literals.
-unseparated_literal_suffix = "allow"
+# ------------------------------------------------------------- #
+#              Allowed (Exceptions & Relaxations)               #
+# ------------------------------------------------------------- #
 
-# Structure & Architecture
-# Prevents warnings on broad restriction groups, allowing cherry-picked rules.
-blanket_clippy_restriction_lints = "allow"
-# Permits both `mod.rs` and `folder/mod.rs` module conventions.
-mod_module_files = "allow"
-# Permits `std` library types instead of `alloc` for std environments.
-std_instead_of_alloc = "allow"
-# Permits `std` library types instead of `core` for std environments.
-std_instead_of_core = "allow"
+# -------------------- Style & Formatting --------------------- #
+absolute_paths = "allow"             # Permits absolute paths to clarify external type origins.
+pub_with_shorthand = "allow"         # Permits `pub(crate)` shorthand over `pub(in crate)` for cleaner visibility.
+semicolon_inside_block = "allow"     # Prefers semicolons outside block expressions for visual consistency.
+unseparated_literal_suffix = "allow" # Permits numeric suffixes without underscores (e.g., 1u32) for small literals.
 
-# Idioms & Patterns
-# Permits omitting `return` to embrace idiomatic trailing expressions.
-implicit_return = "allow"
-# Permits `?` for error propagation instead of explicit matching.
-question_mark_used = "allow"
-# Permits shadowing when transforming data (e.g., `let x = x.trim()`).
-shadow_reuse = "allow"
-# Permits shadowing with the same name/type to rebind immutables as mutable.
-shadow_same = "allow"
-# Permits single-call functions to encourage logical modularization.
-single_call_fn = "allow"
+# ----------------- Structure & Architecture ------------------ #
+mod_module_files = "allow"     # Permits both `mod.rs` and `folder/mod.rs` module conventions.
+std_instead_of_alloc = "allow" # Permits `std` library types instead of `alloc` for std environments.
+std_instead_of_core = "allow"  # Permits `std` library types instead of `core` for std environments.
 
-# Documentation & Naming
-# Permits short variable names (like `i`, `x`) standard in tight algorithms.
-min_ident_chars = "allow"
-# Avoids maintenance overhead of requiring docs for internal details.
-missing_docs_in_private_items = "allow"
+# --------------------- Idioms & Patterns --------------------- #
+implicit_return = "allow"    # Permits omitting `return` to embrace idiomatic trailing expressions.
+question_mark_used = "allow" # Permits `?` for error propagation instead of explicit matching.
+shadow_reuse = "allow"       # Permits shadowing when transforming data (e.g., `let x = x.trim()`).
+shadow_same = "allow"        # Permits shadowing with the same name/type to rebind immutables as mutable.
+single_call_fn = "allow"     # Permits single-call functions to encourage logical modularization.
 
-# Output & Logging
-# Permits `eprintln!` for direct stderr output, useful in CLI tools.
-print_stderr = "allow"
+# ------------------ Documentation & Naming ------------------- #
+min_ident_chars = "allow"               # Permits short variable names (like `i`, `x`) standard in tight algorithms.
+missing_docs_in_private_items = "allow" # Avoids maintenance overhead of requiring docs for internal details.
 
-# ---------- Warnings (Best Practices & Suggestions) ---------- #
-# Type Conversions
-# Flags `as` casts to encourage safer explicit `.try_into()` conversions.
-as_conversions = "warn"
-# Warns when casting could lose data, prompting explicit checking.
-cast_possible_truncation = "warn"
-# Warns on float-to-int or float precision loss to prevent subtle math bugs.
-cast_precision_loss = "warn"
-# Warns on signed-to-unsigned casts to catch potential negative wrapping.
-cast_sign_loss = "warn"
+# --------------------- Output & Logging ---------------------- #
+print_stderr = "allow" # Permits `eprintln!` for direct stderr output, useful in CLI tools.
 
-# APIs & Control Flow
-# Encourages exhaustive `if/else` chains so edge cases aren't ignored.
-else_if_without_else = "warn"
-# Suggests `#[inline]` on public items to aid cross-crate LTO performance.
-missing_inline_in_public_items = "warn"
+# ------------------------------------------------------------- #
+#            Warnings (Best Practices & Suggestions)            #
+# ------------------------------------------------------------- #
 
-# --------------- Denials (Strict Enforcements) --------------- #
-# Error Handling & Panics
-# Forbids `std::process::exit` to ensure graceful shutdown and error propagation.
-exit = "deny"
-# Forbids `.expect()` to force robust error handling instead of panicking.
-expect_used = "deny"
-# Requires docs for functions returning `Result` to show exact failure modes.
-missing_errors_doc = "deny"
-# Requires documentation for any panicking code to clearly surface API risks.
-missing_panics_doc = "deny"
-# Forbids explicit `panic!` to ensure the CLI degrades gracefully.
-panic = "deny"
-# Prevents hidden panics in `Result` functions, maintaining API safety.
-panic_in_result_fn = "deny"
-# Forbids `todo!` macro in committed code to ensure feature completeness.
-todo = "deny"
-# Forbids `unimplemented!` to prevent shipping half-finished code paths.
-unimplemented = "deny"
-# Forbids `unreachable!` to prevent runtime crashes on invariant breaks.
-unreachable = "deny"
-# Forbids `.unwrap()` to enforce strict `Result` matching and error propagation.
-unwrap_used = "deny"
+# ------------------- Architecture & Types -------------------- #
+# Restriction lints elevated to warn to enforce explicit API design
+as_conversions = "warn"                 # Flags `as` casts to encourage safer explicit `.try_into()` conversions.
+else_if_without_else = "warn"           # Encourages exhaustive `if/else` chains so edge cases aren't ignored.
+format_push_string = "warn"             # Recommends `write!` into a buffer over temporary `push_str(&format!(..))`.
+impl_trait_in_params = "warn"           # Prefers `impl Trait` arguments to enforce faster static dispatch.
+missing_inline_in_public_items = "warn" # Suggests `#[inline]` on public items to aid cross-crate LTO performance.
 
-# Code Quality & Complexity
-# Forces `#![allow(...)]` to have a `reason` so exceptions are understood.
-allow_attributes_without_reason = "deny"
-# Limits structural complexity (nesting/branches) for readability.
-cognitive_complexity = "deny"
-# Prevents deep block nesting (arrow anti-pattern) to improve code scanning.
-excessive_nesting = "deny"
-# Limits boolean parameters to prevent confusing call sites.
-fn_params_excessive_bools = "deny"
-# Flags massive enum variants to avoid memory bloat from variant padding.
-large_enum_variant = "deny"
-# Prevents copying large structs on the stack, forcing pass-by-reference.
-large_types_passed_by_value = "deny"
-# Prevents large `Err` variants which needlessly bloat `Result` type sizes.
-result_large_err = "deny"
-# Limits boolean fields in structs to encourage explicit state machine enums.
-struct_excessive_bools = "deny"
-# Restricts function signature lengths, encouraging configuration structs.
-too_many_arguments = "deny"
-# Limits function length to encourage modular, single-responsibility functions.
-too_many_lines = "deny"
-# Prevents deeply nested types, encouraging descriptive type aliases.
-type_complexity = "deny"
+# ------------------------------------------------------------- #
+#                 Denials (Strict Enforcements)                 #
+# ------------------------------------------------------------- #
 
-# Memory & Safety Validation
-# Prevents unexpected integer overflow/underflow, enforcing safe math.
-arithmetic_side_effects = "deny"
-# Forbids `arr[index]` to prevent out-of-bounds panics, forcing `.get()`.
-indexing_slicing = "deny"
-# Requires `// SAFETY:` comments on `unsafe` blocks to document contracts.
-undocumented_unsafe_blocks = "deny"
+# ---------------------- Error Handling ----------------------- #
+# Restriction lints elevated to deny to ban sloppy error handling
+exit = "deny"               # Forbids `std::process::exit` to ensure graceful shutdown and error propagation.
+expect_used = "deny"        # Forbids `.expect()` to force robust error handling instead of panicking.
+panic = "deny"              # Forbids explicit `panic!` to ensure the CLI degrades gracefully.
+panic_in_result_fn = "deny" # Prevents hidden panics in `Result` functions, maintaining API safety.
+todo = "deny"               # Forbids `todo!` macro in committed code to ensure feature completeness.
+unimplemented = "deny"      # Forbids `unimplemented!` to prevent shipping half-finished code paths.
+unreachable = "deny"        # Forbids `unreachable!` to prevent runtime crashes on invariant breaks.
+unwrap_used = "deny"        # Forbids `.unwrap()` to enforce strict `Result` matching and error propagation.
 
-# Clean Code & Anti-Patterns
-# Forbids `as _` pointer casts to explicitly define the target pointer type.
-as_pointer_underscore = "deny"
-# Forbids `as _` casts to explicitly define the target numeric type.
-as_underscore = "deny"
-# Forbids leaving `dbg!` in committed code to keep standard output clean.
-dbg_macro = "deny"
-# Enforces project-specific bans defined in the `clippy.toml` configuration.
-disallowed_methods = "deny"
-# Prevents rogue `println!` usage, forcing the `tracing` logging framework.
-print_stdout = "deny"
-# Forbids shadowing a variable with a completely different type/concept.
-shadow_unrelated = "deny"
-# Prefers `.to_owned()` on string literals to clarify cloning intent.
-str_to_string = "deny"
-# Flags unused `self` parameters to suggest associated functions.
-unused_self = "deny"
+# ----------------------- Documentation ----------------------- #
+# Restriction lints elevated to deny to ensure complete API docs
+missing_errors_doc = "deny"         # Requires docs for functions returning `Result` to show exact failure modes.
+missing_panics_doc = "deny"         # Requires documentation for any panicking code to clearly surface API risks.
+undocumented_unsafe_blocks = "deny" # Requires `// SAFETY:` comments on `unsafe` blocks to document contracts.
 
-# ----------- Performance & Zero-Copy Lints (Deny) ------------ #
-# Allocations & Boxing
-# Prevents `Box<Vec<T>>` or `Box<String>` to avoid double heap indirection.
-box_collection = "deny"
-# Prefers `String::new()` over `"".to_string()` to bypass dynamic allocation.
-manual_string_new = "deny"
-# Flags `.collect::<Vec<_>>()` when chained iterators suffice without allocs.
-needless_collect = "deny"
-# Detects completely redundant allocations like `&Box<T>` or `Box<Arc<T>>`.
-redundant_allocation = "deny"
-# Detects `.to_owned()` calls when a simple reference or `Cow` would work.
-unnecessary_to_owned = "deny"
-# Detects `vec![...]` that is immediately sliced, preventing heap allocations.
-useless_vec = "deny"
+# ------------------ Elevated Pedantic Lints ------------------ #
+fn_params_excessive_bools = "deny"   # Limits boolean parameters to prevent confusing call sites.
+large_types_passed_by_value = "deny" # Prevents copying large structs on the stack, forcing pass-by-reference.
+struct_excessive_bools = "deny"      # Limits boolean fields in structs to encourage explicit state machine enums.
+too_many_lines = "deny"              # Limits function length to encourage modular, single-responsibility functions.
+unused_self = "deny"                 # Flags unused `self` parameters to suggest associated functions.
 
-# String Formatting & Parsing
-# Prevents nested `format!` inside `println!`, avoiding temporary allocations.
-format_in_format_args = "deny"
-# Flags `.to_string()` on types with zero-copy display or conversion paths.
-inefficient_to_string = "deny"
-# Prefers 'c' over "c" in string methods for faster character searching.
-single_char_pattern = "deny"
-# Suggests `.push(c)` over `.push_str("c")` to skip string parsing overhead.
-string_extend_chars = "deny"
-# Uses `Display` in format macros instead of eagerly calling `.to_string()`.
-to_string_in_format_args = "deny"
-
-# Iteration & Data Structures
-# Reuses heap capacity with `a.clone_from(&b)` instead of reallocating memory.
-assigning_clones = "deny"
-# Prefers `.cloned()` over map closures for internal iterator optimizations.
-map_clone = "deny"
-# Replaces `contains_key` + `insert` with `.entry()` to avoid double lookups.
-map_entry = "deny"
-# Uses `.any()` instead of `.find().is_some()` to clarify intent.
-search_is_some = "deny"
-
-# Concurrency & Locking
-# Uses `Atomic*` types instead of `Mutex<T>` to lower threading overhead.
-mutex_atomic = "deny"
-# Ensures `RwLock` write locks are requested only when mutation occurs.
-readonly_write_lock = "deny"
-
-# ------------- Performance & Optimization (Warn) ------------- #
-# Iteration & Flow
-# Moves `.cloned()` after `.take(n)` to avoid cloning dropped items.
-iter_overeager_cloned = "warn"
-# Replaces manual nested iteration logic with the optimized `.flatten()`.
-manual_flatten = "warn"
-# Suggests `let-else` to flatten error paths and improve branch predictability.
-manual_let_else = "warn"
-
-# Memory & Footprint
-# Recommends moving massive arrays to the heap to avoid fatal stack overflows.
-large_stack_arrays = "warn"
-# Detects suboptimal vector resize loops, suggesting `resize` or `extend`.
-slow_vector_initialization = "warn"
-# Passes tiny `Copy` types by value instead of reference to optimize CPU.
-trivially_copy_pass_by_ref = "warn"
-# Suggests `Vec::with_capacity()` over `new()` + sequential `push()` calls.
-vec_init_then_push = "warn"
-
-# Functions & APIs
-# Prefers `impl Trait` arguments to enforce faster static dispatch.
-impl_trait_in_params = "warn"
-
-# Strings
-# Recommends `write!` into a buffer over temporary `push_str(&format!(..))`.
-format_push_string = "warn"
+# ---------------- Clean Code & Anti-Patterns ----------------- #
+allow_attributes_without_reason = "deny" # Forces `#![allow(...)]` to have a `reason` so exceptions are understood.
+arithmetic_side_effects = "deny"         # Prevents unexpected integer overflow/underflow, enforcing safe math.
+as_pointer_underscore = "deny"           # Forbids `as _` pointer casts to explicitly define the target pointer type.
+as_underscore = "deny"                   # Forbids `as _` casts to explicitly define the target numeric type.
+dbg_macro = "deny"                       # Forbids leaving `dbg!` in committed code to keep standard output clean.
+disallowed_methods = "deny"              # Enforces project-specific bans defined in the `clippy.toml` configuration.
+indexing_slicing = "deny"                # Forbids `arr[index]` to prevent out-of-bounds panics, forcing `.get()`.
+print_stdout = "deny"                    # Prevents rogue `println!` usage, forcing the `tracing` logging framework.
+shadow_unrelated = "deny"                # Forbids shadowing a variable with a completely different type/concept.
+str_to_string = "deny"                   # Prefers `.to_owned()` on string literals to clarify cloning intent.
 
 [profile.release]
 opt-level = 3
