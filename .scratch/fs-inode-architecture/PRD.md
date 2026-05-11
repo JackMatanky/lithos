@@ -1,6 +1,6 @@
 # PRD: Filesystem Type Consolidation and Inode-Based Vault Architecture
 
-**Status**: needs-triage
+**Status**: ready-for-human
 **Created**: 2026-05-09
 **Context**: Refactor fs/ and vault/ modules to eliminate duplication, establish clear separation of concerns, and implement inode-based file tracking with stable identity across renames.
 
@@ -73,15 +73,138 @@ Consolidate filesystem primitives into fs/ as infrastructure building blocks, an
 - Identifiers: `FileId(UuidV7)`, `DirId(UuidV7)`
 - Storage entities: `FileView`, `DirView`, `FsEntryView` (compose fs/ primitives)
 - Database keys: `NormalizedPath` (vault-relative, forward-slash normalized)
-- Repository: CRUD + query methods (by path, basename, parent, format)
+
+### File Organization (Granular - Option A)
+
+```
+lithos-core/src/fs/
+├── mod.rs          # Re-exports all public types
+├── path.rs         # RelativePath, AbsolutePath, FilePath, DirPath, FsPath, ParentDir<'a>
+├── name.rs         # FileName, DirName, BaseName (owned) + FileNameRef, DirNameRef, BaseNameRef<'a> (borrowed)
+├── metadata.rs     # FsTimes, FileMetadata, DirMetadata, FsMetadata (unified enum)
+├── entry.rs        # FsFile, FsDir, FsEntry (unified enum)
+├── format.rs       # FileFormat (public, expanded from FormatKind) + FileExtensionRef<'a>
+├── scanner.rs      # DirScanner, DirScanInput (paths()→Vec<FsPath>, entries()→Vec<FsEntry>)
+├── reader.rs       # FsReader (metadata() returns FsMetadata, delete info())
+├── error.rs        # ParseError, PathValidationError
+└── validator.rs    # PathValidator (unchanged)
+```
+
+**Deleted files:**
+- `fs/file.rs` → Contents split into name.rs, metadata.rs, entry.rs
+- `fs/types.rs` → Contents moved to format.rs
+
+### Reader and Scanner API Changes
+
+**Final API (after migration):**
+
+```rust
+// DirScanner methods
+impl DirScanner {
+    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ParseError>;  // File or Dir
+    pub fn entries(&self, input: DirScanInput) -> Result<Vec<FsEntry>, ParseError>;  // File or Dir
+}
+
+// FsReader methods based on DirScanner
+impl FsReader {
+    // Path-based filters (returns typed paths)
+    pub fn filter_paths(&self, pattern: &str) -> Result<Vec<FsPath>, ParseError>;  // Both files and dirs
+    pub fn filter_file_paths(&self, pattern: &str) -> Result<Vec<FilePath>, ParseError>;  // Files only
+    pub fn filter_dir_paths(&self, pattern: &str) -> Result<Vec<DirPath>, ParseError>;  // Dirs only
+
+    // Entry-based filters (returns typed entries)
+    pub fn filter_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, ParseError>;  // Both files and dirs
+    pub fn filter_file_entries(&self, pattern: &str) -> Result<Vec<FsFile>, ParseError>;  // Files only
+    pub fn filter_dir_entries(&self, pattern: &str) -> Result<Vec<FsDir>, ParseError>;  // Dirs only
+
+    // Single-item metadata (unified File or Dir)
+    pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError>;
+}
+```
+
+`FsPath` provides type-safe path representation:
+```rust
+pub enum FsPath {
+    File(FilePath),
+    Dir(DirPath),
+}
+
+impl FsPath {
+    pub fn is_file(&self) -> bool;
+    pub fn is_dir(&self) -> bool;
+    pub fn as_file(&self) -> Option<&FilePath>;
+    pub fn as_dir(&self) -> Option<&DirPath>;
+    pub fn as_relative(&self) -> &RelativePath;
+}
+```
+
+**Migration approach:**
+- Phase 2: Add new methods (filter_entries, filter_file_entries, filter_dir_entries, filter_paths, filter_file_paths, filter_dir_paths, metadata_typed) alongside existing methods
+- Phase 4: Delete old methods (entries(), info()), then rename *typed methods to remove "typed" suffix
+
+`FsMetadata` provides type-level distinction between files and directories:
+```rust
+pub enum FsMetadata {
+    File(FileMetadata),  // For regular files
+    Dir(DirMetadata),     // For directories
+}
+
+impl FsMetadata {
+    pub fn is_file(&self) -> bool;
+    pub fn is_dir(&self) -> bool;
+    pub fn as_file(&self) -> Option<&FileMetadata>;
+    pub fn as_dir(&self) -> Option<&DirMetadata>;
+}
+```
+
+`FsEntry` provides a unified representation for both files and directories:
+```rust
+pub enum FsEntry {
+    File(FsFile),  // File with path and metadata
+    Dir(FsDir),    // Directory with path and metadata
+}
+
+impl FsEntry {
+    pub fn is_file(&self) -> bool;
+    pub fn is_dir(&self) -> bool;
+    pub fn as_file(&self) -> Option<&FsFile>;
+    pub fn as_dir(&self) -> Option<&FsDir>;
+    pub fn path(&self) -> &FsPath;
+}
+```
+
+`FsEntryView` (vault module) provides persisted storage for both files and directories:
+```rust
+pub enum FsEntryView {
+    File(FileView),  // Persisted file with ID, parent, format, hash
+    Dir(DirView),    // Persisted directory with ID and parent
+}
+
+impl FsEntryView {
+    pub fn id_bytes(&self) -> &[u8; 16];       // UUID bytes for the entry
+    pub fn parent_id(&self) -> Option<DirId>;  // Parent directory ID (None for root)
+    pub fn name(&self) -> &str;                // Filename or dirname (no path)
+    pub fn is_file(&self) -> bool;
+    pub fn is_dir(&self) -> bool;
+}
+```
+
+**New:**
+```rust
+pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError>;  // Unified File or Dir
+// Delete info() method entirely
+```
 - Processor: File discovery pipeline (FsReader → FileView/DirView → save)
 
-**Deleted types (redundant):**
+**Deleted types (NO ALIASES - direct replacement):**
 - `vault::VaultPath` → Use `NormalizedPath` for storage keys, `RelativePath` for validation
 - `vault::VaultFile` → Replace with `FileView`
 - `vault::VaultFolder` → Replace with `DirView`
-- `fs::FileEntry` → Replace with `FsFile`
-- `fs::FileInfo` → Rename to `FileMetadata` (file-specific), extract `FsTimes`
+- `fs::FileEntry` → Replace with `FsEntry` (unified file/dir enum)
+- `fs::FileInfo` → Replace with `FileMetadata` (no alias)
+- `fs::FormatKind` → Replace with `FileFormat` (no alias)
+- `fs/file.rs` → Delete (split into name.rs, metadata.rs, entry.rs)
+- `fs/types.rs` → Delete (contents moved to format.rs)
 
 ### Type Hierarchy
 
@@ -91,23 +214,40 @@ pub struct AbsolutePath(PathBuf);           // Validated absolute path
 pub struct RelativePath(PathBuf);           // Validated relative path (no .., no absolute)
 pub struct FilePath(RelativePath);          // Vault-relative file path
 pub struct DirPath(RelativePath);           // Vault-relative directory path
+pub enum FsPath { File(FilePath), Dir(DirPath) }  // Unified path enum
 
-// fs/path.rs - Zero-copy borrowed views
+// fs/path.rs - Zero-copy parent view
+pub enum ParentDir<'a> { Root, Path(&'a Path) }
+
+// fs/name.rs - Owned filename components
+pub struct FileName(Box<str>);              // Owned filename (UTF-8)
+pub struct DirName(Box<str>);               // Owned dirname (UTF-8)
+pub struct BaseName(Box<str>);              // Owned basename (Obsidian terminology)
+
+// fs/name.rs - Zero-copy borrowed views
 pub struct FileNameRef<'a>(&'a OsStr);      // Borrowed filename view
 pub struct DirNameRef<'a>(&'a OsStr);       // Borrowed dirname view
 pub struct BaseNameRef<'a>(&'a OsStr);      // Borrowed basename view (file stem)
+
+// fs/format.rs - Format detection and borrowed extension view
+pub enum FileFormat {
+    Json, Toml, Yaml, Markdown,
+    Image, Document, Archive, Binary, Unknown
+}
 pub struct FileExtensionRef<'a>(&'a OsStr); // Borrowed extension view
-pub enum ParentDir<'a> { Root, Path(&'a Path) }
 
-// fs/file.rs - Owned components
-pub struct FileName(Box<str>);              // Owned filename (UTF-8)
-pub struct DirName(Box<str>);               // Owned dirname (UTF-8)
-pub struct BaseName(Box<str>);              // Owned basename (UTF-8, Obsidian terminology)
-
-// fs/file.rs - Metadata components
+// fs/metadata.rs - Timestamp and metadata types
 pub struct FsTimes {
+    #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
+    #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
+}
+
+impl FsTimes {
+    pub const fn created_at(&self) -> Option<SystemTime>;
+    pub const fn modified_at(&self) -> Option<SystemTime>;
+    pub fn is_match(&self, created_at: Option<SystemTime>, modified_at: Option<SystemTime>) -> bool;
 }
 
 pub struct FileMetadata {
@@ -121,7 +261,12 @@ pub struct DirMetadata {
     is_symlink: bool,
 }
 
-// fs/file.rs - Runtime entities
+pub enum FsMetadata {
+    File(FileMetadata),
+    Dir(DirMetadata),
+}
+
+// fs/entry.rs - Runtime entities
 pub struct FsFile {
     path: FilePath,
     metadata: FileMetadata,
@@ -135,12 +280,6 @@ pub struct FsDir {
 pub enum FsEntry {
     File(FsFile),
     Dir(FsDir),
-}
-
-// fs/types.rs - Format detection
-pub enum FileFormat {
-    Json, Toml, Yaml, Markdown,
-    Image, Document, Archive, Binary, Unknown
 }
 
 // vault/model.rs - Identifiers
@@ -263,38 +402,61 @@ impl Repository {
 
 ### Migration Strategy
 
-**Phase 1: Create new types in fs/ (no breaking changes)**
+**Phase 1: Create new types and files in fs/ (no breaking changes)**
+- Create fs/name.rs: FileName, DirName, BaseName + FileNameRef, DirNameRef, BaseNameRef<'a>
+- Create fs/metadata.rs: FsTimes, FileMetadata, DirMetadata, FsMetadata
+- Create fs/entry.rs: FsFile, FsDir, FsEntry (unified enum)
+- Create fs/format.rs: FileFormat (public, expanded from FormatKind), FileExtensionRef<'a>
 - Add FilePath(RelativePath), DirPath(RelativePath) to fs/path.rs
-- Add FsFile, FsDir, FsEntry to fs/file.rs
-- Add zero-copy views: FileNameRef, DirNameRef, BaseNameRef, FileExtensionRef, ParentDir
-- Add owned components: FileName, DirName, BaseName
-- Split FileInfo → FsTimes + FileMetadata + DirMetadata
-- Refactor FormatKind → FileFormat (public, rkyv derives)
-- Keep old types temporarily for backward compat
+- Add ParentDir to fs/path.rs
+- Keep old fs/file.rs and fs/types.rs temporarily for backward compat
 
-**Phase 2: Create vault storage layer (parallel to existing)**
+**Phase 2: Add new methods to DirScanner and FsReader**
+- Add DirScanner.paths() returning Vec<FsPath> (new signature, replaces Vec<PathBuf>)
+- Add DirScanner.entries() returning Vec<FsEntry> (new signature)
+- Add FsReader methods: filter_entries, filter_file_entries, filter_dir_entries, filter_paths, filter_file_paths, filter_dir_paths
+- Add FsReader.metadata_typed(path: &Path) -> Result<FsMetadata, ParseError>
+- Keep old methods (entries() returning Vec<FileEntry>, info()) for backward compat during transition
+
+**Phase 3: Update all consumers (split into subphases)**
+
+**Phase 3a: Update FileInfo → FileMetadata**
+- Straightforward rename across all contexts
+- Update schema/, config/, and any other consumers
+- Run `mise run verify` to confirm
+
+**Phase 3b: Update FormatKind → FileFormat**
+- Make FileFormat public (was pub(crate))
+- Add new format variants (Image, Document, Archive)
+- Update all FormatKind usages to FileFormat
+
+**Phase 3c: Update FileEntry → FsEntry**
+- More complex: FsEntry is a unified enum (File or Dir), FileEntry was file-only
+- Update DirScanner.entries() to return Vec<FsEntry> (replace old method)
+- Update all consumers to handle FsEntry::File vs FsEntry::Dir variants
+- Update FsReader.list_entries() return type
+
+**Phase 4: Delete old files, methods, and rename new methods (breaking change)**
+- ONLY after all Phase 3 subphases complete
+- Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
+- Delete fs/types.rs (contents moved to format.rs)
+- Delete old DirScanner.entries() returning Vec<FileEntry> (replaced by new entries())
+- Delete old FsReader.info() method (replaced by metadata_typed())
+- Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix)
+- Update all remaining consumers
+- Run `mise run verify` to confirm no broken imports
+
+**Phase 5: Vault module refactoring**
 - Implement FileId, DirId, FileView, DirView, FsEntryView, NormalizedPath
 - Create new storage tables (FILES_BY_ID, DIRS_BY_ID, etc.)
 - Implement Repository trait with new signatures (including get_entry)
 - Implement RedbRepository adapter
 - Add multimap indexes incrementally
-
-**Phase 3: Update vault processor (cut over)**
-- Refactor processor pipeline to use new types
-- Update FsReader → FsFile/FsDir conversion
+- Refactor vault processor pipeline to use new types
 - Update save logic to populate all indexes
-- Verify existing tests pass with new implementation
-
-**Phase 4: Delete old types (breaking change)**
-- Remove VaultPath, VaultFile, VaultFolder
+- Delete VaultPath, VaultFile, VaultFolder
 - Remove old VAULT_FILES_BY_PATH, VAULT_FOLDERS_BY_PATH tables
-- Remove FileEntry
-- Rename FileInfo → FileMetadata (keep alias temporarily)
-
-**Phase 5: Update dependent contexts (if needed)**
-- schema/ - Already uses FileInfo, should work with FileMetadata rename
-- config/ - May need minor adjustments for renamed types
-- note/ - Should be unaffected (doesn't import vault/)
+- Verify existing tests pass
 
 ---
 
@@ -331,13 +493,22 @@ impl Repository {
 - Zero-copy view extraction (FileNameRef, BaseNameRef, ParentDir)
 - Conversions between path types
 
-**fs/file.rs:**
+**fs/name.rs:**
+- FileName/DirName/BaseName owned component creation
+- FileNameRef/DirNameRef/BaseNameRef borrowed view extraction
+- Conversions between owned and borrowed types
+
+**fs/metadata.rs:**
 - FsTimes timestamp extraction from std::fs::Metadata
 - FileMetadata/DirMetadata construction
-- FsFile/FsDir from DirEntry conversion
-- FileName/DirName/BaseName owned component creation
+- FsMetadata enum variants and helper methods
 
-**fs/types.rs:**
+**fs/entry.rs:**
+- FsFile/FsDir from DirEntry conversion
+- FsEntry enum variants and helper methods
+- Path access via FsPath
+
+**fs/format.rs:**
 - FileFormat::from_extension coverage (all supported extensions)
 - Format detection case-insensitivity
 - is_markdown(), is_structured() helpers
@@ -373,9 +544,9 @@ impl Repository {
 - Extend with FilePath/DirPath validation
 
 **Metadata extraction tests:**
-- Existing: `fs/file.rs` tests for FileInfo from std::fs::Metadata
+- Existing: `fs/file.rs` tests for FileInfo from std::fs::Metadata (to be replaced)
 - Pattern: tempfile-based tests creating real files
-- Extend with FileMetadata/DirMetadata construction
+- Extend with FileMetadata/DirMetadata in fs/metadata.rs
 
 **Storage tests:**
 - Existing: `schema/storage.rs` tests for RedbRepository
