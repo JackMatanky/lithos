@@ -4,7 +4,7 @@ category: enhancement
 label: ready-for-human
 status: completed
 date_created: 2026-05-10
-blocked_by: Repository layer bastardizes DbError with domain validation failures
+date_completed: 2026-05-11
 ---
 
 ## Type
