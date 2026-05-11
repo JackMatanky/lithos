@@ -232,7 +232,12 @@ pub struct BaseNameRef<'a>(&'a OsStr);      // Borrowed basename view (file stem
 // fs/format.rs - Format detection and borrowed extension view
 pub enum FileFormat {
     Json, Toml, Yaml, Markdown,
-    Image, Document, Archive, Binary, Unknown
+    Image,  // png, jpg, jpeg, gif, webp, svg, bmp, ico
+    Pdf,    // pdf - binary/compiled format
+    Document, // doc, docx, odt, rtf, txt - text-based documents
+    Archive,  // zip, tar, gz, rar, 7z, wasm
+    Binary,   // fallback for other binary formats
+    Unknown,  // no extension or unrecognized
 }
 pub struct FileExtensionRef<'a>(&'a OsStr); // Borrowed extension view
 
