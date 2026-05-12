@@ -209,7 +209,7 @@ mod tests {
     use std::time::SystemTime;
 
     use super::*;
-    use crate::fs::metadata::FsTimes;
+    use crate::fs::{error::ParseError, metadata::FsTimes};
 
     #[test]
     fn fs_entry_try_from_walkdir_file() {
@@ -264,6 +264,34 @@ mod tests {
         // Verify path
         let path = fs_entry.path();
         assert!(path.is_dir());
+    }
+
+    #[test]
+    fn fs_entry_try_from_returns_error_for_missing_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        let file_path = temp_path.join("missing.md");
+
+        // Create the file first
+        std::fs::write(&file_path, "content").unwrap();
+
+        // Get the walkdir entry WHILE the file exists
+        let entry = walkdir::WalkDir::new(temp_path)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+            .find(|e| e.file_name().to_str() == Some("missing.md"))
+            .unwrap();
+
+        // NOW delete the file - the entry still has the path but file is gone
+        std::fs::remove_file(&file_path).unwrap();
+
+        // Attempting to convert should fail because the file no longer exists
+        let result = FsEntry::try_from(entry);
+        assert!(result.is_err());
+
+        // Verify it's a ParseError (not some other error type)
+        let error = result.unwrap_err();
+        assert!(matches!(error, ParseError::Io { .. }));
     }
 
     #[test]
