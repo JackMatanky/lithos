@@ -21,17 +21,18 @@ use std::path::Path;
 use serde::de::DeserializeOwned;
 
 use super::error::ParseError;
-pub(crate) use super::format::FileFormat as FormatKind;
 
 /// Markdown file type marker.
 ///
 /// Markdown does not use `detect`/`parse` here because parsing is delegated to
 /// adapter-specific markdown implementations (e.g., pulldown-cmark).
+#[allow(dead_code, reason = "Legacy type, will be removed in Phase 3")]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Markdown;
 
 impl Markdown {
     /// Check if this marker can handle the given file path by extension.
+    #[allow(dead_code, reason = "Legacy method, will be removed in Phase 3")]
     #[inline]
     #[must_use]
     pub(crate) fn is_supported(path: &Path) -> bool {
@@ -206,11 +207,13 @@ impl Yaml {
 }
 
 /// Binary file type marker.
+#[allow(dead_code, reason = "Legacy type, will be removed in Phase 3")]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Binary;
 
 impl Binary {
     /// Check if this marker can handle the given file path by extension.
+    #[allow(dead_code, reason = "Legacy method, will be removed in Phase 3")]
     #[inline]
     #[must_use]
     pub(crate) fn is_supported(path: &Path) -> bool {

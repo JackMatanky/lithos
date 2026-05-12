@@ -21,7 +21,6 @@
 
 use std::{
     fs::DirEntry,
-    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -214,12 +213,12 @@ impl TryFrom<W<&DirEntry>> for FileEntry {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test modules use conventional test function before nested mod \
-              ordering"
-)]
 mod tests {
+    use std::{
+        path::Path,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use super::*;
 
     #[test]

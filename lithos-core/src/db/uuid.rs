@@ -255,6 +255,12 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        clippy::items_after_statements,
+        clippy::indexing_slicing,
+        reason = "Test code allows panics and indexing"
+    )]
     fn get_many_returns_correct_order() -> Result<(), Box<dyn std::error::Error>>
     {
         use redb::TableDefinition;
@@ -295,6 +301,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        clippy::items_after_statements,
+        reason = "Test code allows panics"
+    )]
     fn save_many_inserts_atomically() -> Result<(), Box<dyn std::error::Error>>
     {
         use redb::TableDefinition;
@@ -329,6 +340,12 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        clippy::items_after_statements,
+        clippy::indexing_slicing,
+        reason = "Test code allows panics and indexing"
+    )]
     fn get_many_multimap_returns_all_values()
     -> Result<(), Box<dyn std::error::Error>> {
         use redb::MultimapTableDefinition;

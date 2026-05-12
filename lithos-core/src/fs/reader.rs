@@ -50,7 +50,8 @@ use std::{
 use super::{
     error::PathValidationError,
     file::{FileEntry, FileInfo, FileName},
-    types::{Binary, FormatKind, Json, Markdown, Toml, Yaml},
+    format::FileFormat as FormatKind,
+    types::{Json, Toml, Yaml},
     validator::Validator,
 };
 use crate::fs::error::ParseError;
@@ -460,22 +461,14 @@ impl Reader {
 
     /// Detects the file format based on path extension and optional content
     /// hint.
+    #[inline]
     #[must_use]
-    fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
-        if Json::is_supported(path) {
-            return FormatKind::Json;
-        }
-        if Toml::is_supported(path) {
-            return FormatKind::Toml;
-        }
-        if Yaml::is_supported(path) {
-            return FormatKind::Yaml;
-        }
-        if Markdown::is_supported(path) {
-            return FormatKind::Markdown;
-        }
-        if Binary::is_supported(path) {
-            return FormatKind::Binary;
+    pub fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
+        if let Some(ext) = path.extension() {
+            let format = FormatKind::from_extension(ext);
+            if format != FormatKind::Unknown {
+                return format;
+            }
         }
 
         if let Some(content) = content {
@@ -543,8 +536,8 @@ mod tests {
         #[case::yaml("config.yaml", FormatKind::Yaml)]
         #[case::yml("config.yml", FormatKind::Yaml)]
         #[case::md("readme.md", FormatKind::Markdown)]
-        #[case::png("image.png", FormatKind::Binary)]
-        #[case::pdf("doc.pdf", FormatKind::Binary)]
+        #[case::png("image.png", FormatKind::Image)]
+        #[case::pdf("doc.pdf", FormatKind::Pdf)]
         fn classifies_by_extension(
             #[case] path: &str,
             #[case] expected: FormatKind,

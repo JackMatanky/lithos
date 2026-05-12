@@ -1,9 +1,10 @@
 ---
 title: 01-fs-path-types
 category: enhancement
-label: ready-for-agent
-status: ready-for-agent
+label: completed
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-12
 ---
 
 ## Type
@@ -12,7 +13,7 @@ AFK
 
 ## Labels
 
-- needs-triage
+- completed
 
 ## What to build
 
@@ -22,13 +23,13 @@ Add FilePath and DirPath that wrap RelativePath with vault-scoped validation. Ad
 
 ## Acceptance criteria
 
-- [ ] FilePath wraps RelativePath (vault-scoped file path)
-- [ ] DirPath wraps RelativePath (vault-scoped directory path)
-- [ ] FsPath enum with File(FilePath) and Dir(DirPath) variants
-- [ ] FsPath helper methods: is_file(), is_dir(), as_file(), as_dir(), as_relative()
-- [ ] ParentDir<'a> enum with Root and Path(&'a Path) variants
-- [ ] Tests for validation (no .., no absolute paths) and view extraction
-- [ ] Update fs/mod.rs exports
+- [x] FilePath wraps RelativePath (vault-scoped file path)
+- [x] DirPath wraps RelativePath (vault-scoped directory path)
+- [x] FsPath enum with File(FilePath) and Dir(DirPath) variants
+- [x] FsPath helper methods: is_file(), is_dir(), as_file(), as_dir(), as_relative()
+- [x] ParentDir<'a> enum with Root and Path(&'a Path) variants
+- [x] Tests for validation (no .., no absolute paths) and view extraction
+- [x] Update fs/mod.rs exports
 
 ## Blocked by
 
@@ -61,3 +62,41 @@ Introduce `FilePath` and `DirPath` newtypes that wrap `RelativePath`. Both shoul
 **Out of scope:**
 - Implementing actual directory scanning logic (reserved for Issue 06)
 - File format detection
+
+## Implementation Notes
+
+**File:** `lithos-core/src/fs/path.rs`
+
+**Implemented Types:**
+- `FilePath(RelativePath)` - Validated file path with `TryFrom<&str>` and `TryFrom<RelativePath>`
+- `DirPath(RelativePath)` - Validated directory path with `TryFrom<&str>` and `TryFrom<RelativePath>`
+- `FsPath` enum with `File(FilePath)` and `Dir(DirPath)` variants
+- `ParentDir<'a>` enum with `Root` and `Path(&'a Path)` variants
+
+**Key Methods:**
+- `FilePath::as_path()` - Returns `&Path` view
+- `FilePath::filename()` - Extracts `FileName` (from Issue 02)
+- `DirPath::as_path()` - Returns `&Path` view
+- `FsPath::is_file()`, `is_dir()`, `as_file()`, `as_dir()`, `as_relative()` - Variant discrimination and access
+- `ParentDir` - Zero-copy parent extraction without allocation
+
+**Validation:**
+- Rejects absolute paths (via `RelativePath` validation)
+- Rejects `..` parent components (via `RelativePath` validation)
+- Rejects `.` current directory components (via `RelativePath` validation)
+- Rejects platform-specific prefixes (via `RelativePath` validation)
+- Rejects empty paths (via `RelativePath` validation)
+
+**Tests:** 22 tests covering:
+- Path validation (rejection of `..`, absolute paths, empty paths)
+- Variant construction and discrimination
+- Parent extraction with `ParentDir`
+- Conversion between types
+- Edge cases (root paths, deeply nested paths)
+
+**Module Integration:**
+- Registered in `fs/mod.rs`
+- Exported: `FilePath`, `DirPath`, `FsPath`, `RelativePath`, `AbsolutePath`
+- `ParentDir` not exported (internal helper)
+
+**Status:** ✅ Complete - All acceptance criteria met

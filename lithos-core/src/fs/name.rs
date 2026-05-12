@@ -214,7 +214,7 @@ pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BaseNameRef<'a>(pub(crate) &'a OsStr);
 
-impl<'a> BaseNameRef<'a> {
+impl BaseNameRef<'_> {
     /// Get the basename as a string slice if it is valid UTF-8.
     #[inline]
     #[must_use]

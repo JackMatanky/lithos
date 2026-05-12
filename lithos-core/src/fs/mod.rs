@@ -35,14 +35,20 @@
     reason = "Intentional re-exports for flat, ergonomic public API"
 )]
 
+/// Filesystem entry types for files and directories.
+pub mod entry;
 /// Filesystem error types.
 pub mod error;
 /// Ergonomic conversions for filesystem entries.
 pub mod file;
 /// File format detection and classification.
 pub mod format;
+/// Filesystem metadata types for files and directories.
+pub mod metadata;
 /// Owned and borrowed name components.
 pub mod name;
+/// Path types for filesystem primitives.
+pub mod path;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
 /// Directory scanning utilities for finding files matching criteria.
@@ -59,9 +65,11 @@ pub mod writer;
 // Re-export commonly used types at the `fs::` path so adapter call sites stay
 // readable without long module chains.
 
+pub use entry::{FsDir, FsEntry, FsFile};
 pub use error::{ParseError, PathValidationError};
 pub use file::{FileEntry, FileInfo, FileName};
 pub use format::{FileExtensionRef, FileFormat};
+pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
 pub use name::{BaseName, BaseNameRef, DirName, DirNameRef, FileNameRef};
 pub use path::{AbsolutePath, DirPath, FilePath, FsPath, RelativePath};
 #[expect(

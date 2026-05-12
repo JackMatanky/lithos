@@ -1,6 +1,6 @@
 //! File format detection and classification.
 
-use std::{ffi::OsStr, path::Path};
+use std::ffi::OsStr;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -73,7 +73,7 @@ impl FileFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileExtensionRef<'a>(pub(crate) &'a OsStr);
 
-impl<'a> FileExtensionRef<'a> {
+impl FileExtensionRef<'_> {
     /// Get the format for this extension.
     #[inline]
     #[must_use]

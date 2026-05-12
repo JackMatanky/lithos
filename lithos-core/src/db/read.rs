@@ -83,6 +83,10 @@ mod tests {
         TableDefinition::new("test");
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "Test assertions are expected to panic"
+    )]
     fn try_open_table_returns_some_when_exists()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
@@ -106,6 +110,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "Test assertions are expected to panic"
+    )]
     fn try_open_table_returns_none_when_missing()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;

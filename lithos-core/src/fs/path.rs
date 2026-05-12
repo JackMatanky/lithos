@@ -661,13 +661,17 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_identify_root_and_path() {
+        fn parent_dir_extracts_parent_path() {
             let path = Path::new("a/b/c");
             let parent = ParentDir::from_path(path);
 
             match parent {
                 ParentDir::Path(p) => assert_eq!(p, Path::new("a/b")),
-                _ => panic!("Expected ParentDir::Path"),
+                #[allow(
+                    clippy::panic,
+                    reason = "Test expects ParentDir::Path variant"
+                )]
+                ParentDir::Root => panic!("Expected ParentDir::Path"),
             }
 
             let root_path = Path::new("file.txt");

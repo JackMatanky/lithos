@@ -1,9 +1,10 @@
 ---
 title: 02-fs-name-types
 category: enhancement
-label: ready-for-agent
-status: ready-for-agent
+label: completed
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-12
 ---
 
 ## Type
@@ -12,7 +13,7 @@ AFK
 
 ## Labels
 
-- needs-triage
+- completed
 
 ## What to build
 
@@ -22,16 +23,16 @@ Follow suffix pattern: no suffix = owned, Ref suffix = borrowed. BaseName follow
 
 ## Acceptance criteria
 
-- [ ] FileName(Box<str>) - owned filename
-- [ ] DirName(Box<str>) - owned dirname
-- [ ] BaseName(Box<str>) - owned basename (Obsidian term)
-- [ ] FileNameRef<'a>(&'a OsStr) - borrowed filename view
-- [ ] DirNameRef<'a>(&'a OsStr) - borrowed dirname view
-- [ ] BaseNameRef<'a>(&'a OsStr) - borrowed basename view
-- [ ] Zero-copy extraction methods from path types
-- [ ] Conversion between owned and borrowed types
-- [ ] Tests for creation and extraction
-- [ ] Update fs/mod.rs exports
+- [x] FileName(Box<str>) - owned filename
+- [x] DirName(Box<str>) - owned dirname
+- [x] BaseName(Box<str>) - owned basename (Obsidian term)
+- [x] FileNameRef<'a>(&'a OsStr) - borrowed filename view
+- [x] DirNameRef<'a>(&'a OsStr) - borrowed dirname view
+- [x] BaseNameRef<'a>(&'a OsStr) - borrowed basename view
+- [x] Zero-copy extraction methods from path types
+- [x] Conversion between owned and borrowed types
+- [x] Tests for creation and extraction
+- [x] Update fs/mod.rs exports
 
 ## Blocked by
 
@@ -64,3 +65,49 @@ Implement a suite of types for owned and borrowed name components following the 
 **Out of scope:**
 - Path validation (reserved for Issue 01)
 - Extension-specific logic (reserved for Issue 03)
+
+## Implementation Notes
+
+**File:** `lithos-core/src/fs/name.rs`
+
+**Implemented Types:**
+
+**Owned Types (Box<str>):**
+- `FileName(Box<str>)` - Full filename including extension
+- `BaseName(Box<str>)` - Filename without extension (Obsidian terminology)
+- `DirName(Box<str>)` - Directory name component
+
+**Borrowed Types (&'a OsStr):**
+- `FileNameRef<'a>(&'a OsStr)` - Zero-copy filename view
+- `BaseNameRef<'a>(&'a OsStr)` - Zero-copy basename view
+- `DirNameRef<'a>(&'a OsStr)` - Zero-copy dirname view
+
+**Key Methods:**
+- `FileName::basename()` - Extract basename (stem) without extension
+- `FileName::extension()` - Extract file extension
+- `FileName::as_str()` - String view
+- `FileNameRef::to_owned()` - Convert to owned `FileName`
+- `TryFrom<&Path>` for `FileName` - Extract from path
+- `From<String>` for `FileName` - Construct from string
+
+**Conversions:**
+- Owned → Borrowed: via `as_ref()` methods
+- Borrowed → Owned: via `to_owned()` and `ToOwned` trait
+- String → FileName: via `From<String>`
+- Path → FileName: via `TryFrom<&Path>`
+
+**Migration:**
+- Existing `FileName` in `fs/file.rs` replaced with re-export from `fs/name.rs`
+- Eliminates duplication while maintaining backward compatibility
+
+**Tests:**
+- Tests integrated with `fs/path.rs` tests (22 total tests)
+- Covers filename extraction, basename extraction, extension handling
+- Edge cases: hidden files, no extension, multiple dots
+
+**Module Integration:**
+- Registered in `fs/mod.rs`
+- Exported: `FileName`, `BaseName`, `DirName`, `FileNameRef`, `BaseNameRef`, `DirNameRef`
+- Re-exported in `fs/file.rs` for backward compatibility
+
+**Status:** ✅ Complete - All acceptance criteria met

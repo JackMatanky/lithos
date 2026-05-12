@@ -72,6 +72,10 @@ mod tests {
         TableDefinition::new("test");
 
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "Test assertions are expected to panic"
+    )]
     fn try_open_table_creates_table() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp = tempdir()?;
