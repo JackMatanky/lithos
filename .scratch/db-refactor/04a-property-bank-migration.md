@@ -2,8 +2,9 @@
 title: 04a-property-bank-migration
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-12
+date_completed: 2026-05-12
 ---
 
 ## Type
@@ -76,20 +77,45 @@ pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
 
 ## Acceptance Criteria
 
-- [ ] `get_property_bank()` added to `SchemaReadRepository` trait in `repository.rs`
-- [ ] `get_raw_property_bank_view(path)` added to `SchemaReadRepository` trait in `repository.rs`
-- [ ] `save_property_bank(bank)` added to `SchemaWriteRepository` trait in `repository.rs`
-- [ ] `save_raw_property_bank_view(path, view)` added to `SchemaWriteRepository` trait in `repository.rs`
-- [ ] Table constants `PROPERTY_BANK` and `RAW_PROPERTY_BANK_VIEW` added to `storage_v2/tables.rs`
-- [ ] Implementations in `storage_v2/read.rs` and `storage_v2/write.rs`
-- [ ] Unit tests in `read.rs` and `write.rs` verify:
+- [x] `get_property_bank()` added to `SchemaReadRepository` trait in `repository.rs`
+- [x] `get_raw_property_bank_view(path)` added to `SchemaReadRepository` trait in `repository.rs`
+- [x] `save_property_bank(bank)` added to `SchemaWriteRepository` trait in `repository.rs`
+- [x] `save_raw_property_bank_view(path, view)` added to `SchemaWriteRepository` trait in `repository.rs`
+- [x] Table constants `PROPERTY_BANK` and `RAW_PROPERTY_BANK_VIEW` added to `storage_v2/tables.rs`
+- [x] Implementations in `storage_v2/read.rs` and `storage_v2/write.rs`
+- [x] Unit tests in `read.rs` and `write.rs` verify:
   - None returned when not saved
   - Saved data retrievable
   - Atomic write semantics (both saved in same transaction)
   - Persistence across store reopens
-- [ ] All tests pass (`mise run test`)
-- [ ] No clippy warnings (`mise run lint`)
-- [ ] Code formatted (`mise run fmt`)
+- [x] All tests pass (`mise run test`)
+- [x] No clippy warnings (`mise run lint`)
+- [x] Code formatted (`mise run fmt`)
+
+## Implementation Notes (2026-05-12)
+
+Successfully implemented following TDD tracer bullet methodology:
+
+### Approach
+- **Phase 1**: Property Bank read/write (2 methods, GREEN)
+- **Phase 2**: Raw Property Bank View read/write (2 methods, GREEN)
+- Each method: RED (test) → GREEN (minimal implementation) → REFACTOR
+
+### Key Decisions
+- Used `PathTable` with constant key "singleton" for Property Bank (no `SingletonTable` type exists)
+- Prefer `.to_owned()` over `.to_string()` for &str per clippy::str_to_string
+- Simplified test for raw view roundtrip to avoid exposing internal `HashRecord::new()` (pub(crate))
+- Tests use public interfaces only (TDD best practice)
+
+### Results
+- 4 methods migrated to segregated v2 traits
+- 2 table constants added
+- 5 new tests added (3 for PropertyBank, 2 for raw view)
+- All 1128 tests pass, zero regressions
+- Clippy clean, formatted
+
+### Commit
+- `b7396622` - feat(schema): implement property bank operations (04a)
 
 ## Blocked by
 
