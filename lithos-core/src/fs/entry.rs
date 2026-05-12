@@ -10,6 +10,123 @@ use super::{
     path::{DirPath, FilePath, FsPath},
 };
 
+/// Unified filesystem entry for files or directories.
+///
+/// Provides type-safe access to entries with variants for files and
+/// directories.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub enum FsEntry {
+    /// A file entry.
+    File(FsFile),
+    /// A directory entry.
+    Dir(FsDir),
+}
+
+impl FsEntry {
+    /// Check if this entry is a file.
+    #[inline]
+    #[must_use]
+    pub const fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
+    }
+
+    /// Check if this entry is a directory.
+    #[inline]
+    #[must_use]
+    pub const fn is_dir(&self) -> bool {
+        matches!(self, Self::Dir(_))
+    }
+
+    /// Get file entry if this is a file.
+    #[inline]
+    #[must_use]
+    pub const fn as_file(&self) -> Option<&FsFile> {
+        match self {
+            Self::File(file) => Some(file),
+            Self::Dir(_) => None,
+        }
+    }
+
+    /// Get directory entry if this is a directory.
+    #[inline]
+    #[must_use]
+    pub const fn as_dir(&self) -> Option<&FsDir> {
+        match self {
+            Self::File(_) => None,
+            Self::Dir(dir) => Some(dir),
+        }
+    }
+
+    /// Get the path for this entry as an `FsPath`.
+    ///
+    /// This returns a unified path reference that can represent either a file
+    /// or directory path.
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> FsPath {
+        match self {
+            Self::File(file) => FsPath::File(file.path().clone()),
+            Self::Dir(dir) => FsPath::Dir(dir.path().clone()),
+        }
+    }
+}
+
+impl TryFrom<walkdir::DirEntry> for FsEntry {
+    type Error = super::error::ParseError;
+
+    #[inline]
+    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
+        use super::{
+            error::ParseError,
+            metadata::{DirMetadata, FileMetadata},
+        };
+
+        // Get metadata first (before consuming entry)
+        let std_metadata = entry.metadata().map_err(|e| {
+            let io_err = std::io::Error::other(format!("walkdir error: {e}"));
+            ParseError::Io {
+                path: entry.path().to_path_buf(),
+                source: io_err,
+            }
+        })?;
+
+        // Now take ownership of the path
+        let path = entry.into_path();
+
+        if std_metadata.is_dir() {
+            let dir_path =
+                DirPath::new(path.clone()).map_err(|e| ParseError::Io {
+                    path: path.clone(),
+                    source: e,
+                })?;
+            let dir_metadata =
+                DirMetadata::try_from(&std_metadata).map_err(|e| {
+                    ParseError::Io {
+                        path,
+                        source: e,
+                    }
+                })?;
+            Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
+        } else {
+            let file_path =
+                FilePath::new(path.clone()).map_err(|e| ParseError::Io {
+                    path: path.clone(),
+                    source: e,
+                })?;
+            let file_metadata =
+                FileMetadata::try_from(&std_metadata).map_err(|e| {
+                    ParseError::Io {
+                        path,
+                        source: e,
+                    }
+                })?;
+            Ok(Self::File(FsFile::new(file_path, file_metadata)))
+        }
+    }
+}
+
 /// A file entry with path and metadata.
 ///
 /// Represents a concrete file on the filesystem with its associated metadata.
@@ -87,75 +204,67 @@ impl FsDir {
     }
 }
 
-/// Unified filesystem entry for files or directories.
-///
-/// Provides type-safe access to entries with variants for files and
-/// directories.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub enum FsEntry {
-    /// A file entry.
-    File(FsFile),
-    /// A directory entry.
-    Dir(FsDir),
-}
-
-impl FsEntry {
-    /// Check if this entry is a file.
-    #[inline]
-    #[must_use]
-    pub const fn is_file(&self) -> bool {
-        matches!(self, Self::File(_))
-    }
-
-    /// Check if this entry is a directory.
-    #[inline]
-    #[must_use]
-    pub const fn is_dir(&self) -> bool {
-        matches!(self, Self::Dir(_))
-    }
-
-    /// Get file entry if this is a file.
-    #[inline]
-    #[must_use]
-    pub const fn as_file(&self) -> Option<&FsFile> {
-        match self {
-            Self::File(file) => Some(file),
-            Self::Dir(_) => None,
-        }
-    }
-
-    /// Get directory entry if this is a directory.
-    #[inline]
-    #[must_use]
-    pub const fn as_dir(&self) -> Option<&FsDir> {
-        match self {
-            Self::File(_) => None,
-            Self::Dir(dir) => Some(dir),
-        }
-    }
-
-    /// Get the path for this entry as an `FsPath`.
-    ///
-    /// This returns a unified path reference that can represent either a file
-    /// or directory path.
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> FsPath {
-        match self {
-            Self::File(file) => FsPath::File(file.path().clone()),
-            Self::Dir(dir) => FsPath::Dir(dir.path().clone()),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::SystemTime;
 
     use super::*;
     use crate::fs::metadata::FsTimes;
+
+    #[test]
+    fn fs_entry_try_from_walkdir_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a test file
+        std::fs::write(temp_path.join("test.md"), "content").unwrap();
+
+        // Use walkdir to get a DirEntry
+        let entry = walkdir::WalkDir::new(temp_path)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+            .find(|e| e.file_name().to_str() == Some("test.md"))
+            .unwrap();
+
+        // Convert to FsEntry
+        let fs_entry = FsEntry::try_from(entry).unwrap();
+
+        // Verify it's a file entry
+        assert!(fs_entry.is_file());
+        assert!(!fs_entry.is_dir());
+
+        // Verify path contains the filename
+        let path = fs_entry.path();
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn fs_entry_try_from_walkdir_directory() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a test subdirectory
+        std::fs::create_dir(temp_path.join("subdir")).unwrap();
+
+        // Use walkdir to get a DirEntry for the directory
+        let entry = walkdir::WalkDir::new(temp_path)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+            .find(|e| e.file_name().to_str() == Some("subdir"))
+            .unwrap();
+
+        // Convert to FsEntry
+        let fs_entry = FsEntry::try_from(entry).unwrap();
+
+        // Verify it's a directory entry
+        assert!(!fs_entry.is_file());
+        assert!(fs_entry.is_dir());
+
+        // Verify path
+        let path = fs_entry.path();
+        assert!(path.is_dir());
+    }
 
     #[test]
     fn fs_file_stores_path_and_metadata() {

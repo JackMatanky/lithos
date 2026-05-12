@@ -140,26 +140,23 @@ impl TryFrom<PathBuf> for FileName {
     }
 }
 
-/// Owned directory name (UTF-8).
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct DirName(Box<str>);
+/// Borrowed filename view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FileNameRef<'a>(pub(crate) &'a OsStr);
 
-impl DirName {
-    /// Create a new directory name.
+impl<'a> FileNameRef<'a> {
+    /// Get the filename as a string slice if it is valid UTF-8.
     #[inline]
     #[must_use]
-    pub fn new(name: Box<str>) -> Self {
-        Self(name)
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
     }
 
-    /// Get the directory name as a string.
+    /// Get the basename view.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn basename(&self) -> BaseNameRef<'a> {
+        BaseNameRef(Path::new(self.0).file_stem().unwrap_or(self.0))
     }
 }
 
@@ -186,30 +183,6 @@ impl BaseName {
     }
 }
 
-/// Borrowed filename view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FileNameRef<'a>(pub(crate) &'a OsStr);
-
-impl<'a> FileNameRef<'a> {
-    /// Get the filename as a string slice if it is valid UTF-8.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.to_str()
-    }
-
-    /// Get the basename view.
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> BaseNameRef<'a> {
-        BaseNameRef(Path::new(self.0).file_stem().unwrap_or(self.0))
-    }
-}
-
-/// Borrowed directory name view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
-
 /// Borrowed basename view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BaseNameRef<'a>(pub(crate) &'a OsStr);
@@ -222,6 +195,33 @@ impl BaseNameRef<'_> {
         self.0.to_str()
     }
 }
+
+/// Owned directory name (UTF-8).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct DirName(Box<str>);
+
+impl DirName {
+    /// Create a new directory name.
+    #[inline]
+    #[must_use]
+    pub fn new(name: Box<str>) -> Self {
+        Self(name)
+    }
+
+    /// Get the directory name as a string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Borrowed directory name view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
 
 #[cfg(test)]
 mod tests {

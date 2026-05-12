@@ -10,151 +10,6 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-/// Filesystem timestamps for creation and modification times.
-///
-/// Timestamps are stored as `Option<SystemTime>` because not all filesystems
-/// or platforms provide both creation and modification times reliably.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct FsTimes {
-    /// File/directory creation time (if available).
-    #[rkyv(with = Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-    /// File/directory modification time (if available).
-    #[rkyv(with = Map<AsUnixTime>)]
-    modified_at: Option<SystemTime>,
-}
-
-impl FsTimes {
-    /// Create new filesystem timestamps.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
-        Self {
-            created_at,
-            modified_at,
-        }
-    }
-
-    /// Get creation time.
-    #[inline]
-    #[must_use]
-    pub const fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Get modification time.
-    #[inline]
-    #[must_use]
-    pub const fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
-    }
-
-    /// Check if these timestamps match another set of timestamps.
-    ///
-    /// Returns `true` if both creation and modification times match. Used for
-    /// staleness detection by comparing cached timestamps against current
-    /// filesystem state.
-    #[inline]
-    #[must_use]
-    pub fn is_match(&self, other: &Self) -> bool {
-        self.created_at == other.created_at
-            && self.modified_at == other.modified_at
-    }
-}
-
-/// Metadata for a file (not a directory).
-///
-/// Contains file-specific information including size, timestamps, and symlink
-/// status.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct FileMetadata {
-    /// File timestamps.
-    times: FsTimes,
-    /// File size in bytes.
-    size: u64,
-    /// Whether this file is a symbolic link.
-    is_symlink: bool,
-}
-
-impl FileMetadata {
-    /// Create new file metadata.
-    #[inline]
-    #[must_use]
-    pub const fn new(times: FsTimes, size: u64, is_symlink: bool) -> Self {
-        Self {
-            times,
-            size,
-            is_symlink,
-        }
-    }
-
-    /// Get file timestamps.
-    #[inline]
-    #[must_use]
-    pub const fn times(&self) -> &FsTimes {
-        &self.times
-    }
-
-    /// Get file size in bytes.
-    #[inline]
-    #[must_use]
-    pub const fn size(&self) -> u64 {
-        self.size
-    }
-
-    /// Check if this file is a symbolic link.
-    #[inline]
-    #[must_use]
-    pub const fn is_symlink(&self) -> bool {
-        self.is_symlink
-    }
-}
-
-/// Metadata for a directory (not a file).
-///
-/// Contains directory-specific information. Unlike `FileMetadata`, this does
-/// not include size because directory size is not a meaningful or portable
-/// concept across filesystems.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct DirMetadata {
-    /// Directory timestamps.
-    times: FsTimes,
-    /// Whether this directory is a symbolic link.
-    is_symlink: bool,
-}
-
-impl DirMetadata {
-    /// Create new directory metadata.
-    #[inline]
-    #[must_use]
-    pub const fn new(times: FsTimes, is_symlink: bool) -> Self {
-        Self {
-            times,
-            is_symlink,
-        }
-    }
-
-    /// Get directory timestamps.
-    #[inline]
-    #[must_use]
-    pub const fn times(&self) -> &FsTimes {
-        &self.times
-    }
-
-    /// Check if this directory is a symbolic link.
-    #[inline]
-    #[must_use]
-    pub const fn is_symlink(&self) -> bool {
-        self.is_symlink
-    }
-}
-
 /// Unified filesystem metadata for files or directories.
 ///
 /// Provides type-safe access to metadata with variants for files and
@@ -211,20 +66,192 @@ impl TryFrom<Metadata> for FsMetadata {
 
     #[inline]
     fn try_from(meta: Metadata) -> Result<Self, Self::Error> {
-        let times = FsTimes::new(meta.created().ok(), meta.modified().ok());
-
-        let is_symlink = meta.is_symlink();
-
         if meta.is_file() {
-            Ok(Self::File(FileMetadata::new(times, meta.len(), is_symlink)))
+            Ok(Self::File(FileMetadata::try_from(&meta)?))
         } else if meta.is_dir() {
-            Ok(Self::Dir(DirMetadata::new(times, is_symlink)))
+            Ok(Self::Dir(DirMetadata::try_from(&meta)?))
         } else {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "metadata is neither file nor directory",
             ))
         }
+    }
+}
+
+/// Metadata for a file (not a directory).
+///
+/// Contains file-specific information including size, timestamps, and symlink
+/// status.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct FileMetadata {
+    /// File timestamps.
+    times: FsTimes,
+    /// File size in bytes.
+    size: u64,
+    /// Whether this file is a symbolic link.
+    is_symlink: bool,
+}
+
+impl FileMetadata {
+    /// Create new file metadata.
+    #[inline]
+    #[must_use]
+    pub const fn new(times: FsTimes, size: u64, is_symlink: bool) -> Self {
+        Self {
+            times,
+            size,
+            is_symlink,
+        }
+    }
+
+    /// Get file timestamps.
+    #[inline]
+    #[must_use]
+    pub const fn times(&self) -> &FsTimes {
+        &self.times
+    }
+
+    /// Get file size in bytes.
+    #[inline]
+    #[must_use]
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// Check if this file is a symbolic link.
+    #[inline]
+    #[must_use]
+    pub const fn is_symlink(&self) -> bool {
+        self.is_symlink
+    }
+}
+
+impl TryFrom<&Metadata> for FileMetadata {
+    type Error = io::Error;
+
+    #[inline]
+    fn try_from(meta: &Metadata) -> Result<Self, Self::Error> {
+        let times = FsTimes::try_from(meta)?;
+        let is_symlink = meta.is_symlink();
+        Ok(Self::new(times, meta.len(), is_symlink))
+    }
+}
+
+/// Metadata for a directory (not a file).
+///
+/// Contains directory-specific information. Unlike `FileMetadata`, this does
+/// not include size because directory size is not a meaningful or portable
+/// concept across filesystems.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct DirMetadata {
+    /// Directory timestamps.
+    times: FsTimes,
+    /// Whether this directory is a symbolic link.
+    is_symlink: bool,
+}
+
+impl DirMetadata {
+    /// Create new directory metadata.
+    #[inline]
+    #[must_use]
+    pub const fn new(times: FsTimes, is_symlink: bool) -> Self {
+        Self {
+            times,
+            is_symlink,
+        }
+    }
+
+    /// Get directory timestamps.
+    #[inline]
+    #[must_use]
+    pub const fn times(&self) -> &FsTimes {
+        &self.times
+    }
+
+    /// Check if this directory is a symbolic link.
+    #[inline]
+    #[must_use]
+    pub const fn is_symlink(&self) -> bool {
+        self.is_symlink
+    }
+}
+
+impl TryFrom<&Metadata> for DirMetadata {
+    type Error = io::Error;
+
+    #[inline]
+    fn try_from(meta: &Metadata) -> Result<Self, Self::Error> {
+        let times = FsTimes::try_from(meta)?;
+        let is_symlink = meta.is_symlink();
+        Ok(Self::new(times, is_symlink))
+    }
+}
+
+/// Filesystem timestamps for creation and modification times.
+///
+/// Timestamps are stored as `Option<SystemTime>` because not all filesystems
+/// or platforms provide both creation and modification times reliably.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct FsTimes {
+    /// File/directory creation time (if available).
+    #[rkyv(with = Map<AsUnixTime>)]
+    created_at: Option<SystemTime>,
+    /// File/directory modification time (if available).
+    #[rkyv(with = Map<AsUnixTime>)]
+    modified_at: Option<SystemTime>,
+}
+
+impl FsTimes {
+    /// Create new filesystem timestamps.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Self {
+        Self {
+            created_at,
+            modified_at,
+        }
+    }
+
+    /// Get creation time.
+    #[inline]
+    #[must_use]
+    pub const fn created_at(&self) -> Option<SystemTime> {
+        self.created_at
+    }
+
+    /// Get modification time.
+    #[inline]
+    #[must_use]
+    pub const fn modified_at(&self) -> Option<SystemTime> {
+        self.modified_at
+    }
+
+    /// Check if these timestamps match another set of timestamps.
+    ///
+    /// Returns `true` if both creation and modification times match. Used for
+    /// staleness detection by comparing cached timestamps against current
+    /// filesystem state.
+    #[inline]
+    #[must_use]
+    pub fn is_match(&self, other: &Self) -> bool {
+        self.created_at == other.created_at
+            && self.modified_at == other.modified_at
+    }
+}
+
+impl TryFrom<&Metadata> for FsTimes {
+    type Error = io::Error;
+
+    #[inline]
+    fn try_from(meta: &Metadata) -> Result<Self, Self::Error> {
+        Ok(Self::new(meta.created().ok(), meta.modified().ok()))
     }
 }
 
@@ -397,6 +424,50 @@ mod tests {
         let meta = FsMetadata::File(file);
 
         assert!(meta.as_dir().is_none());
+    }
+
+    #[test]
+    fn fs_times_try_from_metadata() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, b"hello").unwrap();
+
+        let std_meta = fs::metadata(&file_path).unwrap();
+        let fs_times = FsTimes::try_from(&std_meta).unwrap();
+
+        assert!(fs_times.created_at().is_some());
+        assert!(fs_times.modified_at().is_some());
+    }
+
+    #[test]
+    fn file_metadata_try_from_metadata() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, b"hello").unwrap();
+
+        let std_meta = fs::metadata(&file_path).unwrap();
+        let file_meta = FileMetadata::try_from(&std_meta).unwrap();
+
+        assert_eq!(file_meta.size(), 5);
+        assert!(file_meta.times().modified_at().is_some());
+    }
+
+    #[test]
+    fn dir_metadata_try_from_metadata() {
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dir_path = temp_dir.path().join("subdir");
+        fs::create_dir(&dir_path).unwrap();
+
+        let std_meta = fs::metadata(&dir_path).unwrap();
+        let dir_meta = DirMetadata::try_from(&std_meta).unwrap();
+
+        assert!(dir_meta.times().created_at().is_some());
     }
 
     #[test]

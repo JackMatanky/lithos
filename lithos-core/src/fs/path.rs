@@ -295,27 +295,101 @@ impl std::fmt::Display for AbsolutePath {
     }
 }
 
-/// A validated vault-relative file path.
+/// A validated file path (absolute or relative).
+///
+/// **Phase 2 Revision (2026-05-12):** Changed from wrapping `RelativePath`
+/// to wrapping `PathBuf` to support absolute paths from `walkdir::DirEntry`.
+/// Use `as_relative(base)` to convert to vault-relative paths at storage
+/// boundary.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct FilePath(RelativePath);
+pub struct FilePath(#[rkyv(with = AsString)] PathBuf);
 
 impl FilePath {
+    /// Create a new file path from a `PathBuf` (absolute or relative).
+    ///
+    /// # Errors
+    /// Returns error if path is empty, contains `..` or `.` components,
+    /// or has platform-specific prefixes.
+    #[inline]
+    pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
+        if path.as_os_str().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Path cannot be empty",
+            ));
+        }
+        // Check for . components
+        if path
+            .to_string_lossy()
+            .split(['/', '\\'])
+            .any(|segment| segment == ".")
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Path must not contain current directory components (.)",
+            ));
+        }
+        // Check for .. and prefix components
+        for component in path.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Path must not contain parent components (..)",
+                    ));
+                }
+                Component::Prefix(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Path must not contain platform-specific prefixes",
+                    ));
+                }
+                Component::CurDir
+                | Component::Normal(_)
+                | Component::RootDir => {}
+            }
+        }
+        Ok(Self(path))
+    }
+
     /// Return the inner path.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
-        self.0.as_path()
+        &self.0
     }
 
-    /// Return the inner relative path.
+    /// Convert to vault-relative path by stripping base prefix.
+    ///
+    /// # Errors
+    /// Returns error if path is not within the base directory.
     #[inline]
-    #[must_use]
-    pub fn as_relative(&self) -> &RelativePath {
-        &self.0
+    pub fn as_relative(
+        &self,
+        base: &Path,
+    ) -> Result<RelativePath, super::error::ParseError> {
+        use super::error::ParseError;
+
+        let rel = self.0.strip_prefix(base).map_err(|_| ParseError::Io {
+            path: self.0.clone(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Path {} is not within base {}",
+                    self.0.display(),
+                    base.display()
+                ),
+            ),
+        })?;
+
+        RelativePath::try_from(rel).map_err(|e| ParseError::Io {
+            path: self.0.clone(),
+            source: e,
+        })
     }
 }
 
@@ -324,7 +398,7 @@ impl TryFrom<RelativePath> for FilePath {
 
     #[inline]
     fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
-        Ok(Self(path))
+        Self::new(path.0)
     }
 }
 
@@ -333,7 +407,7 @@ impl TryFrom<&str> for FilePath {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        RelativePath::try_from(value).map(Self)
+        Self::new(PathBuf::from(value))
     }
 }
 
@@ -344,27 +418,101 @@ impl AsRef<Path> for FilePath {
     }
 }
 
-/// A validated vault-relative directory path.
+/// A validated directory path (absolute or relative).
+///
+/// **Phase 2 Revision (2026-05-12):** Changed from wrapping `RelativePath`
+/// to wrapping `PathBuf` to support absolute paths from `walkdir::DirEntry`.
+/// Use `as_relative(base)` to convert to vault-relative paths at storage
+/// boundary.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct DirPath(RelativePath);
+pub struct DirPath(#[rkyv(with = AsString)] PathBuf);
 
 impl DirPath {
+    /// Create a new directory path from a `PathBuf` (absolute or relative).
+    ///
+    /// # Errors
+    /// Returns error if path is empty, contains `..` or `.` components,
+    /// or has platform-specific prefixes.
+    #[inline]
+    pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
+        if path.as_os_str().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Path cannot be empty",
+            ));
+        }
+        // Check for . components
+        if path
+            .to_string_lossy()
+            .split(['/', '\\'])
+            .any(|segment| segment == ".")
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Path must not contain current directory components (.)",
+            ));
+        }
+        // Check for .. and prefix components
+        for component in path.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Path must not contain parent components (..)",
+                    ));
+                }
+                Component::Prefix(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Path must not contain platform-specific prefixes",
+                    ));
+                }
+                Component::CurDir
+                | Component::Normal(_)
+                | Component::RootDir => {}
+            }
+        }
+        Ok(Self(path))
+    }
+
     /// Return the inner path.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
-        self.0.as_path()
+        &self.0
     }
 
-    /// Return the inner relative path.
+    /// Convert to vault-relative path by stripping base prefix.
+    ///
+    /// # Errors
+    /// Returns error if path is not within the base directory.
     #[inline]
-    #[must_use]
-    pub fn as_relative(&self) -> &RelativePath {
-        &self.0
+    pub fn as_relative(
+        &self,
+        base: &Path,
+    ) -> Result<RelativePath, super::error::ParseError> {
+        use super::error::ParseError;
+
+        let rel = self.0.strip_prefix(base).map_err(|_| ParseError::Io {
+            path: self.0.clone(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Path {} is not within base {}",
+                    self.0.display(),
+                    base.display()
+                ),
+            ),
+        })?;
+
+        RelativePath::try_from(rel).map_err(|e| ParseError::Io {
+            path: self.0.clone(),
+            source: e,
+        })
     }
 }
 
@@ -373,7 +521,7 @@ impl TryFrom<RelativePath> for DirPath {
 
     #[inline]
     fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
-        Ok(Self(path))
+        Self::new(path.0)
     }
 }
 
@@ -382,7 +530,7 @@ impl TryFrom<&str> for DirPath {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        RelativePath::try_from(value).map(Self)
+        Self::new(PathBuf::from(value))
     }
 }
 
@@ -441,13 +589,18 @@ impl FsPath {
         }
     }
 
-    /// Returns the underlying relative path.
+    /// Convert to vault-relative path by stripping base prefix.
+    ///
+    /// # Errors
+    /// Returns error if path is not within the base directory.
     #[inline]
-    #[must_use]
-    pub fn as_relative(&self) -> &RelativePath {
+    pub fn as_relative(
+        &self,
+        base: &Path,
+    ) -> Result<RelativePath, super::error::ParseError> {
         match self {
-            Self::File(p) => p.as_relative(),
-            Self::Dir(p) => p.as_relative(),
+            Self::File(p) => p.as_relative(base),
+            Self::Dir(p) => p.as_relative(base),
         }
     }
 }
@@ -617,7 +770,30 @@ mod tests {
         #[test]
         fn should_reject_invalid_paths() {
             assert!(FilePath::try_from("../traversal").is_err());
-            assert!(FilePath::try_from("/absolute").is_err());
+            // Absolute paths are now accepted (Phase 1 revision)
+        }
+
+        #[test]
+        fn should_accept_absolute_paths() {
+            let path =
+                FilePath::new(PathBuf::from("/vault/notes/file.txt")).unwrap();
+            assert_eq!(path.as_path(), Path::new("/vault/notes/file.txt"));
+        }
+
+        #[test]
+        fn should_convert_absolute_to_relative() {
+            let path =
+                FilePath::new(PathBuf::from("/vault/notes/file.txt")).unwrap();
+            let base = Path::new("/vault");
+            let relative = path.as_relative(base).unwrap();
+            assert_eq!(relative.as_path(), Path::new("notes/file.txt"));
+        }
+
+        #[test]
+        fn should_error_when_path_outside_base() {
+            let path = FilePath::new(PathBuf::from("/other/file.txt")).unwrap();
+            let base = Path::new("/vault");
+            assert!(path.as_relative(base).is_err());
         }
     }
 
@@ -651,9 +827,25 @@ mod tests {
             assert!(!fs_file.is_dir());
             assert!(fs_dir.is_dir());
             assert!(!fs_dir.is_file());
+        }
 
-            assert_eq!(fs_file.as_relative().as_path(), Path::new("file.txt"));
-            assert_eq!(fs_dir.as_relative().as_path(), Path::new("dir"));
+        #[test]
+        fn should_convert_to_relative_with_base() {
+            let file = FilePath::new(PathBuf::from("/vault/file.txt")).unwrap();
+            let dir = DirPath::new(PathBuf::from("/vault/dir")).unwrap();
+
+            let fs_file = FsPath::File(file);
+            let fs_dir = FsPath::Dir(dir);
+
+            let base = Path::new("/vault");
+            assert_eq!(
+                fs_file.as_relative(base).unwrap().as_path(),
+                Path::new("file.txt")
+            );
+            assert_eq!(
+                fs_dir.as_relative(base).unwrap().as_path(),
+                Path::new("dir")
+            );
         }
     }
 
