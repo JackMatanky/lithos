@@ -19,7 +19,36 @@ AFK
 
 Add batch read and batch write semantics to `schema/storage_v2/`.
 
-**REOPENED (2026-05-12)**: Batch operations must be moved into the new `read.rs` and `write.rs` implementation files.
+**REOPENED (2026-05-12)**: Following the segregation of `SchemaRepository` into `SchemaReadRepository` and `SchemaWriteRepository`, batch operations must now be implemented in their respective segregated interfaces within `read.rs` and `write.rs`.
+
+## Agent Brief (v2 - 2026-05-12)
+
+**Category:** enhancement
+**Summary:** Implement batch operations in segregated Read/Write repository traits.
+
+**Current behavior:**
+Batch operations were implemented in a unified `SchemaRepository` trait within a monolithic `core.rs`.
+
+**Desired behavior:**
+1. `SchemaReadRepository` gains `find_many_schemas_by_id` and `find_raw_schema_views_by_paths`.
+2. `SchemaWriteRepository` gains `save_many_schemas`.
+3. Implementations must reside in `read.rs` and `write.rs` respectively.
+
+**Key interfaces:**
+- `SchemaReadRepository` / `SchemaWriteRepository` - where methods are added.
+- `SchemaRedbRepository` - the implementation struct.
+
+**Acceptance criteria:**
+- [ ] `save_many_schemas` added to `SchemaWriteRepository` in `repository.rs`.
+- [ ] `find_many_schemas_by_id` added to `SchemaReadRepository` in `repository.rs`.
+- [ ] `find_raw_schema_views_by_paths` added to `SchemaReadRepository` in `repository.rs`.
+- [ ] Implementations moved to `storage_v2/read.rs` and `storage_v2/write.rs`.
+- [ ] Tests in `read.rs` and `write.rs` verify batch semantics and atomicity.
+
+**Refactor Reason:**
+To maintain consistency with the new segregated trait pattern and to ensure that batch operations reside with their corresponding read/write implementations in the split file structure.
+
+---
 
 **Batch** means performing multiple operations in a single transaction (without looping), not necessarily multi-table operations.
 

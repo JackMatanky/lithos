@@ -101,7 +101,39 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 - [x] Tests validate behavior at the Interface level (exercising `SchemaRedbRepository`) and confirm basic rollback/commit semantics via `Store`.
 - [x] `mise run verify` passes with no lint warnings or test failures.
 
-## Implementation Notes
+## Agent Brief (v2 - 2026-05-12)
+
+**Category:** enhancement
+**Summary:** Split SchemaRepository into segregated Read/Write traits and implementation files.
+
+**Current behavior:**
+The `SchemaRepository` trait is a single unified interface. The implementation `SchemaRedbRepository` is currently in `storage_v2/core.rs`.
+
+**Desired behavior:**
+1. `SchemaReadRepository` contains `find_schema_by_id`.
+2. `SchemaWriteRepository` contains `save_schema`.
+3. `SchemaRepository` is an empty marker trait extending both.
+4. `SchemaRedbRepository` fields are `pub(crate)` to allow implementation in child modules.
+5. Implementation for Read is in `read.rs`, Write is in `write.rs`.
+
+**Key interfaces:**
+- `SchemaReadRepository` / `SchemaWriteRepository` — the new segregated contracts.
+- `SchemaRedbRepository` — the implementation struct whose impl blocks will be moved.
+
+**Acceptance criteria:**
+- [ ] `SchemaReadRepository` and `SchemaWriteRepository` traits exist in `schema/repository.rs`.
+- [ ] `SchemaRepository` trait extends both Read and Write variants.
+- [ ] `schema/storage_v2/read.rs` exists and implements `SchemaReadRepository`.
+- [ ] `schema/storage_v2/write.rs` exists and implements `SchemaWriteRepository`.
+- [ ] `SchemaRedbRepository` struct in `mod.rs` uses `pub(crate)` fields or module-level visibility to allow `read.rs`/`write.rs` to access `store`.
+- [ ] Unit tests for read logic in `read.rs`, write logic in `write.rs`.
+
+**Refactor Reason:**
+The initial implementation in `core.rs` grew too large (667 lines), making it difficult to maintain and navigate. Splitting into segregated traits and files improves locality and allows for better interface segregation in consumers.
+
+---
+
+## Implementation Notes (Legacy v1)
 
 ### Deviation from Original Plan
 - **File structure**: Instead of `read.rs` and `write.rs` as separate files, implemented `core.rs` containing both read and write implementations in a single module.

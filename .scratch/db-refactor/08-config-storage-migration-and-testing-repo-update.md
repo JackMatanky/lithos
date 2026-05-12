@@ -20,6 +20,34 @@ Migrate Config persistence to the new storage seam with `repository.rs`, `storag
 
 This slice is complete when Config read/write and batch behavior are preserved end-to-end in both redb-backed and in-memory test flows.
 
+## Agent Brief (v1 - 2026-05-12)
+
+**Category:** enhancement
+**Summary:** Migrate Config persistence to the segregated storage seam.
+
+**Current behavior:**
+Config persistence uses the legacy v1 repository and storage pattern.
+
+**Desired behavior:**
+1. Define `ConfigReadRepository` and `ConfigWriteRepository` traits in `config/repository.rs`.
+2. Define `ConfigRepository` as a marker trait extending both.
+3. Implement `ConfigRedbRepository` split across `config/storage/read.rs` and `config/storage/write.rs`.
+4. Update `testing.rs` in-memory adapter to implement the new segregated traits.
+
+**Key interfaces:**
+- `ConfigReadRepository` / `ConfigWriteRepository`
+- `ConfigRedbRepository`
+- `ConfigRepository` (marker)
+
+**Acceptance criteria:**
+- [ ] `ConfigReadRepository` and `ConfigWriteRepository` defined in `config/repository.rs`.
+- [ ] `ConfigRedbRepository` implemented split across `read.rs` and `write.rs`.
+- [ ] Config `testing.rs` in-memory Repository Adapter updated and passing tests.
+- [ ] Existing Config behavior tests pass with new storage seam.
+
+**Revision Note (2026-05-12):**
+Plan established following the **Segregated Unified Repository** pattern (ADR 016).
+
 ## Acceptance criteria
 
 - [ ] Config Repository Adapter uses the new storage module layout and DB seam.
