@@ -75,6 +75,15 @@ pub enum ParseError {
         /// A list of supported formats.
         supported: &'static [&'static str],
     },
+
+    /// Path was not within the expected base directory.
+    #[error("Path {path} is not within base directory {base}")]
+    NotInBasePath {
+        /// The path that was outside the base.
+        path: std::path::PathBuf,
+        /// The expected base directory.
+        base: std::path::PathBuf,
+    },
 }
 
 /// Errors related to path validation and vault safety.

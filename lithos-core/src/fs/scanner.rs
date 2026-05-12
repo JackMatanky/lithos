@@ -23,8 +23,10 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use super::{
+    entry::FsEntry,
     error::ParseError,
     file::{FileEntry, FileInfo, FileName},
+    path::{DirPath, FilePath, FsPath},
 };
 
 /// Standalone directory scanner for finding files matching criteria.
@@ -179,7 +181,133 @@ impl DirScanner {
         Ok(entries)
     }
 
+    /// Scans the directory and returns matching typed paths (File or Dir).
+    ///
+    /// Results are sorted by path alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError::Io` if directory traversal fails or pattern is
+    /// invalid.
+    #[inline]
+    pub fn paths_typed(
+        &self,
+        input: DirScanInput,
+    ) -> Result<Vec<FsPath>, ParseError> {
+        let walker = self.build_walker(&input);
+        let mut results = Vec::new();
+
+        for entry in walker {
+            let entry = entry.map_err(|e| ParseError::Io {
+                path: e.path().map(Path::to_path_buf).unwrap_or_default(),
+                source: e.into(),
+            })?;
+
+            if self.filter_entry(&entry, &input)?.is_some() {
+                results.push(Self::to_fs_path(&entry)?);
+            }
+        }
+
+        results.sort_by(|a, b| a.as_path().cmp(b.as_path()));
+        Ok(results)
+    }
+
+    /// Scans the directory and returns matching typed entries with metadata.
+    ///
+    /// Results are sorted by path alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError::Io` if directory traversal fails, pattern is
+    /// invalid, or metadata cannot be read.
+    #[inline]
+    pub fn entries_typed(
+        &self,
+        input: DirScanInput,
+    ) -> Result<Vec<FsEntry>, ParseError> {
+        let walker = self.build_walker(&input);
+        let mut results = Vec::new();
+
+        for entry in walker {
+            let entry = entry.map_err(|e| ParseError::Io {
+                path: e.path().map(Path::to_path_buf).unwrap_or_default(),
+                source: e.into(),
+            })?;
+
+            if self.filter_entry(&entry, &input)?.is_some() {
+                results.push(FsEntry::try_from(entry)?);
+            }
+        }
+
+        results.sort_by(|a, b| a.path().as_path().cmp(b.path().as_path()));
+        Ok(results)
+    }
+
     // ─── Private Helper Methods ───────────────────────────────────────
+
+    /// Converts a `walkdir::DirEntry` to a typed `FsPath`.
+    fn to_fs_path(entry: &walkdir::DirEntry) -> Result<FsPath, ParseError> {
+        let path = entry.path().to_path_buf();
+        let metadata = entry.metadata().map_err(|e| ParseError::Io {
+            path: path.clone(),
+            source: e.into(),
+        })?;
+
+        if metadata.is_dir() {
+            let dir =
+                DirPath::new(path.clone()).map_err(|e| ParseError::Io {
+                    path,
+                    source: e,
+                })?;
+            Ok(FsPath::Dir(dir))
+        } else {
+            let file =
+                FilePath::new(path.clone()).map_err(|e| ParseError::Io {
+                    path,
+                    source: e,
+                })?;
+            Ok(FsPath::File(file))
+        }
+    }
+
+    /// Checks if a `walkdir::DirEntry` matches the scan input criteria.
+    ///
+    /// Returns the relative path if it matches, or `None` if it should be
+    /// skipped.
+    fn filter_entry(
+        &self,
+        entry: &walkdir::DirEntry,
+        input: &DirScanInput,
+    ) -> Result<Option<PathBuf>, ParseError> {
+        let path = entry.path();
+
+        // Filter by file type
+        if !Self::matches_file_type(entry, input.include_dirs) {
+            return Ok(None);
+        }
+
+        // Get relative path for filtering
+        let Ok(relative) = path.strip_prefix(&self.path) else {
+            return Ok(None); // Path outside root
+        };
+
+        // Skip the root directory itself
+        if relative.as_os_str().is_empty() {
+            return Ok(None);
+        }
+
+        // Filter by extensions (if specified)
+        if !Self::matches_extensions(relative, input.extensions) {
+            return Ok(None);
+        }
+
+        // Filter by pattern (if specified)
+        if !Self::matches_pattern(relative, input.pattern)? {
+            return Ok(None);
+        }
+
+        Ok(Some(relative.to_path_buf()))
+    }
 
     /// Internal scan implementation returning (path, metadata) pairs.
     fn scan_internal(
@@ -195,42 +323,15 @@ impl DirScanner {
                 source: e.into(),
             })?;
 
-            let path = entry.path();
+            if let Some(relative) = self.filter_entry(&entry, &input)? {
+                let metadata =
+                    entry.metadata().map_err(|e| ParseError::Io {
+                        path: relative.clone(),
+                        source: e.into(),
+                    })?;
 
-            // Filter by file type
-            if !Self::matches_file_type(&entry, input.include_dirs) {
-                continue;
+                results.push((relative, metadata));
             }
-
-            // Get relative path for filtering
-            let relative = path.strip_prefix(&self.path).map_err(|_err| {
-                ParseError::Io {
-                    path: path.to_path_buf(),
-                    source: std::io::Error::other("Path outside root"),
-                }
-            })?;
-
-            // Skip the root directory itself
-            if relative.as_os_str().is_empty() {
-                continue;
-            }
-
-            // Filter by extensions (if specified)
-            if !Self::matches_extensions(relative, input.extensions) {
-                continue;
-            }
-
-            // Filter by pattern (if specified)
-            if !Self::matches_pattern(relative, input.pattern)? {
-                continue;
-            }
-
-            let metadata = entry.metadata().map_err(|e| ParseError::Io {
-                path: relative.to_path_buf(),
-                source: e.into(),
-            })?;
-
-            results.push((relative.to_path_buf(), metadata));
         }
 
         Ok(results)
@@ -736,6 +837,61 @@ mod tests {
             assert_eq!(
                 entries.get(1).map(|e| &e.path),
                 Some(&PathBuf::from("z.toml"))
+            );
+        }
+    }
+
+    mod typed_scanning {
+        use super::*;
+
+        #[test]
+        fn paths_typed_returns_absolute_fs_paths() {
+            let temp = TempDir::new().unwrap();
+            write_file(temp.path(), "a.toml", b"");
+            let root = temp.path().to_path_buf();
+
+            let scanner = DirScanner::new(&root);
+            let paths = scanner.paths_typed(DirScanInput::new()).unwrap();
+
+            assert_eq!(paths.len(), 1);
+            let path = paths.first().unwrap();
+            assert!(path.is_file());
+            assert_eq!(path.as_path(), root.join("a.toml"));
+        }
+
+        #[test]
+        fn entries_typed_returns_fs_entries_with_absolute_paths() {
+            let temp = TempDir::new().unwrap();
+            write_file(temp.path(), "a.toml", b"test content");
+            let root = temp.path().to_path_buf();
+
+            let scanner = DirScanner::new(&root);
+            let entries = scanner.entries_typed(DirScanInput::new()).unwrap();
+
+            assert_eq!(entries.len(), 1);
+            let entry = entries.first().unwrap();
+            assert!(entry.is_file());
+            assert_eq!(entry.path().as_path(), root.join("a.toml"));
+            assert_eq!(entry.as_file().unwrap().metadata().size(), 12);
+        }
+
+        #[test]
+        fn typed_results_are_sorted() {
+            let temp = TempDir::new().unwrap();
+            write_file(temp.path(), "z.toml", b"");
+            write_file(temp.path(), "a.toml", b"");
+            let root = temp.path().to_path_buf();
+
+            let scanner = DirScanner::new(&root);
+            let paths = scanner.paths_typed(DirScanInput::new()).unwrap();
+
+            assert_eq!(
+                paths.first().unwrap().as_path().file_name().unwrap(),
+                "a.toml"
+            );
+            assert_eq!(
+                paths.get(1).unwrap().as_path().file_name().unwrap(),
+                "z.toml"
             );
         }
     }

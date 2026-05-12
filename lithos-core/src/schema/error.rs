@@ -252,6 +252,15 @@ pub enum SchemaFileError {
         /// Error details from the filesystem layer.
         reason: Box<str>,
     },
+
+    /// Path was not within the expected base directory.
+    #[error("path {path} is not within base directory {base}")]
+    NotInBasePath {
+        /// The path that was outside the base.
+        path: PathBuf,
+        /// The expected base directory.
+        base: PathBuf,
+    },
 }
 
 /// Structured parse errors with file location context.
@@ -887,7 +896,14 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
                 supported,
             } => Self::File(SchemaFileError::UnsupportedFormat {
                 path,
-                supported: supported.iter().map(|s| (*s).into()).collect(),
+                supported: supported.iter().map(|&s| s.into()).collect(),
+            }),
+            ParseError::NotInBasePath {
+                path,
+                base,
+            } => Self::File(SchemaFileError::NotInBasePath {
+                path,
+                base,
             }),
         }
     }

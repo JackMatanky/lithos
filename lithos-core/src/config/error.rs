@@ -163,6 +163,15 @@ pub enum ConfigIngestError {
         #[source]
         source: toml::de::Error,
     },
+
+    /// Path was not within the expected base directory.
+    #[error("Path {path} is not within base directory {base}")]
+    NotInBasePath {
+        /// The path that was outside the base.
+        path: std::path::PathBuf,
+        /// The expected base directory.
+        base: std::path::PathBuf,
+    },
 }
 
 impl From<ConfigIngestError> for ConfigCommandError {
@@ -239,17 +248,20 @@ impl From<crate::fs::ParseError> for ConfigIngestError {
             | crate::fs::ParseError::UnsupportedFormat {
                 path,
                 ..
-            } => {
-                // Config only supports TOML, so treat other formats as I/O
-                // errors
-                Self::Io {
-                    path,
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Config only supports TOML format",
-                    ),
-                }
-            }
+            } => Self::Io {
+                path,
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Unsupported format",
+                ),
+            },
+            crate::fs::ParseError::NotInBasePath {
+                path,
+                base,
+            } => Self::NotInBasePath {
+                path,
+                base,
+            },
         }
     }
 }

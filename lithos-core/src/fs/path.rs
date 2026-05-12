@@ -348,16 +348,11 @@ impl FilePath {
     ) -> Result<RelativePath, super::error::ParseError> {
         use super::error::ParseError;
 
-        let rel = self.0.strip_prefix(base).map_err(|_| ParseError::Io {
-            path: self.0.clone(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Path {} is not within base {}",
-                    self.0.display(),
-                    base.display()
-                ),
-            ),
+        let rel = self.0.strip_prefix(base).map_err(|_| {
+            ParseError::NotInBasePath {
+                path: self.0.clone(),
+                base: base.to_path_buf(),
+            }
         })?;
 
         RelativePath::try_from(rel).map_err(|e| ParseError::Io {
@@ -532,16 +527,11 @@ impl DirPath {
     ) -> Result<RelativePath, super::error::ParseError> {
         use super::error::ParseError;
 
-        let rel = self.0.strip_prefix(base).map_err(|_| ParseError::Io {
-            path: self.0.clone(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Path {} is not within base {}",
-                    self.0.display(),
-                    base.display()
-                ),
-            ),
+        let rel = self.0.strip_prefix(base).map_err(|_| {
+            ParseError::NotInBasePath {
+                path: self.0.clone(),
+                base: base.to_path_buf(),
+            }
         })?;
 
         RelativePath::try_from(rel).map_err(|e| ParseError::Io {
@@ -679,6 +669,16 @@ pub enum FsPath {
 }
 
 impl FsPath {
+    /// Returns the underlying path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::File(p) => p.as_path(),
+            Self::Dir(p) => p.as_path(),
+        }
+    }
+
     /// Returns `true` if this is a file path.
     #[inline]
     #[must_use]
