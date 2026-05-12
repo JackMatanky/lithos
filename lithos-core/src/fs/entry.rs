@@ -268,7 +268,8 @@ mod tests {
 
     #[test]
     fn fs_file_stores_path_and_metadata() {
-        let path = FilePath::try_from("vault/note.md").unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(Some(SystemTime::now()), None);
         let metadata = FileMetadata::new(times.clone(), 1024, false);
 
@@ -280,7 +281,8 @@ mod tests {
 
     #[test]
     fn fs_dir_stores_path_and_metadata() {
-        let path = DirPath::try_from("vault/schemas").unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(Some(SystemTime::now()), None);
         let metadata = DirMetadata::new(times.clone(), false);
 
@@ -292,8 +294,11 @@ mod tests {
 
     #[test]
     fn fs_entry_path_returns_unified_fs_path() {
-        let file_path = FilePath::try_from("note.md").unwrap();
-        let dir_path = DirPath::try_from("schemas").unwrap();
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let temp_dir = tempfile::TempDir::new().unwrap();
+
+        let file_path = FilePath::new(temp_file.path().to_path_buf()).unwrap();
+        let dir_path = DirPath::new(temp_dir.path().to_path_buf()).unwrap();
         let times = FsTimes::new(None, None);
 
         let file_entry = FsEntry::File(FsFile::new(
@@ -311,7 +316,8 @@ mod tests {
 
     #[test]
     fn fs_entry_as_file_returns_some_for_file_variant() {
-        let path = FilePath::try_from("note.md").unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(None, None);
         let file = FsFile::new(path, FileMetadata::new(times, 512, false));
         let entry = FsEntry::File(file.clone());
@@ -324,7 +330,8 @@ mod tests {
 
     #[test]
     fn fs_entry_as_file_returns_none_for_dir_variant() {
-        let path = DirPath::try_from("schemas").unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(None, None);
         let dir = FsDir::new(path, DirMetadata::new(times, false));
         let entry = FsEntry::Dir(dir);
@@ -334,7 +341,8 @@ mod tests {
 
     #[test]
     fn fs_entry_as_dir_returns_some_for_dir_variant() {
-        let path = DirPath::try_from("schemas").unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(None, None);
         let dir = FsDir::new(path, DirMetadata::new(times, false));
         let entry = FsEntry::Dir(dir.clone());
@@ -347,7 +355,8 @@ mod tests {
 
     #[test]
     fn fs_entry_as_dir_returns_none_for_file_variant() {
-        let path = FilePath::try_from("note.md").unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
         let times = FsTimes::new(None, None);
         let file = FsFile::new(path, FileMetadata::new(times, 512, false));
         let entry = FsEntry::File(file);
