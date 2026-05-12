@@ -3,7 +3,12 @@
 use crate::{
     db::DbError,
     fs::RelativePath,
-    schema::{aggregate::Schema, identifier::SchemaId, views::RawSchemaView},
+    schema::{
+        aggregate::Schema,
+        bank::PropertyBank,
+        identifier::SchemaId,
+        views::{RawPropertyBankView, RawSchemaView},
+    },
 };
 
 /// Error type for schema storage operations in the v2 seam.
@@ -71,6 +76,31 @@ pub trait SchemaReadRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error>;
+
+    /// Get the Property Bank singleton.
+    ///
+    /// Returns `None` if the Property Bank has not been saved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn get_property_bank(
+        &self,
+    ) -> Result<Option<PropertyBank>, SchemaStorageV2Error>;
+
+    /// Get the raw property bank view by path.
+    ///
+    /// Returns `None` if no view exists for the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error>;
 }
 
 /// Segregated write interface for schema persistence.
@@ -94,6 +124,29 @@ pub trait SchemaWriteRepository {
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
+    ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Save the Property Bank singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Save the raw property bank view for a given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+        view: &RawPropertyBankView,
     ) -> Result<(), SchemaStorageV2Error>;
 }
 

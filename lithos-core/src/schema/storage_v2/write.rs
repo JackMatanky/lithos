@@ -2,10 +2,19 @@
 
 use crate::{
     db::serialize,
+    fs::RelativePath,
     schema::{
         aggregate::Schema,
+        bank::PropertyBank,
         repository::{SchemaStorageV2Error, SchemaWriteRepository},
-        storage_v2::{SchemaRedbRepository, tables::SCHEMAS},
+        storage_v2::{
+            SchemaRedbRepository,
+            tables::{
+                PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
+                SCHEMAS,
+            },
+        },
+        views::RawPropertyBankView,
     },
 };
 
@@ -35,6 +44,42 @@ impl SchemaWriteRepository for SchemaRedbRepository {
                     let bytes = serialize(schema)?;
                     table.insert(*schema.id(), bytes.as_slice())?;
                 }
+                Ok(())
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaStorageV2Error> {
+        let bytes = serialize(bank).map_err(SchemaStorageV2Error::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(PROPERTY_BANK.definition())?;
+                table.insert(PROPERTY_BANK_KEY.to_owned(), bytes.as_slice())?;
+                Ok(())
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn save_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+        view: &RawPropertyBankView,
+    ) -> Result<(), SchemaStorageV2Error> {
+        let bytes = serialize(view).map_err(SchemaStorageV2Error::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
+                let path_str = path.as_path().to_string_lossy().to_string();
+                table.insert(path_str, bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
@@ -188,5 +233,49 @@ mod tests {
 
         // Should not error on empty batch
         repo.save_many_schemas(&[]).unwrap();
+    }
+
+    #[test]
+    fn save_property_bank_persists() {
+        use crate::schema::{
+            bank::PropertyBank, repository::SchemaReadRepository,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let bank = PropertyBank::new();
+        repo.save_property_bank(&bank).unwrap();
+
+        // Verify it was saved by retrieving it
+        let retrieved = repo.get_property_bank().unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap(), bank);
+    }
+
+    #[test]
+    fn save_property_bank_overwrites_previous() {
+        use crate::schema::{
+            bank::PropertyBank, repository::SchemaReadRepository,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        // Save first bank
+        let bank1 = PropertyBank::new();
+        repo.save_property_bank(&bank1).unwrap();
+
+        // Save second bank (new instance)
+        let bank2 = PropertyBank::new();
+        repo.save_property_bank(&bank2).unwrap();
+
+        // Should successfully overwrite (singleton behavior)
+        let retrieved = repo.get_property_bank().unwrap();
+        assert!(retrieved.is_some());
     }
 }

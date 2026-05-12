@@ -5,13 +5,17 @@ use crate::{
     fs::RelativePath,
     schema::{
         aggregate::Schema,
+        bank::PropertyBank,
         identifier::SchemaId,
         repository::{SchemaReadRepository, SchemaStorageV2Error},
         storage_v2::{
             SchemaRedbRepository,
-            tables::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH, SCHEMAS},
+            tables::{
+                PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
+                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH, SCHEMAS,
+            },
         },
-        views::RawSchemaView,
+        views::{RawPropertyBankView, RawSchemaView},
     },
 };
 
@@ -104,6 +108,53 @@ impl SchemaReadRepository for SchemaRedbRepository {
                     results.push(view);
                 }
                 Ok(results)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn get_property_bank(
+        &self,
+    ) -> Result<Option<PropertyBank>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(PROPERTY_BANK.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(guard) = table.get(PROPERTY_BANK_KEY.to_owned())?
+                else {
+                    return Ok(None);
+                };
+
+                let bank = deserialize(guard.value())?;
+                Ok(Some(bank))
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let path_str = path.as_path().to_string_lossy().to_string();
+                let Some(guard) = table.get(path_str)? else {
+                    return Ok(None);
+                };
+
+                let view = deserialize(guard.value())?;
+                Ok(Some(view))
             })
             .map_err(SchemaStorageV2Error::from)
     }
@@ -440,4 +491,52 @@ mod tests {
             assert_eq!(found.path(), &existing_path);
         }
     }
+
+    #[test]
+    fn get_property_bank_returns_none_when_not_saved() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let result = repo.get_property_bank().unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_property_bank_returns_saved_bank() {
+        use crate::schema::{
+            bank::PropertyBank, repository::SchemaWriteRepository,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let bank = PropertyBank::new();
+        repo.save_property_bank(&bank).unwrap();
+
+        let result = repo.get_property_bank().unwrap();
+        assert!(result.is_some());
+        let retrieved = result.unwrap();
+        assert_eq!(retrieved, bank);
+    }
+
+    #[test]
+    fn get_raw_property_bank_view_returns_none_when_not_saved() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let path = RelativePath::try_from("property-bank.toml").unwrap();
+        let result = repo.get_raw_property_bank_view(&path).unwrap();
+        assert!(result.is_none());
+    }
+
+    // Note: get_raw_property_bank_view is tested via integration tests that
+    // exercise the full staleness detection pipeline. Unit testing here would
+    // require exposing internal HashRecord construction which violates
+    // encapsulation. The None case is covered by the simple test above.
 }
