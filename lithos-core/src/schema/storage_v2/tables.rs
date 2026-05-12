@@ -44,3 +44,11 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 /// Maps property bank file paths to their raw views for staleness detection.
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
     PathTable::new("raw_property_bank_view_v2");
+
+/// Schema name→ID index (key: schema name string, value: serialized
+/// `SchemaId`).
+///
+/// Enables fast ID lookup by schema name without loading full schema data.
+/// Maintained atomically with `SCHEMAS` table during save operations.
+pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
+    PathTable::new("schema_id_by_name_v2");

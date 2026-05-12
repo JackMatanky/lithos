@@ -6,7 +6,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        identifier::SchemaId,
+        identifier::{SchemaId, SchemaName},
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -101,6 +101,76 @@ pub trait SchemaReadRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error>;
+
+    /// Find a schema ID by its name.
+    ///
+    /// Returns `None` if no schema with the given name exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error>;
+
+    /// Find a schema ID by its path.
+    ///
+    /// Returns `None` if no schema exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_schema_id_by_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error>;
+
+    /// Find multiple schema IDs by their paths in a single transaction.
+    ///
+    /// Returns a vector in the same order as the input paths.
+    /// Missing schemas return `None` in the corresponding position.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        paths: &[RelativePath],
+    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageV2Error>;
+
+    /// List all schema name to ID mappings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn list_schema_name_id_pairs(
+        &self,
+    ) -> Result<Vec<(SchemaName, SchemaId)>, SchemaStorageV2Error>;
+
+    /// List all schema path to ID mappings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn list_schema_path_id_pairs(
+        &self,
+    ) -> Result<Vec<(RelativePath, SchemaId)>, SchemaStorageV2Error>;
+
+    /// Get unified index combining name, path, and ID lookups.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn get_schema_index(
+        &self,
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageV2Error>;
 }
 
 /// Segregated write interface for schema persistence.

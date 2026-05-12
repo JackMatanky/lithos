@@ -11,7 +11,7 @@ use crate::{
             SchemaRedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-                SCHEMAS,
+                SCHEMA_ID_BY_NAME, SCHEMAS,
             },
         },
         views::RawPropertyBankView,
@@ -22,11 +22,19 @@ impl SchemaWriteRepository for SchemaRedbRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error> {
         let bytes = serialize(schema).map_err(SchemaStorageV2Error::from)?;
+        let id_bytes =
+            serialize(schema.id()).map_err(SchemaStorageV2Error::from)?;
 
         self.store
             .write(|tx| {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 table.insert(*schema.id(), bytes.as_slice())?;
+
+                let mut name_table =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+                let name_key = schema.name().as_str().to_owned();
+                name_table.insert(name_key, id_bytes.as_slice())?;
+
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
@@ -40,9 +48,17 @@ impl SchemaWriteRepository for SchemaRedbRepository {
         self.store
             .write(|tx| {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
+                let mut name_table =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+
                 for schema in schemas {
                     let bytes = serialize(schema)?;
+                    let id_bytes = serialize(schema.id())?;
+
                     table.insert(*schema.id(), bytes.as_slice())?;
+
+                    let name_key = schema.name().as_str().to_owned();
+                    name_table.insert(name_key, id_bytes.as_slice())?;
                 }
                 Ok(())
             })
@@ -184,18 +200,32 @@ mod tests {
         let name1 = SchemaName::try_new("schema-1").unwrap();
         let name2 = SchemaName::try_new("schema-2").unwrap();
 
-        let schema1 =
-            Schema::new(id1, name1, Vec::new(), vec![], PropertyMap::new());
-        let schema2 =
-            Schema::new(id2, name2, Vec::new(), vec![], PropertyMap::new());
+        let schema1 = Schema::new(
+            id1,
+            name1.clone(),
+            Vec::new(),
+            vec![],
+            PropertyMap::new(),
+        );
+        let schema2 = Schema::new(
+            id2,
+            name2.clone(),
+            Vec::new(),
+            vec![],
+            PropertyMap::new(),
+        );
 
         repo.save_many_schemas(&[schema1.clone(), schema2.clone()]).unwrap();
 
         let found1 = repo.find_schema_by_id(id1).unwrap().unwrap();
         let found2 = repo.find_schema_by_id(id2).unwrap().unwrap();
 
-        assert_eq!(found1.id(), &id1);
-        assert_eq!(found2.id(), &id2);
+        assert_eq!(found1, schema1);
+        assert_eq!(found2, schema2);
+
+        // Verify name index was updated for both
+        assert_eq!(repo.find_schema_id_by_name(&name1).unwrap(), Some(id1));
+        assert_eq!(repo.find_schema_id_by_name(&name2).unwrap(), Some(id2));
     }
 
     #[test]
@@ -277,5 +307,31 @@ mod tests {
         // Should successfully overwrite (singleton behavior)
         let retrieved = repo.get_property_bank().unwrap();
         assert!(retrieved.is_some());
+    }
+
+    #[test]
+    fn save_schema_updates_name_index() {
+        use crate::schema::repository::SchemaReadRepository;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let id = SchemaId::new();
+        let name = SchemaName::try_from("test-schema-index").unwrap();
+        let schema = Schema::new(
+            id,
+            name.clone(),
+            Vec::new(),
+            vec![],
+            crate::schema::property::PropertyMap::new(),
+        );
+
+        repo.save_schema(&schema).unwrap();
+
+        let found_id = repo.find_schema_id_by_name(&name).unwrap();
+        assert!(found_id.is_some());
+        assert_eq!(found_id.unwrap(), id);
     }
 }

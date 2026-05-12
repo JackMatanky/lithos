@@ -1,18 +1,21 @@
 //! Read-only schema repository operations.
 
+use redb::ReadableTable;
+
 use crate::{
     db::{UuidTableReadExt, deserialize},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        identifier::SchemaId,
+        identifier::{SchemaId, SchemaName},
         repository::{SchemaReadRepository, SchemaStorageV2Error},
         storage_v2::{
             SchemaRedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH, SCHEMAS,
+                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
+                SCHEMAS,
             },
         },
         views::{RawPropertyBankView, RawSchemaView},
@@ -157,6 +160,154 @@ impl SchemaReadRepository for SchemaRedbRepository {
                 Ok(Some(view))
             })
             .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let key = name.as_str().to_owned();
+                let Some(guard) = table.get(key)? else {
+                    return Ok(None);
+                };
+
+                let id = deserialize(guard.value())?;
+                Ok(Some(id))
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn find_schema_id_by_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let key = path.as_path().to_string_lossy().to_string();
+                let Some(guard) = table.get(key)? else {
+                    return Ok(None);
+                };
+
+                let id = deserialize(guard.value())?;
+                Ok(Some(id))
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        paths: &[RelativePath],
+    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?
+                else {
+                    return Ok(paths.iter().map(|_| None).collect());
+                };
+
+                let mut results = Vec::with_capacity(paths.len());
+                for path in paths {
+                    let key = path.as_path().to_string_lossy().to_string();
+                    match table.get(key)? {
+                        Some(guard) => {
+                            let id = deserialize(guard.value())?;
+                            results.push(Some(id));
+                        }
+                        None => results.push(None),
+                    }
+                }
+                Ok(results)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn list_schema_name_id_pairs(
+        &self,
+    ) -> Result<Vec<(SchemaName, SchemaId)>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut pairs = Vec::new();
+                for result in table.iter()? {
+                    let (k_guard, v_guard) = result?;
+                    let name_str = k_guard.value();
+                    let name = SchemaName::try_from(name_str.as_str())
+                        .map_err(|e| {
+                            crate::db::DbError::Deserialization(e.to_string())
+                        })?;
+                    let id = deserialize(v_guard.value())?;
+                    pairs.push((name, id));
+                }
+                Ok(pairs)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn list_schema_path_id_pairs(
+        &self,
+    ) -> Result<Vec<(RelativePath, SchemaId)>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut pairs = Vec::new();
+                for result in table.iter()? {
+                    let (k_guard, v_guard) = result?;
+                    let path_str = k_guard.value();
+                    let path = RelativePath::try_from(path_str.as_str())
+                        .map_err(|e| {
+                            crate::db::DbError::Deserialization(e.to_string())
+                        })?;
+                    let id = deserialize(v_guard.value())?;
+                    pairs.push((path, id));
+                }
+                Ok(pairs)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn get_schema_index(
+        &self,
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageV2Error> {
+        let name_pairs = self.list_schema_name_id_pairs()?;
+        let path_pairs = self.list_schema_path_id_pairs()?;
+
+        crate::schema::index::SchemaIndex::from_pairs(name_pairs, path_pairs)
+            .map_err(|e| {
+                SchemaStorageV2Error::from(crate::db::DbError::Deserialization(
+                    e.to_string(),
+                ))
+            })
     }
 }
 
@@ -539,4 +690,264 @@ mod tests {
     // exercise the full staleness detection pipeline. Unit testing here would
     // require exposing internal HashRecord construction which violates
     // encapsulation. The None case is covered by the simple test above.
+
+    #[test]
+    fn find_schema_id_by_name_returns_none_when_not_saved() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let name = SchemaName::try_from("note").unwrap();
+        let result = repo.find_schema_id_by_name(&name).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_schema_id_by_name_returns_id_after_save() {
+        use crate::{
+            db::serialize, schema::storage_v2::tables::SCHEMA_ID_BY_NAME,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let schema_id = SchemaId::new();
+        let name = SchemaName::try_from("note").unwrap();
+
+        // Manually insert into SCHEMA_ID_BY_NAME table to test read path
+        store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+                let key = name.as_str().to_owned();
+                let value_bytes = serialize(&schema_id)?;
+                table.insert(key, value_bytes.as_slice())?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let result = repo.find_schema_id_by_name(&name).unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), schema_id);
+    }
+
+    #[test]
+    fn find_schema_id_by_path_returns_none_when_not_saved() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = SchemaRedbRepository::new(store);
+
+        let path = RelativePath::try_from("schemas/note.json").unwrap();
+        let result = repo.find_schema_id_by_path(&path).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_schema_id_by_path_returns_id_after_save() {
+        use crate::{
+            db::serialize, schema::storage_v2::tables::SCHEMA_ID_BY_PATH,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let schema_id = SchemaId::new();
+        let path = RelativePath::try_from("schemas/note.json").unwrap();
+
+        // Manually insert into SCHEMA_ID_BY_PATH table to test read path
+        store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+                let key = path.as_path().to_string_lossy().to_string();
+                let value_bytes = serialize(&schema_id)?;
+                table.insert(key, value_bytes.as_slice())?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let result = repo.find_schema_id_by_path(&path).unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), schema_id);
+    }
+
+    #[test]
+    fn find_schema_ids_by_paths_returns_ids_and_nones() {
+        use crate::{
+            db::serialize, schema::storage_v2::tables::SCHEMA_ID_BY_PATH,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let id1 = SchemaId::new();
+        let path1 = RelativePath::try_from("schemas/one.json").unwrap();
+        let id2 = SchemaId::new();
+        let path2 = RelativePath::try_from("schemas/two.json").unwrap();
+        let path3 = RelativePath::try_from("schemas/missing.json").unwrap();
+
+        store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+                table.insert(
+                    path1.as_path().to_string_lossy().to_string(),
+                    serialize(&id1)?.as_slice(),
+                )?;
+                table.insert(
+                    path2.as_path().to_string_lossy().to_string(),
+                    serialize(&id2)?.as_slice(),
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let results =
+            repo.find_schema_ids_by_paths(&[path1, path3, path2]).unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results.first().unwrap(), &Some(id1));
+        assert_eq!(results.get(1).unwrap(), &None);
+        assert_eq!(results.get(2).unwrap(), &Some(id2));
+    }
+
+    #[test]
+    fn list_schema_name_id_pairs_returns_all_pairs() {
+        use crate::{
+            db::serialize, schema::storage_v2::tables::SCHEMA_ID_BY_NAME,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let id1 = SchemaId::new();
+        let name1 = SchemaName::try_from("schema1").unwrap();
+        let id2 = SchemaId::new();
+        let name2 = SchemaName::try_from("schema2").unwrap();
+
+        store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+                table.insert(
+                    name1.as_str().to_owned(),
+                    serialize(&id1)?.as_slice(),
+                )?;
+                table.insert(
+                    name2.as_str().to_owned(),
+                    serialize(&id2)?.as_slice(),
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let mut results = repo.list_schema_name_id_pairs().unwrap();
+
+        // Sort to ensure consistent test comparison since DB iteration order
+        // might vary
+        results.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results.first().unwrap().0, name1);
+        assert_eq!(results.first().unwrap().1, id1);
+        assert_eq!(results.get(1).unwrap().0, name2);
+        assert_eq!(results.get(1).unwrap().1, id2);
+    }
+
+    #[test]
+    fn list_schema_path_id_pairs_returns_all_pairs() {
+        use crate::{
+            db::serialize, schema::storage_v2::tables::SCHEMA_ID_BY_PATH,
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let id1 = SchemaId::new();
+        let path1 = RelativePath::try_from("schemas/schema1.json").unwrap();
+        let id2 = SchemaId::new();
+        let path2 = RelativePath::try_from("schemas/schema2.json").unwrap();
+
+        store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+                table.insert(
+                    path1.as_path().to_string_lossy().to_string(),
+                    serialize(&id1)?.as_slice(),
+                )?;
+                table.insert(
+                    path2.as_path().to_string_lossy().to_string(),
+                    serialize(&id2)?.as_slice(),
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let mut results = repo.list_schema_path_id_pairs().unwrap();
+
+        // Sort to ensure consistent test comparison
+        results.sort_by(|a, b| a.0.as_path().cmp(b.0.as_path()));
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results.first().unwrap().0, path1);
+        assert_eq!(results.first().unwrap().1, id1);
+        assert_eq!(results.get(1).unwrap().0, path2);
+        assert_eq!(results.get(1).unwrap().1, id2);
+    }
+
+    #[test]
+    fn get_schema_index_returns_unified_index() {
+        use crate::{
+            db::serialize,
+            schema::storage_v2::tables::{
+                SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
+            },
+        };
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+
+        let id = SchemaId::new();
+        let name = SchemaName::try_from("note").unwrap();
+        let path = RelativePath::try_from("schemas/note.json").unwrap();
+
+        store
+            .write(|tx| {
+                let mut name_table =
+                    tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+                name_table.insert(
+                    name.as_str().to_owned(),
+                    serialize(&id)?.as_slice(),
+                )?;
+
+                let mut path_table =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+                path_table.insert(
+                    path.as_path().to_string_lossy().to_string(),
+                    serialize(&id)?.as_slice(),
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let repo = SchemaRedbRepository::new(store);
+        let index = repo.get_schema_index().unwrap();
+
+        assert_eq!(index.get_id_by_name(&name), Some(id));
+        assert_eq!(index.get_id_by_path(&path), Some(id));
+    }
 }
