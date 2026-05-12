@@ -4,6 +4,7 @@ status: proposed | accepted | rejected | superseded | deprecated
 supersedes: [0000] # Optional: Number of the ADR this replaces
 date_proposed: YYYY-MM-DD
 date_decided: YYYY-MM-DD
+date_implemented: YYYY-MM-DD
 stakeholders: [List Stakeholders]
 ---
 

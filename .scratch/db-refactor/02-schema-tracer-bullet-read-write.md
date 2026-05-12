@@ -2,7 +2,7 @@
 title: 02-schema-tracer-bullet-read-write
 category: enhancement
 label: ready-for-agent
-status: completed
+status: in_progress
 date_created: 2026-05-10
 date_completed: 2026-05-11
 ---
@@ -18,6 +18,8 @@ AFK
 ## What to build
 
 Implement a Schema tracer-bullet vertical slice using the new seam: one complete Schema read path and one complete Schema write path through `schema/repository.rs` (trait), `schema/storage_v2/tables.rs` (table definition), `schema/storage_v2/write.rs` (save_schema impl), and `schema/storage_v2/read.rs` (find_schema_by_id impl), backed by `db::Store` and DB helpers.
+
+**REOPENED (2026-05-12)**: The unified `SchemaRepository` trait is being split into `SchemaReadRepository` and `SchemaWriteRepository`. The implementation must also be split into `read.rs` and `write.rs` files within `schema/storage_v2/`.
 
 This slice demonstrates the new transaction pattern, transparent error handling, and type-safe table wrappers before broader migration.
 
@@ -78,6 +80,14 @@ This slice demonstrates the new transaction pattern, transparent error handling,
 
 ## Acceptance criteria
 
+- [ ] `SchemaReadRepository` and `SchemaWriteRepository` traits exist in `schema/repository.rs`.
+- [ ] `SchemaRepository` trait extends both Read and Write variants.
+- [ ] `schema/storage_v2/read.rs` exists and implements `SchemaReadRepository`.
+- [ ] `schema/storage_v2/write.rs` exists and implements `SchemaWriteRepository`.
+- [ ] `SchemaRedbRepository` struct in `mod.rs` uses `pub(crate)` fields or module-level visibility to allow `read.rs`/`write.rs` to access `store`.
+- [ ] Unit tests for read logic in `read.rs`, write logic in `write.rs`.
+
+### Original criteria (Completed, but subject to refactor)
 - [x] `trait SchemaRepository` exists in `schema/repository.rs` with `save_schema` and `find_schema_by_id`.
 - [x] `struct SchemaStorageV2Error(DbError)` defined in `schema/repository.rs`.
 - [x] `schema/storage_v2/tables.rs` exists and defines `const SCHEMAS: UuidTable<SchemaId, &[u8]>`.

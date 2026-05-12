@@ -45,7 +45,7 @@ _Avoid_: raw schema, partial schema
 - The Property Bank is treated as global schema state for shared property definitions.
 - Child schema inheritance resolves in parent-to-child order with explicit Exclude List entries applied.
 - Excluded parent properties are omitted from the child resolved schema output.
-- Defines a unified `Repository` trait for all persistence operations.
+- Defines a segregated `Repository` interface (Read, Write, and Unified traits) for all persistence operations.
 
 ## Not Owned Here
 

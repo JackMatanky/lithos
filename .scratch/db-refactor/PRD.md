@@ -161,7 +161,7 @@ These enforce:
 
 ### Storage Adapter Pattern
 
-Each context gets a `storage/` submodule:
+Each context gets a `storage/` submodule (or `storage_v2/` during transition):
 ```
 lithos-core/src/schema/
 ├── mod.rs              # Domain types (re-exports Repository trait)
@@ -169,34 +169,48 @@ lithos-core/src/schema/
 ├── identifier.rs       # SchemaId (with impl_redb_uuid! macro)
 ├── validation.rs       # Business logic validation
 ├── error.rs            # SchemaError
-├── repository.rs       # Repository trait definition
-└── storage/
-     ├── mod.rs          # Re-exports storage adapters
-     ├── read.rs         # Redb-backed read/query operations
-     ├── write.rs        # Redb-backed write/mutation operations
-     ├── tables.rs       # Context table/multimap definitions
+├── repository.rs       # Repository trait definitions (Split into Read/Write)
+└── storage/            # (storage_v2 during transition; renamed to storage after migration)
+     ├── mod.rs          # RedbRepository struct + re-exports
+     ├── read.rs         # Redb-backed read implementation
+     ├── write.rs        # Redb-backed write implementation
+     ├── tables.rs       # Context table definitions
      ├── memory.rs       # InMemoryStorage (uses HashMap)
      └── fake.rs         # FakeStorage (test fake)
 ```
 
-Batch behavior stays inside `read.rs` and `write.rs`. Only split further if either file becomes unwieldy.
+**Repository traits** (in `schema/repository.rs`):
+The single unified trait is split into segregated interfaces to improve clarity and allow components to request only the access level they need.
 
-**Repository trait** (in `schema/repository.rs`):
 ```rust
-/// Port for schema persistence (hexagonal architecture).
-pub trait Repository {
+/// Read-side port for schema persistence.
+pub trait ReadRepository {
     fn get(&self, id: SchemaId) -> Result<Option<Schema>, SchemaError>;
-    fn save(&mut self, schema: Schema) -> Result<(), SchemaError>;
-    fn save_many(&mut self, schemas: Vec<Schema>) -> Result<(), SchemaError>;
-    fn delete(&mut self, id: SchemaId) -> Result<bool, SchemaError>;
     fn list(&self) -> Result<Vec<Schema>, SchemaError>;
     fn count(&self) -> Result<usize, SchemaError>;
 
-    // Context-specific queries
+    // Context-specific read queries
     fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError>;
     fn list_properties(&self, schema_id: SchemaId) -> Result<Vec<Property>, SchemaError>;
 }
+
+/// Write-side port for schema persistence.
+pub trait WriteRepository {
+    fn save(&mut self, schema: Schema) -> Result<(), SchemaError>;
+    fn save_many(&mut self, schemas: Vec<Schema>) -> Result<(), SchemaError>;
+    fn delete(&mut self, id: SchemaId) -> Result<bool, SchemaError>;
+}
+
+/// Full repository port for schema persistence (hexagonal architecture).
+///
+/// Extends both read and write capabilities.
+pub trait Repository: ReadRepository + WriteRepository {}
+
+impl<T> Repository for T where T: ReadRepository + WriteRepository {}
 ```
+
+**Implementation Split**:
+To maintain large storage adapters, the implementation of `RedbRepository` is split across `read.rs` and `write.rs`. This is achieved by defining the struct in `mod.rs` (with internal fields as `pub(crate)` or accessible within the module tree) and implementing the segregated traits in their respective files.
 
 **RedbStorage** pattern (realistically several hundred lines for 4-10 tables; organized into operation-focused modules):
 ```rust
@@ -208,90 +222,107 @@ const SCHEMA_PROPERTIES: UuidMultimap<SchemaId, PropertyId> =
 pub struct RedbStorage {
     store: Store,
 }
+```
 
-impl Repository for RedbStorage {
+```rust
+// storage/read.rs
+impl ReadRepository for RedbStorage {
     fn get(&self, id: SchemaId) -> Result<Option<Schema>, SchemaError> {
-        self.store.read(|tx| {
-            let table = tx.inner.open_table(SCHEMAS.definition())?;
-            match table.get(&id)? {
-                Some(guard) => {
-                    let bytes = guard.value();
-                    let schema = db::rkyv::deserialize(bytes)?;
-                    Ok(Some(schema))
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(SCHEMAS.definition())?;
+
+                match table.get(&id)? {
+                    Some(guard) => {
+                        let bytes = guard.value();
+                        let schema = db::rkyv::deserialize(bytes)?;
+                        Ok(Some(schema))
+                    }
+                    None => Ok(None),
                 }
-                None => Ok(None),
-            }
-        }).map_err(SchemaError::from)
-    }
-
-    fn save(&mut self, schema: Schema) -> Result<(), SchemaError> {
-        self.store.write(|tx| {
-            let mut table = tx.inner.open_table(SCHEMAS.definition())?;
-            let bytes = db::rkyv::serialize(&schema)?;
-            table.insert(&schema.id, bytes.as_slice())?;
-            Ok(())
-        }).map_err(SchemaError::from)
-    }
-
-    fn save_many(&mut self, schemas: Vec<Schema>) -> Result<(), SchemaError> {
-        self.store.write(|tx| {
-            let mut table = tx.inner.open_table(SCHEMAS.definition())?;
-
-            // Batch write within single transaction
-            for schema in schemas {
-                let bytes = db::rkyv::serialize(&schema)?;
-                table.insert(&schema.id, bytes.as_slice())?;
-            }
-            Ok(())
-        }).map_err(SchemaError::from)
-    }
-
-    fn delete(&mut self, id: SchemaId) -> Result<bool, SchemaError> {
-        self.store.write(|tx| {
-            let mut table = tx.inner.open_table(SCHEMAS.definition())?;
-            Ok(table.remove(&id)?.is_some())
-        }).map_err(SchemaError::from)
+            })
+            .map_err(SchemaError::from)
     }
 
     fn list(&self) -> Result<Vec<Schema>, SchemaError> {
-        self.store.read(|tx| {
-            let table = tx.inner.open_table(SCHEMAS.definition())?;
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(SCHEMAS.definition())?;
 
-            // Two-phase pattern (research-validated)
-            let mut all_bytes = Vec::new();
-            for entry in table.iter()? {
-                let (_key, guard) = entry?;
-                all_bytes.push(guard.value().to_vec());
-            }
+                let mut all_bytes = Vec::new();
+                for entry in table.iter()? {
+                    let (_key, guard) = entry?;
+                    all_bytes.push(guard.value().to_vec());
+                }
 
-            let mut schemas = Vec::new();
-            for bytes in all_bytes {
-                schemas.push(db::rkyv::deserialize(&bytes)?);
-            }
-            Ok(schemas)
-        }).map_err(SchemaError::from)
+                let mut schemas = Vec::new();
+                for bytes in all_bytes {
+                    schemas.push(db::rkyv::deserialize(&bytes)?);
+                }
+
+                Ok(schemas)
+            })
+            .map_err(SchemaError::from)
     }
 
     fn count(&self) -> Result<usize, SchemaError> {
-        self.store.read(|tx| {
-            let table = tx.inner.open_table(SCHEMAS.definition())?;
-            Ok(table.len()? as usize)
-        }).map_err(SchemaError::from)
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(SCHEMAS.definition())?;
+                Ok(table.len()? as usize)
+            })
+            .map_err(SchemaError::from)
+    }
+
+    fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError> {
+        todo!()
+    }
+
+    fn list_properties(&self, schema_id: SchemaId) -> Result<Vec<Property>, SchemaError> {
+        todo!()
+    }
+}
+
+// storage/write.rs
+impl WriteRepository for RedbStorage {
+    fn save(&mut self, schema: Schema) -> Result<(), SchemaError> {
+        self.store
+            .write(|tx| {
+                let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+                let bytes = db::rkyv::serialize(&schema)?;
+                table.insert(&schema.id, bytes.as_slice())?;
+                Ok(())
+            })
+            .map_err(SchemaError::from)
+    }
+
+    fn save_many(&mut self, schemas: Vec<Schema>) -> Result<(), SchemaError> {
+        self.store
+            .write(|tx| {
+                let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+
+                for schema in schemas {
+                    let bytes = db::rkyv::serialize(&schema)?;
+                    table.insert(&schema.id, bytes.as_slice())?;
+                }
+
+                Ok(())
+            })
+            .map_err(SchemaError::from)
+    }
+
+    fn delete(&mut self, id: SchemaId) -> Result<bool, SchemaError> {
+        self.store
+            .write(|tx| {
+                let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+                Ok(table.remove(&id)?.is_some())
+            })
+            .map_err(SchemaError::from)
     }
 }
 ```
 
-For contexts with many tables and mixed read/write/query behavior, split implementation by operation families inside `storage/` instead of a monolithic adapter file, with batch behavior kept in read/write modules unless they become unwieldy:
-
-```
-storage/
-├── mod.rs
-├── read.rs
-├── write.rs
-├── tables.rs
-├── memory.rs
-└── fake.rs
-```
+Batch behavior is implemented directly within these segregated modules. Only split further if either file becomes unwieldy.
 
 This keeps the Repository adapter deep at the interface while improving locality in implementation.
 

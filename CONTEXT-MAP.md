@@ -31,4 +31,4 @@
 ## Global Invariants
 
 - **Filesystem Isolation**: All interaction with the filesystem MUST happen through the `FS` context via `FsReader`.
-- **Unified Repository Pattern**: Business contexts (Note, Schema, Template, Config) MUST define their own Repository traits to decouple domain logic from infrastructure.
+- **Segregated Repository Pattern**: Business contexts (Note, Schema, Template, Config) MUST define their own segregated Repository interfaces (Read, Write, and Unified traits) to decouple domain logic from infrastructure.

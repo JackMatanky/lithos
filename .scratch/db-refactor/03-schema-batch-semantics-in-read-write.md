@@ -2,7 +2,7 @@
 title: 03-schema-batch-semantics-in-read-write
 category: enhancement
 label: ready-for-agent
-status: closed
+status: in_progress
 date_created: 2026-05-10
 date_completed: 2026-05-11
 ---
@@ -17,7 +17,9 @@ AFK
 
 ## What to build
 
-Add batch read and batch write semantics to `schema/storage_v2/core.rs`.
+Add batch read and batch write semantics to `schema/storage_v2/`.
+
+**REOPENED (2026-05-12)**: Batch operations must be moved into the new `read.rs` and `write.rs` implementation files.
 
 **Batch** means performing multiple operations in a single transaction (without looping), not necessarily multi-table operations.
 
