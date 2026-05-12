@@ -28,20 +28,8 @@ impl From<DbError> for SchemaStorageV2Error {
 #[error(transparent)]
 pub struct DbTxError(#[from] DbError);
 
-/// Interface for schema persistence and retrieval.
-///
-/// This trait defines the contract for storing and loading [`Schema`]
-/// aggregates. Implementations (like `SchemaRedbRepository`) handle the
-/// underlying storage mechanics while adhering to this unified interface.
-pub trait SchemaRepository {
-    /// Persist a schema aggregate to the store.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaStorageV2Error`] if serialization or database write
-    /// fails.
-    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error>;
-
+/// Segregated read interface for schema persistence.
+pub trait SchemaReadRepository {
     /// Find a schema by its unique identifier.
     ///
     /// # Errors
@@ -52,19 +40,6 @@ pub trait SchemaRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaStorageV2Error>;
-
-    /// Save multiple schemas in a single transaction.
-    ///
-    /// If any schema fails to serialize, the entire batch rolls back.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SchemaStorageV2Error`] if serialization or database write
-    /// fails.
-    fn save_many_schemas(
-        &self,
-        schemas: &[Schema],
-    ) -> Result<(), SchemaStorageV2Error>;
 
     /// Find multiple schemas by ID in a single transaction.
     ///
@@ -96,4 +71,38 @@ pub trait SchemaRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error>;
+}
+
+/// Segregated write interface for schema persistence.
+pub trait SchemaWriteRepository {
+    /// Persist a schema aggregate to the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error>;
+
+    /// Save multiple schemas in a single transaction.
+    ///
+    /// If any schema fails to serialize, the entire batch rolls back.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_many_schemas(
+        &self,
+        schemas: &[Schema],
+    ) -> Result<(), SchemaStorageV2Error>;
+}
+
+/// Unified interface for schema persistence and retrieval.
+///
+/// This trait extends both [`SchemaReadRepository`] and
+/// [`SchemaWriteRepository`] to provide a complete interface for schema storage
+/// operations.
+pub trait SchemaRepository:
+    SchemaReadRepository + SchemaWriteRepository
+{
 }
