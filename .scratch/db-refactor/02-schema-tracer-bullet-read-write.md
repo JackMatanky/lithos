@@ -2,9 +2,9 @@
 title: 02-schema-tracer-bullet-read-write
 category: enhancement
 label: ready-for-agent
-status: in_progress
+status: completed
 date_created: 2026-05-10
-date_completed: 2026-05-11
+date_completed: 2026-05-12
 ---
 
 ## Type
@@ -121,15 +121,49 @@ The `SchemaRepository` trait is a single unified interface. The implementation `
 - `SchemaRedbRepository` — the implementation struct whose impl blocks will be moved.
 
 **Acceptance criteria:**
-- [ ] `SchemaReadRepository` and `SchemaWriteRepository` traits exist in `schema/repository.rs`.
-- [ ] `SchemaRepository` trait extends both Read and Write variants.
-- [ ] `schema/storage_v2/read.rs` exists and implements `SchemaReadRepository`.
-- [ ] `schema/storage_v2/write.rs` exists and implements `SchemaWriteRepository`.
-- [ ] `SchemaRedbRepository` struct in `mod.rs` uses `pub(crate)` fields or module-level visibility to allow `read.rs`/`write.rs` to access `store`.
-- [ ] Unit tests for read logic in `read.rs`, write logic in `write.rs`.
+- [x] `SchemaReadRepository` and `SchemaWriteRepository` traits exist in `schema/repository.rs`.
+- [x] `SchemaRepository` trait extends both Read and Write variants.
+- [x] `schema/storage_v2/read.rs` exists and implements `SchemaReadRepository`.
+- [x] `schema/storage_v2/write.rs` exists and implements `SchemaWriteRepository`.
+- [x] `SchemaRedbRepository` struct in `mod.rs` uses `pub(crate)` fields or module-level visibility to allow `read.rs`/`write.rs` to access `store`.
+- [x] Unit tests for read logic in `read.rs`, write logic in `write.rs`.
 
 **Refactor Reason:**
 The initial implementation in `core.rs` grew too large (667 lines), making it difficult to maintain and navigate. Splitting into segregated traits and files improves locality and allows for better interface segregation in consumers.
+
+## Implementation Notes (v2 - Segregated Traits, 2026-05-12)
+
+### What Was Implemented
+
+**Trait Segregation** (`schema/repository.rs`):
+- `SchemaReadRepository` with 3 methods: `find_schema_by_id`, `find_many_schemas_by_id`, `find_raw_schema_views_by_paths`
+- `SchemaWriteRepository` with 2 methods: `save_schema`, `save_many_schemas`
+- `SchemaRepository` as empty marker trait with blanket impl for any type implementing both Read and Write
+
+**Implementation Split** (`schema/storage_v2/`):
+```
+schema/storage_v2/
+├── mod.rs      # Struct with pub(crate) store field + blanket impl (39 lines)
+├── read.rs     # impl SchemaReadRepository + comprehensive tests (443 lines)
+├── write.rs    # impl SchemaWriteRepository + comprehensive tests (192 lines)
+└── tables.rs   # Table definitions (unchanged)
+```
+
+**Key Decisions:**
+- Used `pub(crate) store: Arc<Store>` field visibility to enable split implementations across child modules
+- Blanket implementation in `mod.rs` ensures any type implementing both segregated traits automatically gets the unified trait
+- Tests colocated with implementation: read tests in `read.rs`, write tests in `write.rs`
+- Both read and write implementations can access each other's methods via the blanket impl (e.g., read tests can call `save_schema` to set up test data)
+
+### Verification
+- All 1123 tests pass (37 new tests across read.rs and write.rs)
+- Zero regressions from baseline
+- `cargo fmt --check` passes
+- `cargo clippy -- -D warnings` passes
+- All pre-commit hooks pass
+
+### Commit
+- `9f4cb8da` - refactor(schema): implement segregated unified repository pattern (ADR 016)
 
 ---
 
