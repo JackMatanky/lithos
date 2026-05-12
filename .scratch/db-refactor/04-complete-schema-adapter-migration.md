@@ -1,18 +1,19 @@
 ---
 title: 04-complete-schema-adapter-migration
 category: enhancement
-label: needs-triage
-status: open
+label: decomposed
+status: decomposed
 date_created: 2026-05-10
+date_updated: 2026-05-12
 ---
 
 ## Type
 
-AFK
+EPIC (Decomposed into Sub-Issues)
 
 ## Labels
 
-- needs-triage
+- decomposed
 
 ## What to build
 
@@ -54,6 +55,47 @@ This plan is updated to align with ADR 016. All migrated methods must be placed 
 - [ ] Multi-table invariants for Schema projections are preserved under atomic write semantics.
 - [ ] Existing Schema integration/unit tests pass, with additional tests where behavior coverage was missing.
 
+## Decomposition (2026-05-12)
+
+This issue was too large to implement as a single unit (27 operations across 8 tables). It has been decomposed into focused vertical slices following TDD tracer bullet principles:
+
+### Sub-Issues (In Recommended Order)
+
+1. **`04a-property-bank-migration.md`** - Property Bank operations (4 methods, 2 tables)
+   - Smallest complete slice
+   - Proves singleton pattern
+   - No dependencies beyond 03
+
+2. **`04b-schema-index-operations.md`** - Schema index and lookup operations (6 methods, 1 new table)
+   - Name and path lookups
+   - Updates `save_schema()` to maintain indexes
+   - Depends on: 04a (pattern proof)
+
+3. **`04c-raw-view-operations.md`** - Raw view operations (3 methods, uses existing tables)
+   - Staleness detection support
+   - Cross-table lookups
+   - Coordinates with 04b on `SCHEMA_ID_BY_PATH` usage
+
+4. **`04d-topology-operations.md`** - Inheritance graph operations (2 methods, 1 table)
+   - Singleton pattern (like 04a)
+   - Simple, self-contained
+   - Depends on: 04a (pattern proof)
+
+5. **`04e-remaining-schema-operations.md`** - Remaining schema operations (4 methods)
+   - List, find, delete operations
+   - Coordinates all tables for atomic delete
+   - Depends on: 04b, 04c (needs indexes and views)
+
+### Progress Tracking
+
+- [ ] 04a - Property Bank migration
+- [ ] 04b - Schema index operations
+- [ ] 04c - Raw view operations
+- [ ] 04d - Topology operations
+- [ ] 04e - Remaining schema operations
+
+Once all sub-issues are complete, this epic can be marked as `completed`.
+
 ## Blocked by
 
-- `03-schema-batch-semantics-in-read-write.md`
+- ✅ `03-schema-batch-semantics-in-read-write.md` (Completed 2026-05-12)
