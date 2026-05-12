@@ -1,10 +1,10 @@
 ---
 title: 06-dirscanner-methods
 category: enhancement
-label: ready-for-agent
-status: pending
+label: completed
+status: completed
 date_created: 2026-05-11
-date_updated: 2026-05-12
+date_updated: 2026-05-13
 ---
 
 ## Type
@@ -13,7 +13,7 @@ AFK
 
 ## Labels
 
-- ready-for-agent
+- completed
 
 ## What to build
 
@@ -25,16 +25,16 @@ Keep old methods (`paths()` returning `Vec<PathBuf>`, `entries()` returning `Vec
 
 ## Acceptance criteria
 
-- [ ] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs` (Issue 05 revision)
-- [ ] Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
-- [ ] Add `FilePath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
-- [ ] Add `DirPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
-- [ ] Add `DirScanner::paths_typed(input)` returning `Vec<FsPath>` in `fs/scanner.rs`
-- [ ] Add `DirScanner::entries_typed(input)` returning `Vec<FsEntry>` in `fs/scanner.rs`
-- [ ] Keep existing `paths()` and `entries()` methods unchanged
-- [ ] Tests for walkdir::DirEntry → FsEntry conversion
-- [ ] Tests for `as_relative()` with base path stripping
-- [ ] No breaking changes to existing callers
+- [x] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs` (Issue 05 revision)
+- [x] Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
+- [x] Add `FilePath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
+- [x] Add `DirPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
+- [x] Add `DirScanner::paths_typed(input)` returning `Vec<FsPath>` in `fs/scanner.rs`
+- [x] Add `DirScanner::entries_typed(input)` returning `Vec<FsEntry>` in `fs/scanner.rs`
+- [x] Keep existing `paths()` and `entries()` methods unchanged
+- [x] Tests for walkdir::DirEntry → FsEntry conversion
+- [x] Tests for `as_relative()` with base path stripping
+- [x] No breaking changes to existing callers
 
 ## Blocked by
 
@@ -154,13 +154,13 @@ impl DirScanner {
 6. **Don't reuse `scan_internal()`**: It produces relative paths. Use walkdir iterator directly for absolute paths.
 
 **Acceptance criteria:**
-- [ ] `TryFrom<walkdir::DirEntry> for FsEntry` correctly creates `File` or `Dir` variant from absolute path
-- [ ] `FsPath::as_relative()` correctly strips base prefix and returns `RelativePath`
-- [ ] Error handling: `as_relative()` returns `ParseError::NotInBasePath` if path is outside base
-- [ ] `paths_typed()` returns sorted `Vec<FsPath>` (consistent with existing `paths()` behavior)
-- [ ] `entries_typed()` returns sorted `Vec<FsEntry>` by path (consistent with existing `entries()` behavior)
-- [ ] All existing tests for `paths()` and `entries()` continue to pass
-- [ ] New tests verify absolute path handling from walkdir and `as_relative()` conversion
+- [x] `TryFrom<walkdir::DirEntry> for FsEntry` correctly creates `File` or `Dir` variant from absolute path
+- [x] `FsPath::as_relative()` correctly strips base prefix and returns `RelativePath`
+- [x] Error handling: `as_relative()` returns `ParseError::NotInBasePath` if path is outside base
+- [x] `paths_typed()` returns sorted `Vec<FsPath>` (consistent with existing `paths()` behavior)
+- [x] `entries_typed()` returns sorted `Vec<FsEntry>` by path (consistent with existing `entries()` behavior)
+- [x] All existing tests for `paths()` and `entries()` continue to pass
+- [x] New tests verify absolute path handling from walkdir and `as_relative()` conversion
 
 **Out of scope:**
 - Updating existing `paths()` or `entries()` methods (keep for backward compat)
@@ -225,3 +225,20 @@ Phase 1 was revised (2026-05-12) to allow `FilePath`/`DirPath` to wrap absolute 
 
 **Backward Compatibility:**
 Existing code using `DirScanner::paths()` or `DirScanner::entries()` is unaffected. New code can adopt `paths_typed()` and `entries_typed()` incrementally.
+
+## Implementation Notes (2026-05-13)
+
+### Summary
+Successfully implemented typed directory scanning methods and enhanced the filesystem error hierarchy.
+
+### Key Changes
+- **DirScanner Enhancements**: Added `paths_typed()` and `entries_typed()` to `DirScanner`. These methods return the new `FsPath` and `FsEntry` types, preserving absolute paths from the underlying `walkdir` scan.
+- **Unified Path Access**: Added `FsPath::as_path()` to provide a consistent way to access the underlying `std::path::Path` from both file and directory variants.
+- **Error Diagnostic Improvements**: Introduced `ParseError::NotInBasePath` to explicitly handle and report paths that fall outside the expected vault root. This error was propagated through the `ConfigIngestError` and `SchemaFileError` enums to ensure consistent error reporting across contexts.
+- **Refactoring for Quality**: Extracted scanning logic into private helpers (`filter_entry`, `to_fs_path`) to manage complexity and satisfy strict `clippy` nesting limits.
+- **Testing**: Added a `typed_scanning` test module in `fs/scanner.rs` to verify the new methods correctly handle absolute paths and produce sorted results.
+
+### Verification Results
+- **Tests**: 1112 tests passing in `lithos-core`.
+- **Lints**: Code is clean according to `cargo clippy`.
+- **Status**: ✅ Completed.
