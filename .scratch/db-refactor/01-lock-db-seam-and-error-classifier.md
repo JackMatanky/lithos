@@ -635,3 +635,26 @@ Moved `Store` and `Database` implementations from `db/mod.rs` to `db/core.rs` to
 ### Issue Status
 
 **COMPLETED** - All transparent error wrapping implemented and committed. Technical debt documented in code and tracked for future repository layer refactoring.
+
+## Appendix: Agent Brief (2026-05-12 Updates)
+
+### 1. Transaction Helpers
+Standardized methods for opening tables in transactions to eliminate repetitive matching:
+- **`ReadTx::try_open_table`**: Returns `Result<Option<ReadOnlyTable>, DbError>`. Gracefully handles `TableDoesNotExist` by returning `None`.
+- **`WriteTx::try_open_table`**: Returns `Result<Table, DbError>`. Auto-creates missing tables and standardizes error wrapping.
+- **Multimap Variants**: Identical `try_open_multimap` methods added to both transaction types.
+
+### 2. Batch Extension Traits
+Modularized order-preserving batch logic into extension traits for `redb` types:
+- **`UuidTableReadExt` / `UuidMultimapReadExt`**: Adds `get_many` and `get_many_multimap`. Returns `Vec<Option<T>>` or `Vec<Vec<T>>` preserving input order.
+- **`UuidTableWriteExt` / `UuidMultimapWriteExt`**: Adds `save_many` and `save_many_multimap` for atomic, single-transaction batch writes.
+
+### 3. Usage Pattern (LSP/Indexer Optimization)
+The refactor proves that true batch performance optimization (reducing DB calls) isn't possible with `redb` yet, but **transactional batching** provides:
+- **Atomicity**: All-or-nothing writes.
+- **Consistency**: Centralized order-preserving read logic.
+- **Boilerplate Reduction**: Replaces 10-15 line manual loops with 3-line functional maps.
+
+### 4. Error Classification
+- Added **`DbError::Storage`** for transparent `redb::StorageError` wrapping.
+- Updated **`DbError::is_transient`** to correctly identify lock/IO errors in the storage layer, enabling robust retry policies in hot paths.
