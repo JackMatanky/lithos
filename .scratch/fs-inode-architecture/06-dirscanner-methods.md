@@ -25,14 +25,14 @@ Keep old methods (`paths()` returning `Vec<PathBuf>`, `entries()` returning `Vec
 
 ## Acceptance criteria
 
-- [ ] Add `FsEntry::try_from_parts(path: PathBuf, metadata: std::fs::Metadata)` in `fs/entry.rs`
+- [ ] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs` (Issue 05 revision)
 - [ ] Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
 - [ ] Add `FilePath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
 - [ ] Add `DirPath::as_relative(&Path) -> Result<RelativePath, ParseError>` in `fs/path.rs`
 - [ ] Add `DirScanner::paths_typed(input)` returning `Vec<FsPath>` in `fs/scanner.rs`
 - [ ] Add `DirScanner::entries_typed(input)` returning `Vec<FsEntry>` in `fs/scanner.rs`
 - [ ] Keep existing `paths()` and `entries()` methods unchanged
-- [ ] Tests for absolute → FsEntry conversion
+- [ ] Tests for walkdir::DirEntry → FsEntry conversion
 - [ ] Tests for `as_relative()` with base path stripping
 - [ ] No breaking changes to existing callers
 
@@ -60,14 +60,15 @@ Keep old methods (`paths()` returning `Vec<PathBuf>`, `entries()` returning `Vec
 
 **Key interfaces:**
 
-### New conversion method in `fs/entry.rs`:
+### New conversion trait in `fs/entry.rs`:
 ```rust
-impl FsEntry {
-    /// Convert from walkdir results (absolute path + metadata).
-    pub(crate) fn try_from_parts(
-        path: PathBuf,
-        metadata: std::fs::Metadata,
-    ) -> Result<Self, ParseError> {
+impl TryFrom<walkdir::DirEntry> for FsEntry {
+    type Error = ParseError;
+
+    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
+        let path = entry.into_path();  // Absolute PathBuf
+        let metadata = entry.metadata()?;
+
         if metadata.is_dir() {
             let path = DirPath::new(path)?;
             let metadata = DirMetadata::try_from(metadata)?;
@@ -130,10 +131,11 @@ impl DirScanner {
 
     /// Scan and return typed entries with metadata.
     pub fn entries_typed(&self, input: DirScanInput) -> Result<Vec<FsEntry>, ParseError> {
-        let items = self.scan_internal(input)?;
+        let walker = self.build_walker(&input);
 
-        items.into_iter()
-            .map(|(path, metadata)| FsEntry::try_from_parts(path, metadata))
+        walker.into_iter()
+            .filter_map(Result::ok)  // Skip I/O errors
+            .map(FsEntry::try_from)  // Convert via TryFrom trait
             .collect()
     }
 
@@ -144,20 +146,21 @@ impl DirScanner {
 ```
 
 **Important notes:**
-1. **Use existing `scan_internal()`**: The private helper already returns `Vec<(PathBuf, std::fs::Metadata)>` with absolute paths. Reuse this in new methods.
-2. **Absolute paths are OK**: `FilePath`/`DirPath` now wrap `PathBuf` directly (Phase 1 revision). No forced relative conversion.
-3. **Base path is available**: `DirScanner` has `self.path` field containing the scan root. But DON'T use it for conversion yet - let paths remain absolute.
+1. **Use `TryFrom<walkdir::DirEntry>`**: Clean trait-based conversion, no helper methods needed
+2. **`walkdir::DirEntry` provides everything**: `into_path()` gives absolute PathBuf, `metadata()` gives metadata
+3. **Absolute paths are OK**: `FilePath`/`DirPath` now wrap `PathBuf` directly (Phase 1 revision). No forced relative conversion.
 4. **Storage layer converts**: Vault processor will call `as_relative(vault_root)` when creating `FileView`/`DirView`.
 5. **Use `_typed` suffix**: Prevents breaking existing call sites. Phase 4 will rename after migration.
+6. **Don't reuse `scan_internal()`**: It produces relative paths. Use walkdir iterator directly for absolute paths.
 
 **Acceptance criteria:**
-- [ ] `FsEntry::try_from_parts()` correctly creates `File` or `Dir` variant from absolute path + metadata
+- [ ] `TryFrom<walkdir::DirEntry> for FsEntry` correctly creates `File` or `Dir` variant from absolute path
 - [ ] `FsPath::as_relative()` correctly strips base prefix and returns `RelativePath`
 - [ ] Error handling: `as_relative()` returns `ParseError::NotInBasePath` if path is outside base
 - [ ] `paths_typed()` returns sorted `Vec<FsPath>` (consistent with existing `paths()` behavior)
 - [ ] `entries_typed()` returns sorted `Vec<FsEntry>` by path (consistent with existing `entries()` behavior)
 - [ ] All existing tests for `paths()` and `entries()` continue to pass
-- [ ] New tests verify absolute path handling and `as_relative()` conversion
+- [ ] New tests verify absolute path handling from walkdir and `as_relative()` conversion
 
 **Out of scope:**
 - Updating existing `paths()` or `entries()` methods (keep for backward compat)
@@ -174,13 +177,15 @@ impl DirScanner {
 
 **Phase 2a: Add conversion helpers (Issue 01/05 updates)**
 1. Open `lithos-core/src/fs/path.rs`
-2. Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>`
-3. Add `FilePath::as_relative(&Path) -> Result<RelativePath, ParseError>`
-4. Add `DirPath::as_relative(&Path) -> Result<RelativePath, ParseError>`
-5. Add unit tests for `as_relative()` (valid prefix stripping, error on outside path)
-6. Open `lithos-core/src/fs/entry.rs`
-7. Add `FsEntry::try_from_parts(PathBuf, Metadata) -> Result<Self, ParseError>`
-8. Add unit tests for `try_from_parts()` (absolute paths for both file and dir)
+2. Change `FilePath(RelativePath)` to `FilePath(PathBuf)` - BREAKING CHANGE
+3. Change `DirPath(RelativePath)` to `DirPath(PathBuf)` - BREAKING CHANGE
+4. Update `FilePath::as_relative()` signature: `&RelativePath` → `(&Path) -> Result<RelativePath>`
+5. Update `DirPath::as_relative()` signature: same as FilePath
+6. Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>`
+7. Add unit tests for new `as_relative()` (valid prefix stripping, error on outside path)
+8. Open `lithos-core/src/fs/entry.rs`
+9. Add `TryFrom<walkdir::DirEntry> for FsEntry` implementation
+10. Add unit tests using real walkdir entries (requires tempdir)
 
 **Phase 2b: Add DirScanner methods**
 1. Open `lithos-core/src/fs/scanner.rs`

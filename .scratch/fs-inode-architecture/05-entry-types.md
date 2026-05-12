@@ -126,33 +126,38 @@ pub enum FsEntry {
 
 ## Revision: Phase 2 Update (2026-05-12)
 
-### Need for `try_from_parts()` Method
+### Implement `TryFrom<walkdir::DirEntry> for FsEntry`
 
-**Issue:** Issue 06 needs to convert `walkdir::DirEntry` results (absolute `PathBuf` + `std::fs::Metadata`) to `FsEntry`.
+**Issue:** Issue 06 needs to convert `walkdir::DirEntry` to `FsEntry` with absolute paths.
 
 **Original Plan:**
-- Implement `TryFrom<walkdir::DirEntry>` directly
-- Problem: Requires base path context to convert absolute → relative
+- Defer `TryFrom<walkdir::DirEntry>` because conversion to relative paths requires base context
 
-**Revised Approach:**
-- Don't implement `TryFrom<walkdir::DirEntry>` (too complex, requires context)
-- Instead: Add `try_from_parts(PathBuf, Metadata) -> Result<FsEntry, ParseError>`
-- Accepts absolute paths (matches revised `FilePath`/`DirPath` design)
-- `DirScanner` extracts path + metadata from `DirEntry`, then calls `try_from_parts()`
+**Revised Approach (Post Phase 1 Revision):**
+- `FilePath`/`DirPath` now wrap `PathBuf` (can be absolute or relative)
+- `walkdir::DirEntry` provides both `into_path()` (absolute PathBuf) and `metadata()`
+- We CAN implement `TryFrom<walkdir::DirEntry>` directly without base path context!
+- Conversion to relative happens later at storage layer via `as_relative(base)`
 
 **Changes Needed:**
-1. Add `FsEntry::try_from_parts(path: PathBuf, metadata: std::fs::Metadata)`
-2. Method creates `FsFile` or `FsDir` based on `metadata.is_dir()`
-3. Delegates to `FileMetadata::try_from()` and `DirMetadata::try_from()`
+1. Add `TryFrom<walkdir::DirEntry> for FsEntry` implementation
+2. Use `entry.into_path()` to get absolute `PathBuf` (takes ownership)
+3. Use `entry.metadata()?` to get `std::fs::Metadata`
+4. Construct `FsFile` or `FsDir` based on `metadata.is_dir()`
 
 **Implementation:**
 ```rust
-impl FsEntry {
-    /// Convert from absolute or relative path + metadata.
-    pub(crate) fn try_from_parts(
-        path: PathBuf,
-        metadata: std::fs::Metadata,
-    ) -> Result<Self, ParseError> {
+impl TryFrom<walkdir::DirEntry> for FsEntry {
+    type Error = ParseError;
+
+    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
+        // Take ownership of absolute path
+        let path = entry.into_path();
+
+        // Get metadata (follows symlinks if WalkDir configured that way)
+        let metadata = entry.metadata()
+            .map_err(|e| ParseError::Io { path: path.clone(), source: e })?;
+
         if metadata.is_dir() {
             let path = DirPath::new(path)?;
             let metadata = DirMetadata::try_from(metadata)?;
@@ -167,14 +172,16 @@ impl FsEntry {
 ```
 
 **Rationale:**
-- Simpler than `TryFrom<DirEntry>` (no trait implementation complexity)
-- Decouples entry conversion from walkdir-specific types
-- Works with absolute paths (matches revised path type design)
-- `pub(crate)` visibility: internal helper for `DirScanner`
+- Clean trait-based conversion (idiomatic Rust)
+- No need for helper methods or base path context
+- `walkdir::DirEntry` has all data we need (absolute path + metadata)
+- Works with revised path types (absolute paths accepted)
+- Storage layer will call `as_relative(base)` when creating `FileView`/`DirView`
 
 **Agent Task:**
-- [ ] Add `FsEntry::try_from_parts(PathBuf, Metadata)` in `fs/entry.rs`
-- [ ] Make method `pub(crate)` (internal to `fs` module)
-- [ ] Add tests for absolute path → `FsFile` conversion
-- [ ] Add tests for absolute path → `FsDir` conversion
-- [ ] Add test for error handling (invalid paths, metadata issues)
+- [ ] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs`
+- [ ] Handle error conversion from `std::io::Error` to `ParseError`
+- [ ] Add tests for walkdir entry → `FsFile` conversion
+- [ ] Add tests for walkdir entry → `FsDir` conversion
+- [ ] Add test for error handling (I/O errors, invalid metadata)
+- [ ] Update acceptance criteria: change "try_from_parts" to "TryFrom<DirEntry>"
