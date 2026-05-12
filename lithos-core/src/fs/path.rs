@@ -312,8 +312,7 @@ impl FilePath {
     /// Create a new file path from a `PathBuf` (absolute or relative).
     ///
     /// # Errors
-    /// Returns error if path is empty, contains `..` or `.` components,
-    /// or has platform-specific prefixes.
+    /// Returns error if path is empty.
     #[inline]
     pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
         if path.as_os_str().is_empty() {
@@ -321,37 +320,6 @@ impl FilePath {
                 std::io::ErrorKind::InvalidInput,
                 "Path cannot be empty",
             ));
-        }
-        // Check for . components
-        if path
-            .to_string_lossy()
-            .split(['/', '\\'])
-            .any(|segment| segment == ".")
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path must not contain current directory components (.)",
-            ));
-        }
-        // Check for .. and prefix components
-        for component in path.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain parent components (..)",
-                    ));
-                }
-                Component::Prefix(_) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain platform-specific prefixes",
-                    ));
-                }
-                Component::CurDir
-                | Component::Normal(_)
-                | Component::RootDir => {}
-            }
         }
         Ok(Self(path))
     }
@@ -522,8 +490,7 @@ impl DirPath {
     /// Create a new directory path from a `PathBuf` (absolute or relative).
     ///
     /// # Errors
-    /// Returns error if path is empty, contains `..` or `.` components,
-    /// or has platform-specific prefixes.
+    /// Returns error if path is empty.
     #[inline]
     pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
         if path.as_os_str().is_empty() {
@@ -531,37 +498,6 @@ impl DirPath {
                 std::io::ErrorKind::InvalidInput,
                 "Path cannot be empty",
             ));
-        }
-        // Check for . components
-        if path
-            .to_string_lossy()
-            .split(['/', '\\'])
-            .any(|segment| segment == ".")
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path must not contain current directory components (.)",
-            ));
-        }
-        // Check for .. and prefix components
-        for component in path.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain parent components (..)",
-                    ));
-                }
-                Component::Prefix(_) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain platform-specific prefixes",
-                    ));
-                }
-                Component::CurDir
-                | Component::Normal(_)
-                | Component::RootDir => {}
-            }
         }
         Ok(Self(path))
     }
@@ -944,9 +880,8 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_paths() {
-            assert!(FilePath::try_from("../traversal").is_err());
-            // Absolute paths are now accepted (Phase 1 revision)
+        fn should_reject_empty_path() {
+            assert!(FilePath::new(PathBuf::from("")).is_err());
         }
 
         #[test]
@@ -1044,8 +979,8 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_paths() {
-            assert!(DirPath::try_from("..").is_err());
+        fn should_reject_empty_path() {
+            assert!(DirPath::new(PathBuf::from("")).is_err());
         }
 
         #[test]
