@@ -100,3 +100,48 @@ Introduce `FilePath` and `DirPath` newtypes that wrap `RelativePath`. Both shoul
 - `ParentDir` not exported (internal helper)
 
 **Status:** ✅ Complete - All acceptance criteria met
+
+## Revision: Phase 2 Update (2026-05-12)
+
+### Need for `as_relative()` Method
+
+**Issue:** Issue 06 needs to convert absolute paths from `walkdir::DirEntry` to vault-relative paths for storage layer.
+
+**Original Design:**
+- `FilePath(RelativePath)` - constrained to always be relative
+- Conversion from absolute would happen at `DirScanner` construction
+
+**Revised Design:**
+- `FilePath(PathBuf)` - can be absolute or relative
+- Conversion to relative happens explicitly via `as_relative(base: &Path)` method
+- Storage layer calls `as_relative()` when creating `FileView`/`DirView`
+
+**Changes Needed:**
+1. Add `FilePath::as_relative(&Path) -> Result<RelativePath, ParseError>`
+2. Add `DirPath::as_relative(&Path) -> Result<RelativePath, ParseError>`
+3. Add `FsPath::as_relative(&Path) -> Result<RelativePath, ParseError>`
+4. Update internal representation: `FilePath(PathBuf)` instead of `FilePath(RelativePath)`
+
+**Implementation:**
+```rust
+impl FilePath {
+    pub fn as_relative(&self, base: &Path) -> Result<RelativePath, ParseError> {
+        let rel = self.0.strip_prefix(base)
+            .map_err(|_| ParseError::NotInBasePath)?;
+        RelativePath::new(rel)
+    }
+}
+```
+
+**Rationale:**
+- `DirScanner` produces absolute paths (matches `walkdir` behavior)
+- No need for base path in scanner constructor (simpler API)
+- Explicit conversion point at storage boundary (clearer semantics)
+- Flexible: infrastructure types work with any paths, not just vault-relative
+
+**Agent Task:**
+- [ ] Change `FilePath(RelativePath)` to `FilePath(PathBuf)` in implementation
+- [ ] Change `DirPath(RelativePath)` to `DirPath(PathBuf)` in implementation
+- [ ] Add `as_relative()` methods to `FilePath`, `DirPath`, `FsPath`
+- [ ] Add tests for `as_relative()` (valid prefix strip, error on outside path)
+- [ ] Update existing tests if needed (should still pass)

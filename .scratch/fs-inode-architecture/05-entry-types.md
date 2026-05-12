@@ -123,3 +123,58 @@ pub enum FsEntry {
 
 **Status:** ✅ Complete - All core criteria met
 **Deferred:** `TryFrom<DirEntry>` conversion (1 criterion) - Better addressed in Issue 06 with full context
+
+## Revision: Phase 2 Update (2026-05-12)
+
+### Need for `try_from_parts()` Method
+
+**Issue:** Issue 06 needs to convert `walkdir::DirEntry` results (absolute `PathBuf` + `std::fs::Metadata`) to `FsEntry`.
+
+**Original Plan:**
+- Implement `TryFrom<walkdir::DirEntry>` directly
+- Problem: Requires base path context to convert absolute → relative
+
+**Revised Approach:**
+- Don't implement `TryFrom<walkdir::DirEntry>` (too complex, requires context)
+- Instead: Add `try_from_parts(PathBuf, Metadata) -> Result<FsEntry, ParseError>`
+- Accepts absolute paths (matches revised `FilePath`/`DirPath` design)
+- `DirScanner` extracts path + metadata from `DirEntry`, then calls `try_from_parts()`
+
+**Changes Needed:**
+1. Add `FsEntry::try_from_parts(path: PathBuf, metadata: std::fs::Metadata)`
+2. Method creates `FsFile` or `FsDir` based on `metadata.is_dir()`
+3. Delegates to `FileMetadata::try_from()` and `DirMetadata::try_from()`
+
+**Implementation:**
+```rust
+impl FsEntry {
+    /// Convert from absolute or relative path + metadata.
+    pub(crate) fn try_from_parts(
+        path: PathBuf,
+        metadata: std::fs::Metadata,
+    ) -> Result<Self, ParseError> {
+        if metadata.is_dir() {
+            let path = DirPath::new(path)?;
+            let metadata = DirMetadata::try_from(metadata)?;
+            Ok(Self::Dir(FsDir { path, metadata }))
+        } else {
+            let path = FilePath::new(path)?;
+            let metadata = FileMetadata::try_from(metadata)?;
+            Ok(Self::File(FsFile { path, metadata }))
+        }
+    }
+}
+```
+
+**Rationale:**
+- Simpler than `TryFrom<DirEntry>` (no trait implementation complexity)
+- Decouples entry conversion from walkdir-specific types
+- Works with absolute paths (matches revised path type design)
+- `pub(crate)` visibility: internal helper for `DirScanner`
+
+**Agent Task:**
+- [ ] Add `FsEntry::try_from_parts(PathBuf, Metadata)` in `fs/entry.rs`
+- [ ] Make method `pub(crate)` (internal to `fs` module)
+- [ ] Add tests for absolute path → `FsFile` conversion
+- [ ] Add tests for absolute path → `FsDir` conversion
+- [ ] Add test for error handling (invalid paths, metadata issues)

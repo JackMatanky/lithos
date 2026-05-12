@@ -134,8 +134,12 @@ impl FsPath {
     pub fn is_dir(&self) -> bool;
     pub fn as_file(&self) -> Option<&FilePath>;
     pub fn as_dir(&self) -> Option<&DirPath>;
-    pub fn as_relative(&self) -> &RelativePath;
+    pub fn as_relative(&self, base: &Path) -> Result<RelativePath, ParseError>;  // **REVISED**
 }
+
+// **REVISION 2026-05-12**: as_relative() now requires base path parameter.
+// Returns Result to handle cases where path is outside base directory.
+// Storage layer calls this during FileView/DirView creation to normalize paths.
 ```
 
 **Migration approach:**
@@ -212,9 +216,16 @@ pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError>;  // Unifi
 // fs/path.rs
 pub struct AbsolutePath(PathBuf);           // Validated absolute path
 pub struct RelativePath(PathBuf);           // Validated relative path (no .., no absolute)
-pub struct FilePath(RelativePath);          // Vault-relative file path
-pub struct DirPath(RelativePath);           // Vault-relative directory path
+pub struct FilePath(PathBuf);               // **REVISED**: Wraps PathBuf (absolute or relative)
+pub struct DirPath(PathBuf);                // **REVISED**: Wraps PathBuf (absolute or relative)
 pub enum FsPath { File(FilePath), Dir(DirPath) }  // Unified path enum
+
+// **REVISION 2026-05-12**: FilePath/DirPath no longer constrained to RelativePath.
+// They wrap PathBuf directly and can represent absolute or relative paths.
+// Conversion to vault-relative happens explicitly via `as_relative(base)` method.
+// Rationale: DirScanner produces absolute paths from walkdir; conversion to
+// relative is deferred to storage layer (FileView/DirView) where vault root
+// is available. This eliminates need for base path in DirScanner constructor.
 
 // fs/path.rs - Zero-copy parent view
 pub enum ParentDir<'a> { Root, Path(&'a Path) }
@@ -417,11 +428,14 @@ impl Repository {
 - Keep old fs/file.rs and fs/types.rs temporarily for backward compat
 
 **Phase 2: Add new methods to DirScanner and FsReader**
-- Add DirScanner.paths() returning Vec<FsPath> (new signature, replaces Vec<PathBuf>)
-- Add DirScanner.entries() returning Vec<FsEntry> (new signature)
-- Add FsReader methods: filter_entries, filter_file_entries, filter_dir_entries, filter_paths, filter_file_paths, filter_dir_paths
+- **REVISED**: Add DirScanner.paths_typed() returning Vec<FsPath> (keeps existing paths() during transition)
+- **REVISED**: Add DirScanner.entries_typed() returning Vec<FsEntry> (keeps existing entries() during transition)
+- Add FsReader methods: filter_entries_typed, filter_file_entries_typed, filter_dir_entries_typed, filter_paths_typed, filter_file_paths_typed, filter_dir_paths_typed
 - Add FsReader.metadata_typed(path: &Path) -> Result<FsMetadata, ParseError>
-- Keep old methods (entries() returning Vec<FileEntry>, info()) for backward compat during transition
+- Keep old methods (paths() returning Vec<PathBuf>, entries() returning Vec<FileEntry>, info()) for backward compat during transition
+
+**REVISION 2026-05-12**: Use *_typed() suffix for new methods to avoid breaking existing call sites.
+This allows gradual migration in Phase 3 before removing old methods in Phase 4.
 
 **Phase 3: Update all consumers (split into subphases)**
 
@@ -445,9 +459,14 @@ impl Repository {
 - ONLY after all Phase 3 subphases complete
 - Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
 - Delete fs/types.rs (contents moved to format.rs)
-- Delete old DirScanner.entries() returning Vec<FileEntry> (replaced by new entries())
-- Delete old FsReader.info() method (replaced by metadata_typed())
-- Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix)
+- Delete old DirScanner.paths() returning Vec<PathBuf>
+- Delete old DirScanner.entries() returning Vec<FileEntry>
+- Delete old FsReader.info() method
+- **REVISED**: Rename all *_typed() methods to remove suffix:
+  - DirScanner.paths_typed() → paths()
+  - DirScanner.entries_typed() → entries()
+  - FsReader.filter_entries_typed() → filter_entries() (and all filter variants)
+  - FsReader.metadata_typed() → metadata()
 - Update all remaining consumers
 - Run `mise run verify` to confirm no broken imports
 
