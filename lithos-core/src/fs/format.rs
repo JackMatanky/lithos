@@ -80,6 +80,13 @@ impl FileExtensionRef<'_> {
     pub fn format(&self) -> FileFormat {
         FileFormat::from_extension(self.0)
     }
+
+    /// Get the extension as a string slice if valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
 }
 
 #[cfg(test)]

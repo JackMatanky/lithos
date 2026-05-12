@@ -42,6 +42,21 @@ impl FileName {
             .unwrap_or("")
     }
 
+    /// Get the basename as an owned `BaseName`.
+    ///
+    /// Returns `None` if the basename would be empty (e.g., for hidden files
+    /// like `.md`).
+    #[inline]
+    #[must_use]
+    pub fn to_basename(&self) -> Option<BaseName> {
+        let s = self.basename();
+        if s.is_empty() {
+            None
+        } else {
+            Some(BaseName::new(s.into()))
+        }
+    }
+
     /// Get the file extension.
     #[inline]
     #[must_use]
@@ -183,6 +198,74 @@ impl BaseName {
     }
 }
 
+impl From<Box<str>> for BaseName {
+    #[inline]
+    fn from(name: Box<str>) -> Self {
+        Self::new(name)
+    }
+}
+
+impl From<String> for BaseName {
+    #[inline]
+    fn from(name: String) -> Self {
+        Self::new(name.into_boxed_str())
+    }
+}
+
+impl From<FileName> for BaseName {
+    #[inline]
+    fn from(name: FileName) -> Self {
+        name.to_basename().unwrap_or_else(|| BaseName::new("".into()))
+    }
+}
+
+impl TryFrom<&Path> for BaseName {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| Self::new(s.into()))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path has no stem component",
+                )
+            })
+    }
+}
+
+impl TryFrom<PathBuf> for BaseName {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+        Self::try_from(path.as_path())
+    }
+}
+
+impl AsRef<str> for BaseName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl From<BaseName> for Box<str> {
+    #[inline]
+    fn from(name: BaseName) -> Self {
+        name.0
+    }
+}
+
+impl From<BaseName> for String {
+    #[inline]
+    fn from(name: BaseName) -> Self {
+        name.0.into_string()
+    }
+}
+
 /// Borrowed basename view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BaseNameRef<'a>(pub(crate) &'a OsStr);
@@ -225,6 +308,8 @@ pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -243,5 +328,48 @@ mod tests {
 
         // Note: file_stem() on "archive.tar.gz" is "archive.tar"
         assert_eq!(base_ref.as_str(), Some("archive.tar"));
+    }
+
+    #[test]
+    fn should_return_basename_as_owned() {
+        let name = FileName::from("my-note.md".to_owned());
+        let base = name.to_basename();
+        assert!(base.is_some());
+        assert_eq!(base.unwrap().as_str(), "my-note");
+    }
+
+    #[test]
+    fn should_return_basename_for_hidden_file() {
+        let name = FileName::from(".md".to_owned());
+        let base = name.to_basename();
+        assert!(base.is_some());
+        assert_eq!(base.unwrap().as_str(), ".md");
+    }
+
+    #[test]
+    fn should_convert_from_filename_to_basename() {
+        let name = FileName::from("document.txt".to_owned());
+        let base: BaseName = name.clone().into();
+        assert_eq!(base.as_str(), "document");
+    }
+
+    #[test]
+    fn should_try_from_path_to_basename() {
+        let path = PathBuf::from("readme.md");
+        let base = BaseName::try_from(path).unwrap();
+        assert_eq!(base.as_str(), "readme");
+    }
+
+    #[test]
+    fn should_try_from_pathbuf_to_basename() {
+        let path = PathBuf::from("notes/app.md");
+        let base = BaseName::try_from(path).unwrap();
+        assert_eq!(base.as_str(), "app");
+    }
+
+    #[test]
+    fn should_return_stem_for_hidden_file() {
+        let name = FileName::from(".md".to_owned());
+        assert_eq!(name.basename(), ".md");
     }
 }

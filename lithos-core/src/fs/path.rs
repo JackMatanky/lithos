@@ -12,7 +12,7 @@ use std::path::{Component, Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsString};
 
-use super::file::FileName;
+use super::name::{BaseName, DirName, FileName};
 
 /// A validated vault-relative path.
 ///
@@ -391,6 +391,79 @@ impl FilePath {
             source: e,
         })
     }
+
+    /// Returns `true` if the path is absolute.
+    #[inline]
+    #[must_use]
+    pub fn is_absolute(&self) -> bool {
+        self.0.is_absolute()
+    }
+
+    /// Returns `true` if the path is relative.
+    #[inline]
+    #[must_use]
+    pub fn is_relative(&self) -> bool {
+        self.0.is_relative()
+    }
+
+    /// Returns the parent directory, or [`ParentDir::Root`] if none exists.
+    #[inline]
+    #[must_use]
+    pub fn parent(&self) -> ParentDir<'_> {
+        ParentDir::from_path(&self.0)
+    }
+
+    /// Returns the borrowed filename view, if present.
+    #[inline]
+    #[must_use]
+    pub fn filename_ref(&self) -> Option<super::name::FileNameRef<'_>> {
+        self.0.file_name().map(super::name::FileNameRef)
+    }
+
+    /// Returns the owned UTF-8 filename, if present and valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> Option<FileName> {
+        FileName::try_from(self.0.as_path()).ok()
+    }
+
+    /// Returns the borrowed file stem view, if present.
+    ///
+    /// This uses Obsidian-style terminology: basename = filename without
+    /// extension.
+    #[inline]
+    #[must_use]
+    pub fn basename_ref(&self) -> Option<super::name::BaseNameRef<'_>> {
+        self.filename_ref().map(|f| f.basename())
+    }
+
+    /// Returns the owned UTF-8 basename, if present and valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn basename(&self) -> Option<BaseName> {
+        self.filename().and_then(|f| f.to_basename())
+    }
+
+    /// Returns the borrowed file extension view, if present.
+    #[inline]
+    #[must_use]
+    pub fn extension_ref(&self) -> Option<super::format::FileExtensionRef<'_>> {
+        self.0.extension().map(super::format::FileExtensionRef)
+    }
+
+    /// Returns `true` if the path has a filename component.
+    #[inline]
+    #[must_use]
+    pub fn has_filename(&self) -> bool {
+        self.0.file_name().is_some()
+    }
+
+    /// Returns `true` if the path has an extension.
+    #[inline]
+    #[must_use]
+    pub fn has_extension(&self) -> bool {
+        self.0.extension().is_some()
+    }
 }
 
 impl TryFrom<RelativePath> for FilePath {
@@ -415,6 +488,20 @@ impl AsRef<Path> for FilePath {
     #[inline]
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl From<PathBuf> for FilePath {
+    #[inline]
+    fn from(path: PathBuf) -> Self {
+        Self(path)
+    }
+}
+
+impl From<FilePath> for PathBuf {
+    #[inline]
+    fn from(path: FilePath) -> Self {
+        path.0
     }
 }
 
@@ -514,6 +601,81 @@ impl DirPath {
             source: e,
         })
     }
+
+    /// Returns `true` if the path is absolute.
+    #[inline]
+    #[must_use]
+    pub fn is_absolute(&self) -> bool {
+        self.0.is_absolute()
+    }
+
+    /// Returns `true` if the path is relative.
+    #[inline]
+    #[must_use]
+    pub fn is_relative(&self) -> bool {
+        self.0.is_relative()
+    }
+
+    /// Returns the parent directory, or [`ParentDir::Root`] if none exists.
+    #[inline]
+    #[must_use]
+    pub fn parent(&self) -> ParentDir<'_> {
+        ParentDir::from_path(&self.0)
+    }
+
+    /// Returns the borrowed directory name view, if present.
+    #[inline]
+    #[must_use]
+    pub fn dirname_ref(&self) -> Option<super::name::DirNameRef<'_>> {
+        self.0.file_name().map(super::name::DirNameRef)
+    }
+
+    /// Returns the owned UTF-8 directory name, if present and valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn dirname(&self) -> Option<DirName> {
+        self.0
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| DirName::new(s.into()))
+    }
+
+    /// Returns `true` if the path has a directory name component.
+    #[inline]
+    #[must_use]
+    pub fn has_dirname(&self) -> bool {
+        self.0.file_name().is_some()
+    }
+
+    /// Joins a child path onto this directory path.
+    #[inline]
+    #[must_use]
+    pub fn join<P>(&self, child: P) -> PathBuf
+    where
+        P: AsRef<Path>,
+    {
+        self.0.join(child)
+    }
+
+    /// Joins a child filename onto this directory path.
+    #[inline]
+    #[must_use]
+    pub fn join_file<P>(&self, child: P) -> FilePath
+    where
+        P: AsRef<Path>,
+    {
+        FilePath(self.0.join(child))
+    }
+
+    /// Joins a child directory name onto this directory path.
+    #[inline]
+    #[must_use]
+    pub fn join_dir<P>(&self, child: P) -> DirPath
+    where
+        P: AsRef<Path>,
+    {
+        DirPath(self.0.join(child))
+    }
 }
 
 impl TryFrom<RelativePath> for DirPath {
@@ -538,6 +700,20 @@ impl AsRef<Path> for DirPath {
     #[inline]
     fn as_ref(&self) -> &Path {
         self.as_path()
+    }
+}
+
+impl From<PathBuf> for DirPath {
+    #[inline]
+    fn from(path: PathBuf) -> Self {
+        Self(path)
+    }
+}
+
+impl From<DirPath> for PathBuf {
+    #[inline]
+    fn from(path: DirPath) -> Self {
+        path.0
     }
 }
 
@@ -795,6 +971,67 @@ mod tests {
             let base = Path::new("/vault");
             assert!(path.as_relative(base).is_err());
         }
+
+        #[test]
+        fn should_detect_absolute_path() {
+            let path = FilePath::new(PathBuf::from("/abs/path")).unwrap();
+            assert!(path.is_absolute());
+            assert!(!path.is_relative());
+        }
+
+        #[test]
+        fn should_detect_relative_path() {
+            let path = FilePath::new(PathBuf::from("rel/path")).unwrap();
+            assert!(path.is_relative());
+            assert!(!path.is_absolute());
+        }
+
+        #[test]
+        fn should_extract_filename() {
+            let path = FilePath::try_from("dir/file.txt").unwrap();
+            let filename = path.filename().unwrap();
+            assert_eq!(filename.as_str(), "file.txt");
+        }
+
+        #[test]
+        fn should_extract_basename() {
+            let path = FilePath::try_from("dir/my-note.md").unwrap();
+            let base = path.basename();
+            assert!(base.is_some());
+            assert_eq!(base.unwrap().as_str(), "my-note");
+        }
+
+        #[test]
+        fn should_extract_extension() {
+            let path = FilePath::try_from("dir/file.md").unwrap();
+            assert!(path.has_extension());
+            let ext = path.extension_ref();
+            assert!(ext.is_some());
+            assert_eq!(ext.unwrap().as_str(), Some("md"));
+        }
+
+        #[test]
+        fn should_return_parent() {
+            let path = FilePath::try_from("a/b/file.txt").unwrap();
+            let is_root = matches!(path.parent(), ParentDir::Root);
+            assert!(!is_root, "expected path, got Root");
+            if let ParentDir::Path(p) = path.parent() {
+                assert_eq!(p, Path::new("a/b"));
+            }
+        }
+
+        #[test]
+        fn should_convert_from_pathbuf() {
+            let path: FilePath = PathBuf::from("test.txt").into();
+            assert_eq!(path.as_path(), Path::new("test.txt"));
+        }
+
+        #[test]
+        fn should_convert_to_pathbuf() {
+            let path = FilePath::try_from("test.txt").unwrap();
+            let buf: PathBuf = path.into();
+            assert_eq!(buf, PathBuf::from("test.txt"));
+        }
     }
 
     mod dir_path {
@@ -809,6 +1046,72 @@ mod tests {
         #[test]
         fn should_reject_invalid_paths() {
             assert!(DirPath::try_from("..").is_err());
+        }
+
+        #[test]
+        fn should_detect_absolute_path() {
+            let path = DirPath::new(PathBuf::from("/abs/dir")).unwrap();
+            assert!(path.is_absolute());
+            assert!(!path.is_relative());
+        }
+
+        #[test]
+        fn should_detect_relative_path() {
+            let path = DirPath::try_from("rel/dir").unwrap();
+            assert!(path.is_relative());
+            assert!(!path.is_absolute());
+        }
+
+        #[test]
+        fn should_extract_dirname() {
+            let path = DirPath::try_from("a/b/dir").unwrap();
+            let name = path.dirname();
+            assert!(name.is_some());
+            assert_eq!(name.unwrap().as_str(), "dir");
+        }
+
+        #[test]
+        fn should_join_child_path() {
+            let dir = DirPath::try_from("vault").unwrap();
+            let joined = dir.join("subdir/file.txt");
+            assert_eq!(joined, PathBuf::from("vault/subdir/file.txt"));
+        }
+
+        #[test]
+        fn should_join_child_file() {
+            let dir = DirPath::try_from("vault").unwrap();
+            let file = dir.join_file("notes.txt");
+            assert_eq!(file.as_path(), Path::new("vault/notes.txt"));
+        }
+
+        #[test]
+        fn should_join_child_dir() {
+            let dir = DirPath::try_from("vault").unwrap();
+            let subdir = dir.join_dir("notes");
+            assert_eq!(subdir.as_path(), Path::new("vault/notes"));
+        }
+
+        #[test]
+        fn should_return_parent() {
+            let path = DirPath::try_from("a/b/dir").unwrap();
+            let is_root = matches!(path.parent(), ParentDir::Root);
+            assert!(!is_root, "expected path, got Root");
+            if let ParentDir::Path(p) = path.parent() {
+                assert_eq!(p, Path::new("a/b"));
+            }
+        }
+
+        #[test]
+        fn should_convert_from_pathbuf() {
+            let path: DirPath = PathBuf::from("mydir").into();
+            assert_eq!(path.as_path(), Path::new("mydir"));
+        }
+
+        #[test]
+        fn should_convert_to_pathbuf() {
+            let path = DirPath::try_from("mydir").unwrap();
+            let buf: PathBuf = path.into();
+            assert_eq!(buf, PathBuf::from("mydir"));
         }
     }
 
