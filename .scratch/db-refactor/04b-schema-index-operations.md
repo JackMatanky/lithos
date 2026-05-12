@@ -2,7 +2,7 @@
 title: 04b-schema-index-operations
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-12
 ---
 
