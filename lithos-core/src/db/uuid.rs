@@ -8,7 +8,148 @@ pub mod sealed {
     pub trait Sealed {}
 }
 
-use redb::{Key, Value};
+use std::borrow::Borrow;
+
+use redb::{AccessGuard, Key, ReadableMultimapTable, ReadableTable, Value};
+
+use crate::db::DbError;
+
+/// Extension trait for UUID-keyed tables (Read).
+#[allow(
+    clippy::type_complexity,
+    reason = "Batch return types are naturally nested but clear in context"
+)]
+pub trait UuidTableReadExt<K: UuidV7DbType, V: Value> {
+    /// Batch get multiple UUIDs in the order provided.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] for underlying storage errors.
+    fn get_many(
+        &self,
+        keys: &[K],
+    ) -> Result<Vec<Option<AccessGuard<'_, V>>>, DbError>;
+}
+
+impl<K, V, T> UuidTableReadExt<K, V> for T
+where
+    K: UuidV7DbType + Copy + 'static,
+    V: Value + 'static,
+    T: ReadableTable<K, V>,
+    for<'a> K: Borrow<K::SelfType<'a>>,
+{
+    #[inline]
+    fn get_many(
+        &self,
+        keys: &[K],
+    ) -> Result<Vec<Option<AccessGuard<'_, V>>>, DbError> {
+        keys.iter().map(|k| self.get(*k).map_err(DbError::from)).collect()
+    }
+}
+
+/// Extension trait for UUID-keyed multimap tables (Read).
+#[allow(
+    clippy::type_complexity,
+    reason = "Multimap batch return types are naturally nested but clear in \
+              context"
+)]
+pub trait UuidMultimapReadExt<K: UuidV7DbType, V: Key> {
+    /// Batch get values for multiple UUIDs.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] for underlying storage errors.
+    fn get_many_multimap(
+        &self,
+        keys: &[K],
+    ) -> Result<Vec<Vec<AccessGuard<'_, V>>>, DbError>;
+}
+
+impl<K, V, T> UuidMultimapReadExt<K, V> for T
+where
+    K: UuidV7DbType + Copy + 'static,
+    V: Key + 'static,
+    T: ReadableMultimapTable<K, V>,
+    for<'a> K: Borrow<K::SelfType<'a>>,
+{
+    #[inline]
+    fn get_many_multimap(
+        &self,
+        keys: &[K],
+    ) -> Result<Vec<Vec<AccessGuard<'_, V>>>, DbError> {
+        keys.iter()
+            .map(|k| {
+                Ok(
+                    self.get(*k).map_err(DbError::from)?.collect::<Result<
+                        Vec<AccessGuard<'_, V>>,
+                        redb::StorageError,
+                    >>(
+                    )?,
+                )
+            })
+            .collect()
+    }
+}
+
+/// Extension trait for UUID-keyed tables (Write).
+pub trait UuidTableWriteExt<K: UuidV7DbType, V: Value> {
+    /// Batch save multiple UUID-keyed items.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] for underlying storage errors.
+    fn save_many(
+        &mut self,
+        items: &[(K, V::SelfType<'_>)],
+    ) -> Result<(), DbError>;
+}
+
+impl<K, V> UuidTableWriteExt<K, V> for redb::Table<'_, K, V>
+where
+    K: UuidV7DbType + Copy + 'static,
+    V: Value + 'static,
+    for<'a> K: Borrow<K::SelfType<'a>>,
+{
+    #[inline]
+    fn save_many(
+        &mut self,
+        items: &[(K, V::SelfType<'_>)],
+    ) -> Result<(), DbError> {
+        for (k, v) in items {
+            self.insert(*k, v)?;
+        }
+        Ok(())
+    }
+}
+
+/// Extension trait for UUID-keyed multimap tables (Write).
+pub trait UuidMultimapWriteExt<K: UuidV7DbType, V: Key> {
+    /// Batch save multiple values for a UUID key.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] for underlying storage errors.
+    fn save_many_multimap(
+        &mut self,
+        key: K,
+        values: &[V::SelfType<'_>],
+    ) -> Result<(), DbError>;
+}
+
+impl<K, V> UuidMultimapWriteExt<K, V> for redb::MultimapTable<'_, K, V>
+where
+    K: UuidV7DbType + Copy + 'static,
+    V: Key + 'static,
+    for<'a> K: Borrow<K::SelfType<'a>>,
+{
+    #[inline]
+    fn save_many_multimap(
+        &mut self,
+        key: K,
+        values: &[V::SelfType<'_>],
+    ) -> Result<(), DbError> {
+        for v in values {
+            self.insert(key, v)?;
+        }
+        Ok(())
+    }
+}
 
 /// Marker trait for domain ID wrappers that are valid
 /// [`UuidV7`](crate::utils::UuidV7) DB key types.
@@ -111,5 +252,122 @@ mod tests {
     #[test]
     fn marker_trait_is_implemented_for_wrapper() {
         accepts_uuid_db_type::<TestId>();
+    }
+
+    #[test]
+    fn get_many_returns_correct_order() -> Result<(), Box<dyn std::error::Error>>
+    {
+        use redb::TableDefinition;
+        use tempfile::tempdir;
+
+        use crate::{db::Store, utils::UuidV7};
+
+        let temp = tempdir()?;
+        let db_path = temp.path().join("test.db");
+        let store = Store::open(&db_path)?;
+
+        const TEST_TABLE: TableDefinition<TestId, &str> =
+            TableDefinition::new("test");
+
+        let id1 = TestId(UuidV7::new());
+        let id2 = TestId(UuidV7::new());
+        let id3 = TestId(UuidV7::new());
+
+        store.write(|tx| {
+            let mut table = tx.inner.open_table(TEST_TABLE)?;
+            table.insert(id1, "val1")?;
+            table.insert(id3, "val3")?;
+            Ok(())
+        })?;
+
+        store.read(|tx| {
+            let table = tx.inner.open_table(TEST_TABLE)?;
+            let results = table.get_many(&[id1, id2, id3])?;
+
+            assert_eq!(results.len(), 3);
+            assert_eq!(results[0].as_ref().unwrap().value(), "val1");
+            assert!(results[1].is_none());
+            assert_eq!(results[2].as_ref().unwrap().value(), "val3");
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn save_many_inserts_atomically() -> Result<(), Box<dyn std::error::Error>>
+    {
+        use redb::TableDefinition;
+        use tempfile::tempdir;
+
+        use crate::{db::Store, utils::UuidV7};
+
+        let temp = tempdir()?;
+        let db_path = temp.path().join("test_write.db");
+        let store = Store::open(&db_path)?;
+
+        const TEST_TABLE: TableDefinition<TestId, &str> =
+            TableDefinition::new("test");
+
+        let id1 = TestId(UuidV7::new());
+        let id2 = TestId(UuidV7::new());
+
+        store.write(|tx| {
+            let mut table = tx.inner.open_table(TEST_TABLE)?;
+            table.save_many(&[(id1, "val1"), (id2, "val2")])?;
+            Ok(())
+        })?;
+
+        store.read(|tx| {
+            let table = tx.inner.open_table(TEST_TABLE)?;
+            assert_eq!(table.get(id1)?.unwrap().value(), "val1");
+            assert_eq!(table.get(id2)?.unwrap().value(), "val2");
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn get_many_multimap_returns_all_values()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use redb::MultimapTableDefinition;
+        use tempfile::tempdir;
+
+        use super::UuidMultimapReadExt;
+        use crate::{db::Store, utils::UuidV7};
+
+        let temp = tempdir()?;
+        let db_path = temp.path().join("test_multimap.db");
+        let store = Store::open(&db_path)?;
+
+        const TEST_TABLE: MultimapTableDefinition<TestId, &str> =
+            MultimapTableDefinition::new("test_multimap");
+
+        let id1 = TestId(UuidV7::new());
+        let id2 = TestId(UuidV7::new());
+
+        store.write(|tx| {
+            let mut table = tx.inner.open_multimap_table(TEST_TABLE)?;
+            table.insert(id1, "val1a")?;
+            table.insert(id1, "val1b")?;
+            table.insert(id2, "val2")?;
+            Ok(())
+        })?;
+
+        store.read(|tx| {
+            let table = tx.inner.open_multimap_table(TEST_TABLE)?;
+            let results = table.get_many_multimap(&[id1, id2])?;
+
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0].len(), 2);
+            assert_eq!(results[0][0].value(), "val1a");
+            assert_eq!(results[0][1].value(), "val1b");
+            assert_eq!(results[1].len(), 1);
+            assert_eq!(results[1][0].value(), "val2");
+            Ok(())
+        })?;
+
+        Ok(())
     }
 }

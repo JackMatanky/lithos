@@ -445,12 +445,16 @@ impl Reader {
             FormatKind::Json => Json::parse(path, content),
             FormatKind::Toml => Toml::parse(path, content),
             FormatKind::Yaml => Yaml::parse(path, content),
-            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
-                Err(ParseError::UnsupportedFormat {
-                    path: path.to_path_buf(),
-                    supported: &["json", "toml", "yaml", "yml"],
-                })
-            }
+            FormatKind::Markdown
+            | FormatKind::Image
+            | FormatKind::Pdf
+            | FormatKind::Document
+            | FormatKind::Archive
+            | FormatKind::Binary
+            | FormatKind::Unknown => Err(ParseError::UnsupportedFormat {
+                path: path.to_path_buf(),
+                supported: &["json", "toml", "yaml", "yml"],
+            }),
         }
     }
 

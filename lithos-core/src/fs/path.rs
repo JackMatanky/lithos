@@ -295,6 +295,185 @@ impl std::fmt::Display for AbsolutePath {
     }
 }
 
+/// A validated vault-relative file path.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct FilePath(RelativePath);
+
+impl FilePath {
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        self.0.as_path()
+    }
+
+    /// Return the inner relative path.
+    #[inline]
+    #[must_use]
+    pub fn as_relative(&self) -> &RelativePath {
+        &self.0
+    }
+}
+
+impl TryFrom<RelativePath> for FilePath {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
+        Ok(Self(path))
+    }
+}
+
+impl TryFrom<&str> for FilePath {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        RelativePath::try_from(value).map(Self)
+    }
+}
+
+impl AsRef<Path> for FilePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+/// A validated vault-relative directory path.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct DirPath(RelativePath);
+
+impl DirPath {
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        self.0.as_path()
+    }
+
+    /// Return the inner relative path.
+    #[inline]
+    #[must_use]
+    pub fn as_relative(&self) -> &RelativePath {
+        &self.0
+    }
+}
+
+impl TryFrom<RelativePath> for DirPath {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
+        Ok(Self(path))
+    }
+}
+
+impl TryFrom<&str> for DirPath {
+    type Error = std::io::Error;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        RelativePath::try_from(value).map(Self)
+    }
+}
+
+impl AsRef<Path> for DirPath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+/// Unified path enum representing either a file or a directory.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub enum FsPath {
+    /// A file path.
+    File(FilePath),
+    /// A directory path.
+    Dir(DirPath),
+}
+
+impl FsPath {
+    /// Returns `true` if this is a file path.
+    #[inline]
+    #[must_use]
+    pub fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
+    }
+
+    /// Returns `true` if this is a directory path.
+    #[inline]
+    #[must_use]
+    pub fn is_dir(&self) -> bool {
+        matches!(self, Self::Dir(_))
+    }
+
+    /// Returns the file path if this is a file.
+    #[inline]
+    #[must_use]
+    pub fn as_file(&self) -> Option<&FilePath> {
+        match self {
+            Self::File(p) => Some(p),
+            Self::Dir(_) => None,
+        }
+    }
+
+    /// Returns the directory path if this is a directory.
+    #[inline]
+    #[must_use]
+    pub fn as_dir(&self) -> Option<&DirPath> {
+        match self {
+            Self::Dir(p) => Some(p),
+            Self::File(_) => None,
+        }
+    }
+
+    /// Returns the underlying relative path.
+    #[inline]
+    #[must_use]
+    pub fn as_relative(&self) -> &RelativePath {
+        match self {
+            Self::File(p) => p.as_relative(),
+            Self::Dir(p) => p.as_relative(),
+        }
+    }
+}
+
+/// A zero-copy view of a parent directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParentDir<'a> {
+    /// The vault root.
+    Root,
+    /// A sub-directory path view.
+    Path(&'a Path),
+}
+
+impl<'a> ParentDir<'a> {
+    /// Extract the parent directory from a path.
+    #[inline]
+    #[must_use]
+    pub fn from_path(path: &'a Path) -> Self {
+        match path.parent() {
+            Some(p) if p.as_os_str().is_empty() => Self::Root,
+            Some(p) => Self::Path(p),
+            None => Self::Root,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,6 +602,77 @@ mod tests {
             let absolute = AbsolutePath::try_from(path).unwrap();
             let error = absolute.try_filename().unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        }
+    }
+
+    mod file_path {
+        use super::*;
+
+        #[test]
+        fn should_wrap_relative_path() {
+            let path = FilePath::try_from("a/b/file.txt").unwrap();
+            assert_eq!(path.as_path(), Path::new("a/b/file.txt"));
+        }
+
+        #[test]
+        fn should_reject_invalid_paths() {
+            assert!(FilePath::try_from("../traversal").is_err());
+            assert!(FilePath::try_from("/absolute").is_err());
+        }
+    }
+
+    mod dir_path {
+        use super::*;
+
+        #[test]
+        fn should_wrap_relative_path() {
+            let path = DirPath::try_from("a/b/dir").unwrap();
+            assert_eq!(path.as_path(), Path::new("a/b/dir"));
+        }
+
+        #[test]
+        fn should_reject_invalid_paths() {
+            assert!(DirPath::try_from("..").is_err());
+        }
+    }
+
+    mod fs_path {
+        use super::*;
+
+        #[test]
+        fn should_handle_file_and_dir_variants() {
+            let file = FilePath::try_from("file.txt").unwrap();
+            let dir = DirPath::try_from("dir").unwrap();
+
+            let fs_file = FsPath::File(file);
+            let fs_dir = FsPath::Dir(dir);
+
+            assert!(fs_file.is_file());
+            assert!(!fs_file.is_dir());
+            assert!(fs_dir.is_dir());
+            assert!(!fs_dir.is_file());
+
+            assert_eq!(fs_file.as_relative().as_path(), Path::new("file.txt"));
+            assert_eq!(fs_dir.as_relative().as_path(), Path::new("dir"));
+        }
+    }
+
+    mod parent_dir {
+        use super::*;
+
+        #[test]
+        fn should_identify_root_and_path() {
+            let path = Path::new("a/b/c");
+            let parent = ParentDir::from_path(path);
+
+            match parent {
+                ParentDir::Path(p) => assert_eq!(p, Path::new("a/b")),
+                _ => panic!("Expected ParentDir::Path"),
+            }
+
+            let root_path = Path::new("file.txt");
+            let root_parent = ParentDir::from_path(root_path);
+            assert!(matches!(root_parent, ParentDir::Root));
         }
     }
 }

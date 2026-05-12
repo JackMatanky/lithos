@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::{
-    db::{Store, deserialize, serialize},
+    db::{Store, UuidTableReadExt, deserialize, serialize},
     schema::{
         aggregate::Schema,
         identifier::SchemaId,
@@ -41,8 +41,8 @@ impl SchemaRepository for SchemaRedbRepository {
 
         self.store
             .write(|tx| {
-                let mut table = tx.inner.open_table(SCHEMAS.definition())?;
-                table.insert(schema.id(), bytes.as_slice())?;
+                let mut table = tx.try_open_table(SCHEMAS.definition())?;
+                table.insert(*schema.id(), bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
@@ -55,12 +55,9 @@ impl SchemaRepository for SchemaRedbRepository {
     ) -> Result<Option<Schema>, SchemaStorageV2Error> {
         self.store
             .read(|tx| {
-                let table = match tx.inner.open_table(SCHEMAS.definition()) {
-                    Ok(t) => t,
-                    Err(redb::TableError::TableDoesNotExist(_)) => {
-                        return Ok(None);
-                    }
-                    Err(e) => return Err(e.into()),
+                let Some(table) = tx.try_open_table(SCHEMAS.definition())?
+                else {
+                    return Ok(None);
                 };
 
                 let Some(guard) = table.get(id)? else {
@@ -80,10 +77,10 @@ impl SchemaRepository for SchemaRedbRepository {
     ) -> Result<(), SchemaStorageV2Error> {
         self.store
             .write(|tx| {
-                let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+                let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 for schema in schemas {
                     let bytes = serialize(schema)?;
-                    table.insert(schema.id(), bytes.as_slice())?;
+                    table.insert(*schema.id(), bytes.as_slice())?;
                 }
                 Ok(())
             })
@@ -97,21 +94,21 @@ impl SchemaRepository for SchemaRedbRepository {
     ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error> {
         self.store
             .read(|tx| {
-                let table = match tx.inner.open_table(SCHEMAS.definition()) {
-                    Ok(t) => t,
-                    Err(redb::TableError::TableDoesNotExist(_)) => {
-                        return Ok(ids.iter().map(|_| None).collect());
-                    }
-                    Err(e) => return Err(e.into()),
+                let Some(table) = tx.try_open_table(SCHEMAS.definition())?
+                else {
+                    return Ok(ids.iter().map(|_| None).collect());
                 };
 
-                let mut results = Vec::with_capacity(ids.len());
-                for id in ids {
-                    let guard = table.get(*id)?;
-                    let schema =
-                        guard.map(|g| deserialize(g.value())).transpose()?;
-                    results.push(schema);
-                }
+                let results = table
+                    .get_many(ids)?
+                    .into_iter()
+                    .map(|guard_opt| {
+                        guard_opt
+                            .map(|g| deserialize::<Schema>(g.value()))
+                            .transpose()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
                 Ok(results)
             })
             .map_err(SchemaStorageV2Error::from)
@@ -133,22 +130,15 @@ impl SchemaRepository for SchemaRedbRepository {
             .read(|tx| {
                 // Open both tables
                 let path_table =
-                    match tx.inner.open_table(SCHEMA_ID_BY_PATH.definition()) {
-                        Ok(t) => t,
-                        Err(redb::TableError::TableDoesNotExist(_)) => {
-                            return Ok(paths.iter().map(|_| None).collect());
-                        }
-                        Err(e) => return Err(e.into()),
-                    };
-
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                 let view_table =
-                    match tx.inner.open_table(RAW_SCHEMA_VIEWS.definition()) {
-                        Ok(t) => t,
-                        Err(redb::TableError::TableDoesNotExist(_)) => {
-                            return Ok(paths.iter().map(|_| None).collect());
-                        }
-                        Err(e) => return Err(e.into()),
-                    };
+                    tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
+
+                let (Some(path_table), Some(view_table)) =
+                    (path_table, view_table)
+                else {
+                    return Ok(paths.iter().map(|_| None).collect());
+                };
 
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
@@ -255,9 +245,9 @@ mod tests {
 
         let result: Result<(), crate::db::DbError> = store.write(|tx| {
             use crate::schema::storage_v2::tables::SCHEMAS;
-            let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+            let mut table = tx.try_open_table(SCHEMAS.definition())?;
             let id2 = SchemaId::new();
-            table.insert(&id2, &b"invalid data"[..])?;
+            table.insert(id2, &b"invalid data"[..])?;
             Err(crate::db::DbError::Serialization("forced failure".to_owned()))
         });
         assert!(result.is_err());
@@ -326,9 +316,9 @@ mod tests {
 
         let result: Result<(), crate::db::DbError> = store.write(|tx| {
             use crate::schema::storage_v2::tables::SCHEMAS;
-            let mut table = tx.inner.open_table(SCHEMAS.definition())?;
+            let mut table = tx.try_open_table(SCHEMAS.definition())?;
             let id2 = SchemaId::new();
-            table.insert(&id2, &b"invalid"[..])?;
+            table.insert(id2, &b"invalid"[..])?;
             Err(crate::db::DbError::Serialization("forced".to_owned()))
         });
         assert!(result.is_err());
@@ -527,9 +517,9 @@ mod tests {
             store
                 .write(|tx| {
                     let mut path_table =
-                        tx.inner.open_table(SCHEMA_ID_BY_PATH.definition())?;
+                        tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     let mut view_table =
-                        tx.inner.open_table(RAW_SCHEMA_VIEWS.definition())?;
+                        tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
 
                     // Insert path → ID mappings
                     let path1_str =
@@ -542,8 +532,8 @@ mod tests {
                         .insert(path2_str, serialize(&id2)?.as_slice())?;
 
                     // Insert ID → view mappings
-                    view_table.insert(&id1, serialize(&view1)?.as_slice())?;
-                    view_table.insert(&id2, serialize(&view2)?.as_slice())?;
+                    view_table.insert(id1, serialize(&view1)?.as_slice())?;
+                    view_table.insert(id2, serialize(&view2)?.as_slice())?;
 
                     Ok(())
                 })
@@ -645,14 +635,14 @@ mod tests {
             store
                 .write(|tx| {
                     let mut path_table =
-                        tx.inner.open_table(SCHEMA_ID_BY_PATH.definition())?;
+                        tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     let mut view_table =
-                        tx.inner.open_table(RAW_SCHEMA_VIEWS.definition())?;
+                        tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
 
                     let path_str =
                         existing_path.as_path().to_string_lossy().to_string();
                     path_table.insert(path_str, serialize(&id)?.as_slice())?;
-                    view_table.insert(&id, serialize(&view)?.as_slice())?;
+                    view_table.insert(id, serialize(&view)?.as_slice())?;
 
                     Ok(())
                 })

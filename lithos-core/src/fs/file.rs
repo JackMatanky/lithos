@@ -30,138 +30,8 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
+pub use super::name::FileName;
 use crate::{fs::error::DirEntryError, prelude::W};
-
-/// `FileName` for vault-scoped files (schemas, notes, templates).
-///
-/// Stores only the filename with its extension (e.g., "note.toml").
-/// Vault directories are typically assumed to be flat or managed via
-/// configuration. This type provides methods to extract the stem and
-/// extension without repeatedly parsing the underlying string.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct FileName(Box<str>);
-
-impl FileName {
-    /// Create a new filename from a boxed string.
-    #[inline]
-    #[must_use]
-    pub fn new(filename: Box<str>) -> Self {
-        Self(filename)
-    }
-
-    /// Get the filename as a string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Get the basename (filename without extension).
-    ///
-    /// Uses Obsidian terminology where "basename" means filename without
-    /// extension.
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> &str {
-        Path::new(self.as_str())
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-    }
-
-    /// Get the file extension.
-    #[inline]
-    #[must_use]
-    pub fn extension(&self) -> Option<&str> {
-        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
-    }
-
-    /// Get the underlying filename as a `Path`.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.as_str())
-    }
-}
-
-impl From<Box<str>> for FileName {
-    #[inline]
-    fn from(filename: Box<str>) -> Self {
-        Self::new(filename)
-    }
-}
-
-impl From<String> for FileName {
-    #[inline]
-    fn from(filename: String) -> Self {
-        Self::new(filename.into_boxed_str())
-    }
-}
-
-impl From<FileName> for Box<str> {
-    #[inline]
-    fn from(filename: FileName) -> Self {
-        filename.0
-    }
-}
-
-impl From<FileName> for String {
-    #[inline]
-    fn from(filename: FileName) -> Self {
-        filename.0.into_string()
-    }
-}
-
-impl AsRef<str> for FileName {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl AsRef<Path> for FileName {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
-impl TryFrom<&Path> for FileName {
-    type Error = std::io::Error;
-
-    #[inline]
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let name = path
-            .file_name()
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path terminates in .. or is empty",
-                )
-            })?
-            .to_str()
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Path contains invalid UTF-8",
-                )
-            })?;
-
-        Ok(Self::new(name.into()))
-    }
-}
-
-impl TryFrom<PathBuf> for FileName {
-    type Error = std::io::Error;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
-}
 
 /// Filesystem information for a file.
 ///
@@ -393,7 +263,7 @@ mod tests {
     #[test]
     fn try_from_path_rejects_empty_filename() {
         let path = Path::new("schemas/..");
-        let result = FileName::try_from(path);
+        let result: Result<FileName, _> = FileName::try_from(path);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().kind(),

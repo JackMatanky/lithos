@@ -61,6 +61,9 @@ pub use read::ReadTx;
 pub use reader::BatchReader;
 pub use rkyv::{deserialize, serialize, with_archived};
 pub use table::{PathTable, Table, UuidMultimap, UuidTable};
-pub use uuid::{UuidV7DbType, sealed};
+pub use uuid::{
+    UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,
+    UuidTableWriteExt, UuidV7DbType, sealed,
+};
 pub use write::WriteTx;
 pub use writer::BatchWriter;

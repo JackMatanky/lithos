@@ -39,8 +39,10 @@
 pub mod error;
 /// Ergonomic conversions for filesystem entries.
 pub mod file;
-/// Validated path types.
-pub mod path;
+/// File format detection and classification.
+pub mod format;
+/// Owned and borrowed name components.
+pub mod name;
 /// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
 /// Directory scanning utilities for finding files matching criteria.
@@ -59,7 +61,9 @@ pub mod writer;
 
 pub use error::{ParseError, PathValidationError};
 pub use file::{FileEntry, FileInfo, FileName};
-pub use path::{AbsolutePath, RelativePath};
+pub use format::{FileExtensionRef, FileFormat};
+pub use name::{BaseName, BaseNameRef, DirName, DirNameRef, FileNameRef};
+pub use path::{AbsolutePath, DirPath, FilePath, FsPath, RelativePath};
 #[expect(
     clippy::module_name_repetitions,
     reason = "FsReader alias clarifies this is the filesystem reader in \

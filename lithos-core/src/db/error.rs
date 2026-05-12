@@ -40,6 +40,10 @@ pub enum DbError {
     #[error(transparent)]
     Table(#[from] redb::TableError),
 
+    /// Storage operation failed.
+    #[error(transparent)]
+    Storage(#[from] redb::StorageError),
+
     /// Serialization failed.
     #[error("serialization error: {0}")]
     Serialization(String),
@@ -92,12 +96,12 @@ impl DbError {
     pub fn kind(&self) -> DbErrorKind {
         match self {
             Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
+            Self::Storage(_) | Self::Corruption(_) => DbErrorKind::Storage,
             Self::Commit(_) => DbErrorKind::Commit,
             Self::Transaction(_) => DbErrorKind::Transaction,
             Self::Table(_) => DbErrorKind::Table,
             Self::Serialization(_) => DbErrorKind::Serialization,
             Self::Deserialization(_) => DbErrorKind::Deserialization,
-            Self::Corruption(_) => DbErrorKind::Storage,
         }
     }
 
@@ -167,19 +171,19 @@ impl DbError {
                     || msg.contains("busy")
                     || msg.contains("i/o error")
             }
+            // Storage errors might be transient (I/O)
+            Self::Storage(redb_err) => {
+                let msg = redb_err.to_string().to_lowercase();
+                msg.contains("locked")
+                    || msg.contains("busy")
+                    || msg.contains("i/o error")
+            }
             // All other errors are permanent (not retryable)
             Self::Corruption(_)
             | Self::Deserialization(_)
             | Self::Serialization(_)
             | Self::Open(_) => false,
         }
-    }
-}
-
-impl From<redb::StorageError> for DbError {
-    #[inline]
-    fn from(e: redb::StorageError) -> Self {
-        Self::Database(redb::DatabaseError::from(e))
     }
 }
 

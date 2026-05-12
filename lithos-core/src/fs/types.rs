@@ -21,24 +21,7 @@ use std::path::Path;
 use serde::de::DeserializeOwned;
 
 use super::error::ParseError;
-
-/// Supported file formats for structured parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub(crate) enum FormatKind {
-    /// JSON format.
-    Json,
-    /// TOML format.
-    Toml,
-    /// YAML format.
-    Yaml,
-    /// Markdown format.
-    Markdown,
-    /// Binary format.
-    Binary,
-    /// Unknown or unsupported format.
-    Unknown,
-}
+pub(crate) use super::format::FileFormat as FormatKind;
 
 /// Markdown file type marker.
 ///
