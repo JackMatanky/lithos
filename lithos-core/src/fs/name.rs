@@ -49,12 +49,7 @@ impl FileName {
     #[inline]
     #[must_use]
     pub fn to_basename(&self) -> Option<BaseName> {
-        let s = self.basename();
-        if s.is_empty() {
-            None
-        } else {
-            Some(BaseName::new(s.into()))
-        }
+        BaseName::try_from(Path::new(self.as_str())).ok()
     }
 
     /// Get the file extension.
@@ -215,7 +210,8 @@ impl From<String> for BaseName {
 impl From<FileName> for BaseName {
     #[inline]
     fn from(name: FileName) -> Self {
-        name.to_basename().unwrap_or_else(|| BaseName::new("".into()))
+        BaseName::try_from(Path::new(name.as_str()))
+            .unwrap_or_else(|_| BaseName::new("".into()))
     }
 }
 
