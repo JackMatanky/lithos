@@ -177,3 +177,4 @@ _archive/
 artifacts/
 vendor/
 .gitnexus
+.worktrees/
