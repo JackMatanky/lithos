@@ -210,8 +210,13 @@ impl From<String> for BaseName {
 impl From<FileName> for BaseName {
     #[inline]
     fn from(name: FileName) -> Self {
-        BaseName::try_from(Path::new(name.as_str()))
-            .unwrap_or_else(|_| BaseName::new("".into()))
+        Path::new(name.as_str())
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map_or_else(
+                || BaseName::new("".into()),
+                |s| BaseName::new(s.into()),
+            )
     }
 }
 
