@@ -320,3 +320,191 @@ Final gate:
 - `gitnexus_detect_changes(scope: all)` reported `critical` because the working
   tree contains unrelated pre-existing fs/config changes outside this 04i slice;
   schema-runtime edits in this slice validated via targeted integration tests.
+
+## Detailed TDD Plan - Migrate Transitional Storage Errors (2026-05-13)
+
+Goal: remove transitional `SchemaStorageV2Error` and `DbTxError` wrappers and
+use canonical `SchemaStorageError` + updated `DbError` flow throughout schema
+read/write seams, while preserving runtime behavior and error semantics.
+
+### Migration Constraints
+
+- Keep changes behavior-preserving at public API level for schema runtime.
+- Use vertical TDD slices only (`RED -> GREEN -> REFACTOR`) with compile/test
+  checkpoints each slice.
+- Keep all fallible paths on `Result` and avoid new panics in production.
+- Favor mechanical, explicit conversions (`#[from]`, `map_err`) over ad-hoc
+  string-based remapping.
+
+### Current Transitional State (to remove)
+
+- `schema/repository.rs` defines:
+  - `SchemaStorageV2Error(#[from] DbTxError)`
+  - `DbTxError(#[from] DbError)`
+  - `From<SchemaStorageV2Error> for SchemaRepositoryError`
+- `SchemaReadRepository` and `SchemaWriteRepository` signatures currently return
+  `SchemaStorageV2Error`.
+- Implementations in `schema/storage/read.rs`, `schema/storage/write.rs`, and
+  `schema/storage/testing.rs` map storage failures through
+  `SchemaStorageV2Error`.
+
+### Target Canonical State
+
+- Repository trait methods return `SchemaStorageError` directly.
+- Transitional wrappers `SchemaStorageV2Error` and `DbTxError` are deleted.
+- Storage adapter errors map via `SchemaStorageError::from(DbError)`.
+- Repository-layer conversion uses canonical hierarchy:
+  `SchemaStorageError -> SchemaRepositoryError::Storage`.
+- Remove redundant/parallel `DbError` conversion path in repository error enum
+  if it is no longer required by any caller.
+
+### Slice 1 - Tracer Bullet on Read Seam
+
+#### RED
+
+1. Change one `SchemaReadRepository` method signature in
+   `schema/repository.rs` from `SchemaStorageV2Error` to `SchemaStorageError`
+   (start with `find_schema_by_id`).
+2. Run targeted compile/test (`cargo test -p lithos-core schema::storage::read`)
+   and confirm expected type errors in adapters/call sites.
+
+#### GREEN
+
+1. Update corresponding impl method in `schema/storage/read.rs` to return
+   `SchemaStorageError`.
+2. Replace `map_err(SchemaStorageV2Error::from)` with
+   `map_err(SchemaStorageError::from)`.
+3. Update in-memory test repo method in `schema/storage/testing.rs` for same
+   signature and conversion.
+
+#### REFACTOR
+
+1. Keep method-local logic unchanged; only canonicalize type/conversion.
+2. Ensure imports are minimal and ordered after rustfmt.
+
+### Slice 2 - Complete Read Trait Migration
+
+#### RED
+
+1. Convert remaining `SchemaReadRepository` signatures in
+   `schema/repository.rs` to `SchemaStorageError`.
+2. Run compile and capture expected breakages in read/testing implementations.
+
+#### GREEN
+
+1. Update all read adapter return types and conversions in
+   `schema/storage/read.rs`.
+2. Update all in-memory read methods in `schema/storage/testing.rs`.
+3. Update helper conversion function in testing module
+   (`to_v2_error` -> canonical helper returning `SchemaStorageError`).
+
+#### REFACTOR
+
+1. Normalize docs/comments in `schema/repository.rs` to reference
+   `SchemaStorageError`.
+2. Remove any now-unused transitional imports/symbols from read-focused modules.
+
+### Slice 3 - Tracer Bullet on Write Seam
+
+#### RED
+
+1. Change one `SchemaWriteRepository` method signature in
+   `schema/repository.rs` from `SchemaStorageV2Error` to `SchemaStorageError`
+   (start with `save_schema`).
+2. Run targeted compile/test (`cargo test -p lithos-core schema::storage::write`)
+   and confirm expected type errors.
+
+#### GREEN
+
+1. Update corresponding impl in `schema/storage/write.rs`.
+2. Replace transitional `map_err` conversions with canonical
+   `SchemaStorageError::from`.
+3. Update in-memory write impl in `schema/storage/testing.rs` for the method.
+
+#### REFACTOR
+
+1. Keep write transaction behavior unchanged.
+2. Re-check borrow/alloc usage; avoid introducing new owned allocations.
+
+### Slice 4 - Complete Write Trait Migration
+
+#### RED
+
+1. Convert remaining `SchemaWriteRepository` method signatures to
+   `SchemaStorageError`.
+2. Run compile and capture remaining write/testing failures.
+
+#### GREEN
+
+1. Update all write methods in `schema/storage/write.rs`.
+2. Update all write methods in `schema/storage/testing.rs`.
+
+#### REFACTOR
+
+1. Remove any transitional helper names tied to v2 error terminology.
+2. Keep method behavior and tests focused on public outcomes.
+
+### Slice 5 - Remove Transitional Wrappers and Collapse Error Paths
+
+#### RED
+
+1. Delete `SchemaStorageV2Error` and `DbTxError` definitions from
+   `schema/repository.rs`.
+2. Delete `From<SchemaStorageV2Error> for SchemaRepositoryError`.
+3. Run compile to reveal remaining dependencies.
+
+#### GREEN
+
+1. Fix all remaining references to deleted wrappers.
+2. Ensure repository-level conversions use canonical path:
+   `SchemaStorageError -> SchemaRepositoryError::Storage`.
+3. In `schema/error.rs`, remove redundant direct database variant/conversion
+   (`SchemaRepositoryError::Database(DbError)` and `From<DbError>`) if now
+   unused and semantically duplicated by `SchemaStorageError::Storage(DbError)`.
+
+#### REFACTOR
+
+1. Simplify error hierarchy to single canonical storage path.
+2. Confirm display/source chain remains useful and non-lossy.
+
+### Slice 6 - Behavioral Error-Path Validation
+
+#### RED
+
+1. Add/adjust tests asserting canonical propagation path for storage failures:
+   adapter -> `SchemaStorageError` -> repository/loader surfaces.
+2. Add coverage for representative `DbError` classes (serialization,
+   deserialization, corruption) to verify mapping is stable.
+
+#### GREEN
+
+1. Minimal implementation adjustments only if tests reveal mismatched mapping.
+2. Preserve existing user-visible error behavior where expected.
+
+#### REFACTOR
+
+1. Consolidate repetitive assertion helpers in tests.
+2. Keep tests behavior-oriented and decoupled from removed wrapper internals.
+
+### Verification Gates (per slice)
+
+1. `mise run fmt`
+2. `mise run lint`
+3. Targeted tests for touched seam (`read`, `write`, `testing`, affected
+   integration tests)
+
+Final gate after all slices:
+
+1. `mise run test:integration -p core`
+2. `mise run test`
+
+### Completion Criteria for This Migration
+
+- No `SchemaStorageV2Error` symbol remains in code/docs/tests.
+- No `DbTxError` symbol remains.
+- All read/write repository signatures use `SchemaStorageError`.
+- Storage adapters (`redb` + in-memory) map failures through canonical
+  `SchemaStorageError`.
+- Repository error hierarchy has a single canonical path for `DbError`-backed
+  storage failures.
+- Formatting, lint, unit/integration tests pass.
