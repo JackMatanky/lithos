@@ -32,11 +32,7 @@ pub struct Builder<'config, R> {
 
 impl<'config, R> Builder<'config, R>
 where
-    R: super::repository::DiscoveryReadRepository
-        + SchemaReadRepository
-        + SchemaWriteRepository,
-    <R as super::repository::DiscoveryReadRepository>::Error:
-        Into<crate::schema::error::SchemaRepositoryError>,
+    R: SchemaReadRepository + SchemaWriteRepository,
 {
     /// Create a new `Builder` with a repository, file source, and config.
     #[inline]
@@ -283,11 +279,8 @@ mod tests {
         config::aggregate::Config,
         fs::FsReader,
         schema::{
-            repository::{
-                DiscoveryReadRepository, SchemaReadRepository,
-                SchemaWriteRepository,
-            },
-            testing::InMemoryRepository,
+            repository::{SchemaReadRepository, SchemaWriteRepository},
+            storage_v2::testing::InMemoryRepository,
         },
     };
 
@@ -359,11 +352,7 @@ description = "Test schema"
     fn builder_new_accepts_segregated_schema_seams() {
         fn assert_builder_new<R>(repo: R, source: FsReader, config: &Config)
         where
-            R: DiscoveryReadRepository
-                + SchemaReadRepository
-                + SchemaWriteRepository,
-            <R as DiscoveryReadRepository>::Error:
-                Into<crate::schema::error::SchemaRepositoryError>,
+            R: SchemaReadRepository + SchemaWriteRepository,
         {
             let _ = Builder::new(repo, source, config);
         }

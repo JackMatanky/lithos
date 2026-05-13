@@ -1,4 +1,4 @@
-//! Write implementation for `SchemaRedbRepository`.
+//! Write implementation for `RedbRepository`.
 
 use redb::ReadableTable;
 
@@ -15,7 +15,7 @@ use crate::{
             SchemaWriteRepository,
         },
         storage_v2::{
-            SchemaRedbRepository,
+            RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -26,7 +26,7 @@ use crate::{
     },
 };
 
-impl SchemaWriteRepository for SchemaRedbRepository {
+impl SchemaWriteRepository for RedbRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error> {
         let bytes = serialize(schema).map_err(SchemaStorageV2Error::from)?;
@@ -189,7 +189,7 @@ impl SchemaWriteRepository for SchemaRedbRepository {
     }
 }
 
-impl ProcessorWriteRepository for SchemaRedbRepository {
+impl ProcessorWriteRepository for RedbRepository {
     type Error = SchemaStorageV2Error;
 
     #[inline]
@@ -312,7 +312,7 @@ mod tests {
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
             },
         };
 
@@ -321,7 +321,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("test-schema").unwrap();
@@ -336,7 +336,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("test-schema").unwrap();
@@ -358,7 +358,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store.clone());
+            let repo = RedbRepository::new(store.clone());
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("test-schema").unwrap();
@@ -399,7 +399,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_from("test-schema-index").unwrap();
@@ -432,7 +432,7 @@ mod tests {
                     ProcessorWriteRepository, SchemaReadRepository,
                     SchemaWriteRepository,
                 },
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
             },
         };
 
@@ -441,7 +441,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id1 = SchemaId::new();
             let id2 = SchemaId::new();
@@ -485,7 +485,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id1 = SchemaId::new();
             let id2 = SchemaId::new();
@@ -514,7 +514,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             // Should not error on empty batch
             SchemaWriteRepository::save_many_schemas(&repo, &[]).unwrap();
@@ -525,7 +525,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("processor-seam-schema").unwrap();
@@ -551,7 +551,7 @@ mod tests {
             schema::{
                 bank::PropertyBank,
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
             },
         };
 
@@ -560,7 +560,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let bank = PropertyBank::new();
             repo.save_property_bank(&bank).unwrap();
@@ -576,7 +576,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             // Save first bank
             let bank1 = PropertyBank::new();
@@ -602,7 +602,7 @@ mod tests {
                 identifier::SchemaId,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                     raw::RawSchemaView,
@@ -635,7 +635,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let view = test_raw_view("schemas/note.json", 9);
@@ -656,7 +656,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let old_view = test_raw_view("schemas/old.json", 3);
@@ -690,7 +690,7 @@ mod tests {
                 identifier::SchemaId,
                 inheritance::{InheritanceGraph, SchemaGraphBuilder},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
             },
         };
 
@@ -714,13 +714,13 @@ mod tests {
             let child = SchemaId::new();
             {
                 let store = Arc::new(Store::open(&db_path).unwrap());
-                let repo = SchemaRedbRepository::new(store);
+                let repo = RedbRepository::new(store);
                 let graph = build_graph(root, child);
                 repo.save_topological_graph(&graph).unwrap();
             }
 
             let reopened_store = Arc::new(Store::open(&db_path).unwrap());
-            let reopened_repo = SchemaRedbRepository::new(reopened_store);
+            let reopened_repo = RedbRepository::new(reopened_store);
             let loaded =
                 reopened_repo.get_topological_graph().unwrap().unwrap();
 
@@ -741,7 +741,7 @@ mod tests {
                 property::PropertyMap,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::SchemaRedbRepository,
+                storage_v2::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                     raw::RawSchemaView,
@@ -774,7 +774,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("schema-delete").unwrap();
@@ -804,7 +804,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let missing = SchemaId::new();
             repo.delete_schema(missing).unwrap();
@@ -816,7 +816,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("schema-name-only").unwrap();

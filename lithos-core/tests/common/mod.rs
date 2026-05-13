@@ -12,10 +12,14 @@
     reason = "Test module re-exports port traits for test convenience"
 )]
 
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use lithos_core::{
-    db::Database,
+    db::Store,
     schema::{
         aggregate::Schema,
         identifier::SchemaName,
@@ -23,7 +27,8 @@ use lithos_core::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        storage::{RedbRepository, Repository},
+        repository::SchemaReadRepository,
+        storage_v2::RedbRepository,
     },
 };
 use tempfile::TempDir;
@@ -45,8 +50,7 @@ pub trait RepositoryExt {
 
 impl<R> RepositoryExt for R
 where
-    R: Repository,
-    R::Error: 'static,
+    R: SchemaReadRepository,
 {
     fn find_by_name(
         &self,
@@ -76,8 +80,8 @@ pub type NamedProperty = (PropertyName, Property);
 pub struct TestDb {
     /// Temporary directory (cleanup on drop).
     dir: TempDir,
-    /// Database instance wrapped in Arc for sharing with Repository.
-    db: Arc<Database>,
+    /// Store instance wrapped in Arc for sharing with Repository.
+    store: Arc<Store>,
 }
 
 impl TestDb {
@@ -91,7 +95,7 @@ impl TestDb {
     /// # use tests::common::{TestDb, TestResult};
     /// # fn test() -> TestResult {
     /// let test_db = TestDb::new()?;
-    /// let db = test_db.db();
+    /// let db = test_db.store();
     /// # Ok(())
     /// # }
     /// ```
@@ -99,18 +103,18 @@ impl TestDb {
     pub fn new() -> TestResult<Self> {
         let dir = tempfile::tempdir()?;
         let db_path = dir.path().join("lithos.redb");
-        let db = Arc::new(Database::open(&db_path)?);
+        let store = Arc::new(Store::open(&db_path)?);
         Ok(Self {
             dir,
-            db,
+            store,
         })
     }
 
-    /// Get reference to the database Arc (for cloning into Repository).
+    /// Get reference to the Store Arc (for cloning into Repository).
     #[inline]
     #[must_use]
-    pub fn db(&self) -> &Arc<Database> {
-        &self.db
+    pub fn store(&self) -> &Arc<Store> {
+        &self.store
     }
 
     /// Get the database path for logging/debugging.
@@ -125,7 +129,7 @@ impl TestDb {
     /// Closes the current database and opens a fresh instance.
     /// This allows testing that state persists across sessions.
     ///
-    /// **IMPORTANT**: All Arc clones from previous `db()` calls must be
+    /// **IMPORTANT**: All Arc clones from previous `store()` calls must be
     /// dropped before calling this method, otherwise redb will fail with
     /// "Database already open" error.
     ///
@@ -136,33 +140,33 @@ impl TestDb {
     /// # Panics
     /// Panics if there are outstanding Arc strong references (indicates a
     /// test bug where repositories weren't properly dropped).
-    pub fn reopen(&mut self) -> TestResult<Arc<Database>> {
+    pub fn reopen(&mut self) -> TestResult<Arc<Store>> {
         let path = self.path();
 
         // Check if we're the only owner (catch test bugs early)
-        let strong_count = Arc::strong_count(&self.db);
+        let strong_count = Arc::strong_count(&self.store);
         assert!(
             strong_count == 1,
             "Cannot reopen database: {strong_count} outstanding Arc \
              references (expected 1). Did you forget to drop a Repository?"
         );
 
-        // CRITICAL: We must drop the old Database BEFORE opening the new one
+        // CRITICAL: We must drop the old Store BEFORE opening the new one
         // since redb uses OS-level file locks that prevent concurrent access.
         //
         // Strategy:
-        // 1. Create dummy database at different path
+        // 1. Create dummy store at different path
         // 2. Swap dummy with real, extracting the old Arc
-        // 3. Unwrap and drop the old Database (releases lock)
+        // 3. Unwrap and drop the old Store (releases lock)
         // 4. Drop the dummy
-        // 5. Open real database at original path
+        // 5. Open real store at original path
 
-        // Step 1: Create dummy database (different path to avoid lock conflict)
+        // Step 1: Create dummy store (different path to avoid lock conflict)
         let dummy_path = self.dir.path().join("temp_dummy.redb");
-        let dummy_db = Arc::new(Database::open(&dummy_path)?);
+        let dummy_store = Arc::new(Store::open(&dummy_path)?);
 
         // Step 2: Swap, getting the old Arc
-        let old_arc = std::mem::replace(&mut self.db, dummy_db);
+        let old_arc = std::mem::replace(&mut self.store, dummy_store);
 
         // Step 3: Unwrap and drop (should always succeed since strong_count ==
         // 1)
@@ -171,19 +175,19 @@ impl TestDb {
             reason = "Test infrastructure - panic for impossible state is \
                       appropriate"
         )]
-        let old_database = Arc::try_unwrap(old_arc).unwrap_or_else(|_| {
+        let old_store = Arc::try_unwrap(old_arc).unwrap_or_else(|_| {
             panic!(
                 "Arc::try_unwrap failed despite strong_count == 1 - this is a \
                  bug"
             )
         });
-        drop(old_database); // Releases the lock!
+        drop(old_store); // Releases the lock!
 
-        // Step 4 & 5: Open the real database (dummy is automatically dropped
-        // when we reassign self.db)
-        self.db = Arc::new(Database::open(&path)?);
+        // Step 4 & 5: Open the real store (dummy is automatically dropped
+        // when we reassign self.store)
+        self.store = Arc::new(Store::open(&path)?);
 
-        Ok(Arc::clone(&self.db))
+        Ok(Arc::clone(&self.store))
     }
 }
 
@@ -193,23 +197,22 @@ impl TestDb {
 
 /// Create a Repository implementation for testing.
 ///
-/// Returns a `RedbRepository` that implements the unified Repository trait.
-/// This replaces the old CQRS pattern (command, query) with a single
-/// Repository interface combining both read and write operations.
+/// Returns a `RedbRepository` sharing the given store.
+/// Use `TestDb::store()` to obtain a store for an isolated test database.
 ///
 /// # Examples
 /// ```no_run
 /// # use tests::common::{setup_repository, TestDb, TestResult};
 /// # fn test() -> TestResult {
 /// let test_db = TestDb::new()?;
-/// let repository = setup_repository(test_db.db());
+/// let repository = setup_repository(test_db.store());
 /// # Ok(())
 /// # }
 /// ```
 #[track_caller]
 #[must_use]
-pub fn setup_repository(db: &Arc<Database>) -> RedbRepository {
-    RedbRepository::new(Arc::clone(db))
+pub fn setup_repository(store: &Arc<Store>) -> RedbRepository {
+    RedbRepository::new(Arc::clone(store))
 }
 
 /// Legacy CQRS setup - DEPRECATED.
@@ -228,11 +231,16 @@ pub fn setup_repository(db: &Arc<Database>) -> RedbRepository {
     note = "Use setup_repository() - CQRS pattern replaced with unified \
             Repository trait"
 )]
+#[expect(
+    clippy::expect_used,
+    reason = "Deprecated legacy helper panics on failure"
+)]
 #[track_caller]
 #[must_use]
-pub fn setup_cqrs(db: &Arc<Database>) -> (RedbRepository, RedbRepository) {
-    let repo1 = RedbRepository::new(Arc::clone(db));
-    let repo2 = RedbRepository::new(Arc::clone(db));
+pub fn setup_cqrs(db_path: &Path) -> (RedbRepository, RedbRepository) {
+    let store = Arc::new(Store::open(db_path).expect("open store for tests"));
+    let repo1 = RedbRepository::new(Arc::clone(&store));
+    let repo2 = RedbRepository::new(store);
     (repo1, repo2)
 }
 

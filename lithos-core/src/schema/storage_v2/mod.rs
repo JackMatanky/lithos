@@ -5,6 +5,9 @@ mod write;
 
 pub mod tables;
 
+#[cfg(test)]
+pub mod testing;
+
 use std::sync::Arc;
 
 use crate::db::Store;
@@ -15,11 +18,11 @@ use crate::db::Store;
 /// as the underlying storage engine. It manages its own transaction boundaries
 /// via the provided [`Store`].
 #[derive(Debug)]
-pub struct SchemaRedbRepository {
+pub struct RedbRepository {
     pub(crate) store: Arc<Store>,
 }
 
-impl SchemaRedbRepository {
+impl RedbRepository {
     /// Create a new repository adapter from a database store.
     #[inline]
     #[must_use]

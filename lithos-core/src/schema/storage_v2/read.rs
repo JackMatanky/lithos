@@ -11,13 +11,11 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         identifier::{SchemaId, SchemaName},
-        inheritance::InheritanceGraph,
+        index::{NameIdPairs, PathIdPairs},
         property::PropertyName,
-        repository::{
-            DiscoveryReadRepository, SchemaReadRepository, SchemaStorageV2Error,
-        },
+        repository::{SchemaReadRepository, SchemaStorageV2Error},
         storage_v2::{
-            SchemaRedbRepository,
+            RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -28,7 +26,7 @@ use crate::{
     },
 };
 
-impl SchemaReadRepository for SchemaRedbRepository {
+impl SchemaReadRepository for RedbRepository {
     #[inline]
     fn find_schema_by_id(
         &self,
@@ -386,16 +384,16 @@ impl SchemaReadRepository for SchemaRedbRepository {
     #[inline]
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<crate::schema::index::NameIdPairs, SchemaStorageV2Error> {
+    ) -> Result<NameIdPairs, SchemaStorageV2Error> {
         self.store
             .read(|tx| {
                 let Some(table) =
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?
                 else {
-                    return Ok(crate::schema::index::NameIdPairs::new());
+                    return Ok(NameIdPairs::new());
                 };
 
-                let mut pairs = crate::schema::index::NameIdPairs::new();
+                let mut pairs = NameIdPairs::new();
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
                     let name_str = k_guard.value();
@@ -414,16 +412,16 @@ impl SchemaReadRepository for SchemaRedbRepository {
     #[inline]
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<crate::schema::index::PathIdPairs, SchemaStorageV2Error> {
+    ) -> Result<PathIdPairs, SchemaStorageV2Error> {
         self.store
             .read(|tx| {
                 let Some(table) =
                     tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?
                 else {
-                    return Ok(crate::schema::index::PathIdPairs::new());
+                    return Ok(PathIdPairs::new());
                 };
 
-                let mut pairs = crate::schema::index::PathIdPairs::new();
+                let mut pairs = PathIdPairs::new();
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
                     let path_str = k_guard.value();
@@ -455,58 +453,6 @@ impl SchemaReadRepository for SchemaRedbRepository {
     }
 }
 
-impl DiscoveryReadRepository for SchemaRedbRepository {
-    type Error = SchemaStorageV2Error;
-
-    #[inline]
-    fn find_raw_schema_views_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
-        let views = SchemaReadRepository::find_raw_schema_views_by_paths(
-            self, file_paths,
-        )?;
-
-        Ok(file_paths
-            .iter()
-            .cloned()
-            .zip(views)
-            .filter_map(|(path, view)| view.map(|v| (path, v)))
-            .collect())
-    }
-
-    #[inline]
-    fn find_schema_ids_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
-        let ids =
-            SchemaReadRepository::find_schema_ids_by_paths(self, file_paths)?;
-
-        Ok(file_paths
-            .iter()
-            .cloned()
-            .zip(ids)
-            .filter_map(|(path, id)| id.map(|v| (path, v)))
-            .collect())
-    }
-
-    #[inline]
-    fn get_raw_property_bank_view(
-        &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-        SchemaReadRepository::get_raw_property_bank_view(self, path)
-    }
-
-    #[inline]
-    fn get_topological_graph(
-        &self,
-    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
-        SchemaReadRepository::get_topological_graph(self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -522,7 +468,7 @@ mod tests {
             property::PropertyMap,
             raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
             repository::{SchemaReadRepository, SchemaWriteRepository},
-            storage_v2::SchemaRedbRepository,
+            storage_v2::RedbRepository,
             views::{
                 RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                 raw::RawSchemaView,
@@ -558,7 +504,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let missing = repo.find_schema_by_id(SchemaId::new()).unwrap();
             assert!(missing.is_none());
@@ -582,7 +528,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let s1 = Schema::new(
                 SchemaId::new(),
@@ -630,7 +576,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let s1 = Schema::new(
                 SchemaId::new(),
@@ -661,7 +607,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             assert!(repo.list_schemas().unwrap().is_empty());
 
@@ -702,7 +648,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let status = PropertyName::try_new("status").unwrap();
             let owner = PropertyName::try_new("owner").unwrap();
@@ -758,7 +704,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let missing = PropertyName::try_new("missing").unwrap();
             let usage = repo.find_schemas_using_properties(&[missing]).unwrap();
@@ -774,7 +720,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             assert!(repo.get_property_bank().unwrap().is_none());
             let bank = PropertyBank::new();
@@ -831,7 +777,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
             assert_eq!(repo.find_schema_id_by_name(&name1).unwrap(), Some(id1));
             assert_eq!(repo.find_schema_id_by_path(&path1).unwrap(), Some(id1));
 
@@ -870,7 +816,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             assert!(
                 repo.get_raw_schema_view(SchemaId::new()).unwrap().is_none()
@@ -889,7 +835,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id = SchemaId::new();
             let view = test_raw_view("schemas/note.json", 7);
@@ -925,7 +871,7 @@ mod tests {
                 })
                 .unwrap();
 
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
             assert!(
                 repo.find_raw_schema_view_by_path(&path).unwrap().is_none()
             );
@@ -951,7 +897,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             assert!(repo.get_topological_graph().unwrap().is_none());
         }
@@ -961,7 +907,7 @@ mod tests {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let root1 = SchemaId::new();
             let child1 = SchemaId::new();
@@ -984,16 +930,15 @@ mod tests {
         }
     }
 
-    mod discovery_read_seam {
+    mod batch_path_lookups {
         use super::*;
-        use crate::schema::repository::DiscoveryReadRepository;
 
         #[test]
-        fn v2_discovery_read_trait_returns_only_hits_for_path_lookups() {
+        fn schema_read_repository_preserves_order_for_path_lookups() {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = SchemaRedbRepository::new(store);
+            let repo = RedbRepository::new(store);
 
             let id1 = SchemaId::new();
             let id2 = SchemaId::new();
@@ -1011,24 +956,17 @@ mod tests {
                 view2.path().clone(),
             ];
 
-            let id_hits = DiscoveryReadRepository::find_schema_ids_by_paths(
-                &repo, &paths,
-            )
-            .unwrap();
-            assert_eq!(id_hits.len(), 2);
-            assert_eq!(id_hits.get(view1.path()), Some(&id1));
-            assert_eq!(id_hits.get(view2.path()), Some(&id2));
-            assert!(!id_hits.contains_key(&missing));
+            let id_hits =
+                SchemaReadRepository::find_schema_ids_by_paths(&repo, &paths)
+                    .unwrap();
+            assert_eq!(id_hits, vec![Some(id1), None, Some(id2)]);
 
             let view_hits =
-                DiscoveryReadRepository::find_raw_schema_views_by_paths(
+                SchemaReadRepository::find_raw_schema_views_by_paths(
                     &repo, &paths,
                 )
                 .unwrap();
-            assert_eq!(view_hits.len(), 2);
-            assert_eq!(view_hits.get(view1.path()), Some(&view1));
-            assert_eq!(view_hits.get(view2.path()), Some(&view2));
-            assert!(!view_hits.contains_key(&missing));
+            assert_eq!(view_hits, vec![Some(view1), None, Some(view2)]);
         }
     }
 }

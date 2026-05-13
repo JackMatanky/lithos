@@ -10,12 +10,10 @@ use crate::{
     config::paths::SchemaConfigSpec,
     fs::{DirScanInput, DirScanner, FileEntry, RelativePath},
     schema::{
-        error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-        },
+        error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
         inheritance::InheritanceGraph,
-        repository::DiscoveryReadRepository,
+        repository::SchemaReadRepository,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -201,8 +199,7 @@ impl DiscoveryEngine {
         vault_root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
-        R: DiscoveryReadRepository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: SchemaReadRepository,
     {
         // Step 1: Scan filesystem
         let entries = Self::scan_filesystem(spec, vault_root)?;
@@ -319,8 +316,7 @@ impl DiscoveryEngine {
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
     where
-        R: DiscoveryReadRepository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: SchemaReadRepository,
     {
         #[expect(
             clippy::pattern_type_mismatch,
@@ -344,9 +340,22 @@ impl DiscoveryEngine {
         let schema_views =
             repo.find_raw_schema_views_by_paths(&schema_paths)
                 .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+        let schema_views = schema_paths
+            .iter()
+            .cloned()
+            .zip(schema_views)
+            .filter_map(|(path, view)| view.map(|v| (path, v)))
+            .collect();
+
         let schema_ids = repo
             .find_schema_ids_by_paths(&schema_paths)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+        let schema_ids = schema_paths
+            .iter()
+            .cloned()
+            .zip(schema_ids)
+            .filter_map(|(path, id)| id.map(|v| (path, v)))
+            .collect();
 
         Ok(CachedState {
             graph,
@@ -438,7 +447,15 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::schema::testing::InMemoryRepository;
+    use crate::schema::storage_v2::testing::InMemoryRepository;
+
+    fn accepts_schema_read_repository_only<R: SchemaReadRepository>(
+        spec: &SchemaConfigSpec,
+        repo: &R,
+        root: &std::path::Path,
+    ) -> Result<DiscoveryResult, SchemaLoaderError> {
+        DiscoveryEngine::run(spec, repo, root)
+    }
 
     #[test]
     fn run_finds_all_files() {
@@ -459,7 +476,9 @@ mod tests {
         );
 
         let repo = InMemoryRepository::new();
-        let result = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
+        let result =
+            accepts_schema_read_repository_only(&spec, &repo, root.path())
+                .unwrap();
 
         assert_eq!(result.schemas.len(), 1);
         assert!(result.property_bank.is_some());

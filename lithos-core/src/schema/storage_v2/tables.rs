@@ -7,16 +7,17 @@ use crate::{
 };
 
 impl_redb_uuid!(SchemaId);
-/// Schema aggregates (key: `SchemaId`, value: serialized `&[u8]`).
+/// Schema aggregates (key: `SchemaId`, value: rkyv-serialized `Schema`).
 ///
 /// Uses zero-copy serialization via `rkyv`.
 pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas_v2");
 
-/// Path-to-SchemaId index (key: path string, value: `SchemaId`).
+/// Path-to-SchemaId index for raw view lookup (key: path string, value:
+/// `SchemaId`).
 ///
 /// Maps file paths to their corresponding schema IDs for path-based lookups.
-/// Keys are path strings (validated at insert time), values are serialized
-/// `SchemaId`s.
+/// Keys are path strings with extension (e.g., "note.toml", "task.json"),
+/// validated at insert time.
 pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
     PathTable::new("schema_id_by_path_v2");
 
@@ -41,13 +42,18 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 /// Raw property bank view by path (key: path string, value: serialized
 /// `RawPropertyBankView`).
 ///
-/// Maps property bank file paths to their raw views for staleness detection.
+/// Maps property bank file paths (e.g., "property-bank.toml",
+/// "property-bank.json") to their raw views for staleness detection.
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
     PathTable::new("raw_property_bank_view_v2");
 
 /// Topological inheritance graph singleton.
 ///
-/// Stores the persisted DAG used for inheritance resolution.
+/// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
+/// Value: serialized `InheritanceGraph<()>`.
+///
+/// Contains DAG structure with `SchemaId` links and adjacency lists.
+/// Rebuilt/patched when inheritance relationships change.
 pub const SCHEMA_TOPOLOGICAL_GRAPH: PathTable<&[u8]> =
     PathTable::new("schema_topological_graph_v2");
 
@@ -61,3 +67,14 @@ pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 /// Maintained atomically with `SCHEMAS` table during save operations.
 pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
     PathTable::new("schema_id_by_name_v2");
+
+/// Cached base properties for schema files.
+///
+/// Stores the fully converted (hydrated) property map for each schema,
+/// excluding any inherited properties. This enables skipping the
+/// `RefExpander` when the property bank has not changed.
+///
+/// Key: `SchemaId` as UUID string.
+/// Value: rkyv-serialized `BasePropertiesView`.
+pub const SCHEMA_BASE_PROPERTIES: PathTable<&[u8]> =
+    PathTable::new("schema_base_properties");
