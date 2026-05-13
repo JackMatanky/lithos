@@ -1,5 +1,5 @@
 ---
-title: 11-phase-4-old-code-cleanup
+title: 12-phase-4-old-code-cleanup
 category: enhancement
 label: needs-triage
 status: pending
@@ -33,6 +33,7 @@ ONLY after all Phase 3 subphases complete.
 
 ## Blocked by
 
-- 08-phase-3a-fileinfo-to-metdata
-- 09-consumer-formatkind-to-fileformat
-- 10-consumer-fileentry-to-fsentry
+- 08-fs-error-redesign
+- 09-consumer-fileinfo-to-metadata
+- 10-consumer-formatkind-to-fileformat
+- 11-consumer-fileentry-to-fsentry

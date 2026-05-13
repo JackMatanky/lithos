@@ -1,5 +1,5 @@
 ---
-title: 09-phase-3b-formatkind-to-fileformat
+title: 10-phase-3b-formatkind-to-fileformat
 category: enhancement
 label: needs-triage
 status: pending
@@ -33,3 +33,4 @@ Phase 3b: Make FileFormat public (was pub(crate)), add new format variants, upda
 
 - 03-fs-format-types
 - 07-fsreader-methods
+- 08-fs-error-redesign

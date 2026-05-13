@@ -1,5 +1,5 @@
 ---
-title: 10-phase-3c-fileentry-to-fsentry
+title: 11-phase-3c-fileentry-to-fsentry
 category: enhancement
 label: needs-triage
 status: pending
@@ -34,3 +34,4 @@ Phase 3c: More complex - FsEntry is File(FsFile) or Dir(FsDir), FileEntry was fi
 - 05-fs-entry-types
 - 06-dirscanner-methods
 - 07-fsreader-methods
+- 08-fs-error-redesign

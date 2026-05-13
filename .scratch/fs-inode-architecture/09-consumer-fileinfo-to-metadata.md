@@ -1,5 +1,5 @@
 ---
-title: 08-phase-3a-fileinfo-to-metdata
+title: 09-phase-3a-fileinfo-to-metadata
 category: enhancement
 label: needs-triage
 status: pending
@@ -34,3 +34,4 @@ Phase 3a: Straightforward rename across schema/, config/, fs/ and any other cont
 
 - 04-fs-metadata-types
 - 07-fsreader-methods
+- 08-fs-error-redesign

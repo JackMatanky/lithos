@@ -1,5 +1,5 @@
 ---
-title: 13-vault-storage-tables
+title: 14-vault-storage-tables
 category: enhancement
 label: needs-triage
 status: pending
@@ -34,4 +34,4 @@ Create primary inode tables, path index tables, and query optimization multimaps
 
 ## Blocked by
 
-- 12-vault-model-types
+- 13-vault-model-types

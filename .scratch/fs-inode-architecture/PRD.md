@@ -86,7 +86,7 @@ lithos-core/src/fs/
 ├── format.rs       # FileFormat (public, expanded from FormatKind) + FileExtensionRef<'a>
 ├── scanner.rs      # DirScanner, DirScanInput (paths()→Vec<FsPath>, entries()→Vec<FsEntry>)
 ├── reader.rs       # FsReader (metadata() returns FsMetadata, delete info())
-├── error.rs        # ParseError, PathValidationError
+├── error.rs        # FsError, ReadError, ScanError, ParseError, PathError, PathValidationError (see ADR 017)
 └── validator.rs    # PathValidator (unchanged)
 ```
 
@@ -99,26 +99,26 @@ lithos-core/src/fs/
 **Final API (after migration):**
 
 ```rust
-// DirScanner methods
+// DirScanner methods (returns ScanError — see ADR 017)
 impl DirScanner {
-    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ParseError>;  // File or Dir
-    pub fn entries(&self, input: DirScanInput) -> Result<Vec<FsEntry>, ParseError>;  // File or Dir
+    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ScanError>;  // File or Dir
+    pub fn entries(&self, input: DirScanInput) -> Result<Vec<FsEntry>, ScanError>;  // File or Dir
 }
 
-// FsReader methods based on DirScanner
+// FsReader methods (returns FsError compositor — see ADR 017)
 impl FsReader {
     // Path-based filters (returns typed paths)
-    pub fn filter_paths(&self, pattern: &str) -> Result<Vec<FsPath>, ParseError>;  // Both files and dirs
-    pub fn filter_file_paths(&self, pattern: &str) -> Result<Vec<FilePath>, ParseError>;  // Files only
-    pub fn filter_dir_paths(&self, pattern: &str) -> Result<Vec<DirPath>, ParseError>;  // Dirs only
+    pub fn filter_paths(&self, pattern: &str) -> Result<Vec<FsPath>, FsError>;  // Both files and dirs
+    pub fn filter_file_paths(&self, pattern: &str) -> Result<Vec<FilePath>, FsError>;  // Files only
+    pub fn filter_dir_paths(&self, pattern: &str) -> Result<Vec<DirPath>, FsError>;  // Directories only
 
-    // Entry-based filters (returns typed entries)
-    pub fn filter_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, ParseError>;  // Both files and dirs
-    pub fn filter_file_entries(&self, pattern: &str) -> Result<Vec<FsFile>, ParseError>;  // Files only
-    pub fn filter_dir_entries(&self, pattern: &str) -> Result<Vec<FsDir>, ParseError>;  // Dirs only
+    // Entry-based filters (returns typed paths)
+    pub fn filter_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, FsError>;  // Both files and dirs
+    pub fn filter_file_entries(&self, pattern: &str) -> Result<Vec<FsFile>, FsError>;  // Files only
+    pub fn filter_dir_entries(&self, pattern: &str) -> Result<Vec<FsDir>, FsError>;  // Directories only
 
     // Single-item metadata (unified File or Dir)
-    pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError>;
+    pub fn metadata(&self, path: &Path) -> Result<FsMetadata, FsError>;
 }
 ```
 
@@ -134,7 +134,7 @@ impl FsPath {
     pub fn is_dir(&self) -> bool;
     pub fn as_file(&self) -> Option<&FilePath>;
     pub fn as_dir(&self) -> Option<&DirPath>;
-    pub fn as_relative(&self, base: &Path) -> Result<RelativePath, ParseError>;  // **REVISED**
+    pub fn as_relative(&self, base: &Path) -> Result<RelativePath, ReadError>;  // **REVISED 2026-05-13**: Returns ReadError (ADR 017)
 }
 
 // **REVISION 2026-05-12**: as_relative() now requires base path parameter.
@@ -195,7 +195,7 @@ impl FsEntryView {
 
 **New:**
 ```rust
-pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError>;  // Unified File or Dir
+pub fn metadata(&self, path: &Path) -> Result<FsMetadata, FsError>;  // Unified File or Dir (ADR 017)
 // Delete info() method entirely
 ```
 - Processor: File discovery pipeline (FsReader → FileView/DirView → save)
@@ -436,6 +436,16 @@ impl Repository {
 
 **REVISION 2026-05-12**: Use *_typed() suffix for new methods to avoid breaking existing call sites.
 This allows gradual migration in Phase 3 before removing old methods in Phase 4.
+
+**Phase 2a: Redesign fs/error.rs (Issue 08 — prerequisite for Phase 3)**
+- Implement ADR 017: decompose into FsError, ReadError, ScanError, ParseError, PathError
+- Update path.rs, name.rs constructors to return PathError
+- Update scanner.rs, entry.rs to return ScanError
+- Update reader.rs to return FsError
+- Narrow ParseError to deserialization-only (remove Io, NotInBasePath variants)
+- Delete DirEntryError
+- Update consumer From impls in schema/, config/, note/
+- Run `mise run verify` to confirm
 
 **Phase 3: Update all consumers (split into subphases)**
 

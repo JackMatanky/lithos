@@ -1,5 +1,5 @@
 ---
-title: 12-vault-model-types
+title: 13-vault-model-types
 category: enhancement
 label: needs-triage
 status: pending
@@ -39,4 +39,4 @@ Compose fs/ primitives into domain storage entities with inode identity.
 - 03-fs-format-types
 - 04-fs-metadata-types
 - 05-fs-entry-types
-- 11-phase-4-cleanup
+- 12-phase-4-cleanup

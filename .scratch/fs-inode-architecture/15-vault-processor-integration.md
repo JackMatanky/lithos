@@ -1,5 +1,5 @@
 ---
-title: 14-vault-processor-integration
+title: 15-vault-processor-integration
 category: enhancement
 label: needs-triage
 status: pending
@@ -34,5 +34,5 @@ Update save logic to populate all indexes. Delete old VaultPath, VaultFile, Vaul
 
 ## Blocked by
 
-- 12-vault-model-types
-- 13-vault-storage-tables
+- 13-vault-model-types
+- 14-vault-storage-tables
