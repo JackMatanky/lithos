@@ -39,7 +39,7 @@
 //!
 //! // Get file metadata
 //! let info = reader.metadata(Path::new("README.md"))?;
-//! # Ok::<(), lithos_core::fs::ParseError>(())
+//! # Ok::<(), lithos_core::fs::FsError>(())
 //! ```
 
 use std::{
@@ -48,7 +48,7 @@ use std::{
 };
 
 use super::{
-    error::PathValidationError,
+    error::{FsError, PathValidationError},
     file::{FileEntry, FileInfo, FileName},
     format::FileFormat as FormatKind,
     types::{Json, Toml, Yaml},
@@ -162,14 +162,11 @@ impl Reader {
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn filter_dir(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<PathBuf>, ParseError> {
+    pub fn filter_dir(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        scanner.paths(DirScanInput::new().with_pattern(pattern))
+        Ok(scanner.paths(DirScanInput::new().with_pattern(pattern))?)
     }
 
     /// Filters paths within the vault using a glob pattern.
@@ -183,13 +180,13 @@ impl Reader {
     pub fn filter_paths(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::path::FsPath>, ParseError> {
+    ) -> Result<Vec<super::path::FsPath>, FsError> {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        scanner.paths_typed(
+        Ok(scanner.paths_typed(
             DirScanInput::new().with_pattern(pattern).include_dirs(true),
-        )
+        )?)
     }
 
     /// Filters file paths within the vault using a glob pattern.
@@ -203,7 +200,7 @@ impl Reader {
     pub fn filter_file_paths(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::path::FilePath>, ParseError> {
+    ) -> Result<Vec<super::path::FilePath>, FsError> {
         use super::path::FsPath;
 
         let paths = self.filter_paths(pattern)?;
@@ -227,7 +224,7 @@ impl Reader {
     pub fn filter_dir_paths(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::path::DirPath>, ParseError> {
+    ) -> Result<Vec<super::path::DirPath>, FsError> {
         use super::path::FsPath;
 
         let paths = self.filter_paths(pattern)?;
@@ -251,13 +248,13 @@ impl Reader {
     pub fn filter_entries(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::entry::FsEntry>, ParseError> {
+    ) -> Result<Vec<super::entry::FsEntry>, FsError> {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        scanner.entries_typed(
+        Ok(scanner.entries_typed(
             DirScanInput::new().with_pattern(pattern).include_dirs(true),
-        )
+        )?)
     }
 
     /// Filters file entries within the vault using a glob pattern.
@@ -271,7 +268,7 @@ impl Reader {
     pub fn filter_file_entries(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::entry::FsFile>, ParseError> {
+    ) -> Result<Vec<super::entry::FsFile>, FsError> {
         use super::entry::FsEntry;
 
         let entries = self.filter_entries(pattern)?;
@@ -295,7 +292,7 @@ impl Reader {
     pub fn filter_dir_entries(
         &self,
         pattern: &str,
-    ) -> Result<Vec<super::entry::FsDir>, ParseError> {
+    ) -> Result<Vec<super::entry::FsDir>, FsError> {
         use super::entry::FsEntry;
 
         let entries = self.filter_entries(pattern)?;
@@ -316,10 +313,7 @@ impl Reader {
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn list_files(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<PathBuf>, ParseError> {
+    pub fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
         self.filter_dir(pattern)
     }
 
@@ -333,25 +327,28 @@ impl Reader {
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, ParseError> {
+    pub fn list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
+        use super::error::ReadError;
+
         let full_pattern = self.root.join(pattern);
-        let pattern_str =
-            full_pattern.to_str().ok_or_else(|| ParseError::Io {
-                path: full_pattern.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid UTF-8 in pattern",
-                ),
-            })?;
+        let pattern_str = full_pattern.to_str().ok_or_else(|| {
+            FsError::Path(super::error::PathError::InvalidUtf8(
+                full_pattern.clone(),
+            ))
+        })?;
 
         let mut paths = Vec::new();
-        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
-            path: full_pattern.clone(),
-            source: std::io::Error::other(e),
+        for entry in glob::glob(pattern_str).map_err(|e| {
+            FsError::Scan(super::error::ScanError::InvalidPattern {
+                pattern: pattern_str.into(),
+                message: e.msg.into(),
+            })
         })? {
-            let path = entry.map_err(|e| ParseError::Io {
-                path: e.path().to_path_buf(),
-                source: e.into_error(),
+            let path = entry.map_err(|e| {
+                FsError::Scan(super::error::ScanError::Traversal {
+                    path: e.path().to_path_buf(),
+                    source: e.into_error(),
+                })
             })?;
 
             if !path.is_dir() {
@@ -359,10 +356,10 @@ impl Reader {
             }
 
             let relative = path.strip_prefix(&self.root).map_err(|_err| {
-                ParseError::Io {
+                FsError::Read(ReadError::NotInBase {
                     path: path.clone(),
-                    source: std::io::Error::other("Path outside root"),
-                }
+                    base: self.root.clone(),
+                })
             })?;
 
             paths.push(relative.to_path_buf());
@@ -385,28 +382,29 @@ impl Reader {
     pub fn list_entries(
         &self,
         pattern: &str,
-    ) -> Result<Vec<FileEntry>, ParseError> {
+    ) -> Result<Vec<FileEntry>, FsError> {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        scanner.entries(DirScanInput::new().with_pattern(pattern))
+        Ok(scanner.entries(DirScanInput::new().with_pattern(pattern))?)
     }
 
     /// Reads a file's content as raw bytes.
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the file cannot be read.
+    /// Returns [`FsError::Read`] if the file cannot be read.
     #[cfg(test)]
     #[inline]
-    pub(crate) fn read_bytes(
-        &self,
-        path: &Path,
-    ) -> Result<Vec<u8>, ParseError> {
+    pub(crate) fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, FsError> {
+        use super::error::ReadError;
+
         let full_path = self.root.join(path);
-        std::fs::read(&full_path).map_err(|e| ParseError::Io {
-            path: path.to_path_buf(),
-            source: e,
+        std::fs::read(&full_path).map_err(|e| {
+            FsError::Read(ReadError::Io {
+                path: path.to_path_buf(),
+                source: e,
+            })
         })
     }
 
@@ -414,14 +412,18 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the file cannot be read or contains
+    /// Returns [`FsError::Read`] if the file cannot be read or contains
     /// invalid UTF-8.
     #[inline]
-    pub fn read_to_string(&self, path: &Path) -> Result<String, ParseError> {
+    pub fn read_to_string(&self, path: &Path) -> Result<String, FsError> {
+        use super::error::ReadError;
+
         let full_path = self.root.join(path);
-        std::fs::read_to_string(&full_path).map_err(|e| ParseError::Io {
-            path: path.to_path_buf(),
-            source: e,
+        std::fs::read_to_string(&full_path).map_err(|e| {
+            FsError::Read(ReadError::Io {
+                path: path.to_path_buf(),
+                source: e,
+            })
         })
     }
 
@@ -438,7 +440,7 @@ impl Reader {
     pub fn read_with<T, E, F>(&self, path: &Path, f: F) -> Result<T, E>
     where
         F: FnOnce(&Path, &str) -> Result<T, E>,
-        E: From<ParseError>,
+        E: From<FsError>,
     {
         let content = self.read_to_string(path)?;
         f(path, &content)
@@ -448,17 +450,21 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the file does not exist or metadata cannot
+    /// Returns [`FsError::Read`] if the file does not exist or metadata cannot
     /// be read.
     #[inline]
     pub fn std_metadata(
         &self,
         path: &Path,
-    ) -> Result<std::fs::Metadata, ParseError> {
+    ) -> Result<std::fs::Metadata, FsError> {
+        use super::error::ReadError;
+
         let full_path = self.root.join(path);
-        std::fs::symlink_metadata(&full_path).map_err(|e| ParseError::Io {
-            path: path.to_path_buf(),
-            source: e,
+        std::fs::symlink_metadata(&full_path).map_err(|e| {
+            FsError::Read(ReadError::Io {
+                path: path.to_path_buf(),
+                source: e,
+            })
         })
     }
 
@@ -466,19 +472,21 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the path does not exist or metadata cannot
+    /// Returns [`FsError::Read`] if the path does not exist or metadata cannot
     /// be read.
     #[inline]
     pub fn metadata(
         &self,
         path: &Path,
-    ) -> Result<super::metadata::FsMetadata, ParseError> {
-        use super::metadata::FsMetadata;
+    ) -> Result<super::metadata::FsMetadata, FsError> {
+        use super::{error::ReadError, metadata::FsMetadata};
 
         let full_path = self.root.join(path);
-        FsMetadata::from_path(&full_path).map_err(|e| ParseError::Io {
-            path: path.to_path_buf(),
-            source: e,
+        FsMetadata::from_path(&full_path).map_err(|e| {
+            FsError::Read(ReadError::Io {
+                path: path.to_path_buf(),
+                source: e,
+            })
         })
     }
 
@@ -540,13 +548,17 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError::Io`] if the path has no filename or the filename
+    /// Returns [`FsError::Read`] if the path has no filename or the filename
     /// is not valid UTF-8.
     #[inline]
-    pub fn filename(&self, path: &Path) -> Result<FileName, ParseError> {
-        FileName::try_from(path).map_err(|source| ParseError::Io {
-            path: path.to_path_buf(),
-            source,
+    pub fn filename(&self, path: &Path) -> Result<FileName, FsError> {
+        use super::error::ReadError;
+
+        FileName::try_from(path).map_err(|source| {
+            FsError::Read(ReadError::Io {
+                path: path.to_path_buf(),
+                source,
+            })
         })
     }
 
@@ -569,12 +581,12 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] if:
+    /// Returns [`FsError`] if:
     /// - The file format is unsupported.
     /// - The file cannot be read.
     /// - The content is malformed for the detected format.
     #[inline]
-    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
+    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, FsError>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -590,29 +602,31 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] if the format is unsupported or parsing fails.
+    /// Returns [`FsError`] if the format is unsupported or parsing fails.
     #[inline]
     pub fn parse_structured_from_str<T>(
         path: &Path,
         content: &str,
-    ) -> Result<T, ParseError>
+    ) -> Result<T, FsError>
     where
         T: serde::de::DeserializeOwned,
     {
         match Self::classify_path(path, Some(content)) {
-            FormatKind::Json => Json::parse(path, content),
-            FormatKind::Toml => Toml::parse(path, content),
-            FormatKind::Yaml => Yaml::parse(path, content),
+            FormatKind::Json => Ok(Json::parse(path, content)?),
+            FormatKind::Toml => Ok(Toml::parse(path, content)?),
+            FormatKind::Yaml => Ok(Yaml::parse(path, content)?),
             FormatKind::Markdown
             | FormatKind::Image
             | FormatKind::Pdf
             | FormatKind::Document
             | FormatKind::Archive
             | FormatKind::Binary
-            | FormatKind::Unknown => Err(ParseError::UnsupportedFormat {
-                path: path.to_path_buf(),
-                supported: &["json", "toml", "yaml", "yml"],
-            }),
+            | FormatKind::Unknown => {
+                Err(FsError::Parse(ParseError::UnsupportedFormat {
+                    path: path.to_path_buf(),
+                    supported: &["json", "toml", "yaml", "yml"],
+                }))
+            }
         }
     }
 
@@ -1047,7 +1061,7 @@ mod tests {
                 reader.parse_structured(Path::new("data.xml"));
             assert!(matches!(
                 result,
-                Err(ParseError::UnsupportedFormat { .. })
+                Err(FsError::Parse(ParseError::UnsupportedFormat { .. }))
             ));
         }
 
@@ -1057,7 +1071,10 @@ mod tests {
             let reader = Reader::new(dir.path());
             let result: Result<serde_json::Value, _> =
                 reader.parse_structured(Path::new("nonexistent.json"));
-            assert!(matches!(result, Err(ParseError::Io { .. })));
+            assert!(matches!(
+                result,
+                Err(FsError::Read(crate::fs::ReadError::Io { .. }))
+            ));
         }
     }
 
@@ -1191,7 +1208,7 @@ mod tests {
             write_file(dir.path(), "file.txt", b"# Title");
             let reader = Reader::new(dir.path());
             let has_heading: bool = reader
-                .read_with::<_, ParseError, _>(Path::new("file.txt"), |_, s| {
+                .read_with::<_, FsError, _>(Path::new("file.txt"), |_, s| {
                     Ok(s.trim_start().starts_with('#'))
                 })
                 .expect("read_with");
@@ -1202,9 +1219,12 @@ mod tests {
         fn propagates_io_error() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let result: Result<String, ParseError> = reader
+            let result: Result<String, FsError> = reader
                 .read_with(Path::new("nonexistent"), |_, _| Ok("x".into()));
-            assert!(matches!(result, Err(ParseError::Io { .. })));
+            assert!(matches!(
+                result,
+                Err(FsError::Read(crate::fs::ReadError::Io { .. }))
+            ));
         }
     }
 

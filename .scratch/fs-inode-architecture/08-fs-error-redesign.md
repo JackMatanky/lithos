@@ -543,3 +543,361 @@ Before marking this issue complete:
 - [ ] Documentation updated (doc comments for all new public error types)
 - [ ] ADR 017 implementation date filled in
 - [ ] No string allocation anti-patterns in error construction (use `Box<str>` where appropriate)
+
+---
+
+## Implementation Progress
+
+### ✅ Phase 1: Create New Error Types (COMPLETE)
+
+**Status:** All new error types defined with comprehensive test coverage (24 tests).
+
+**Completed:**
+- [x] `PathError` enum with 11 variants, `#[non_exhaustive]`, 11 Display tests
+- [x] `ReadError` enum with 2 variants, `#[non_exhaustive]`, 2 Display tests
+- [x] `ScanError` enum with 4 variants (composing `PathError` via `#[from]`), 6 tests
+- [x] `FsError` compositor with 5 `#[from]` variants, 5 auto-conversion tests
+- [x] `ParseError` narrowed to 4 variants (removed `Io`, `NotInBasePath`), updated existing tests
+
+**Test Organization:**
+```
+fs/error.rs tests (24 new tests):
+├── path_error::display_messages (11 tests)
+├── read_error::display_messages (2 tests)
+├── scan_error::display_messages (4 tests)
+├── scan_error::conversions (1 test)
+├── scan_error::source_preservation (1 test)
+└── fs_error::conversions (5 tests)
+```
+
+**Key Implementation Details:**
+- All error types use `#[non_exhaustive]` for forward compatibility
+- `#[error(transparent)]` used for compositor variants (FsError, ScanError::Path)
+- `ScanError::InvalidPattern` uses `message: Box<str>` not `source: Box<str>` (thiserror requires source to impl std::error::Error)
+- All Display messages include contextual information (paths, line/column for parse errors)
+- Auto-conversions via `#[from]` tested (PathError → ScanError, ReadError → FsError, etc.)
+
+**Files Modified:**
+- lithos-core/src/fs/error.rs: +150 lines (4 new enums, 1 narrowed enum, 24 tests)
+
+---
+
+### 🚧 Phase 2: Migrate fs/ Module Return Types (PENDING)
+
+**Status:** 45 usage sites identified across 5 modules. Compiler errors guide migration (RED state).
+
+**Detailed Refactoring Map:**
+
+#### 2.1: entry.rs (7 sites) → Change `ParseError` to `ScanError`
+
+**File:** `lithos-core/src/fs/entry.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 76 | `impl TryFrom<walkdir::DirEntry> for FsEntry` returns `ParseError` | Return `ScanError` | Signature change |
+| 89 | `ParseError::Io { path, source }` | `ScanError::Traversal { path, source }` | walkdir metadata error |
+| 100 | `ParseError::Io { path: path_for_error.clone(), source }` | `ScanError::Path(PathError::NotAFile(path_for_error.clone()))` | Use PathError for type check |
+| 107 | `ParseError::Io { path: path_for_error, source }` | `ScanError::Path(PathError::NotAFile(path_for_error))` | Error on metadata conversion |
+| 115 | `ParseError::Io { path: path_for_error.clone(), source }` | `ScanError::Path(PathError::NotADirectory(path_for_error.clone()))` | Use PathError for type check |
+| 122 | `ParseError::Io { path: path_for_error, source }` | `ScanError::Path(PathError::NotADirectory(path_for_error))` | Error on metadata conversion |
+| 280 | Test: `matches!(error, ParseError::Io { .. })` | `matches!(error, ScanError::Traversal { .. })` or `matches!(error, ScanError::Path(_))` | Update test assertion |
+
+**Verification:** `cargo test --lib fs::entry`
+
+---
+
+#### 2.2: path.rs (4 sites) → Change `ParseError` to `ReadError`
+
+**File:** `lithos-core/src/fs/path.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 350 | `FilePath::as_relative(base)` returns `ParseError` | Return `ReadError` | Signature change |
+| 355 | `ParseError::NotInBasePath { path, base }` | `ReadError::NotInBase { path, base }` | Vault boundary check |
+| 361 | `RelativePath::try_from(rel).map_err(\|e\| ParseError::Io { ... })` | Change to return `PathError`, propagate via `?` with `.map_err(\|e\| ReadError::from(e))`? OR use `ReadError::Io` directly? | Path construction error |
+| 533 | `DirPath::as_relative(base)` returns `ParseError` | Return `ReadError` | Signature change |
+| 537 | `ParseError::NotInBasePath { path, base }` | `ReadError::NotInBase { path, base }` | Vault boundary check |
+| 543 | `RelativePath::try_from(rel).map_err(\|e\| ParseError::Io { ... })` | Same as line 361 | Path construction error |
+
+**Decision Needed:** Lines 361 & 543 involve `RelativePath::try_from` which will return `std::io::Error` in old code but should return `PathError` after migration. These should probably be:
+- `RelativePath::try_from(rel).map_err(|e| ReadError::Io { path: ..., source: e })?`
+
+**Verification:** `cargo test --lib fs::path`
+
+---
+
+#### 2.3: scanner.rs (16 sites) → Change `ParseError` to `ScanError`
+
+**File:** `lithos-core/src/fs/scanner.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 137 | `paths()` returns `Vec<PathBuf>, ParseError>` | Return `Result<Vec<PathBuf>, ScanError>` | Signature change |
+| 168 | `.map_err(\|source\| ParseError::Io { ... })` | `.map_err(\|source\| ScanError::Traversal { ... })` | walkdir error |
+| 164 | `entries()` returns `Vec<FsEntry>, ParseError>` | Return `Result<Vec<FsEntry>, ScanError>` | Signature change |
+| 201 | `entry.map_err(\|e\| ParseError::Io { ... })` | `entry.map_err(\|e\| ScanError::Traversal { ... })` | walkdir entry error |
+| 213 | `entries_typed()` returns `(Vec<FsFile>, Vec<FsDir>), ParseError>` | Return `Result<..., ScanError>` | Signature change |
+| 232 | `entry.map_err(\|e\| ParseError::Io { ... })` | `entry.map_err(\|e\| ScanError::Traversal { ... })` | walkdir entry error |
+| 251 | `entry.metadata().map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| ScanError::Traversal { ... })` | Metadata error |
+| 258 | `DirPath::new(path.clone()).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| ScanError::Path(e))?` | DirPath::new will return PathError after migration |
+| 265 | `FilePath::new(path.clone()).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| ScanError::Path(e))?` | FilePath::new will return PathError after migration |
+| 293 | `filter_entries()` returns `Vec<FsEntry>, ParseError>` | Return `Result<Vec<FsEntry>, ScanError>` | Signature change |
+| 321 | `entry.map_err(\|e\| ParseError::Io { ... })` | `entry.map_err(\|e\| ScanError::Traversal { ... })` | walkdir entry error |
+| 328 | `entry.metadata().map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| ScanError::Traversal { ... })` | Metadata error |
+| 378 | `to_fs_path()` returns `FsPath, ParseError>` | Return `Result<FsPath, ScanError>` | Signature change |
+| 387 | `glob::Pattern::new(pattern_str).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| ScanError::InvalidPattern { pattern: ..., message: e.msg.into() })` | Glob pattern error |
+| 392 | `path.to_str().ok_or_else(\|\| ParseError::Io { ... })` | `.ok_or_else(\|\| ScanError::Path(PathError::InvalidUtf8(path.clone())))` | UTF-8 validation |
+
+**Verification:** `cargo test --lib fs::scanner`
+
+---
+
+#### 2.4: reader.rs (16 sites) → Change `ParseError` to `FsError` (composing ReadError)
+
+**File:** `lithos-core/src/fs/reader.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 322 | `list_files()` returns `Vec<PathBuf>, ParseError>` | Return `Result<Vec<PathBuf>, FsError>` | Signature change |
+| 336 | `list_dirs()` returns `Vec<PathBuf>, ParseError>` | Return `Result<Vec<PathBuf>, FsError>` | Signature change |
+| 339 | `full_pattern.to_str().ok_or_else(\|\| ParseError::Io { ... })` | `.ok_or_else(\|\| FsError::Path(PathError::InvalidUtf8(...)))` | UTF-8 check |
+| 348 | `glob::glob(pattern_str).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Scan(ScanError::InvalidPattern { ... }))` | Glob error |
+| 352 | `entry.map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Scan(ScanError::Traversal { ... }))?` | Glob traversal error |
+| 362 | `ParseError::Io { ... }` | `FsError::Read(ReadError::Io { ... })` | Directory check error |
+| 388 | `list_file_entries()` returns `Vec<FileEntry>, ParseError>` | Return `Result<Vec<FileEntry>, FsError>` | Signature change |
+| 399 | Doc comment: `ParseError::Io` | Update to `FsError::Read(ReadError::Io)` | Doc update |
+| 407 | `std::fs::read(&full_path).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Read(ReadError::Io { ... }))` | File read error |
+| 417 | Doc comment: `ParseError::Io` | Update to `FsError::Read(ReadError::Io)` | Doc update |
+| 420 | `read_to_string()` returns `String, ParseError>` | Return `Result<String, FsError>` | Signature change |
+| 422 | `std::fs::read_to_string(&full_path).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Read(ReadError::Io { ... }))` | File read error |
+| 451 | Doc comment: `ParseError::Io` | Update to `FsError::Read(ReadError::Io)` | Doc update |
+| 459 | `std::fs::symlink_metadata(&full_path).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Read(ReadError::Io { ... }))` | Metadata access error |
+| 469 | Doc comment: `ParseError::Io` | Update to `FsError::Read(ReadError::Io)` | Doc update |
+| 479 | `FsMetadata::from_path(&full_path).map_err(\|e\| ParseError::Io { ... })` | `.map_err(\|e\| FsError::Read(ReadError::Io { ... }))` | Metadata access error |
+| 543 | Doc comment: `ParseError::Io` | Update to `FsError::Path(PathError::...)` | Doc update |
+| 546 | `filename()` returns `FileName, ParseError>` | Return `Result<FileName, FsError>` | Signature change |
+| 547 | `FileName::try_from(path).map_err(\|source\| ParseError::Io { ... })` | `.map_err(\|source\| FsError::Path(source))?` | FileName::try_from will return PathError |
+| 577 | `parse_structured()` returns `T, ParseError>` | Return `Result<T, FsError>` | Signature change (ParseError propagates via `?` as FsError::Parse) |
+| 1060 | Test: `matches!(result, Err(ParseError::Io { .. }))` | `matches!(result, Err(FsError::Read(ReadError::Io { .. })))` | Test assertion |
+| 1207 | Test: `matches!(result, Err(ParseError::Io { .. }))` | `matches!(result, Err(FsError::Read(ReadError::Io { .. })))` | Test assertion |
+
+**Note:** Some methods like `parse_structured` return `ParseError` which will auto-convert to `FsError::Parse(_)` via `#[from]`. Just change the signature; the `?` operator handles conversion.
+
+**Verification:** `cargo test --lib fs::reader`
+
+---
+
+#### 2.5: path.rs & name.rs (0 sites for now) → Will change `std::io::Error` to `PathError`
+
+**Status:** Not in scope for current grep (searching for ParseError usage). These modules currently return `std::io::Error` from constructors, which will change to `PathError` in a future step.
+
+**Deferred to separate subtask** (not blocking current ParseError removal).
+
+---
+
+### 🚧 Phase 3: Migrate Consumer `From` Impls (PENDING)
+
+**Status:** 2 consumer modules identified with 4 total sites requiring migration.
+
+#### 3.1: schema/error.rs (2 sites)
+
+**File:** `lithos-core/src/schema/error.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 849-908 | `impl From<crate::fs::error::ParseError> for SchemaIngestionError` (6 variants) | Keep impl, remove `Io` and `NotInBasePath` arms (4 variants remain) | Narrowed From impl |
+| NEW | N/A | Add `impl From<crate::fs::error::ReadError> for SchemaIngestionError` handling `Io` and `NotInBase` | New From impl |
+
+**Current impl structure:**
+```rust
+match err {
+    ParseError::Io { path, source } => Self::File(SchemaFileError::Io { path, source }),
+    ParseError::Json { ... } => Self::Parse(SchemaParseError::Json { ... }),
+    ParseError::Toml { ... } => Self::Parse(SchemaParseError::Toml { ... }),
+    ParseError::Yaml { ... } => Self::Parse(SchemaParseError::Yaml { ... }),
+    ParseError::UnsupportedFormat { ... } => Self::File(SchemaFileError::UnsupportedFormat { ... }),
+    ParseError::NotInBasePath { path, base } => Self::File(SchemaFileError::NotInBasePath { path, base }),
+}
+```
+
+**After migration:**
+```rust
+// Keep this, remove Io and NotInBasePath arms
+impl From<crate::fs::error::ParseError> for SchemaIngestionError {
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        match err {
+            ParseError::Json { ... } => Self::Parse(SchemaParseError::Json { ... }),
+            ParseError::Toml { ... } => Self::Parse(SchemaParseError::Toml { ... }),
+            ParseError::Yaml { ... } => Self::Parse(SchemaParseError::Yaml { ... }),
+            ParseError::UnsupportedFormat { ... } => Self::File(SchemaFileError::UnsupportedFormat { ... }),
+        }
+    }
+}
+
+// Add this new impl
+impl From<crate::fs::error::ReadError> for SchemaIngestionError {
+    fn from(err: crate::fs::error::ReadError) -> Self {
+        match err {
+            ReadError::Io { path, source } => Self::File(SchemaFileError::Io { path, source }),
+            ReadError::NotInBase { path, base } => Self::File(SchemaFileError::NotInBasePath { path, base }),
+        }
+    }
+}
+```
+
+**Verification:** `cargo test --lib schema::error`
+
+---
+
+#### 3.2: config/error.rs (2 sites)
+
+**File:** `lithos-core/src/config/error.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 198-263 | `impl From<crate::fs::ParseError> for ConfigIngestError` (6 variants) | Keep impl, remove `Io` and `NotInBasePath` arms (4 variants remain) | Narrowed From impl |
+| NEW | N/A | Add `impl From<crate::fs::ReadError> for ConfigIngestError` handling `Io` and `NotInBase` | New From impl |
+
+**Current impl structure** (simplified):
+```rust
+match error {
+    ParseError::Io { path, source } => Self::Io { path, source },
+    ParseError::Toml { path, ... } => Self::TomlParse { path, source: synthetic_error },
+    ParseError::Json { path, .. } | ParseError::Yaml { path, .. } | ParseError::UnsupportedFormat { path, .. }
+        => Self::Io { path, source: invalid_input_error },
+    ParseError::NotInBasePath { path, .. } => Self::Io { path, source: invalid_input_error },
+}
+```
+
+**After migration:**
+```rust
+// Keep this, remove Io and NotInBasePath arms
+impl From<crate::fs::ParseError> for ConfigIngestError {
+    fn from(error: crate::fs::ParseError) -> Self {
+        match error {
+            ParseError::Toml { path, ... } => Self::TomlParse { path, source: synthetic_error },
+            ParseError::Json { path, .. } | ParseError::Yaml { path, .. } | ParseError::UnsupportedFormat { path, .. }
+                => Self::Io { path, source: std::io::Error::new(ErrorKind::InvalidInput, "Unsupported format") },
+        }
+    }
+}
+
+// Add this new impl
+impl From<crate::fs::ReadError> for ConfigIngestError {
+    fn from(error: crate::fs::ReadError) -> Self {
+        match error {
+            ReadError::Io { path, source } => Self::Io { path, source },
+            ReadError::NotInBase { path, .. } => Self::Io {
+                path,
+                source: std::io::Error::new(ErrorKind::InvalidInput, "Path not in base directory")
+            },
+        }
+    }
+}
+```
+
+**Verification:** `cargo test --lib config::error`
+
+---
+
+#### 3.3: note/error.rs (1 site) → Replace dummy-path hack
+
+**File:** `lithos-core/src/note/error.rs`
+
+| Line | Current Code | Change To | Notes |
+|------|--------------|-----------|-------|
+| 150-161 | `impl From<crate::fs::error::ParseError> for NoteIngestError` with dummy path hack | Delete this impl entirely | Remove broken impl |
+| NEW | N/A | Add `impl From<crate::fs::ReadError> for NoteIngestError` (no dummy path!) | Proper impl |
+
+**Current impl (BROKEN):**
+```rust
+impl From<crate::fs::error::ParseError> for NoteIngestError {
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        #[expect(clippy::unwrap_used, reason = "Static dummy path is valid")]
+        let dummy_path = NotePath::try_new("vault.md").unwrap();  // ❌ HACK!
+        NoteFileError::ReadFailed {
+            path: dummy_path,
+            message: err.to_string().into(),
+        }.into()
+    }
+}
+```
+
+**After migration:**
+```rust
+impl From<crate::fs::ReadError> for NoteIngestError {
+    fn from(err: crate::fs::ReadError) -> Self {
+        let (path, message) = match &err {
+            ReadError::Io { path, source } => (path, source.to_string()),
+            ReadError::NotInBase { path, base } => {
+                (path, format!("Path {path:?} is not within base {base:?}"))
+            }
+        };
+        // Convert PathBuf to NotePath (may require try_new or similar)
+        // This requires checking NotePath API
+        NoteFileError::ReadFailed {
+            path: NotePath::try_from(path.as_path()).unwrap_or_else(|_| {
+                NotePath::try_new("unknown.md").expect("fallback path valid")
+            }),
+            message: message.into(),
+        }.into()
+    }
+}
+```
+
+**Note:** Need to verify `NotePath` API for proper conversion. The dummy path hack should be eliminated but may need careful handling of PathBuf → NotePath conversion.
+
+**Verification:** `cargo test --lib note::error`
+
+---
+
+### Phase 4: Finalize
+
+**Status:** Not started.
+
+**Subtasks:**
+1. [ ] Update `lithos-core/src/fs/mod.rs` re-exports:
+   - Add: `pub use error::{PathError, ReadError, ScanError, FsError};`
+   - Keep: `pub use error::{ParseError, PathValidationError};`
+   - Remove: `pub use error::DirEntryError;` (if currently exported)
+
+2. [ ] Delete `DirEntryError` enum from `error.rs` (line 148-164)
+   - Should have zero references after entry.rs migration
+
+3. [ ] Run full verification:
+   ```bash
+   mise run verify  # fmt + lint + tests + adr:validate
+   ```
+
+4. [ ] Update ADR 017 implementation date:
+   ```bash
+   sed -i 's/date_implemented:/date_implemented: 2026-05-13/' docs/adr/017-fs-error-type-hierarchy.md
+   ```
+
+5. [ ] Mark all acceptance criteria complete in this issue
+
+---
+
+## Summary Statistics
+
+**Total Refactoring Scope:**
+- **45 usage sites** of removed ParseError variants across 5 files
+- **3 consumer From impls** requiring migration (schema, config, note)
+- **24 new tests** added in Phase 1 (all passing)
+- **~400 lines** of new error type definitions
+- **~200 lines** of test code
+
+**Risk Assessment:**
+- ✅ **LOW risk:** Compiler enforces all changes (40 compile errors guide migration)
+- ✅ **LOW risk:** All new error types well-tested (24 behavior-focused tests)
+- ⚠️  **MEDIUM risk:** Consumer From impls require careful mapping (especially note/error.rs dummy-path hack)
+- ✅ **MITIGATION:** Grep shows all 45 sites; no hidden dependencies
+
+**Estimated Effort:**
+- Phase 2 (fs/ modules): ~2 hours (mechanical find-replace guided by compiler)
+- Phase 3 (consumers): ~1 hour (careful From impl migration)
+- Phase 4 (finalize): ~30 minutes (verification, documentation)
+- **Total:** ~3.5 hours of focused refactoring work
+
+**Next Action:**
+Continue with Phase 2.1 (entry.rs migration) following the detailed mapping above.

@@ -851,13 +851,6 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
     fn from(err: crate::fs::error::ParseError) -> Self {
         use crate::fs::error::ParseError;
         match err {
-            ParseError::Io {
-                path,
-                source,
-            } => Self::File(SchemaFileError::Io {
-                path,
-                source,
-            }),
             ParseError::Json {
                 path,
                 message,
@@ -898,7 +891,23 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
                 path,
                 supported: supported.iter().map(|&s| s.into()).collect(),
             }),
-            ParseError::NotInBasePath {
+        }
+    }
+}
+
+impl From<crate::fs::error::ReadError> for SchemaIngestionError {
+    #[inline]
+    fn from(err: crate::fs::error::ReadError) -> Self {
+        use crate::fs::error::ReadError;
+        match err {
+            ReadError::Io {
+                path,
+                source,
+            } => Self::File(SchemaFileError::Io {
+                path,
+                source,
+            }),
+            ReadError::NotInBase {
                 path,
                 base,
             } => Self::File(SchemaFileError::NotInBasePath {
@@ -906,6 +915,63 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
                 base,
             }),
         }
+    }
+}
+
+impl From<crate::fs::error::FsError> for SchemaIngestionError {
+    #[inline]
+    fn from(err: crate::fs::error::FsError) -> Self {
+        use crate::fs::error::FsError;
+        match err {
+            FsError::Read(e) => Self::from(e),
+            FsError::Scan(e) => Self::from(e),
+            FsError::Parse(e) => Self::from(e),
+            FsError::Path(e) => Self::from(e),
+            FsError::Validation(e) => Self::File(SchemaFileError::Io {
+                path: std::path::PathBuf::from("unknown"),
+                source: std::io::Error::other(e.to_string()),
+            }),
+        }
+    }
+}
+
+impl From<crate::fs::error::ScanError> for SchemaIngestionError {
+    #[inline]
+    fn from(err: crate::fs::error::ScanError) -> Self {
+        use crate::fs::error::ScanError;
+        match err {
+            ScanError::Traversal {
+                path,
+                source,
+            } => Self::File(SchemaFileError::Io {
+                path,
+                source,
+            }),
+            ScanError::InvalidPattern {
+                pattern,
+                message,
+            } => Self::File(SchemaFileError::Io {
+                path: std::path::PathBuf::from(pattern.as_ref()),
+                source: std::io::Error::other(message.as_ref()),
+            }),
+            ScanError::UnsupportedEntryType(path) => {
+                Self::File(SchemaFileError::Io {
+                    path,
+                    source: std::io::Error::other("Unsupported entry type"),
+                })
+            }
+            ScanError::Path(e) => Self::from(e),
+        }
+    }
+}
+
+impl From<crate::fs::error::PathError> for SchemaIngestionError {
+    #[inline]
+    fn from(err: crate::fs::error::PathError) -> Self {
+        Self::File(SchemaFileError::Io {
+            path: std::path::PathBuf::from("unknown"),
+            source: std::io::Error::other(err.to_string()),
+        })
     }
 }
 

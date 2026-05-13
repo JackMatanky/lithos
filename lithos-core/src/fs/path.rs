@@ -348,17 +348,16 @@ impl FilePath {
     pub fn as_relative(
         &self,
         base: &Path,
-    ) -> Result<RelativePath, super::error::ParseError> {
-        use super::error::ParseError;
+    ) -> Result<RelativePath, super::error::ReadError> {
+        use super::error::ReadError;
 
-        let rel = self.0.strip_prefix(base).map_err(|_| {
-            ParseError::NotInBasePath {
+        let rel =
+            self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
                 path: self.0.clone(),
                 base: base.to_path_buf(),
-            }
-        })?;
+            })?;
 
-        RelativePath::try_from(rel).map_err(|e| ParseError::Io {
+        RelativePath::try_from(rel).map_err(|e| ReadError::Io {
             path: self.0.clone(),
             source: e,
         })
@@ -530,17 +529,16 @@ impl DirPath {
     pub fn as_relative(
         &self,
         base: &Path,
-    ) -> Result<RelativePath, super::error::ParseError> {
-        use super::error::ParseError;
+    ) -> Result<RelativePath, super::error::ReadError> {
+        use super::error::ReadError;
 
-        let rel = self.0.strip_prefix(base).map_err(|_| {
-            ParseError::NotInBasePath {
+        let rel =
+            self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
                 path: self.0.clone(),
                 base: base.to_path_buf(),
-            }
-        })?;
+            })?;
 
-        RelativePath::try_from(rel).map_err(|e| ParseError::Io {
+        RelativePath::try_from(rel).map_err(|e| ReadError::Io {
             path: self.0.clone(),
             source: e,
         })
@@ -727,10 +725,14 @@ impl FsPath {
     pub fn as_relative(
         &self,
         base: &Path,
-    ) -> Result<RelativePath, super::error::ParseError> {
+    ) -> Result<RelativePath, super::error::FsError> {
         match self {
-            Self::File(p) => p.as_relative(base),
-            Self::Dir(p) => p.as_relative(base),
+            Self::File(p) => {
+                p.as_relative(base).map_err(super::error::FsError::Read)
+            }
+            Self::Dir(p) => {
+                p.as_relative(base).map_err(super::error::FsError::Read)
+            }
         }
     }
 }

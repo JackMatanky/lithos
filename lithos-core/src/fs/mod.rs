@@ -66,7 +66,9 @@ pub mod writer;
 // readable without long module chains.
 
 pub use entry::{FsDir, FsEntry, FsFile};
-pub use error::{ParseError, PathValidationError};
+pub use error::{
+    FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
+};
 pub use file::{FileEntry, FileInfo, FileName};
 pub use format::{FileExtensionRef, FileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};

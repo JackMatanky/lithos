@@ -24,8 +24,9 @@ use walkdir::WalkDir;
 
 use super::{
     entry::FsEntry,
-    error::ParseError,
-    file::{FileEntry, FileInfo, FileName},
+    error::{PathError, ScanError},
+    file::{FileEntry, FileInfo},
+    name::FileName,
     path::{DirPath, FilePath, FsPath},
 };
 
@@ -104,7 +105,7 @@ impl DirScanner {
     ///
     /// # Errors
     ///
-    /// Returns `ParseError::Io` if directory traversal fails or pattern is
+    /// Returns `ScanError` if directory traversal fails or pattern is
     /// invalid.
     ///
     /// # Examples
@@ -115,13 +116,13 @@ impl DirScanner {
     /// let scanner = DirScanner::new("/vault");
     /// let paths =
     ///     scanner.paths(DirScanInput::new().with_pattern("schemas/**/*.toml"))?;
-    /// # Ok::<(), lithos_core::fs::error::ParseError>(())
+    /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
     #[inline]
     pub fn paths(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<PathBuf>, ParseError> {
+    ) -> Result<Vec<PathBuf>, ScanError> {
         let mut results = self
             .scan_internal(input)?
             .into_iter()
@@ -138,7 +139,7 @@ impl DirScanner {
     ///
     /// # Errors
     ///
-    /// Returns `ParseError::Io` if directory traversal fails, pattern is
+    /// Returns `ScanError` if directory traversal fails, pattern is
     /// invalid, or metadata cannot be read.
     ///
     /// # Examples
@@ -153,21 +154,22 @@ impl DirScanner {
     /// for entry in entries {
     ///     println!("{}: {} bytes", entry.filename.as_str(), entry.info.size());
     /// }
-    /// # Ok::<(), lithos_core::fs::error::ParseError>(())
+    /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
     #[inline]
     pub fn entries(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<FileEntry>, ParseError> {
+    ) -> Result<Vec<FileEntry>, ScanError> {
         let items = self.scan_internal(input)?;
 
         let mut entries = Vec::with_capacity(items.len());
         for (relative_path, metadata) in items {
             let filename = FileName::try_from(relative_path.as_path())
-                .map_err(|source| ParseError::Io {
-                    path: relative_path.clone(),
-                    source,
+                .map_err(|_source| {
+                    ScanError::Path(PathError::NoFileName(
+                        relative_path.clone(),
+                    ))
                 })?;
 
             entries.push(FileEntry {
@@ -187,18 +189,18 @@ impl DirScanner {
     ///
     /// # Errors
     ///
-    /// Returns `ParseError::Io` if directory traversal fails or pattern is
+    /// Returns `ScanError` if directory traversal fails or pattern is
     /// invalid.
     #[inline]
     pub fn paths_typed(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<FsPath>, ParseError> {
+    ) -> Result<Vec<FsPath>, ScanError> {
         let walker = self.build_walker(&input);
         let mut results = Vec::new();
 
         for entry in walker {
-            let entry = entry.map_err(|e| ParseError::Io {
+            let entry = entry.map_err(|e| ScanError::Traversal {
                 path: e.path().map(Path::to_path_buf).unwrap_or_default(),
                 source: e.into(),
             })?;
@@ -218,18 +220,18 @@ impl DirScanner {
     ///
     /// # Errors
     ///
-    /// Returns `ParseError::Io` if directory traversal fails, pattern is
+    /// Returns `ScanError` if directory traversal fails, pattern is
     /// invalid, or metadata cannot be read.
     #[inline]
     pub fn entries_typed(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<FsEntry>, ParseError> {
+    ) -> Result<Vec<FsEntry>, ScanError> {
         let walker = self.build_walker(&input);
         let mut results = Vec::new();
 
         for entry in walker {
-            let entry = entry.map_err(|e| ParseError::Io {
+            let entry = entry.map_err(|e| ScanError::Traversal {
                 path: e.path().map(Path::to_path_buf).unwrap_or_default(),
                 source: e.into(),
             })?;
@@ -246,26 +248,22 @@ impl DirScanner {
     // ─── Private Helper Methods ───────────────────────────────────────
 
     /// Converts a `walkdir::DirEntry` to a typed `FsPath`.
-    fn to_fs_path(entry: &walkdir::DirEntry) -> Result<FsPath, ParseError> {
+    fn to_fs_path(entry: &walkdir::DirEntry) -> Result<FsPath, ScanError> {
         let path = entry.path().to_path_buf();
-        let metadata = entry.metadata().map_err(|e| ParseError::Io {
+        let metadata = entry.metadata().map_err(|e| ScanError::Traversal {
             path: path.clone(),
             source: e.into(),
         })?;
 
         if metadata.is_dir() {
-            let dir =
-                DirPath::new(path.clone()).map_err(|e| ParseError::Io {
-                    path,
-                    source: e,
-                })?;
+            let dir = DirPath::new(path.clone()).map_err(|_e| {
+                ScanError::Path(PathError::InvalidUtf8(path.clone()))
+            })?;
             Ok(FsPath::Dir(dir))
         } else {
-            let file =
-                FilePath::new(path.clone()).map_err(|e| ParseError::Io {
-                    path,
-                    source: e,
-                })?;
+            let file = FilePath::new(path.clone()).map_err(|_e| {
+                ScanError::Path(PathError::InvalidUtf8(path.clone()))
+            })?;
             Ok(FsPath::File(file))
         }
     }
@@ -278,7 +276,7 @@ impl DirScanner {
         &self,
         entry: &walkdir::DirEntry,
         input: &DirScanInput,
-    ) -> Result<Option<PathBuf>, ParseError> {
+    ) -> Result<Option<PathBuf>, ScanError> {
         let path = entry.path();
 
         // Filter by file type
@@ -313,19 +311,19 @@ impl DirScanner {
     fn scan_internal(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<(PathBuf, std::fs::Metadata)>, ParseError> {
+    ) -> Result<Vec<(PathBuf, std::fs::Metadata)>, ScanError> {
         let walker = self.build_walker(&input);
         let mut results = Vec::new();
 
         for entry in walker {
-            let entry = entry.map_err(|e| ParseError::Io {
+            let entry = entry.map_err(|e| ScanError::Traversal {
                 path: e.path().map(Path::to_path_buf).unwrap_or_default(),
                 source: e.into(),
             })?;
 
             if let Some(relative) = self.filter_entry(&entry, &input)? {
                 let metadata =
-                    entry.metadata().map_err(|e| ParseError::Io {
+                    entry.metadata().map_err(|e| ScanError::Traversal {
                         path: relative.clone(),
                         source: e.into(),
                     })?;
@@ -378,23 +376,20 @@ impl DirScanner {
     fn matches_pattern(
         path: &Path,
         pattern: Option<&str>,
-    ) -> Result<bool, ParseError> {
+    ) -> Result<bool, ScanError> {
         let Some(pattern_str) = pattern else {
             return Ok(true); // No filter specified
         };
 
-        let glob_pattern =
-            glob::Pattern::new(pattern_str).map_err(|e| ParseError::Io {
-                path: PathBuf::from(pattern_str),
-                source: std::io::Error::other(e),
-            })?;
+        let glob_pattern = glob::Pattern::new(pattern_str).map_err(|e| {
+            ScanError::InvalidPattern {
+                pattern: pattern_str.into(),
+                message: e.msg.into(),
+            }
+        })?;
 
-        let path_str = path.to_str().ok_or_else(|| ParseError::Io {
-            path: path.to_path_buf(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid UTF-8 in path",
-            ),
+        let path_str = path.to_str().ok_or_else(|| {
+            ScanError::Path(PathError::InvalidUtf8(path.to_path_buf()))
         })?;
 
         Ok(glob_pattern.matches(path_str))

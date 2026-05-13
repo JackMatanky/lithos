@@ -74,19 +74,19 @@ impl FsEntry {
 }
 
 impl TryFrom<walkdir::DirEntry> for FsEntry {
-    type Error = super::error::ParseError;
+    type Error = super::error::ScanError;
 
     #[inline]
     fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
         use super::{
-            error::ParseError,
+            error::{PathError, ScanError},
             metadata::{DirMetadata, FileMetadata},
         };
 
         // Get metadata first (before consuming entry)
         let std_metadata = entry.metadata().map_err(|e| {
             let io_err = std::io::Error::other(format!("walkdir error: {e}"));
-            ParseError::Io {
+            ScanError::Traversal {
                 path: entry.path().to_path_buf(),
                 source: io_err,
             }
@@ -96,33 +96,21 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
         let path = entry.into_path();
 
         if std_metadata.is_dir() {
-            let dir_path = DirPath::new(path.clone()).map_err(|source| {
-                ParseError::Io {
-                    path: path.clone(), // Only clone on error path
-                    source,
-                }
+            let dir_path = DirPath::new(path.clone()).map_err(|_source| {
+                ScanError::Path(PathError::NotADirectory(path.clone()))
             })?;
             let dir_metadata =
-                DirMetadata::try_from(&std_metadata).map_err(|source| {
-                    ParseError::Io {
-                        path, // Move path (last use)
-                        source,
-                    }
+                DirMetadata::try_from(&std_metadata).map_err(|_source| {
+                    ScanError::Path(PathError::NotADirectory(path))
                 })?;
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
-            let file_path = FilePath::new(path.clone()).map_err(|source| {
-                ParseError::Io {
-                    path: path.clone(), // Only clone on error path
-                    source,
-                }
+            let file_path = FilePath::new(path.clone()).map_err(|_source| {
+                ScanError::Path(PathError::NotAFile(path.clone()))
             })?;
             let file_metadata =
-                FileMetadata::try_from(&std_metadata).map_err(|source| {
-                    ParseError::Io {
-                        path, // Move path (last use)
-                        source,
-                    }
+                FileMetadata::try_from(&std_metadata).map_err(|_source| {
+                    ScanError::Path(PathError::NotAFile(path))
                 })?;
             Ok(Self::File(FsFile::new(file_path, file_metadata)))
         }
@@ -211,7 +199,7 @@ mod tests {
     use std::time::SystemTime;
 
     use super::*;
-    use crate::fs::{error::ParseError, metadata::FsTimes};
+    use crate::fs::{error::ScanError, metadata::FsTimes};
 
     mod fs_entry {
         use super::*;
@@ -277,8 +265,8 @@ mod tests {
                 assert!(result.is_err(), "Expected error for missing file");
                 let error = result.unwrap_err();
                 assert!(
-                    matches!(error, ParseError::Io { .. }),
-                    "Expected ParseError::Io, got {error:?}"
+                    matches!(error, ScanError::Traversal { .. }),
+                    "Expected ScanError::Traversal, got {error:?}"
                 );
             }
         }

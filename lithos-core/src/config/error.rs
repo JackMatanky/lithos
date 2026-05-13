@@ -3,6 +3,8 @@
 //! This module defines the [`ConfigError`] hierarchy, covering ingestion,
 //! validation failures, and storage-layer errors.
 
+use std::path::PathBuf;
+
 use crate::db::DbError;
 
 /// Primary error type for configuration operations.
@@ -199,13 +201,6 @@ impl From<crate::fs::ParseError> for ConfigIngestError {
     #[inline]
     fn from(error: crate::fs::ParseError) -> Self {
         match error {
-            crate::fs::ParseError::Io {
-                path,
-                source,
-            } => Self::Io {
-                path,
-                source,
-            },
             crate::fs::ParseError::Toml {
                 path,
                 message,
@@ -255,13 +250,81 @@ impl From<crate::fs::ParseError> for ConfigIngestError {
                     "Unsupported format",
                 ),
             },
-            crate::fs::ParseError::NotInBasePath {
+        }
+    }
+}
+
+impl From<crate::fs::ReadError> for ConfigIngestError {
+    #[inline]
+    fn from(error: crate::fs::ReadError) -> Self {
+        match error {
+            crate::fs::ReadError::Io {
+                path,
+                source,
+            } => Self::Io {
+                path,
+                source,
+            },
+            crate::fs::ReadError::NotInBase {
                 path,
                 base,
             } => Self::NotInBasePath {
                 path,
                 base,
             },
+        }
+    }
+}
+
+impl From<crate::fs::FsError> for ConfigIngestError {
+    #[inline]
+    fn from(error: crate::fs::FsError) -> Self {
+        match error {
+            crate::fs::FsError::Read(e) => Self::from(e),
+            crate::fs::FsError::Scan(e) => Self::from(e),
+            crate::fs::FsError::Parse(e) => Self::from(e),
+            crate::fs::FsError::Path(e) => Self::from(e),
+            crate::fs::FsError::Validation(e) => Self::Io {
+                path: PathBuf::from("unknown"),
+                source: std::io::Error::other(e.to_string()),
+            },
+        }
+    }
+}
+
+impl From<crate::fs::ScanError> for ConfigIngestError {
+    #[inline]
+    fn from(error: crate::fs::ScanError) -> Self {
+        match error {
+            crate::fs::ScanError::Traversal {
+                path,
+                source,
+            } => Self::Io {
+                path,
+                source,
+            },
+            crate::fs::ScanError::InvalidPattern {
+                pattern,
+                message,
+            } => Self::Io {
+                path: PathBuf::from(pattern.as_ref()),
+                source: std::io::Error::other(message.as_ref()),
+            },
+            crate::fs::ScanError::UnsupportedEntryType(path) => Self::Io {
+                path,
+                source: std::io::Error::other("Unsupported entry type"),
+            },
+            crate::fs::ScanError::Path(e) => Self::from(e),
+        }
+    }
+}
+
+impl From<crate::fs::PathError> for ConfigIngestError {
+    #[inline]
+    fn from(error: crate::fs::PathError) -> Self {
+        Self::Io {
+            path: PathBuf::from("unknown"),
+            source: std::io::Error::other(error.to_string()),
         }
     }
 }
