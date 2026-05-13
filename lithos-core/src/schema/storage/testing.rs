@@ -51,13 +51,12 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        error::SchemaStorageError,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs, SchemaIndex},
         inheritance::InheritanceGraph,
         property::{PropertyMap, PropertyName},
-        repository::{
-            SchemaReadRepository, SchemaStorageV2Error, SchemaWriteRepository,
-        },
+        repository::{SchemaReadRepository, SchemaWriteRepository},
         views::{RawPropertyBankView, RawSchemaView, RawView as _},
     },
 };
@@ -216,8 +215,8 @@ impl InMemoryError {
     reason = "error conversion consumes formatted message"
 )]
 #[inline]
-fn to_v2_error(err: InMemoryError) -> SchemaStorageV2Error {
-    SchemaStorageV2Error::from(DbError::Corruption(err.to_string()))
+fn to_storage_error(err: InMemoryError) -> SchemaStorageError {
+    SchemaStorageError::from(DbError::Corruption(err.to_string()))
 }
 
 impl SchemaReadRepository for InMemoryRepository {
@@ -225,9 +224,9 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_schema_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Schema>, SchemaStorageV2Error> {
+    ) -> Result<Option<Schema>, SchemaStorageError> {
         let schemas = self.schemas.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("find_schema_by_id"))
+            to_storage_error(InMemoryError::lock_poisoned("find_schema_by_id"))
         })?;
         Ok(schemas.get(&id).cloned())
     }
@@ -236,9 +235,11 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_many_schemas_by_id(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
         let schemas = self.schemas.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("find_many_schemas_by_id"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "find_many_schemas_by_id",
+            ))
         })?;
         Ok(ids.iter().map(|id| schemas.get(id).cloned()).collect())
     }
@@ -247,17 +248,19 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_schemas_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Schema>, SchemaStorageError> {
         let schemas = self.schemas.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("find_schemas_by_ids"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "find_schemas_by_ids",
+            ))
         })?;
         Ok(ids.iter().filter_map(|id| schemas.get(id).cloned()).collect())
     }
 
     #[inline]
-    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
         let schemas = self.schemas.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("list_schemas"))
+            to_storage_error(InMemoryError::lock_poisoned("list_schemas"))
         })?;
         Ok(schemas.values().cloned().collect())
     }
@@ -268,10 +271,10 @@ impl SchemaReadRepository for InMemoryRepository {
         property_names: &[PropertyName],
     ) -> Result<
         std::collections::HashMap<SchemaId, Vec<PropertyName>>,
-        SchemaStorageV2Error,
+        SchemaStorageError,
     > {
         let schemas = self.schemas.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_schemas_using_properties",
             ))
         })?;
@@ -295,9 +298,11 @@ impl SchemaReadRepository for InMemoryRepository {
     fn get_raw_schema_view(
         &self,
         id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
         let views = self.raw_schema_views.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("get_raw_schema_view"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "get_raw_schema_view",
+            ))
         })?;
         Ok(views.get(&id).cloned())
     }
@@ -306,14 +311,14 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_raw_schema_view_by_path(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_raw_schema_view_by_path (path_to_id)",
             ))
         })?;
         let views = self.raw_schema_views.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_raw_schema_view_by_path (views)",
             ))
         })?;
@@ -324,14 +329,14 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_raw_schema_views_by_paths(
         &self,
         paths: &[RelativePath],
-    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_raw_schema_views_by_paths (path_to_id)",
             ))
         })?;
         let views = self.raw_schema_views.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_raw_schema_views_by_paths (views)",
             ))
         })?;
@@ -346,9 +351,9 @@ impl SchemaReadRepository for InMemoryRepository {
     #[inline]
     fn get_property_bank(
         &self,
-    ) -> Result<Option<PropertyBank>, SchemaStorageV2Error> {
+    ) -> Result<Option<PropertyBank>, SchemaStorageError> {
         let bank = self.property_bank.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("get_property_bank"))
+            to_storage_error(InMemoryError::lock_poisoned("get_property_bank"))
         })?;
         Ok(bank.clone())
     }
@@ -356,9 +361,11 @@ impl SchemaReadRepository for InMemoryRepository {
     #[inline]
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageV2Error> {
+    ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageError> {
         let graph = self.topological_graph.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("get_topological_graph"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "get_topological_graph",
+            ))
         })?;
         Ok(graph.clone())
     }
@@ -367,9 +374,9 @@ impl SchemaReadRepository for InMemoryRepository {
     fn get_raw_property_bank_view(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
         let views = self.raw_bank_views.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "get_raw_property_bank_view",
             ))
         })?;
@@ -380,9 +387,11 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_schema_id_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+    ) -> Result<Option<SchemaId>, SchemaStorageError> {
         let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("find_schema_id_by_name"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "find_schema_id_by_name",
+            ))
         })?;
         Ok(name_to_id.get(name).copied())
     }
@@ -391,9 +400,11 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_schema_id_by_path(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+    ) -> Result<Option<SchemaId>, SchemaStorageError> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("find_schema_id_by_path"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "find_schema_id_by_path",
+            ))
         })?;
         Ok(path_to_id.get(path).copied())
     }
@@ -402,9 +413,9 @@ impl SchemaReadRepository for InMemoryRepository {
     fn find_schema_ids_by_paths(
         &self,
         paths: &[RelativePath],
-    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "find_schema_ids_by_paths",
             ))
         })?;
@@ -414,9 +425,9 @@ impl SchemaReadRepository for InMemoryRepository {
     #[inline]
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<NameIdPairs, SchemaStorageV2Error> {
+    ) -> Result<NameIdPairs, SchemaStorageError> {
         let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "list_schema_name_id_pairs",
             ))
         })?;
@@ -428,9 +439,9 @@ impl SchemaReadRepository for InMemoryRepository {
     #[inline]
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<PathIdPairs, SchemaStorageV2Error> {
+    ) -> Result<PathIdPairs, SchemaStorageError> {
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "list_schema_path_id_pairs",
             ))
         })?;
@@ -440,14 +451,14 @@ impl SchemaReadRepository for InMemoryRepository {
     }
 
     #[inline]
-    fn get_schema_index(&self) -> Result<SchemaIndex, SchemaStorageV2Error> {
+    fn get_schema_index(&self) -> Result<SchemaIndex, SchemaStorageError> {
         let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "get_schema_index (name_to_id)",
             ))
         })?;
         let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "get_schema_index (path_to_id)",
             ))
         })?;
@@ -455,19 +466,22 @@ impl SchemaReadRepository for InMemoryRepository {
             name_to_id.iter().map(|(n, id)| (n.clone(), *id)).collect();
         let path_pairs: Vec<_> =
             path_to_id.iter().map(|(p, id)| (p.clone(), *id)).collect();
-        SchemaIndex::from_pairs(name_pairs, path_pairs)
-            .map_err(|e| to_v2_error(InMemoryError::internal(e.to_string())))
+        SchemaIndex::from_pairs(name_pairs, path_pairs).map_err(|e| {
+            to_storage_error(InMemoryError::internal(e.to_string()))
+        })
     }
 }
 
 impl SchemaWriteRepository for InMemoryRepository {
     #[inline]
-    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error> {
+    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
         let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("save_schema (schemas)"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "save_schema (schemas)",
+            ))
         })?;
         let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_schema (name_to_id)",
             ))
         })?;
@@ -480,14 +494,14 @@ impl SchemaWriteRepository for InMemoryRepository {
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_many_schemas (schemas)",
             ))
         })?;
         let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_many_schemas (name_to_id)",
             ))
         })?;
@@ -502,9 +516,9 @@ impl SchemaWriteRepository for InMemoryRepository {
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         let mut storage = self.property_bank.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("save_property_bank"))
+            to_storage_error(InMemoryError::lock_poisoned("save_property_bank"))
         })?;
         *storage = Some(bank.clone());
         Ok(())
@@ -515,9 +529,9 @@ impl SchemaWriteRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
         view: &RawPropertyBankView,
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         let mut views = self.raw_bank_views.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_raw_property_bank_view",
             ))
         })?;
@@ -530,14 +544,14 @@ impl SchemaWriteRepository for InMemoryRepository {
         &self,
         id: SchemaId,
         view: &RawSchemaView,
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         let mut views = self.raw_schema_views.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_raw_schema_view (views)",
             ))
         })?;
         let mut path_to_id = self.path_to_id.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "save_raw_schema_view (path_to_id)",
             ))
         })?;
@@ -550,26 +564,30 @@ impl SchemaWriteRepository for InMemoryRepository {
     fn save_topological_graph(
         &self,
         graph: &InheritanceGraph<()>,
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         let mut storage = self.topological_graph.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("save_topological_graph"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "save_topological_graph",
+            ))
         })?;
         *storage = Some(graph.clone());
         Ok(())
     }
 
     #[inline]
-    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageV2Error> {
+    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageError> {
         let mut schemas = self.schemas.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned("delete_schema (schemas)"))
+            to_storage_error(InMemoryError::lock_poisoned(
+                "delete_schema (schemas)",
+            ))
         })?;
         let mut name_to_id = self.name_to_id.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "delete_schema (name_to_id)",
             ))
         })?;
         let mut raw_views = self.raw_schema_views.write().map_err(|_| {
-            to_v2_error(InMemoryError::lock_poisoned(
+            to_storage_error(InMemoryError::lock_poisoned(
                 "delete_schema (raw_views)",
             ))
         })?;

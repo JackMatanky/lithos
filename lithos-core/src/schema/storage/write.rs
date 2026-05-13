@@ -8,9 +8,10 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        error::SchemaStorageError,
         identifier::SchemaName,
         inheritance::InheritanceGraph,
-        repository::{SchemaStorageV2Error, SchemaWriteRepository},
+        repository::SchemaWriteRepository,
         storage::{
             RedbRepository,
             tables::{
@@ -25,10 +26,10 @@ use crate::{
 
 impl SchemaWriteRepository for RedbRepository {
     #[inline]
-    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error> {
-        let bytes = serialize(schema).map_err(SchemaStorageV2Error::from)?;
+    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
+        let bytes = serialize(schema).map_err(SchemaStorageError::from)?;
         let id_bytes =
-            serialize(schema.id()).map_err(SchemaStorageV2Error::from)?;
+            serialize(schema.id()).map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -42,14 +43,14 @@ impl SchemaWriteRepository for RedbRepository {
 
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         self.store
             .write(|tx| {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
@@ -67,15 +68,15 @@ impl SchemaWriteRepository for RedbRepository {
                 }
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaStorageV2Error> {
-        let bytes = serialize(bank).map_err(SchemaStorageV2Error::from)?;
+    ) -> Result<(), SchemaStorageError> {
+        let bytes = serialize(bank).map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -84,7 +85,7 @@ impl SchemaWriteRepository for RedbRepository {
                 table.insert(PROPERTY_BANK_KEY.to_owned(), bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
@@ -92,8 +93,8 @@ impl SchemaWriteRepository for RedbRepository {
         &self,
         path: &RelativePath,
         view: &RawPropertyBankView,
-    ) -> Result<(), SchemaStorageV2Error> {
-        let bytes = serialize(view).map_err(SchemaStorageV2Error::from)?;
+    ) -> Result<(), SchemaStorageError> {
+        let bytes = serialize(view).map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -103,7 +104,7 @@ impl SchemaWriteRepository for RedbRepository {
                 table.insert(path_str, bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
@@ -111,9 +112,9 @@ impl SchemaWriteRepository for RedbRepository {
         &self,
         id: crate::schema::identifier::SchemaId,
         view: &RawSchemaView,
-    ) -> Result<(), SchemaStorageV2Error> {
-        let view_bytes = serialize(view).map_err(SchemaStorageV2Error::from)?;
-        let id_bytes = serialize(&id).map_err(SchemaStorageV2Error::from)?;
+    ) -> Result<(), SchemaStorageError> {
+        let view_bytes = serialize(view).map_err(SchemaStorageError::from)?;
+        let id_bytes = serialize(&id).map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -142,15 +143,15 @@ impl SchemaWriteRepository for RedbRepository {
                 path_table.insert(path_key, id_bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn save_topological_graph(
         &self,
         graph: &InheritanceGraph<()>,
-    ) -> Result<(), SchemaStorageV2Error> {
-        let bytes = serialize(graph).map_err(SchemaStorageV2Error::from)?;
+    ) -> Result<(), SchemaStorageError> {
+        let bytes = serialize(graph).map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -162,14 +163,14 @@ impl SchemaWriteRepository for RedbRepository {
                 )?;
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn delete_schema(
         &self,
         id: crate::schema::identifier::SchemaId,
-    ) -> Result<(), SchemaStorageV2Error> {
+    ) -> Result<(), SchemaStorageError> {
         self.store
             .write(|tx| {
                 let ctx = load_delete_context(tx, id)?;
@@ -182,7 +183,7 @@ impl SchemaWriteRepository for RedbRepository {
                 remove_raw_schema_view(tx, id)?;
                 Ok(())
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 }
 

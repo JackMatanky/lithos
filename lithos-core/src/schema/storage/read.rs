@@ -10,10 +10,11 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        error::SchemaStorageError,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs},
         property::PropertyName,
-        repository::{SchemaReadRepository, SchemaStorageV2Error},
+        repository::SchemaReadRepository,
         storage::{
             RedbRepository,
             tables::{
@@ -31,7 +32,7 @@ impl SchemaReadRepository for RedbRepository {
     fn find_schema_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Schema>, SchemaStorageV2Error> {
+    ) -> Result<Option<Schema>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -46,14 +47,14 @@ impl SchemaReadRepository for RedbRepository {
                 let schema = deserialize(guard.value())?;
                 Ok(Some(schema))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_many_schemas_by_id(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -73,20 +74,20 @@ impl SchemaReadRepository for RedbRepository {
 
                 Ok(results)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_schemas_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Schema>, SchemaStorageError> {
         self.find_many_schemas_by_id(ids)
             .map(|schemas| schemas.into_iter().flatten().collect())
     }
 
     #[inline]
-    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -102,15 +103,14 @@ impl SchemaReadRepository for RedbRepository {
 
                 Ok(schemas)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_schemas_using_properties(
         &self,
         property_names: &[PropertyName],
-    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageV2Error>
-    {
+    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageError> {
         let target_names: HashSet<&str> =
             property_names.iter().map(PropertyName::as_str).collect();
 
@@ -134,7 +134,7 @@ impl SchemaReadRepository for RedbRepository {
     fn get_raw_schema_view(
         &self,
         id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -150,14 +150,14 @@ impl SchemaReadRepository for RedbRepository {
                 let view = deserialize(guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_raw_schema_view_by_path(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(path_table) =
@@ -184,14 +184,14 @@ impl SchemaReadRepository for RedbRepository {
                 let view = deserialize(view_guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_raw_schema_views_by_paths(
         &self,
         paths: &[RelativePath],
-    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 // Open both tables
@@ -227,13 +227,13 @@ impl SchemaReadRepository for RedbRepository {
                 }
                 Ok(results)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn get_property_bank(
         &self,
-    ) -> Result<Option<PropertyBank>, SchemaStorageV2Error> {
+    ) -> Result<Option<PropertyBank>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -250,7 +250,7 @@ impl SchemaReadRepository for RedbRepository {
                 let bank = deserialize(guard.value())?;
                 Ok(Some(bank))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
@@ -258,7 +258,7 @@ impl SchemaReadRepository for RedbRepository {
         &self,
     ) -> Result<
         Option<crate::schema::inheritance::InheritanceGraph<()>>,
-        SchemaStorageV2Error,
+        SchemaStorageError,
     > {
         self.store
             .read(|tx| {
@@ -277,14 +277,14 @@ impl SchemaReadRepository for RedbRepository {
                 let graph = deserialize(guard.value())?;
                 Ok(Some(graph))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn get_raw_property_bank_view(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error> {
+    ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -301,14 +301,14 @@ impl SchemaReadRepository for RedbRepository {
                 let view = deserialize(guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_schema_id_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+    ) -> Result<Option<SchemaId>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -325,14 +325,14 @@ impl SchemaReadRepository for RedbRepository {
                 let id = deserialize(guard.value())?;
                 Ok(Some(id))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_schema_id_by_path(
         &self,
         path: &RelativePath,
-    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+    ) -> Result<Option<SchemaId>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -349,14 +349,14 @@ impl SchemaReadRepository for RedbRepository {
                 let id = deserialize(guard.value())?;
                 Ok(Some(id))
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn find_schema_ids_by_paths(
         &self,
         paths: &[RelativePath],
-    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageV2Error> {
+    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -378,13 +378,13 @@ impl SchemaReadRepository for RedbRepository {
                 }
                 Ok(results)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<NameIdPairs, SchemaStorageV2Error> {
+    ) -> Result<NameIdPairs, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -406,13 +406,13 @@ impl SchemaReadRepository for RedbRepository {
                 }
                 Ok(pairs)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<PathIdPairs, SchemaStorageV2Error> {
+    ) -> Result<PathIdPairs, SchemaStorageError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -434,19 +434,19 @@ impl SchemaReadRepository for RedbRepository {
                 }
                 Ok(pairs)
             })
-            .map_err(SchemaStorageV2Error::from)
+            .map_err(SchemaStorageError::from)
     }
 
     #[inline]
     fn get_schema_index(
         &self,
-    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageV2Error> {
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageError> {
         let name_pairs = self.list_schema_name_id_pairs()?;
         let path_pairs = self.list_schema_path_id_pairs()?;
 
         crate::schema::index::SchemaIndex::from_pairs(name_pairs, path_pairs)
             .map_err(|e| {
-                SchemaStorageV2Error::from(crate::db::DbError::Deserialization(
+                SchemaStorageError::from(crate::db::DbError::Deserialization(
                     e.to_string(),
                 ))
             })
