@@ -104,234 +104,262 @@ impl SchemaWriteRepository for SchemaRedbRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    mod save_schema {
+        use std::sync::Arc;
 
-    use crate::{
-        db::Store,
-        schema::{
-            aggregate::Schema,
-            identifier::{SchemaId, SchemaName},
-            property::PropertyMap,
-            repository::{SchemaReadRepository, SchemaWriteRepository},
-            storage_v2::SchemaRedbRepository,
-        },
-    };
+        use crate::{
+            db::Store,
+            schema::{
+                aggregate::Schema,
+                identifier::{SchemaId, SchemaName},
+                property::PropertyMap,
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+            },
+        };
 
-    #[test]
-    fn save_schema_persists_data() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
+        #[test]
+        fn persists_data() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
 
-        let id = SchemaId::new();
-        let name = SchemaName::try_new("test-schema").unwrap();
-        let schema =
-            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 
-        repo.save_schema(&schema).unwrap();
+            repo.save_schema(&schema).unwrap();
+        }
+
+        #[test]
+        fn can_be_retrieved() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+
+            repo.save_schema(&schema).unwrap();
+
+            let found = repo
+                .find_schema_by_id(id)
+                .unwrap()
+                .expect("Schema should be found");
+            assert_eq!(found.id(), schema.id());
+            assert_eq!(found.name(), schema.name());
+        }
+
+        #[test]
+        fn rolls_back_on_error() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store.clone());
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+
+            repo.save_schema(&schema).unwrap();
+
+            // Verify that a failed write transaction rolls back
+            let result: Result<(), crate::db::DbError> = store.write(|tx| {
+                use crate::schema::storage_v2::tables::SCHEMAS;
+                let mut table = tx.try_open_table(SCHEMAS.definition())?;
+                let id2 = SchemaId::new();
+                let name2 = SchemaName::try_new("will-rollback").unwrap();
+                let schema2 = Schema::new(
+                    id2,
+                    name2,
+                    Vec::new(),
+                    vec![],
+                    PropertyMap::new(),
+                );
+                let bytes = crate::db::serialize(&schema2)?;
+                table.insert(*schema2.id(), bytes.as_slice())?;
+                Err(crate::db::DbError::Serialization(
+                    "forced failure".to_owned(),
+                ))
+            });
+
+            assert!(result.is_err());
+
+            // Original schema should still exist
+            let found = repo.find_schema_by_id(id).unwrap();
+            assert!(found.is_some());
+        }
+
+        #[test]
+        fn updates_name_index() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_from("test-schema-index").unwrap();
+            let schema = Schema::new(
+                id,
+                name.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+
+            repo.save_schema(&schema).unwrap();
+
+            let found_id = repo.find_schema_id_by_name(&name).unwrap();
+            assert!(found_id.is_some());
+            assert_eq!(found_id.unwrap(), id);
+        }
     }
 
-    #[test]
-    fn save_schema_can_be_retrieved() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
+    mod save_many_schemas {
+        use std::sync::Arc;
 
-        let id = SchemaId::new();
-        let name = SchemaName::try_new("test-schema").unwrap();
-        let schema =
-            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+        use crate::{
+            db::Store,
+            schema::{
+                aggregate::Schema,
+                identifier::{SchemaId, SchemaName},
+                property::PropertyMap,
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+            },
+        };
 
-        repo.save_schema(&schema).unwrap();
+        #[test]
+        fn persists_all() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
 
-        let found = repo
-            .find_schema_by_id(id)
-            .unwrap()
-            .expect("Schema should be found");
-        assert_eq!(found.id(), schema.id());
-        assert_eq!(found.name(), schema.name());
-    }
-
-    #[test]
-    fn save_schema_rolls_back_on_error() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store.clone());
-
-        let id = SchemaId::new();
-        let name = SchemaName::try_new("test-schema").unwrap();
-        let schema =
-            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
-
-        repo.save_schema(&schema).unwrap();
-
-        // Verify that a failed write transaction rolls back
-        let result: Result<(), crate::db::DbError> = store.write(|tx| {
-            use crate::schema::storage_v2::tables::SCHEMAS;
-            let mut table = tx.try_open_table(SCHEMAS.definition())?;
+            let id1 = SchemaId::new();
             let id2 = SchemaId::new();
-            let name2 = SchemaName::try_new("will-rollback").unwrap();
+            let name1 = SchemaName::try_new("schema-1").unwrap();
+            let name2 = SchemaName::try_new("schema-2").unwrap();
+
+            let schema1 = Schema::new(
+                id1,
+                name1.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+            let schema2 = Schema::new(
+                id2,
+                name2.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+
+            repo.save_many_schemas(&[schema1.clone(), schema2.clone()])
+                .unwrap();
+
+            let found1 = repo.find_schema_by_id(id1).unwrap().unwrap();
+            let found2 = repo.find_schema_by_id(id2).unwrap().unwrap();
+
+            assert_eq!(found1, schema1);
+            assert_eq!(found2, schema2);
+
+            // Verify name index was updated for both
+            assert_eq!(repo.find_schema_id_by_name(&name1).unwrap(), Some(id1));
+            assert_eq!(repo.find_schema_id_by_name(&name2).unwrap(), Some(id2));
+        }
+
+        #[test]
+        fn all_or_nothing() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id1 = SchemaId::new();
+            let id2 = SchemaId::new();
+            let name1 = SchemaName::try_new("schema-1").unwrap();
+            let name2 = SchemaName::try_new("schema-2").unwrap();
+
+            let schema1 =
+                Schema::new(id1, name1, Vec::new(), vec![], PropertyMap::new());
             let schema2 =
                 Schema::new(id2, name2, Vec::new(), vec![], PropertyMap::new());
-            let bytes = crate::db::serialize(&schema2)?;
-            table.insert(*schema2.id(), bytes.as_slice())?;
-            Err(crate::db::DbError::Serialization("forced failure".to_owned()))
-        });
 
-        assert!(result.is_err());
+            repo.save_many_schemas(&[schema1, schema2]).unwrap();
 
-        // Original schema should still exist
-        let found = repo.find_schema_by_id(id).unwrap();
-        assert!(found.is_some());
+            let results = repo.find_many_schemas_by_id(&[id1, id2]).unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert!(results.first().is_some_and(Option::is_some));
+            assert!(results.get(1).is_some_and(Option::is_some));
+        }
+
+        #[test]
+        fn empty_slice() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            // Should not error on empty batch
+            repo.save_many_schemas(&[]).unwrap();
+        }
     }
 
-    #[test]
-    fn save_many_schemas_persists_all() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
+    mod save_property_bank {
+        use std::sync::Arc;
 
-        let id1 = SchemaId::new();
-        let id2 = SchemaId::new();
-        let name1 = SchemaName::try_new("schema-1").unwrap();
-        let name2 = SchemaName::try_new("schema-2").unwrap();
-
-        let schema1 = Schema::new(
-            id1,
-            name1.clone(),
-            Vec::new(),
-            vec![],
-            PropertyMap::new(),
-        );
-        let schema2 = Schema::new(
-            id2,
-            name2.clone(),
-            Vec::new(),
-            vec![],
-            PropertyMap::new(),
-        );
-
-        repo.save_many_schemas(&[schema1.clone(), schema2.clone()]).unwrap();
-
-        let found1 = repo.find_schema_by_id(id1).unwrap().unwrap();
-        let found2 = repo.find_schema_by_id(id2).unwrap().unwrap();
-
-        assert_eq!(found1, schema1);
-        assert_eq!(found2, schema2);
-
-        // Verify name index was updated for both
-        assert_eq!(repo.find_schema_id_by_name(&name1).unwrap(), Some(id1));
-        assert_eq!(repo.find_schema_id_by_name(&name2).unwrap(), Some(id2));
-    }
-
-    #[test]
-    fn save_many_schemas_all_or_nothing() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
-
-        let id1 = SchemaId::new();
-        let id2 = SchemaId::new();
-        let name1 = SchemaName::try_new("schema-1").unwrap();
-        let name2 = SchemaName::try_new("schema-2").unwrap();
-
-        let schema1 =
-            Schema::new(id1, name1, Vec::new(), vec![], PropertyMap::new());
-        let schema2 =
-            Schema::new(id2, name2, Vec::new(), vec![], PropertyMap::new());
-
-        repo.save_many_schemas(&[schema1, schema2]).unwrap();
-
-        let results = repo.find_many_schemas_by_id(&[id1, id2]).unwrap();
-
-        assert_eq!(results.len(), 2);
-        assert!(results.first().is_some_and(Option::is_some));
-        assert!(results.get(1).is_some_and(Option::is_some));
-    }
-
-    #[test]
-    fn save_many_schemas_empty_slice() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
-
-        // Should not error on empty batch
-        repo.save_many_schemas(&[]).unwrap();
-    }
-
-    #[test]
-    fn save_property_bank_persists() {
-        use crate::schema::{
-            bank::PropertyBank, repository::SchemaReadRepository,
+        use crate::{
+            db::Store,
+            schema::{
+                bank::PropertyBank,
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+            },
         };
 
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
+        #[test]
+        fn persists() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
 
-        let bank = PropertyBank::new();
-        repo.save_property_bank(&bank).unwrap();
+            let bank = PropertyBank::new();
+            repo.save_property_bank(&bank).unwrap();
 
-        // Verify it was saved by retrieving it
-        let retrieved = repo.get_property_bank().unwrap();
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap(), bank);
-    }
+            // Verify it was saved by retrieving it
+            let retrieved = repo.get_property_bank().unwrap();
+            assert!(retrieved.is_some());
+            assert_eq!(retrieved.unwrap(), bank);
+        }
 
-    #[test]
-    fn save_property_bank_overwrites_previous() {
-        use crate::schema::{
-            bank::PropertyBank, repository::SchemaReadRepository,
-        };
+        #[test]
+        fn overwrites_previous() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
 
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
+            // Save first bank
+            let bank1 = PropertyBank::new();
+            repo.save_property_bank(&bank1).unwrap();
 
-        // Save first bank
-        let bank1 = PropertyBank::new();
-        repo.save_property_bank(&bank1).unwrap();
+            // Save second bank (new instance)
+            let bank2 = PropertyBank::new();
+            repo.save_property_bank(&bank2).unwrap();
 
-        // Save second bank (new instance)
-        let bank2 = PropertyBank::new();
-        repo.save_property_bank(&bank2).unwrap();
-
-        // Should successfully overwrite (singleton behavior)
-        let retrieved = repo.get_property_bank().unwrap();
-        assert!(retrieved.is_some());
-    }
-
-    #[test]
-    fn save_schema_updates_name_index() {
-        use crate::schema::repository::SchemaReadRepository;
-
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = SchemaRedbRepository::new(store);
-
-        let id = SchemaId::new();
-        let name = SchemaName::try_from("test-schema-index").unwrap();
-        let schema = Schema::new(
-            id,
-            name.clone(),
-            Vec::new(),
-            vec![],
-            crate::schema::property::PropertyMap::new(),
-        );
-
-        repo.save_schema(&schema).unwrap();
-
-        let found_id = repo.find_schema_id_by_name(&name).unwrap();
-        assert!(found_id.is_some());
-        assert_eq!(found_id.unwrap(), id);
+            // Should successfully overwrite (singleton behavior)
+            let retrieved = repo.get_property_bank().unwrap();
+            assert!(retrieved.is_some());
+        }
     }
 }

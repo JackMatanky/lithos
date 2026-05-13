@@ -150,7 +150,7 @@ pub trait SchemaReadRepository {
     /// fails.
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<Vec<(SchemaName, SchemaId)>, SchemaStorageV2Error>;
+    ) -> Result<crate::schema::index::NameIdPairs, SchemaStorageV2Error>;
 
     /// List all schema path to ID mappings.
     ///
@@ -160,7 +160,7 @@ pub trait SchemaReadRepository {
     /// fails.
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<Vec<(RelativePath, SchemaId)>, SchemaStorageV2Error>;
+    ) -> Result<crate::schema::index::PathIdPairs, SchemaStorageV2Error>;
 
     /// Get unified index combining name, path, and ID lookups.
     ///

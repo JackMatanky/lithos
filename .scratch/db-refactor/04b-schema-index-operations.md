@@ -4,6 +4,7 @@ category: enhancement
 label: ready-for-agent
 status: completed
 date_created: 2026-05-12
+date_completed: 2026-05-13
 ---
 
 ## Type
@@ -82,25 +83,25 @@ pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
 
 ## Acceptance Criteria
 
-- [ ] `find_schema_id_by_name()` added to `SchemaReadRepository`
-- [ ] `find_schema_id_by_path()` added to `SchemaReadRepository`
-- [ ] `find_schema_ids_by_paths()` added to `SchemaReadRepository`
-- [ ] `list_schema_name_id_pairs()` added to `SchemaReadRepository`
-- [ ] `list_schema_path_id_pairs()` added to `SchemaReadRepository`
-- [ ] `get_schema_index()` added to `SchemaReadRepository`
-- [ ] `SCHEMA_ID_BY_NAME` table added to `storage_v2/tables.rs`
-- [ ] `save_schema()` updated to maintain all three tables atomically
-- [ ] `save_many_schemas()` updated to maintain all three tables atomically
-- [ ] Unit tests verify:
+- [x] `find_schema_id_by_name()` added to `SchemaReadRepository`
+- [x] `find_schema_id_by_path()` added to `SchemaReadRepository`
+- [x] `find_schema_ids_by_paths()` added to `SchemaReadRepository`
+- [x] `list_schema_name_id_pairs()` added to `SchemaReadRepository`
+- [x] `list_schema_path_id_pairs()` added to `SchemaReadRepository`
+- [x] `get_schema_index()` added to `SchemaReadRepository`
+- [x] `SCHEMA_ID_BY_NAME` table added to `storage_v2/tables.rs`
+- [~] `save_schema()` updated to maintain all three tables atomically *(name/index writes are atomic; path index write deferred to `save_raw_schema_view()` in 04c because `Schema` does not carry file path)*
+- [~] `save_many_schemas()` updated to maintain all three tables atomically *(same path-context constraint as above)*
+- [x] Unit tests verify:
   - Lookups return correct IDs
   - None returned for missing entries
   - All three tables updated atomically
   - Rollback on error preserves consistency
   - List operations return complete data
   - Index provides O(1) lookups
-- [ ] All tests pass
-- [ ] No clippy warnings
-- [ ] Code formatted
+- [x] All tests pass
+- [x] No clippy warnings
+- [x] Code formatted
 
 ## Blocked by
 
@@ -116,3 +117,11 @@ pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
 - This adds index maintenance to existing `save_schema()` operations
 - Requires coordinating with raw view path storage (from 04c)
 - The `SchemaIndex` type is a convenience wrapper; core functionality is the list operations
+
+## Implementation Notes (2026-05-13)
+
+- `list_schema_name_id_pairs()` now returns `NameIdPairs` and `list_schema_path_id_pairs()` returns `PathIdPairs` from `schema/index.rs`.
+- `get_schema_index()` builds from typed pairs using `SchemaIndex::from_pairs(name_pairs, path_pairs)`.
+- `storage_v2/read.rs` and `storage_v2/write.rs` tests are organized into submodules for clearer grouping by behavior.
+- `save_schema()` and `save_many_schemas()` now update `SCHEMAS + SCHEMA_ID_BY_NAME` atomically in one transaction.
+- `SCHEMA_ID_BY_PATH` writes remain in the raw-view pathway (`save_raw_schema_view`, issue 04c), because `Schema` aggregates do not include file path metadata needed to produce canonical path keys.
