@@ -96,33 +96,31 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
         let path = entry.into_path();
 
         if std_metadata.is_dir() {
-            // Clone once for potential error path
-            let path_for_error = path.clone();
-            let dir_path =
-                DirPath::new(path).map_err(|source| ParseError::Io {
-                    path: path_for_error.clone(),
+            let dir_path = DirPath::new(path.clone()).map_err(|source| {
+                ParseError::Io {
+                    path: path.clone(), // Only clone on error path
                     source,
-                })?;
+                }
+            })?;
             let dir_metadata =
                 DirMetadata::try_from(&std_metadata).map_err(|source| {
                     ParseError::Io {
-                        path: path_for_error,
+                        path, // Move path (last use)
                         source,
                     }
                 })?;
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
-            // Clone once for potential error path
-            let path_for_error = path.clone();
-            let file_path =
-                FilePath::new(path).map_err(|source| ParseError::Io {
-                    path: path_for_error.clone(),
+            let file_path = FilePath::new(path.clone()).map_err(|source| {
+                ParseError::Io {
+                    path: path.clone(), // Only clone on error path
                     source,
-                })?;
+                }
+            })?;
             let file_metadata =
                 FileMetadata::try_from(&std_metadata).map_err(|source| {
                     ParseError::Io {
-                        path: path_for_error,
+                        path, // Move path (last use)
                         source,
                     }
                 })?;
