@@ -26,13 +26,15 @@ through the v2 seam end-to-end, without introducing behavior drift.
 
 ## Acceptance Criteria
 
-- [ ] `schema::builder` and `schema::discovery` no longer require
-      `schema::storage::Repository` for schema reads.
-- [ ] Discovery still performs one coherent cached-state read pass for graph,
+- [~] `schema::builder` and `schema::discovery` no longer require
+      `schema::storage::Repository` for schema reads. *(discovery moved to
+      dedicated read seam; builder still depends on legacy repository bounds
+      pending 04g/04h full cutover)*
+- [x] Discovery still performs one coherent cached-state read pass for graph,
       property bank view, raw schema views, and schema IDs.
-- [ ] Existing schema loader/discovery tests pass without changing user-visible
+- [x] Existing schema loader/discovery tests pass without changing user-visible
       behavior.
-- [ ] No clippy warnings and code is formatted.
+- [x] No clippy warnings and code is formatted.
 
 ## Blocked by
 
@@ -161,3 +163,42 @@ serve discovery reads during the migration window.
       regression behavior.
 - [ ] Run focused tests for schema discovery/builder and repository adapters.
 - [ ] Run `mise run fmt`, `mise run lint`, and `mise run test`.
+
+## Implementation Notes (2026-05-13)
+
+- Added `DiscoveryReadRepository` in `lithos-core/src/schema/repository.rs` as
+  a narrow read seam for discovery cached-state retrieval.
+- Added blanket compatibility implementation for legacy
+  `schema::storage::Repository` implementors so existing runtime repository
+  implementations satisfy the new read seam without immediate write-path
+  migration.
+- Implemented `DiscoveryReadRepository` for
+  `schema::storage_v2::SchemaRedbRepository` in
+  `lithos-core/src/schema/storage_v2/read.rs`.
+  - Adapted v2 vector-based path lookups into discovery's map-based shape by
+    filtering missing entries (hit-only map semantics).
+- Refactored `DiscoveryEngine` to depend on `DiscoveryReadRepository` in
+  `lithos-core/src/schema/discovery.rs`.
+  - Removed direct dependency on legacy `with_batch_schema_reader` API from
+    discovery cached-state assembly.
+  - Preserved behavior for graph/property-bank/schema-view/schema-id retrieval.
+- Added regression coverage in
+  `schema::storage_v2::read::tests::discovery_read_seam::v2_discovery_read_trait_returns_only_hits_for_path_lookups`
+  to verify mixed hit/miss path lookup behavior for both ID and raw-view
+  discovery reads.
+
+## Verification Notes (2026-05-13)
+
+- Focused tests passed:
+  - `cargo test -p lithos-core schema::discovery::tests::run_finds_all_files`
+  - `cargo test -p lithos-core schema::storage_v2::read::tests::discovery_read_seam::v2_discovery_read_trait_returns_only_hits_for_path_lookups`
+- Quality gates passed:
+  - `mise run fmt`
+  - `mise run lint`
+  - `mise run test`
+
+## Remaining Work
+
+- Full removal of legacy repository bounds from `schema::builder` remains
+  intentionally deferred to 04g/04h, where processor write-path and batch-read
+  compatibility cutovers are handled.

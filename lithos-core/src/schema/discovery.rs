@@ -15,6 +15,7 @@ use crate::{
         },
         identifier::SchemaId,
         inheritance::InheritanceGraph,
+        repository::DiscoveryReadRepository,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -200,7 +201,7 @@ impl DiscoveryEngine {
         vault_root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
-        R: crate::schema::storage::Repository,
+        R: DiscoveryReadRepository,
         R::Error: Into<SchemaRepositoryError>,
     {
         // Step 1: Scan filesystem
@@ -318,7 +319,7 @@ impl DiscoveryEngine {
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
     where
-        R: crate::schema::storage::Repository,
+        R: DiscoveryReadRepository,
         R::Error: Into<SchemaRepositoryError>,
     {
         #[expect(
@@ -329,28 +330,30 @@ impl DiscoveryEngine {
         let schema_paths: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
-        repo.with_batch_schema_reader(|batch_reader| {
-            let graph = batch_reader.get_topological_graph()?;
+        let graph = repo
+            .get_topological_graph()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-            let property_bank_view = match property_bank_entry {
-                Some(_) => batch_reader
-                    .get_raw_property_bank_view(property_bank_path)?,
-                None => None,
-            };
+        let property_bank_view = match property_bank_entry {
+            Some(_) => repo
+                .get_raw_property_bank_view(property_bank_path)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?,
+            None => None,
+        };
 
-            let schema_views =
-                batch_reader.find_raw_schema_views_by_paths(&schema_paths)?;
-            let schema_ids =
-                batch_reader.find_schema_ids_by_paths(&schema_paths)?;
+        let schema_views =
+            repo.find_raw_schema_views_by_paths(&schema_paths)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+        let schema_ids = repo
+            .find_schema_ids_by_paths(&schema_paths)
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-            Ok(CachedState {
-                graph,
-                property_bank_view,
-                schema_views,
-                schema_ids,
-            })
+        Ok(CachedState {
+            graph,
+            property_bank_view,
+            schema_views,
+            schema_ids,
         })
-        .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 
     // ─────────────────────────────────────────────────────────────────────────

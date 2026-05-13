@@ -1,5 +1,7 @@
 //! Schema repository trait and error types.
 
+use std::collections::HashMap;
+
 use crate::{
     db::DbError,
     fs::RelativePath,
@@ -34,6 +36,102 @@ impl From<DbError> for SchemaStorageV2Error {
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct DbTxError(#[from] DbError);
+
+/// Read seam for schema discovery cached-state retrieval.
+///
+/// This trait isolates the specific read operations that discovery requires so
+/// runtime orchestration can migrate independently from full write-path
+/// cutover.
+pub trait DiscoveryReadRepository {
+    /// Storage-specific error type.
+    type Error;
+
+    /// Finds raw schema views for the provided file paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when reading path indexes or raw view
+    /// values fails.
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>;
+
+    /// Finds schema IDs for the provided file paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when reading path indexes fails.
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
+
+    /// Gets the raw property bank view for a path.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when reading the raw property bank view
+    /// fails.
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error>;
+
+    /// Gets the topological inheritance graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when reading the persisted topology
+    /// graph fails.
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
+}
+
+impl<T> DiscoveryReadRepository for T
+where
+    T: crate::schema::storage::Repository,
+{
+    type Error = <T as crate::schema::storage::Repository>::Error;
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        crate::schema::storage::Repository::find_raw_schema_views_by_paths(
+            self, file_paths,
+        )
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        crate::schema::storage::Repository::find_schema_ids_by_paths(
+            self, file_paths,
+        )
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        crate::schema::storage::Repository::get_raw_property_bank_view(
+            self, path,
+        )
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
+        crate::schema::storage::Repository::get_topological_graph(self)
+    }
+}
 
 /// Segregated read interface for schema persistence.
 pub trait SchemaReadRepository {

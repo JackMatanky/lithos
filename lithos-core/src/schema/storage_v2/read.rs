@@ -11,8 +11,11 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         identifier::{SchemaId, SchemaName},
+        inheritance::InheritanceGraph,
         property::PropertyName,
-        repository::{SchemaReadRepository, SchemaStorageV2Error},
+        repository::{
+            DiscoveryReadRepository, SchemaReadRepository, SchemaStorageV2Error,
+        },
         storage_v2::{
             SchemaRedbRepository,
             tables::{
@@ -449,6 +452,58 @@ impl SchemaReadRepository for SchemaRedbRepository {
                     e.to_string(),
                 ))
             })
+    }
+}
+
+impl DiscoveryReadRepository for SchemaRedbRepository {
+    type Error = SchemaStorageV2Error;
+
+    #[inline]
+    fn find_raw_schema_views_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
+        let views = SchemaReadRepository::find_raw_schema_views_by_paths(
+            self, file_paths,
+        )?;
+
+        Ok(file_paths
+            .iter()
+            .cloned()
+            .zip(views)
+            .filter_map(|(path, view)| view.map(|v| (path, v)))
+            .collect())
+    }
+
+    #[inline]
+    fn find_schema_ids_by_paths(
+        &self,
+        file_paths: &[RelativePath],
+    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
+        let ids =
+            SchemaReadRepository::find_schema_ids_by_paths(self, file_paths)?;
+
+        Ok(file_paths
+            .iter()
+            .cloned()
+            .zip(ids)
+            .filter_map(|(path, id)| id.map(|v| (path, v)))
+            .collect())
+    }
+
+    #[inline]
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
+        SchemaReadRepository::get_raw_property_bank_view(self, path)
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
+        SchemaReadRepository::get_topological_graph(self)
     }
 }
 
@@ -926,6 +981,54 @@ mod tests {
             assert_eq!(loaded2.parents_of(child2), &[root2]);
             assert_eq!(loaded2.children_of(root2), &[child2]);
             assert!(loaded2.parents_of(child1).is_empty());
+        }
+    }
+
+    mod discovery_read_seam {
+        use super::*;
+        use crate::schema::repository::DiscoveryReadRepository;
+
+        #[test]
+        fn v2_discovery_read_trait_returns_only_hits_for_path_lookups() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id1 = SchemaId::new();
+            let id2 = SchemaId::new();
+            let view1 = test_raw_view("schemas/note.json", 7);
+            let view2 = test_raw_view("schemas/task.json", 8);
+            let missing =
+                RelativePath::try_from("schemas/missing.json").unwrap();
+
+            repo.save_raw_schema_view(id1, &view1).unwrap();
+            repo.save_raw_schema_view(id2, &view2).unwrap();
+
+            let paths = vec![
+                view1.path().clone(),
+                missing.clone(),
+                view2.path().clone(),
+            ];
+
+            let id_hits = DiscoveryReadRepository::find_schema_ids_by_paths(
+                &repo, &paths,
+            )
+            .unwrap();
+            assert_eq!(id_hits.len(), 2);
+            assert_eq!(id_hits.get(view1.path()), Some(&id1));
+            assert_eq!(id_hits.get(view2.path()), Some(&id2));
+            assert!(!id_hits.contains_key(&missing));
+
+            let view_hits =
+                DiscoveryReadRepository::find_raw_schema_views_by_paths(
+                    &repo, &paths,
+                )
+                .unwrap();
+            assert_eq!(view_hits.len(), 2);
+            assert_eq!(view_hits.get(view1.path()), Some(&view1));
+            assert_eq!(view_hits.get(view2.path()), Some(&view2));
+            assert!(!view_hits.contains_key(&missing));
         }
     }
 }
