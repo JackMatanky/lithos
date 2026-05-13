@@ -527,3 +527,233 @@ pub trait SchemaRepository:
     SchemaReadRepository + SchemaWriteRepository
 {
 }
+
+#[inline]
+fn legacy_repo_error_to_v2<E: std::fmt::Display>(
+    err: E,
+) -> SchemaStorageV2Error {
+    SchemaStorageV2Error::from(DbError::Corruption(format!(
+        "legacy schema repository incompatibility: {err}"
+    )))
+}
+
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "compatibility bridge methods delegate to legacy repository"
+)]
+impl<T> SchemaReadRepository for T
+where
+    T: crate::schema::storage::Repository,
+{
+    fn find_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Schema>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::find_schema_by_id(self, id)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_many_schemas_by_id(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error> {
+        ids.iter()
+            .map(|id| {
+                crate::schema::storage::Repository::find_schema_by_id(self, *id)
+                    .map_err(legacy_repo_error_to_v2)
+            })
+            .collect()
+    }
+
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::find_schemas_by_ids(self, ids)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::list_schemas(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageV2Error>
+    {
+        crate::schema::storage::Repository::find_schemas_using_properties(
+            self,
+            property_names,
+        )
+        .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::get_raw_schema_view(self, id)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_raw_schema_view_by_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::find_raw_schema_view_by_path(
+            self, path,
+        )
+        .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_raw_schema_views_by_paths(
+        &self,
+        paths: &[RelativePath],
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageV2Error> {
+        let found =
+            crate::schema::storage::Repository::find_raw_schema_views_by_paths(
+                self, paths,
+            )
+            .map_err(legacy_repo_error_to_v2)?;
+        Ok(paths.iter().map(|path| found.get(path).cloned()).collect())
+    }
+
+    fn get_property_bank(
+        &self,
+    ) -> Result<Option<PropertyBank>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::get_property_bank(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::get_topological_graph(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn get_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawPropertyBankView>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::get_raw_property_bank_view(
+            self, path,
+        )
+        .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_schema_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::find_schema_id_by_name(self, name)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_schema_id_by_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<SchemaId>, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::find_schema_id_by_path(self, path)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn find_schema_ids_by_paths(
+        &self,
+        paths: &[RelativePath],
+    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageV2Error> {
+        let found =
+            crate::schema::storage::Repository::find_schema_ids_by_paths(
+                self, paths,
+            )
+            .map_err(legacy_repo_error_to_v2)?;
+        Ok(paths.iter().map(|path| found.get(path).copied()).collect())
+    }
+
+    fn list_schema_name_id_pairs(
+        &self,
+    ) -> Result<crate::schema::index::NameIdPairs, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::list_schema_name_id_pairs(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn list_schema_path_id_pairs(
+        &self,
+    ) -> Result<crate::schema::index::PathIdPairs, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::list_schema_path_id_pairs(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn get_schema_index(
+        &self,
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageV2Error> {
+        crate::schema::storage::Repository::get_schema_index(self)
+            .map_err(legacy_repo_error_to_v2)
+    }
+}
+
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "compatibility bridge methods delegate to legacy repository"
+)]
+impl<T> SchemaWriteRepository for T
+where
+    T: crate::schema::storage::Repository,
+{
+    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::save_schemas(self, &[schema])
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn save_many_schemas(
+        &self,
+        schemas: &[Schema],
+    ) -> Result<(), SchemaStorageV2Error> {
+        let refs: Vec<&Schema> = schemas.iter().collect();
+        crate::schema::storage::Repository::save_schemas(self, &refs)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::save_property_bank(self, bank)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn save_raw_property_bank_view(
+        &self,
+        path: &RelativePath,
+        view: &RawPropertyBankView,
+    ) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::save_raw_property_bank_view(
+            self, path, view,
+        )
+        .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::save_raw_schema_view(self, id, view)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::save_topological_graph(self, graph)
+            .map_err(legacy_repo_error_to_v2)
+    }
+
+    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageV2Error> {
+        crate::schema::storage::Repository::delete_schema(self, id)
+            .map_err(legacy_repo_error_to_v2)
+    }
+}

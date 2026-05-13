@@ -2,7 +2,7 @@
 title: 04i-runtime-cutover-and-legacy-rename-cleanup
 category: enhancement
 label: ready-for-agent
-status: open
+status: in_progress
 date_created: 2026-05-13
 date_updated: 2026-05-13
 ---
@@ -125,3 +125,25 @@ practices enforced in each GREEN/REFACTOR step.
 
 - Renaming must be done only after explicit verification that legacy code paths
   are removed, to avoid ambiguous mixed naming during transition.
+
+## Implementation Notes (2026-05-13)
+
+- Runtime schema orchestration surfaces were moved to segregated read/write
+  seams instead of directly binding to legacy `schema::storage::Repository`:
+  - `Builder` now requires discovery + schema read/write seams.
+  - `SchemaProcessor` refresh/construction/completion write paths now bind to
+    `SchemaWriteRepository`, and construction reads bind to
+    `SchemaReadRepository`.
+  - `PropertyBankProcessor` repository bounds were migrated to
+    `SchemaReadRepository` / `SchemaWriteRepository`.
+- Added a compile-time test guard in `builder` tests to ensure `Builder::new`
+  accepts the segregated seam trait set.
+- Transitional compatibility bridge implementations were added in
+  `schema/repository.rs` so legacy repository implementers can satisfy
+  `SchemaReadRepository` / `SchemaWriteRepository` during cutover.
+
+## Verification Notes (2026-05-13)
+
+- `mise run fmt` passed.
+- `mise run lint` failed due pre-existing `ParseError` variant mismatches in
+  fs/config modules unrelated to this schema migration slice.

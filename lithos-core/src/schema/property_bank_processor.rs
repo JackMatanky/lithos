@@ -120,7 +120,7 @@ use crate::{
         },
         property::PropertyName,
         raw::RawPropertyBank,
-        storage::Repository,
+        repository::{SchemaReadRepository, SchemaWriteRepository},
         views::{
             HashRecord, RawPropertyBankView, RawView as _, RawViewRead as _,
             contracts::Version as _,
@@ -575,12 +575,10 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: Repository>(
+    pub(crate) fn sync_metadata<R: SchemaWriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
     {
         self.status.view.update_file_info(self.status.info);
 
@@ -604,12 +602,10 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: Repository>(
+    pub(crate) fn sync_metadata<R: SchemaWriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
     {
         self.status.view.update_file_info(self.status.info);
         self.status
@@ -669,13 +665,11 @@ impl PropertyBankProcessor<Construction, New> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn create<R: Repository>(
+    pub(crate) fn create<R: SchemaWriteRepository>(
         self,
         path: &RelativePath,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
     {
         let bank = PropertyBank::try_from(self.status.raw.clone()).map_err(
             |source| {
@@ -693,15 +687,12 @@ impl PropertyBankProcessor<Construction, New> {
     }
 
     #[inline]
-    fn persist<R: Repository>(
+    fn persist<R: SchemaWriteRepository>(
         &self,
         path: &RelativePath,
         repository: &R,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
+    ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -735,13 +726,11 @@ impl PropertyBankProcessor<Construction, Changed> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn update<R: Repository>(
+    pub(crate) fn update<R: SchemaReadRepository + SchemaWriteRepository>(
         self,
         path: &RelativePath,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
     {
         let mut bank = repository
             .get_property_bank()
@@ -779,15 +768,12 @@ impl PropertyBankProcessor<Construction, Changed> {
     }
 
     #[inline]
-    fn persist<R: Repository>(
+    fn persist<R: SchemaWriteRepository>(
         &self,
         path: &RelativePath,
         repository: &R,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
-    {
+    ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
             .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
@@ -817,12 +803,10 @@ impl PropertyBankProcessor<Construction, Fresh> {
     /// is missing.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn fetch<R: Repository>(
+    pub(crate) fn fetch<R: SchemaReadRepository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
-    where
-        R::Error: Into<SchemaRepositoryError>,
     {
         drop(self);
         let bank = repository
