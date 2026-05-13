@@ -90,16 +90,21 @@ impl RelativePath {
                 "Path must be relative",
             ));
         }
-        if path
-            .to_string_lossy()
-            .split(['/', '\\'])
-            .any(|segment| segment == ".")
-        {
+        let has_cur_dir = if let Some(s) = path.to_str() {
+            s.split(['/', '\\']).any(|segment| segment == ".")
+        } else {
+            path.to_string_lossy()
+                .split(['/', '\\'])
+                .any(|segment| segment == ".")
+        };
+
+        if has_cur_dir {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Path must not contain current directory components (.)",
             ));
         }
+
         for component in path.components() {
             match component {
                 Component::ParentDir => {
