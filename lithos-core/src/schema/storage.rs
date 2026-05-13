@@ -38,165 +38,6 @@ fn map_db_error(error: crate::db::DbError) -> SchemaRepositoryError {
 /// properties.
 pub type SchemaPropertyUsage = HashMap<SchemaId, Vec<PropertyName>>;
 
-/// Batch reader adapter for schema tables.
-pub trait BatchSchemaReader {
-    /// Storage-specific error type for batch reads.
-    type Error;
-
-    /// Finds multiple raw schema views by their file paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn find_raw_schema_views_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>;
-
-    /// Finds multiple schema IDs by their file paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn find_schema_ids_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>;
-
-    /// Gets the raw property bank view for a given path.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn get_raw_property_bank_view(
-        &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, Self::Error>;
-
-    /// Gets the raw schema view for a given schema ID.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn get_raw_schema_view(
-        &self,
-        id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, Self::Error>;
-
-    /// Gets the topological graph singleton.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn get_topological_graph(
-        &self,
-    ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
-}
-
-struct RedbBatchSchemaReader<'reader> {
-    reader: &'reader BatchReader,
-}
-
-impl BatchSchemaReader for RedbBatchSchemaReader<'_> {
-    type Error = SchemaRepositoryError;
-
-    #[inline]
-    fn find_raw_schema_views_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error> {
-        use crate::schema::db_table::{RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_PATH};
-
-        let mut results = HashMap::new();
-        for path in file_paths {
-            let path_key = path.as_path().to_string_lossy();
-            if let Some(id) = self
-                .reader
-                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
-                .map_err(map_db_error)?
-                && let Some(view) = self
-                    .reader
-                    .get_owned_by_uuid::<RawSchemaView>(
-                        RAW_SCHEMA_VIEWS,
-                        *id.as_uuid_v7(),
-                    )
-                    .map_err(map_db_error)?
-            {
-                results.insert(path.clone(), view);
-            }
-        }
-        Ok(results)
-    }
-
-    #[inline]
-    fn find_schema_ids_by_paths(
-        &self,
-        file_paths: &[RelativePath],
-    ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error> {
-        use crate::schema::db_table::SCHEMA_ID_BY_PATH;
-
-        let mut results = HashMap::new();
-        for path in file_paths {
-            let path_key = path.as_path().to_string_lossy();
-            if let Some(id) = self
-                .reader
-                .get_owned::<SchemaId>(SCHEMA_ID_BY_PATH, path_key.as_ref())
-                .map_err(map_db_error)?
-            {
-                results.insert(path.clone(), id);
-            }
-        }
-        Ok(results)
-    }
-
-    #[inline]
-    fn get_raw_property_bank_view(
-        &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-        use crate::schema::db_table::RAW_PROPERTY_BANK_VIEW;
-
-        let path_key = path.as_path().to_string_lossy();
-        self.reader
-            .get_owned::<RawPropertyBankView>(
-                RAW_PROPERTY_BANK_VIEW,
-                path_key.as_ref(),
-            )
-            .map_err(map_db_error)
-    }
-
-    #[inline]
-    fn get_raw_schema_view(
-        &self,
-        id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, Self::Error> {
-        use crate::schema::db_table::RAW_SCHEMA_VIEWS;
-
-        self.reader
-            .get_owned_by_uuid::<RawSchemaView>(
-                RAW_SCHEMA_VIEWS,
-                *id.as_uuid_v7(),
-            )
-            .map_err(map_db_error)
-    }
-
-    #[inline]
-    fn get_topological_graph(
-        &self,
-    ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
-        use crate::schema::db_table::{
-            SCHEMA_TOPOLOGICAL_GRAPH, TOPOLOGICAL_GRAPH_KEY,
-        };
-
-        self.reader
-            .get_owned::<InheritanceGraph<()>>(
-                SCHEMA_TOPOLOGICAL_GRAPH,
-                TOPOLOGICAL_GRAPH_KEY,
-            )
-            .map_err(map_db_error)
-    }
-}
-
 /// Unified repository trait for schema domain persistence.
 ///
 /// Combines read and write operations in a single trait, following the
@@ -510,20 +351,6 @@ pub trait Repository: Send + Sync {
     fn with_batch_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
-
-    /// Provides access to a batch reader scoped to schema tables.
-    ///
-    /// This is a convenience wrapper that keeps schema pipelines from
-    /// depending on raw table names.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific error if the batch read fails.
-    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
-    where
-        for<'reader> F: FnOnce(
-            &'reader dyn BatchSchemaReader<Error = Self::Error>,
-        ) -> Result<R, Self::Error>;
 }
 
 // ========================================================================
@@ -853,21 +680,6 @@ impl Repository for RedbRepository {
         });
 
         result.map_err(map_db_error)
-    }
-
-    #[inline]
-    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
-    where
-        for<'reader> F: FnOnce(
-            &'reader dyn BatchSchemaReader<Error = Self::Error>,
-        ) -> Result<R, Self::Error>,
-    {
-        self.with_batch_reader(|reader| {
-            let schema_reader = RedbBatchSchemaReader {
-                reader,
-            };
-            f(&schema_reader)
-        })
     }
 
     // ========================================================================

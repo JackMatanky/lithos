@@ -576,62 +576,6 @@ impl Repository for InMemoryRepository {
              method is specific to RedbRepository.",
         ))
     }
-
-    fn with_batch_schema_reader<F, R>(&self, f: F) -> Result<R, Self::Error>
-    where
-        for<'reader> F: FnOnce(
-            &'reader dyn super::storage::BatchSchemaReader<Error = Self::Error>,
-        ) -> Result<R, Self::Error>,
-    {
-        struct InMemoryBatchSchemaReader<'repo> {
-            repo: &'repo InMemoryRepository,
-        }
-
-        impl super::storage::BatchSchemaReader for InMemoryBatchSchemaReader<'_> {
-            type Error = InMemoryError;
-
-            fn find_raw_schema_views_by_paths(
-                &self,
-                file_paths: &[RelativePath],
-            ) -> Result<HashMap<RelativePath, RawSchemaView>, Self::Error>
-            {
-                self.repo.find_raw_schema_views_by_paths(file_paths)
-            }
-
-            fn find_schema_ids_by_paths(
-                &self,
-                file_paths: &[RelativePath],
-            ) -> Result<HashMap<RelativePath, SchemaId>, Self::Error>
-            {
-                self.repo.find_schema_ids_by_paths(file_paths)
-            }
-
-            fn get_raw_property_bank_view(
-                &self,
-                path: &RelativePath,
-            ) -> Result<Option<RawPropertyBankView>, Self::Error> {
-                self.repo.get_raw_property_bank_view(path)
-            }
-
-            fn get_raw_schema_view(
-                &self,
-                id: SchemaId,
-            ) -> Result<Option<RawSchemaView>, Self::Error> {
-                self.repo.get_raw_schema_view(id)
-            }
-
-            fn get_topological_graph(
-                &self,
-            ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
-                self.repo.get_topological_graph()
-            }
-        }
-
-        let reader = InMemoryBatchSchemaReader {
-            repo: self,
-        };
-        f(&reader)
-    }
 }
 
 // ============================================================================
