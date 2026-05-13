@@ -107,3 +107,57 @@ slices, with behavior parity as the primary constraint.
 - Run `mise run fmt`.
 - Run `mise run lint`.
 - Run `mise run test`.
+
+## TDD Plan (Dual Implementation) (2026-05-13)
+
+Adopt a dual-implementation seam now so both legacy and v2 repositories can
+serve discovery reads during the migration window.
+
+### Planned interface change
+
+- Add a narrow read-focused trait in `schema/repository.rs` for discovery
+  cached-state operations (graph, raw property bank view, raw schema views by
+  paths, schema IDs by paths).
+- Implement this trait for:
+  - legacy `schema::storage::RedbRepository`
+  - v2 `schema::storage_v2::SchemaRedbRepository`
+- Update `DiscoveryEngine::run` (and `Builder` call path) to depend on the new
+  read seam instead of legacy-only batch reader coupling.
+
+### Vertical slices
+
+1. **Tracer bullet (RED -> GREEN)**
+   - RED: add a discovery test that exercises cached-state assembly through the
+     new discovery-read trait boundary.
+   - GREEN: introduce minimal trait + one implementation path to make the test
+     pass.
+
+2. **Dual implementation parity (RED -> GREEN)**
+   - RED: add a parity test that validates both legacy and v2 implementations
+     return equivalent cached-state behavior for the same mixed input set.
+   - GREEN: implement missing side of the trait and pass.
+
+3. **Lookup regression guard (RED -> GREEN)**
+   - RED: add mixed hit/miss path-set regression coverage for path->id and
+     path->raw-view lookup behavior.
+   - GREEN: preserve one-pass semantics and pass.
+
+4. **Builder/discovery wiring (RED -> GREEN)**
+   - RED: add/adjust a builder/discovery orchestration test proving runtime read
+     coupling no longer requires legacy-only batch reader API shape.
+   - GREEN: switch wiring to the new read seam and pass.
+
+5. **Refactor**
+   - Remove temporary glue, keep trait surface narrow, and preserve behavior.
+
+### Task checklist
+
+- [ ] Add discovery-read seam trait to `schema/repository.rs`.
+- [ ] Implement trait for `schema::storage::RedbRepository`.
+- [ ] Implement trait for `schema::storage_v2::SchemaRedbRepository`.
+- [ ] Refactor `schema/discovery.rs` to use new seam.
+- [ ] Update `schema/builder.rs` generic bounds/wiring as needed.
+- [ ] Add/adjust tests for tracer bullet, dual parity, and mixed hit/miss
+      regression behavior.
+- [ ] Run focused tests for schema discovery/builder and repository adapters.
+- [ ] Run `mise run fmt`, `mise run lint`, and `mise run test`.
