@@ -12,7 +12,10 @@ use std::path::{Component, Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsString};
 
-use super::name::{BaseName, DirName, FileName};
+use super::{
+    format::FileExtensionRef,
+    name::{BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef},
+};
 
 /// A validated vault-relative path.
 ///
@@ -385,8 +388,8 @@ impl FilePath {
     /// Returns the borrowed filename view, if present.
     #[inline]
     #[must_use]
-    pub fn filename_ref(&self) -> Option<super::name::FileNameRef<'_>> {
-        self.0.file_name().map(super::name::FileNameRef)
+    pub fn filename_ref(&self) -> Option<FileNameRef<'_>> {
+        self.0.file_name().map(FileNameRef)
     }
 
     /// Returns the owned UTF-8 filename, if present and valid UTF-8.
@@ -396,28 +399,31 @@ impl FilePath {
         FileName::try_from(self.0.as_path()).ok()
     }
 
-    /// Returns the borrowed file stem view, if present.
+    /// Returns the borrowed basename view directly from the path.
     ///
-    /// This uses Obsidian-style terminology: basename = filename without
-    /// extension.
+    /// Gets the file stem (basename without extension) directly from the path
+    /// without going through filename validation.
     #[inline]
     #[must_use]
-    pub fn basename_ref(&self) -> Option<super::name::BaseNameRef<'_>> {
-        self.filename_ref().map(|f| f.basename())
+    pub fn basename_ref(&self) -> Option<BaseNameRef<'_>> {
+        self.0.file_stem().map(BaseNameRef)
     }
 
-    /// Returns the owned UTF-8 basename, if present and valid UTF-8.
+    /// Returns the owned UTF-8 basename directly from the path.
+    ///
+    /// Gets the file stem (basename without extension) directly from the path
+    /// without going through filename validation.
     #[inline]
     #[must_use]
     pub fn basename(&self) -> Option<BaseName> {
-        self.filename().and_then(|f| f.basename())
+        BaseName::try_from(self.0.as_path()).ok()
     }
 
     /// Returns the borrowed file extension view, if present.
     #[inline]
     #[must_use]
-    pub fn extension_ref(&self) -> Option<super::format::FileExtensionRef<'_>> {
-        self.0.extension().map(super::format::FileExtensionRef)
+    pub fn extension_ref(&self) -> Option<FileExtensionRef<'_>> {
+        self.0.extension().map(FileExtensionRef)
     }
 
     /// Returns `true` if the path has a filename component.
@@ -564,8 +570,8 @@ impl DirPath {
     /// Returns the borrowed directory name view, if present.
     #[inline]
     #[must_use]
-    pub fn dirname_ref(&self) -> Option<super::name::DirNameRef<'_>> {
-        self.0.file_name().map(super::name::DirNameRef)
+    pub fn dirname_ref(&self) -> Option<DirNameRef<'_>> {
+        self.0.file_name().map(DirNameRef)
     }
 
     /// Returns the owned UTF-8 directory name, if present and valid UTF-8.
