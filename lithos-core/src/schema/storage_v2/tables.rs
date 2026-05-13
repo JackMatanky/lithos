@@ -45,6 +45,15 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
     PathTable::new("raw_property_bank_view_v2");
 
+/// Topological inheritance graph singleton.
+///
+/// Stores the persisted DAG used for inheritance resolution.
+pub const SCHEMA_TOPOLOGICAL_GRAPH: PathTable<&[u8]> =
+    PathTable::new("schema_topological_graph_v2");
+
+/// Constant key for topological graph singleton table.
+pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
+
 /// Schema name→ID index (key: schema name string, value: serialized
 /// `SchemaId`).
 ///

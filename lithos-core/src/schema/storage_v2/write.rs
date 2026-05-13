@@ -8,13 +8,14 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        inheritance::InheritanceGraph,
         repository::{SchemaStorageV2Error, SchemaWriteRepository},
         storage_v2::{
             SchemaRedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
-                SCHEMAS,
+                SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS, TOPOLOGICAL_GRAPH_KEY,
             },
         },
         views::{RawPropertyBankView, RawSchemaView},
@@ -138,6 +139,26 @@ impl SchemaWriteRepository for SchemaRedbRepository {
                 let path_key =
                     view.path().as_path().to_string_lossy().to_string();
                 path_table.insert(path_key, id_bytes.as_slice())?;
+                Ok(())
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), SchemaStorageV2Error> {
+        let bytes = serialize(graph).map_err(SchemaStorageV2Error::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(SCHEMA_TOPOLOGICAL_GRAPH.definition())?;
+                table.insert(
+                    TOPOLOGICAL_GRAPH_KEY.to_owned(),
+                    bytes.as_slice(),
+                )?;
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
@@ -491,6 +512,54 @@ mod tests {
                 repo.find_raw_schema_view_by_path(new_view.path()).unwrap(),
                 Some(new_view)
             );
+        }
+    }
+
+    mod save_topological_graph {
+        use std::sync::Arc;
+
+        use crate::{
+            db::Store,
+            schema::{
+                identifier::SchemaId,
+                inheritance::{InheritanceGraph, SchemaGraphBuilder},
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+            },
+        };
+
+        fn build_graph(
+            root: SchemaId,
+            child: SchemaId,
+        ) -> InheritanceGraph<()> {
+            let mut builder = SchemaGraphBuilder::new();
+            builder.add_node(root, ());
+            builder.add_node(child, ());
+            builder.add_parent(child, root);
+            InheritanceGraph::try_from(builder.build()).unwrap()
+        }
+
+        #[test]
+        fn persists_across_reopen() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+
+            let root = SchemaId::new();
+            let child = SchemaId::new();
+            {
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = SchemaRedbRepository::new(store);
+                let graph = build_graph(root, child);
+                repo.save_topological_graph(&graph).unwrap();
+            }
+
+            let reopened_store = Arc::new(Store::open(&db_path).unwrap());
+            let reopened_repo = SchemaRedbRepository::new(reopened_store);
+            let loaded =
+                reopened_repo.get_topological_graph().unwrap().unwrap();
+
+            assert_eq!(loaded.parents_of(child), &[root]);
+            assert_eq!(loaded.children_of(root), &[child]);
         }
     }
 }

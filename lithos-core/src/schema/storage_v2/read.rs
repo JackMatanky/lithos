@@ -15,7 +15,7 @@ use crate::{
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
-                SCHEMAS,
+                SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS, TOPOLOGICAL_GRAPH_KEY,
             },
         },
         views::{RawPropertyBankView, RawSchemaView},
@@ -191,6 +191,33 @@ impl SchemaReadRepository for SchemaRedbRepository {
 
                 let bank = deserialize(guard.value())?;
                 Ok(Some(bank))
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn get_topological_graph(
+        &self,
+    ) -> Result<
+        Option<crate::schema::inheritance::InheritanceGraph<()>>,
+        SchemaStorageV2Error,
+    > {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(SCHEMA_TOPOLOGICAL_GRAPH.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(guard) =
+                    table.get(TOPOLOGICAL_GRAPH_KEY.to_owned())?
+                else {
+                    return Ok(None);
+                };
+
+                let graph = deserialize(guard.value())?;
+                Ok(Some(graph))
             })
             .map_err(SchemaStorageV2Error::from)
     }
@@ -379,6 +406,7 @@ mod tests {
             aggregate::Schema,
             bank::PropertyBank,
             identifier::{SchemaId, SchemaName},
+            inheritance::{InheritanceGraph, SchemaGraphBuilder},
             property::PropertyMap,
             raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
             repository::{SchemaReadRepository, SchemaWriteRepository},
@@ -645,6 +673,58 @@ mod tests {
             assert!(
                 repo.find_raw_schema_view_by_path(&path).unwrap().is_none()
             );
+        }
+    }
+
+    mod topology_graph {
+        use super::*;
+
+        fn build_graph(
+            root: SchemaId,
+            child: SchemaId,
+        ) -> InheritanceGraph<()> {
+            let mut builder = SchemaGraphBuilder::new();
+            builder.add_node(root, ());
+            builder.add_node(child, ());
+            builder.add_parent(child, root);
+            InheritanceGraph::try_from(builder.build()).unwrap()
+        }
+
+        #[test]
+        fn returns_none_when_not_saved() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            assert!(repo.get_topological_graph().unwrap().is_none());
+        }
+
+        #[test]
+        fn roundtrip_and_overwrite_preserve_structure() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let root1 = SchemaId::new();
+            let child1 = SchemaId::new();
+            let graph1 = build_graph(root1, child1);
+            repo.save_topological_graph(&graph1).unwrap();
+
+            let loaded1 = repo.get_topological_graph().unwrap().unwrap();
+            assert_eq!(loaded1.parents_of(child1), &[root1]);
+            assert_eq!(loaded1.children_of(root1), &[child1]);
+
+            let root2 = SchemaId::new();
+            let child2 = SchemaId::new();
+            let graph2 = build_graph(root2, child2);
+            repo.save_topological_graph(&graph2).unwrap();
+
+            let loaded2 = repo.get_topological_graph().unwrap().unwrap();
+            assert_eq!(loaded2.parents_of(child2), &[root2]);
+            assert_eq!(loaded2.children_of(root2), &[child2]);
+            assert!(loaded2.parents_of(child1).is_empty());
         }
     }
 }

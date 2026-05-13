@@ -7,6 +7,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         identifier::{SchemaId, SchemaName},
+        inheritance::InheritanceGraph,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -117,6 +118,18 @@ pub trait SchemaReadRepository {
     fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaStorageV2Error>;
+
+    /// Get the topological inheritance graph singleton.
+    ///
+    /// Returns `None` when no graph has been persisted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn get_topological_graph(
+        &self,
+    ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageV2Error>;
 
     /// Get the raw property bank view by path.
     ///
@@ -260,6 +273,17 @@ pub trait SchemaWriteRepository {
         &self,
         id: SchemaId,
         view: &RawSchemaView,
+    ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Save the topological inheritance graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageV2Error>;
 }
 
