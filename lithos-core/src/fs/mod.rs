@@ -73,7 +73,9 @@ pub use file::{FileEntry, FileInfo, FileName};
 pub use format::{FileExtensionRef, FileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
 pub use name::{BaseName, BaseNameRef, DirName, DirNameRef, FileNameRef};
-pub use path::{AbsolutePath, DirPath, FilePath, FsPath, RelativePath};
+pub use path::{
+    AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, RelativePath,
+};
 #[expect(
     clippy::module_name_repetitions,
     reason = "FsReader alias clarifies this is the filesystem reader in \

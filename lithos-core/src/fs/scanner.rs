@@ -241,7 +241,8 @@ impl DirScanner {
             }
         }
 
-        results.sort_by(|a, b| a.path().as_path().cmp(b.path().as_path()));
+        results
+            .sort_by(|a, b| a.path_ref().as_path().cmp(b.path_ref().as_path()));
         Ok(results)
     }
 

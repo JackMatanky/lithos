@@ -742,6 +742,75 @@ impl FsPath {
     }
 }
 
+/// A zero-copy reference to either a file or directory path.
+///
+/// This enum provides a borrowed view into an `FsPath` without cloning the
+/// underlying paths. Useful for operations that need to inspect paths without
+/// taking ownership.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FsPathRef<'a> {
+    /// A reference to a file path.
+    File(&'a FilePath),
+    /// A reference to a directory path.
+    Dir(&'a DirPath),
+}
+
+impl<'a> FsPathRef<'a> {
+    /// Returns the underlying path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::File(p) => p.as_path(),
+            Self::Dir(p) => p.as_path(),
+        }
+    }
+
+    /// Returns `true` if this is a file path.
+    #[inline]
+    #[must_use]
+    pub const fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
+    }
+
+    /// Returns `true` if this is a directory path.
+    #[inline]
+    #[must_use]
+    pub const fn is_dir(&self) -> bool {
+        matches!(self, Self::Dir(_))
+    }
+
+    /// Returns the file path if this is a file.
+    #[inline]
+    #[must_use]
+    pub const fn as_file(&self) -> Option<&'a FilePath> {
+        match self {
+            Self::File(p) => Some(p),
+            Self::Dir(_) => None,
+        }
+    }
+
+    /// Returns the directory path if this is a directory.
+    #[inline]
+    #[must_use]
+    pub const fn as_dir(&self) -> Option<&'a DirPath> {
+        match self {
+            Self::Dir(p) => Some(p),
+            Self::File(_) => None,
+        }
+    }
+
+    /// Convert to an owned `FsPath` by cloning the underlying path.
+    #[inline]
+    #[must_use]
+    pub fn to_owned(&self) -> FsPath {
+        match self {
+            Self::File(p) => FsPath::File((*p).clone()),
+            Self::Dir(p) => FsPath::Dir((*p).clone()),
+        }
+    }
+}
+
 /// A zero-copy view of a parent directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentDir<'a> {

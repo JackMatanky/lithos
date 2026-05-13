@@ -10,4 +10,5 @@
 - [x] Fixed unrelated build issue (commented out missing `storage_v2` module).
 - [x] All 1144 tests pass, lint clean, fmt clean.
 - [x] Phase 2: `FsEntry::try_from` Clone Reduction — reduced from 3 clones per branch to 1 clone (only on error path).
-- [x] All 1143 tests pass, verify complete.
+- [x] Phase 2b: Refactored `FsTimes`, `FileMetadata`, `DirMetadata` to use `From` instead of `TryFrom` (infallible conversions).
+- [x] All 1143 tests pass, verify complete, committed (3ebcd76c).

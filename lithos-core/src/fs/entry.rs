@@ -7,7 +7,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     metadata::{DirMetadata, FileMetadata},
-    path::{DirPath, FilePath, FsPath},
+    path::{DirPath, FilePath, FsPath, FsPathRef},
 };
 
 /// Unified filesystem entry for files or directories.
@@ -63,12 +63,28 @@ impl FsEntry {
     ///
     /// This returns a unified path reference that can represent either a file
     /// or directory path.
+    ///
+    /// **Note**: This method clones the underlying path. For zero-copy access,
+    /// use [`path_ref`](Self::path_ref) instead.
     #[inline]
     #[must_use]
     pub fn path(&self) -> FsPath {
         match self {
             Self::File(file) => FsPath::File(file.path().clone()),
             Self::Dir(dir) => FsPath::Dir(dir.path().clone()),
+        }
+    }
+
+    /// Get a zero-copy reference to the path for this entry.
+    ///
+    /// This returns a borrowed view into the path without cloning. Prefer this
+    /// over [`path`](Self::path) when you only need to inspect the path.
+    #[inline]
+    #[must_use]
+    pub fn path_ref(&self) -> FsPathRef<'_> {
+        match self {
+            Self::File(file) => FsPathRef::File(file.path()),
+            Self::Dir(dir) => FsPathRef::Dir(dir.path()),
         }
     }
 }
@@ -442,6 +458,63 @@ mod tests {
                 let result = dir_entry.path();
 
                 assert!(result.is_dir(), "Expected directory path type");
+            }
+        }
+
+        mod path_ref {
+            use super::*;
+
+            #[test]
+            fn returns_file_path_ref_for_file_entry() {
+                let temp_file = tempfile::NamedTempFile::new().unwrap();
+                let file_path =
+                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file_entry = FsEntry::File(FsFile::new(
+                    file_path.clone(),
+                    FileMetadata::new(times, 100, false),
+                ));
+
+                let result = file_entry.path_ref();
+
+                assert!(result.is_file(), "Expected file path type");
+                assert_eq!(result.as_path(), file_path.as_path());
+            }
+
+            #[test]
+            fn returns_dir_path_ref_for_dir_entry() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let dir_path =
+                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir_entry = FsEntry::Dir(FsDir::new(
+                    dir_path.clone(),
+                    DirMetadata::new(times, false),
+                ));
+
+                let result = dir_entry.path_ref();
+
+                assert!(result.is_dir(), "Expected directory path type");
+                assert_eq!(result.as_path(), dir_path.as_path());
+            }
+
+            #[test]
+            fn borrows_without_cloning() {
+                let temp_file = tempfile::NamedTempFile::new().unwrap();
+                let file_path =
+                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file_entry = FsEntry::File(FsFile::new(
+                    file_path.clone(),
+                    FileMetadata::new(times, 100, false),
+                ));
+
+                // This should compile and not move file_entry
+                let _ref1 = file_entry.path_ref();
+                let _ref2 = file_entry.path_ref();
+
+                // We can still use file_entry
+                assert!(file_entry.is_file());
             }
         }
     }
