@@ -60,6 +60,35 @@ pub trait SchemaReadRepository {
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error>;
 
+    /// Get a raw schema view by schema ID.
+    ///
+    /// Returns `None` if no view exists for the given ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn get_raw_schema_view(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error>;
+
+    /// Find a raw schema view by schema file path.
+    ///
+    /// Performs cross-table lookup: path in `SCHEMA_ID_BY_PATH`, then the view
+    /// in `RAW_SCHEMA_VIEWS`.
+    ///
+    /// Returns `None` if path or view is missing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_raw_schema_view_by_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<RawSchemaView>, SchemaStorageV2Error>;
+
     /// Find raw schema views by file paths in a single transaction.
     ///
     /// Performs cross-table batch read: lookups paths in `SCHEMA_ID_BY_PATH`,
@@ -217,6 +246,20 @@ pub trait SchemaWriteRepository {
         &self,
         path: &RelativePath,
         view: &RawPropertyBankView,
+    ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Save a raw schema view for a schema ID.
+    ///
+    /// This operation updates both view storage and path index atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if serialization or database write
+    /// fails.
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
     ) -> Result<(), SchemaStorageV2Error>;
 }
 

@@ -1,5 +1,7 @@
 //! Write implementation for `SchemaRedbRepository`.
 
+use redb::ReadableTable;
+
 use crate::{
     db::serialize,
     fs::RelativePath,
@@ -11,10 +13,11 @@ use crate::{
             SchemaRedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-                SCHEMA_ID_BY_NAME, SCHEMAS,
+                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
+                SCHEMAS,
             },
         },
-        views::RawPropertyBankView,
+        views::{RawPropertyBankView, RawSchemaView},
     },
 };
 
@@ -96,6 +99,45 @@ impl SchemaWriteRepository for SchemaRedbRepository {
                     tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
                 let path_str = path.as_path().to_string_lossy().to_string();
                 table.insert(path_str, bytes.as_slice())?;
+                Ok(())
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn save_raw_schema_view(
+        &self,
+        id: crate::schema::identifier::SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), SchemaStorageV2Error> {
+        let view_bytes = serialize(view).map_err(SchemaStorageV2Error::from)?;
+        let id_bytes = serialize(&id).map_err(SchemaStorageV2Error::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut view_table =
+                    tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
+                let mut path_table =
+                    tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+
+                if let Some(existing) = view_table.get(id)? {
+                    let existing_view = crate::db::deserialize::<RawSchemaView>(
+                        existing.value(),
+                    )?;
+                    if existing_view.path() != view.path() {
+                        let stale_key = existing_view
+                            .path()
+                            .as_path()
+                            .to_string_lossy()
+                            .to_string();
+                        let _ = path_table.remove(stale_key)?;
+                    }
+                }
+
+                view_table.insert(id, view_bytes.as_slice())?;
+                let path_key =
+                    view.path().as_path().to_string_lossy().to_string();
+                path_table.insert(path_key, id_bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
@@ -360,6 +402,95 @@ mod tests {
             // Should successfully overwrite (singleton behavior)
             let retrieved = repo.get_property_bank().unwrap();
             assert!(retrieved.is_some());
+        }
+    }
+
+    mod save_raw_schema_view {
+        use std::sync::Arc;
+
+        use crate::{
+            db::Store,
+            fs::{FileInfo, RelativePath},
+            schema::{
+                identifier::SchemaId,
+                raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+                views::{
+                    RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
+                    raw::RawSchemaView,
+                },
+            },
+            support::Blake3Hash,
+        };
+
+        fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
+            let path = RelativePath::try_from(path).unwrap();
+            let info = FileInfo::new(None, None, 100);
+            let hashes = HashRecord::new(
+                Blake3Hash::new([hash_byte; 32]),
+                RawPropertyHashIndex::default(),
+            );
+            let raw = RawSchema {
+                version: RawSchemaVersion::default(),
+                name: "Note".into(),
+                extends: None,
+                excludes: vec![],
+                properties: RawPropertyMap::new(),
+                info: FileInfo::new(None, None, 0),
+            };
+            let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+            RawSchemaView::new(path, version)
+        }
+
+        #[test]
+        fn persists_view_and_path_index() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let view = test_raw_view("schemas/note.json", 9);
+            repo.save_raw_schema_view(id, &view).unwrap();
+
+            assert_eq!(
+                repo.get_raw_schema_view(id).unwrap(),
+                Some(view.clone())
+            );
+            assert_eq!(
+                repo.find_raw_schema_view_by_path(view.path()).unwrap(),
+                Some(view)
+            );
+        }
+
+        #[test]
+        fn updates_path_index_when_path_changes() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let old_view = test_raw_view("schemas/old.json", 3);
+            let new_view = test_raw_view("schemas/new.json", 4);
+
+            repo.save_raw_schema_view(id, &old_view).unwrap();
+            repo.save_raw_schema_view(id, &new_view).unwrap();
+
+            assert_eq!(
+                repo.get_raw_schema_view(id).unwrap(),
+                Some(new_view.clone())
+            );
+            assert!(
+                repo.find_raw_schema_view_by_path(old_view.path())
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(
+                repo.find_raw_schema_view_by_path(new_view.path()).unwrap(),
+                Some(new_view)
+            );
         }
     }
 }
