@@ -447,7 +447,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::schema::storage_v2::testing::InMemoryRepository;
+    use crate::schema::storage::testing::InMemoryRepository;
 
     fn accepts_schema_read_repository_only<R: SchemaReadRepository>(
         spec: &SchemaConfigSpec,

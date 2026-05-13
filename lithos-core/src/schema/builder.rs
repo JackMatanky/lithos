@@ -280,7 +280,7 @@ mod tests {
         fs::FsReader,
         schema::{
             repository::{SchemaReadRepository, SchemaWriteRepository},
-            storage_v2::testing::InMemoryRepository,
+            storage::testing::InMemoryRepository,
         },
     };
 

@@ -10,11 +10,8 @@ use crate::{
         bank::PropertyBank,
         identifier::SchemaName,
         inheritance::InheritanceGraph,
-        repository::{
-            ProcessorWriteRepository, SchemaStorageV2Error,
-            SchemaWriteRepository,
-        },
-        storage_v2::{
+        repository::{SchemaStorageV2Error, SchemaWriteRepository},
+        storage::{
             RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
@@ -189,40 +186,6 @@ impl SchemaWriteRepository for RedbRepository {
     }
 }
 
-impl ProcessorWriteRepository for RedbRepository {
-    type Error = SchemaStorageV2Error;
-
-    #[inline]
-    fn save_many_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
-        SchemaWriteRepository::save_many_schemas(self, schemas)
-    }
-
-    #[inline]
-    fn save_raw_schema_view(
-        &self,
-        id: crate::schema::identifier::SchemaId,
-        view: &RawSchemaView,
-    ) -> Result<(), Self::Error> {
-        SchemaWriteRepository::save_raw_schema_view(self, id, view)
-    }
-
-    #[inline]
-    fn delete_schema(
-        &self,
-        id: crate::schema::identifier::SchemaId,
-    ) -> Result<(), Self::Error> {
-        SchemaWriteRepository::delete_schema(self, id)
-    }
-
-    #[inline]
-    fn save_topological_graph(
-        &self,
-        graph: &InheritanceGraph<()>,
-    ) -> Result<(), Self::Error> {
-        SchemaWriteRepository::save_topological_graph(self, graph)
-    }
-}
-
 struct DeleteContext {
     schema_name: Option<SchemaName>,
     view_path: Option<RelativePath>,
@@ -312,7 +275,7 @@ mod tests {
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::RedbRepository,
+                storage::RedbRepository,
             },
         };
 
@@ -369,7 +332,7 @@ mod tests {
 
             // Verify that a failed write transaction rolls back
             let result: Result<(), crate::db::DbError> = store.write(|tx| {
-                use crate::schema::storage_v2::tables::SCHEMAS;
+                use crate::schema::storage::tables::SCHEMAS;
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 let id2 = SchemaId::new();
                 let name2 = SchemaName::try_new("will-rollback").unwrap();
@@ -428,11 +391,8 @@ mod tests {
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
-                repository::{
-                    ProcessorWriteRepository, SchemaReadRepository,
-                    SchemaWriteRepository,
-                },
-                storage_v2::RedbRepository,
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage::RedbRepository,
             },
         };
 
@@ -519,28 +479,6 @@ mod tests {
             // Should not error on empty batch
             SchemaWriteRepository::save_many_schemas(&repo, &[]).unwrap();
         }
-
-        #[test]
-        fn processor_write_seam_supports_batch_persistence() {
-            let temp_dir = tempfile::TempDir::new().unwrap();
-            let db_path = temp_dir.path().join("test.db");
-            let store = Arc::new(Store::open(&db_path).unwrap());
-            let repo = RedbRepository::new(store);
-
-            let id = SchemaId::new();
-            let name = SchemaName::try_new("processor-seam-schema").unwrap();
-            let schema =
-                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
-
-            ProcessorWriteRepository::save_many_schemas(
-                &repo,
-                std::slice::from_ref(&schema),
-            )
-            .unwrap();
-
-            let found = repo.find_schema_by_id(id).unwrap();
-            assert!(found.is_some());
-        }
     }
 
     mod save_property_bank {
@@ -551,7 +489,7 @@ mod tests {
             schema::{
                 bank::PropertyBank,
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::RedbRepository,
+                storage::RedbRepository,
             },
         };
 
@@ -602,7 +540,7 @@ mod tests {
                 identifier::SchemaId,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::RedbRepository,
+                storage::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                     raw::RawSchemaView,
@@ -690,7 +628,7 @@ mod tests {
                 identifier::SchemaId,
                 inheritance::{InheritanceGraph, SchemaGraphBuilder},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::RedbRepository,
+                storage::RedbRepository,
             },
         };
 
@@ -741,7 +679,7 @@ mod tests {
                 property::PropertyMap,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
                 repository::{SchemaReadRepository, SchemaWriteRepository},
-                storage_v2::RedbRepository,
+                storage::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                     raw::RawSchemaView,

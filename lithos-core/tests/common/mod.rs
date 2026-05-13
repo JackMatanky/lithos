@@ -28,7 +28,7 @@ use lithos_core::{
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
         repository::SchemaReadRepository,
-        storage_v2::RedbRepository,
+        storage::RedbRepository,
     },
 };
 use tempfile::TempDir;

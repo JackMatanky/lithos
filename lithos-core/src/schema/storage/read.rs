@@ -14,7 +14,7 @@ use crate::{
         index::{NameIdPairs, PathIdPairs},
         property::PropertyName,
         repository::{SchemaReadRepository, SchemaStorageV2Error},
-        storage_v2::{
+        storage::{
             RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
@@ -468,7 +468,7 @@ mod tests {
             property::PropertyMap,
             raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
             repository::{SchemaReadRepository, SchemaWriteRepository},
-            storage_v2::RedbRepository,
+            storage::RedbRepository,
             views::{
                 RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
                 raw::RawSchemaView,
@@ -734,7 +734,7 @@ mod tests {
 
     mod index_lookups {
         use super::*;
-        use crate::schema::storage_v2::tables::{
+        use crate::schema::storage::tables::{
             SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
         };
 
@@ -851,7 +851,7 @@ mod tests {
 
         #[test]
         fn by_path_returns_none_when_path_index_points_to_missing_view() {
-            use crate::schema::storage_v2::tables::SCHEMA_ID_BY_PATH;
+            use crate::schema::storage::tables::SCHEMA_ID_BY_PATH;
 
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");

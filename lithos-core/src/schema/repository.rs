@@ -43,50 +43,6 @@ impl From<SchemaStorageV2Error> for SchemaRepositoryError {
 #[error(transparent)]
 pub struct DbTxError(#[from] DbError);
 
-/// Write seam for schema processor persistence paths.
-///
-/// This trait isolates the processor's write orchestration from the legacy
-/// repository interface so completion-stage writes can migrate independently.
-pub trait ProcessorWriteRepository {
-    /// Storage-specific error type.
-    type Error;
-
-    /// Save multiple schema aggregates atomically.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific errors when serialization or writes fail.
-    fn save_many_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
-
-    /// Save a raw schema view and associated path index atomically.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific errors when serialization or writes fail.
-    fn save_raw_schema_view(
-        &self,
-        id: SchemaId,
-        view: &RawSchemaView,
-    ) -> Result<(), Self::Error>;
-
-    /// Delete a schema and related indexes/views.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific errors when writes fail.
-    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error>;
-
-    /// Save the topological inheritance graph singleton.
-    ///
-    /// # Errors
-    ///
-    /// Returns storage-specific errors when serialization or writes fail.
-    fn save_topological_graph(
-        &self,
-        graph: &InheritanceGraph<()>,
-    ) -> Result<(), Self::Error>;
-}
-
 /// Segregated read interface for schema persistence.
 pub trait SchemaReadRepository {
     /// Find a schema by its unique identifier.

@@ -81,7 +81,7 @@ use crate::{
 /// # Example
 ///
 /// ```ignore
-/// use lithos_core::schema::storage_v2::testing::InMemoryRepository;
+/// use lithos_core::schema::storage::testing::InMemoryRepository;
 /// use lithos_core::schema::ingestor::Ingestor;
 ///
 /// #[test]

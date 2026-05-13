@@ -16,7 +16,7 @@ pub mod identifier;
 /// Repository traits for the new schema seam (read, write, unified).
 pub mod repository;
 /// Redb-backed repository implementation for the new seam.
-pub mod storage_v2;
+pub mod storage;
 
 /// View types for staleness detection and versioned metadata tracking.
 ///

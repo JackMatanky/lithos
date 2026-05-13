@@ -6,15 +6,6 @@ status: complete
 date_created: 2026-05-13
 date_updated: 2026-05-13
 
-# Closeout (2026-05-13)
-- Removed legacy `pub(crate) mod db_table` from `schema/mod.rs` (9 unused constants, zero callers)
-- Ported enriched doc comments (filename examples, DAG structure, inheritance lifecycle) to `storage_v2/tables.rs`
-- Moved `SCHEMA_BASE_PROPERTIES` (future-use table def) to `storage_v2/tables.rs`
-- Fixed pre-existing test callers: `test_db.path()` → `test_db.store()` across 3 test files
-- Fixed pre-existing lint issues: deprecated `setup_cqrs` expect_used, unfulfilled collapsible_if expect
-- Verified: fmt ✓, lint ✓, unit 1160/1160 ✓, integration 36/36 ✓, e2e 1/1 ✓
-- Commit: `4a0d2c23 refactor(schema): remove legacy db_table constants and port docs to tables.rs`
-- `gitnexus_detect_changes()` confirms zero uncommitted changes, zero affected processes
 ---
 
 ## Type
@@ -299,6 +290,22 @@ Final gate:
 - Canonical v2 adapter naming was cleaned up by renaming
   `SchemaRedbRepository` to `RedbRepository` across `storage_v2` and
   integration tests.
+
+## Closeout (2026-05-13)
+
+- Removed legacy `pub(crate) mod db_table` from `schema/mod.rs` (9 unused
+  constants, zero callers)
+- Ported enriched doc comments (filename examples, DAG structure, inheritance
+  lifecycle) to `storage_v2/tables.rs`
+- Moved `SCHEMA_BASE_PROPERTIES` (future-use table def) to `storage_v2/tables.rs`
+- Fixed pre-existing test callers: `test_db.path()` → `test_db.store()` across 3
+  test files
+- Fixed pre-existing lint issues: deprecated `setup_cqrs` expect_used,
+  unfulfilled collapsible_if expect
+- Verified: fmt ✓, lint ✓, unit 1160/1160 ✓, integration 36/36 ✓, e2e 1/1 ✓
+- Commit: `4a0d2c23 refactor(schema): remove legacy db_table constants and port docs to tables.rs`
+- `gitnexus_detect_changes()` confirms zero uncommitted changes, zero affected
+  processes
 
 ## Verification Notes (2026-05-13)
 
