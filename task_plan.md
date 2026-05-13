@@ -3,9 +3,9 @@
 Refactor `lithos-core/src/fs/` to minimize unnecessary allocations and ensure lean, performant, and idiomatic Rust code.
 
 ## Goals
-- [ ] Minimize `PathBuf` and `String` allocations in hot paths.
-- [ ] Implement zero-copy patterns for path and name inspection.
-- [ ] Maintain 100% test coverage and behavioral parity.
+- [x] Minimize `PathBuf` and `String` allocations in hot paths.
+- [x] Implement zero-copy patterns for path and name inspection.
+- [x] Maintain 100% test coverage and behavioral parity.
 
 ## Context
 - **Module**: `lithos-core/src/fs/`
@@ -31,7 +31,7 @@ Refactor `lithos-core/src/fs/` to minimize unnecessary allocations and ensure le
 - **Test**: `tests::fs_entry::try_from::returns_file_entry_for_walkdir_file`.
 - **Status**: ✅ complete — reduced from 3 clones to 1 clone (only for error path)
 
-### Phase 3: Zero-Copy `FsPathRef` and `FsEntry::path_ref()` (entry.rs)
+### Phase 3: Zero-Copy `FsPathRef` and `FsEntry::path_ref()` (entry.rs, path.rs, scanner.rs)
 - **Goal**: Stop cloning `PathBuf` just to return an `FsPath`.
 - **Approach**:
     1. Define `pub enum FsPathRef<'a> { File(&'a FilePath), Dir(&'a DirPath) }`.
@@ -39,14 +39,14 @@ Refactor `lithos-core/src/fs/` to minimize unnecessary allocations and ensure le
     3. Add `FsEntry::path_ref(&self) -> FsPathRef<'_>`.
     4. Update `scanner.rs` to use `path_ref()` in sort loops.
 - **Test**: Create new test `tests::fs_entry::path_ref_returns_reference`.
-- **Status**: pending
+- **Status**: ✅ complete — added FsPathRef<'a>, FsEntry::path_ref(), 3 new tests, scanner uses path_ref()
 
 ### Phase 4: `Scanner` Hot-Path Optimization (scanner.rs)
 - **Goal**: Remove intermediate path clones in traversal helpers.
 - **Approach**:
     1. Refactor `to_fs_path` to avoid cloning until the variant is determined.
-    2. Update `filter_entry` to return `Option<&Path>` instead of `Option<PathBuf>`.
-- **Status**: in progress
+    2. Apply borrow-first pattern: borrow entry.path(), clone only for ownership transfer.
+- **Status**: ✅ complete — reduced from 6 clones to 2-3 clones per entry in to_fs_path
 
 ## Verification Plan
 - Run `cargo test -p lithos-core --lib fs` after each phase.

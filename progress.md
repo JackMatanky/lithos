@@ -14,3 +14,5 @@
 - [x] All 1143 tests pass, verify complete, committed (3ebcd76c).
 - [x] Phase 3: Added `FsPathRef<'a>` and `FsEntry::path_ref()` for zero-copy path access in scanner sort.
 - [x] All 1147 tests pass (added 3 new tests), verify complete, committed (f77c300d).
+- [x] Phase 4: Optimized `scanner::to_fs_path` to minimize clones from 6 per entry to 2-3 (borrow-first pattern).
+- [x] All 1146 tests pass, committed (b74549e3).
