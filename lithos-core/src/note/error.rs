@@ -147,14 +147,36 @@ pub enum NoteIngestError {
     Domain(#[from] NoteError),
 }
 
-impl From<crate::fs::error::ParseError> for NoteIngestError {
+impl From<crate::fs::ReadError> for NoteIngestError {
     #[inline]
-    fn from(err: crate::fs::error::ParseError) -> Self {
-        #[expect(clippy::unwrap_used, reason = "Static dummy path is valid")]
-        let dummy_path = NotePath::try_new("vault.md").unwrap();
+    fn from(err: crate::fs::ReadError) -> Self {
+        let (path_str, message) = match &err {
+            crate::fs::ReadError::Io {
+                path,
+                source,
+            } => (path.to_string_lossy(), source.to_string()),
+            crate::fs::ReadError::NotInBase {
+                path,
+                base,
+            } => (
+                path.to_string_lossy(),
+                format!(
+                    "Path {} is not within base {}",
+                    path.display(),
+                    base.display()
+                ),
+            ),
+        };
+        #[expect(
+            clippy::expect_used,
+            reason = "Static fallback 'vault.md' is always a valid NotePath"
+        )]
+        let note_path = NotePath::try_new(&path_str).unwrap_or_else(|_| {
+            NotePath::try_new("vault.md").expect("static fallback valid")
+        });
         NoteFileError::ReadFailed {
-            path: dummy_path,
-            message: err.to_string().into(),
+            path: note_path,
+            message: message.into(),
         }
         .into()
     }
@@ -826,6 +848,46 @@ mod tests {
                 ingest_err,
                 NoteIngestError::File(NoteFileError::InvalidPath { .. })
             ));
+        }
+
+        #[test]
+        fn read_io_error_to_ingest_umbrella() {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "file not found",
+            );
+            let read_err = crate::fs::ReadError::Io {
+                path: PathBuf::from("daily/note.md"),
+                source: io_err,
+            };
+            let ingest_err: NoteIngestError = read_err.into();
+            assert!(
+                matches!(
+                    &ingest_err,
+                    NoteIngestError::File(NoteFileError::ReadFailed { path, message })
+                    if path.as_str() == "daily/note.md" && message.as_ref().contains("not found")
+                ),
+                "Expected ReadFailed with path and message, got: \
+                 {ingest_err:?}"
+            );
+        }
+
+        #[test]
+        fn read_not_in_base_to_ingest_umbrella() {
+            let read_err = crate::fs::ReadError::NotInBase {
+                path: PathBuf::from("../outside.md"),
+                base: PathBuf::from("/vault"),
+            };
+            let ingest_err: NoteIngestError = read_err.into();
+            assert!(
+                matches!(
+                    &ingest_err,
+                    NoteIngestError::File(NoteFileError::ReadFailed { message, .. })
+                    if message.as_ref().contains("outside")
+                ),
+                "Expected ReadFailed with boundary message, got: \
+                 {ingest_err:?}"
+            );
         }
     }
 
