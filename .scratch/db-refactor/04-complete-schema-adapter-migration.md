@@ -4,7 +4,7 @@ category: enhancement
 label: decomposed
 status: decomposed
 date_created: 2026-05-10
-date_updated: 2026-05-12
+date_updated: 2026-05-13
 ---
 
 ## Type
@@ -51,11 +51,13 @@ This plan is updated to align with ADR 016. All migrated methods must be placed 
 
 ## Acceptance criteria
 
-- [ ] Schema read and write operations are fully served by `schema/storage/read.rs`, `schema/storage/write.rs`, and `schema/storage/tables.rs`.
+- [ ] Runtime schema call paths use only the segregated v2 seam (`schema/repository.rs` + `schema/storage_v2/*`) for reads and writes.
+- [ ] Legacy schema storage seam call paths are removed from runtime schema orchestration.
 - [ ] Multi-table invariants for Schema projections are preserved under atomic write semantics.
 - [ ] Existing Schema integration/unit tests pass, with additional tests where behavior coverage was missing.
+- [ ] Transitional module/component names are renamed to intended canonical names after legacy removal is verified.
 
-## Decomposition (2026-05-12)
+## Decomposition (Updated 2026-05-13)
 
 This issue was too large to implement as a single unit (27 operations across 8 tables). It has been decomposed into focused vertical slices following TDD tracer bullet principles:
 
@@ -86,13 +88,43 @@ This issue was too large to implement as a single unit (27 operations across 8 t
    - Coordinates all tables for atomic delete
    - Depends on: 04b, 04c (needs indexes and views)
 
+6. **`04f-builder-discovery-seam-migration.md`** - Builder/Discovery seam migration
+   - Move runtime discovery/builder orchestration off legacy `schema::storage::Repository`
+   - Preserve discovery behavior and cached-state read semantics
+   - Depends on: 04e
+
+7. **`04g-schema-processor-write-path-migration.md`** - Processor write-path cutover
+   - Replace legacy save-many write orchestration with v2 write seam
+   - Preserve atomic save/delete/raw-view/topology behavior in processor flows
+   - Depends on: 04f
+
+8. **`04h-batch-read-compat-migration.md`** - Batch read compatibility migration
+   - Remove runtime dependency on legacy `with_batch_schema_reader` coupling
+   - Preserve mixed hit/miss behavior and discovery efficiency
+   - Depends on: 04g
+
+9. **`04i-runtime-cutover-and-legacy-rename-cleanup.md`** - Runtime cutover + canonical renaming
+   - Verify all legacy runtime schema storage call paths are removed
+   - Rename transitional modules/components to intended canonical names
+   - Depends on: 04h
+
+10. **`04j-epic-closeout-docs-and-verification.md`** - Epic closeout and verification
+    - Reconcile parent acceptance/progress/docs with delivered migration
+    - Run full verification gates and mark epic complete
+    - Depends on: 04i
+
 ### Progress Tracking
 
-- [ ] 04a - Property Bank migration
-- [ ] 04b - Schema index operations
-- [ ] 04c - Raw view operations
-- [ ] 04d - Topology operations
-- [ ] 04e - Remaining schema operations
+- [x] 04a - Property Bank migration
+- [x] 04b - Schema index operations
+- [x] 04c - Raw view operations
+- [x] 04d - Topology operations
+- [x] 04e - Remaining schema operations
+- [ ] 04f - Builder/Discovery seam migration
+- [ ] 04g - Schema processor write-path migration
+- [ ] 04h - Batch read compatibility migration
+- [ ] 04i - Runtime cutover and legacy rename cleanup
+- [ ] 04j - Epic closeout docs and verification
 
 Once all sub-issues are complete, this epic can be marked as `completed`.
 
