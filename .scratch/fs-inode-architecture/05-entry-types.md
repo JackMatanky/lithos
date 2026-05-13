@@ -1,10 +1,11 @@
 ---
 title: 05-fs-entry-types
 category: enhancement
-label: completed
-status: completed
+label: needs-triage
+status: in_progress
 date_created: 2026-05-11
 date_completed: 2026-05-12
+date_reopened: 2026-05-13
 ---
 
 ## Type
@@ -179,9 +180,102 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
 - Storage layer will call `as_relative(base)` when creating `FileView`/`DirView`
 
 **Agent Task:**
-- [ ] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs`
-- [ ] Handle error conversion from `std::io::Error` to `ParseError`
-- [ ] Add tests for walkdir entry → `FsFile` conversion
-- [ ] Add tests for walkdir entry → `FsDir` conversion
-- [ ] Add test for error handling (I/O errors, invalid metadata)
-- [ ] Update acceptance criteria: change "try_from_parts" to "TryFrom<DirEntry>"
+- [x] Add `TryFrom<walkdir::DirEntry> for FsEntry` in `fs/entry.rs`
+- [x] Handle error conversion from `std::io::Error` to `ParseError`
+- [x] Add tests for walkdir entry → `FsFile` conversion
+- [x] Add tests for walkdir entry → `FsDir` conversion
+- [x] Add test for error handling (I/O errors, invalid metadata)
+- [x] Update acceptance criteria: change "try_from_parts" to "TryFrom<DirEntry>"
+
+## Revision: Phase 3 - Rust Best Practices Review (2026-05-13)
+
+### Review Summary
+
+Conducted thorough review of `lithos-core/src/fs/entry.rs` using:
+- Rust Best Practices Handbook (Apollo)
+- TDD skill guidelines
+- Chapter 5: Automated Testing patterns
+
+### Code Issues Found
+
+1. **Redundant clones in TryFrom** (lines 100-101, 114-115):
+   - `path.clone()` when `path` is already consumed after `into_path()`
+   - Can use `std::mem::take` or restructure to avoid clone
+
+2. **Clone in path() method** (lines 70-71):
+   - Returns `FsPath` by value requiring `.clone()` on inner paths
+   - Could return `&FsPath` with lifetime management (deferred - see notes)
+
+### Test Organization Issues (Chapter 5 Violations)
+
+| Issue | Current | Should Be |
+|-------|---------|-----------|
+| Organization | Flat 12 tests in single `mod tests` | 3+ modules with submodules |
+| Naming | `fs_entry_try_from_walkdir_file` | `converts_walkdir_entry_to_file_entry` |
+| Assertions | 2+ per test | 1 per test |
+| Behaviors | Multiple per test | One per test |
+
+**Example of current bad test:**
+```rust
+// Lines 215-239: tests 2 behaviors + 3 assertions
+#[test]
+fn fs_entry_try_from_walkdir_file() {
+    let fs_entry = FsEntry::try_from(entry).unwrap();
+    assert!(fs_entry.is_file());   // behavior 1
+    assert!(!fs_entry.is_dir());  // still behavior 1
+    let path = fs_entry.path();
+    assert!(path.is_file());       // behavior 2 - SEPARATE TEST
+}
+```
+
+### Reference Pattern (from name.rs - already refactored)
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod file_name {
+        use super::*;
+
+        mod basename {
+            use super::*;
+
+            #[test]
+            fn returns_some_for_simple_filename() { ... }
+        }
+    }
+
+    mod base_name {
+        mod try_from_path {
+            #[test]
+            fn constructs_from_file_stem() { ... }
+        }
+    }
+}
+```
+
+### Refactor Plan
+
+1. **Code Fixes** (low priority):
+   - Remove redundant `path.clone()` in TryFrom implementation
+   - Document that `path()` returns owned `FsPath` (design decision)
+
+2. **Test Reorganization** (high priority):
+   - Create top-level modules: `fs_entry`, `fs_file`, `fs_dir`
+   - Add submodules under `fs_entry`: `try_from`, `is_file`, `is_dir`, `as_file`, `as_dir`, `path`
+   - Rename all tests to behavior-focused names (e.g., `returns_some_for_file_variant`)
+   - Split multi-assertion tests into one-assertion tests
+
+3. **Test Naming Convention** (per Chapter 5):
+   - Use pattern: `unit_of_work__expected_behavior__state`
+   - Example: `fs_entry__as_file__returns_some_for_file_variant`
+
+### Status: In Progress
+
+- [ ] Reorganize tests into submodules
+- [ ] Rename tests to behavior-focused names
+- [ ] Split multi-assertion tests
+- [ ] Fix redundant clones in TryFrom (optional)
+- [ ] Run tests and verify Clippy clean
+- [ ] Mark as completed
