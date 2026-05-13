@@ -317,7 +317,7 @@ impl TryFrom<&RelativePath> for SchemaName {
             ))
         })?;
 
-        let name = filename.basename();
+        let name = filename.basename_str();
         Self::try_new(name)
     }
 }

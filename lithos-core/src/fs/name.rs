@@ -29,26 +29,41 @@ impl FileName {
         &self.0
     }
 
-    /// Get the basename (filename without extension).
+    /// Get the basename as a string slice (filename without extension).
     ///
     /// Uses Obsidian terminology where "basename" means filename without
-    /// extension.
+    /// extension. Returns an empty string if the basename cannot be extracted.
+    ///
+    /// For the owned `BaseName` type with explicit error handling, use
+    /// [`basename()`](Self::basename).
     #[inline]
     #[must_use]
-    pub fn basename(&self) -> &str {
+    pub fn basename_str(&self) -> &str {
         Path::new(self.as_str())
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")
     }
 
-    /// Get the basename as an owned `BaseName`.
+    /// Get the basename as an owned `BaseName` (filename without extension).
     ///
-    /// Returns `None` if the basename would be empty (e.g., for hidden files
-    /// like `.md`).
+    /// Uses Obsidian terminology where "basename" means filename without
+    /// extension. Returns `None` if the basename would be empty or cannot
+    /// be extracted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::FileName;
+    ///
+    /// let name = FileName::from("my-note.md".to_owned());
+    /// let base = name.basename();
+    /// assert!(base.is_some());
+    /// assert_eq!(base.unwrap().as_str(), "my-note");
+    /// ```
     #[inline]
     #[must_use]
-    pub fn to_basename(&self) -> Option<BaseName> {
+    pub fn basename(&self) -> Option<BaseName> {
         BaseName::try_from(Path::new(self.as_str())).ok()
     }
 
@@ -207,16 +222,21 @@ impl From<String> for BaseName {
     }
 }
 
-impl From<FileName> for BaseName {
+impl TryFrom<FileName> for BaseName {
+    type Error = std::io::Error;
+
     #[inline]
-    fn from(name: FileName) -> Self {
+    fn try_from(name: FileName) -> Result<Self, Self::Error> {
         Path::new(name.as_str())
             .file_stem()
             .and_then(|s| s.to_str())
-            .map_or_else(
-                || BaseName::new("".into()),
-                |s| BaseName::new(s.into()),
-            )
+            .map(|s| BaseName::new(s.into()))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path has no stem component",
+                )
+            })
     }
 }
 
@@ -334,7 +354,7 @@ mod tests {
     #[test]
     fn should_return_basename_as_owned() {
         let name = FileName::from("my-note.md".to_owned());
-        let base = name.to_basename();
+        let base = name.basename();
         assert!(base.is_some());
         assert_eq!(base.unwrap().as_str(), "my-note");
     }
@@ -342,7 +362,7 @@ mod tests {
     #[test]
     fn should_return_basename_for_hidden_file() {
         let name = FileName::from(".md".to_owned());
-        let base = name.to_basename();
+        let base = name.basename();
         assert!(base.is_some());
         assert_eq!(base.unwrap().as_str(), ".md");
     }
@@ -350,7 +370,7 @@ mod tests {
     #[test]
     fn should_convert_from_filename_to_basename() {
         let name = FileName::from("document.txt".to_owned());
-        let base: BaseName = name.clone().into();
+        let base: BaseName = BaseName::try_from(name.clone()).unwrap();
         assert_eq!(base.as_str(), "document");
     }
 
@@ -371,6 +391,39 @@ mod tests {
     #[test]
     fn should_return_stem_for_hidden_file() {
         let name = FileName::from(".md".to_owned());
-        assert_eq!(name.basename(), ".md");
+        assert_eq!(name.basename_str(), ".md");
+    }
+
+    // NEW TEST: basename() should return Option<BaseName>
+    #[test]
+    fn basename_returns_some_for_simple_filename() {
+        let name = FileName::from("my-note.md".to_owned());
+        let base = name.basename();
+        assert!(base.is_some());
+        assert_eq!(base.unwrap().as_str(), "my-note");
+    }
+
+    #[test]
+    fn basename_returns_some_for_hidden_file_with_extension() {
+        let name = FileName::from(".md".to_owned());
+        let base = name.basename();
+        assert!(base.is_some());
+        assert_eq!(base.unwrap().as_str(), ".md");
+    }
+
+    // NEW TEST: TryFrom<FileName> should return error for invalid basenames
+    #[test]
+    fn try_from_filename_returns_ok_for_valid_stem() {
+        let name = FileName::from("document.txt".to_owned());
+        let base = BaseName::try_from(name);
+        assert!(base.is_ok());
+        assert_eq!(base.unwrap().as_str(), "document");
+    }
+
+    #[test]
+    fn try_from_filename_returns_error_for_no_stem() {
+        let name = FileName::from(String::new());
+        let base = BaseName::try_from(name);
+        assert!(base.is_err());
     }
 }

@@ -1174,7 +1174,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
 
             let schema_name = source
                 .filename(path.as_path())
-                .map(|f| f.basename().to_owned().into_boxed_str())
+                .map(|f| f.basename_str().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
@@ -1239,7 +1239,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             let schema_name = source
                                 .filename(payload.path.as_path())
                                 .map(|f| {
-                                    f.basename().to_owned().into_boxed_str()
+                                    f.basename_str().to_owned().into_boxed_str()
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
@@ -1277,7 +1277,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             let schema_name = source
                                 .filename(payload.path.as_path())
                                 .map(|f| {
-                                    f.basename().to_owned().into_boxed_str()
+                                    f.basename_str().to_owned().into_boxed_str()
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
@@ -1365,7 +1365,7 @@ impl SchemaProcessor<FileParsed, Compared> {
         for (id, read) in new_schemas.into_sorted_iter() {
             let schema_name = source
                 .filename(read.path.as_path())
-                .map(|f| f.basename().to_owned().into_boxed_str())
+                .map(|f| f.basename_str().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             let info_for_raw = read.info;
@@ -2032,7 +2032,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
     ) -> Result<Box<str>, SchemaLoaderError> {
         source
             .filename(path)
-            .map(|f| f.basename().to_owned().into_boxed_str())
+            .map(|f| f.basename_str().to_owned().into_boxed_str())
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)
     }

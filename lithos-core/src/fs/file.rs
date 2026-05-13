@@ -246,13 +246,13 @@ mod tests {
     #[test]
     fn basename_extracts_filename_without_extension() {
         let filename = FileName::new("note.toml".into());
-        assert_eq!(filename.basename(), "note");
+        assert_eq!(filename.basename_str(), "note");
     }
 
     #[test]
     fn basename_handles_hyphens() {
         let filename = FileName::new("base-note.toml".into());
-        assert_eq!(filename.basename(), "base-note");
+        assert_eq!(filename.basename_str(), "base-note");
     }
 
     #[test]
@@ -278,7 +278,7 @@ mod tests {
         let path = Path::new("schemas/user.json");
         let filename = FileName::try_from(path).unwrap();
         assert_eq!(filename.as_str(), "user.json");
-        assert_eq!(filename.basename(), "user");
+        assert_eq!(filename.basename_str(), "user");
     }
 
     #[test]

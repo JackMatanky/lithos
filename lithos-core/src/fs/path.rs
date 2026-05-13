@@ -410,7 +410,7 @@ impl FilePath {
     #[inline]
     #[must_use]
     pub fn basename(&self) -> Option<BaseName> {
-        self.filename().and_then(|f| f.to_basename())
+        self.filename().and_then(|f| f.basename())
     }
 
     /// Returns the borrowed file extension view, if present.
