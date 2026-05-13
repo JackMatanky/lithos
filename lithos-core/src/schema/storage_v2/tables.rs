@@ -7,64 +7,79 @@ use crate::{
 };
 
 impl_redb_uuid!(SchemaId);
-/// Schema aggregates (key: `SchemaId`, value: rkyv-serialized `Schema`).
+/// Schema aggregates with zero-copy serialization.
 ///
-/// Uses zero-copy serialization via `rkyv`.
+/// Stores full `Schema` structures indexed by schema ID for efficient
+/// retrieval by identity.
+///
+/// Key: `SchemaId`
+/// Value: rkyv-serialized `Schema`
 pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas_v2");
 
-/// Path-to-SchemaId index for raw view lookup (key: path string, value:
-/// `SchemaId`).
+/// Path-to-SchemaId index for raw view lookup.
 ///
-/// Maps file paths to their corresponding schema IDs for path-based lookups.
-/// Keys are path strings with extension (e.g., "note.toml", "task.json"),
-/// validated at insert time.
+/// Maps file paths (e.g., "note.toml", "task.json") to their corresponding
+/// schema IDs, enabling path-based schema retrieval.
+///
+/// Key: path string with extension
+/// Value: `SchemaId`
 pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
     PathTable::new("schema_id_by_path_v2");
 
-/// Raw schema views by ID (key: `SchemaId`, value: serialized `RawSchemaView`).
+/// Raw schema views indexed by schema ID.
 ///
-/// Stores full `RawSchemaView` structures indexed by schema ID for efficient
-/// batch retrieval. Views contain path, version history, and hashes for
-/// staleness detection.
+/// Stores full `RawSchemaView` structures containing path, version history,
+/// and content hashes for staleness detection and batch retrieval.
+///
+/// Key: `SchemaId`
+/// Value: serialized `RawSchemaView`
 pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]> =
     UuidTable::new("raw_schema_views_v2");
 
-/// Property Bank singleton (key: constant string, value: serialized
-/// `PropertyBank`).
+/// Property Bank singleton with all registered property definitions.
 ///
-/// The Property Bank stores all registered property definitions that schemas
-/// can reference. Uses a singleton pattern with a constant key.
+/// Stores the global registry of reusable property specs that schemas can
+/// reference. Uses a singleton pattern with a constant key.
+///
+/// Key: `PROPERTY_BANK_KEY` (constant string)
+/// Value: serialized `PropertyBank`
 pub const PROPERTY_BANK: PathTable<&[u8]> = PathTable::new("property_bank_v2");
 
-/// Constant key for Property Bank singleton table.
+/// Constant key for the Property Bank singleton table.
 pub const PROPERTY_BANK_KEY: &str = "singleton";
 
-/// Raw property bank view by path (key: path string, value: serialized
-/// `RawPropertyBankView`).
+/// Raw property bank view for staleness detection.
 ///
 /// Maps property bank file paths (e.g., "property-bank.toml",
-/// "property-bank.json") to their raw views for staleness detection.
+/// "property-bank.json") to their raw views, enabling change detection
+/// without re-parsing the full property bank.
+///
+/// Key: path string
+/// Value: serialized `RawPropertyBankView`
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
     PathTable::new("raw_property_bank_view_v2");
 
-/// Topological inheritance graph singleton.
+/// Topological inheritance graph singleton with DAG structure.
 ///
-/// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
-/// Value: serialized `InheritanceGraph<()>`.
+/// Stores the persisted directed acyclic graph used for schema inheritance
+/// resolution. Contains `SchemaId` links and adjacency lists.
+/// Rebuilt or patched when inheritance relationships change.
 ///
-/// Contains DAG structure with `SchemaId` links and adjacency lists.
-/// Rebuilt/patched when inheritance relationships change.
+/// Key: `TOPOLOGICAL_GRAPH_KEY` (constant string)
+/// Value: serialized `InheritanceGraph<()>`
 pub const SCHEMA_TOPOLOGICAL_GRAPH: PathTable<&[u8]> =
     PathTable::new("schema_topological_graph_v2");
 
-/// Constant key for topological graph singleton table.
+/// Constant key for the topological inheritance graph singleton table.
 pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 
-/// Schema name→ID index (key: schema name string, value: serialized
-/// `SchemaId`).
+/// Schema name-to-ID index for fast name-based lookup.
 ///
-/// Enables fast ID lookup by schema name without loading full schema data.
-/// Maintained atomically with `SCHEMAS` table during save operations.
+/// Enables resolving schema IDs by name without loading full schema data.
+/// Maintained atomically with `SCHEMAS` during save operations.
+///
+/// Key: schema name string
+/// Value: serialized `SchemaId`
 pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
     PathTable::new("schema_id_by_name_v2");
 
