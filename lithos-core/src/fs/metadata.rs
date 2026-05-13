@@ -103,9 +103,9 @@ impl TryFrom<std::fs::Metadata> for FsMetadata {
     #[inline]
     fn try_from(meta: std::fs::Metadata) -> Result<Self, Self::Error> {
         if meta.is_file() {
-            Ok(Self::File(FileMetadata::try_from(&meta)?))
+            Ok(Self::File(FileMetadata::from(&meta)))
         } else if meta.is_dir() {
-            Ok(Self::Dir(DirMetadata::try_from(&meta)?))
+            Ok(Self::Dir(DirMetadata::from(&meta)))
         } else {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -164,14 +164,12 @@ impl FileMetadata {
     }
 }
 
-impl TryFrom<&std::fs::Metadata> for FileMetadata {
-    type Error = io::Error;
-
+impl From<&std::fs::Metadata> for FileMetadata {
     #[inline]
-    fn try_from(meta: &std::fs::Metadata) -> Result<Self, Self::Error> {
-        let times = FsTimes::try_from(meta)?;
+    fn from(meta: &std::fs::Metadata) -> Self {
+        let times = FsTimes::from(meta);
         let is_symlink = meta.is_symlink();
-        Ok(Self::new(times, meta.len(), is_symlink))
+        Self::new(times, meta.len(), is_symlink)
     }
 }
 
@@ -215,14 +213,12 @@ impl DirMetadata {
     }
 }
 
-impl TryFrom<&std::fs::Metadata> for DirMetadata {
-    type Error = io::Error;
-
+impl From<&std::fs::Metadata> for DirMetadata {
     #[inline]
-    fn try_from(meta: &std::fs::Metadata) -> Result<Self, Self::Error> {
-        let times = FsTimes::try_from(meta)?;
+    fn from(meta: &std::fs::Metadata) -> Self {
+        let times = FsTimes::from(meta);
         let is_symlink = meta.is_symlink();
-        Ok(Self::new(times, is_symlink))
+        Self::new(times, is_symlink)
     }
 }
 
@@ -282,12 +278,10 @@ impl FsTimes {
     }
 }
 
-impl TryFrom<&std::fs::Metadata> for FsTimes {
-    type Error = io::Error;
-
+impl From<&std::fs::Metadata> for FsTimes {
     #[inline]
-    fn try_from(meta: &std::fs::Metadata) -> Result<Self, Self::Error> {
-        Ok(Self::new(meta.created().ok(), meta.modified().ok()))
+    fn from(meta: &std::fs::Metadata) -> Self {
+        Self::new(meta.created().ok(), meta.modified().ok())
     }
 }
 
@@ -379,7 +373,7 @@ mod tests {
             fs::write(&file_path, b"hello").unwrap();
 
             let std_meta = fs::metadata(&file_path).unwrap();
-            let fs_times = FsTimes::try_from(&std_meta).unwrap();
+            let fs_times = FsTimes::from(&std_meta);
 
             assert!(fs_times.created_at().is_some());
             assert!(fs_times.modified_at().is_some());
@@ -419,7 +413,7 @@ mod tests {
             fs::write(&file_path, b"hello").unwrap();
 
             let std_meta = fs::metadata(&file_path).unwrap();
-            let file_meta = FileMetadata::try_from(&std_meta).unwrap();
+            let file_meta = FileMetadata::from(&std_meta);
 
             assert_eq!(file_meta.size(), 5);
             assert!(file_meta.times().modified_at().is_some());
@@ -461,7 +455,7 @@ mod tests {
             fs::create_dir(&dir_path).unwrap();
 
             let std_meta = fs::metadata(&dir_path).unwrap();
-            let dir_meta = DirMetadata::try_from(&std_meta).unwrap();
+            let dir_meta = DirMetadata::from(&std_meta);
 
             assert!(dir_meta.times().created_at().is_some());
         }

@@ -29,7 +29,7 @@ Refactor `lithos-core/src/fs/` to minimize unnecessary allocations and ensure le
     2. Pass the owned `PathBuf` to `FilePath::new`/`DirPath::new`.
     3. Only clone if error reporting requires the path.
 - **Test**: `tests::fs_entry::try_from::returns_file_entry_for_walkdir_file`.
-- **Status**: pending
+- **Status**: ✅ complete — reduced from 3 clones to 1 clone (only for error path)
 
 ### Phase 3: Zero-Copy `FsPathRef` and `FsEntry::path_ref()` (entry.rs)
 - **Goal**: Stop cloning `PathBuf` just to return an `FsPath`.

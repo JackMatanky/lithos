@@ -96,22 +96,20 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
         let path = entry.into_path();
 
         if std_metadata.is_dir() {
-            let dir_path = DirPath::new(path.clone()).map_err(|_source| {
-                ScanError::Path(PathError::NotADirectory(path.clone()))
+            // Clone once for error reporting, then move path into DirPath
+            let path_for_error = path.clone();
+            let dir_path = DirPath::new(path).map_err(|_source| {
+                ScanError::Path(PathError::NotADirectory(path_for_error))
             })?;
-            let dir_metadata =
-                DirMetadata::try_from(&std_metadata).map_err(|_source| {
-                    ScanError::Path(PathError::NotADirectory(path))
-                })?;
+            let dir_metadata = DirMetadata::from(&std_metadata);
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
-            let file_path = FilePath::new(path.clone()).map_err(|_source| {
-                ScanError::Path(PathError::NotAFile(path.clone()))
+            // Clone once for error reporting, then move path into FilePath
+            let path_for_error = path.clone();
+            let file_path = FilePath::new(path).map_err(|_source| {
+                ScanError::Path(PathError::NotAFile(path_for_error))
             })?;
-            let file_metadata =
-                FileMetadata::try_from(&std_metadata).map_err(|_source| {
-                    ScanError::Path(PathError::NotAFile(path))
-                })?;
+            let file_metadata = FileMetadata::from(&std_metadata);
             Ok(Self::File(FsFile::new(file_path, file_metadata)))
         }
     }
