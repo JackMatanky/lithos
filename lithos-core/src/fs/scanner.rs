@@ -324,7 +324,7 @@ impl DirScanner {
             if let Some(relative) = self.filter_entry(&entry, &input)? {
                 let metadata =
                     entry.metadata().map_err(|e| ScanError::Traversal {
-                        path: relative.clone(),
+                        path: entry.path().to_path_buf(),
                         source: e.into(),
                     })?;
 
