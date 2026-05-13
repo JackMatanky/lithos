@@ -41,19 +41,12 @@ Refactor `lithos-core/src/fs/` to minimize unnecessary allocations and ensure le
 - **Test**: Create new test `tests::fs_entry::path_ref_returns_reference`.
 - **Status**: pending
 
-### Phase 4: `FileName` Allocation Mitigation (name.rs)
-- **Goal**: Reduce `Box<str>` allocations for temporary name views.
-- **Approach**:
-    1. Add `RelativePath::filename_ref(&self) -> Option<FileNameRef<'_>>`.
-    2. Update internal logic to prefer `_ref` methods.
-- **Status**: pending
-
-### Phase 5: `Scanner` Hot-Path Optimization (scanner.rs)
+### Phase 4: `Scanner` Hot-Path Optimization (scanner.rs)
 - **Goal**: Remove intermediate path clones in traversal helpers.
 - **Approach**:
     1. Refactor `to_fs_path` to avoid cloning until the variant is determined.
     2. Update `filter_entry` to return `Option<&Path>` instead of `Option<PathBuf>`.
-- **Status**: pending
+- **Status**: in progress
 
 ## Verification Plan
 - Run `cargo test -p lithos-core --lib fs` after each phase.

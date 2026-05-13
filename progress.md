@@ -12,3 +12,5 @@
 - [x] Phase 2: `FsEntry::try_from` Clone Reduction — reduced from 3 clones per branch to 1 clone (only on error path).
 - [x] Phase 2b: Refactored `FsTimes`, `FileMetadata`, `DirMetadata` to use `From` instead of `TryFrom` (infallible conversions).
 - [x] All 1143 tests pass, verify complete, committed (3ebcd76c).
+- [x] Phase 3: Added `FsPathRef<'a>` and `FsEntry::path_ref()` for zero-copy path access in scanner sort.
+- [x] All 1147 tests pass (added 3 new tests), verify complete, committed (f77c300d).

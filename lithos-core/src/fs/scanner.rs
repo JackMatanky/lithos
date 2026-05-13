@@ -250,22 +250,21 @@ impl DirScanner {
 
     /// Converts a `walkdir::DirEntry` to a typed `FsPath`.
     fn to_fs_path(entry: &walkdir::DirEntry) -> Result<FsPath, ScanError> {
-        let path = entry.path().to_path_buf();
+        // Borrow the path first; only clone when construction succeeds
+        let path = entry.path();
         let metadata = entry.metadata().map_err(|e| ScanError::Traversal {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source: e.into(),
         })?;
 
         if metadata.is_dir() {
-            let dir = DirPath::new(path.clone()).map_err(|_e| {
-                ScanError::Path(PathError::InvalidUtf8(path.clone()))
-            })?;
-            Ok(FsPath::Dir(dir))
+            DirPath::new(path.to_path_buf()).map(FsPath::Dir).map_err(|_e| {
+                ScanError::Path(PathError::InvalidUtf8(path.to_path_buf()))
+            })
         } else {
-            let file = FilePath::new(path.clone()).map_err(|_e| {
-                ScanError::Path(PathError::InvalidUtf8(path.clone()))
-            })?;
-            Ok(FsPath::File(file))
+            FilePath::new(path.to_path_buf()).map(FsPath::File).map_err(|_e| {
+                ScanError::Path(PathError::InvalidUtf8(path.to_path_buf()))
+            })
         }
     }
 
