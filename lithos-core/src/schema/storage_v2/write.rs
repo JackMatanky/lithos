@@ -3,11 +3,12 @@
 use redb::ReadableTable;
 
 use crate::{
-    db::serialize,
+    db::{DbError, deserialize, serialize},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        identifier::SchemaName,
         inheritance::InheritanceGraph,
         repository::{SchemaStorageV2Error, SchemaWriteRepository},
         storage_v2::{
@@ -163,6 +164,103 @@ impl SchemaWriteRepository for SchemaRedbRepository {
             })
             .map_err(SchemaStorageV2Error::from)
     }
+
+    #[inline]
+    fn delete_schema(
+        &self,
+        id: crate::schema::identifier::SchemaId,
+    ) -> Result<(), SchemaStorageV2Error> {
+        self.store
+            .write(|tx| {
+                let ctx = load_delete_context(tx, id)?;
+                remove_name_id_index(
+                    tx,
+                    ctx.schema_name.as_ref().map(SchemaName::as_str),
+                )?;
+                remove_path_id_index(tx, ctx.view_path.as_ref())?;
+                remove_schema(tx, id)?;
+                remove_raw_schema_view(tx, id)?;
+                Ok(())
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+}
+
+struct DeleteContext {
+    schema_name: Option<SchemaName>,
+    view_path: Option<RelativePath>,
+}
+
+fn load_delete_context(
+    tx: &crate::db::WriteTx,
+    id: crate::schema::identifier::SchemaId,
+) -> Result<DeleteContext, DbError> {
+    let schemas = tx.try_open_table(SCHEMAS.definition())?;
+    let raw_views = tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
+
+    let schema_name = if let Some(schema_guard) = schemas.get(id)? {
+        let schema: Schema = deserialize(schema_guard.value())?;
+        Some(schema.name().clone())
+    } else {
+        None
+    };
+
+    let view_path = if let Some(view_guard) = raw_views.get(id)? {
+        let view: RawSchemaView = deserialize(view_guard.value())?;
+        Some(view.path().clone())
+    } else {
+        None
+    };
+
+    Ok(DeleteContext {
+        schema_name,
+        view_path,
+    })
+}
+
+fn remove_schema(
+    tx: &crate::db::WriteTx,
+    id: crate::schema::identifier::SchemaId,
+) -> Result<(), DbError> {
+    let mut schemas = tx.try_open_table(SCHEMAS.definition())?;
+    let _ = schemas.remove(id)?;
+    Ok(())
+}
+
+fn remove_name_id_index(
+    tx: &crate::db::WriteTx,
+    schema_name: Option<&str>,
+) -> Result<(), DbError> {
+    let mut name_index = tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+
+    if let Some(name) = schema_name {
+        let _ = name_index.remove(name.to_owned())?;
+    }
+
+    Ok(())
+}
+
+fn remove_path_id_index(
+    tx: &crate::db::WriteTx,
+    view_path: Option<&RelativePath>,
+) -> Result<(), DbError> {
+    let mut path_index = tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+
+    if let Some(path) = view_path {
+        let path_key = path.as_path().to_string_lossy().to_string();
+        let _ = path_index.remove(path_key)?;
+    }
+
+    Ok(())
+}
+
+fn remove_raw_schema_view(
+    tx: &crate::db::WriteTx,
+    id: crate::schema::identifier::SchemaId,
+) -> Result<(), DbError> {
+    let mut raw_views = tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
+    let _ = raw_views.remove(id)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -560,6 +658,113 @@ mod tests {
 
             assert_eq!(loaded.parents_of(child), &[root]);
             assert_eq!(loaded.children_of(root), &[child]);
+        }
+    }
+
+    mod delete_schema {
+        use std::sync::Arc;
+
+        use crate::{
+            db::Store,
+            fs::{FileInfo, RelativePath},
+            schema::{
+                aggregate::Schema,
+                identifier::{SchemaId, SchemaName},
+                property::PropertyMap,
+                raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
+                repository::{SchemaReadRepository, SchemaWriteRepository},
+                storage_v2::SchemaRedbRepository,
+                views::{
+                    RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
+                    raw::RawSchemaView,
+                },
+            },
+            support::Blake3Hash,
+        };
+
+        fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
+            let path = RelativePath::try_from(path).unwrap();
+            let info = FileInfo::new(None, None, 100);
+            let hashes = HashRecord::new(
+                Blake3Hash::new([hash_byte; 32]),
+                RawPropertyHashIndex::default(),
+            );
+            let raw = RawSchema {
+                version: RawSchemaVersion::default(),
+                name: "Note".into(),
+                extends: None,
+                excludes: vec![],
+                properties: RawPropertyMap::new(),
+                info: FileInfo::new(None, None, 0),
+            };
+            let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+            RawSchemaView::new(path, version)
+        }
+
+        #[test]
+        fn removes_schema_indexes_and_raw_view() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("schema-delete").unwrap();
+            let path = RelativePath::try_from("schemas/delete.json").unwrap();
+            let schema = Schema::new(
+                id,
+                name.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+            let view = test_raw_view(&path.as_path().to_string_lossy(), 11);
+
+            repo.save_schema(&schema).unwrap();
+            repo.save_raw_schema_view(id, &view).unwrap();
+
+            repo.delete_schema(id).unwrap();
+
+            assert!(repo.find_schema_by_id(id).unwrap().is_none());
+            assert!(repo.get_raw_schema_view(id).unwrap().is_none());
+            assert!(repo.find_schema_id_by_name(&name).unwrap().is_none());
+            assert!(repo.find_schema_id_by_path(&path).unwrap().is_none());
+        }
+
+        #[test]
+        fn deleting_missing_schema_is_idempotent() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let missing = SchemaId::new();
+            repo.delete_schema(missing).unwrap();
+            repo.delete_schema(missing).unwrap();
+        }
+
+        #[test]
+        fn removes_name_index_even_without_raw_view() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("schema-name-only").unwrap();
+            let schema = Schema::new(
+                id,
+                name.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+            repo.save_schema(&schema).unwrap();
+
+            repo.delete_schema(id).unwrap();
+
+            assert!(repo.find_schema_id_by_name(&name).unwrap().is_none());
+            assert!(repo.find_schema_by_id(id).unwrap().is_none());
         }
     }
 }

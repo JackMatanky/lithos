@@ -172,3 +172,35 @@ Implement issue `04e-remaining-schema-operations` using strict TDD vertical slic
 - Run `mise run fmt`.
 - Run `mise run lint`.
 - Run `mise run test`.
+
+## Refactor Plan (2026-05-13)
+
+Refactor `delete_schema` internals for clarity while preserving one public
+atomic operation.
+
+### Goals
+
+- Keep `SchemaWriteRepository::delete_schema(id)` as the only public delete API.
+- Decompose write-side internals into private, focused helper methods.
+- Preserve single-transaction semantics and existing behavior.
+
+### Planned private helpers (storage_v2/write.rs)
+
+1. `remove_schema(...)`
+2. `remove_name_id_index(...)`
+3. `remove_path_id_index(...)`
+4. `remove_raw_schema_view(...)`
+
+All helpers execute inside the same write transaction invoked by
+`delete_schema`.
+
+### TDD slices
+
+1. RED: add test that delete removes name index even when no raw view exists.
+2. GREEN: refactor `delete_schema` to call private helpers in transaction.
+3. REFACTOR: keep helper names aligned to domain terms; no behavior changes.
+
+### Verification
+
+- Focused tests for `storage_v2::write::tests::delete_schema`.
+- Full quality checks via `mise run fmt`, `mise run lint`, `mise run test`.

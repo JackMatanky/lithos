@@ -8,6 +8,7 @@ use crate::{
         bank::PropertyBank,
         identifier::{SchemaId, SchemaName},
         inheritance::InheritanceGraph,
+        property::PropertyName,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -60,6 +61,44 @@ pub trait SchemaReadRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageV2Error>;
+
+    /// Find multiple schemas by ID, skipping missing entries.
+    ///
+    /// Returns only found schemas in encounter order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, SchemaStorageV2Error>;
+
+    /// List all persisted schema aggregates.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageV2Error>;
+
+    /// Find schemas using any of the provided property names.
+    ///
+    /// Returns a mapping from schema ID to the matching property names for
+    /// that schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database read or deserialization
+    /// fails.
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<
+        std::collections::HashMap<SchemaId, Vec<PropertyName>>,
+        SchemaStorageV2Error,
+    >;
 
     /// Get a raw schema view by schema ID.
     ///
@@ -285,6 +324,13 @@ pub trait SchemaWriteRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageV2Error>;
+
+    /// Delete a schema aggregate and all related indexes/views.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaStorageV2Error`] if database write fails.
+    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageV2Error>;
 }
 
 /// Unified interface for schema persistence and retrieval.

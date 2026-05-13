@@ -1,5 +1,7 @@
 //! Read-only schema repository operations.
 
+use std::collections::{HashMap, HashSet};
+
 use redb::ReadableTable;
 
 use crate::{
@@ -9,6 +11,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         identifier::{SchemaId, SchemaName},
+        property::PropertyName,
         repository::{SchemaReadRepository, SchemaStorageV2Error},
         storage_v2::{
             SchemaRedbRepository,
@@ -70,6 +73,60 @@ impl SchemaReadRepository for SchemaRedbRepository {
                 Ok(results)
             })
             .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn find_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+        self.find_many_schemas_by_id(ids)
+            .map(|schemas| schemas.into_iter().flatten().collect())
+    }
+
+    #[inline]
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageV2Error> {
+        self.store
+            .read(|tx| {
+                let Some(table) = tx.try_open_table(SCHEMAS.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut schemas = Vec::new();
+                for result in table.iter()? {
+                    let (_id_guard, schema_guard) = result?;
+                    schemas.push(deserialize(schema_guard.value())?);
+                }
+
+                Ok(schemas)
+            })
+            .map_err(SchemaStorageV2Error::from)
+    }
+
+    #[inline]
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageV2Error>
+    {
+        let target_names: HashSet<&str> =
+            property_names.iter().map(PropertyName::as_str).collect();
+
+        let mut usage = HashMap::new();
+        for schema in self.list_schemas()? {
+            let mut matching = Vec::new();
+            for name in schema.properties().keys() {
+                if target_names.contains(name.as_str()) {
+                    matching.push(name.clone());
+                }
+            }
+            if !matching.is_empty() {
+                usage.insert(*schema.id(), matching);
+            }
+        }
+
+        Ok(usage)
     }
 
     #[inline]
@@ -507,6 +564,150 @@ mod tests {
 
             let empty = repo.find_many_schemas_by_id(&[]).unwrap();
             assert!(empty.is_empty());
+        }
+    }
+
+    mod schema_collections {
+        use super::*;
+
+        #[test]
+        fn find_schemas_by_ids_skips_missing() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let s1 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-1").unwrap(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+            let s2 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-2").unwrap(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+
+            repo.save_schema(&s1).unwrap();
+            repo.save_schema(&s2).unwrap();
+
+            let found = repo
+                .find_schemas_by_ids(&[*s1.id(), SchemaId::new(), *s2.id()])
+                .unwrap();
+            assert_eq!(found, vec![s1, s2]);
+        }
+
+        #[test]
+        fn list_schemas_empty_and_non_empty() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            assert!(repo.list_schemas().unwrap().is_empty());
+
+            let s1 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-1").unwrap(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+            let s2 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-2").unwrap(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+
+            repo.save_many_schemas(&[s1.clone(), s2.clone()]).unwrap();
+
+            let mut listed = repo.list_schemas().unwrap();
+            listed.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
+            assert_eq!(listed, vec![s1, s2]);
+        }
+    }
+
+    mod property_usage {
+        use super::*;
+        use crate::schema::{
+            property::{
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
+            },
+            property_spec::{BoolSpec, PropertySpec},
+        };
+
+        #[test]
+        fn finds_schemas_using_target_properties() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let status = PropertyName::try_new("status").unwrap();
+            let owner = PropertyName::try_new("owner").unwrap();
+            let other = PropertyName::try_new("other").unwrap();
+
+            let mut p1 = PropertyMap::new();
+            p1.insert(
+                status.clone(),
+                Property::new(
+                    PropertyId::new(),
+                    Optionality::Required,
+                    Multiplicity::Single,
+                    PropertySpec::Bool(BoolSpec::default()),
+                ),
+            );
+
+            let mut p2 = PropertyMap::new();
+            p2.insert(
+                owner.clone(),
+                Property::new(
+                    PropertyId::new(),
+                    Optionality::Required,
+                    Multiplicity::Single,
+                    PropertySpec::Bool(BoolSpec::default()),
+                ),
+            );
+
+            let s1 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-1").unwrap(),
+                Vec::new(),
+                vec![],
+                p1,
+            );
+            let s2 = Schema::new(
+                SchemaId::new(),
+                SchemaName::try_new("schema-2").unwrap(),
+                Vec::new(),
+                vec![],
+                p2,
+            );
+
+            repo.save_many_schemas(&[s1.clone(), s2]).unwrap();
+
+            let usage = repo
+                .find_schemas_using_properties(&[status.clone(), other])
+                .unwrap();
+            assert_eq!(usage.get(s1.id()), Some(&vec![status]));
+        }
+
+        #[test]
+        fn returns_empty_when_no_matches() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let missing = PropertyName::try_new("missing").unwrap();
+            let usage = repo.find_schemas_using_properties(&[missing]).unwrap();
+            assert!(usage.is_empty());
         }
     }
 
