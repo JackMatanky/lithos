@@ -211,184 +211,284 @@ mod tests {
     use super::*;
     use crate::fs::{error::ParseError, metadata::FsTimes};
 
-    #[test]
-    fn fs_entry_try_from_walkdir_file() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let temp_path = temp_dir.path();
+    mod fs_entry {
+        use super::*;
 
-        // Create a test file
-        std::fs::write(temp_path.join("test.md"), "content").unwrap();
+        mod try_from {
+            use super::*;
 
-        // Use walkdir to get a DirEntry
-        let entry = walkdir::WalkDir::new(temp_path)
-            .into_iter()
-            .filter_map(std::result::Result::ok)
-            .find(|e| e.file_name().to_str() == Some("test.md"))
-            .unwrap();
+            #[test]
+            fn returns_file_entry_for_walkdir_file() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let temp_path = temp_dir.path();
 
-        // Convert to FsEntry
-        let fs_entry = FsEntry::try_from(entry).unwrap();
+                std::fs::write(temp_path.join("test.md"), "content").unwrap();
 
-        // Verify it's a file entry
-        assert!(fs_entry.is_file());
-        assert!(!fs_entry.is_dir());
+                let entry = walkdir::WalkDir::new(temp_path)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .find(|e| e.file_name().to_str() == Some("test.md"))
+                    .unwrap();
 
-        // Verify path contains the filename
-        let path = fs_entry.path();
-        assert!(path.is_file());
+                let fs_entry = FsEntry::try_from(entry).unwrap();
+
+                assert!(fs_entry.is_file(), "Expected file entry");
+            }
+
+            #[test]
+            fn returns_dir_entry_for_walkdir_directory() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let temp_path = temp_dir.path();
+
+                std::fs::create_dir(temp_path.join("subdir")).unwrap();
+
+                let entry = walkdir::WalkDir::new(temp_path)
+                    .min_depth(1)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .find(|e| e.file_name().to_str() == Some("subdir"))
+                    .unwrap();
+
+                let fs_entry = FsEntry::try_from(entry).unwrap();
+
+                assert!(fs_entry.is_dir(), "Expected directory entry");
+            }
+
+            #[test]
+            fn returns_error_when_file_missing() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let temp_path = temp_dir.path();
+                let file_path = temp_path.join("missing.md");
+
+                std::fs::write(&file_path, "content").unwrap();
+
+                let entry = walkdir::WalkDir::new(temp_path)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .find(|e| e.file_name().to_str() == Some("missing.md"))
+                    .unwrap();
+
+                std::fs::remove_file(&file_path).unwrap();
+
+                let result = FsEntry::try_from(entry);
+
+                assert!(result.is_err(), "Expected error for missing file");
+                let error = result.unwrap_err();
+                assert!(
+                    matches!(error, ParseError::Io { .. }),
+                    "Expected ParseError::Io, got {error:?}"
+                );
+            }
+        }
+
+        mod is_file {
+            use super::*;
+
+            #[test]
+            fn returns_true_for_file_variant() {
+                let temp = tempfile::NamedTempFile::new().unwrap();
+                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file =
+                    FsFile::new(path, FileMetadata::new(times, 0, false));
+                let entry = FsEntry::File(file);
+
+                let result = entry.is_file();
+
+                assert!(result, "Expected true for file variant");
+            }
+
+            #[test]
+            fn returns_false_for_dir_variant() {
+                let temp = tempfile::TempDir::new().unwrap();
+                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir = FsDir::new(path, DirMetadata::new(times, false));
+                let entry = FsEntry::Dir(dir);
+
+                let result = entry.is_file();
+
+                assert!(!result, "Expected false for directory variant");
+            }
+        }
+
+        mod is_dir {
+            use super::*;
+
+            #[test]
+            fn returns_true_for_dir_variant() {
+                let temp = tempfile::TempDir::new().unwrap();
+                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir = FsDir::new(path, DirMetadata::new(times, false));
+                let entry = FsEntry::Dir(dir);
+
+                let result = entry.is_dir();
+
+                assert!(result, "Expected true for directory variant");
+            }
+
+            #[test]
+            fn returns_false_for_file_variant() {
+                let temp = tempfile::NamedTempFile::new().unwrap();
+                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file =
+                    FsFile::new(path, FileMetadata::new(times, 0, false));
+                let entry = FsEntry::File(file);
+
+                let result = entry.is_dir();
+
+                assert!(!result, "Expected false for file variant");
+            }
+        }
+
+        mod as_file {
+            use super::*;
+
+            #[test]
+            fn returns_some_for_file_variant() {
+                let temp = tempfile::NamedTempFile::new().unwrap();
+                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file =
+                    FsFile::new(path, FileMetadata::new(times, 512, false));
+                let entry = FsEntry::File(file.clone());
+
+                let result = entry.as_file();
+
+                assert!(result.is_some(), "Expected Some for file variant");
+                assert_eq!(
+                    result.unwrap(),
+                    &file,
+                    "Expected same file reference"
+                );
+            }
+
+            #[test]
+            fn returns_none_for_dir_variant() {
+                let temp = tempfile::TempDir::new().unwrap();
+                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir = FsDir::new(path, DirMetadata::new(times, false));
+                let entry = FsEntry::Dir(dir);
+
+                let result = entry.as_file();
+
+                assert!(
+                    result.is_none(),
+                    "Expected None for directory variant"
+                );
+            }
+        }
+
+        mod as_dir {
+            use super::*;
+
+            #[test]
+            fn returns_some_for_dir_variant() {
+                let temp = tempfile::TempDir::new().unwrap();
+                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir = FsDir::new(path, DirMetadata::new(times, false));
+                let entry = FsEntry::Dir(dir.clone());
+
+                let result = entry.as_dir();
+
+                assert!(
+                    result.is_some(),
+                    "Expected Some for directory variant"
+                );
+                assert_eq!(
+                    result.unwrap(),
+                    &dir,
+                    "Expected same dir reference"
+                );
+            }
+
+            #[test]
+            fn returns_none_for_file_variant() {
+                let temp = tempfile::NamedTempFile::new().unwrap();
+                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file =
+                    FsFile::new(path, FileMetadata::new(times, 512, false));
+                let entry = FsEntry::File(file);
+
+                let result = entry.as_dir();
+
+                assert!(result.is_none(), "Expected None for file variant");
+            }
+        }
+
+        mod path {
+            use super::*;
+
+            #[test]
+            fn returns_file_path_for_file_entry() {
+                let temp_file = tempfile::NamedTempFile::new().unwrap();
+                let file_path =
+                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let file_entry = FsEntry::File(FsFile::new(
+                    file_path,
+                    FileMetadata::new(times, 100, false),
+                ));
+
+                let result = file_entry.path();
+
+                assert!(result.is_file(), "Expected file path type");
+            }
+
+            #[test]
+            fn returns_dir_path_for_dir_entry() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let dir_path =
+                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                let times = FsTimes::new(None, None);
+                let dir_entry = FsEntry::Dir(FsDir::new(
+                    dir_path,
+                    DirMetadata::new(times, false),
+                ));
+
+                let result = dir_entry.path();
+
+                assert!(result.is_dir(), "Expected directory path type");
+            }
+        }
     }
 
-    #[test]
-    fn fs_entry_try_from_walkdir_directory() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let temp_path = temp_dir.path();
+    mod fs_file {
+        use super::*;
 
-        // Create a test subdirectory
-        std::fs::create_dir(temp_path.join("subdir")).unwrap();
+        #[test]
+        fn stores_path_and_metadata() {
+            let temp = tempfile::NamedTempFile::new().unwrap();
+            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+            let times = FsTimes::new(Some(SystemTime::now()), None);
+            let metadata = FileMetadata::new(times.clone(), 1024, false);
 
-        // Use walkdir to get a DirEntry for the directory
-        let entry = walkdir::WalkDir::new(temp_path)
-            .min_depth(1)
-            .into_iter()
-            .filter_map(std::result::Result::ok)
-            .find(|e| e.file_name().to_str() == Some("subdir"))
-            .unwrap();
+            let file = FsFile::new(path.clone(), metadata.clone());
 
-        // Convert to FsEntry
-        let fs_entry = FsEntry::try_from(entry).unwrap();
-
-        // Verify it's a directory entry
-        assert!(!fs_entry.is_file());
-        assert!(fs_entry.is_dir());
-
-        // Verify path
-        let path = fs_entry.path();
-        assert!(path.is_dir());
+            assert_eq!(file.path(), &path, "Expected stored path");
+            assert_eq!(file.metadata(), &metadata, "Expected stored metadata");
+        }
     }
 
-    #[test]
-    fn fs_entry_try_from_returns_error_for_missing_file() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let temp_path = temp_dir.path();
-        let file_path = temp_path.join("missing.md");
+    mod fs_dir {
+        use super::*;
 
-        // Create the file first
-        std::fs::write(&file_path, "content").unwrap();
+        #[test]
+        fn stores_path_and_metadata() {
+            let temp = tempfile::TempDir::new().unwrap();
+            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+            let times = FsTimes::new(Some(SystemTime::now()), None);
+            let metadata = DirMetadata::new(times.clone(), false);
 
-        // Get the walkdir entry WHILE the file exists
-        let entry = walkdir::WalkDir::new(temp_path)
-            .into_iter()
-            .filter_map(std::result::Result::ok)
-            .find(|e| e.file_name().to_str() == Some("missing.md"))
-            .unwrap();
+            let dir = FsDir::new(path.clone(), metadata.clone());
 
-        // NOW delete the file - the entry still has the path but file is gone
-        std::fs::remove_file(&file_path).unwrap();
-
-        // Attempting to convert should fail because the file no longer exists
-        let result = FsEntry::try_from(entry);
-        assert!(result.is_err());
-
-        // Verify it's a ParseError (not some other error type)
-        let error = result.unwrap_err();
-        assert!(matches!(error, ParseError::Io { .. }));
-    }
-
-    #[test]
-    fn fs_file_stores_path_and_metadata() {
-        let temp = tempfile::NamedTempFile::new().unwrap();
-        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(Some(SystemTime::now()), None);
-        let metadata = FileMetadata::new(times.clone(), 1024, false);
-
-        let file = FsFile::new(path.clone(), metadata.clone());
-
-        assert_eq!(file.path(), &path);
-        assert_eq!(file.metadata(), &metadata);
-    }
-
-    #[test]
-    fn fs_dir_stores_path_and_metadata() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(Some(SystemTime::now()), None);
-        let metadata = DirMetadata::new(times.clone(), false);
-
-        let dir = FsDir::new(path.clone(), metadata.clone());
-
-        assert_eq!(dir.path(), &path);
-        assert_eq!(dir.metadata(), &metadata);
-    }
-
-    #[test]
-    fn fs_entry_path_returns_unified_fs_path() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
-        let temp_dir = tempfile::TempDir::new().unwrap();
-
-        let file_path = FilePath::new(temp_file.path().to_path_buf()).unwrap();
-        let dir_path = DirPath::new(temp_dir.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(None, None);
-
-        let file_entry = FsEntry::File(FsFile::new(
-            file_path.clone(),
-            FileMetadata::new(times.clone(), 100, false),
-        ));
-        let dir_entry = FsEntry::Dir(FsDir::new(
-            dir_path.clone(),
-            DirMetadata::new(times, false),
-        ));
-
-        assert!(file_entry.path().is_file());
-        assert!(dir_entry.path().is_dir());
-    }
-
-    #[test]
-    fn fs_entry_as_file_returns_some_for_file_variant() {
-        let temp = tempfile::NamedTempFile::new().unwrap();
-        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(None, None);
-        let file = FsFile::new(path, FileMetadata::new(times, 512, false));
-        let entry = FsEntry::File(file.clone());
-
-        let retrieved = entry.as_file();
-
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap(), &file);
-    }
-
-    #[test]
-    fn fs_entry_as_file_returns_none_for_dir_variant() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(None, None);
-        let dir = FsDir::new(path, DirMetadata::new(times, false));
-        let entry = FsEntry::Dir(dir);
-
-        assert!(entry.as_file().is_none());
-    }
-
-    #[test]
-    fn fs_entry_as_dir_returns_some_for_dir_variant() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(None, None);
-        let dir = FsDir::new(path, DirMetadata::new(times, false));
-        let entry = FsEntry::Dir(dir.clone());
-
-        let retrieved = entry.as_dir();
-
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap(), &dir);
-    }
-
-    #[test]
-    fn fs_entry_as_dir_returns_none_for_file_variant() {
-        let temp = tempfile::NamedTempFile::new().unwrap();
-        let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-        let times = FsTimes::new(None, None);
-        let file = FsFile::new(path, FileMetadata::new(times, 512, false));
-        let entry = FsEntry::File(file);
-
-        assert!(entry.as_dir().is_none());
+            assert_eq!(dir.path(), &path, "Expected stored path");
+            assert_eq!(dir.metadata(), &metadata, "Expected stored metadata");
+        }
     }
 }
