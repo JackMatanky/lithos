@@ -1,9 +1,6 @@
 //! Owned and borrowed filename components.
 
-use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use std::{ffi::OsStr, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -89,24 +86,10 @@ impl FileName {
     }
 }
 
-impl From<Box<str>> for FileName {
-    #[inline]
-    fn from(filename: Box<str>) -> Self {
-        Self::new(filename)
-    }
-}
-
 impl From<String> for FileName {
     #[inline]
     fn from(filename: String) -> Self {
         Self::new(filename.into_boxed_str())
-    }
-}
-
-impl From<FileName> for Box<str> {
-    #[inline]
-    fn from(filename: FileName) -> Self {
-        filename.0
     }
 }
 
@@ -156,15 +139,6 @@ impl TryFrom<&Path> for FileName {
     }
 }
 
-impl TryFrom<PathBuf> for FileName {
-    type Error = std::io::Error;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
-}
-
 /// Borrowed filename view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileNameRef<'a>(pub(crate) &'a OsStr);
@@ -208,20 +182,6 @@ impl BaseName {
     }
 }
 
-impl From<Box<str>> for BaseName {
-    #[inline]
-    fn from(name: Box<str>) -> Self {
-        Self::new(name)
-    }
-}
-
-impl From<String> for BaseName {
-    #[inline]
-    fn from(name: String) -> Self {
-        Self::new(name.into_boxed_str())
-    }
-}
-
 impl TryFrom<FileName> for BaseName {
     type Error = std::io::Error;
 
@@ -257,33 +217,10 @@ impl TryFrom<&Path> for BaseName {
     }
 }
 
-impl TryFrom<PathBuf> for BaseName {
-    type Error = std::io::Error;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
-}
-
 impl AsRef<str> for BaseName {
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
-    }
-}
-
-impl From<BaseName> for Box<str> {
-    #[inline]
-    fn from(name: BaseName) -> Self {
-        name.0
-    }
-}
-
-impl From<BaseName> for String {
-    #[inline]
-    fn from(name: BaseName) -> Self {
-        name.0.into_string()
     }
 }
 
@@ -333,97 +270,116 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn should_extract_basename_correctly() {
-        let name = FileName::from("my-note.md".to_owned());
-        let name_ref = name.as_ref();
-        let base_ref = name_ref.basename();
+    mod file_name {
+        use super::*;
 
-        assert_eq!(base_ref.as_str(), Some("my-note"));
+        mod basename {
+            use super::*;
+
+            #[test]
+            fn returns_some_for_simple_filename() {
+                let name = FileName::from("my-note.md".to_owned());
+                let base = name.basename();
+                assert!(base.is_some());
+                assert_eq!(base.unwrap().as_str(), "my-note");
+            }
+
+            #[test]
+            fn returns_some_for_hidden_file_with_extension() {
+                let name = FileName::from(".md".to_owned());
+                let base = name.basename();
+                assert!(base.is_some());
+                assert_eq!(base.unwrap().as_str(), ".md");
+            }
+
+            #[test]
+            fn handles_double_extension() {
+                let name = FileName::from("archive.tar.gz".to_owned());
+                let base = name.basename();
+                assert!(base.is_some());
+                // Note: file_stem() on "archive.tar.gz" is "archive.tar"
+                assert_eq!(base.unwrap().as_str(), "archive.tar");
+            }
+        }
+
+        mod basename_str {
+            use super::*;
+
+            #[test]
+            fn returns_stem_for_simple_filename() {
+                let name = FileName::from("my-note.md".to_owned());
+                assert_eq!(name.basename_str(), "my-note");
+            }
+
+            #[test]
+            fn returns_stem_for_hidden_file() {
+                let name = FileName::from(".md".to_owned());
+                assert_eq!(name.basename_str(), ".md");
+            }
+        }
     }
 
-    #[test]
-    fn should_convert_to_owned_basename() {
-        let name = FileName::from("archive.tar.gz".to_owned());
-        let base_ref = name.as_ref().basename();
+    mod file_name_ref {
+        use super::*;
 
-        // Note: file_stem() on "archive.tar.gz" is "archive.tar"
-        assert_eq!(base_ref.as_str(), Some("archive.tar"));
+        mod basename {
+            use super::*;
+
+            #[test]
+            fn extracts_borrowed_basename_view() {
+                let name = FileName::from("my-note.md".to_owned());
+                let name_ref = name.as_ref();
+                let base_ref = name_ref.basename();
+                assert_eq!(base_ref.as_str(), Some("my-note"));
+            }
+
+            #[test]
+            fn handles_double_extension() {
+                let name = FileName::from("archive.tar.gz".to_owned());
+                let base_ref = name.as_ref().basename();
+                // Note: file_stem() on "archive.tar.gz" is "archive.tar"
+                assert_eq!(base_ref.as_str(), Some("archive.tar"));
+            }
+        }
     }
 
-    #[test]
-    fn should_return_basename_as_owned() {
-        let name = FileName::from("my-note.md".to_owned());
-        let base = name.basename();
-        assert!(base.is_some());
-        assert_eq!(base.unwrap().as_str(), "my-note");
-    }
+    mod base_name {
+        use super::*;
 
-    #[test]
-    fn should_return_basename_for_hidden_file() {
-        let name = FileName::from(".md".to_owned());
-        let base = name.basename();
-        assert!(base.is_some());
-        assert_eq!(base.unwrap().as_str(), ".md");
-    }
+        mod try_from_path {
+            use super::*;
 
-    #[test]
-    fn should_convert_from_filename_to_basename() {
-        let name = FileName::from("document.txt".to_owned());
-        let base: BaseName = BaseName::try_from(name.clone()).unwrap();
-        assert_eq!(base.as_str(), "document");
-    }
+            #[test]
+            fn constructs_from_file_stem() {
+                let path = PathBuf::from("readme.md");
+                let base = BaseName::try_from(path.as_path()).unwrap();
+                assert_eq!(base.as_str(), "readme");
+            }
 
-    #[test]
-    fn should_try_from_path_to_basename() {
-        let path = PathBuf::from("readme.md");
-        let base = BaseName::try_from(path).unwrap();
-        assert_eq!(base.as_str(), "readme");
-    }
+            #[test]
+            fn extracts_from_full_path() {
+                let path = PathBuf::from("notes/app.md");
+                let base = BaseName::try_from(path.as_path()).unwrap();
+                assert_eq!(base.as_str(), "app");
+            }
+        }
 
-    #[test]
-    fn should_try_from_pathbuf_to_basename() {
-        let path = PathBuf::from("notes/app.md");
-        let base = BaseName::try_from(path).unwrap();
-        assert_eq!(base.as_str(), "app");
-    }
+        mod try_from_filename {
+            use super::*;
 
-    #[test]
-    fn should_return_stem_for_hidden_file() {
-        let name = FileName::from(".md".to_owned());
-        assert_eq!(name.basename_str(), ".md");
-    }
+            #[test]
+            fn converts_filename_with_extension() {
+                let name = FileName::from("document.txt".to_owned());
+                let base = BaseName::try_from(name).unwrap();
+                assert_eq!(base.as_str(), "document");
+            }
 
-    // NEW TEST: basename() should return Option<BaseName>
-    #[test]
-    fn basename_returns_some_for_simple_filename() {
-        let name = FileName::from("my-note.md".to_owned());
-        let base = name.basename();
-        assert!(base.is_some());
-        assert_eq!(base.unwrap().as_str(), "my-note");
-    }
-
-    #[test]
-    fn basename_returns_some_for_hidden_file_with_extension() {
-        let name = FileName::from(".md".to_owned());
-        let base = name.basename();
-        assert!(base.is_some());
-        assert_eq!(base.unwrap().as_str(), ".md");
-    }
-
-    // NEW TEST: TryFrom<FileName> should return error for invalid basenames
-    #[test]
-    fn try_from_filename_returns_ok_for_valid_stem() {
-        let name = FileName::from("document.txt".to_owned());
-        let base = BaseName::try_from(name);
-        assert!(base.is_ok());
-        assert_eq!(base.unwrap().as_str(), "document");
-    }
-
-    #[test]
-    fn try_from_filename_returns_error_for_no_stem() {
-        let name = FileName::from(String::new());
-        let base = BaseName::try_from(name);
-        assert!(base.is_err());
+            #[test]
+            fn returns_error_for_empty_filename() {
+                let name = FileName::from(String::new());
+                let base = BaseName::try_from(name);
+                assert!(base.is_err());
+            }
+        }
     }
 }
