@@ -2,7 +2,7 @@
 title: 04i-runtime-cutover-and-legacy-rename-cleanup
 category: enhancement
 label: ready-for-agent
-status: complete
+status: completed
 date_created: 2026-05-13
 date_updated: 2026-05-13
 

@@ -120,7 +120,7 @@ use crate::{
         },
         property::PropertyName,
         raw::RawPropertyBank,
-        repository::{ReadRepository, WriteRepository},
+        repository::{ReadRepository, Repository, WriteRepository},
         views::{
             HashRecord, RawPropertyBankView, RawView as _, RawViewRead as _,
             contracts::Version as _,
@@ -726,7 +726,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn update<R: ReadRepository + WriteRepository>(
+    pub(crate) fn update<R: Repository>(
         self,
         path: &RelativePath,
         repository: &R,

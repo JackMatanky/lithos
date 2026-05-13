@@ -77,7 +77,7 @@ use crate::{
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
-        repository::{ReadRepository, WriteRepository},
+        repository::{Repository, WriteRepository},
         views::{
             RawPropertyHashIndex, RawSchemaView, RawView as _,
             RawViewRead as _, contracts::Version as _,
@@ -2225,7 +2225,7 @@ impl SchemaProcessor<Construction, Analyzed> {
     )]
     pub(crate) fn construct_schemas(
         self,
-        repository: &(impl ReadRepository + WriteRepository),
+        repository: &impl Repository,
         property_bank: &PropertyBank,
     ) -> Result<SchemaProcessor<Construction, Constructed>, SchemaLoaderError>
     {

@@ -13,7 +13,7 @@ use crate::{
         inheritance::InheritanceGraph,
         repository::WriteRepository,
         storage::{
-            RedbRepository,
+            RedbRepository, path_key,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -38,8 +38,8 @@ impl WriteRepository for RedbRepository {
 
                 let mut name_table =
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
-                let name_key = schema.name().as_str().to_owned();
-                name_table.insert(name_key, id_bytes.as_slice())?;
+                name_table
+                    .insert(schema.name().as_str(), id_bytes.as_slice())?;
 
                 Ok(())
             })
@@ -63,8 +63,8 @@ impl WriteRepository for RedbRepository {
 
                     table.insert(*schema.id(), bytes.as_slice())?;
 
-                    let name_key = schema.name().as_str().to_owned();
-                    name_table.insert(name_key, id_bytes.as_slice())?;
+                    name_table
+                        .insert(schema.name().as_str(), id_bytes.as_slice())?;
                 }
                 Ok(())
             })
@@ -82,7 +82,7 @@ impl WriteRepository for RedbRepository {
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(PROPERTY_BANK.definition())?;
-                table.insert(PROPERTY_BANK_KEY.to_owned(), bytes.as_slice())?;
+                table.insert(PROPERTY_BANK_KEY, bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageError::from)
@@ -100,8 +100,7 @@ impl WriteRepository for RedbRepository {
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
-                let path_str = path.as_path().to_string_lossy().to_string();
-                table.insert(path_str, bytes.as_slice())?;
+                table.insert(path_key(path), bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageError::from)
@@ -128,19 +127,14 @@ impl WriteRepository for RedbRepository {
                         existing.value(),
                     )?;
                     if existing_view.path() != view.path() {
-                        let stale_key = existing_view
-                            .path()
-                            .as_path()
-                            .to_string_lossy()
-                            .to_string();
+                        let stale_key = path_key(existing_view.path());
                         let _ = path_table.remove(stale_key)?;
                     }
                 }
 
                 view_table.insert(id, view_bytes.as_slice())?;
-                let path_key =
-                    view.path().as_path().to_string_lossy().to_string();
-                path_table.insert(path_key, id_bytes.as_slice())?;
+                path_table
+                    .insert(path_key(view.path()), id_bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageError::from)
@@ -157,10 +151,7 @@ impl WriteRepository for RedbRepository {
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(SCHEMA_TOPOLOGICAL_GRAPH.definition())?;
-                table.insert(
-                    TOPOLOGICAL_GRAPH_KEY.to_owned(),
-                    bytes.as_slice(),
-                )?;
+                table.insert(TOPOLOGICAL_GRAPH_KEY, bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaStorageError::from)
@@ -235,7 +226,7 @@ fn remove_name_id_index(
     let mut name_index = tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
 
     if let Some(name) = schema_name {
-        let _ = name_index.remove(name.to_owned())?;
+        let _ = name_index.remove(name)?;
     }
 
     Ok(())
@@ -248,8 +239,7 @@ fn remove_path_id_index(
     let mut path_index = tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
 
     if let Some(path) = view_path {
-        let path_key = path.as_path().to_string_lossy().to_string();
-        let _ = path_index.remove(path_key)?;
+        let _ = path_index.remove(path_key(path))?;
     }
 
     Ok(())

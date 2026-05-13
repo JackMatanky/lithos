@@ -16,7 +16,7 @@ use crate::{
         property::PropertyName,
         repository::ReadRepository,
         storage::{
-            RedbRepository,
+            RedbRepository, path_key,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -171,8 +171,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let path_key = path.as_path().to_string_lossy().to_string();
-                let Some(id_guard) = path_table.get(path_key)? else {
+                let Some(id_guard) = path_table.get(path_key(path))? else {
                     return Ok(None);
                 };
                 let id: SchemaId = deserialize(id_guard.value())?;
@@ -209,8 +208,7 @@ impl ReadRepository for RedbRepository {
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
                     // Step 1: path → SchemaId lookup
-                    let path_str = path.as_path().to_string_lossy().to_string();
-                    let id_guard = path_table.get(path_str)?;
+                    let id_guard = path_table.get(path_key(path))?;
 
                     let view = if let Some(id_bytes) = id_guard {
                         // Step 2: SchemaId → RawSchemaView lookup
@@ -242,8 +240,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(guard) = table.get(PROPERTY_BANK_KEY.to_owned())?
-                else {
+                let Some(guard) = table.get(PROPERTY_BANK_KEY)? else {
                     return Ok(None);
                 };
 
@@ -268,9 +265,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(guard) =
-                    table.get(TOPOLOGICAL_GRAPH_KEY.to_owned())?
-                else {
+                let Some(guard) = table.get(TOPOLOGICAL_GRAPH_KEY)? else {
                     return Ok(None);
                 };
 
@@ -293,8 +288,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let path_str = path.as_path().to_string_lossy().to_string();
-                let Some(guard) = table.get(path_str)? else {
+                let Some(guard) = table.get(path_key(path))? else {
                     return Ok(None);
                 };
 
@@ -317,8 +311,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let key = name.as_str().to_owned();
-                let Some(guard) = table.get(key)? else {
+                let Some(guard) = table.get(name.as_str())? else {
                     return Ok(None);
                 };
 
@@ -341,8 +334,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let key = path.as_path().to_string_lossy().to_string();
-                let Some(guard) = table.get(key)? else {
+                let Some(guard) = table.get(path_key(path))? else {
                     return Ok(None);
                 };
 
@@ -367,8 +359,7 @@ impl ReadRepository for RedbRepository {
 
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
-                    let key = path.as_path().to_string_lossy().to_string();
-                    match table.get(key)? {
+                    match table.get(path_key(path))? {
                         Some(guard) => {
                             let id = deserialize(guard.value())?;
                             results.push(Some(id));
@@ -396,11 +387,7 @@ impl ReadRepository for RedbRepository {
                 let mut pairs = NameIdPairs::new();
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
-                    let name_str = k_guard.value();
-                    let name = SchemaName::try_from(name_str.as_str())
-                        .map_err(|e| {
-                            crate::db::DbError::Deserialization(e.to_string())
-                        })?;
+                    let name = parse_schema_name_key(k_guard.value())?;
                     let id = deserialize(v_guard.value())?;
                     pairs.push((name, id));
                 }
@@ -424,11 +411,8 @@ impl ReadRepository for RedbRepository {
                 let mut pairs = PathIdPairs::new();
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
-                    let path_str = k_guard.value();
-                    let path = RelativePath::try_from(path_str.as_str())
-                        .map_err(|e| {
-                            crate::db::DbError::Deserialization(e.to_string())
-                        })?;
+                    let path =
+                        parse_relative_path_key(k_guard.value().as_str())?;
                     let id = deserialize(v_guard.value())?;
                     pairs.push((path, id));
                 }
@@ -451,6 +435,26 @@ impl ReadRepository for RedbRepository {
                 ))
             })
     }
+}
+
+#[inline]
+fn parse_schema_name_key(key: &str) -> Result<SchemaName, crate::db::DbError> {
+    SchemaName::try_from(key).map_err(|error| {
+        crate::db::DbError::Deserialization(format!(
+            "invalid schema-name index key '{key}': {error}"
+        ))
+    })
+}
+
+#[inline]
+fn parse_relative_path_key(
+    key: &str,
+) -> Result<RelativePath, crate::db::DbError> {
+    RelativePath::try_from(key).map_err(|error| {
+        crate::db::DbError::Deserialization(format!(
+            "invalid schema-path index key '{key}': {error}"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -757,14 +761,10 @@ mod tests {
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
-                    name_table.insert(
-                        name1.as_str().to_owned(),
-                        serialize(&id1)?.as_slice(),
-                    )?;
-                    name_table.insert(
-                        name2.as_str().to_owned(),
-                        serialize(&id2)?.as_slice(),
-                    )?;
+                    name_table
+                        .insert(name1.as_str(), serialize(&id1)?.as_slice())?;
+                    name_table
+                        .insert(name2.as_str(), serialize(&id2)?.as_slice())?;
                     path_table.insert(
                         path1.as_path().to_string_lossy().to_string(),
                         serialize(&id1)?.as_slice(),
@@ -805,6 +805,57 @@ mod tests {
             let index = repo.get_schema_index().unwrap();
             assert_eq!(index.get_id_by_name(&name1), Some(id1));
             assert_eq!(index.get_id_by_path(&path1), Some(id1));
+        }
+
+        #[test]
+        fn list_schema_name_id_pairs_reports_context_for_invalid_name_key() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+
+            store
+                .write(|tx| {
+                    let mut name_table =
+                        tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
+                    name_table.insert(
+                        "bad name with spaces",
+                        serialize(&SchemaId::new())?.as_slice(),
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+
+            let repo = RedbRepository::new(store);
+            let err = repo.list_schema_name_id_pairs().unwrap_err();
+            let msg = err.to_string();
+
+            assert!(msg.contains("invalid schema-name index key"));
+            assert!(msg.contains("bad name with spaces"));
+        }
+
+        #[test]
+        fn list_schema_path_id_pairs_reports_context_for_invalid_path_key() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+
+            store
+                .write(|tx| {
+                    let mut path_table =
+                        tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
+                    path_table.insert(
+                        String::new(),
+                        serialize(&SchemaId::new())?.as_slice(),
+                    )?;
+                    Ok(())
+                })
+                .unwrap();
+
+            let repo = RedbRepository::new(store);
+            let err = repo.list_schema_path_id_pairs().unwrap_err();
+            let msg = err.to_string();
+
+            assert!(msg.contains("invalid schema-path index key"));
         }
     }
 

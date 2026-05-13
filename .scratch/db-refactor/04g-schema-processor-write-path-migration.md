@@ -1,7 +1,7 @@
 ---
 title: 04g-schema-processor-write-path-migration
 category: enhancement
-label: needs-triage
+label: ready-for-agent
 status: completed
 date_created: 2026-05-13
 date_completed: 2026-05-13

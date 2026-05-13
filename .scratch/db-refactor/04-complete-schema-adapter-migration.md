@@ -4,7 +4,7 @@ category: enhancement
 label: decomposed
 status: decomposed
 date_created: 2026-05-10
-date_updated: 2026-05-13
+date_updated: 2026-05-14
 ---
 
 ## Type
@@ -32,30 +32,30 @@ The tracer bullets (02, 03) cover basic Schema and Raw View operations. Other Sc
 **Desired behavior:**
 1. Identify all remaining operations in the legacy `SchemaRepository` (v1).
 2. Add these operations to the new segregated traits (`SchemaReadRepository` or `SchemaWriteRepository`).
-3. Implement the operations in `storage_v2/read.rs` or `storage_v2/write.rs`.
+3. Implement the operations in the active storage seam (`schema/storage/read.rs` / `schema/storage/write.rs`).
 4. Ensure all operations use the new `db::Store` transaction model and rkyv helpers.
 
 **Key interfaces:**
-- `SchemaReadRepository` / `SchemaWriteRepository`
-- `SchemaRedbRepository`
+- `ReadRepository` / `WriteRepository`
+- `RedbRepository`
 
 **Acceptance criteria:**
-- [ ] Schema read and write operations are fully served by `schema/storage_v2/read.rs` and `schema/storage_v2/write.rs`.
-- [ ] Property Bank operations migrated to segregated traits.
-- [ ] Inheritance/Topology projection data migrated to segregated traits.
-- [ ] Multi-table invariants for Schema projections are preserved under atomic write semantics.
-- [ ] Existing Schema integration/unit tests pass.
+- [x] Schema read and write operations are fully served by the active seam (`schema/storage/read.rs` and `schema/storage/write.rs`).
+- [x] Property Bank operations migrated to segregated traits.
+- [x] Inheritance/Topology projection data migrated to segregated traits.
+- [x] Multi-table invariants for Schema projections are preserved under atomic write semantics.
+- [x] Existing Schema integration/unit tests pass.
 
 **Revision Note (2026-05-12):**
 This plan is updated to align with ADR 016. All migrated methods must be placed in the appropriate `Read` or `Write` segregated trait.
 
 ## Acceptance criteria
 
-- [ ] Runtime schema call paths use only the segregated v2 seam (`schema/repository.rs` + `schema/storage_v2/*`) for reads and writes.
-- [ ] Legacy schema storage seam call paths are removed from runtime schema orchestration.
-- [ ] Multi-table invariants for Schema projections are preserved under atomic write semantics.
-- [ ] Existing Schema integration/unit tests pass, with additional tests where behavior coverage was missing.
-- [ ] Transitional module/component names are renamed to intended canonical names after legacy removal is verified.
+- [x] Runtime schema call paths use only the segregated seam (`schema/repository.rs` + `schema/storage/*`) for reads and writes.
+- [x] Legacy schema storage seam call paths are removed from runtime schema orchestration.
+- [x] Multi-table invariants for Schema projections are preserved under atomic write semantics.
+- [x] Existing Schema integration/unit tests pass, with additional tests where behavior coverage was missing.
+- [x] Transitional module/component names are renamed to intended canonical names after legacy removal is verified.
 
 ## Decomposition (Updated 2026-05-13)
 
@@ -120,10 +120,10 @@ This issue was too large to implement as a single unit (27 operations across 8 t
 - [x] 04c - Raw view operations
 - [x] 04d - Topology operations
 - [x] 04e - Remaining schema operations
-- [ ] 04f - Builder/Discovery seam migration
-- [ ] 04g - Schema processor write-path migration
-- [ ] 04h - Batch read compatibility migration
-- [ ] 04i - Runtime cutover and legacy rename cleanup
+- [x] 04f - Builder/Discovery seam migration
+- [x] 04g - Schema processor write-path migration
+- [x] 04h - Batch read compatibility migration
+- [x] 04i - Runtime cutover and legacy rename cleanup
 - [ ] 04j - Epic closeout docs and verification
 
 Once all sub-issues are complete, this epic can be marked as `completed`.

@@ -1,9 +1,10 @@
 ---
 title: 04f-builder-discovery-seam-migration
 category: enhancement
-label: needs-triage
-status: open
+label: ready-for-agent
+status: completed
 date_created: 2026-05-13
+date_completed: 2026-05-13
 ---
 
 ## Type
@@ -26,10 +27,8 @@ through the v2 seam end-to-end, without introducing behavior drift.
 
 ## Acceptance Criteria
 
-- [~] `schema::builder` and `schema::discovery` no longer require
-      `schema::storage::Repository` for schema reads. *(discovery moved to
-      dedicated read seam; builder still depends on legacy repository bounds
-      pending 04g/04h full cutover)*
+- [x] `schema::builder` and `schema::discovery` no longer require
+      legacy runtime storage seam bounds for schema reads.
 - [x] Discovery still performs one coherent cached-state read pass for graph,
       property bank view, raw schema views, and schema IDs.
 - [x] Existing schema loader/discovery tests pass without changing user-visible

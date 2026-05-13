@@ -1,7 +1,7 @@
-//! Table definitions for schema storage v2.
+//! Table definitions for schema storage.
 
 use crate::{
-    db::{PathTable, UuidTable},
+    db::{PathTable, Table, UuidTable},
     impl_redb_uuid,
     schema::identifier::SchemaId,
 };
@@ -14,17 +14,7 @@ impl_redb_uuid!(SchemaId);
 ///
 /// Key: `SchemaId`
 /// Value: rkyv-serialized `Schema`
-pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas_v2");
-
-/// Path-to-SchemaId index for raw view lookup.
-///
-/// Maps file paths (e.g., "note.toml", "task.json") to their corresponding
-/// schema IDs, enabling path-based schema retrieval.
-///
-/// Key: path string with extension
-/// Value: `SchemaId`
-pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
-    PathTable::new("schema_id_by_path_v2");
+pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas");
 
 /// Raw schema views indexed by schema ID.
 ///
@@ -34,7 +24,7 @@ pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
 /// Key: `SchemaId`
 /// Value: serialized `RawSchemaView`
 pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]> =
-    UuidTable::new("raw_schema_views_v2");
+    UuidTable::new("raw_schema_views");
 
 /// Property Bank singleton with all registered property definitions.
 ///
@@ -43,7 +33,7 @@ pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]> =
 ///
 /// Key: `PROPERTY_BANK_KEY` (constant string)
 /// Value: serialized `PropertyBank`
-pub const PROPERTY_BANK: PathTable<&[u8]> = PathTable::new("property_bank_v2");
+pub const PROPERTY_BANK: Table<&str, &[u8]> = Table::new("property_bank");
 
 /// Constant key for the Property Bank singleton table.
 pub const PROPERTY_BANK_KEY: &str = "singleton";
@@ -57,7 +47,18 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 /// Key: path string
 /// Value: serialized `RawPropertyBankView`
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
-    PathTable::new("raw_property_bank_view_v2");
+    PathTable::new("raw_property_bank_view");
+
+/// Cached base properties for schema files.
+///
+/// Stores the fully converted (hydrated) property map for each schema,
+/// excluding any inherited properties. This enables skipping the
+/// `RefExpander` when the property bank has not changed.
+///
+/// Key: `SchemaId`.
+/// Value: rkyv-serialized `BasePropertiesView`.
+pub const SCHEMA_BASE_PROPERTIES: UuidTable<SchemaId, &[u8]> =
+    UuidTable::new("schema_base_properties");
 
 /// Topological inheritance graph singleton with DAG structure.
 ///
@@ -67,8 +68,8 @@ pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
 ///
 /// Key: `TOPOLOGICAL_GRAPH_KEY` (constant string)
 /// Value: serialized `InheritanceGraph<()>`
-pub const SCHEMA_TOPOLOGICAL_GRAPH: PathTable<&[u8]> =
-    PathTable::new("schema_topological_graph_v2");
+pub const SCHEMA_TOPOLOGICAL_GRAPH: Table<&str, &[u8]> =
+    Table::new("schema_topological_graph");
 
 /// Constant key for the topological inheritance graph singleton table.
 pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
@@ -80,16 +81,15 @@ pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 ///
 /// Key: schema name string
 /// Value: serialized `SchemaId`
-pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
-    PathTable::new("schema_id_by_name_v2");
+pub const SCHEMA_ID_BY_NAME: Table<&str, &[u8]> =
+    Table::new("schema_id_by_name");
 
-/// Cached base properties for schema files.
+/// Path-to-SchemaId index for raw view lookup.
 ///
-/// Stores the fully converted (hydrated) property map for each schema,
-/// excluding any inherited properties. This enables skipping the
-/// `RefExpander` when the property bank has not changed.
+/// Maps file paths (e.g., "note.toml", "task.json") to their corresponding
+/// schema IDs, enabling path-based schema retrieval.
 ///
-/// Key: `SchemaId` as UUID string.
-/// Value: rkyv-serialized `BasePropertiesView`.
-pub const SCHEMA_BASE_PROPERTIES: PathTable<&[u8]> =
-    PathTable::new("schema_base_properties");
+/// Key: path string with extension
+/// Value: `SchemaId`
+pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
+    PathTable::new("schema_id_by_path");
