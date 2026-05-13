@@ -156,6 +156,28 @@ impl From<std::fs::Metadata> for FileInfo {
     }
 }
 
+impl From<super::metadata::FileMetadata> for FileInfo {
+    #[inline]
+    fn from(meta: super::metadata::FileMetadata) -> Self {
+        Self {
+            created_at: meta.times().created_at(),
+            modified_at: meta.times().modified_at(),
+            size: meta.size(),
+        }
+    }
+}
+
+impl From<&super::metadata::FileMetadata> for FileInfo {
+    #[inline]
+    fn from(meta: &super::metadata::FileMetadata) -> Self {
+        Self {
+            created_at: meta.times().created_at(),
+            modified_at: meta.times().modified_at(),
+            size: meta.size(),
+        }
+    }
+}
+
 /// A general-purpose filesystem entry.
 ///
 /// Captures path, metadata, and filename in a single structure, suitable for

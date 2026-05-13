@@ -124,3 +124,99 @@ pub enum FsMetadata {
 - Exported: `FsTimes`, `FileMetadata`, `DirMetadata`, `FsMetadata`
 
 **Status:** ✅ Complete - All acceptance criteria met
+
+## Additional Implementation Notes (2026-05-13)
+
+### `FsMetadata::from_path()` API Addition
+
+Added `FsMetadata::from_path<P: AsRef<Path>>(path: P) -> io::Result<Self>` to provide an idiomatic, stdlib-style API for creating metadata from filesystem paths.
+
+**Design Rationale:**
+- **Matches stdlib idiom**: Mirrors `std::fs::metadata(path)` pattern (free function-style API)
+- **Type ownership**: Type owns its construction logic, not the caller (`FsReader`)
+- **Ergonomics**: Generic `<P: AsRef<Path>>` accepts `&Path`, `PathBuf`, `&str` without explicit conversion
+- **Discoverability**: `FsMetadata::from_path(path)` is more explicit than `path.try_into()`
+
+**Considered Alternative: `impl TryFrom<&Path> for FsMetadata`**
+
+Rejected because:
+- Less discoverable than explicit `from_path()` method
+- `TryFrom` trait better suited for type conversions, not filesystem I/O
+- Generic flexibility (`AsRef<Path>`) provides better ergonomics
+- Domain clarity: "from_path" signals filesystem operation
+
+**Implementation:**
+```rust
+pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+    let std_meta = std::fs::metadata(path.as_ref())?;
+    Self::try_from(std_meta)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+```
+
+**Existing `TryFrom<Metadata>` preserved:**
+- Different use case: raw metadata → typed metadata conversion
+- `from_path()` delegates to it internally
+- Useful when caller already has `std::fs::Metadata`
+
+**Delegation Pattern:**
+`FsReader::metadata()` now delegates to `FsMetadata::from_path()`:
+```rust
+pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError> {
+    let full_path = self.root.join(path);
+    FsMetadata::from_path(&full_path).map_err(|e| ParseError::Io {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+```
+
+Benefits:
+- Single Responsibility: `FsReader` handles path resolution, `FsMetadata` handles construction
+- Testability: Can test `from_path()` independently of `FsReader`
+- Reusability: Direct usage for absolute paths without `FsReader`
+
+### Test Suite Reorganization
+
+Reorganized test suite following Apollo Rust Best Practices (Chapter 5: Automated Testing).
+
+**Before:**
+- 23 tests in flat `tests` module
+- Mix of naming conventions
+- No logical grouping
+
+**After:**
+```rust
+#[cfg(test)]
+mod tests {
+    mod fs_times {
+        mod is_match { ... }
+    }
+    mod file_metadata { ... }
+    mod dir_metadata { ... }
+    mod fs_metadata {
+        mod as_file { ... }
+        mod as_dir { ... }
+        mod try_from { ... }
+        mod from_path { ... }
+    }
+}
+```
+
+**Benefits:**
+- ✅ Logical grouping by type (`fs_times`, `file_metadata`, `dir_metadata`, `fs_metadata`)
+- ✅ Behavior submodules (`is_match`, `as_file`, `as_dir`, `try_from`, `from_path`)
+- ✅ IDE support: Each module gets a ▶️ run button
+- ✅ Readable test output: `fs_metadata::from_path::constructs_file_metadata_for_file`
+- ✅ Naming consistency: Behavior-first naming (`returns_true_for_identical_timestamps`)
+
+**Test Coverage:**
+- 23 tests total (6 `fs_times`, 3 `file_metadata`, 3 `dir_metadata`, 11 `fs_metadata`)
+- All tests follow "one behavior per test" principle
+- Descriptive names matching `unit_of_work::expected_behavior_when_state` pattern
+
+**Verification:**
+- ✅ 1124 unit tests passing
+- ✅ 190 doctests passing (155 run, 35 ignored)
+- ✅ Clippy clean with strict lints
+- ✅ Follows Rust best practices for test organization

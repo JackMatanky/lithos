@@ -825,8 +825,10 @@ impl SchemaProcessor<Discovery, Review> {
 
         for path in files {
             let file_info = source
-                .info(path.as_path())
-                .unwrap_or_else(|_error| FileInfo::new(None, None, 0));
+                .metadata(path.as_path())
+                .ok()
+                .and_then(|m| m.as_file().map(FileInfo::from))
+                .unwrap_or_else(|| FileInfo::new(None, None, 0));
 
             if let (Some(view), Some(id)) =
                 (views_by_path.remove(path), ids_by_path.get(path))
@@ -1749,7 +1751,12 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                         if bank_changed {
                             let info_for_raw = source
-                                .info(payload.path.as_path())
+                                .metadata(payload.path.as_path())
+                                .map(|m| {
+                                    m.as_file().map_or_else(|| {
+                                        FileInfo::new(None, None, 0)
+                                    }, FileInfo::from)
+                                })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content = source

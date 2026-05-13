@@ -220,8 +220,15 @@ impl DiscoveryEngine {
         // Try each location in priority order
         for path in Self::global_config_paths() {
             if reader.exists(&path) {
-                let info =
-                    reader.info(&path).map_err(ConfigIngestError::from)?;
+                let info = reader
+                    .metadata(&path)
+                    .map(|m| {
+                        m.as_file().map_or_else(
+                            || FileInfo::new(None, None, 0),
+                            FileInfo::from,
+                        )
+                    })
+                    .map_err(ConfigIngestError::from)?;
 
                 let filename = path
                     .file_name()
@@ -253,8 +260,15 @@ impl DiscoveryEngine {
             return Ok(None);
         }
 
-        let info =
-            reader.info(relative_path).map_err(ConfigIngestError::from)?;
+        let info = reader
+            .metadata(relative_path)
+            .map(|m| {
+                m.as_file().map_or_else(
+                    || FileInfo::new(None, None, 0),
+                    FileInfo::from,
+                )
+            })
+            .map_err(ConfigIngestError::from)?;
 
         Ok(Some(FileEntry {
             path: vault_root.as_path().join(relative_path),

@@ -381,7 +381,7 @@ impl VaultProcessor<Discovery, Unknown> {
                 }
             })?;
             let metadata =
-                source.metadata(path.as_path()).map_err(|error| {
+                source.std_metadata(path.as_path()).map_err(|error| {
                     VaultFileError::MetadataFailed {
                         path: path.as_str().into(),
                         message: error.to_string().into(),
@@ -448,7 +448,7 @@ impl VaultProcessor<Discovery, Unknown> {
                 })?;
 
             let metadata = source
-                .metadata(Path::new(vault_path.as_str()))
+                .std_metadata(Path::new(vault_path.as_str()))
                 .map_err(|error| VaultFileError::MetadataFailed {
                     path: vault_path.as_str().into(),
                     message: error.to_string().into(),
@@ -494,7 +494,7 @@ impl VaultProcessor<Discovery, Unknown> {
                 })?;
 
             let metadata = source
-                .metadata(Path::new(vault_path.as_str()))
+                .std_metadata(Path::new(vault_path.as_str()))
                 .map_err(|error| VaultFileError::MetadataFailed {
                     path: vault_path.as_str().into(),
                     message: error.to_string().into(),
