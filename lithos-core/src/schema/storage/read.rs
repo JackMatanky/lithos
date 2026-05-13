@@ -14,7 +14,7 @@ use crate::{
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs},
         property::PropertyName,
-        repository::SchemaReadRepository,
+        repository::ReadRepository,
         storage::{
             RedbRepository,
             tables::{
@@ -27,7 +27,7 @@ use crate::{
     },
 };
 
-impl SchemaReadRepository for RedbRepository {
+impl ReadRepository for RedbRepository {
     #[inline]
     fn find_schema_by_id(
         &self,
@@ -467,7 +467,7 @@ mod tests {
             inheritance::{InheritanceGraph, SchemaGraphBuilder},
             property::PropertyMap,
             raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
-            repository::{SchemaReadRepository, SchemaWriteRepository},
+            repository::{ReadRepository, WriteRepository},
             storage::RedbRepository,
             views::{
                 RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
@@ -957,15 +957,13 @@ mod tests {
             ];
 
             let id_hits =
-                SchemaReadRepository::find_schema_ids_by_paths(&repo, &paths)
+                ReadRepository::find_schema_ids_by_paths(&repo, &paths)
                     .unwrap();
             assert_eq!(id_hits, vec![Some(id1), None, Some(id2)]);
 
             let view_hits =
-                SchemaReadRepository::find_raw_schema_views_by_paths(
-                    &repo, &paths,
-                )
-                .unwrap();
+                ReadRepository::find_raw_schema_views_by_paths(&repo, &paths)
+                    .unwrap();
             assert_eq!(view_hits, vec![Some(view1), None, Some(view2)]);
         }
     }

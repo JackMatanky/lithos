@@ -51,7 +51,7 @@ use lithos_core::schema::{
     bank::PropertyBank,
     identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyMap},
-    repository::{SchemaReadRepository as _, SchemaWriteRepository as _},
+    repository::{ReadRepository as _, WriteRepository as _},
 };
 
 // ========================================================================

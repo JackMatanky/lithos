@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Segregated read interface for schema persistence.
-pub trait SchemaReadRepository {
+pub trait ReadRepository {
     /// Find a schema by its unique identifier.
     ///
     /// # Errors
@@ -233,7 +233,7 @@ pub trait SchemaReadRepository {
 }
 
 /// Segregated write interface for schema persistence.
-pub trait SchemaWriteRepository {
+pub trait WriteRepository {
     /// Persist a schema aggregate to the store.
     ///
     /// # Errors
@@ -313,10 +313,7 @@ pub trait SchemaWriteRepository {
 
 /// Unified interface for schema persistence and retrieval.
 ///
-/// This trait extends both [`SchemaReadRepository`] and
-/// [`SchemaWriteRepository`] to provide a complete interface for schema storage
+/// This trait extends both [`ReadRepository`] and [`WriteRepository`] to
+/// provide a complete interface for schema storage
 /// operations.
-pub trait SchemaRepository:
-    SchemaReadRepository + SchemaWriteRepository
-{
-}
+pub trait Repository: ReadRepository + WriteRepository {}

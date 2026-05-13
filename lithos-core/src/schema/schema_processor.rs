@@ -77,7 +77,7 @@ use crate::{
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
-        repository::{SchemaReadRepository, SchemaWriteRepository},
+        repository::{ReadRepository, WriteRepository},
         views::{
             RawPropertyHashIndex, RawSchemaView, RawView as _,
             RawViewRead as _, contracts::Version as _,
@@ -2055,7 +2055,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<SchemaProcessor<Construction, Analyzed>, SchemaLoaderError>
     where
-        R: SchemaWriteRepository,
+        R: WriteRepository,
     {
         Self::refresh_cached_views(&mut self.status, repository)?;
         Self::refresh_stale_timestamp_views(&mut self.status, repository)?;
@@ -2070,7 +2070,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: SchemaWriteRepository,
+        R: WriteRepository,
     {
         use crate::schema::views::HashRecord;
 
@@ -2113,7 +2113,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: SchemaWriteRepository,
+        R: WriteRepository,
     {
         use crate::schema::views::HashRecord;
 
@@ -2190,7 +2190,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: SchemaWriteRepository,
+        R: WriteRepository,
     {
         for id in &status.rebuild_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2225,7 +2225,7 @@ impl SchemaProcessor<Construction, Analyzed> {
     )]
     pub(crate) fn construct_schemas(
         self,
-        repository: &(impl SchemaReadRepository + SchemaWriteRepository),
+        repository: &(impl ReadRepository + WriteRepository),
         property_bank: &PropertyBank,
     ) -> Result<SchemaProcessor<Construction, Constructed>, SchemaLoaderError>
     {
@@ -2667,7 +2667,7 @@ impl SchemaProcessor<Construction, NewBuild> {
     )]
     pub(crate) fn construct_new_schemas(
         self,
-        repository: &impl SchemaWriteRepository,
+        repository: &impl WriteRepository,
         property_bank: &PropertyBank,
     ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
         use crate::schema::expander::RefExpander;
@@ -2807,7 +2807,7 @@ impl SchemaProcessor<Construction, NewBuild> {
 impl SchemaProcessor<Construction, Constructed> {
     pub(crate) fn complete(
         self,
-        repository: &impl SchemaWriteRepository,
+        repository: &impl WriteRepository,
     ) -> Result<SchemaProcessor<Completed, Constructed>, SchemaLoaderError>
     {
         let Constructed {

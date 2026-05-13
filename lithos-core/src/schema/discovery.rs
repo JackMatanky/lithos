@@ -13,7 +13,7 @@ use crate::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
         inheritance::InheritanceGraph,
-        repository::SchemaReadRepository,
+        repository::ReadRepository,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -199,7 +199,7 @@ impl DiscoveryEngine {
         vault_root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
-        R: SchemaReadRepository,
+        R: ReadRepository,
     {
         // Step 1: Scan filesystem
         let entries = Self::scan_filesystem(spec, vault_root)?;
@@ -316,7 +316,7 @@ impl DiscoveryEngine {
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
     where
-        R: SchemaReadRepository,
+        R: ReadRepository,
     {
         #[expect(
             clippy::pattern_type_mismatch,
@@ -449,7 +449,7 @@ mod tests {
     use super::*;
     use crate::schema::storage::testing::InMemoryRepository;
 
-    fn accepts_schema_read_repository_only<R: SchemaReadRepository>(
+    fn accepts_read_repository_only<R: ReadRepository>(
         spec: &SchemaConfigSpec,
         repo: &R,
         root: &std::path::Path,
@@ -477,8 +477,7 @@ mod tests {
 
         let repo = InMemoryRepository::new();
         let result =
-            accepts_schema_read_repository_only(&spec, &repo, root.path())
-                .unwrap();
+            accepts_read_repository_only(&spec, &repo, root.path()).unwrap();
 
         assert_eq!(result.schemas.len(), 1);
         assert!(result.property_bank.is_some());

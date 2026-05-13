@@ -11,7 +11,7 @@ use crate::{
         error::SchemaStorageError,
         identifier::SchemaName,
         inheritance::InheritanceGraph,
-        repository::SchemaWriteRepository,
+        repository::WriteRepository,
         storage::{
             RedbRepository,
             tables::{
@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-impl SchemaWriteRepository for RedbRepository {
+impl WriteRepository for RedbRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
         let bytes = serialize(schema).map_err(SchemaStorageError::from)?;
@@ -275,7 +275,7 @@ mod tests {
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
             },
         };
@@ -392,7 +392,7 @@ mod tests {
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
             },
         };
@@ -424,7 +424,7 @@ mod tests {
                 PropertyMap::new(),
             );
 
-            SchemaWriteRepository::save_many_schemas(&repo, &[
+            WriteRepository::save_many_schemas(&repo, &[
                 schema1.clone(),
                 schema2.clone(),
             ])
@@ -458,10 +458,8 @@ mod tests {
             let schema2 =
                 Schema::new(id2, name2, Vec::new(), vec![], PropertyMap::new());
 
-            SchemaWriteRepository::save_many_schemas(&repo, &[
-                schema1, schema2,
-            ])
-            .unwrap();
+            WriteRepository::save_many_schemas(&repo, &[schema1, schema2])
+                .unwrap();
 
             let results = repo.find_many_schemas_by_id(&[id1, id2]).unwrap();
 
@@ -478,7 +476,7 @@ mod tests {
             let repo = RedbRepository::new(store);
 
             // Should not error on empty batch
-            SchemaWriteRepository::save_many_schemas(&repo, &[]).unwrap();
+            WriteRepository::save_many_schemas(&repo, &[]).unwrap();
         }
     }
 
@@ -489,7 +487,7 @@ mod tests {
             db::Store,
             schema::{
                 bank::PropertyBank,
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
             },
         };
@@ -540,7 +538,7 @@ mod tests {
             schema::{
                 identifier::SchemaId,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,
@@ -628,7 +626,7 @@ mod tests {
             schema::{
                 identifier::SchemaId,
                 inheritance::{InheritanceGraph, SchemaGraphBuilder},
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
             },
         };
@@ -679,7 +677,7 @@ mod tests {
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
                 raw::{RawPropertyMap, RawSchema, RawSchemaVersion},
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{ReadRepository, WriteRepository},
                 storage::RedbRepository,
                 views::{
                     RawPropertyHashIndex, SchemaVersion, hashes::HashRecord,

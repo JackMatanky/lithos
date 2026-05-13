@@ -35,8 +35,8 @@ impl RedbRepository {
 
 // Blanket implementation: any type that implements both Read and Write
 // automatically implements the unified trait.
-impl<T> crate::schema::repository::SchemaRepository for T where
-    T: crate::schema::repository::SchemaReadRepository
-        + crate::schema::repository::SchemaWriteRepository
+impl<T> crate::schema::repository::Repository for T where
+    T: crate::schema::repository::ReadRepository
+        + crate::schema::repository::WriteRepository
 {
 }

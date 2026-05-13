@@ -18,7 +18,7 @@ use crate::{
             PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
             Suspect, TimestampBranch,
         },
-        repository::{SchemaReadRepository, SchemaWriteRepository},
+        repository::{ReadRepository, WriteRepository},
     },
 };
 
@@ -32,7 +32,7 @@ pub struct Builder<'config, R> {
 
 impl<'config, R> Builder<'config, R>
 where
-    R: SchemaReadRepository + SchemaWriteRepository,
+    R: ReadRepository + WriteRepository,
 {
     /// Create a new `Builder` with a repository, file source, and config.
     #[inline]
@@ -279,7 +279,7 @@ mod tests {
         config::aggregate::Config,
         fs::FsReader,
         schema::{
-            repository::{SchemaReadRepository, SchemaWriteRepository},
+            repository::{ReadRepository, WriteRepository},
             storage::testing::InMemoryRepository,
         },
     };
@@ -352,7 +352,7 @@ description = "Test schema"
     fn builder_new_accepts_segregated_schema_seams() {
         fn assert_builder_new<R>(repo: R, source: FsReader, config: &Config)
         where
-            R: SchemaReadRepository + SchemaWriteRepository,
+            R: ReadRepository + WriteRepository,
         {
             let _ = Builder::new(repo, source, config);
         }

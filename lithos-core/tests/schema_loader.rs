@@ -59,7 +59,7 @@ use lithos_core::{
     fs::FsReader,
     schema::{
         builder::Builder, property::PropertyName,
-        repository::SchemaReadRepository as _,
+        repository::ReadRepository as _,
     },
 };
 use tempfile::TempDir;

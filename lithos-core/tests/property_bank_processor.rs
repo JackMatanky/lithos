@@ -21,7 +21,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::{FsReader, RelativePath},
-    schema::{builder::Builder, repository::SchemaReadRepository as _},
+    schema::{builder::Builder, repository::ReadRepository as _},
 };
 use tempfile::TempDir;
 

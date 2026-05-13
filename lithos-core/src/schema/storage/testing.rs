@@ -56,7 +56,7 @@ use crate::{
         index::{NameIdPairs, PathIdPairs, SchemaIndex},
         inheritance::InheritanceGraph,
         property::{PropertyMap, PropertyName},
-        repository::{SchemaReadRepository, SchemaWriteRepository},
+        repository::{ReadRepository, WriteRepository},
         views::{RawPropertyBankView, RawSchemaView, RawView as _},
     },
 };
@@ -219,7 +219,7 @@ fn to_storage_error(err: InMemoryError) -> SchemaStorageError {
     SchemaStorageError::from(DbError::Corruption(err.to_string()))
 }
 
-impl SchemaReadRepository for InMemoryRepository {
+impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_schema_by_id(
         &self,
@@ -472,7 +472,7 @@ impl SchemaReadRepository for InMemoryRepository {
     }
 }
 
-impl SchemaWriteRepository for InMemoryRepository {
+impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
         let mut schemas_map = self.schemas.write().map_err(|_| {

@@ -27,7 +27,7 @@ use lithos_core::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        repository::SchemaReadRepository,
+        repository::ReadRepository,
         storage::RedbRepository,
     },
 };
@@ -50,7 +50,7 @@ pub trait RepositoryExt {
 
 impl<R> RepositoryExt for R
 where
-    R: SchemaReadRepository,
+    R: ReadRepository,
 {
     fn find_by_name(
         &self,

@@ -120,7 +120,7 @@ use crate::{
         },
         property::PropertyName,
         raw::RawPropertyBank,
-        repository::{SchemaReadRepository, SchemaWriteRepository},
+        repository::{ReadRepository, WriteRepository},
         views::{
             HashRecord, RawPropertyBankView, RawView as _, RawViewRead as _,
             contracts::Version as _,
@@ -575,7 +575,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: SchemaWriteRepository>(
+    pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
@@ -602,7 +602,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: SchemaWriteRepository>(
+    pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
@@ -665,7 +665,7 @@ impl PropertyBankProcessor<Construction, New> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn create<R: SchemaWriteRepository>(
+    pub(crate) fn create<R: WriteRepository>(
         self,
         path: &RelativePath,
         repository: &R,
@@ -687,7 +687,7 @@ impl PropertyBankProcessor<Construction, New> {
     }
 
     #[inline]
-    fn persist<R: SchemaWriteRepository>(
+    fn persist<R: WriteRepository>(
         &self,
         path: &RelativePath,
         repository: &R,
@@ -726,7 +726,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn update<R: SchemaReadRepository + SchemaWriteRepository>(
+    pub(crate) fn update<R: ReadRepository + WriteRepository>(
         self,
         path: &RelativePath,
         repository: &R,
@@ -768,7 +768,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     }
 
     #[inline]
-    fn persist<R: SchemaWriteRepository>(
+    fn persist<R: WriteRepository>(
         &self,
         path: &RelativePath,
         repository: &R,
@@ -803,7 +803,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
     /// is missing.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn fetch<R: SchemaReadRepository>(
+    pub(crate) fn fetch<R: ReadRepository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
