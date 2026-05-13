@@ -648,8 +648,79 @@ Used in `file.rs` tests (3 call sites)
 
 ## Status Update
 
-**Status:** 🔄 Refactor In Progress - Addressing Post-Review Issues
+**Status:** ✅ Refactor Complete - All Phases Implemented
 **Priority:** HIGH - Must complete before Issue 08 migration
 **Complexity:** MEDIUM - API changes + test reorganization
 
-**Current Phase:** Usage audit complete, starting TDD implementation
+**Completion Date:** 2026-05-13
+
+## Implementation Summary
+
+### Phase 1: API Fixes (COMPLETED)
+✅ Fixed `basename()` vs `to_basename()` confusion
+- Renamed `basename() -> &str` to `basename_str()`
+- Renamed `to_basename()` to `basename()` (returns `Option<BaseName>`)
+- Added doc examples for new API
+
+✅ Fixed silent failure bug
+- Changed `From<FileName> for BaseName` → `TryFrom<FileName>`
+- Returns `Result<BaseName, io::Error>` instead of empty strings
+- Added error case tests
+
+✅ Updated 12 call sites across 5 files
+
+**Commit:** `62b1f35a` - Phase 1 complete
+
+### Phase 2: Test Suite Reorganization (COMPLETED)
+✅ Reorganized 11 tests into 3 top-level modules, 5 submodules
+- `file_name::basename` (3 tests)
+- `file_name::basename_str` (2 tests)
+- `file_name_ref::basename` (2 tests)
+- `base_name::try_from_path` (2 tests)
+- `base_name::try_from_filename` (2 tests)
+
+✅ Renamed all tests to behavior-focused names
+- Before: `should_extract_basename_correctly`
+- After: `returns_some_for_simple_filename`
+
+✅ Split multi-assertion tests into single-assertion tests
+
+**Benefits:**
+- IDE can run test groups independently
+- Test output shows module hierarchy
+- Follows Apollo Chapter 5 pattern (metadata.rs exemplar)
+
+### Phase 3: Remove Dead Conversions (COMPLETED)
+✅ Removed 8 unused conversion traits
+- FileName: 3 removed (`From<Box<str>>`, `TryFrom<PathBuf>`, `From<FileName> for Box<str>`)
+- BaseName: 5 removed (`From<Box<str>>`, `From<String>`, `TryFrom<PathBuf>`, `From<BaseName> for String`, `From<BaseName> for Box<str>`)
+
+✅ Kept 4 necessary conversions
+- FileName: `From<String>`, `From<FileName> for String`, `TryFrom<&Path>`
+- BaseName: `TryFrom<&Path>`, `TryFrom<FileName>`
+
+**Impact:**
+- Net -44 lines of code (156 deleted, 112 added)
+- Reduced maintenance burden
+- Clearer API surface
+
+**Commit:** `a2fc7c13` - Phase 2+3 complete
+
+## Final Metrics
+
+**Tests:** 1127 unit tests passing (11 fs::name tests in organized structure)
+**Lints:** Clippy clean with strict lints (`-D warnings`)
+**Code Reduction:** Net -44 lines
+**API Clarity:** 2 primary APIs (`basename()`, `basename_str()`), 8 dead conversions removed
+
+## Ready for Issue 08
+
+The `name.rs` refactor is complete. All critical issues from the post-implementation review have been addressed:
+
+1. ✅ API confusion fixed (basename methods consolidated)
+2. ✅ Silent failure bug fixed (TryFrom error handling)
+3. ✅ Test suite organized per Apollo Chapter 5
+4. ✅ Dead conversion traits removed
+5. ✅ All tests passing, Clippy clean
+
+**Issue 08 (`FileInfo` → `FileMetadata` migration) can now proceed with a clean `name.rs` foundation.**
