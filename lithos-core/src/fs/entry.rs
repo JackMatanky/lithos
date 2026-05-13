@@ -96,30 +96,34 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
         let path = entry.into_path();
 
         if std_metadata.is_dir() {
+            // Clone once for potential error path
+            let path_for_error = path.clone();
             let dir_path =
-                DirPath::new(path.clone()).map_err(|e| ParseError::Io {
-                    path: path.clone(),
-                    source: e,
+                DirPath::new(path).map_err(|source| ParseError::Io {
+                    path: path_for_error.clone(),
+                    source,
                 })?;
             let dir_metadata =
-                DirMetadata::try_from(&std_metadata).map_err(|e| {
+                DirMetadata::try_from(&std_metadata).map_err(|source| {
                     ParseError::Io {
-                        path,
-                        source: e,
+                        path: path_for_error,
+                        source,
                     }
                 })?;
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
+            // Clone once for potential error path
+            let path_for_error = path.clone();
             let file_path =
-                FilePath::new(path.clone()).map_err(|e| ParseError::Io {
-                    path: path.clone(),
-                    source: e,
+                FilePath::new(path).map_err(|source| ParseError::Io {
+                    path: path_for_error.clone(),
+                    source,
                 })?;
             let file_metadata =
-                FileMetadata::try_from(&std_metadata).map_err(|e| {
+                FileMetadata::try_from(&std_metadata).map_err(|source| {
                     ParseError::Io {
-                        path,
-                        source: e,
+                        path: path_for_error,
+                        source,
                     }
                 })?;
             Ok(Self::File(FsFile::new(file_path, file_metadata)))
@@ -462,16 +466,31 @@ mod tests {
         use super::*;
 
         #[test]
-        fn stores_path_and_metadata() {
+        fn returns_stored_path() {
+            let temp = tempfile::NamedTempFile::new().unwrap();
+            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+            let times = FsTimes::new(Some(SystemTime::now()), None);
+            let metadata = FileMetadata::new(times, 1024, false);
+
+            let file = FsFile::new(path.clone(), metadata);
+
+            assert_eq!(file.path(), &path, "Expected same path reference");
+        }
+
+        #[test]
+        fn returns_stored_metadata() {
             let temp = tempfile::NamedTempFile::new().unwrap();
             let path = FilePath::new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = FileMetadata::new(times.clone(), 1024, false);
 
-            let file = FsFile::new(path.clone(), metadata.clone());
+            let file = FsFile::new(path, metadata.clone());
 
-            assert_eq!(file.path(), &path, "Expected stored path");
-            assert_eq!(file.metadata(), &metadata, "Expected stored metadata");
+            assert_eq!(
+                file.metadata(),
+                &metadata,
+                "Expected same metadata reference"
+            );
         }
     }
 
@@ -479,16 +498,31 @@ mod tests {
         use super::*;
 
         #[test]
-        fn stores_path_and_metadata() {
+        fn returns_stored_path() {
+            let temp = tempfile::TempDir::new().unwrap();
+            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+            let times = FsTimes::new(Some(SystemTime::now()), None);
+            let metadata = DirMetadata::new(times, false);
+
+            let dir = FsDir::new(path.clone(), metadata);
+
+            assert_eq!(dir.path(), &path, "Expected same path reference");
+        }
+
+        #[test]
+        fn returns_stored_metadata() {
             let temp = tempfile::TempDir::new().unwrap();
             let path = DirPath::new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = DirMetadata::new(times.clone(), false);
 
-            let dir = FsDir::new(path.clone(), metadata.clone());
+            let dir = FsDir::new(path, metadata.clone());
 
-            assert_eq!(dir.path(), &path, "Expected stored path");
-            assert_eq!(dir.metadata(), &metadata, "Expected stored metadata");
+            assert_eq!(
+                dir.metadata(),
+                &metadata,
+                "Expected same metadata reference"
+            );
         }
     }
 }
