@@ -3,7 +3,7 @@ name: fs-error-type-hierarchy
 status: accepted
 date_proposed: 2026-05-13
 date_decided: 2026-05-13
-date_implemented:
+date_implemented: 2026-05-13
 stakeholders: [Engineering]
 ---
 

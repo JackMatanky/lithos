@@ -19,10 +19,7 @@
               module"
 )]
 
-use std::{
-    fs::DirEntry,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
@@ -30,7 +27,6 @@ use rkyv::{
 };
 
 pub use super::name::FileName;
-use crate::{fs::error::DirEntryError, prelude::W};
 
 /// Filesystem information for a file.
 ///
@@ -191,47 +187,6 @@ pub struct FileEntry {
     pub filename: FileName,
     /// The entry's information/metadata.
     pub info: FileInfo,
-}
-
-impl TryFrom<W<&DirEntry>> for String {
-    type Error = DirEntryError;
-
-    #[inline]
-    fn try_from(val: W<&DirEntry>) -> Result<Self, Self::Error> {
-        val.0.path().to_str().map(String::from).ok_or_else(|| {
-            DirEntryError::InvalidUtf8(
-                val.0.path().to_string_lossy().into_owned(),
-            )
-        })
-    }
-}
-
-impl TryFrom<W<&DirEntry>> for FileEntry {
-    type Error = DirEntryError;
-
-    #[inline]
-    fn try_from(val: W<&DirEntry>) -> Result<Self, Self::Error> {
-        let entry = val.0;
-        let path = entry.path();
-        let metadata = entry.metadata()?;
-
-        // Use DirEntry::file_name() directly for efficiency and correctness
-        let file_name = entry
-            .file_name()
-            .to_str()
-            .map(|s| FileName::from(s.to_owned()))
-            .ok_or_else(|| {
-                DirEntryError::InvalidUtf8(
-                    entry.path().to_string_lossy().into_owned(),
-                )
-            })?;
-
-        Ok(Self {
-            path: path.clone(),
-            filename: file_name,
-            info: metadata.into(),
-        })
-    }
 }
 
 #[cfg(test)]
