@@ -2,8 +2,9 @@
 title: 04e-remaining-schema-operations
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-12
+date_completed: 2026-05-13
 ---
 
 ## Type
@@ -89,22 +90,22 @@ These are operations on full `Schema` aggregates (not just indexes or views) plu
 
 ## Acceptance Criteria
 
-- [ ] `find_schemas_by_ids(ids)` added to `SchemaReadRepository`
-- [ ] `list_schemas()` added to `SchemaReadRepository`
-- [ ] `find_schemas_using_properties(property_names)` added to `SchemaReadRepository`
-- [ ] `delete_schema(id)` added to `SchemaWriteRepository`
-- [ ] Implementation in `storage_v2/read.rs` and `storage_v2/write.rs`
-- [ ] Unit tests verify:
+- [x] `find_schemas_by_ids(ids)` added to `SchemaReadRepository`
+- [x] `list_schemas()` added to `SchemaReadRepository`
+- [x] `find_schemas_using_properties(property_names)` added to `SchemaReadRepository`
+- [x] `delete_schema(id)` added to `SchemaWriteRepository`
+- [x] Implementation in `storage_v2/read.rs` and `storage_v2/write.rs`
+- [~] Unit tests verify:
   - `find_schemas_by_ids` skips missing schemas
   - `list_schemas` returns all schemas
   - `find_schemas_using_properties` returns correct mappings
   - `delete_schema` removes from all four tables atomically
   - Deleted schemas not returned by list/find operations
   - Index lookups return None after deletion
-  - Rollback on error maintains consistency
-- [ ] All tests pass
-- [ ] No clippy warnings
-- [ ] Code formatted
+  - Rollback on error maintains consistency *(covered by transaction semantics and existing repository rollback tests; no explicit injected-failure test added in this issue)*
+- [x] All tests pass
+- [x] No clippy warnings
+- [x] Code formatted
 
 ## Blocked by
 
@@ -204,3 +205,23 @@ All helpers execute inside the same write transaction invoked by
 
 - Focused tests for `storage_v2::write::tests::delete_schema`.
 - Full quality checks via `mise run fmt`, `mise run lint`, `mise run test`.
+
+## Implementation Notes (2026-05-13)
+
+- `SchemaReadRepository` now includes `find_schemas_by_ids`, `list_schemas`, and `find_schemas_using_properties`; `SchemaWriteRepository` now includes `delete_schema`.
+- `storage_v2/read.rs` implementation:
+  - `find_schemas_by_ids` reuses `find_many_schemas_by_id` and filters out missing entries.
+  - `list_schemas` iterates `SCHEMAS` in one read transaction and deserializes each aggregate.
+  - `find_schemas_using_properties` performs a scan over `list_schemas()` and returns `HashMap<SchemaId, Vec<PropertyName>>` matches.
+- `storage_v2/write.rs` implementation:
+  - `delete_schema` executes as one atomic write transaction.
+  - Final refactor uses a `DeleteContext` coordinator (`schema_name`, `view_path`) with private helpers:
+    - `load_delete_context`
+    - `remove_name_id_index`
+    - `remove_path_id_index`
+    - `remove_schema`
+    - `remove_raw_schema_view`
+- Added/extended tests:
+  - read-side: `schema_collections` and `property_usage` modules.
+  - write-side: `delete_schema` module including idempotency and name-index cleanup without raw view.
+- Verification performed via focused `cargo test` runs and full hook-driven checks (`fmt`, clippy, tests) during commit.
