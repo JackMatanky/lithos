@@ -10,7 +10,10 @@ use crate::{
         bank::PropertyBank,
         identifier::SchemaName,
         inheritance::InheritanceGraph,
-        repository::{SchemaStorageV2Error, SchemaWriteRepository},
+        repository::{
+            ProcessorWriteRepository, SchemaStorageV2Error,
+            SchemaWriteRepository,
+        },
         storage_v2::{
             SchemaRedbRepository,
             tables::{
@@ -183,6 +186,40 @@ impl SchemaWriteRepository for SchemaRedbRepository {
                 Ok(())
             })
             .map_err(SchemaStorageV2Error::from)
+    }
+}
+
+impl ProcessorWriteRepository for SchemaRedbRepository {
+    type Error = SchemaStorageV2Error;
+
+    #[inline]
+    fn save_many_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+        SchemaWriteRepository::save_many_schemas(self, schemas)
+    }
+
+    #[inline]
+    fn save_raw_schema_view(
+        &self,
+        id: crate::schema::identifier::SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error> {
+        SchemaWriteRepository::save_raw_schema_view(self, id, view)
+    }
+
+    #[inline]
+    fn delete_schema(
+        &self,
+        id: crate::schema::identifier::SchemaId,
+    ) -> Result<(), Self::Error> {
+        SchemaWriteRepository::delete_schema(self, id)
+    }
+
+    #[inline]
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error> {
+        SchemaWriteRepository::save_topological_graph(self, graph)
     }
 }
 
@@ -391,7 +428,10 @@ mod tests {
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},
                 property::PropertyMap,
-                repository::{SchemaReadRepository, SchemaWriteRepository},
+                repository::{
+                    ProcessorWriteRepository, SchemaReadRepository,
+                    SchemaWriteRepository,
+                },
                 storage_v2::SchemaRedbRepository,
             },
         };
@@ -423,8 +463,11 @@ mod tests {
                 PropertyMap::new(),
             );
 
-            repo.save_many_schemas(&[schema1.clone(), schema2.clone()])
-                .unwrap();
+            SchemaWriteRepository::save_many_schemas(&repo, &[
+                schema1.clone(),
+                schema2.clone(),
+            ])
+            .unwrap();
 
             let found1 = repo.find_schema_by_id(id1).unwrap().unwrap();
             let found2 = repo.find_schema_by_id(id2).unwrap().unwrap();
@@ -454,7 +497,10 @@ mod tests {
             let schema2 =
                 Schema::new(id2, name2, Vec::new(), vec![], PropertyMap::new());
 
-            repo.save_many_schemas(&[schema1, schema2]).unwrap();
+            SchemaWriteRepository::save_many_schemas(&repo, &[
+                schema1, schema2,
+            ])
+            .unwrap();
 
             let results = repo.find_many_schemas_by_id(&[id1, id2]).unwrap();
 
@@ -471,7 +517,29 @@ mod tests {
             let repo = SchemaRedbRepository::new(store);
 
             // Should not error on empty batch
-            repo.save_many_schemas(&[]).unwrap();
+            SchemaWriteRepository::save_many_schemas(&repo, &[]).unwrap();
+        }
+
+        #[test]
+        fn processor_write_seam_supports_batch_persistence() {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = SchemaRedbRepository::new(store);
+
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("processor-seam-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+
+            ProcessorWriteRepository::save_many_schemas(
+                &repo,
+                std::slice::from_ref(&schema),
+            )
+            .unwrap();
+
+            let found = repo.find_schema_by_id(id).unwrap();
+            assert!(found.is_some());
         }
     }
 

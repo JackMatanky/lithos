@@ -2,8 +2,9 @@
 title: 04g-schema-processor-write-path-migration
 category: enhancement
 label: needs-triage
-status: open
+status: completed
 date_created: 2026-05-13
+date_completed: 2026-05-13
 ---
 
 ## Type
@@ -25,13 +26,13 @@ with equivalent atomic behavior.
 
 ## Acceptance Criteria
 
-- [ ] `schema_processor` no longer calls legacy `save_schemas(&[&Schema])`.
-- [ ] Save-many, delete, raw-view, and topology writes used by processor are
+- [x] `schema_processor` no longer calls legacy `save_schemas(&[&Schema])`.
+- [x] Save-many, delete, raw-view, and topology writes used by processor are
       routed through v2 write methods.
-- [ ] Atomic semantics are preserved for processor-triggered persistence
+- [x] Atomic semantics are preserved for processor-triggered persistence
       operations.
-- [ ] Existing processor tests pass and no behavior regressions are introduced.
-- [ ] No clippy warnings and code is formatted.
+- [x] Existing processor tests pass and no behavior regressions are introduced.
+- [x] No clippy warnings and code is formatted.
 
 ## Blocked by
 
@@ -129,3 +130,31 @@ vertical slices.
    behavior parity.
 5. REFACTOR: remove transitional duplication and keep public behavior/tests
    unchanged.
+
+## Implementation Notes (2026-05-13)
+
+- Added `ProcessorWriteRepository` seam to isolate schema processor write-path
+  persistence from legacy repository coupling.
+- Implemented dual wiring for migration safety:
+  - blanket implementation for legacy `storage::Repository`
+  - concrete implementation for v2 `SchemaRedbRepository`
+- Migrated processor write callsites in
+  `lithos-core/src/schema/schema_processor.rs`:
+  - `construct_new_schemas` now persists via `save_many_schemas(&[Schema])`
+  - `complete` now persists via `save_many_schemas(&[Schema])`
+  - completion delete/topology writes remain routed via seam methods
+- Added v2 seam coverage test in
+  `lithos-core/src/schema/storage_v2/write.rs`:
+  - `processor_write_seam_supports_batch_persistence`
+
+## Verification Notes (2026-05-13)
+
+- `mise run fmt` passed.
+- `mise run lint` passed.
+- `mise run test:unit` passed (`1128` passed, `0` failed).
+- `mise run test` passed:
+  - unit summary: `1128` passed, `0` failed
+  - integration summary: `36` passed, `0` failed
+  - e2e summary: `1` passed, `0` failed
+- `gitnexus_detect_changes(scope: "all")` reported no indexed symbol/process
+  deltas in current graph snapshot (`risk_level: low`, `changed_files: 10`).

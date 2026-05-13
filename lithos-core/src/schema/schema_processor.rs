@@ -77,6 +77,7 @@ use crate::{
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
+        repository::ProcessorWriteRepository,
         storage::Repository,
         views::{
             RawPropertyHashIndex, RawSchemaView, RawView as _,
@@ -2671,7 +2672,9 @@ impl SchemaProcessor<Construction, NewBuild> {
     )]
     pub(crate) fn construct_new_schemas(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        repository: &impl ProcessorWriteRepository<
+            Error = impl Into<SchemaRepositoryError>,
+        >,
         property_bank: &PropertyBank,
     ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
         use crate::schema::expander::RefExpander;
@@ -2769,9 +2772,12 @@ impl SchemaProcessor<Construction, NewBuild> {
         }
 
         if !built.is_empty() {
-            let refs: Vec<&Schema> =
-                built.iter().map(std::convert::AsRef::as_ref).collect();
-            repository.save_schemas(&refs).map_err(|e| {
+            let owned: Vec<Schema> = built
+                .iter()
+                .map(std::convert::AsRef::as_ref)
+                .cloned()
+                .collect();
+            repository.save_many_schemas(&owned).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;
@@ -2808,7 +2814,9 @@ impl SchemaProcessor<Construction, NewBuild> {
 impl SchemaProcessor<Construction, Constructed> {
     pub(crate) fn complete(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        repository: &impl ProcessorWriteRepository<
+            Error = impl Into<SchemaRepositoryError>,
+        >,
     ) -> Result<SchemaProcessor<Completed, Constructed>, SchemaLoaderError>
     {
         let Constructed {
@@ -2818,9 +2826,12 @@ impl SchemaProcessor<Construction, Constructed> {
         } = self.status;
 
         if !schemas.is_empty() {
-            let refs: Vec<&Schema> =
-                schemas.iter().map(std::convert::AsRef::as_ref).collect();
-            repository.save_schemas(&refs).map_err(|e| {
+            let owned: Vec<Schema> = schemas
+                .iter()
+                .map(std::convert::AsRef::as_ref)
+                .cloned()
+                .collect();
+            repository.save_many_schemas(&owned).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;

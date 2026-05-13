@@ -8,6 +8,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         inheritance::InheritanceGraph,
         property::PropertyName,
@@ -27,6 +28,13 @@ impl From<DbError> for SchemaStorageV2Error {
     #[inline]
     fn from(err: DbError) -> Self {
         Self(DbTxError::from(err))
+    }
+}
+
+impl From<SchemaStorageV2Error> for SchemaRepositoryError {
+    #[inline]
+    fn from(err: SchemaStorageV2Error) -> Self {
+        Self::Database((err.0).0)
     }
 }
 
@@ -89,6 +97,50 @@ pub trait DiscoveryReadRepository {
     ) -> Result<Option<InheritanceGraph<()>>, Self::Error>;
 }
 
+/// Write seam for schema processor persistence paths.
+///
+/// This trait isolates the processor's write orchestration from the legacy
+/// repository interface so completion-stage writes can migrate independently.
+pub trait ProcessorWriteRepository {
+    /// Storage-specific error type.
+    type Error;
+
+    /// Save multiple schema aggregates atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when serialization or writes fail.
+    fn save_many_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+
+    /// Save a raw schema view and associated path index atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when serialization or writes fail.
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error>;
+
+    /// Delete a schema and related indexes/views.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when writes fail.
+    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error>;
+
+    /// Save the topological inheritance graph singleton.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage-specific errors when serialization or writes fail.
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error>;
+}
+
 impl<T> DiscoveryReadRepository for T
 where
     T: crate::schema::storage::Repository,
@@ -130,6 +182,41 @@ where
         &self,
     ) -> Result<Option<InheritanceGraph<()>>, Self::Error> {
         crate::schema::storage::Repository::get_topological_graph(self)
+    }
+}
+
+impl<T> ProcessorWriteRepository for T
+where
+    T: crate::schema::storage::Repository,
+{
+    type Error = <T as crate::schema::storage::Repository>::Error;
+
+    #[inline]
+    fn save_many_schemas(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+        let refs: Vec<&Schema> = schemas.iter().collect();
+        crate::schema::storage::Repository::save_schemas(self, &refs)
+    }
+
+    #[inline]
+    fn save_raw_schema_view(
+        &self,
+        id: SchemaId,
+        view: &RawSchemaView,
+    ) -> Result<(), Self::Error> {
+        crate::schema::storage::Repository::save_raw_schema_view(self, id, view)
+    }
+
+    #[inline]
+    fn delete_schema(&self, id: SchemaId) -> Result<(), Self::Error> {
+        crate::schema::storage::Repository::delete_schema(self, id)
+    }
+
+    #[inline]
+    fn save_topological_graph(
+        &self,
+        graph: &InheritanceGraph<()>,
+    ) -> Result<(), Self::Error> {
+        crate::schema::storage::Repository::save_topological_graph(self, graph)
     }
 }
 
