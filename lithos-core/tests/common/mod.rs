@@ -12,11 +12,7 @@
     reason = "Test module re-exports port traits for test convenience"
 )]
 
-use std::{
-    error::Error,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use lithos_core::{
     db::Store,
@@ -213,35 +209,6 @@ impl TestDb {
 #[must_use]
 pub fn setup_repository(store: &Arc<Store>) -> RedbRepository {
     RedbRepository::new(Arc::clone(store))
-}
-
-/// Legacy CQRS setup - DEPRECATED.
-///
-/// Returns two Repository instances (for backwards compatibility with old test
-/// code that destructured into (command, query)).
-///
-/// Both instances share the same underlying database, so writes from one are
-/// immediately visible to the other.
-///
-/// # Deprecated
-/// Use `setup_repository()` instead. The CQRS pattern has been replaced with
-/// a unified Repository trait that combines read and write operations.
-#[deprecated(
-    since = "0.1.0",
-    note = "Use setup_repository() - CQRS pattern replaced with unified \
-            Repository trait"
-)]
-#[expect(
-    clippy::expect_used,
-    reason = "Deprecated legacy helper panics on failure"
-)]
-#[track_caller]
-#[must_use]
-pub fn setup_cqrs(db_path: &Path) -> (RedbRepository, RedbRepository) {
-    let store = Arc::new(Store::open(db_path).expect("open store for tests"));
-    let repo1 = RedbRepository::new(Arc::clone(&store));
-    let repo2 = RedbRepository::new(store);
-    (repo1, repo2)
 }
 
 // ----------------------------------------------------------- //
