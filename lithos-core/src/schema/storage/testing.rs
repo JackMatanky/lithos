@@ -1,13 +1,13 @@
-//! Testing and benchmarking utilities for the schema module.
+//! Testing utilities for schema storage components.
 //!
-//! This module provides test doubles and benchmark fixtures for schema
-//! components. Code in this module is compiled for both `#[cfg(test)]`
-//! and benchmarks.
+//! This module provides test doubles for the schema repository traits,
+//! enabling pure unit tests without filesystem dependencies. Code in this
+//! module is compiled for both `#[cfg(test)]` and benchmarks.
 //!
-//! # Available Utilities
+//! # Exports
 //!
-//! - [`InMemoryRepository`] - HashMap-backed Repository for pure unit tests
-//! - Test helpers for building test data
+//! - [`InMemoryRepository`] - HashMap-backed [`Repository`] implementation
+//! - [`InMemoryError`] - Error type for in-memory operations
 //!
 //! # Design Rationale
 //!
@@ -21,11 +21,24 @@
 //! IO from unit tests while maintaining test extent (can still test full
 //! pipelines end-to-end).
 //!
-//! # When to Use
+//! # Example
 //!
-//! - **Unit tests** (`#[cfg(test)]` modules): Use `InMemoryRepository`
-//! - **Integration tests** (`tests/` directory): Use `RedbRepository`
-//! - **Benchmarks**: Use `InMemoryRepository` for micro-benchmarks
+//! ```ignore
+//! use lithos_core::schema::storage::testing::InMemoryRepository;
+//! use lithos_core::schema::repository::Repository;
+//!
+//! #[test]
+//! fn test_schema_resolution() {
+//!     let repo = InMemoryRepository::new();
+//!     repo.save_schema(&schema).unwrap();
+//!
+//!     // Pure computation test - no filesystem I/O
+//!     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
+//!     assert_eq!(loaded, Some(schema));
+//! }
+//! ```
+//!
+//! [`Repository`]: crate::schema::repository::Repository
 
 // Test-only code: relax pedantic lints for pragmatic test utilities
 #![expect(
@@ -65,31 +78,64 @@ use crate::{
 // InMemoryRepository - For Pure Unit Tests
 // ============================================================================
 
-/// HashMap-backed Repository implementation for pure unit tests.
+/// HashMap-backed [`Repository`] implementation for pure unit tests.
 ///
-/// Provides an in-memory implementation of the Repository trait that eliminates
-/// filesystem IO to achieve test purity. This is NOT a mock - it's a real
-/// Repository implementation that uses HashMap for storage.
+/// This is NOT a mock - it's a fully functional [`Repository`] implementation
+/// that uses `HashMap` for storage instead of a persistent database. All
+/// [`Repository`] trait methods are implemented with identical semantics to
+/// [`RedbRepository`], except data is stored in memory only.
 ///
 /// # Thread Safety
 ///
 /// All internal state is protected by `RwLock` for thread-safe concurrent
 /// access. Multiple readers can read simultaneously; writers get exclusive
-/// access.
+/// access. Lock poisoning (if a thread panics while holding a lock) is
+/// reported as [`InMemoryError::LockPoisoned`].
+///
+/// # Performance Characteristics
+///
+/// Optimized for **fast, deterministic unit tests**:
+///
+/// - **O(1) average lookups**: Direct `HashMap` access (no serialization)
+/// - **No disk I/O**: All operations execute in memory
+/// - **Cheap cloning**: `Arc`-wrapped state means cloning is a reference count
+///   increment
+/// - **Memory trade-off**: Stores full deserialized objects (~1-2 MB per 1000
+///   schemas)
+///
+/// Faster than [`RedbRepository`] for small test datasets (< 1000 schemas) but
+/// unsuitable for large-scale benchmarks or production use (no durability).
+///
+/// # When to Use
+///
+/// **Use for:**
+/// - Unit tests in `#[cfg(test)]` modules (pure computation testing)
+/// - Micro-benchmarks (isolate logic from storage layer overhead)
+///
+/// **Do NOT use for:**
+/// - Integration tests (use [`RedbRepository`] to verify
+///   serialization/durability)
+/// - Production code (no persistence guarantees)
 ///
 /// # Example
 ///
 /// ```ignore
 /// use lithos_core::schema::storage::testing::InMemoryRepository;
-/// use lithos_core::schema::ingestor::Ingestor;
+/// use lithos_core::schema::repository::Repository;
 ///
 /// #[test]
-/// fn test_schema_loading() {
+/// fn test_schema_crud() {
 ///     let repo = InMemoryRepository::new();
-///     let ingestor = Ingestor::new(/* ... */, Arc::new(repo));
-///     // ... test logic
+///     repo.save_schema(&schema).unwrap();
+///     assert_eq!(repo.schema_count(), 1);
+///
+///     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
+///     assert_eq!(loaded, Some(schema));
 /// }
 /// ```
+///
+/// [`Repository`]: crate::schema::repository::Repository
+/// [`RedbRepository`]: crate::schema::storage::RedbRepository
 #[derive(Debug, Clone)]
 pub struct InMemoryRepository {
     /// Schema storage: `SchemaId` → `Schema`
@@ -196,6 +242,9 @@ pub enum InMemoryError {
 
 impl InMemoryError {
     /// Creates an internal error with a message.
+    ///
+    /// Used for trait compatibility when an operation logically cannot fail
+    /// but the trait signature requires a `Result`.
     fn internal(message: impl Into<Box<str>>) -> Self {
         Self::Internal {
             message: message.into(),
@@ -203,6 +252,10 @@ impl InMemoryError {
     }
 
     /// Creates a lock poisoned error with context.
+    ///
+    /// Indicates that a thread panicked while holding a lock, leaving shared
+    /// state in an inconsistent state. This typically indicates a bug in test
+    /// code or the repository implementation.
     fn lock_poisoned(context: impl Into<Box<str>>) -> Self {
         Self::LockPoisoned {
             context: context.into(),
@@ -210,6 +263,13 @@ impl InMemoryError {
     }
 }
 
+/// Converts an [`InMemoryError`] to a [`SchemaStorageError`].
+///
+/// Maps in-memory repository errors to the storage error type expected by
+/// the [`Repository`] trait. Since [`InMemoryRepository`] operations rarely
+/// fail, this is primarily used for lock poisoning errors.
+///
+/// [`Repository`]: crate::schema::repository::Repository
 #[expect(
     clippy::needless_pass_by_value,
     reason = "error conversion consumes formatted message"

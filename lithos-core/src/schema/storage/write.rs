@@ -1,4 +1,39 @@
-//! Write implementation for `RedbRepository`.
+//! [`WriteRepository`] trait implementation for [`RedbRepository`].
+//!
+//! Provides write operations for schema persistence backed by `redb`. All
+//! writes execute within atomic transactions with automatic rollback on error.
+//!
+//! # Atomicity Guarantees
+//!
+//! - **Single transaction per method**: Each write method opens one transaction
+//!   via `Store::write()`. If any table operation fails, the entire transaction
+//!   rolls back automatically.
+//! - **Multi-table coordination**: Methods like `save_schema` atomically update
+//!   both the schema aggregate and its indexes ([`SCHEMA_ID_BY_NAME`]).
+//! - **Batch operations**: `save_many_schemas` wraps all saves in a single
+//!   transaction for atomicity.
+//!
+//! # Cross-Table Invariants
+//!
+//! - `save_schema`: Maintains [`SCHEMAS`] ↔ [`SCHEMA_ID_BY_NAME`] consistency
+//! - `delete_schema`: Removes schema aggregate + all related indexes (name,
+//!   path) and raw view in a single transaction
+//!
+//! # Rollback Behavior
+//!
+//! If serialization or table write fails, the transaction is automatically
+//! rolled back by `redb`. No partial writes are visible to concurrent readers.
+//!
+//! # Helper Functions
+//!
+//! - [`load_delete_context`]: Loads schema name/path before deletion
+//! - [`remove_schema`], [`remove_name_id_index`], [`remove_path_id_index`],
+//!   [`remove_raw_schema_view`]: Atomic delete operations on individual tables
+//!
+//! [`WriteRepository`]: crate::schema::repository::WriteRepository
+//! [`RedbRepository`]: crate::schema::storage::RedbRepository
+//! [`SCHEMAS`]: crate::schema::storage::tables::SCHEMAS
+//! [`SCHEMA_ID_BY_NAME`]: crate::schema::storage::tables::SCHEMA_ID_BY_NAME
 
 use redb::ReadableTable;
 
@@ -183,6 +218,17 @@ struct DeleteContext {
     view_path: Option<RelativePath>,
 }
 
+/// Loads schema name and path for deletion context.
+///
+/// Queries [`SCHEMAS`] and [`RAW_SCHEMA_VIEWS`] tables to extract the schema
+/// name and file path needed for index cleanup during deletion.
+///
+/// Returns `None` for name/path if the corresponding table entry is missing.
+/// This gracefully handles partial deletion (e.g., schema exists but no raw
+/// view).
+///
+/// [`SCHEMAS`]: crate::schema::storage::tables::SCHEMAS
+/// [`RAW_SCHEMA_VIEWS`]: crate::schema::storage::tables::RAW_SCHEMA_VIEWS
 fn load_delete_context(
     tx: &crate::db::WriteTx,
     id: crate::schema::identifier::SchemaId,
@@ -210,6 +256,11 @@ fn load_delete_context(
     })
 }
 
+/// Removes schema aggregate from [`SCHEMAS`] table.
+///
+/// Idempotent: returns `Ok(())` if schema ID does not exist.
+///
+/// [`SCHEMAS`]: crate::schema::storage::tables::SCHEMAS
 fn remove_schema(
     tx: &crate::db::WriteTx,
     id: crate::schema::identifier::SchemaId,
@@ -219,6 +270,11 @@ fn remove_schema(
     Ok(())
 }
 
+/// Removes name-to-ID index entry from [`SCHEMA_ID_BY_NAME`].
+///
+/// No-op if `schema_name` is `None` (e.g., schema was partially saved).
+///
+/// [`SCHEMA_ID_BY_NAME`]: crate::schema::storage::tables::SCHEMA_ID_BY_NAME
 fn remove_name_id_index(
     tx: &crate::db::WriteTx,
     schema_name: Option<&str>,
@@ -232,6 +288,11 @@ fn remove_name_id_index(
     Ok(())
 }
 
+/// Removes path-to-ID index entry from [`SCHEMA_ID_BY_PATH`].
+///
+/// No-op if `view_path` is `None` (e.g., no raw view exists).
+///
+/// [`SCHEMA_ID_BY_PATH`]: crate::schema::storage::tables::SCHEMA_ID_BY_PATH
 fn remove_path_id_index(
     tx: &crate::db::WriteTx,
     view_path: Option<&RelativePath>,
@@ -245,6 +306,11 @@ fn remove_path_id_index(
     Ok(())
 }
 
+/// Removes raw schema view from [`RAW_SCHEMA_VIEWS`] table.
+///
+/// Idempotent: returns `Ok(())` if view does not exist.
+///
+/// [`RAW_SCHEMA_VIEWS`]: crate::schema::storage::tables::RAW_SCHEMA_VIEWS
 fn remove_raw_schema_view(
     tx: &crate::db::WriteTx,
     id: crate::schema::identifier::SchemaId,

@@ -17,10 +17,29 @@ use crate::{
 pub trait ReadRepository {
     /// Find a schema by its unique identifier.
     ///
+    /// Returns `None` if no schema exists with the given ID.
+    ///
     /// # Errors
     ///
     /// Returns [`SchemaStorageError`] if the database read or deserialization
     /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::ReadRepository;
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    ///
+    /// match repo.find_schema_by_id(schema_id)? {
+    ///     Some(schema) => println!("Found: {}", schema.name()),
+    ///     None => println!("Schema not found"),
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn find_schema_by_id(
         &self,
         id: SchemaId,
@@ -102,6 +121,25 @@ pub trait ReadRepository {
     ///
     /// Returns [`SchemaStorageError`] if database read or deserialization
     /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::ReadRepository;
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use lithos_core::fs::RelativePath;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    /// let path = RelativePath::try_from("schemas/note.json")?;
+    ///
+    /// // Cross-table lookup: path → ID → view
+    /// if let Some(view) = repo.find_raw_schema_view_by_path(&path)? {
+    ///     println!("Found view with version: {}", view.version());
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn find_raw_schema_view_by_path(
         &self,
         path: &RelativePath,
@@ -236,20 +274,62 @@ pub trait ReadRepository {
 pub trait WriteRepository {
     /// Persist a schema aggregate to the store.
     ///
+    /// Atomically writes the schema and updates the name index. If the write
+    /// fails, no partial state is visible to readers.
+    ///
     /// # Errors
     ///
     /// Returns [`SchemaStorageError`] if serialization or database write
     /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::{ReadRepository, WriteRepository};
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    ///
+    /// // Save schema and verify index was updated atomically
+    /// repo.save_schema(&schema)?;
+    /// assert_eq!(
+    ///     repo.find_schema_id_by_name(schema.name())?,
+    ///     Some(schema.id())
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError>;
 
     /// Save multiple schemas in a single transaction.
     ///
     /// If any schema fails to serialize, the entire batch rolls back.
+    /// All-or-nothing atomicity: either all schemas are saved or none are.
     ///
     /// # Errors
     ///
     /// Returns [`SchemaStorageError`] if serialization or database write
     /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::{ReadRepository, WriteRepository};
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    ///
+    /// // Atomically save multiple schemas
+    /// let schemas = vec![schema1, schema2, schema3];
+    /// repo.save_many_schemas(&schemas)?;
+    ///
+    /// // All schemas are now persisted
+    /// assert_eq!(repo.list_schemas()?.len(), 3);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
@@ -314,6 +394,44 @@ pub trait WriteRepository {
 /// Unified interface for schema persistence and retrieval.
 ///
 /// This trait extends both [`ReadRepository`] and [`WriteRepository`] to
-/// provide a complete interface for schema storage
-/// operations.
+/// provide a complete interface for schema storage operations. It is
+/// automatically implemented via blanket impl for any type implementing
+/// both read and write traits.
+///
+/// # When to Use
+///
+/// - **Use `Repository`** when you need both read and write capabilities (e.g.,
+///   orchestration logic like schema discovery processors).
+/// - **Use [`ReadRepository`]** when only reads are required (e.g., query
+///   handlers, read-only views).
+/// - **Use [`WriteRepository`]** when only writes are required (rare; most
+///   write operations need reads for validation).
+///
+/// # Blanket Implementation
+///
+/// ```rust,ignore
+/// impl<T> Repository for T
+/// where
+///     T: ReadRepository + WriteRepository
+/// {}
+/// ```
+///
+/// This means [`RedbRepository`] and `InMemoryRepository` automatically
+/// implement `Repository` since they implement both segregated traits.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use lithos_core::schema::repository::Repository;
+/// use lithos_core::schema::storage::RedbRepository;
+///
+/// fn process_schemas<R: Repository>(repo: &R) {
+///     // Can use both read and write methods
+///     let schemas = repo.list_schemas().unwrap();
+///     // ... process ...
+///     repo.save_schema(&updated_schema).unwrap();
+/// }
+/// ```
+///
+/// [`RedbRepository`]: crate::schema::storage::RedbRepository
 pub trait Repository: ReadRepository + WriteRepository {}

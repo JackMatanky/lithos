@@ -1,4 +1,40 @@
-//! Read-only schema repository operations.
+//! [`ReadRepository`] trait implementation for [`RedbRepository`].
+//!
+//! Provides read-only schema persistence operations backed by `redb`. All
+//! methods execute within independent read transactions managed by the
+//! [`Store`].
+//!
+//! # Transaction Boundaries
+//!
+//! Each method call opens a new read transaction via `Store::read()`. Methods
+//! like `find_raw_schema_views_by_paths` batch multiple lookups into a single
+//! transaction for efficiency.
+//!
+//! # Table Access
+//!
+//! Uses table definitions from [`crate::schema::storage::tables`]:
+//! - [`SCHEMAS`]: Schema aggregates by ID
+//! - [`RAW_SCHEMA_VIEWS`]: Raw views by ID
+//! - [`SCHEMA_ID_BY_NAME`], [`SCHEMA_ID_BY_PATH`]: Name/path indexes
+//! - [`PROPERTY_BANK`], [`SCHEMA_TOPOLOGICAL_GRAPH`]: Singletons
+//!
+//! # Helper Functions
+//!
+//! - [`parse_schema_name_key`]: Validates and converts name index keys
+//! - [`parse_relative_path_key`]: Validates and converts path index keys
+//!
+//! These helpers provide structured error messages with context when index
+//! keys fail validation (e.g., "invalid schema-name index key 'bad name'").
+//!
+//! [`ReadRepository`]: crate::schema::repository::ReadRepository
+//! [`RedbRepository`]: crate::schema::storage::RedbRepository
+//! [`Store`]: crate::db::Store
+//! [`SCHEMAS`]: crate::schema::storage::tables::SCHEMAS
+//! [`RAW_SCHEMA_VIEWS`]: crate::schema::storage::tables::RAW_SCHEMA_VIEWS
+//! [`SCHEMA_ID_BY_NAME`]: crate::schema::storage::tables::SCHEMA_ID_BY_NAME
+//! [`SCHEMA_ID_BY_PATH`]: crate::schema::storage::tables::SCHEMA_ID_BY_PATH
+//! [`PROPERTY_BANK`]: crate::schema::storage::tables::PROPERTY_BANK
+//! [`SCHEMA_TOPOLOGICAL_GRAPH`]: crate::schema::storage::tables::SCHEMA_TOPOLOGICAL_GRAPH
 
 use std::collections::{HashMap, HashSet};
 
@@ -437,6 +473,26 @@ impl ReadRepository for RedbRepository {
     }
 }
 
+/// Parses and validates a schema-name index key.
+///
+/// Converts a raw string key from [`SCHEMA_ID_BY_NAME`] table into a validated
+/// [`SchemaName`]. Returns a descriptive error if the key violates schema
+/// naming rules (e.g., contains spaces, invalid characters).
+///
+/// # Errors
+///
+/// Returns [`DbError::Deserialization`] with context if the key is invalid.
+/// Error message includes the invalid key for debugging (e.g.,
+/// `"invalid schema-name index key 'bad name': ..."`).
+///
+/// # Example Error
+///
+/// ```text
+/// invalid schema-name index key 'my schema': schema names cannot contain spaces
+/// ```
+///
+/// [`SCHEMA_ID_BY_NAME`]: crate::schema::storage::tables::SCHEMA_ID_BY_NAME
+/// [`DbError::Deserialization`]: crate::db::DbError::Deserialization
 #[inline]
 fn parse_schema_name_key(key: &str) -> Result<SchemaName, crate::db::DbError> {
     SchemaName::try_from(key).map_err(|error| {
@@ -446,6 +502,26 @@ fn parse_schema_name_key(key: &str) -> Result<SchemaName, crate::db::DbError> {
     })
 }
 
+/// Parses and validates a schema-path index key.
+///
+/// Converts a raw string key from [`SCHEMA_ID_BY_PATH`] table into a validated
+/// [`RelativePath`]. Returns a descriptive error if the key violates path
+/// constraints (e.g., empty string, absolute path).
+///
+/// # Errors
+///
+/// Returns [`DbError::Deserialization`] with context if the key is invalid.
+/// Error message includes the invalid key for debugging (e.g.,
+/// `"invalid schema-path index key '': ..."`).
+///
+/// # Example Error
+///
+/// ```text
+/// invalid schema-path index key '': path cannot be empty
+/// ```
+///
+/// [`SCHEMA_ID_BY_PATH`]: crate::schema::storage::tables::SCHEMA_ID_BY_PATH
+/// [`DbError::Deserialization`]: crate::db::DbError::Deserialization
 #[inline]
 fn parse_relative_path_key(
     key: &str,
