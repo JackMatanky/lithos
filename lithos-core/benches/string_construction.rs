@@ -159,11 +159,9 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hint::black_box};
 
-use criterion::{
-    Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lithos_core::{
     db::Database,
     schema::{

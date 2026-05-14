@@ -218,11 +218,9 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use std::path::Path;
+use std::{hint::black_box, path::Path};
 
-use criterion::{
-    Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lithos_core::{config::task::TaskConfigSpec, fs::FsReader, note::parser};
 
 fn task_spec_fixture() -> TaskConfigSpec {
