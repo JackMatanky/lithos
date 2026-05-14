@@ -44,50 +44,132 @@ Phase 3b: Ensure `FileFormat` is public, add new format variants, and update all
 
 ### Summary
 
-Unify file format classification on the public `FileFormat` enum (from `fs/format.rs`). Currently, `FormatKind` exists as a legacy alias in `fs/types.rs` and is used extensively in `reader.rs`. This task involves a straightforward but widespread search-and-replace to eliminate the alias and use the expanded `FileFormat` enum directly.
+Replace all consumer-facing and internal uses of `FormatKind` with `FileFormat` and remove the alias path entirely. This is a naming and API-surface unification task, but it touches classification, parse dispatch, docs, and tests across the `fs` context.
 
-### Impact Analysis
+### Critical Review (GitNexus + Repository Scan)
 
-**GitNexus Analysis:**
-- `FormatKind` is widely used in `fs/reader.rs` (38+ matches) and `fs/types.rs`.
-- It is primarily used for return types in `classify()` methods and as a dispatch key in `parse_structured()`.
-- Risk: **LOW**. This is a semantic unification. `FileFormat` already exists and supports all variants currently in `FormatKind`.
+#### Confirmed findings
 
-### Phased Migration Checklist
+- Code scan shows `FormatKind` is still actively used in `lithos-core/src/fs/reader.rs` (37 matches) and referenced in docs in `lithos-core/src/fs/types.rs`.
+- Alias import exists in `reader.rs` as `format::FileFormat as FormatKind`; this means most remaining usage is syntactic aliasing, not a distinct type.
+- `FileFormat` is already exported publicly from `lithos-core/src/fs/mod.rs` and defined in `lithos-core/src/fs/format.rs`.
 
-#### Phase 1: Internal `fs/` Unification
-- [ ] **`fs/reader.rs`**: Remove `use super::format::FileFormat as FormatKind`. Update all method signatures and internal logic to use `FileFormat`.
-- [ ] **`fs/types.rs`**: Remove the `FormatKind` alias. Update module documentation.
-- [ ] **`fs/mod.rs`**: Ensure only `FileFormat` is exported (remove any legacy re-exports if they exist).
+#### GitNexus impact highlights
 
-#### Phase 2: Test & Consumer Update
-- [ ] **Tests**: Update `reader.rs` tests that specifically assert on `FormatKind`.
-- [ ] **Consumer Contexts**: While most consumers use the re-export from `fs::`, verify if any external context uses the name `FormatKind` and update to `FileFormat`.
+- `gitnexus_impact(target: classify_path, direction: upstream)`:
+  - Risk: **LOW**
+  - Direct dependents: `parse_structured_from_str`
+  - Transitive dependents include `parse_structured` and reader tests (`parses_supported_formats`, `rejects_unknown_format`, `returns_error_for_nonexistent_file`).
+- `gitnexus_impact(target: parse_structured, direction: upstream)`:
+  - Risk: **LOW**
+  - Direct dependents are currently local reader tests.
+- `gitnexus_context(parse_structured)` confirms this sits in execution flow `Returns_error_for_nonexistent_file -> Classify_path`.
+
+#### Important caveat
+
+- GitNexus currently does not resolve `FormatKind` as an indexed symbol in this repo (likely because it is an alias pattern, not a canonical symbol node). Therefore, blast radius here combines graph-backed analysis of adjacent concrete symbols (`classify_path`, `parse_structured`) plus raw code scan evidence.
+
+### Risk Assessment
+
+- Overall implementation risk: **LOW to MEDIUM**.
+- Why not pure LOW:
+  - High count of callsite replacements inside one file.
+  - Public-name removal can break downstream users if any external crate imported `FormatKind` from this crate.
+  - Doc comments in `types.rs` still mention `FormatKind` and can become stale if not updated.
+
+### Non-obvious Failure Modes To Prevent
+
+- Replacing type names but forgetting the alias import line, leaving misleading code.
+- Updating parser dispatch arms but missing function signatures/return types.
+- Leaving stale mentions in module-level docs and doctest snippets.
+- Failing to update test case type annotations and `rstest` case expectations.
+- Removing alias in one module while retaining legacy re-export paths elsewhere.
+
+### Ready-for-Agent Implementation Brief
+
+#### Scope boundaries
+
+- In scope:
+  - `lithos-core/src/fs/reader.rs`
+  - `lithos-core/src/fs/types.rs`
+  - `lithos-core/src/fs/mod.rs` (only if legacy re-export remains)
+  - Tests directly asserting on format enum names/types
+- Out of scope:
+  - Functional behavior changes to format detection/parsing semantics
+  - Adding new parser backends or changing error taxonomy
+
+#### Execution checklist
+
+- [ ] Remove `FileFormat as FormatKind` alias import from `reader.rs`.
+- [ ] Replace all `FormatKind::...` references in `reader.rs` with `FileFormat::...`.
+- [ ] Update all function signatures and local type annotations in `reader.rs` to `FileFormat`.
+- [ ] Remove any `FormatKind` alias/type export from `types.rs`.
+- [ ] Rewrite `types.rs` module docs to reference `FileFormat` only.
+- [ ] Confirm `fs/mod.rs` exports only `FileFormat` (no legacy alias export).
+- [ ] Replace lingering `FormatKind` references across repo and tests.
+- [ ] Run full verification gate and ensure no behavior drift.
 
 ---
 
-## TDD Implementation Plan
+## TDD Implementation Plan (with Rust Best Practices)
 
-### Vertical Slice Sequence
+### Public Behavior Target
 
-**Slice 1: Reader Unification**
-- RED: Remove `FormatKind` alias in `reader.rs`. Observe compile errors.
-- GREEN: Replace `FormatKind` with `FileFormat` in all signatures and match arms.
-- VERIFY: `cargo test --lib fs::reader`
+The external behavior remains unchanged: file classification and structured parsing outcomes are identical. The contract change is naming/API consistency (`FileFormat` only).
 
-**Slice 2: Types Unification**
-- RED: Remove `FormatKind` alias in `types.rs`.
-- GREEN: Update module docs and any internal usages.
-- VERIFY: `cargo test --lib fs::types`
+### Vertical Slices (RED -> GREEN -> REFACTOR)
 
-**Slice 3: Global Cleanup**
-- RED: Run `grep -r "FormatKind" .` to find lingering usages.
-- GREEN: Replace with `FileFormat`.
-- VERIFY: `mise run verify`
+#### Slice 1: Classification API uses `FileFormat`
 
-### Verification Commands
+- RED:
+  - Update one focused test in `reader.rs` classification area so expected type is explicitly `FileFormat`.
+  - Confirm compile/test failure due to unresolved `FormatKind` usage.
+- GREEN:
+  - Replace minimal required alias/type usages in classification signatures and returns.
+  - Keep logic identical; no parser behavior changes.
+- REFACTOR:
+  - Remove any temporary compatibility edits.
+
+#### Slice 2: Parse dispatch uses `FileFormat`
+
+- RED:
+  - Add/adjust one parse-dispatch behavior test asserting known structured format still routes correctly using `FileFormat` cases.
+  - Confirm failure before implementation.
+- GREEN:
+  - Replace dispatch match arms from `FormatKind::*` to `FileFormat::*`.
+  - Maintain same unsupported-format branch behavior.
+- REFACTOR:
+  - Reduce duplicate match/test setup where safe.
+
+#### Slice 3: Type/docs cleanup and global no-legacy guarantee
+
+- RED:
+  - Add a narrow regression check that no public code path requires `FormatKind` (for example, compile-driven check via removed alias usage).
+- GREEN:
+  - Remove alias remnants from `types.rs` and update docs.
+  - Update remaining tests and any consumer references.
+- REFACTOR:
+  - Final pass for naming consistency and minimal allocations/clone-free style.
+
+### Rust Best Practices Guardrails For This Work
+
+- Preserve borrow-friendly signatures (`&Path`, `&str`) and avoid introducing clones during refactor.
+- No `unwrap()`/`expect()` in production paths.
+- Keep match exhaustiveness explicit for `FileFormat` variants.
+- Keep test names behavior-oriented (what outcome, under which condition).
+- Prefer minimal code motion to reduce accidental semantic drift.
+
+### Verification
+
 ```bash
 cargo test --lib fs::reader
 cargo test --lib fs::types
 mise run verify
 ```
+
+### Completion Criteria (Agent Exit)
+
+- [ ] Zero `FormatKind` references remain in Rust source and tests (except historical changelog text, if any).
+- [ ] `FileFormat` is the sole enum name used by reader/types/public fs exports.
+- [ ] All tests pass and `mise run verify` succeeds.
+- [ ] No changes to parsing/classification runtime behavior beyond type-name unification.
