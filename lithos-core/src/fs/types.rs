@@ -1,13 +1,13 @@
 //! File type markers and parsing helpers for structured formats.
 //!
-//! This module defines format classification ([`FormatKind`]) and zero-sized
-//! type markers for JSON, TOML, YAML, Markdown, and Binary formats. Format
-//! detection is based on file extensions and content sniffing.
+//! This module provides zero-sized type markers for structured format parsing
+//! internals. Public format classification uses
+//! [`FileFormat`](crate::fs::FileFormat).
 //!
 //! ## Public API
 //!
-//! - [`FormatKind`]: Enum representing supported file formats (re-exported at
-//!   `fs::reader`)
+//! - [`FileFormat`](crate::fs::FileFormat): Enum representing supported file
+//!   formats (re-exported at `fs::`)
 //!
 //! ## Internal Utilities
 //!

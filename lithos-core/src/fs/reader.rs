@@ -50,7 +50,7 @@ use std::{
 use super::{
     error::{FsError, PathValidationError},
     file::{FileEntry, FileName},
-    format::FileFormat as FormatKind,
+    format::FileFormat,
     metadata::{FileMetadata, FsTimes},
     types::{Json, Toml, Yaml},
     validator::Validator,
@@ -613,16 +613,16 @@ impl Reader {
         T: serde::de::DeserializeOwned,
     {
         match Self::classify_path(path, Some(content)) {
-            FormatKind::Json => Ok(Json::parse(path, content)?),
-            FormatKind::Toml => Ok(Toml::parse(path, content)?),
-            FormatKind::Yaml => Ok(Yaml::parse(path, content)?),
-            FormatKind::Markdown
-            | FormatKind::Image
-            | FormatKind::Pdf
-            | FormatKind::Document
-            | FormatKind::Archive
-            | FormatKind::Binary
-            | FormatKind::Unknown => {
+            FileFormat::Json => Ok(Json::parse(path, content)?),
+            FileFormat::Toml => Ok(Toml::parse(path, content)?),
+            FileFormat::Yaml => Ok(Yaml::parse(path, content)?),
+            FileFormat::Markdown
+            | FileFormat::Image
+            | FileFormat::Pdf
+            | FileFormat::Document
+            | FileFormat::Archive
+            | FileFormat::Binary
+            | FileFormat::Unknown => {
                 Err(FsError::Parse(ParseError::UnsupportedFormat {
                     path: path.to_path_buf(),
                     supported: &["json", "toml", "yaml", "yml"],
@@ -635,10 +635,10 @@ impl Reader {
     /// hint.
     #[inline]
     #[must_use]
-    pub fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
+    pub fn classify_path(path: &Path, content: Option<&str>) -> FileFormat {
         if let Some(ext) = path.extension() {
-            let format = FormatKind::from_extension(ext);
-            if format != FormatKind::Unknown {
+            let format = FileFormat::from_extension(ext);
+            if format != FileFormat::Unknown {
                 return format;
             }
         }
@@ -646,17 +646,17 @@ impl Reader {
         if let Some(content) = content {
             let trimmed = content.trim_start();
             if Json::detect(trimmed) {
-                return FormatKind::Json;
+                return FileFormat::Json;
             }
             if Yaml::detect(trimmed) {
-                return FormatKind::Yaml;
+                return FileFormat::Yaml;
             }
             if Toml::detect(trimmed) {
-                return FormatKind::Toml;
+                return FileFormat::Toml;
             }
         }
 
-        FormatKind::Unknown
+        FileFormat::Unknown
     }
 }
 
@@ -686,15 +686,15 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case::json_obj("{\"key\": \"value\"}", FormatKind::Json)]
-        #[case::json_array("[1, 2, 3]", FormatKind::Json)]
-        #[case::toml("name = \"test\"", FormatKind::Toml)]
-        #[case::yaml("name: test\nvalue: 42", FormatKind::Yaml)]
-        #[case::yaml_doc("---\nname: test", FormatKind::Yaml)]
-        #[case::unknown("plain text", FormatKind::Unknown)]
+        #[case::json_obj("{\"key\": \"value\"}", FileFormat::Json)]
+        #[case::json_array("[1, 2, 3]", FileFormat::Json)]
+        #[case::toml("name = \"test\"", FileFormat::Toml)]
+        #[case::yaml("name: test\nvalue: 42", FileFormat::Yaml)]
+        #[case::yaml_doc("---\nname: test", FileFormat::Yaml)]
+        #[case::unknown("plain text", FileFormat::Unknown)]
         fn classifies_content_correctly(
             #[case] content: &str,
-            #[case] expected: FormatKind,
+            #[case] expected: FileFormat,
         ) {
             assert_eq!(
                 Reader::classify_path(Path::new("data"), Some(content)),
@@ -703,16 +703,16 @@ mod tests {
         }
 
         #[rstest]
-        #[case::json("config.json", FormatKind::Json)]
-        #[case::toml("config.toml", FormatKind::Toml)]
-        #[case::yaml("config.yaml", FormatKind::Yaml)]
-        #[case::yml("config.yml", FormatKind::Yaml)]
-        #[case::md("readme.md", FormatKind::Markdown)]
-        #[case::png("image.png", FormatKind::Image)]
-        #[case::pdf("doc.pdf", FormatKind::Pdf)]
+        #[case::json("config.json", FileFormat::Json)]
+        #[case::toml("config.toml", FileFormat::Toml)]
+        #[case::yaml("config.yaml", FileFormat::Yaml)]
+        #[case::yml("config.yml", FileFormat::Yaml)]
+        #[case::md("readme.md", FileFormat::Markdown)]
+        #[case::png("image.png", FileFormat::Image)]
+        #[case::pdf("doc.pdf", FileFormat::Pdf)]
         fn classifies_by_extension(
             #[case] path: &str,
-            #[case] expected: FormatKind,
+            #[case] expected: FileFormat,
         ) {
             assert_eq!(Reader::classify_path(Path::new(path), None), expected);
         }
@@ -724,7 +724,7 @@ mod tests {
                     Path::new("config.json"),
                     Some("name = \"toml\"")
                 ),
-                FormatKind::Json
+                FileFormat::Json
             );
         }
 
@@ -732,7 +732,7 @@ mod tests {
         fn returns_unknown_without_content() {
             assert_eq!(
                 Reader::classify_path(Path::new("data"), None),
-                FormatKind::Unknown
+                FileFormat::Unknown
             );
         }
     }
