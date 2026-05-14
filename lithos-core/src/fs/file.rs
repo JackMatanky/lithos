@@ -1,17 +1,13 @@
 //! Type-safe wrappers for files and their metadata.
 //!
-//! Provides the [`FileName`] and [`FileEntry`] types for
-//! capturing and processing file information in a way that is compatible with
-//! zero-copy storage.
+//! Provides the [`FileName`] alias for filesystem naming ergonomics.
 //!
 //! ## Usage
 //!
 //! These types are primarily used by:
-//! - [`crate::fs::scanner::DirScanner`]: Returns `Vec<FileEntry>` from
-//!   directory scans
-//! - [`crate::fs::reader::Reader`]: Uses `FileEntry` in `list_entries()` method
-//! - Domain contexts: Store and query file metadata with zero-copy access via
-//!   rkyv
+//! - [`crate::fs::scanner::DirScanner`]
+//! - [`crate::fs::reader::Reader`]
+//! - Domain contexts that accept `FileName` values.
 
 #![expect(
     clippy::module_name_repetitions,
@@ -20,21 +16,6 @@
 )]
 
 pub use super::name::FileName;
-
-/// A general-purpose filesystem entry.
-///
-/// Captures path, metadata, and filename in a single structure, suitable for
-/// unified filesystem processing.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct FileEntry {
-    /// The path to the entry.
-    pub path: std::path::PathBuf,
-    /// The entry's filename.
-    pub filename: FileName,
-    /// The entry's metadata.
-    pub metadata: super::metadata::FileMetadata,
-}
 
 #[cfg(test)]
 mod tests {

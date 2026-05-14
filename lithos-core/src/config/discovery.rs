@@ -19,8 +19,9 @@ use crate::{
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
     fs::{
-        FileEntry, FileName, FsReader,
+        FsEntry, FsFile, FsReader,
         metadata::{FileMetadata, FsTimes},
+        path::FilePath,
     },
 };
 
@@ -34,7 +35,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct GlobalDiscovery {
     /// File entry from filesystem (path + `FileMetadata`).
-    entry: Option<FileEntry>,
+    entry: Option<FsEntry>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawGlobalConfigView>,
 }
@@ -42,7 +43,7 @@ pub(crate) struct GlobalDiscovery {
 impl GlobalDiscovery {
     /// Returns the file entry, if the global config file exists.
     #[inline]
-    pub(crate) fn entry(&self) -> Option<&FileEntry> {
+    pub(crate) fn entry(&self) -> Option<&FsEntry> {
         self.entry.as_ref()
     }
 
@@ -55,7 +56,10 @@ impl GlobalDiscovery {
     /// Returns the `FileMetadata` from the entry, if present.
     #[inline]
     pub(crate) fn info(&self) -> Option<&FileMetadata> {
-        self.entry.as_ref().map(|e| &e.metadata)
+        self.entry.as_ref().and_then(|entry| match entry {
+            FsEntry::File(file) => Some(file.metadata()),
+            FsEntry::Dir(_) => None,
+        })
     }
 }
 
@@ -65,7 +69,7 @@ impl GlobalDiscovery {
 #[derive(Debug)]
 pub(crate) struct VaultDiscovery {
     /// File entry from filesystem (path + `FileMetadata`).
-    entry: Option<FileEntry>,
+    entry: Option<FsEntry>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawVaultConfigView>,
 }
@@ -73,7 +77,7 @@ pub(crate) struct VaultDiscovery {
 impl VaultDiscovery {
     /// Returns the file entry, if the vault config file exists.
     #[inline]
-    pub(crate) fn entry(&self) -> Option<&FileEntry> {
+    pub(crate) fn entry(&self) -> Option<&FsEntry> {
         self.entry.as_ref()
     }
 
@@ -86,7 +90,10 @@ impl VaultDiscovery {
     /// Returns the `FileMetadata` from the entry, if present.
     #[inline]
     pub(crate) fn info(&self) -> Option<&FileMetadata> {
-        self.entry.as_ref().map(|e| &e.metadata)
+        self.entry.as_ref().and_then(|entry| match entry {
+            FsEntry::File(file) => Some(file.metadata()),
+            FsEntry::Dir(_) => None,
+        })
     }
 }
 
@@ -189,7 +196,7 @@ impl DiscoveryEngine {
 
     /// Scans filesystem for global and vault config files.
     ///
-    /// Returns `(Option<FileEntry>, Option<FileEntry>)` for global and vault.
+    /// Returns `(Option<FsEntry>, Option<FsEntry>)` for global and vault.
     ///
     /// # Errors
     ///
@@ -201,7 +208,7 @@ impl DiscoveryEngine {
     )]
     fn scan_filesystem(
         vault_root: &VaultRoot,
-    ) -> Result<(Option<FileEntry>, Option<FileEntry>), ConfigIngestError> {
+    ) -> Result<(Option<FsEntry>, Option<FsEntry>), ConfigIngestError> {
         let global_entry = Self::find_global_config()?;
         let vault_entry = Self::find_vault_config(vault_root)?;
 
@@ -217,7 +224,7 @@ impl DiscoveryEngine {
     /// 4. `/etc/lithos/lithos.toml`
     ///
     /// Returns the first existing file with its `FileMetadata`.
-    fn find_global_config() -> Result<Option<FileEntry>, ConfigIngestError> {
+    fn find_global_config() -> Result<Option<FsEntry>, ConfigIngestError> {
         let reader = FsReader::from_system_root();
 
         // Try each location in priority order
@@ -230,17 +237,14 @@ impl DiscoveryEngine {
                     .map(|m| m.as_file().cloned().unwrap_or(default_metadata))
                     .map_err(ConfigIngestError::from)?;
 
-                let filename = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("lithos.toml")
-                    .to_owned();
+                let file_path = FilePath::new(path.clone()).map_err(|e| {
+                    ConfigIngestError::Io {
+                        path: path.clone(),
+                        source: e,
+                    }
+                })?;
 
-                return Ok(Some(FileEntry {
-                    path: path.clone(),
-                    filename: FileName::from(filename),
-                    metadata: info,
-                }));
+                return Ok(Some(FsEntry::File(FsFile::new(file_path, info))));
             }
         }
 
@@ -252,7 +256,7 @@ impl DiscoveryEngine {
     /// Looks for `{vault_root}/.lithos/lithos.toml`.
     fn find_vault_config(
         vault_root: &VaultRoot,
-    ) -> Result<Option<FileEntry>, ConfigIngestError> {
+    ) -> Result<Option<FsEntry>, ConfigIngestError> {
         let reader = FsReader::new(vault_root.as_path());
         let relative_path = Path::new(".lithos/lithos.toml");
 
@@ -270,11 +274,15 @@ impl DiscoveryEngine {
             })
             .map_err(ConfigIngestError::from)?;
 
-        Ok(Some(FileEntry {
-            path: vault_root.as_path().join(relative_path),
-            filename: FileName::from("lithos.toml".to_owned()),
-            metadata: info,
-        }))
+        let full_path = vault_root.as_path().join(relative_path);
+        let file_path = FilePath::new(full_path.clone()).map_err(|e| {
+            ConfigIngestError::Io {
+                path: full_path,
+                source: e,
+            }
+        })?;
+
+        Ok(Some(FsEntry::File(FsFile::new(file_path, info))))
     }
 
     /// Returns the priority-ordered list of global config paths.
@@ -361,8 +369,8 @@ impl DiscoveryEngine {
 
     /// Builds final `DiscoveryResult` from filesystem + DB data.
     fn build_result(
-        global_entry: Option<FileEntry>,
-        vault_entry: Option<FileEntry>,
+        global_entry: Option<FsEntry>,
+        vault_entry: Option<FsEntry>,
         global_view: Option<RawGlobalConfigView>,
         vault_view: Option<RawVaultConfigView>,
     ) -> DiscoveryResult {

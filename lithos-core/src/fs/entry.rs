@@ -6,7 +6,8 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
-    metadata::{DirMetadata, FileMetadata},
+    metadata::{DirMetadata, FileMetadata, FsMetadata},
+    name::FileName,
     path::{DirPath, FilePath, FsPath, FsPathRef},
 };
 
@@ -85,6 +86,24 @@ impl FsEntry {
         match self {
             Self::File(file) => FsPathRef::File(file.path()),
             Self::Dir(dir) => FsPathRef::Dir(dir.path()),
+        }
+    }
+
+    /// Get a filename-like terminal component for this entry.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> Option<FileName> {
+        let path = self.path_ref();
+        FileName::try_from(path.as_path()).ok()
+    }
+
+    /// Get unified metadata for this entry.
+    #[inline]
+    #[must_use]
+    pub fn metadata(&self) -> FsMetadata {
+        match self {
+            Self::File(file) => FsMetadata::File(file.metadata().clone()),
+            Self::Dir(dir) => FsMetadata::Dir(dir.metadata().clone()),
         }
     }
 }
@@ -513,6 +532,38 @@ mod tests {
 
                 // We can still use file_entry
                 assert!(file_entry.is_file());
+            }
+        }
+
+        mod filename_and_metadata {
+            use super::*;
+
+            #[test]
+            fn filename_returns_terminal_component_for_file() {
+                let temp_file = tempfile::NamedTempFile::new().unwrap();
+                let file_path =
+                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                let file_entry = FsEntry::File(FsFile::new(
+                    file_path,
+                    FileMetadata::new(FsTimes::new(None, None), 7, false),
+                ));
+
+                let filename = file_entry.filename().unwrap();
+                assert!(!filename.as_str().is_empty());
+            }
+
+            #[test]
+            fn metadata_preserves_variant() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let dir_path =
+                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                let entry = FsEntry::Dir(FsDir::new(
+                    dir_path,
+                    DirMetadata::new(FsTimes::new(None, None), false),
+                ));
+
+                let metadata = entry.metadata();
+                assert!(metadata.is_dir());
             }
         }
     }

@@ -723,7 +723,6 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     /// Creates a `DiscoveryBranch` from `DiscoveryResult` (cold start - no
     /// graph).
     #[expect(
-        clippy::unnecessary_wraps,
         clippy::iter_over_hash_type,
         reason = "Result wrapping for early return consistency"
     )]
@@ -733,7 +732,21 @@ impl SchemaProcessor<Discovery, NeverSeen> {
         let mut missing = NewBatch::new();
 
         for (path, schema_discovery) in discovery.schemas() {
-            let metadata = schema_discovery.entry().metadata.clone();
+            let metadata = schema_discovery
+                .entry()
+                .metadata()
+                .as_file()
+                .cloned()
+                .ok_or_else(|| {
+                    SchemaLoaderError::Ingestion(
+                        super::error::SchemaIngestionError::File(
+                            super::error::SchemaFileError::FileSystem {
+                                reason: "schema discovery entry must be a file"
+                                    .into(),
+                            },
+                        ),
+                    )
+                })?;
             let id = schema_discovery.cached().map_or_else(
                 SchemaId::new,
                 super::discovery::SchemaCachedState::id,

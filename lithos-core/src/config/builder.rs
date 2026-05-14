@@ -212,9 +212,10 @@ where
         // Step 4: Parse raw configs from discovered files
         let global_raw = if let Some(entry) = discovery.global().entry() {
             let reader = FsReader::from_system_root();
+            let entry_path = entry.path();
             Some(
                 reader
-                    .parse_structured::<RawGlobalConfig>(&entry.path)
+                    .parse_structured::<RawGlobalConfig>(entry_path.as_path())
                     .map_err(ConfigIngestError::from)
                     .map_err(ConfigError::from)?,
             )

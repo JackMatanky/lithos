@@ -48,8 +48,9 @@ use std::{
 };
 
 use super::{
+    entry::FsEntry,
     error::{FsError, PathValidationError},
-    file::{FileEntry, FileName},
+    file::FileName,
     format::FileFormat,
     metadata::{FileMetadata, FsTimes},
     types::{self, Json, Toml, Yaml},
@@ -371,18 +372,15 @@ impl Reader {
 
     /// Lists file entries within the vault using a glob pattern.
     ///
-    /// Similar to [`filter_dir`], but returns a [`FileEntry`] for each matching
-    /// file, which includes the path, filename, and metadata (`FileMetadata`).
+    /// Similar to [`filter_dir`], but returns an [`FsEntry`] for each matching
+    /// entry with typed path and metadata.
     /// Results are sorted by path alphabetically.
     ///
     /// # Errors
     ///
     /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn list_entries(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<FileEntry>, FsError> {
+    pub fn list_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, FsError> {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
@@ -972,25 +970,35 @@ mod tests {
             let reader = Reader::new(dir.path());
             let entries =
                 reader.list_entries("schemas/**/*.json").expect("list");
+            let expected_a = dir.path().join("schemas/a.json");
+            let expected_b = dir.path().join("schemas/b.json");
 
             assert_eq!(entries.len(), 2);
             assert_eq!(
-                entries.first().map(|e| &e.path),
-                Some(&PathBuf::from("schemas/a.json"))
+                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
+                Some(expected_a)
             );
             assert_eq!(
-                entries.get(1).map(|e| &e.path),
-                Some(&PathBuf::from("schemas/b.json"))
+                entries.get(1).map(|e| e.path_ref().as_path().to_path_buf()),
+                Some(expected_b)
             );
             assert_eq!(
-                entries.first().map(|e| e.filename.as_str()),
-                Some("a.json")
+                entries
+                    .first()
+                    .and_then(crate::fs::entry::FsEntry::filename)
+                    .map(|name| name.as_str().to_owned()),
+                Some("a.json".to_owned())
             );
             assert_eq!(
-                entries.get(1).map(|e| e.filename.as_str()),
-                Some("b.json")
+                entries
+                    .get(1)
+                    .and_then(crate::fs::entry::FsEntry::filename)
+                    .map(|name| name.as_str().to_owned()),
+                Some("b.json".to_owned())
             );
-            assert!(entries.first().is_some_and(|e| e.metadata.size() > 0));
+            assert!(entries.first().is_some_and(|e| {
+                e.metadata().as_file().is_some_and(|meta| meta.size() > 0)
+            }));
         }
 
         #[test]

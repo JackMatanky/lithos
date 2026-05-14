@@ -25,8 +25,6 @@ use walkdir::WalkDir;
 use super::{
     entry::FsEntry,
     error::{PathError, ScanError},
-    file::FileEntry,
-    name::FileName,
     path::{DirPath, FilePath, FsPath},
 };
 
@@ -133,7 +131,7 @@ impl DirScanner {
         Ok(results)
     }
 
-    /// Scans the directory and returns matching file entries with metadata.
+    /// Scans the directory and returns matching typed entries with metadata.
     ///
     /// Results are sorted by path alphabetically.
     ///
@@ -152,11 +150,14 @@ impl DirScanner {
     ///     .entries(DirScanInput::new().with_extensions(&["toml", "yaml"]))?;
     ///
     /// for entry in entries {
-    ///     println!(
-    ///         "{}: {} bytes",
-    ///         entry.filename.as_str(),
-    ///         entry.metadata.size()
-    ///     );
+    ///     let Some(filename) = entry.filename() else {
+    ///         continue;
+    ///     };
+    ///     let metadata = entry.metadata();
+    ///     let Some(file_meta) = metadata.as_file() else {
+    ///         continue;
+    ///     };
+    ///     println!("{}: {} bytes", filename.as_str(), file_meta.size());
     /// }
     /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
@@ -164,27 +165,8 @@ impl DirScanner {
     pub fn entries(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<FileEntry>, ScanError> {
-        let items = self.scan_internal(input)?;
-
-        let mut entries = Vec::with_capacity(items.len());
-        for (relative_path, metadata) in items {
-            let filename = FileName::try_from(relative_path.as_path())
-                .map_err(|_source| {
-                    ScanError::Path(PathError::NoFileName(
-                        relative_path.clone(),
-                    ))
-                })?;
-
-            entries.push(FileEntry {
-                path: relative_path,
-                filename,
-                metadata: super::metadata::FileMetadata::from(&metadata),
-            });
-        }
-
-        entries.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(entries)
+    ) -> Result<Vec<FsEntry>, ScanError> {
+        self.entries_typed(input)
     }
 
     /// Scans the directory and returns matching typed paths (File or Dir).
@@ -807,17 +789,27 @@ mod tests {
 
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
+            let expected = temp.path().join("a.toml");
 
             assert_eq!(entries.len(), 1);
             assert_eq!(
-                entries.first().map(|e| &e.path),
-                Some(&PathBuf::from("a.toml"))
+                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
+                Some(expected)
             );
             assert_eq!(
-                entries.first().map(|e| e.filename.as_str()),
-                Some("a.toml")
+                entries
+                    .first()
+                    .and_then(crate::fs::entry::FsEntry::filename)
+                    .map(|name| name.as_str().to_owned()),
+                Some("a.toml".to_owned())
             );
-            assert_eq!(entries.first().map(|e| e.metadata.size()), Some(12));
+            assert_eq!(
+                entries.first().and_then(|e| e
+                    .metadata()
+                    .as_file()
+                    .map(crate::fs::metadata::FileMetadata::size)),
+                Some(12)
+            );
         }
 
         #[test]
@@ -828,14 +820,16 @@ mod tests {
 
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
+            let expected_a = temp.path().join("a.toml");
+            let expected_z = temp.path().join("z.toml");
 
             assert_eq!(
-                entries.first().map(|e| &e.path),
-                Some(&PathBuf::from("a.toml"))
+                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
+                Some(expected_a)
             );
             assert_eq!(
-                entries.get(1).map(|e| &e.path),
-                Some(&PathBuf::from("z.toml"))
+                entries.get(1).map(|e| e.path_ref().as_path().to_path_buf()),
+                Some(expected_z)
             );
         }
     }

@@ -130,12 +130,34 @@ where
     ) -> Result<PropertyBank, SchemaLoaderError> {
         use crate::schema::error::SchemaIngestionError;
 
-        let config_path = &bank_discovery.entry().path;
-        let file_info = bank_discovery.entry().metadata.clone();
+        let entry_path = bank_discovery.entry().path();
+        let config_path = entry_path.as_path();
+        let file_info =
+            bank_discovery.entry().metadata().as_file().cloned().ok_or_else(
+                || {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                        crate::schema::error::SchemaFileError::FileSystem {
+                            reason: "property bank entry must be a file".into(),
+                        },
+                    ))
+                },
+            )?;
 
         // Convert PathBuf to RelativePath for PropertyBankProcessor
-        let relative_path = RelativePath::try_from(config_path.clone())
-            .map_err(|error| {
+        let relative_raw =
+            config_path.strip_prefix(self.source.root()).map_err(|error| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::FileSystem {
+                        reason: format!(
+                            "invalid property bank path (outside root): \
+                             {error}"
+                        )
+                        .into(),
+                    },
+                ))
+            })?;
+        let relative_path =
+            RelativePath::try_from(relative_raw).map_err(|error| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::FileSystem {
                         reason: format!("invalid property bank path: {error}")

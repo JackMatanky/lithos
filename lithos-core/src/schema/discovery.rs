@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{DirScanInput, DirScanner, FileEntry, RelativePath},
+    fs::{DirScanInput, DirScanner, FsEntry, RelativePath},
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
@@ -53,7 +53,7 @@ impl SchemaCachedState {
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    entry: FileEntry,
+    entry: FsEntry,
     /// Cached state from database (None for new files).
     cached: Option<SchemaCachedState>,
 }
@@ -61,7 +61,7 @@ pub(crate) struct SchemaDiscovery {
 impl SchemaDiscovery {
     /// Returns the file entry.
     #[inline]
-    pub(crate) fn entry(&self) -> &FileEntry {
+    pub(crate) fn entry(&self) -> &FsEntry {
         &self.entry
     }
 
@@ -78,7 +78,7 @@ impl SchemaDiscovery {
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyBankDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    entry: FileEntry,
+    entry: FsEntry,
     /// Cached view from database (None if never ingested).
     view: Option<RawPropertyBankView>,
 }
@@ -86,7 +86,7 @@ pub(crate) struct PropertyBankDiscovery {
 impl PropertyBankDiscovery {
     /// Returns the file entry.
     #[inline]
-    pub(crate) fn entry(&self) -> &FileEntry {
+    pub(crate) fn entry(&self) -> &FsEntry {
         &self.entry
     }
 
@@ -206,7 +206,11 @@ impl DiscoveryEngine {
 
         // Step 2: Separate property bank from schemas (O(n) single pass)
         let (property_bank_entry, schema_entries) =
-            Self::separate_property_bank(entries, spec.property_bank());
+            Self::separate_property_bank(
+                entries,
+                spec.property_bank(),
+                vault_root,
+            );
 
         // Step 3: Query DB for all cached state (single transaction)
         let cached_state = Self::query_cached_state(
@@ -230,7 +234,7 @@ impl DiscoveryEngine {
 
     /// Scans filesystem for schema files.
     ///
-    /// Returns `Vec<FileEntry>` for efficient processing (no `HashMap`
+    /// Returns `Vec<FsEntry>` for efficient processing (no `HashMap`
     /// overhead).
     ///
     /// # Errors
@@ -239,7 +243,7 @@ impl DiscoveryEngine {
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
         vault_root: &std::path::Path,
-    ) -> Result<Vec<FileEntry>, SchemaLoaderError> {
+    ) -> Result<Vec<FsEntry>, SchemaLoaderError> {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         let schema_dir = spec.directory();
@@ -263,20 +267,30 @@ impl DiscoveryEngine {
 
     /// Separates property bank from schema files (O(n) single pass).
     ///
-    /// Returns owned `FileEntry` values for efficient processing.
+    /// Returns owned `FsEntry` values for efficient processing.
     #[expect(
         clippy::type_complexity,
         reason = "Functional return type for discovery separation"
     )]
     fn separate_property_bank(
-        entries: Vec<FileEntry>,
+        entries: Vec<FsEntry>,
         property_bank_path: &RelativePath,
-    ) -> (Option<FileEntry>, Vec<(RelativePath, FileEntry)>) {
+        vault_root: &std::path::Path,
+    ) -> (Option<FsEntry>, Vec<(RelativePath, FsEntry)>) {
         let mut property_bank = None;
         let mut schemas = Vec::with_capacity(entries.len());
 
         for entry in entries {
-            let Ok(path) = RelativePath::try_from(entry.path.clone()) else {
+            let Some(file) = entry.as_file() else {
+                continue;
+            };
+
+            let Ok(relative) = file.path().as_path().strip_prefix(vault_root)
+            else {
+                continue;
+            };
+
+            let Ok(path) = RelativePath::try_from(relative) else {
                 continue;
             };
 
@@ -313,8 +327,8 @@ impl DiscoveryEngine {
     /// Returns error if database queries fail.
     fn query_cached_state<R>(
         repo: &R,
-        property_bank_entry: Option<&FileEntry>,
-        schema_entries: &[(RelativePath, FileEntry)],
+        property_bank_entry: Option<&FsEntry>,
+        schema_entries: &[(RelativePath, FsEntry)],
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
     where
@@ -322,8 +336,8 @@ impl DiscoveryEngine {
     {
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iter over &[(RelativePath, FileEntry)] yields \
-                      &&(RelativePath, FileEntry)"
+            reason = "iter over &[(RelativePath, FsEntry)] yields \
+                      &&(RelativePath, FsEntry)"
         )]
         let schema_paths: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
@@ -382,8 +396,8 @@ impl DiscoveryEngine {
     /// Performance: Single pass over `schema_entries`; no intermediate
     /// allocations.
     fn build_result(
-        property_bank_entry: Option<FileEntry>,
-        schema_entries: Vec<(RelativePath, FileEntry)>,
+        property_bank_entry: Option<FsEntry>,
+        schema_entries: Vec<(RelativePath, FsEntry)>,
         mut cached: CachedState,
     ) -> DiscoveryResult {
         // Build property bank discovery
