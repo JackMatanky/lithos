@@ -2,8 +2,9 @@
 title: 10-phase-3b-formatkind-to-fileformat
 category: enhancement
 label: ready-for-agent
-status: pending
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-14
 ---
 
 ## Type
@@ -22,13 +23,13 @@ Phase 3b: Ensure `FileFormat` is public, add new format variants, and update all
 
 ## Acceptance criteria
 
-- [ ] All `FormatKind` usages replaced with `FileFormat`
-- [ ] `FormatKind` alias removed from `fs/types.rs` and `fs/reader.rs`
-- [ ] `reader.rs` uses `FileFormat` directly for classification
-- [ ] `types.rs` parsers return/use `FileFormat`
-- [ ] All tests updated to use `FileFormat`
-- [ ] Run `mise run verify` - no compile errors
-- [ ] Tests pass
+- [x] All `FormatKind` usages replaced with `FileFormat`
+- [x] `FormatKind` alias removed from `fs/types.rs` and `fs/reader.rs`
+- [x] `reader.rs` uses `FileFormat` directly for classification
+- [x] `types.rs` parsers return/use `FileFormat`
+- [x] All tests updated to use `FileFormat`
+- [x] Run `mise run verify` - no compile errors
+- [x] Tests pass
 
 ## Blocked by
 
@@ -173,3 +174,37 @@ mise run verify
 - [ ] `FileFormat` is the sole enum name used by reader/types/public fs exports.
 - [ ] All tests pass and `mise run verify` succeeds.
 - [ ] No changes to parsing/classification runtime behavior beyond type-name unification.
+
+---
+
+## Implementation Notes
+
+### Final implementation summary
+
+- `lithos-core/src/fs/reader.rs`
+  - Removed alias import (`FileFormat as FormatKind`) and switched all classification/dispatch references to `FileFormat`.
+  - `classify_path` now returns `FileFormat` directly.
+  - `parse_structured_from_str` now classifies once and delegates to a typed parser entry point in `types.rs`.
+- `lithos-core/src/fs/types.rs`
+  - Added `parse_from_format(path, content, format: FileFormat) -> Result<T, ParseError>`.
+  - Dispatches structured variants (`Json`, `Toml`, `Yaml`) to existing parser strategies.
+  - Returns `ParseError::UnsupportedFormat` for non-structured variants (`Markdown`, `Image`, `Pdf`, `Document`, `Archive`, `Binary`, `Unknown`).
+  - Updated module documentation to reference `FileFormat` as the public classification contract.
+
+### TDD slices executed
+
+- RED: Added a test using `parse_from_format(...)` before implementation and confirmed compile failure.
+- GREEN: Implemented `parse_from_format(...)` and wired `Reader::parse_structured_from_str` to use it.
+- REFACTOR: Addressed a test assertion path/lint fallout introduced by import cleanup.
+
+### Verification evidence
+
+- `cargo test --lib fs::types` passed.
+- `cargo test --lib fs::reader` passed.
+- `mise run verify` passed (existing `cargo deny` skip warnings are non-blocking repo-level config warnings).
+
+### Post-change acceptance check
+
+- Repo scan confirms zero remaining Rust `FormatKind` references.
+- `types.rs` now actively uses `FileFormat` in parser entry-point dispatch.
+- Runtime behavior remains unchanged; this is a type-name/API unification plus explicit dispatch boundary.

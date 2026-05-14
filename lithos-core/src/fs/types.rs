@@ -20,7 +20,7 @@ use std::path::Path;
 
 use serde::de::DeserializeOwned;
 
-use super::error::ParseError;
+use super::{error::ParseError, format::FileFormat};
 
 /// Markdown file type marker.
 ///
@@ -206,6 +206,34 @@ impl Yaml {
     }
 }
 
+/// Parses structured content using an explicit file format classification.
+///
+/// # Errors
+/// Returns `ParseError::UnsupportedFormat` when `format` is not JSON/TOML/YAML,
+/// or parser-specific errors for malformed content.
+#[inline]
+pub(crate) fn parse_from_format<T: DeserializeOwned>(
+    path: &Path,
+    content: &str,
+    format: FileFormat,
+) -> Result<T, ParseError> {
+    match format {
+        FileFormat::Json => Json::parse(path, content),
+        FileFormat::Toml => Toml::parse(path, content),
+        FileFormat::Yaml => Yaml::parse(path, content),
+        FileFormat::Markdown
+        | FileFormat::Image
+        | FileFormat::Pdf
+        | FileFormat::Document
+        | FileFormat::Archive
+        | FileFormat::Binary
+        | FileFormat::Unknown => Err(ParseError::UnsupportedFormat {
+            path: path.to_path_buf(),
+            supported: &["json", "toml", "yaml", "yml"],
+        }),
+    }
+}
+
 /// Binary file type marker.
 #[allow(dead_code, reason = "Legacy type, will be removed in Phase 3")]
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -376,6 +404,29 @@ mod tests {
         fn rejects_unsupported_yaml_extension() {
             let result: Result<serde_yaml::Value, _> =
                 Yaml::parse(Path::new("test.toml"), fixtures::VALID_YAML);
+            assert!(matches!(
+                result,
+                Err(ParseError::UnsupportedFormat { .. })
+            ));
+        }
+
+        #[test]
+        fn parses_from_explicit_file_format() {
+            let result: Result<serde_json::Value, _> = parse_from_format(
+                Path::new("test.json"),
+                fixtures::VALID_JSON,
+                FileFormat::Json,
+            );
+            assert!(result.is_ok(), "JSON parsing should succeed: {result:?}");
+        }
+
+        #[test]
+        fn rejects_non_structured_file_format() {
+            let result: Result<serde_json::Value, _> = parse_from_format(
+                Path::new("test.md"),
+                fixtures::VALID_JSON,
+                FileFormat::Markdown,
+            );
             assert!(matches!(
                 result,
                 Err(ParseError::UnsupportedFormat { .. })

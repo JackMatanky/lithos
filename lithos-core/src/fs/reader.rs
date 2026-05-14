@@ -52,10 +52,9 @@ use super::{
     file::{FileEntry, FileName},
     format::FileFormat,
     metadata::{FileMetadata, FsTimes},
-    types::{Json, Toml, Yaml},
+    types::{self, Json, Toml, Yaml},
     validator::Validator,
 };
-use crate::fs::error::ParseError;
 
 /// A read-only filesystem adapter for safe vault access.
 ///
@@ -612,23 +611,8 @@ impl Reader {
     where
         T: serde::de::DeserializeOwned,
     {
-        match Self::classify_path(path, Some(content)) {
-            FileFormat::Json => Ok(Json::parse(path, content)?),
-            FileFormat::Toml => Ok(Toml::parse(path, content)?),
-            FileFormat::Yaml => Ok(Yaml::parse(path, content)?),
-            FileFormat::Markdown
-            | FileFormat::Image
-            | FileFormat::Pdf
-            | FileFormat::Document
-            | FileFormat::Archive
-            | FileFormat::Binary
-            | FileFormat::Unknown => {
-                Err(FsError::Parse(ParseError::UnsupportedFormat {
-                    path: path.to_path_buf(),
-                    supported: &["json", "toml", "yaml", "yml"],
-                }))
-            }
-        }
+        let format = Self::classify_path(path, Some(content));
+        Ok(types::parse_from_format(path, content, format)?)
     }
 
     /// Detects the file format based on path extension and optional content
@@ -1062,7 +1046,9 @@ mod tests {
                 reader.parse_structured(Path::new("data.xml"));
             assert!(matches!(
                 result,
-                Err(FsError::Parse(ParseError::UnsupportedFormat { .. }))
+                Err(FsError::Parse(
+                    crate::fs::ParseError::UnsupportedFormat { .. }
+                ))
             ));
         }
 
