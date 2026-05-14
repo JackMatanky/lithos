@@ -46,29 +46,139 @@ Phase 3a: Straightforward rename across schema/, config/, fs/ and any other cont
 
 Replace the legacy `FileInfo` struct (from `fs/file.rs`) with the new `FileMetadata` struct (from `fs/metadata.rs`) across the entire codebase. This completes the metadata transition from the old Obsidian-compatible model to the new unified `FsMetadata` architecture.
 
+**Key Refactor Rules:**
+- Rename fields named `info` to `metadata` (or `meta`) when they store file metadata.
+- Favor explicit composition: `metadata.times().created_at()` instead of adding shortcut methods to `FileMetadata` (to adhere to Rust best practices and avoid unjustified duplication).
+- Ensure `ArchivedFileMetadata` and `ArchivedFsTimes` have matching APIs for zero-copy staleness checks.
+
+### High-Level API Migration Map
+
+| Legacy API | New API | Notes |
+|---|---|---|
+| `FileInfo` | `FileMetadata` | Direct replacement; no alias layer. |
+| `ArchivedFileInfo` | `ArchivedFileMetadata` | Required for archived zero-copy access. |
+| `FileInfo::new(c, m, s)` | `FileMetadata::new(FsTimes::new(c, m), s, false)` | Constructor now composes `FsTimes`. |
+| `FileInfo::is_timestamp_match(...)` | `FsTimes::is_match(...)` | Timestamp comparison responsibility moved into `FsTimes`. |
+| `FileInfo::system_time_to_unix_seconds(...)` | `FsTimes::system_time_to_unix_seconds(...)` | Helper moved into `FsTimes`. |
+
+### Method Chain Migration Rules
+
+| Legacy Usage | New Usage | Notes |
+|---|---|---|
+| `info.created_at()` | `metadata.times().created_at()` | Favor explicit composition. |
+| `info.modified_at()` | `metadata.times().modified_at()` | Avoid shortcut forwarding methods. |
+| `info.size()` | `metadata.size()` | Size remains directly accessible. |
+
 ### Impact Analysis
 
 **GitNexus Analysis:**
-- `FileInfo` is a central type used in `FileEntry`, `SchemaVersion`, `PropertyBankVersion`, `RawSchemaView`, and `RawPropertyBankView`.
+- `FileInfo` is used as a field in:
+  - `FileEntry` (`fs/file.rs`)
+  - `SchemaVersion` (`schema/views/snapshots.rs`)
+  - `PropertyBankVersion` (`schema/views/snapshots.rs`)
+  - `RawSchemaView` (`schema/views/raw.rs`)
+  - `RawPropertyBankView` (`schema/views/raw.rs`)
+  - `ConfigDiscovered` (`config/views.rs`)
 - Grep shows **233 usage sites** across `fs/`, `schema/`, `vault/`, `config/`, and `tests/`.
 - Risk: **MEDIUM** due to widespread usage and breaking field access changes.
 
-**API Mapping:**
-| Legacy `FileInfo` | New `FileMetadata` |
-|-------------------|-------------------|
-| `info.created_at()` | `info.times().created_at()` |
-| `info.modified_at()` | `info.times().modified_at()` |
-| `info.size()` | `info.size()` |
-| `FileInfo::new(c, m, s)` | `FileMetadata::new(FsTimes::new(c, m), s, false)` |
-| `FileInfo::is_timestamp_match` | `FsTimes::is_match` |
+### Phased Migration Checklist
 
-### Critical Path
+#### Phase 1: Infrastructure Enhancement (`fs/metadata.rs`)
 
-1. **Add missing methods to `metadata.rs`**: `ArchivedFileMetadata` and `ArchivedFsTimes` need `is_match`/`is_timestamp_match` equivalents to support zero-copy staleness checks in `schema/`.
-2. **Rename types**: Replace `FileInfo` with `FileMetadata` everywhere.
-3. **Update field access**: Transition from direct methods on `FileInfo` to nested methods via `times()`.
-4. **Delete legacy type**: Remove `FileInfo` and its `From` implementations from `fs/file.rs`.
-5. **Verify**: Run full test suite across all contexts.
+- [ ] Add `is_size_match(size: u64)` to `FileMetadata`.
+- [ ] Add `is_timestamp_match(created: Option<SystemTime>, modified: Option<SystemTime>)` to `FileMetadata`.
+- [ ] Add `is_match(&self, other: &FsTimes)` to `ArchivedFsTimes`.
+- [ ] Add `is_timestamp_match(created: Option<SystemTime>, modified: Option<SystemTime>)` to `ArchivedFileMetadata`.
+- [ ] Add `system_time_to_unix_seconds` helper to `FsTimes` (ported from `FileInfo`).
+
+##### API Additions
+
+| Method | Purpose |
+|---|---|
+| `FileMetadata::is_size_match(size: u64)` | Compare metadata size values. |
+| `FileMetadata::is_timestamp_match(created, modified)` | Compare timestamp pairs. |
+| `ArchivedFileMetadata::is_timestamp_match(created, modified)` | Archived timestamp comparison support. |
+
+##### `FsTimes` / Archived API Additions
+
+| Method | Purpose |
+|---|---|
+| `ArchivedFsTimes::is_match(&self, other: &FsTimes)` | Zero-copy staleness comparison. |
+| `FsTimes::system_time_to_unix_seconds(...)` | Shared timestamp conversion helper. |
+
+#### Phase 2: Core Filesystem Migration (`fs/`)
+- [ ] **`file.rs`**: Rename `FileEntry::info` to `FileEntry::metadata`.
+- [ ] **`scanner.rs`**: Update `DirScanner` to populate `FileMetadata` and use renamed field.
+- [ ] **`reader.rs`**: Update `Reader` methods to return/consume `FileMetadata`.
+
+##### Field Rename Mapping
+
+| Legacy Field | New Field | Context |
+|---|---|---|
+| `FileEntry::info` | `FileEntry::metadata` | `fs/file.rs` |
+
+##### Filesystem Migration Map
+
+| File | Required Changes |
+|---|---|
+| `fs/file.rs` | Rename `FileEntry::info` → `metadata`; remove `FileInfo`. |
+| `fs/scanner.rs` | Populate `FileMetadata`; update renamed fields. |
+| `fs/reader.rs` | Return and consume `FileMetadata`. |
+
+#### Phase 3: Schema Context Migration (`schema/`)
+- [ ] **`snapshots.rs`**: Rename `info` to `metadata` in `SchemaVersion` and `PropertyBankVersion`. Update method chains.
+- [ ] **`raw.rs`**: Rename `info` to `metadata` in `RawSchemaView` and `RawPropertyBankView`.
+- [ ] **`contracts.rs`**: Update `Version` and `VersionRead` traits (rename `file_info` -> `metadata`).
+- [ ] **`schema_processor.rs`**: Update ingestion logic to new types and field names.
+
+##### Schema Field Rename Mapping
+
+| Legacy Field | New Field | Context |
+|---|---|---|
+| `SchemaVersion::info` | `SchemaVersion::metadata` | `schema/views/snapshots.rs` |
+| `PropertyBankVersion::info` | `PropertyBankVersion::metadata` | `schema/views/snapshots.rs` |
+| `RawSchemaView::info` | `RawSchemaView::metadata` | `schema/views/raw.rs` |
+| `RawPropertyBankView::info` | `RawPropertyBankView::metadata` | `schema/views/raw.rs` |
+| `file_info` | `metadata` | Trait method rename in `contracts.rs`. |
+
+##### Schema Migration Map
+
+| File | Required Changes |
+|---|---|
+| `schema/views/snapshots.rs` | Rename snapshot fields and update method chains. |
+| `schema/views/raw.rs` | Rename raw view metadata fields. |
+| `schema/contracts.rs` | Rename trait APIs (`file_info` → `metadata`). |
+| `schema/schema_processor.rs` | Update ingestion and staleness logic. |
+
+#### Phase 4: Peripheral Contexts & Cleanup
+- [ ] **`config/`**: Update `ConfigDiscovered` and related views.
+- [ ] **`vault/`**: Update any storage or processor usages.
+- [ ] **Tests**: Update all integration and unit tests to use `FileMetadata` and renamed fields.
+- [ ] **`file.rs`**: Delete `FileInfo` and related `From` implementations.
+
+##### Peripheral Field Rename Mapping
+
+| Legacy Field | New Field | Context |
+|---|---|---|
+| `ConfigDiscovered::info` | `ConfigDiscovered::metadata` | `config/views.rs` |
+
+##### Peripheral Migration Map
+
+| Context | Required Changes |
+|---|---|
+| `config/` | Update `ConfigDiscovered` and related metadata usage. |
+| `vault/` | Update storage and processor integrations. |
+| `tests/` | Replace all `FileInfo` usage and field names. |
+
+##### Final Cleanup Map
+
+| Legacy Component | Action |
+|---|---|
+| `FileInfo` struct | Delete entirely. |
+| `ArchivedFileInfo` | Delete entirely. |
+| `From<FileMetadata>` conversions | Delete compatibility conversions. |
+| `From<FileInfo>` conversions | Delete compatibility conversions. |
 
 ---
 
@@ -76,32 +186,29 @@ Replace the legacy `FileInfo` struct (from `fs/file.rs`) with the new `FileMetad
 
 ### Vertical Slice Sequence
 
-**Slice 1: Enhanced `metadata.rs` (Infrastructure)**
-- RED: Test `ArchivedFsTimes::is_match` with mocked zero-copy data.
-- GREEN: Implement `ArchivedFsTimes::is_match` in `metadata.rs`.
-- RED: Test `ArchivedFileMetadata::is_timestamp_match` (delegating to `times()`).
-- GREEN: Implement `ArchivedFileMetadata::is_timestamp_match`.
+**Slice 1: metadata.rs (Infrastructure)**
+- RED: Test `FileMetadata::is_size_match` and `is_timestamp_match`.
+- GREEN: Implement these on `FileMetadata` and `ArchivedFileMetadata`.
 - VERIFY: `cargo test --lib fs::metadata`
 
-**Slice 2: `fs/` Internal Migration**
-- RED: Change `FileEntry::info` type to `FileMetadata`. Observe compile errors in `scanner.rs`, `reader.rs`.
-- GREEN: Fix `scanner.rs` and `reader.rs` to use `FileMetadata` constructors and methods.
+**Slice 2: fs/ Internal Migration**
+- RED: Rename `FileEntry::info` to `FileEntry::metadata`. Observe compile errors in `scanner.rs`.
+- GREEN: Fix `scanner.rs` and `reader.rs`.
 - VERIFY: `cargo test --lib fs::scanner fs::reader`
 
-**Slice 3: `schema/` View Migration**
-- RED: Change `SchemaVersion::info` to `FileMetadata`. Observe compile errors in `snapshots.rs`, `raw.rs`, `contracts.rs`.
-- GREEN: Fix `schema/` views to use new method chains (`info().times().modified_at()`).
+**Slice 3: schema/ Views**
+- RED: Rename `SchemaVersion::info` to `metadata`. Observe cascade in `contracts.rs`.
+- GREEN: Fix `schema/` contexts.
 - VERIFY: `cargo test --lib schema::views`
 
-**Slice 4: Cleanup & Final Migration**
-- RED: Remove `FileInfo` from `fs/file.rs`. Observe remaining errors in `vault/`, `config/`, and `tests/`.
-- GREEN: Fix remaining consumers.
+**Slice 4: Global Cleanup**
+- RED: Delete `FileInfo`.
+- GREEN: Fix all remaining compile errors.
 - VERIFY: `mise run verify`
 
 ### Verification Commands
 ```bash
 cargo test --lib fs::metadata
-cargo test --lib fs::file
 cargo test --lib fs::scanner
 cargo test --lib fs::reader
 cargo test --lib schema::views
