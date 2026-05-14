@@ -2,8 +2,9 @@
 title: 09-phase-3a-fileinfo-to-metadata
 category: enhancement
 label: ready-for-agent
-status: pending
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-14
 ---
 
 ## Type
@@ -22,19 +23,105 @@ Phase 3a: Straightforward rename across schema/, config/, fs/ and any other cont
 
 ## Acceptance criteria
 
-- [ ] All FileInfo usages replaced with FileMetadata
-- [ ] schema/ context updated
-- [ ] config/ context updated
-- [ ] fs/ context updated (internal usages)
-- [ ] Any other consumers updated
-- [ ] Run `mise run verify` - no compile errors
-- [ ] Tests pass
+- [x] All FileInfo usages replaced with FileMetadata
+- [x] schema/ context updated
+- [x] config/ context updated
+- [x] fs/ context updated (internal usages)
+- [x] Any other consumers updated
+- [x] Run `mise run verify` - no compile errors
+- [x] Tests pass
 
 ## Blocked by
 
 - 04-fs-metadata-types
 - 07-fsreader-methods
 - 08-fs-error-redesign
+
+## Final Implementation Notes (Merged from Continuation Plan)
+
+This issue is complete and now contains the operational notes that were in
+`09-CONTINUATION-PLAN.md`.
+
+### Execution summary
+
+- Migration completed across `schema/`, `config/`, and `fs/` consumers.
+- Legacy `FileInfo` usage removed from production source under
+  `lithos-core/src/`.
+- `FileEntry` now uses `metadata: FileMetadata`.
+- View and snapshot contracts now use `metadata()` / `set_metadata()` naming.
+- Raw aggregates now use `with_metadata(...)` instead of `with_info(...)`.
+- Composition rule preserved everywhere: `metadata.times().created_at()` /
+  `metadata.times().modified_at()`.
+
+### Key implementation decisions
+
+1. **Composition preserved intentionally**
+   - No shortcut accessors were added to `FileMetadata` for timestamps.
+   - All call sites moved to `metadata.times()....` to keep data model explicit.
+
+2. **Clone-late policy used during refactor**
+   - Preferred borrowing and `as_file().cloned()`/`clone()` only where ownership
+     transfer was required by constructors or payload transitions.
+
+3. **Trait-first schema migration**
+   - Updated schema view contracts first (`Version`, `VersionRead`, `RawView`),
+     then snapshots/raw/processor implementations, reducing cascading breakage.
+
+4. **Zero-copy behavior retained**
+   - Archived timestamp checks are now on `ArchivedFileMetadata` and
+     `ArchivedFsTimes` and continue to operate on archived data.
+
+### Modules and patterns changed
+
+- **FS context**
+  - `fs/file.rs`: removed legacy `FileInfo` type and conversions.
+  - `fs/mod.rs`: removed `FileInfo` export.
+  - `fs/reader.rs`, `fs/scanner.rs`: switched all staleness/size access to
+    `FileMetadata`.
+
+- **Schema context**
+  - `schema/views/contracts.rs`: `file_info`/`set_file_info`/`update_file_info`
+    renamed to metadata-based APIs.
+  - `schema/views/snapshots.rs`, `schema/views/raw.rs`:
+    `info` → `metadata`, constructors/tests updated.
+  - `schema/schema_processor.rs`, `schema/property_bank_processor.rs`:
+    payload fields and transitions migrated to `FileMetadata`.
+  - `schema/raw/aggregate.rs`, `schema/raw/bank.rs`:
+    field + builder methods migrated (`with_metadata`).
+  - `schema/storage/read.rs`, `schema/storage/write.rs` tests updated to new
+    metadata construction.
+
+- **Config context**
+  - `config/raw.rs`, `config/views.rs`, `config/discovery.rs`,
+    `config/builder.rs`, `config/processor.rs` migrated to `FileMetadata`.
+  - `RawFileVersion` now stores `metadata: FileMetadata` and exposes
+    `metadata()` accessor.
+
+### Validation and quality gates
+
+- `cargo build --package lithos-core` passed.
+- `cargo test --package lithos-core --lib --no-run` passed.
+- `cargo test -p lithos-core --doc` passed.
+- `mise run verify` passed (fmt + clippy + unit + integration + e2e + docs).
+- `rg -n "\bFileInfo\b" lithos-core/src` returned no matches.
+
+### Git / traceability
+
+- Code migration commit: `a758e602`
+  - `refactor(fs): complete FileMetadata consumer migration`
+
+### Notes for future work
+
+- This issue intentionally did **not** include `FileEntry -> FsEntry` or
+  `FormatKind -> FileFormat` migrations (tracked separately).
+- If follow-up refactors are needed, prefer mechanical compiler-driven passes,
+  then run `mise run verify` to catch clippy/doc-test edge cases.
+
+### Continuation plan status
+
+- The continuation plan has been fully executed.
+- `09-CONTINUATION-PLAN.md` can be deleted after this issue note is accepted as
+  the canonical implementation record.
 
 ---
 
@@ -314,6 +401,13 @@ impl ArchivedFsTimes {
 ---
 
 ## TDD Implementation Plan
+
+> **📋 CONTINUATION PLAN AVAILABLE**: See `09-CONTINUATION-PLAN.md` for detailed step-by-step instructions on completing Slices 6-12. The continuation plan includes:
+> - Exact file/line references for all 48 remaining FileInfo usages
+> - Module-by-module RED-GREEN-VERIFY cycles
+> - Search & replace patterns for common transformations
+> - Risk mitigation strategies and rollback points
+> - Current status: Slices 1-5 (infrastructure + core FS) complete ✅
 
 ### Pre-Implementation Checklist
 
