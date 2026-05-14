@@ -4,7 +4,7 @@
 //! file as parsed from the filesystem.
 
 use crate::{
-    fs::FileInfo,
+    fs::metadata::{FileMetadata, FsTimes},
     schema::raw::{
         RawPropertyBankEntry, RawPropertyMap, version::RawSchemaVersion,
     },
@@ -19,7 +19,7 @@ use crate::{
 ///
 /// - `version`: Format version (defaults to "1.0").
 /// - `properties`: Map of shared property definitions.
-/// - `info`: File metadata for staleness detection.
+/// - `metadata`: File metadata for staleness detection.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
@@ -34,13 +34,13 @@ pub struct RawPropertyBank {
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip, default = "default_info")]
-    pub info: FileInfo,
+    #[serde(skip, default = "default_metadata")]
+    pub metadata: FileMetadata,
 }
 
 #[inline]
-const fn default_info() -> FileInfo {
-    FileInfo::new(None, None, 0)
+const fn default_metadata() -> FileMetadata {
+    FileMetadata::new(FsTimes::new(None, None), 0, false)
 }
 
 impl RawPropertyBank {
@@ -67,19 +67,19 @@ impl RawPropertyBank {
         self.properties
     }
 
-    /// Returns the file information.
+    /// Returns the file metadata.
     #[inline]
     #[must_use]
-    pub fn info(&self) -> &FileInfo {
-        &self.info
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
-    /// Set file information (called by Ingestor after deserialization).
+    /// Set file metadata (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_info(self, info: FileInfo) -> Self {
+    pub fn with_metadata(self, metadata: FileMetadata) -> Self {
         Self {
-            info,
+            metadata,
             ..self
         }
     }

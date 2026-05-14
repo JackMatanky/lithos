@@ -4,7 +4,7 @@
 //! inheritance resolution.
 
 use crate::{
-    fs::FileInfo,
+    fs::metadata::{FileMetadata, FsTimes},
     schema::{
         error::SchemaIngestionError,
         identifier::SchemaName,
@@ -26,13 +26,13 @@ use crate::{
 /// - `extends`: Optional parent schema for inheritance.
 /// - `excludes`: Properties to exclude from parent.
 /// - `properties`: Map of property definitions.
-/// - `info`: File metadata for staleness detection.
+/// - `metadata`: File metadata for staleness detection.
 ///
 /// # Example
 ///
 /// ```ignore
 /// # use lithos_core::schema::raw::{RawSchema, RawPropertyMap, RawProperty};
-/// # use lithos_core::fs::FileInfo;
+/// # use lithos_core::fs::metadata::{FileMetadata, FsTimes};
 /// #
 /// # fn example() {
 /// // RawSchema is typically parsed from files, not constructed directly
@@ -43,7 +43,7 @@ use crate::{
 ///     extends: None,
 ///     excludes: vec![],
 ///     properties: RawPropertyMap::new(),
-///     info: FileInfo::new(None, None, 0),
+///     metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
 /// };
 /// # }
 /// ```
@@ -80,13 +80,13 @@ pub struct RawSchema {
     /// File metadata for staleness detection.
     ///
     /// Populated during ingestion. Not serialized to TOML.
-    #[serde(skip, default = "default_info")]
-    pub info: FileInfo,
+    #[serde(skip, default = "default_metadata")]
+    pub metadata: FileMetadata,
 }
 
 #[inline]
-const fn default_info() -> FileInfo {
-    FileInfo::new(None, None, 0)
+const fn default_metadata() -> FileMetadata {
+    FileMetadata::new(FsTimes::new(None, None), 0, false)
 }
 
 impl RawSchema {
@@ -127,11 +127,11 @@ impl RawSchema {
         &self.properties
     }
 
-    /// Returns the file information.
+    /// Returns the file metadata.
     #[inline]
     #[must_use]
-    pub fn info(&self) -> &FileInfo {
-        &self.info
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
     /// Set the schema name (called by Ingestor after deserialization).
@@ -146,12 +146,12 @@ impl RawSchema {
         }
     }
 
-    /// Set file information (called by Ingestor after deserialization).
+    /// Set file metadata (called by Ingestor after deserialization).
     #[inline]
     #[must_use]
-    pub fn with_info(self, info: FileInfo) -> Self {
+    pub fn with_metadata(self, metadata: FileMetadata) -> Self {
         Self {
-            info,
+            metadata,
             ..self
         }
     }

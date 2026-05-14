@@ -110,7 +110,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{FileInfo, FsReader, RelativePath},
+    fs::{FsReader, RelativePath, metadata::FileMetadata},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -221,18 +221,18 @@ pub(crate) struct Comparison;
 /// Proven: View does not exist in repository; carries file info.
 #[derive(Debug)]
 pub(crate) struct Missing {
-    info: FileInfo,
+    metadata: FileMetadata,
 }
 
 impl Missing {
     #[expect(dead_code, reason = "reserved for future use")]
-    pub(crate) fn info(&self) -> &FileInfo {
-        &self.info
+    pub(crate) fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
-    pub(crate) fn new(info: FileInfo) -> Self {
+    pub(crate) fn new(metadata: FileMetadata) -> Self {
         Self {
-            info,
+            metadata,
         }
     }
 }
@@ -240,14 +240,14 @@ impl Missing {
 /// Proven: View exists in repository; carries file info and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
-    info: FileInfo,
+    metadata: FileMetadata,
     view: RawPropertyBankView,
 }
 
 impl Present {
     #[expect(dead_code, reason = "reserved for future use")]
-    pub(crate) fn info(&self) -> &FileInfo {
-        &self.info
+    pub(crate) fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
     #[expect(dead_code, reason = "reserved for future use")]
@@ -255,9 +255,12 @@ impl Present {
         &self.view
     }
 
-    pub(crate) fn new(info: FileInfo, view: RawPropertyBankView) -> Self {
+    pub(crate) fn new(
+        metadata: FileMetadata,
+        view: RawPropertyBankView,
+    ) -> Self {
         Self {
-            info,
+            metadata,
             view,
         }
     }
@@ -266,7 +269,7 @@ impl Present {
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
-    info: FileInfo,
+    metadata: FileMetadata,
     view: RawPropertyBankView,
     content: String,
 }
@@ -275,7 +278,7 @@ pub(crate) struct Suspect {
 /// Transitions to Analysis.
 #[derive(Debug)]
 pub(crate) struct Stale {
-    info: FileInfo,
+    metadata: FileMetadata,
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -312,8 +315,8 @@ impl PropertyBankProcessor<Comparison, Present> {
         config_path: &std::path::Path,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = self.status.view.is_timestamp_match(
-            self.status.info.created_at(),
-            self.status.info.modified_at(),
+            self.status.metadata.times().created_at(),
+            self.status.metadata.times().modified_at(),
         );
 
         if timestamps_match {
@@ -326,7 +329,7 @@ impl PropertyBankProcessor<Comparison, Present> {
             Ok(TimestampBranch::Mismatch(Self::transition(
                 Comparison,
                 Suspect {
-                    info: self.status.info,
+                    metadata: self.status.metadata,
                     view: self.status.view,
                     content,
                 },
@@ -360,12 +363,12 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 
         if content_match {
             ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
-                info: self.status.info,
+                metadata: self.status.metadata,
                 view: self.status.view,
             }))
         } else {
             ContentBranch::Mismatch(Self::transition(Parsed, Stale {
-                info: self.status.info,
+                metadata: self.status.metadata,
                 content: self.status.content,
                 content_hash,
                 view: self.status.view,
@@ -421,7 +424,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
             FsReader::parse_structured_from_str(config_path, &content)
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_info(self.status.info);
+        let raw = raw.with_metadata(self.status.metadata);
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition(Construction, New {
@@ -454,7 +457,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_info(self.status.info);
+        let raw = raw.with_metadata(self.status.metadata);
 
         Ok(Self::transition(Analysis, ParsedStale {
             raw,
@@ -529,7 +532,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
         if delta.is_empty() {
             AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
-                info: *raw.info(),
+                metadata: raw.metadata().clone(),
                 view,
                 content_hash,
             }))
@@ -554,14 +557,14 @@ pub(crate) struct Refresh;
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
-    info: FileInfo,
+    metadata: FileMetadata,
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
-    info: FileInfo,
+    metadata: FileMetadata,
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }
@@ -580,7 +583,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_file_info(self.status.info);
+        self.status.view.update_metadata(self.status.metadata);
 
         repository
             .save_raw_property_bank_view(
@@ -607,7 +610,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_file_info(self.status.info);
+        self.status.view.update_metadata(self.status.metadata);
         self.status
             .view
             .update_content_hash(self.status.content_hash)

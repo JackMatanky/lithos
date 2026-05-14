@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
-    fs::{FileInfo, RelativePath},
+    fs::RelativePath,
     schema::{
         error::{SchemaIngestionError, SchemaStorageError},
         raw::{RawPropertyBank, RawSchema},
@@ -97,7 +97,7 @@ impl RawSchemaView {
         path: RelativePath,
         hashes: HashRecord,
     ) -> Result<Self, SchemaIngestionError> {
-        let info = *raw.info();
+        let info = raw.metadata().clone();
         let version = SchemaVersion::new(info, hashes, raw)?;
 
         Ok(Self::new(path, version))
@@ -132,25 +132,6 @@ impl RawView for RawSchemaView {
         self.versions.insert(0, version);
     }
 
-    #[inline]
-    fn update_file_info(&mut self, info: FileInfo) {
-        if let Some(current) = self.current_mut() {
-            current.set_file_info(info);
-        }
-    }
-
-    #[inline]
-    fn update_timestamps(
-        &mut self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) {
-        if let Some(current) = self.current_mut() {
-            let size = Version::file_info(current).size();
-            current.set_file_info(FileInfo::new(created_at, modified_at, size));
-        }
-    }
-
     /// Adds a new version with updated content hash.
     ///
     /// Keeps property hashes from the current version.
@@ -162,12 +143,12 @@ impl RawView for RawSchemaView {
         let current = self.current().ok_or(SchemaStorageError::NotFound {
             name: "current schema version".into(),
         })?;
-        let info = *Version::file_info(current);
+        let metadata = Version::metadata(current).clone();
         let hashes = HashRecord::new(
             content_hash,
             current.hashes().properties().clone(),
         );
-        let version = SchemaVersion::with_metadata(current, info, hashes);
+        let version = SchemaVersion::with_metadata(current, metadata, hashes);
         self.add_version(version);
         Ok(())
     }
@@ -278,7 +259,7 @@ impl RawPropertyBankView {
         path: RelativePath,
         raw_hash: HashRecord,
     ) -> Result<Self, SchemaIngestionError> {
-        let info = *raw.info();
+        let info = raw.metadata().clone();
 
         let version = PropertyBankVersion::new(info, raw_hash, raw)?;
 
@@ -314,26 +295,6 @@ impl RawView for RawPropertyBankView {
         self.versions.insert(0, version);
     }
 
-    #[inline]
-    fn update_file_info(&mut self, info: FileInfo) {
-        if let Some(current) = self.current_mut() {
-            current.set_file_info(info);
-        }
-    }
-
-    /// Updates timestamps on the current version, preserving file size.
-    #[inline]
-    fn update_timestamps(
-        &mut self,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) {
-        if let Some(current) = self.current_mut() {
-            let size = Version::file_info(current).size();
-            current.set_file_info(FileInfo::new(created_at, modified_at, size));
-        }
-    }
-
     /// Adds a new version with updated content hash.
     ///
     /// Preserves property hashes from the current version.
@@ -346,13 +307,14 @@ impl RawView for RawPropertyBankView {
         let current = self.current().ok_or(SchemaStorageError::NotFound {
             name: "current property bank version".into(),
         })?;
-        let info = *Version::file_info(current);
+        let metadata = Version::metadata(current).clone();
         let hashes = HashRecord::new(
             content_hash,
             current.hashes().properties().clone(),
         );
 
-        let version = PropertyBankVersion::with_metadata(current, info, hashes);
+        let version =
+            PropertyBankVersion::with_metadata(current, metadata, hashes);
         self.add_version(version);
         Ok(())
     }
@@ -410,6 +372,7 @@ impl RawViewRead for ArchivedRawPropertyBankView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fs::metadata::{FileMetadata, FsTimes};
 
     mod raw_schema_view {
         use super::*;
@@ -421,7 +384,8 @@ mod tests {
         #[test]
         fn supports_zero_copy_staleness_checks() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
-            let info = FileInfo::new(None, None, 100);
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
                 RawPropertyHashIndex::default(),
@@ -432,11 +396,11 @@ mod tests {
                 extends: None,
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
-                info: FileInfo::new(None, None, 0),
+                metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
             };
 
             let version =
-                SchemaVersion::new(info, hashes.clone(), &raw).unwrap();
+                SchemaVersion::new(metadata, hashes.clone(), &raw).unwrap();
             let view = RawSchemaView::new(path, version);
 
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view).unwrap();
@@ -452,9 +416,10 @@ mod tests {
         }
 
         #[test]
-        fn update_file_info_replaces_full_metadata() {
+        fn update_metadata_replaces_full_metadata() {
             let path = RelativePath::try_from("schemas/note.json").unwrap();
-            let info = FileInfo::new(None, None, 100);
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
                 RawPropertyHashIndex::default(),
@@ -465,17 +430,21 @@ mod tests {
                 extends: None,
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
-                info: FileInfo::new(None, None, 0),
+                metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
             };
 
-            let version = SchemaVersion::new(info, hashes, &raw).unwrap();
+            let version = SchemaVersion::new(metadata, hashes, &raw).unwrap();
             let mut view = RawSchemaView::new(path, version);
 
-            let replacement = FileInfo::new(Some(SystemTime::now()), None, 500);
-            view.update_file_info(replacement);
+            let replacement = FileMetadata::new(
+                FsTimes::new(Some(SystemTime::now()), None),
+                500,
+                false,
+            );
+            view.update_metadata(replacement.clone());
 
             let current = view.current().unwrap();
-            assert_eq!(current.info(), &replacement);
+            assert_eq!(current.metadata(), &replacement);
         }
     }
 
@@ -490,7 +459,8 @@ mod tests {
         fn supports_zero_copy_staleness_checks() {
             let path =
                 RelativePath::try_from("schemas/property_bank.json").unwrap();
-            let info = FileInfo::new(None, None, 100);
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
                 Blake3Hash::new([0; 32]),
                 RawPropertyHashIndex::default(),
@@ -498,11 +468,12 @@ mod tests {
             let raw = RawPropertyBank {
                 version: RawSchemaVersion::default(),
                 properties: RawPropertyMap::new(),
-                info: FileInfo::new(None, None, 0),
+                metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
             };
 
             let version =
-                PropertyBankVersion::new(info, hashes.clone(), &raw).unwrap();
+                PropertyBankVersion::new(metadata, hashes.clone(), &raw)
+                    .unwrap();
             let view = RawPropertyBankView::new(path, version);
 
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&view).unwrap();

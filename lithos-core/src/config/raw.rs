@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crate::fs::FileInfo;
+use crate::fs::metadata::FileMetadata;
 
 /// Raw config parsed from the global config file.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -37,7 +37,7 @@ pub struct RawGlobalConfig {
     ///
     /// Populated during discovery/parsing. Not serialized to TOML.
     #[serde(skip)]
-    pub metadata: Option<FileInfo>,
+    pub metadata: Option<FileMetadata>,
 }
 
 /// Raw config parsed from a vault config file.
@@ -70,7 +70,7 @@ pub struct RawVaultConfig {
     ///
     /// Populated during discovery/parsing. Not serialized to TOML.
     #[serde(skip)]
-    pub metadata: Option<FileInfo>,
+    pub metadata: Option<FileMetadata>,
 }
 
 /// Raw path configuration input.

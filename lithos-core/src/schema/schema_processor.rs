@@ -59,7 +59,10 @@ use std::{
 
 pub(crate) use crate::schema::delta::{ExcludesDelta, PropertyDelta};
 use crate::{
-    fs::{FileInfo, FsReader, RelativePath},
+    fs::{
+        FsReader, RelativePath,
+        metadata::{FileMetadata, FsTimes},
+    },
     graph::{GraphNode, GraphNodeMut},
     schema::{
         aggregate::Schema,
@@ -255,7 +258,7 @@ pub(crate) enum PresentPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FoundPayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     view: RawSchemaView,
 }
 
@@ -271,7 +274,7 @@ pub(crate) struct FreshPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SuspectPayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_str: Box<str>,
     view: RawSchemaView,
 }
@@ -279,7 +282,7 @@ pub(crate) struct SuspectPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StalePayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_str: Box<str>,
     content_hash: Blake3Hash,
     view: RawSchemaView,
@@ -288,7 +291,7 @@ pub(crate) struct StalePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NewParsedPayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -296,7 +299,7 @@ pub(crate) struct NewParsedPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StaleParsedPayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -475,7 +478,7 @@ impl AnalysisBranch {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RefreshNodePayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     view: RawSchemaView,
 }
@@ -483,7 +486,7 @@ pub(crate) struct RefreshNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RebuildNodePayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -494,7 +497,7 @@ pub(crate) struct RebuildNodePayload {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UpdateNodePayload {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
     view: RawSchemaView,
@@ -571,13 +574,13 @@ impl<T> IntoIterator for NewBatch<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialScan {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialRead {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_str: Box<str>,
     content_hash: Blake3Hash,
 }
@@ -585,7 +588,7 @@ pub(crate) struct InitialRead {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
     path: RelativePath,
-    info: FileInfo,
+    metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
 }
@@ -730,14 +733,14 @@ impl SchemaProcessor<Discovery, NeverSeen> {
         let mut missing = NewBatch::new();
 
         for (path, schema_discovery) in discovery.schemas() {
-            let file_info = schema_discovery.entry().info;
+            let metadata = schema_discovery.entry().metadata.clone();
             let id = schema_discovery.cached().map_or_else(
                 SchemaId::new,
                 super::discovery::SchemaCachedState::id,
             );
             missing.insert(id, InitialScan {
                 path: path.clone(),
-                info: file_info,
+                metadata,
             });
         }
 
@@ -824,25 +827,27 @@ impl SchemaProcessor<Discovery, Review> {
         let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
 
         for path in files {
-            let file_info = source
+            let metadata = source
                 .metadata(path.as_path())
                 .ok()
-                .and_then(|m| m.as_file().map(FileInfo::from))
-                .unwrap_or_else(|| FileInfo::new(None, None, 0));
+                .and_then(|m| m.as_file().cloned())
+                .unwrap_or_else(|| {
+                    FileMetadata::new(FsTimes::new(None, None), 0, false)
+                });
 
             if let (Some(view), Some(id)) =
                 (views_by_path.remove(path), ids_by_path.get(path))
             {
                 found.insert(*id, FoundPayload {
                     path: path.clone(),
-                    info: file_info,
+                    metadata,
                     view,
                 });
             } else {
                 let id = SchemaId::new();
                 missing.insert(id, InitialScan {
                     path: path.clone(),
-                    info: file_info,
+                    metadata,
                 });
             }
         }
@@ -962,7 +967,7 @@ impl SchemaProcessor<Comparison, Present> {
                                         ComparedPayload::StaleBankReferences(
                                             StalePayload {
                                                 path: matched_payload.path,
-                                                info: matched_payload.info,
+                                                metadata: matched_payload.metadata,
                                                 content_str: content_str.into(),
                                                 content_hash,
                                                 view: matched_payload.view,
@@ -987,7 +992,7 @@ impl SchemaProcessor<Comparison, Present> {
                                             ComparedPayload::StaleBankReferences(
                                                 StalePayload {
                                                     path: content_payload.path,
-                                                    info: content_payload.info,
+                                                    metadata: content_payload.metadata,
                                                     content_str: content_payload
                                                         .content_str,
                                                     content_hash,
@@ -999,7 +1004,7 @@ impl SchemaProcessor<Comparison, Present> {
                                             ComparedPayload::StaleTimestamps(
                                                 FoundPayload {
                                                     path: content_payload.path,
-                                                    info: content_payload.info,
+                                                    metadata: content_payload.metadata,
                                                     view: content_payload.view,
                                                 },
                                             )
@@ -1059,7 +1064,7 @@ impl SchemaProcessor<Comparison, Present> {
 
             new_reads.insert(id, InitialRead {
                 path: scan.path,
-                info: scan.info,
+                metadata: scan.metadata,
                 content_hash,
                 content_str: content.into_boxed_str(),
             });
@@ -1081,8 +1086,8 @@ impl SchemaProcessor<Comparison, Present> {
         source: &FsReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = payload.view.is_timestamp_match(
-            payload.info.created_at(),
-            payload.info.modified_at(),
+            payload.metadata.times().created_at(),
+            payload.metadata.times().modified_at(),
         );
 
         if timestamps_match {
@@ -1094,7 +1099,7 @@ impl SchemaProcessor<Comparison, Present> {
                 .map_err(SchemaLoaderError::Ingestion)?;
             Ok(TimestampBranch::Mismatch(SuspectPayload {
                 path: payload.path,
-                info: payload.info,
+                metadata: payload.metadata,
                 content_str: content_str.into(),
                 view: payload.view,
             }))
@@ -1112,14 +1117,14 @@ impl SchemaProcessor<Comparison, Present> {
         if content_match {
             ContentBranch::Match(SuspectPayload {
                 path: payload.path,
-                info: payload.info,
+                metadata: payload.metadata,
                 content_str: payload.content_str,
                 view: payload.view,
             })
         } else {
             ContentBranch::Mismatch(StalePayload {
                 path: payload.path,
-                info: payload.info,
+                metadata: payload.metadata,
                 content_str: payload.content_str,
                 content_hash,
                 view: payload.view,
@@ -1161,9 +1166,9 @@ impl SchemaProcessor<FileParsed, AllMissing> {
         for (id, missing) in new_schemas {
             let InitialScan {
                 path,
-                info,
+                metadata,
             } = missing;
-            let info_for_raw = info;
+            let metadata_for_raw = metadata.clone();
 
             let content = source
                 .read_to_string(path.as_path())
@@ -1183,12 +1188,12 @@ impl SchemaProcessor<FileParsed, AllMissing> {
             )
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
-            .with_info(info_for_raw)
+            .with_metadata(metadata_for_raw)
             .with_name(schema_name);
 
             parsed.insert(id, InitialParsed {
                 path,
-                info,
+                metadata,
                 content_hash,
                 raw,
             });
@@ -1243,7 +1248,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let info_for_raw = payload.info;
+                            let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -1252,7 +1257,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_info(info_for_raw)
+                            .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
 
                             ProcessorNode::new(
@@ -1262,7 +1267,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                     FileParsedBranch::StaleParsed(
                                         StaleParsedPayload {
                                             path: payload.path,
-                                            info: payload.info,
+                                            metadata: payload.metadata,
                                             content_hash: payload.content_hash,
                                             raw,
                                             view: payload.view,
@@ -1281,7 +1286,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
-                            let info_for_raw = payload.info;
+                            let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -1290,7 +1295,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_info(info_for_raw)
+                            .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
                             let content_hash = payload.content_hash;
 
@@ -1301,7 +1306,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                     FileParsedBranch::StaleParsed(
                                         StaleParsedPayload {
                                             path: payload.path,
-                                            info: payload.info,
+                                            metadata: payload.metadata,
                                             content_hash,
                                             raw,
                                             view: payload.view,
@@ -1368,19 +1373,19 @@ impl SchemaProcessor<FileParsed, Compared> {
                 .map(|f| f.basename_str().to_owned().into_boxed_str())
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
-            let info_for_raw = read.info;
+            let metadata_for_raw = read.metadata.clone();
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
                 read.path.as_path(),
                 &read.content_str,
             )
             .map_err(SchemaIngestionError::from)
             .map_err(SchemaLoaderError::Ingestion)?
-            .with_info(info_for_raw)
+            .with_metadata(metadata_for_raw)
             .with_name(schema_name);
 
             parsed_new.insert(id, InitialParsed {
                 path: read.path,
-                info: read.info,
+                metadata: read.metadata,
                 content_hash: read.content_hash,
                 raw,
             });
@@ -1532,7 +1537,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     PipelinePayload::Inheritance(InheritanceBranch::New(
                         NewParsedPayload {
                             path: new.path.clone(),
-                            info: new.info,
+                            metadata: new.metadata.clone(),
                             content_hash: new.content_hash,
                             raw: new.raw.clone(),
                         },
@@ -1650,7 +1655,7 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
         for (id, parsed) in new_schemas {
             let payload = NewParsedPayload {
                 path: parsed.path,
-                info: parsed.info,
+                metadata: parsed.metadata,
                 content_hash: parsed.content_hash,
                 raw: parsed.raw,
             };
@@ -1750,12 +1755,12 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             Self::bank_changed(&payload.view, property_bank_delta);
 
                         if bank_changed {
-                            let info_for_raw = source
+                            let metadata_for_raw = source
                                 .metadata(payload.path.as_path())
                                 .map(|m| {
                                     m.as_file().map_or_else(|| {
-                                        FileInfo::new(None, None, 0)
-                                    }, FileInfo::from)
+                                        FileMetadata::new(FsTimes::new(None, None), 0, false)
+                                    }, std::clone::Clone::clone)
                                 })
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
@@ -1774,7 +1779,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_info(info_for_raw)
+                            .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
 
                             let mut view = payload.view;
@@ -1783,7 +1788,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                info: info_for_raw,
+                                metadata: metadata_for_raw,
                                 content_hash,
                                 raw,
                                 view,
@@ -1808,7 +1813,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                     PipelinePayload::Inheritance(
                         InheritanceBranch::StaleTimestamps(payload),
                     ) => {
-                        let info_for_raw = payload.info;
+                        let metadata_for_raw = payload.metadata.clone();
                         let bank_changed =
                             Self::bank_changed(&payload.view, property_bank_delta);
 
@@ -1828,7 +1833,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             )
                             .map_err(SchemaIngestionError::from)
                             .map_err(SchemaLoaderError::Ingestion)?
-                            .with_info(info_for_raw)
+                            .with_metadata(metadata_for_raw)
                             .with_name(schema_name);
 
                             let mut view = payload.view;
@@ -1837,7 +1842,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                info: payload.info,
+                                metadata: payload.metadata,
                                 content_hash,
                                 raw,
                                 view,
@@ -1866,7 +1871,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         let path = payload.path.clone();
                         let property_hashes =
                             payload.raw.properties().compute_hashes();
-                        let file_info = *payload.raw.info();
+                        let file_info = payload.raw.metadata().clone();
                         let hashes = crate::schema::views::HashRecord::new(
                             payload.content_hash,
                             property_hashes.into(),
@@ -1880,7 +1885,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         let view = RawSchemaView::new(path, version);
                         let rebuild = RebuildNodePayload {
                             path: payload.path,
-                            info: payload.info,
+                            metadata: payload.metadata,
                             content_hash: payload.content_hash,
                             raw: payload.raw,
                             view,
@@ -1902,7 +1907,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             view.add_version(version);
                             let rebuild = RebuildNodePayload {
                                 path: payload.path,
-                                info: payload.info,
+                                metadata: payload.metadata,
                                 content_hash: payload.content_hash,
                                 raw: payload.raw,
                                 view,
@@ -1948,7 +1953,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 view.add_version(version);
                                 let rebuild = RebuildNodePayload {
                                     path: payload.path,
-                                    info: payload.info,
+                                    metadata: payload.metadata,
                                     content_hash: payload.content_hash,
                                     raw: payload.raw,
                                     view,
@@ -1974,7 +1979,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                     NodeStatus::StaleContent,
                                     AnalysisBranch::Refresh(RefreshNodePayload {
                                         path: payload.path,
-                                        info: payload.info,
+                                        metadata: payload.metadata,
                                         content_hash: payload.content_hash,
                                         view: payload.view,
                                     }),
@@ -2042,7 +2047,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         content_hash: Blake3Hash,
     ) -> Result<crate::schema::views::SchemaVersion, SchemaLoaderError> {
         let property_hashes = raw.properties().compute_hashes();
-        let file_info = *raw.info();
+        let file_info = raw.metadata().clone();
         let hashes = crate::schema::views::HashRecord::new(
             content_hash,
             property_hashes.into(),
@@ -2099,7 +2104,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     },
                 ))
             })?;
-            let file_info = payload.info;
+            let file_info = payload.metadata.clone();
             let hashes = HashRecord::new(
                 payload.content_hash,
                 current.hashes().properties().clone(),
@@ -2140,7 +2145,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                             },
                         ))
                     })?;
-                    let file_info = payload.info;
+                    let file_info = payload.metadata.clone();
                     let hashes = HashRecord::new(
                         *current.hashes().content(),
                         current.hashes().properties().clone(),
@@ -2165,7 +2170,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                             },
                         ))
                     })?;
-                    let file_info = payload.info;
+                    let file_info = payload.metadata.clone();
                     let hashes = HashRecord::new(
                         payload.content_hash,
                         current.hashes().properties().clone(),
@@ -2992,18 +2997,26 @@ mod tests {
         }))
         .expect("valid raw schema fixture")
         .with_name(name.into())
-        .with_info(FileInfo::new(None, None, 0))
+        .with_metadata(FileMetadata::new(
+            FsTimes::new(None, None),
+            0,
+            false,
+        ))
     }
 
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
-        let file_info = crate::fs::FileInfo::new(None, None, 0);
+        let metadata = crate::fs::metadata::FileMetadata::new(
+            crate::fs::metadata::FsTimes::new(None, None),
+            0,
+            false,
+        );
         let hashes = crate::schema::views::HashRecord::new(
             content_hash,
             RawPropertyHashIndex::default(),
         );
         let version =
-            crate::schema::views::SchemaVersion::new(file_info, hashes, &raw)
+            crate::schema::views::SchemaVersion::new(metadata, hashes, &raw)
                 .expect("valid schema view fixture");
         let path = format!("schemas/{name}.toml");
         RawSchemaView::new(
@@ -3031,7 +3044,11 @@ mod tests {
                 ExtendsChangeKind::Unchanged,
                 PipelinePayload::Present(PresentPayload::Found(FoundPayload {
                     path,
-                    info: FileInfo::new(None, None, 0),
+                    metadata: FileMetadata::new(
+                        FsTimes::new(None, None),
+                        0,
+                        false,
+                    ),
                     view,
                 })),
             ),
@@ -3079,7 +3096,11 @@ mod tests {
                 ExtendsChangeKind::Unchanged,
                 PipelinePayload::Present(PresentPayload::Found(FoundPayload {
                     path,
-                    info: FileInfo::new(None, None, 9_999_999),
+                    metadata: FileMetadata::new(
+                        FsTimes::new(None, None),
+                        9_999_999,
+                        false,
+                    ),
                     view,
                 })),
             ),

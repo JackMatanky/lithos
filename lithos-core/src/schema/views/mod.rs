@@ -87,7 +87,7 @@
 //!
 //! Views enable a three-tier staleness detection strategy:
 //!
-//! - **Fast Path**: Timestamp comparison via [`FileInfo::is_timestamp_match`]
+//! - **Fast Path**: Timestamp comparison via `FileMetadata::is_timestamp_match`
 //!   (filesystem stat only, no I/O)
 //! - **Medium Path**: Content hash comparison via
 //!   [`HashRecord::is_content_match`] (Blake3 hash of file content)

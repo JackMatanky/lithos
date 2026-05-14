@@ -49,8 +49,9 @@ use std::{
 
 use super::{
     error::{FsError, PathValidationError},
-    file::{FileEntry, FileInfo, FileName},
+    file::{FileEntry, FileName},
     format::FileFormat as FormatKind,
+    metadata::{FileMetadata, FsTimes},
     types::{Json, Toml, Yaml},
     validator::Validator,
 };
@@ -372,7 +373,7 @@ impl Reader {
     /// Lists file entries within the vault using a glob pattern.
     ///
     /// Similar to [`filter_dir`], but returns a [`FileEntry`] for each matching
-    /// file, which includes the path, filename, and metadata (`FileInfo`).
+    /// file, which includes the path, filename, and metadata (`FileMetadata`).
     /// Results are sorted by path alphabetically.
     ///
     /// # Errors
@@ -501,8 +502,8 @@ impl Reader {
             .metadata(path)
             .map(|m| {
                 m.as_file().map_or_else(
-                    || FileInfo::new(None, None, 0),
-                    FileInfo::from,
+                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
+                    std::clone::Clone::clone,
                 )
             })
             .map_err(|e| {
@@ -513,7 +514,7 @@ impl Reader {
                 );
             })
             .ok()?;
-        s.created_at()
+        s.times().created_at()
     }
 
     /// Returns the file's modification timestamp.
@@ -527,8 +528,8 @@ impl Reader {
             .metadata(path)
             .map(|m| {
                 m.as_file().map_or_else(
-                    || FileInfo::new(None, None, 0),
-                    FileInfo::from,
+                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
+                    std::clone::Clone::clone,
                 )
             })
             .map_err(|e| {
@@ -539,7 +540,7 @@ impl Reader {
                 );
             })
             .ok()?;
-        s.modified_at()
+        s.times().modified_at()
     }
 
     /// Extracts the filename (with extension) from a path.
@@ -1005,7 +1006,7 @@ mod tests {
                 entries.get(1).map(|e| e.filename.as_str()),
                 Some("b.json")
             );
-            assert!(entries.first().is_some_and(|e| e.info.size() > 0));
+            assert!(entries.first().is_some_and(|e| e.metadata.size() > 0));
         }
 
         #[test]

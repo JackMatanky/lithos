@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-use crate::{fs::FileInfo, support::hash::Blake3Hash};
+use crate::{fs::metadata::FileMetadata, support::hash::Blake3Hash};
 
 fn hash_raw_global(raw: &crate::config::raw::RawGlobalConfig) -> Blake3Hash {
     let serialized = toml::to_string(raw).unwrap_or_default();
@@ -154,8 +154,10 @@ impl RawGlobalConfigView {
         self.latest_version().is_some_and(|latest| {
             let timestamp_match = raw.metadata.as_ref().is_some_and(|meta| {
                 latest.is_timestamp_match(
-                    meta.created_at(),
-                    meta.modified_at().unwrap_or(SystemTime::UNIX_EPOCH),
+                    meta.times().created_at(),
+                    meta.times()
+                        .modified_at()
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
                 )
             });
             timestamp_match && latest.is_content_match(&hash_raw_global(raw))
@@ -313,8 +315,10 @@ impl RawVaultConfigView {
         self.latest_version().is_some_and(|latest| {
             let timestamp_match = raw.metadata.as_ref().is_some_and(|meta| {
                 latest.is_timestamp_match(
-                    meta.created_at(),
-                    meta.modified_at().unwrap_or(SystemTime::UNIX_EPOCH),
+                    meta.times().created_at(),
+                    meta.times()
+                        .modified_at()
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
                 )
             });
             timestamp_match && latest.is_content_match(&hash_raw_vault(raw))
@@ -397,7 +401,7 @@ impl RawVaultConfigView {
 #[non_exhaustive]
 pub struct RawFileVersion {
     /// File metadata (timestamps + size).
-    file_info: FileInfo,
+    metadata: FileMetadata,
 
     /// BLAKE3 hash of the uncompressed content.
     ///
@@ -422,26 +426,26 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use lithos_core::config::views::RawFileVersion;
-    /// use lithos_core::fs::FileInfo;
+    /// use lithos_core::fs::metadata::{FileMetadata, FsTimes};
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
-    /// let file_info = FileInfo::new(None, Some(SystemTime::now()), content.len() as u64);
+    /// let metadata = FileMetadata::new(FsTimes::new(None, Some(SystemTime::now())), content.len() as u64, false);
     /// let version = RawFileVersion::new(
     ///     content,
-    ///     file_info,
+    ///     metadata,
     /// )?;
     /// ```
     #[inline]
     pub fn new(
         content: &[u8],
-        file_info: FileInfo,
+        metadata: FileMetadata,
     ) -> Result<Self, std::io::Error> {
         let content_hash = Blake3Hash::compute(content);
         let recorded_at = SystemTime::now();
 
         Ok(Self {
-            file_info,
+            metadata,
             content_hash,
             recorded_at,
         })
@@ -457,8 +461,8 @@ impl RawFileVersion {
     /// Returns the file metadata (timestamps + size).
     #[inline]
     #[must_use]
-    pub const fn file_info(&self) -> &FileInfo {
-        &self.file_info
+    pub const fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
     /// Checks if timestamps match (fast staleness check).
@@ -470,13 +474,13 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use lithos_core::config::views::RawFileVersion;
-    /// use lithos_core::fs::FileInfo;
+    /// use lithos_core::fs::metadata::{FileMetadata, FsTimes};
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
     /// let mtime = SystemTime::now();
-    /// let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
-    /// let version = RawFileVersion::new(content, file_info)?;
+    /// let metadata = FileMetadata::new(FsTimes::new(None, Some(mtime)), content.len() as u64, false);
+    /// let version = RawFileVersion::new(content, metadata)?;
     ///
     /// assert!(version.is_timestamp_match(None, mtime));
     /// ```
@@ -487,8 +491,8 @@ impl RawFileVersion {
         created_at: Option<SystemTime>,
         modified_at: SystemTime,
     ) -> bool {
-        self.file_info.created_at() == created_at
-            && self.file_info.modified_at() == Some(modified_at)
+        self.metadata.times().created_at() == created_at
+            && self.metadata.times().modified_at() == Some(modified_at)
     }
 
     /// Checks if content hash matches (accurate staleness check).
@@ -526,8 +530,8 @@ impl RawFileVersion {
     ///
     /// let content = b"vault_path = \"/vault\"";
     /// let mtime = SystemTime::now();
-    /// let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
-    /// let version = RawFileVersion::new(content, file_info)?;
+    /// let metadata = FileMetadata::new(FsTimes::new(None, Some(mtime)), content.len() as u64, false);
+    /// let version = RawFileVersion::new(content, metadata)?;
     ///
     /// assert!(version.matches(None, mtime, &Blake3Hash::compute(content)));
     /// ```
@@ -555,6 +559,7 @@ impl RawFileVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fs::metadata::FsTimes;
 
     #[test]
     fn raw_global_config_view_new() {
@@ -568,8 +573,12 @@ mod tests {
     fn raw_global_config_view_push_version() {
         let mut view = RawGlobalConfigView::new("/path/to/global.toml".into());
 
-        let file_info = FileInfo::new(None, Some(SystemTime::now()), 7);
-        let version1 = RawFileVersion::new(b"content1", file_info)
+        let metadata = FileMetadata::new(
+            FsTimes::new(None, Some(SystemTime::now())),
+            7,
+            false,
+        );
+        let version1 = RawFileVersion::new(b"content1", metadata)
             .expect("version creation should succeed");
 
         view.push_version(version1.clone());
@@ -588,12 +597,12 @@ mod tests {
         // Push 7 versions
         for i in 0i32..7i32 {
             let content = format!("content{i}");
-            let file_info = FileInfo::new(
-                None,
-                Some(SystemTime::now()),
+            let metadata = FileMetadata::new(
+                FsTimes::new(None, Some(SystemTime::now())),
                 content.len() as u64,
+                false,
             );
-            let version = RawFileVersion::new(content.as_bytes(), file_info)
+            let version = RawFileVersion::new(content.as_bytes(), metadata)
                 .expect("version creation should succeed");
             view.push_version(version);
         }
@@ -616,15 +625,19 @@ mod tests {
     fn raw_file_version_new() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
-        let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
-        let version = RawFileVersion::new(content, file_info)
+        let metadata = FileMetadata::new(
+            FsTimes::new(None, Some(mtime)),
+            content.len() as u64,
+            false,
+        );
+        let version = RawFileVersion::new(content, metadata)
             .expect("version creation should succeed");
 
         let expected_hash = Blake3Hash::compute(content);
         assert_eq!(version.content_hash(), &expected_hash);
-        assert_eq!(version.file_info().created_at(), None);
-        assert_eq!(version.file_info().modified_at(), Some(mtime));
-        assert_eq!(version.file_info().size(), content.len() as u64);
+        assert_eq!(version.metadata().times().created_at(), None);
+        assert_eq!(version.metadata().times().modified_at(), Some(mtime));
+        assert_eq!(version.metadata().size(), content.len() as u64);
     }
 
     #[test]
@@ -635,15 +648,19 @@ mod tests {
     fn raw_file_version_is_timestamp_match() {
         let content = b"vault_path = \"/vault\"";
         let mtime = SystemTime::now();
-        let file_info = FileInfo::new(None, Some(mtime), content.len() as u64);
-        let version = RawFileVersion::new(content, file_info)
+        let metadata = FileMetadata::new(
+            FsTimes::new(None, Some(mtime)),
+            content.len() as u64,
+            false,
+        );
+        let version = RawFileVersion::new(content, metadata)
             .expect("version creation should succeed");
 
         let expected_hash = Blake3Hash::compute(content);
         assert_eq!(version.content_hash(), &expected_hash);
-        assert_eq!(version.file_info().created_at(), None);
-        assert_eq!(version.file_info().modified_at(), Some(mtime));
-        assert_eq!(version.file_info().size(), content.len() as u64);
+        assert_eq!(version.metadata().times().created_at(), None);
+        assert_eq!(version.metadata().times().modified_at(), Some(mtime));
+        assert_eq!(version.metadata().size(), content.len() as u64);
     }
 
     #[test]
@@ -653,9 +670,12 @@ mod tests {
     )]
     fn raw_file_version_round_trips_through_rkyv() {
         let content = b"vault_path = \"/vault\"";
-        let file_info =
-            FileInfo::new(None, Some(SystemTime::now()), content.len() as u64);
-        let original = RawFileVersion::new(content, file_info)
+        let metadata = FileMetadata::new(
+            FsTimes::new(None, Some(SystemTime::now())),
+            content.len() as u64,
+            false,
+        );
+        let original = RawFileVersion::new(content, metadata)
             .expect("version creation should succeed");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
@@ -670,6 +690,6 @@ mod tests {
                 .expect("deserialization should succeed");
 
         assert_eq!(deserialized.content_hash, original.content_hash);
-        assert_eq!(deserialized.file_info, original.file_info);
+        assert_eq!(deserialized.metadata, original.metadata);
     }
 }

@@ -162,6 +162,31 @@ impl FileMetadata {
     pub const fn is_symlink(&self) -> bool {
         self.is_symlink
     }
+
+    /// Check if the provided size matches this file's size.
+    ///
+    /// Used for fast staleness detection before performing more expensive
+    /// content hash checks.
+    #[inline]
+    #[must_use]
+    pub fn is_size_match(&self, size: u64) -> bool {
+        self.size == size
+    }
+
+    /// Check if the provided timestamps match this file's timestamps.
+    ///
+    /// Used for fast staleness detection before performing more expensive
+    /// content hash checks. Delegates to the underlying `FsTimes::is_match`.
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        let other = FsTimes::new(created_at, modified_at);
+        self.times.is_match(&other)
+    }
 }
 
 impl From<&std::fs::Metadata> for FileMetadata {
@@ -285,6 +310,102 @@ impl From<&std::fs::Metadata> for FsTimes {
     }
 }
 
+impl ArchivedFsTimes {
+    /// Check if archived timestamps match provided filesystem times.
+    ///
+    /// Performs zero-copy comparison by converting `SystemTime` to Unix seconds
+    /// and comparing against archived Unix timestamps. Used for fast staleness
+    /// detection without deserialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::SystemTime;
+    ///
+    /// use lithos_core::fs::metadata::FsTimes;
+    ///
+    /// let times = FsTimes::new(Some(SystemTime::UNIX_EPOCH), None);
+    /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&times).unwrap();
+    /// let archived = rkyv::access::<
+    ///     lithos_core::fs::metadata::ArchivedFsTimes,
+    ///     rkyv::rancor::Error,
+    /// >(&bytes)
+    /// .unwrap();
+    ///
+    /// assert!(archived.is_timestamp_match(Some(SystemTime::UNIX_EPOCH), None));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        let created_match = match (self.created_at.as_ref(), created_at) {
+            (Some(archived), Some(sys)) => {
+                let unix_secs = sys
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs());
+                unix_secs.is_some_and(|secs| secs == archived.as_secs())
+            }
+            (None, None) => true,
+            _ => false,
+        };
+
+        let modified_match = match (self.modified_at.as_ref(), modified_at) {
+            (Some(archived), Some(sys)) => {
+                let unix_secs = sys
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs());
+                unix_secs.is_some_and(|secs| secs == archived.as_secs())
+            }
+            (None, None) => true,
+            _ => false,
+        };
+
+        created_match && modified_match
+    }
+}
+
+impl ArchivedFileMetadata {
+    /// Check if archived file metadata timestamps match provided filesystem
+    /// times.
+    ///
+    /// Performs zero-copy comparison by delegating to the underlying
+    /// `ArchivedFsTimes`. Used for fast staleness detection without
+    /// deserialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::SystemTime;
+    ///
+    /// use lithos_core::fs::metadata::{FileMetadata, FsTimes};
+    ///
+    /// let times = FsTimes::new(Some(SystemTime::UNIX_EPOCH), None);
+    /// let metadata = FileMetadata::new(times, 1024, false);
+    /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).unwrap();
+    /// let archived = rkyv::access::<
+    ///     lithos_core::fs::metadata::ArchivedFileMetadata,
+    ///     rkyv::rancor::Error,
+    /// >(&bytes)
+    /// .unwrap();
+    ///
+    /// assert!(archived.is_timestamp_match(Some(SystemTime::UNIX_EPOCH), None));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.times.is_timestamp_match(created_at, modified_at)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -364,6 +485,67 @@ mod tests {
             }
         }
 
+        mod archived {
+            use super::*;
+
+            #[test]
+            fn is_timestamp_match_handles_none_and_some() {
+                let t1 = UNIX_EPOCH;
+                let t2 = SystemTime::now();
+
+                // Test: Some(t1), None - should match same values
+                let times_some_created = FsTimes::new(Some(t1), None);
+                let bytes_some_created =
+                    rkyv::to_bytes::<rkyv::rancor::Error>(&times_some_created)
+                        .unwrap();
+                let archived_some_created =
+                    rkyv::access::<ArchivedFsTimes, rkyv::rancor::Error>(
+                        &bytes_some_created,
+                    )
+                    .unwrap();
+
+                assert!(
+                    archived_some_created.is_timestamp_match(Some(t1), None)
+                );
+                assert!(
+                    !archived_some_created.is_timestamp_match(Some(t2), None)
+                );
+                assert!(!archived_some_created.is_timestamp_match(None, None));
+
+                // Test: None, Some(t2) - should match same values
+                let times_some_modified = FsTimes::new(None, Some(t2));
+                let bytes_some_modified =
+                    rkyv::to_bytes::<rkyv::rancor::Error>(&times_some_modified)
+                        .unwrap();
+                let archived_some_modified =
+                    rkyv::access::<ArchivedFsTimes, rkyv::rancor::Error>(
+                        &bytes_some_modified,
+                    )
+                    .unwrap();
+
+                assert!(
+                    archived_some_modified.is_timestamp_match(None, Some(t2))
+                );
+                assert!(
+                    !archived_some_modified.is_timestamp_match(None, Some(t1))
+                );
+                assert!(!archived_some_modified.is_timestamp_match(None, None));
+
+                // Test: None, None - should match None, None
+                let times_none = FsTimes::new(None, None);
+                let bytes_none =
+                    rkyv::to_bytes::<rkyv::rancor::Error>(&times_none).unwrap();
+                let archived_none = rkyv::access::<
+                    ArchivedFsTimes,
+                    rkyv::rancor::Error,
+                >(&bytes_none)
+                .unwrap();
+
+                assert!(archived_none.is_timestamp_match(None, None));
+                assert!(!archived_none.is_timestamp_match(Some(t1), None));
+            }
+        }
+
         #[test]
         fn converts_from_std_metadata() {
             use std::fs;
@@ -417,6 +599,73 @@ mod tests {
 
             assert_eq!(file_meta.size(), 5);
             assert!(file_meta.times().modified_at().is_some());
+        }
+
+        #[test]
+        fn is_size_match_compares_size_correctly() {
+            let times = FsTimes::new(None, None);
+            let metadata = FileMetadata::new(times, 1024, false);
+
+            assert!(metadata.is_size_match(1024));
+            assert!(!metadata.is_size_match(512));
+            assert!(!metadata.is_size_match(2048));
+        }
+
+        #[test]
+        fn is_timestamp_match_delegates_to_times() {
+            let now = SystemTime::now();
+            let earlier = UNIX_EPOCH;
+            let later =
+                now.checked_add(std::time::Duration::from_secs(1)).unwrap();
+
+            let times = FsTimes::new(Some(earlier), Some(now));
+            let metadata = FileMetadata::new(times, 1024, false);
+
+            // Should return true for matching timestamps
+            assert!(metadata.is_timestamp_match(Some(earlier), Some(now)));
+
+            // Should return false for different created time
+            assert!(!metadata.is_timestamp_match(Some(now), Some(now)));
+
+            // Should return false for different modified time
+            assert!(!metadata.is_timestamp_match(Some(earlier), Some(later)));
+
+            // Should return false for None vs Some mismatches
+            assert!(!metadata.is_timestamp_match(None, Some(now)));
+        }
+
+        mod archived {
+            use super::*;
+
+            #[test]
+            fn is_timestamp_match_performs_zero_copy_comparison() {
+                let now = SystemTime::now();
+                let earlier = UNIX_EPOCH;
+
+                let times = FsTimes::new(Some(earlier), Some(now));
+                let metadata = FileMetadata::new(times, 1024, false);
+
+                // Archive the metadata
+                let bytes =
+                    rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).unwrap();
+                let archived = rkyv::access::<
+                    ArchivedFileMetadata,
+                    rkyv::rancor::Error,
+                >(&bytes)
+                .unwrap();
+
+                // Should return true for matching timestamps (zero-copy)
+                assert!(archived.is_timestamp_match(Some(earlier), Some(now)));
+
+                // Should return false for different timestamps
+                assert!(!archived.is_timestamp_match(Some(now), Some(now)));
+                assert!(
+                    !archived.is_timestamp_match(Some(earlier), Some(earlier))
+                );
+
+                // Should return false for None mismatches
+                assert!(!archived.is_timestamp_match(None, Some(now)));
+            }
         }
     }
 

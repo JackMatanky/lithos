@@ -18,7 +18,10 @@ use crate::{
         vault::{VaultId, VaultRoot},
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
-    fs::{FileEntry, FileInfo, FileName, FsReader},
+    fs::{
+        FileEntry, FileName, FsReader,
+        metadata::{FileMetadata, FsTimes},
+    },
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -30,7 +33,7 @@ use crate::{
 /// Combines filesystem metadata with optional cached view from the database.
 #[derive(Debug)]
 pub(crate) struct GlobalDiscovery {
-    /// File entry from filesystem (path + `FileInfo`).
+    /// File entry from filesystem (path + `FileMetadata`).
     entry: Option<FileEntry>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawGlobalConfigView>,
@@ -49,10 +52,10 @@ impl GlobalDiscovery {
         self.view.as_ref()
     }
 
-    /// Returns the `FileInfo` from the entry, if present.
+    /// Returns the `FileMetadata` from the entry, if present.
     #[inline]
-    pub(crate) fn info(&self) -> Option<&FileInfo> {
-        self.entry.as_ref().map(|e| &e.info)
+    pub(crate) fn info(&self) -> Option<&FileMetadata> {
+        self.entry.as_ref().map(|e| &e.metadata)
     }
 }
 
@@ -61,7 +64,7 @@ impl GlobalDiscovery {
 /// Combines filesystem metadata with optional cached view from the database.
 #[derive(Debug)]
 pub(crate) struct VaultDiscovery {
-    /// File entry from filesystem (path + `FileInfo`).
+    /// File entry from filesystem (path + `FileMetadata`).
     entry: Option<FileEntry>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawVaultConfigView>,
@@ -80,10 +83,10 @@ impl VaultDiscovery {
         self.view.as_ref()
     }
 
-    /// Returns the `FileInfo` from the entry, if present.
+    /// Returns the `FileMetadata` from the entry, if present.
     #[inline]
-    pub(crate) fn info(&self) -> Option<&FileInfo> {
-        self.entry.as_ref().map(|e| &e.info)
+    pub(crate) fn info(&self) -> Option<&FileMetadata> {
+        self.entry.as_ref().map(|e| &e.metadata)
     }
 }
 
@@ -213,21 +216,18 @@ impl DiscoveryEngine {
     /// 3. `~/.config/lithos/lithos.toml`
     /// 4. `/etc/lithos/lithos.toml`
     ///
-    /// Returns the first existing file with its `FileInfo`.
+    /// Returns the first existing file with its `FileMetadata`.
     fn find_global_config() -> Result<Option<FileEntry>, ConfigIngestError> {
         let reader = FsReader::from_system_root();
 
         // Try each location in priority order
         for path in Self::global_config_paths() {
             if reader.exists(&path) {
+                let default_metadata =
+                    FileMetadata::new(FsTimes::new(None, None), 0, false);
                 let info = reader
                     .metadata(&path)
-                    .map(|m| {
-                        m.as_file().map_or_else(
-                            || FileInfo::new(None, None, 0),
-                            FileInfo::from,
-                        )
-                    })
+                    .map(|m| m.as_file().cloned().unwrap_or(default_metadata))
                     .map_err(ConfigIngestError::from)?;
 
                 let filename = path
@@ -239,7 +239,7 @@ impl DiscoveryEngine {
                 return Ok(Some(FileEntry {
                     path: path.clone(),
                     filename: FileName::from(filename),
-                    info,
+                    metadata: info,
                 }));
             }
         }
@@ -264,8 +264,8 @@ impl DiscoveryEngine {
             .metadata(relative_path)
             .map(|m| {
                 m.as_file().map_or_else(
-                    || FileInfo::new(None, None, 0),
-                    FileInfo::from,
+                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
+                    std::clone::Clone::clone,
                 )
             })
             .map_err(ConfigIngestError::from)?;
@@ -273,7 +273,7 @@ impl DiscoveryEngine {
         Ok(Some(FileEntry {
             path: vault_root.as_path().join(relative_path),
             filename: FileName::from("lithos.toml".to_owned()),
-            info,
+            metadata: info,
         }))
     }
 

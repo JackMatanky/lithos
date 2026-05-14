@@ -726,7 +726,7 @@ mod tests {
             raw::{RawGlobalPaths, RawLogging, RawVaultPaths},
             views::RawFileVersion,
         },
-        fs::FileInfo,
+        fs::metadata::{FileMetadata, FsTimes},
     };
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -741,7 +741,11 @@ mod tests {
             trusted_vaults: None,
             frontmatter: None,
             task: None,
-            metadata: Some(FileInfo::new(None, Some(now), 0)),
+            metadata: Some(FileMetadata::new(
+                FsTimes::new(None, Some(now)),
+                0,
+                false,
+            )),
         }
     }
 
@@ -755,7 +759,11 @@ mod tests {
             paths: RawVaultPaths::default(),
             frontmatter: None,
             task: None,
-            metadata: Some(FileInfo::new(None, Some(now), 0)),
+            metadata: Some(FileMetadata::new(
+                FsTimes::new(None, Some(now)),
+                0,
+                false,
+            )),
         }
     }
 
@@ -763,7 +771,7 @@ mod tests {
         let mut view = RawGlobalConfigView::new("/tmp/global.toml".into());
         let content =
             toml::to_string(raw).expect("raw global should serialize");
-        let file_info = raw.metadata.expect("metadata must exist");
+        let file_info = raw.metadata.clone().expect("metadata must exist");
         let version =
             RawFileVersion::new(content.as_bytes(), file_info).expect("valid");
         view.push_version(version);
@@ -835,7 +843,11 @@ mod tests {
         let view = global_view_for(&raw);
 
         // simulate mtime-only drift while content stays the same
-        raw.metadata = Some(FileInfo::new(None, Some(SystemTime::now()), 1));
+        raw.metadata = Some(FileMetadata::new(
+            FsTimes::new(None, Some(SystemTime::now())),
+            1,
+            false,
+        ));
 
         let processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(
             Some(raw),

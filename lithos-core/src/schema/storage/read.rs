@@ -539,7 +539,10 @@ mod tests {
 
     use crate::{
         db::{Store, serialize},
-        fs::{FileInfo, RelativePath},
+        fs::{
+            RelativePath,
+            metadata::{FileMetadata, FsTimes},
+        },
         schema::{
             aggregate::Schema,
             bank::PropertyBank,
@@ -559,7 +562,7 @@ mod tests {
 
     fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
         let path = RelativePath::try_from(path).unwrap();
-        let info = FileInfo::new(None, None, 100);
+        let info = FileMetadata::new(FsTimes::new(None, None), 100, false);
         let hashes = HashRecord::new(
             Blake3Hash::new([hash_byte; 32]),
             RawPropertyHashIndex::default(),
@@ -570,7 +573,7 @@ mod tests {
             extends: None,
             excludes: vec![],
             properties: RawPropertyMap::new(),
-            info: FileInfo::new(None, None, 0),
+            metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
         };
         let version = SchemaVersion::new(info, hashes, &raw).unwrap();
         RawSchemaView::new(path, version)

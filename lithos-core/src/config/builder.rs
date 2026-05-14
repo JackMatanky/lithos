@@ -413,11 +413,12 @@ where
     fn raw_global_to_version(
         raw: &RawGlobalConfig,
     ) -> Result<RawFileVersion, ConfigError> {
-        let file_info = raw.metadata.ok_or(ConfigError::ValidationFailed {
-            field: "global.metadata".into(),
-            message: "missing file metadata for global config view update"
-                .into(),
-        })?;
+        let file_info =
+            raw.metadata.clone().ok_or(ConfigError::ValidationFailed {
+                field: "global.metadata".into(),
+                message: "missing file metadata for global config view update"
+                    .into(),
+            })?;
         let content = toml::to_string(raw).map_err(|error| {
             ConfigError::ValidationFailed {
                 field: "global".into(),
@@ -441,11 +442,12 @@ where
     fn raw_vault_to_version(
         raw: &RawVaultConfig,
     ) -> Result<RawFileVersion, ConfigError> {
-        let file_info = raw.metadata.ok_or(ConfigError::ValidationFailed {
-            field: "vault.metadata".into(),
-            message: "missing file metadata for vault config view update"
-                .into(),
-        })?;
+        let file_info =
+            raw.metadata.clone().ok_or(ConfigError::ValidationFailed {
+                field: "vault.metadata".into(),
+                message: "missing file metadata for vault config view update"
+                    .into(),
+            })?;
         let content = toml::to_string(raw).map_err(|error| {
             ConfigError::ValidationFailed {
                 field: "vault".into(),

@@ -25,7 +25,7 @@ use walkdir::WalkDir;
 use super::{
     entry::FsEntry,
     error::{PathError, ScanError},
-    file::{FileEntry, FileInfo},
+    file::FileEntry,
     name::FileName,
     path::{DirPath, FilePath, FsPath},
 };
@@ -152,7 +152,11 @@ impl DirScanner {
     ///     .entries(DirScanInput::new().with_extensions(&["toml", "yaml"]))?;
     ///
     /// for entry in entries {
-    ///     println!("{}: {} bytes", entry.filename.as_str(), entry.info.size());
+    ///     println!(
+    ///         "{}: {} bytes",
+    ///         entry.filename.as_str(),
+    ///         entry.metadata.size()
+    ///     );
     /// }
     /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
@@ -175,7 +179,7 @@ impl DirScanner {
             entries.push(FileEntry {
                 path: relative_path,
                 filename,
-                info: FileInfo::from(metadata),
+                metadata: super::metadata::FileMetadata::from(&metadata),
             });
         }
 
@@ -813,7 +817,7 @@ mod tests {
                 entries.first().map(|e| e.filename.as_str()),
                 Some("a.toml")
             );
-            assert_eq!(entries.first().map(|e| e.info.size()), Some(12));
+            assert_eq!(entries.first().map(|e| e.metadata.size()), Some(12));
         }
 
         #[test]

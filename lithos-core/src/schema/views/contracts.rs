@@ -83,7 +83,8 @@
 //!
 //! ## Types Referenced
 //!
-//! - [`FileInfo`]: File timestamp and size metadata for fast staleness checks.
+//! - [`FileMetadata`]: File timestamp and size metadata for fast staleness
+//!   checks.
 //! - [`Blake3Hash`]: Cryptographic content hash for accurate staleness
 //!   detection.
 //! - [`HashRecord`]: Combined content hash + per-property hashes for
@@ -93,13 +94,15 @@
 //! [`RawPropertyBankView`]: super::raw::RawPropertyBankView
 //! [`SchemaVersion`]: super::snapshots::SchemaVersion
 //! [`PropertyBankVersion`]: super::snapshots::PropertyBankVersion
-//! [`FileInfo`]: crate::fs::FileInfo
+//! [`FileMetadata`]: crate::fs::metadata::FileMetadata
 
 use std::time::SystemTime;
 
 use super::HashRecord;
 use crate::{
-    fs::FileInfo, schema::error::SchemaStorageError, support::hash::Blake3Hash,
+    fs::metadata::{FileMetadata, FsTimes},
+    schema::error::SchemaStorageError,
+    support::hash::Blake3Hash,
 };
 
 /// Defines the mutable container contract for versioned raw-file views.
@@ -146,12 +149,12 @@ pub(crate) trait RawView: RawViewRead {
         content_hash: Blake3Hash,
     ) -> Result<(), SchemaStorageError>;
 
-    /// Updates complete file info for the current version, if present.
+    /// Updates complete file metadata for the current version, if present.
     #[inline]
-    fn update_file_info(&mut self, info: FileInfo) {
+    fn update_metadata(&mut self, metadata: FileMetadata) {
         let _version_count: usize = RawViewRead::version_count(self);
         if let Some(current) = self.current_mut() {
-            current.set_file_info(info);
+            current.set_metadata(metadata);
         }
     }
 
@@ -165,8 +168,11 @@ pub(crate) trait RawView: RawViewRead {
         modified_at: Option<SystemTime>,
     ) {
         if let Some(current) = self.current_mut() {
-            let size = Version::file_info(current).size();
-            current.set_file_info(FileInfo::new(created_at, modified_at, size));
+            let old_metadata = Version::metadata(current);
+            let size = old_metadata.size();
+            let is_symlink = old_metadata.is_symlink();
+            let times = FsTimes::new(created_at, modified_at);
+            current.set_metadata(FileMetadata::new(times, size, is_symlink));
         }
     }
 }
@@ -199,8 +205,8 @@ pub(crate) trait RawViewRead {
     reason = "Trait surface used selectively by snapshot pipelines"
 )]
 pub(crate) trait Version: VersionRead + Sized {
-    /// Returns file info metadata for this version.
-    fn file_info(&self) -> &FileInfo;
+    /// Returns file metadata for this version.
+    fn metadata(&self) -> &FileMetadata;
 
     /// Returns hash metadata for staleness and incremental resolution.
     fn hashes(&self) -> &HashRecord;
@@ -208,15 +214,16 @@ pub(crate) trait Version: VersionRead + Sized {
     /// Returns when this version was recorded in storage.
     fn recorded_at(&self) -> SystemTime;
 
-    /// Updates file info metadata in-place.
-    fn set_file_info(&mut self, info: FileInfo);
+    /// Updates file metadata in-place.
+    fn set_metadata(&mut self, metadata: FileMetadata);
 
     /// Clones this version with replacement metadata.
     ///
     /// Resets cached data (e.g., expanded properties) to maintain
     /// consistency with the new metadata.
     #[must_use]
-    fn with_metadata(&self, info: FileInfo, hashes: HashRecord) -> Self;
+    fn with_metadata(&self, metadata: FileMetadata, hashes: HashRecord)
+    -> Self;
 }
 
 /// Defines the read-only contract shared by snapshot payloads.
@@ -228,7 +235,7 @@ pub(crate) trait Version: VersionRead + Sized {
     reason = "Trait surface used selectively by snapshot pipelines"
 )]
 pub(crate) trait VersionRead {
-    /// Returns file info metadata for this version.
+    /// Returns file metadata for this version.
     ///
     /// # Panics
     /// Default implementation panics - archived types must override
@@ -239,10 +246,10 @@ pub(crate) trait VersionRead {
         reason = "Intentional panic for unimplemented default - not reachable \
                   in production"
     )]
-    fn file_info(&self) -> &FileInfo {
+    fn metadata(&self) -> &FileMetadata {
         panic!(
             "Archived types must override is_timestamp_match() instead of \
-             using file_info()"
+             using metadata()"
         )
     }
 
