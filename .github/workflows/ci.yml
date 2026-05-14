@@ -29,7 +29,7 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -59,7 +59,7 @@ jobs:
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
       - uses: swatinem/rust-cache@v2
       - name: Run Quality Gates
         run: mise run quality
@@ -94,7 +94,7 @@ jobs:
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
         env:
           MISE_RUST_VERSION: ${{ matrix.rust-version }}
       - uses: swatinem/rust-cache@v2
@@ -125,7 +125,7 @@ jobs:
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
       - uses: swatinem/rust-cache@v2
       - name: Run Burn-In Loop
         run: mise run test:burn-in 10 "test"
@@ -141,7 +141,7 @@ jobs:
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
       - uses: swatinem/rust-cache@v2
       - name: Generate Coverage
         timeout-minutes: 20
@@ -161,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
       - name: Cargo Deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -174,7 +174,7 @@ jobs:
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true')
     steps:
       - uses: actions/checkout@v6
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
       - uses: swatinem/rust-cache@v2
       - name: Run Benchmarks
         uses: boa-dev/criterion-compare-action@v3
@@ -195,7 +195,7 @@ jobs:
   #       with:
   #         toolchain: stable
   #         targets: ${{ matrix.target }}
-  #     - uses: jdx/mise-action@v3
+  #     - uses: jdx/mise-action@v4
   #     - uses: swatinem/rust-cache@v2
   #     - name: Check Compilation
   #       run: cargo check --target ${{ matrix.target }}
@@ -215,7 +215,7 @@ jobs:
         run: echo "🚀 Deployment readiness confirmed."
       - name: Notify on Failure
         if: failure()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
