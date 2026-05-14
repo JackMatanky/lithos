@@ -213,11 +213,10 @@ Legend:
 - Upgrade concerns: output compatibility assumptions in persisted/indexed data.
 
 ### rand
-- Purpose: randomness for IDs, tests, and non-cryptographic randomized behavior.
-- Why selected: ecosystem standard with predictable ergonomics.
-- Where used: utility/test paths and any randomized generation helpers.
-- Important flags: default.
-- Upgrade concerns: API/trait evolution across major versions; reproducibility in tests.
+- Purpose: random value generation support for future template helper functions.
+- Current state: deferred; removed from active manifests due to no current code usage.
+- Recommendation: re-add when implementing template random value functions.
+- Source context: historical planning mentions future random template functions in `docs/history/bmad/planning/epics/epic-12-basic-interactive-template-system-mvp-core.md`.
 
 ### Core-local (not workspace-managed): `itoa`, `ryu`
 - Purpose: fast formatting/compression/encoding primitives.
