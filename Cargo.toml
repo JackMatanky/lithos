@@ -38,7 +38,7 @@ rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1", "unaligned"]
 uuid = { version = "1.22", features = ["v7", "v5", "serde"] }
 
 # Application Logic
-minijinja = "2.14"
+minijinja = "2.17"
 pulldown-cmark = "0.13"
 figment = { version = "0.10", features = ["toml", "env"] }
 # anyhow = "1.0"  # Completely unused - codebase uses thiserror exclusively
