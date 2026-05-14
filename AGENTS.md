@@ -113,6 +113,7 @@ This project uses **mise** for tool versioning and task management. Use the Mise
 - **Naming**: Follow [Naming Taxonomy](docs/naming-taxonomy.md)
 - **Idioms**: Follow [Rust Unofficial Idioms](docs/refs/rust/rust_unofficial_idioms/)
 - **Performance**: Adhere to [Zero-Copy & Crate Patterns](docs/refs/crates/) (rkyv, redb)
+- **Dependencies**: Consult and update [Dependency Registry](docs/DEPENDENCIES.md) when adding, removing, or revisiting crates.
 - **Type Safety**: Private fields by default, validation at construction, newtype wrappers for domain constraints.
 - **Test-First**: Red-green-refactor cycle required - tests before implementation.
 
