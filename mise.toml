@@ -14,6 +14,7 @@ pre-commit = "latest"
 "cargo:cargo-watch" = "latest"
 "cargo:cargo-deny" = "latest"
 "cargo:cargo-nextest" = "latest"
+"cargo:critcmp" = "latest"
 "cargo:wasm-pack" = "latest"
 
 # ------------------------------------------------------------- #
@@ -75,6 +76,11 @@ junit_integration = "nextest-integration.xml"
 
 # Build artifacts
 binary_name = "lithos"
+
+# Benchmark configuration
+bench_archive_dir = ".benchmarks/baselines"
+bench_package_core = "lithos-core"
+bench_package_cli = "lithos-cli"
 
 # ------------------------------------------------------------- #
 #                             Tasks                             #
