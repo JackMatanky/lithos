@@ -219,10 +219,21 @@ Legend:
 - Important flags: default.
 - Upgrade concerns: API/trait evolution across major versions; reproducibility in tests.
 
-### Core-local (not workspace-managed): `itoa`, `ryu`, `zstd`, `hex`
+### Core-local (not workspace-managed): `itoa`, `ryu`
 - Purpose: fast formatting/compression/encoding primitives.
 - Where used: `lithos-core` internals.
 - Upgrade concerns: output compatibility + compression performance changes.
+
+#### Relevance check (2026-05-14)
+- `itoa`: actively used in `lithos-core/benches/string_construction.rs` for numeric formatting benchmarks.
+- `ryu`: actively used in `lithos-core/benches/string_construction.rs` for float formatting benchmarks.
+
+Removed from `lithos-core/Cargo.toml`:
+- `zstd` (unused)
+- `hex` (unused)
+
+Recommendation:
+- Keep `itoa` and `ryu`.
 
 ---
 

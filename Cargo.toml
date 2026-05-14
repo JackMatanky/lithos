@@ -22,57 +22,55 @@ keywords = ["cli", "templating", "obsidian", "schema"]
 categories = ["command-line-utilities", "template-engine"]
 
 [workspace.dependencies]
-# Async & Runtime
-tokio = { version = "1.49", features = ["macros"] }
-async-trait = "0.1"
+# Core Runtime
 rayon = "1.10"
 
-# API & CLI
-clap = { version = "4.5", features = ["env"] }
-miette = { version = "7.6", features = ["fancy"] }
-
-# Data & Persistence
+# Persistence
 redb = "4.1"
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = { version = "1.0", default-features = false, features = ["std"] }
-serde_yaml = "0.9"
-toml = "0.8"
+
+# Serialization
 rkyv = { version = "0.8", features = [
   "bytecheck",
   "std",
   "uuid-1",
   "unaligned",
 ] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+serde_yaml = "0.9"
+toml = "0.8"
 uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 
-# Application Logic
-minijinja = "2.14"
+# Parsing
 pulldown-cmark = "0.13"
-figment = { version = "0.10", features = ["toml", "env"] }
-# anyhow = "1.0"  # Completely unused - codebase uses thiserror exclusively
+
+# Template Engine
+minijinja = "2.14"
+
+# Error Handling
+miette = { version = "7.6", features = ["fancy"] }
 thiserror = "2.0"
+
+# CLI and Observability
+clap = { version = "4.5", features = ["env"] }
 tracing = "0.1"
 
 # Utilities
-chrono = { version = "0.4", features = ["serde"] }
-convert_case = "0.10"
-slug = "0.1"
 base64 = "0.22"
-rand = "0.8"
 blake3 = "1.6"
+chrono = { version = "0.4", features = ["serde"] }
+glob = "0.3"
+rand = "0.8"
 regex = "1.11"
 walkdir = "2.5"
-glob = "0.3"
 
-# Testing & Benchmarking
-criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
-dhat = "0.3"
-assert_cmd = "2.0"
-predicates = "3.1"
-tempfile = "3.12"
-mockall = "0.13"
+# Testing
 proptest = "1.5"
 rstest = "0.23"
+tempfile = "3.12"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 
 # Internal Workspace Crates
 lithos-core = { path = "lithos-core" }

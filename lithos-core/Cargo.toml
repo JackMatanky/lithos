@@ -52,8 +52,6 @@ pulldown-cmark.workspace = true
 
 # Safe temporary file creation (used by atomic_write in production code)
 tempfile.workspace = true
-zstd = "0.13.3"
-hex = "0.4.3"
 base64.workspace = true
 
 [dev-dependencies]
