@@ -58,7 +58,8 @@ use lithos_core::{
     },
     fs::FsReader,
     schema::{
-        builder::Builder, property::PropertyName, storage::Repository as _,
+        builder::Builder, property::PropertyName,
+        repository::ReadRepository as _,
     },
 };
 use tempfile::TempDir;
@@ -147,7 +148,7 @@ mod initial_loading {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -208,7 +209,7 @@ mod initial_loading {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -276,7 +277,7 @@ mod initial_loading {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -334,7 +335,7 @@ mod initial_loading {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -342,7 +343,7 @@ mod initial_loading {
         let _resolved = loader.load_all()?;
 
         // Verify property bank was persisted (need new repository instance)
-        let repository2 = setup_repository(test_db.db());
+        let repository2 = setup_repository(test_db.store());
         let bank = repository2.get_property_bank()?;
         assert!(bank.is_some(), "Property bank should be persisted");
         let bank = bank.expect("Bank should exist");
@@ -416,7 +417,7 @@ mod inheritance {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -505,7 +506,7 @@ mod incremental_loading {
 
         // FIRST LOAD: Both schemas should be NEW
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
         let first = loader.load_all()?;
@@ -529,7 +530,7 @@ mod incremental_loading {
         )?;
 
         // SECOND LOAD: Only task.json should be re-resolved
-        let repository2 = setup_repository(test_db.db());
+        let repository2 = setup_repository(test_db.store());
         let source2 = FsReader::new(vault_dir.path());
         let mut loader2 = Builder::new(repository2, source2, &config);
         let second = loader2.load_all()?;
@@ -598,22 +599,22 @@ mod incremental_loading {
 
         // FIRST SESSION: Load schemas
         {
-            let repository = setup_repository(test_db.db());
+            let repository = setup_repository(test_db.store());
             let source = FsReader::new(vault_dir.path());
             let mut loader = Builder::new(repository, source, &config);
             let first = loader.load_all()?;
             assert_eq!(first.len(), 1);
         }; // Repository dropped, but database Arc still held by test_db
 
-        // IMPORTANT: Must drop test_db.db() Arc before reopen
+        // IMPORTANT: Must drop test_db.store() Arc before reopen
         // This happens implicitly when reopen() is called (it replaces the Arc)
 
         // REOPEN DATABASE: Simulate fresh application start
-        let fresh_db = test_db.reopen()?;
+        let _fresh_db = test_db.reopen()?;
 
         // SECOND SESSION: Load again without file changes
         let second = {
-            let repository2 = setup_repository(&fresh_db);
+            let repository2 = setup_repository(test_db.store());
             let source2 = FsReader::new(vault_dir.path());
             let mut loader2 = Builder::new(repository2, source2, &config);
             loader2.load_all()?
@@ -627,7 +628,7 @@ mod incremental_loading {
         );
 
         // VERIFY: Check that RawSchemaView was persisted
-        let repository3 = setup_repository(&fresh_db);
+        let repository3 = setup_repository(test_db.store());
         let path =
             lithos_core::fs::RelativePath::try_from("schemas/task.json")?;
         let view = repository3.find_raw_schema_view_by_path(&path)?;
@@ -688,7 +689,7 @@ mod incremental_loading {
 
         // FIRST LOAD
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
         let first = loader.load_all()?;
@@ -728,7 +729,7 @@ mod incremental_loading {
         )?;
 
         // SECOND LOAD: Schema should be re-resolved with new property
-        let repository2 = setup_repository(test_db.db());
+        let repository2 = setup_repository(test_db.store());
         let source2 = FsReader::new(vault_dir.path());
         let mut loader2 = Builder::new(repository2, source2, &config);
         let second = loader2.load_all()?;
@@ -808,7 +809,7 @@ mod error_handling {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
@@ -862,7 +863,7 @@ mod error_handling {
         )?;
 
         let config = test_config(vault_dir.path())?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
         let source = FsReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 

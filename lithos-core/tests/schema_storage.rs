@@ -51,7 +51,7 @@ use lithos_core::schema::{
     bank::PropertyBank,
     identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyMap},
-    storage::Repository as _,
+    repository::{ReadRepository as _, WriteRepository as _},
 };
 
 // ========================================================================
@@ -82,7 +82,7 @@ mod roundtrip_tests {
     #[test]
     fn property_bank_roundtrip() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create and save property bank
         let (prop_name, prop) = PropertyBuilder::new("status")
@@ -120,7 +120,7 @@ mod roundtrip_tests {
     #[test]
     fn schema_roundtrip() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create schema
         let (prop_name, prop) =
@@ -137,7 +137,7 @@ mod roundtrip_tests {
         let schema_id = *schema.id();
 
         // Save
-        repository.save_schemas(&[&schema])?;
+        repository.save_many_schemas(std::slice::from_ref(&schema))?;
 
         // Retrieve by ID
         let loaded = repository.find_schema_by_id(schema_id)?;
@@ -175,7 +175,7 @@ mod lookup_tests {
     #[test]
     fn schema_find_by_name() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create and save
         let (prop_name, prop) =
@@ -190,7 +190,7 @@ mod lookup_tests {
             PropertyMap::from(props),
         );
         let schema_id = *schema.id();
-        repository.save_schemas(&[&schema])?;
+        repository.save_many_schemas(std::slice::from_ref(&schema))?;
 
         // Find by name
         let name = SchemaName::try_new("project")?;
@@ -226,7 +226,7 @@ mod lookup_tests {
     #[test]
     fn schema_list() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Save multiple schemas
         let (title_name, title_prop) =
@@ -251,7 +251,7 @@ mod lookup_tests {
             vec![],
             PropertyMap::from(note_props),
         );
-        repository.save_schemas(&[&schema1, &schema2])?;
+        repository.save_many_schemas(&[schema1.clone(), schema2.clone()])?;
 
         // List all
         let all = repository.list_schemas()?;
@@ -291,7 +291,7 @@ mod durability_tests {
     #[test]
     fn property_bank_survives_restart() -> TestResult {
         let mut test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create and save property bank
         let (prop_name, prop) = PropertyBuilder::new("status")
@@ -307,8 +307,8 @@ mod durability_tests {
         drop(repository);
 
         // Reopen database (simulates process restart)
-        let db = test_db.reopen()?;
-        let repository_after_restart = setup_repository(&db);
+        let _db = test_db.reopen()?;
+        let repository_after_restart = setup_repository(test_db.store());
 
         // Verify PropertyBank survived restart
         let loaded = repository_after_restart
@@ -351,7 +351,7 @@ mod durability_tests {
     #[test]
     fn schema_survives_restart() -> TestResult {
         let mut test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create schema with properties
         let (prop_name, prop) =
@@ -371,14 +371,14 @@ mod durability_tests {
         let schema_name = schema.name().clone();
 
         // Save schema
-        repository.save_schemas(&[&schema])?;
+        repository.save_many_schemas(std::slice::from_ref(&schema))?;
 
         // Drop repository to release Arc reference before reopen
         drop(repository);
 
         // Reopen database (simulates process restart)
-        let db = test_db.reopen()?;
-        let repository_after_restart = setup_repository(&db);
+        let _db = test_db.reopen()?;
+        let repository_after_restart = setup_repository(test_db.store());
 
         // Verify schema survived restart
         let loaded = repository_after_restart
@@ -442,7 +442,7 @@ mod batch_operations {
     #[test]
     fn batch_save_is_atomic() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Prepare batch with 3 valid schemas
         let (prop_name, prop) =
@@ -478,7 +478,11 @@ mod batch_operations {
         let id_c = *schema_c.id();
 
         // Save batch
-        repository.save_schemas(&[&schema_a, &schema_b, &schema_c])?;
+        repository.save_many_schemas(&[
+            schema_a.clone(),
+            schema_b.clone(),
+            schema_c.clone(),
+        ])?;
 
         // Verify ALL schemas were saved (atomic commit)
         let loaded_a = repository.find_schema_by_id(id_a)?;
@@ -538,7 +542,7 @@ mod regression_tests {
     #[test]
     fn empty_schemas_batch_save_and_list() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create 2 schemas with NO properties (edge case)
         let schema1 = Schema::new(
@@ -560,7 +564,7 @@ mod regression_tests {
         let id2 = *schema2.id();
 
         // Save both in batch
-        repository.save_schemas(&[&schema1, &schema2])?;
+        repository.save_many_schemas(&[schema1.clone(), schema2.clone()])?;
 
         // List all schemas (this is where the bug manifested)
         let all_schemas = repository.list_schemas()?;
@@ -602,7 +606,7 @@ mod regression_tests {
     #[test]
     fn separate_saves_then_list() -> TestResult {
         let test_db = TestDb::new()?;
-        let repository = setup_repository(test_db.db());
+        let repository = setup_repository(test_db.store());
 
         // Create and save schema 1
         let (field1_name, field1_prop) =
@@ -618,7 +622,7 @@ mod regression_tests {
             PropertyMap::from(schema1_props),
         );
         let id1 = *schema1.id();
-        repository.save_schemas(&[&schema1])?;
+        repository.save_many_schemas(std::slice::from_ref(&schema1))?;
 
         // Verify schema 1 loads
         let loaded_schema1 = repository.find_schema_by_id(id1)?;
@@ -641,7 +645,7 @@ mod regression_tests {
             PropertyMap::from(schema2_props),
         );
         let id2 = *schema2.id();
-        repository.save_schemas(&[&schema2])?;
+        repository.save_many_schemas(std::slice::from_ref(&schema2))?;
 
         // Verify both schemas can be listed
         let all_schemas = repository.list_schemas()?;

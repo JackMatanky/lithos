@@ -10,11 +10,10 @@ use crate::{
     config::paths::SchemaConfigSpec,
     fs::{DirScanInput, DirScanner, FileEntry, RelativePath},
     schema::{
-        error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-        },
+        error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
         inheritance::InheritanceGraph,
+        repository::ReadRepository,
         views::{RawPropertyBankView, RawSchemaView},
     },
 };
@@ -200,8 +199,7 @@ impl DiscoveryEngine {
         vault_root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
-        R: crate::schema::storage::Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: ReadRepository,
     {
         // Step 1: Scan filesystem
         let entries = Self::scan_filesystem(spec, vault_root)?;
@@ -304,9 +302,11 @@ impl DiscoveryEngine {
     // Database Operations
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Queries all cached state from DB in single transaction.
+    /// Queries cached state from repository read seam in one coherent pass.
     ///
-    /// Performance: Single batch read with closure (hot path stays inline).
+    /// Note: each repository method controls its own storage transaction
+    /// boundary. Discovery maintains a single orchestration pass over those
+    /// read methods and skips schema batch lookups when no schema files exist.
     ///
     /// # Errors
     ///
@@ -318,8 +318,7 @@ impl DiscoveryEngine {
         property_bank_path: &RelativePath,
     ) -> Result<CachedState, SchemaLoaderError>
     where
-        R: crate::schema::storage::Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: ReadRepository,
     {
         #[expect(
             clippy::pattern_type_mismatch,
@@ -329,28 +328,49 @@ impl DiscoveryEngine {
         let schema_paths: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
-        repo.with_batch_schema_reader(|batch_reader| {
-            let graph = batch_reader.get_topological_graph()?;
+        let graph = repo
+            .get_topological_graph()
+            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
 
-            let property_bank_view = match property_bank_entry {
-                Some(_) => batch_reader
-                    .get_raw_property_bank_view(property_bank_path)?,
-                None => None,
-            };
+        let property_bank_view = match property_bank_entry {
+            Some(_) => repo
+                .get_raw_property_bank_view(property_bank_path)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?,
+            None => None,
+        };
 
-            let schema_views =
-                batch_reader.find_raw_schema_views_by_paths(&schema_paths)?;
-            let schema_ids =
-                batch_reader.find_schema_ids_by_paths(&schema_paths)?;
+        let (schema_views, schema_ids) = if schema_paths.is_empty() {
+            (HashMap::new(), HashMap::new())
+        } else {
+            let schema_views = repo
+                .find_raw_schema_views_by_paths(&schema_paths)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            let schema_views = schema_paths
+                .iter()
+                .cloned()
+                .zip(schema_views)
+                .filter_map(|(path, view)| view.map(|v| (path, v)))
+                .collect();
 
-            Ok(CachedState {
-                graph,
-                property_bank_view,
-                schema_views,
-                schema_ids,
-            })
+            let schema_ids = repo
+                .find_schema_ids_by_paths(&schema_paths)
+                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            let schema_ids = schema_paths
+                .iter()
+                .cloned()
+                .zip(schema_ids)
+                .filter_map(|(path, id)| id.map(|v| (path, v)))
+                .collect();
+
+            (schema_views, schema_ids)
+        };
+
+        Ok(CachedState {
+            graph,
+            property_bank_view,
+            schema_views,
+            schema_ids,
         })
-        .map_err(|e| SchemaLoaderError::Repository(e.into()))
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -364,7 +384,7 @@ impl DiscoveryEngine {
     fn build_result(
         property_bank_entry: Option<FileEntry>,
         schema_entries: Vec<(RelativePath, FileEntry)>,
-        cached: CachedState,
+        mut cached: CachedState,
     ) -> DiscoveryResult {
         // Build property bank discovery
         let property_bank =
@@ -378,21 +398,18 @@ impl DiscoveryEngine {
         let mut filesystem_ids = HashSet::with_capacity(schema_entries.len());
 
         for (path, entry) in schema_entries {
-            let cached_state =
-                if let Some(view) = cached.schema_views.get(&path) {
-                    let id = cached
-                        .schema_ids
-                        .get(&path)
-                        .copied()
-                        .unwrap_or_else(SchemaId::new);
-                    filesystem_ids.insert(id);
-                    Some(SchemaCachedState {
-                        id,
-                        view: view.clone(),
-                    })
-                } else {
-                    None
-                };
+            let cached_state = if let Some(view) =
+                cached.schema_views.remove(&path)
+            {
+                let id = cached.schema_ids.remove(&path).unwrap_or_default();
+                filesystem_ids.insert(id);
+                Some(SchemaCachedState {
+                    id,
+                    view,
+                })
+            } else {
+                None
+            };
 
             schemas.insert(path, SchemaDiscovery {
                 entry,
@@ -432,10 +449,198 @@ impl DiscoveryEngine {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        collections::HashMap,
+        path::PathBuf,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     use super::*;
-    use crate::schema::testing::InMemoryRepository;
+    use crate::schema::{
+        aggregate::Schema,
+        bank::PropertyBank,
+        identifier::{SchemaId, SchemaName},
+        index::{NameIdPairs, PathIdPairs, SchemaIndex},
+        inheritance::InheritanceGraph,
+        property::PropertyName,
+        repository::ReadRepository,
+        storage::testing::InMemoryRepository,
+        views::{RawPropertyBankView, RawSchemaView},
+    };
+
+    struct CountingReadRepo {
+        inner: InMemoryRepository,
+        raw_views_by_paths_calls: AtomicUsize,
+        ids_by_paths_calls: AtomicUsize,
+    }
+
+    impl CountingReadRepo {
+        fn new() -> Self {
+            Self {
+                inner: InMemoryRepository::new(),
+                raw_views_by_paths_calls: AtomicUsize::new(0),
+                ids_by_paths_calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl ReadRepository for CountingReadRepo {
+        fn find_schema_by_id(
+            &self,
+            id: SchemaId,
+        ) -> Result<Option<Schema>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.find_schema_by_id(id)
+        }
+
+        fn find_many_schemas_by_id(
+            &self,
+            ids: &[SchemaId],
+        ) -> Result<Vec<Option<Schema>>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.find_many_schemas_by_id(ids)
+        }
+
+        fn find_schemas_by_ids(
+            &self,
+            ids: &[SchemaId],
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.find_schemas_by_ids(ids)
+        }
+
+        fn list_schemas(
+            &self,
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.list_schemas()
+        }
+
+        fn find_schemas_using_properties(
+            &self,
+            property_names: &[PropertyName],
+        ) -> Result<
+            HashMap<SchemaId, Vec<PropertyName>>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.find_schemas_using_properties(property_names)
+        }
+
+        fn get_raw_schema_view(
+            &self,
+            id: SchemaId,
+        ) -> Result<
+            Option<RawSchemaView>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.get_raw_schema_view(id)
+        }
+
+        fn find_raw_schema_view_by_path(
+            &self,
+            path: &RelativePath,
+        ) -> Result<
+            Option<RawSchemaView>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.find_raw_schema_view_by_path(path)
+        }
+
+        fn find_raw_schema_views_by_paths(
+            &self,
+            paths: &[RelativePath],
+        ) -> Result<
+            Vec<Option<RawSchemaView>>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.raw_views_by_paths_calls.fetch_add(1, Ordering::Relaxed);
+            self.inner.find_raw_schema_views_by_paths(paths)
+        }
+
+        fn get_property_bank(
+            &self,
+        ) -> Result<
+            Option<PropertyBank>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.get_property_bank()
+        }
+
+        fn get_topological_graph(
+            &self,
+        ) -> Result<
+            Option<InheritanceGraph<()>>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.get_topological_graph()
+        }
+
+        fn get_raw_property_bank_view(
+            &self,
+            path: &RelativePath,
+        ) -> Result<
+            Option<RawPropertyBankView>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.inner.get_raw_property_bank_view(path)
+        }
+
+        fn find_schema_id_by_name(
+            &self,
+            name: &SchemaName,
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.find_schema_id_by_name(name)
+        }
+
+        fn find_schema_id_by_path(
+            &self,
+            path: &RelativePath,
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.find_schema_id_by_path(path)
+        }
+
+        fn find_schema_ids_by_paths(
+            &self,
+            paths: &[RelativePath],
+        ) -> Result<
+            Vec<Option<SchemaId>>,
+            crate::schema::error::SchemaStorageError,
+        > {
+            self.ids_by_paths_calls.fetch_add(1, Ordering::Relaxed);
+            self.inner.find_schema_ids_by_paths(paths)
+        }
+
+        fn list_schema_name_id_pairs(
+            &self,
+        ) -> Result<NameIdPairs, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.list_schema_name_id_pairs()
+        }
+
+        fn list_schema_path_id_pairs(
+            &self,
+        ) -> Result<PathIdPairs, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.list_schema_path_id_pairs()
+        }
+
+        fn get_schema_index(
+            &self,
+        ) -> Result<SchemaIndex, crate::schema::error::SchemaStorageError>
+        {
+            self.inner.get_schema_index()
+        }
+    }
+
+    fn accepts_read_repository_only<R: ReadRepository>(
+        spec: &SchemaConfigSpec,
+        repo: &R,
+        root: &std::path::Path,
+    ) -> Result<DiscoveryResult, SchemaLoaderError> {
+        DiscoveryEngine::run(spec, repo, root)
+    }
 
     #[test]
     fn run_finds_all_files() {
@@ -456,10 +661,34 @@ mod tests {
         );
 
         let repo = InMemoryRepository::new();
-        let result = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
+        let result =
+            accepts_read_repository_only(&spec, &repo, root.path()).unwrap();
 
         assert_eq!(result.schemas.len(), 1);
         assert!(result.property_bank.is_some());
         assert!(result.has_schemas());
+    }
+
+    #[test]
+    fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
+        let root = tempfile::tempdir().unwrap();
+        let schema_dir = root.path().join("schemas");
+        std::fs::create_dir_all(&schema_dir).unwrap();
+
+        let bank_path = schema_dir.join("property_bank.json");
+        std::fs::write(&bank_path, "{}").unwrap();
+
+        let spec = SchemaConfigSpec::new(
+            RelativePath::try_from(PathBuf::from("schemas")).unwrap(),
+            RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
+                .unwrap(),
+        );
+
+        let repo = CountingReadRepo::new();
+        let result = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
+
+        assert!(!result.has_schemas());
+        assert_eq!(repo.raw_views_by_paths_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(repo.ids_by_paths_calls.load(Ordering::Relaxed), 0);
     }
 }

@@ -183,7 +183,7 @@ We will deep dive into docs at a later stage, so in this section we will just br
 * No extra testing boilerplate. You can easily hide test sections by prefixing the line with `#`.
 * ❗ There is no issue if you have test duplication between doc-tests and other non-public facing tests.
 
-```rust
+````rust
 /// Helper function that adds any two numeric values together.
 /// This function reasons about which would be the correct type to parse based on the type
 /// and the size of the numeric value.
@@ -202,7 +202,7 @@ We will deep dive into docs at a later stage, so in this section we will just br
 /// generic_add(2, 2.0) // => 4
 /// # , 4)
 /// ```
-```
+````
 
 This documentation code would look like:
 ```rust

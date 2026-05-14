@@ -2,9 +2,9 @@
 title: 03-schema-batch-semantics-in-read-write
 category: enhancement
 label: ready-for-agent
-status: in_progress
+status: completed
 date_created: 2026-05-10
-date_completed: 2026-05-11
+date_completed: 2026-05-12
 ---
 
 ## Type
@@ -39,14 +39,44 @@ Batch operations were implemented in a unified `SchemaRepository` trait within a
 - `SchemaRedbRepository` - the implementation struct.
 
 **Acceptance criteria:**
-- [ ] `save_many_schemas` added to `SchemaWriteRepository` in `repository.rs`.
-- [ ] `find_many_schemas_by_id` added to `SchemaReadRepository` in `repository.rs`.
-- [ ] `find_raw_schema_views_by_paths` added to `SchemaReadRepository` in `repository.rs`.
-- [ ] Implementations moved to `storage_v2/read.rs` and `storage_v2/write.rs`.
-- [ ] Tests in `read.rs` and `write.rs` verify batch semantics and atomicity.
+- [x] `save_many_schemas` added to `SchemaWriteRepository` in `repository.rs`.
+- [x] `find_many_schemas_by_id` added to `SchemaReadRepository` in `repository.rs`.
+- [x] `find_raw_schema_views_by_paths` added to `SchemaReadRepository` in `repository.rs`.
+- [x] Implementations moved to `storage_v2/read.rs` and `storage_v2/write.rs`.
+- [x] Tests in `read.rs` and `write.rs` verify batch semantics and atomicity.
 
 **Refactor Reason:**
 To maintain consistency with the new segregated trait pattern and to ensure that batch operations reside with their corresponding read/write implementations in the split file structure.
+
+## Implementation Notes (v2 - Segregated Traits, 2026-05-12)
+
+### What Was Implemented
+
+**Batch Write Operations** (`storage_v2/write.rs`):
+- `save_many_schemas(&self, schemas: &[Schema])` - atomic batch write in single transaction
+- Tests verify: empty batch succeeds, all-or-nothing atomicity, persistence after reopen
+- Implementation uses single `store.write(|tx| ...)` for all schemas with rollback on any error
+
+**Batch Read Operations** (`storage_v2/read.rs`):
+- `find_many_schemas_by_id(&self, ids: &[SchemaId])` - batch lookup in single transaction
+  - Returns `Vec<Option<Schema>>` in same order as input IDs
+  - Tests verify: empty batch, all found, none found, partial found (mix of Some/None)
+- `find_raw_schema_views_by_paths(&self, paths: &[RelativePath])` - cross-table batch read
+  - Single transaction: path → SchemaId → RawSchemaView lookup
+  - Returns `Vec<Option<RawSchemaView>>` in same order as input paths
+  - Uses `SCHEMA_ID_BY_PATH` and `RAW_SCHEMA_VIEWS` tables
+
+**Key Decisions:**
+- All batch operations use single transaction for atomicity
+- Return type is `Vec<Option<T>>` (not HashMap) to preserve input ordering
+- Empty batch operations are no-ops that succeed
+- Rollback behavior tested: failed serialization prevents any writes
+
+### Verification
+- All batch tests pass with comprehensive coverage of edge cases
+- Atomicity verified via rollback tests
+- Cross-table batch read correctly chains lookups in single transaction
+- Same commit as issue 02: `9f4cb8da` includes all batch operations
 
 ---
 

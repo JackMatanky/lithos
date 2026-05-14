@@ -18,7 +18,7 @@ use crate::{
             PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
             Suspect, TimestampBranch,
         },
-        storage::Repository,
+        repository::Repository,
     },
 };
 
@@ -30,9 +30,9 @@ pub struct Builder<'config, R> {
     property_bank_delta: Option<HashSet<PropertyName>>,
 }
 
-impl<'config, R: Repository> Builder<'config, R>
+impl<'config, R> Builder<'config, R>
 where
-    R::Error: Into<crate::schema::error::SchemaRepositoryError>,
+    R: Repository,
 {
     /// Create a new `Builder` with a repository, file source, and config.
     #[inline]
@@ -276,8 +276,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::aggregate::Config, fs::FsReader,
-        schema::testing::InMemoryRepository,
+        config::aggregate::Config,
+        fs::FsReader,
+        schema::{
+            repository::Repository, storage::testing::InMemoryRepository,
+        },
     };
 
     /// Helper to setup test config for a given temp directory.
@@ -342,5 +345,22 @@ description = "Test schema"
                     SchemaLoaderError::Ingestion(_)
                 )
         );
+    }
+
+    #[test]
+    fn builder_new_accepts_repository_trait() {
+        fn assert_builder_new<R>(repo: R, source: FsReader, config: &Config)
+        where
+            R: Repository,
+        {
+            let _ = Builder::new(repo, source, config);
+        }
+
+        let temp = TempDir::new().unwrap();
+        let config = setup_test_config(&temp);
+        let source = FsReader::new(temp.path().to_path_buf());
+        let repo = InMemoryRepository::new();
+
+        assert_builder_new(repo, source, &config);
     }
 }

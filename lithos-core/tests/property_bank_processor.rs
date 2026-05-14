@@ -21,7 +21,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::{FsReader, RelativePath},
-    schema::{builder::Builder, storage::Repository as _},
+    schema::{builder::Builder, repository::ReadRepository as _},
 };
 use tempfile::TempDir;
 
@@ -65,13 +65,14 @@ fn loads_and_persists_property_bank() -> TestResult {
         }}"#,
     )?;
 
-    let repository = setup_repository(test_db.db());
+    let repository = setup_repository(test_db.store());
     let source = FsReader::new(vault_dir.path());
     let mut builder = Builder::new(repository, source, &config);
 
     let _schemas = builder.load_all()?;
+    drop(builder);
 
-    let repository2 = setup_repository(test_db.db());
+    let repository2 = setup_repository(test_db.store());
     let saved_bank = repository2
         .get_property_bank()?
         .expect("Expected bank to be persisted");

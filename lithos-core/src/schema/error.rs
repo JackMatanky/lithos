@@ -170,10 +170,6 @@ pub enum SchemaRepositoryError {
     #[error(transparent)]
     Domain(#[from] SchemaError),
 
-    /// Returned when the database layer fails.
-    #[error("database error: {0}")]
-    Database(DbError),
-
     /// Returned when an expected entity is missing.
     #[error("not found: {0:?}")]
     NotFound(crate::schema::identifier::SchemaId),
@@ -181,13 +177,6 @@ pub enum SchemaRepositoryError {
     /// Returned when serialization/deserialization fails.
     #[error("serialization error: {0}")]
     Serialization(String),
-}
-
-impl From<DbError> for SchemaRepositoryError {
-    #[inline]
-    fn from(err: DbError) -> Self {
-        Self::Database(err)
-    }
 }
 
 /// High-level errors returned by schema loading operations.
@@ -1265,15 +1254,18 @@ mod tests {
         #[test]
         fn db_error_converts_into_schema_repository_error() {
             let db_error = DbError::Serialization("test".into());
-            let repo_error: SchemaRepositoryError = db_error.into();
+            let repo_error: SchemaRepositoryError =
+                SchemaStorageError::from(db_error).into();
 
             assert!(
                 matches!(
                     repo_error,
-                    SchemaRepositoryError::Database(DbError::Serialization(_))
+                    SchemaRepositoryError::Storage(
+                        SchemaStorageError::Storage(DbError::Serialization(_))
+                    )
                 ),
                 "Expected DbError::Serialization to convert into \
-                 SchemaRepositoryError::Database"
+                 SchemaRepositoryError::Storage(SchemaStorageError::Storage(_))"
             );
         }
     }

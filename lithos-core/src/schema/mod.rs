@@ -13,18 +13,10 @@ pub mod aggregate;
 /// Core identity types for the schema system.
 pub mod identifier;
 
-/// Unified repository trait and implementations for schema persistence.
-///
-/// Provides the `Repository` trait and `RedbRepository` implementation,
-/// replacing the old CQRS Command/Query pattern.
+/// Repository traits for the new schema seam (read, write, unified).
+pub mod repository;
+/// Redb-backed repository implementation for the new seam.
 pub mod storage;
-
-/// Testing and benchmarking utilities for pure unit tests.
-///
-/// Provides `InMemoryRepository` and test helpers to eliminate filesystem
-/// IO from unit tests while maintaining test extent.
-#[cfg(test)]
-pub mod testing;
 
 /// View types for staleness detection and versioned metadata tracking.
 ///
@@ -88,87 +80,3 @@ pub mod raw;
 /// documentation.
 #[doc(hidden)]
 pub mod merger;
-
-pub(crate) mod db_table {
-    use redb::TableDefinition;
-
-    // ========================================================================
-    // Schema Storage Tables
-    // ========================================================================
-
-    /// Schema aggregates (key: `SchemaId` as UUID string, value:
-    /// rkyv-serialized `Schema`).
-    pub(crate) const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_by_id");
-
-    /// Schema name→ID index (key: `SchemaName`, value: rkyv-serialized
-    /// `SchemaId`).
-    pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_id_by_name");
-
-    /// Maps schema filename to `SchemaId` for raw view lookup.
-    /// Key: filename with extension (e.g., "note.toml", "task.json")
-    /// Value: rkyv-serialized `SchemaId`.
-    pub(crate) const SCHEMA_ID_BY_PATH: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_id_by_path");
-
-    // ========================================================================
-    // PropertyBank Storage
-    // ========================================================================
-
-    /// `PropertyBank` singleton (key: `PROPERTY_BANK_KEY`, value:
-    /// rkyv-serialized `PropertyBank`).
-    pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("property_bank");
-
-    /// Key for `PropertyBank` singleton table.
-    pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
-
-    // ========================================================================
-    // Raw View Storage (for staleness detection)
-    // ========================================================================
-
-    /// Raw schema views (key: `SchemaId` as UUID string, value: rkyv-serialized
-    /// `RawSchemaView`).
-    pub(crate) const RAW_SCHEMA_VIEWS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_schema_views");
-
-    /// Raw property bank view (key: filename with extension, value:
-    /// rkyv-serialized `RawPropertyBankView`).
-    /// Key examples: "property-bank.toml", "property-bank.json".
-    pub(crate) const RAW_PROPERTY_BANK_VIEW: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_property_bank_view");
-
-    // ========================================================================
-    // Base Properties Storage (hydrated local properties)
-    // ========================================================================
-
-    /// Cached base properties for schema files.
-    ///
-    /// Stores the fully converted (hydrated) property map for each schema,
-    /// excluding any inherited properties. This enables skipping the
-    /// `RefExpander` when the property bank has not changed.
-    ///
-    /// Key: `SchemaId` as UUID string.
-    /// Value: rkyv-serialized `BasePropertiesView`.
-    #[expect(dead_code, reason = "Table will be used in future commits")]
-    pub(crate) const SCHEMA_BASE_PROPERTIES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_base_properties");
-
-    // ========================================================================
-    // Inheritance Tracking Tables
-    // ========================================================================
-
-    /// Topologically sorted inheritance graph singleton.
-    ///
-    /// Key: Constant `TOPOLOGICAL_GRAPH_KEY` (singleton)
-    /// Value: rkyv-serialized `InheritanceGraph<()>`.
-    ///
-    /// Contains DAG structure with `SchemaId` links and adjacency lists.
-    /// Rebuilt/patched when inheritance relationships change.
-    pub(crate) const SCHEMA_TOPOLOGICAL_GRAPH: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schema_topological_graph");
-
-    /// Key for `InheritanceGraph` singleton table.
-    pub(crate) const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
-}

@@ -77,7 +77,7 @@ use crate::{
         merger::Merger,
         property::{PropertyMap, PropertyName},
         raw::RawSchema,
-        storage::Repository,
+        repository::{Repository, WriteRepository},
         views::{
             RawPropertyHashIndex, RawSchemaView, RawView as _,
             RawViewRead as _, contracts::Version as _,
@@ -2062,8 +2062,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<SchemaProcessor<Construction, Analyzed>, SchemaLoaderError>
     where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: WriteRepository,
     {
         Self::refresh_cached_views(&mut self.status, repository)?;
         Self::refresh_stale_timestamp_views(&mut self.status, repository)?;
@@ -2078,8 +2077,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: WriteRepository,
     {
         use crate::schema::views::HashRecord;
 
@@ -2122,8 +2120,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: WriteRepository,
     {
         use crate::schema::views::HashRecord;
 
@@ -2200,8 +2197,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
         repository: &R,
     ) -> Result<(), SchemaLoaderError>
     where
-        R: Repository,
-        R::Error: Into<SchemaRepositoryError>,
+        R: WriteRepository,
     {
         for id in &status.rebuild_ids {
             let Some(node) = status.graph.graph_mut().get_mut(*id) else {
@@ -2236,7 +2232,7 @@ impl SchemaProcessor<Construction, Analyzed> {
     )]
     pub(crate) fn construct_schemas(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        repository: &impl Repository,
         property_bank: &PropertyBank,
     ) -> Result<SchemaProcessor<Construction, Constructed>, SchemaLoaderError>
     {
@@ -2678,7 +2674,7 @@ impl SchemaProcessor<Construction, NewBuild> {
     )]
     pub(crate) fn construct_new_schemas(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        repository: &impl WriteRepository,
         property_bank: &PropertyBank,
     ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
         use crate::schema::expander::RefExpander;
@@ -2776,9 +2772,12 @@ impl SchemaProcessor<Construction, NewBuild> {
         }
 
         if !built.is_empty() {
-            let refs: Vec<&Schema> =
-                built.iter().map(std::convert::AsRef::as_ref).collect();
-            repository.save_schemas(&refs).map_err(|e| {
+            let owned: Vec<Schema> = built
+                .iter()
+                .map(std::convert::AsRef::as_ref)
+                .cloned()
+                .collect();
+            repository.save_many_schemas(&owned).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;
@@ -2815,7 +2814,7 @@ impl SchemaProcessor<Construction, NewBuild> {
 impl SchemaProcessor<Construction, Constructed> {
     pub(crate) fn complete(
         self,
-        repository: &impl Repository<Error = impl Into<SchemaRepositoryError>>,
+        repository: &impl WriteRepository,
     ) -> Result<SchemaProcessor<Completed, Constructed>, SchemaLoaderError>
     {
         let Constructed {
@@ -2825,9 +2824,12 @@ impl SchemaProcessor<Construction, Constructed> {
         } = self.status;
 
         if !schemas.is_empty() {
-            let refs: Vec<&Schema> =
-                schemas.iter().map(std::convert::AsRef::as_ref).collect();
-            repository.save_schemas(&refs).map_err(|e| {
+            let owned: Vec<Schema> = schemas
+                .iter()
+                .map(std::convert::AsRef::as_ref)
+                .cloned()
+                .collect();
+            repository.save_many_schemas(&owned).map_err(|e| {
                 let repo_err: SchemaRepositoryError = e.into();
                 SchemaLoaderError::Repository(repo_err)
             })?;

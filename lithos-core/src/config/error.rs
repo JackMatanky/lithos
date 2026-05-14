@@ -115,10 +115,10 @@ pub enum ConfigError {
     Ingestion(Box<str>),
 }
 
-/// Errors returned by configuration command operations.
+/// Errors returned by configuration repository operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ConfigCommandError {
+pub enum ConfigRepositoryError {
     /// Domain-level validation or merge error.
     #[error("Domain error: {0}")]
     Domain(#[from] ConfigError),
@@ -128,18 +128,6 @@ pub enum ConfigCommandError {
     /// Config ingestion error.
     #[error("Ingest error: {0}")]
     Ingest(#[from] Box<ConfigIngestError>),
-}
-
-/// Errors returned by configuration query operations.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum ConfigQueryError {
-    /// Storage-layer error.
-    #[error("Storage error: {0}")]
-    Storage(#[from] DbError),
-    /// Data corruption or missing read model.
-    #[error("Data corruption: {0}")]
-    Corruption(Box<str>),
 }
 
 /// Errors returned while ingesting raw configuration sources.
@@ -176,7 +164,7 @@ pub enum ConfigIngestError {
     },
 }
 
-impl From<ConfigIngestError> for ConfigCommandError {
+impl From<ConfigIngestError> for ConfigRepositoryError {
     #[inline]
     fn from(error: ConfigIngestError) -> Self {
         Self::Ingest(Box::new(error))
@@ -342,6 +330,32 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    #[test]
+    fn config_repository_error_converts_from_db_error() {
+        let db_err = DbError::Open("db fail".into());
+        let err: ConfigRepositoryError = db_err.into();
+        assert!(matches!(err, ConfigRepositoryError::Storage(_)));
+    }
+
+    #[test]
+    fn config_repository_error_converts_from_domain_error() {
+        let domain_err = ConfigError::MissingRequiredField {
+            field: "vault_path".into(),
+        };
+        let err: ConfigRepositoryError = domain_err.into();
+        assert!(matches!(err, ConfigRepositoryError::Domain(_)));
+    }
+
+    #[test]
+    fn config_repository_error_converts_from_ingest_error() {
+        let ingest_err = ConfigIngestError::Io {
+            path: std::path::PathBuf::from("cfg.toml"),
+            source: std::io::Error::other("bad read"),
+        };
+        let err: ConfigRepositoryError = ingest_err.into();
+        assert!(matches!(err, ConfigRepositoryError::Ingest(_)));
+    }
 
     #[test]
     fn config_invalid_is_send_and_sync() {

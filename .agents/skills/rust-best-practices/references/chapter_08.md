@@ -136,7 +136,7 @@ fn load_user(path: &Path) -> Result<User, MyError> {...}
 
 **Doc comments can also include examples, links and even tests:**
 
-```rust
+````rust
 /// Returns the square of the integer part of any number.
 /// Square is limited to `u128`.
 ///
@@ -146,7 +146,7 @@ fn load_user(path: &Path) -> Result<User, MyError> {...}
 /// assert_eq!(square(4.3), 16)
 /// ```
 fn square(x: impl ToInt) -> u128 { ... }
-```
+````
 
 ## 8.8 Documentation in Rust: How, When and Why
 
@@ -173,7 +173,7 @@ Rust provides **first-class documentation tooling** via rustdoc, which makes doc
 
 Use `///` for functions, structs, traits, enums, const, etc:
 
-```rust
+````rust
 /// Adds two numbers together.
 ///
 /// # Examples
@@ -185,23 +185,23 @@ Use `///` for functions, structs, traits, enums, const, etc:
 pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
-```
+````
 * ✅ Write clear and descriptive **What it does** and **how to use it**.
 * ✅ Use `# Examples` section to better explain **how to use it**.
 * ✅ Prefer writing examples that can be tested via `cargo test`, even if you have to hide their output with starting `#`:
-```rust
+````rust
 /// ```
 /// let result = my_crate::add(2, 3);
 /// # assert_eq!(result, 5);
 /// ```
-```
+````
 * ✅ Use `# Panics`, `# Errors` and `# Safety` sections when relevant.
 * Add relevant context to the type.
 
 ### `//!` Module/Crate level Documentation
 
 Use `//!` when you want to document the **purpose of a module or a crate**. It is places at the top of a `lib.rs` or `mod.rs` file, for example `engine/mod.rs`:
-```rust
+````rust
 //! This module implements a custom chess engine.
 //!
 //! It handles board state, move generation and check detection.
@@ -211,7 +211,7 @@ Use `//!` when you want to document the **purpose of a module or a crate**. It i
 //! let board = chess::engine::Board::default();
 //! assert!(board.is_valid());
 //! ```
-```
+````
 
 ## 8.9 Checklist for Documentation coverage
 
