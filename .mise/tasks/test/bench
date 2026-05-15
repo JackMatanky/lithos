@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Benchmark tasks: run (default), compare, list, open report"
-#MISE alias="tb"
+#MISE alias="bench"
 #MISE sources=["**/*.rs", "Cargo.toml", "benches/**/*"]
 #MISE outputs=[".benchmarks/baselines/*.json"]
 #USAGE arg "[mode]" help="Operation mode" {
