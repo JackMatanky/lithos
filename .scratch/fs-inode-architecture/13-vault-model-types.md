@@ -23,16 +23,16 @@ Compose fs/ primitives into domain storage entities with inode identity.
 
 ## Acceptance criteria
 
-- [ ] FileId(UuidV7) - UUID-based file identifier
-- [ ] DirId(UuidV7) - UUID-based directory identifier
-- [ ] FileView: id, parent_id, name, format, metadata, content_hash
-- [ ] DirView: id, parent_id, name, metadata
-- [ ] FsEntryView enum: File(FileView), Dir(DirView)
-- [ ] FsEntryView helpers: id_bytes(), parent_id(), name(), is_file(), is_dir()
-- [ ] NormalizedPath(String) - vault-relative, forward slashes
-- [ ] rkyv archived type support
-- [ ] Tests for ID generation, view construction, helper methods
-- [ ] Update vault/mod.rs exports
+- [x] FileId(UuidV7) - UUID-based file identifier
+- [x] DirId(UuidV7) - UUID-based directory identifier
+- [x] FileView: id, parent_id, name, format, metadata, content_hash
+- [x] DirView: id, parent_id, name, metadata
+- [x] FsEntryView enum: File(FileView), Dir(DirView)
+- [x] FsEntryView helpers: id_bytes(), parent_id(), name(), is_file(), is_dir()
+- [x] NormalizedPath - validated vault-relative path with forward slashes and `as_str()` accessor
+- [x] rkyv archived type support
+- [x] Tests for ID generation, view construction, helper methods
+- [x] Update vault/mod.rs exports
 
 ## Blocked by
 

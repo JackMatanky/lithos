@@ -25,7 +25,10 @@ pub mod storage;
 pub use error::{
     VaultFileError, VaultPathError, VaultProcessError, VaultRepositoryError,
 };
-pub use model::{VaultFile, VaultFolder, VaultPath};
+pub use model::{
+    DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath, VaultFile,
+    VaultFolder, VaultPath,
+};
 pub use processor::{ScanMode, VaultProcessReport, VaultProcessor};
 pub use storage::{RedbRepository, Repository};
 
