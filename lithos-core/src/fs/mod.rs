@@ -20,7 +20,7 @@
 //! |----------------------------------|--------------------------------------------------|
 //! | Validate a vault path string     | [`PathValidator::validate_vault_path`]           |
 //! | Validate an arbitrary path       | [`PathValidator::new_flexible`] + `.validate()`  |
-//! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries_typed()` |
+//! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries()` |
 //! | Read files from a vault root     | [`FsReader::new`]                                |
 //! | Write files to a vault root      | [`FsWriter::new`]                                |
 //!

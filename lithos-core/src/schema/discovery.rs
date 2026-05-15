@@ -250,7 +250,7 @@ impl DiscoveryEngine {
         let pattern = format!("{}/**/*", schema_dir.as_path().display());
 
         DirScanner::new(vault_root)
-            .entries_typed(
+            .entries(
                 DirScanInput::new()
                     .with_pattern(&pattern)
                     .with_extensions(&SCHEMA_EXTENSIONS),

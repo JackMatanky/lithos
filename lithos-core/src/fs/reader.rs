@@ -252,7 +252,7 @@ impl Reader {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        Ok(scanner.entries_typed(
+        Ok(scanner.entries(
             DirScanInput::new().with_pattern(pattern).include_dirs(true),
         )?)
     }
@@ -383,7 +383,7 @@ impl Reader {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        Ok(scanner.entries_typed(DirScanInput::new().with_pattern(pattern))?)
+        Ok(scanner.entries(DirScanInput::new().with_pattern(pattern))?)
     }
 
     /// Reads a file's content as raw bytes.
