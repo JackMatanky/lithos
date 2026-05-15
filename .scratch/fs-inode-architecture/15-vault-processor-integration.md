@@ -248,6 +248,27 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 3. RED: migration regression test verifies processor works end-to-end without legacy tables present.
 4. REFACTOR: remove temporary compatibility shims and dead code paths.
 
+#### Storage trait/API deletion checklist (explicit)
+
+- In `lithos-core/src/vault/storage.rs`, remove legacy `Repository` methods that depend on `Vault*` types once all callsites are migrated:
+  - `get_file(&VaultPath) -> Option<VaultFile>`
+  - `get_folder(&VaultPath) -> Option<VaultFolder>`
+  - `list_files() -> Vec<VaultFile>`
+  - `list_folders() -> Vec<VaultFolder>`
+  - `delete_file(&VaultPath)`
+  - `delete_folder(&VaultPath)`
+  - `save_file(&VaultFile)`
+  - `save_folder(&VaultFolder)`
+  - `with_archived_file(...VaultFile...)`
+  - `with_archived_folder(...VaultFolder...)`
+- Remove corresponding legacy batch adapter methods and internals:
+  - `RedbBatchVaultReader::{get_file,get_folder,with_file,with_folder}`
+  - `RedbBatchVaultWriter::{put_file,put_folder}`
+- Remove old table constants/imports and table usages tied to legacy path storage:
+  - `VAULT_FILES_BY_PATH`
+  - `VAULT_FOLDERS_BY_PATH`
+- Ensure `Repository` becomes single-surface around inode/view APIs (`FileView`/`DirView`/`FsEntryView` + unprefixed table names/constants).
+
 ### Slice 7: Routing regression safety
 
 1. RED: tests verify markdown candidate selection and note action counters (created/updated/deleted) are unchanged for equivalent inputs.
@@ -266,6 +287,22 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 - `processor_full_scan_prunes_missing_entries_and_records_note_deletes`
 - `processor_partial_scan_does_not_prune_unscanned_missing_entries`
 - `processor_markdown_routing_counters_match_legacy_behavior`
+
+### Unit test suite structure (per-file sub-modules)
+
+- Follow Rust unit-test organization by behavior area using sub-modules inside each file's `#[cfg(test)] mod tests`.
+- `lithos-core/src/vault/processor.rs`:
+  - `mod discovery_tests` (view graph build, empty dirs)
+  - `mod parent_link_tests` (parent resolution and order independence)
+  - `mod compare_tests` (full/partial compare parity)
+  - `mod route_tests` (markdown candidate and note-action parity)
+  - `mod prune_tests` (full-scan prune and partial non-prune semantics)
+- `lithos-core/src/vault/storage.rs`:
+  - `mod file_view_index_tests` (save/update/delete index integrity)
+  - `mod dir_view_index_tests` (dir path/index consistency)
+  - `mod lookup_query_tests` (path/basename/parent/format query contracts)
+  - `mod migration_cutover_tests` (legacy API absence + view-only behavior)
+- Keep each sub-module focused on one contract family; avoid mixed concerns across modules.
 
 ### Final verification gate
 

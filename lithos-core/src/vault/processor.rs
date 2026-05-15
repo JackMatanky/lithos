@@ -423,7 +423,7 @@ impl VaultProcessor<Discovery, Unknown> {
 
     fn scan_files(source: &FsReader) -> Result<Vec<VaultFile>, VaultFileError> {
         let pattern = "**/*";
-        let paths = source.list_files(pattern).map_err(|error| {
+        let paths = source.filter_file_paths(pattern).map_err(|error| {
             VaultFileError::ReadFailed {
                 path: "<vault>".into(),
                 message: error.to_string().into(),
@@ -431,20 +431,27 @@ impl VaultProcessor<Discovery, Unknown> {
         })?;
 
         let mut files = Vec::with_capacity(paths.len());
-        for relative in paths {
+        for file_path in paths {
+            // Convert absolute path to relative
+            let relative =
+                file_path.as_relative(source.root()).map_err(|error| {
+                    VaultFileError::ReadFailed {
+                        path: file_path.as_path().display().to_string().into(),
+                        message: error.to_string().into(),
+                    }
+                })?;
+
             source.validate_path(relative.as_path()).map_err(|error| {
                 VaultFileError::InvalidPath {
-                    path: relative.to_str().unwrap_or("<invalid>").into(),
+                    path: relative.as_str().unwrap_or("<invalid>").into(),
                     reason: error.to_string().into(),
                 }
             })?;
 
-            let vault_path =
-                VaultPath::try_from_path(&relative).map_err(|error| {
-                    VaultFileError::InvalidPath {
-                        path: relative.to_str().unwrap_or("<invalid>").into(),
-                        reason: error.to_string().into(),
-                    }
+            let vault_path = VaultPath::try_from_path(relative.as_path())
+                .map_err(|error| VaultFileError::InvalidPath {
+                    path: relative.as_str().unwrap_or("<invalid>").into(),
+                    reason: error.to_string().into(),
                 })?;
 
             let metadata = source
@@ -456,7 +463,7 @@ impl VaultProcessor<Discovery, Unknown> {
             let file =
                 VaultFile::try_new(vault_path, &metadata).map_err(|error| {
                     VaultFileError::InvalidPath {
-                        path: relative.to_str().unwrap_or("<invalid>").into(),
+                        path: relative.as_str().unwrap_or("<invalid>").into(),
                         reason: error.to_string().into(),
                     }
                 })?;
