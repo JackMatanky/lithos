@@ -47,8 +47,9 @@ use super::{
 ///     scanner.paths(DirScanInput::new().with_extensions(&["toml"])).unwrap();
 ///
 /// // Find files matching glob pattern with metadata
-/// let entries =
-///     scanner.entries(DirScanInput::new().with_pattern("**/*.toml")).unwrap();
+/// let entries = scanner
+///     .entries_typed(DirScanInput::new().with_pattern("**/*.toml"))
+///     .unwrap();
 /// ```
 #[expect(
     clippy::module_name_repetitions,
@@ -146,8 +147,9 @@ impl DirScanner {
     /// use lithos_core::fs::scanner::{DirScanInput, DirScanner};
     ///
     /// let scanner = DirScanner::new("/vault");
-    /// let entries = scanner
-    ///     .entries(DirScanInput::new().with_extensions(&["toml", "yaml"]))?;
+    /// let entries = scanner.entries_typed(
+    ///     DirScanInput::new().with_extensions(&["toml", "yaml"]),
+    /// )?;
     ///
     /// for entry in entries {
     ///     let Some(filename) = entry.filename() else {
@@ -161,14 +163,6 @@ impl DirScanner {
     /// }
     /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
-    #[inline]
-    pub fn entries(
-        &self,
-        input: DirScanInput,
-    ) -> Result<Vec<FsEntry>, ScanError> {
-        self.entries_typed(input)
-    }
-
     /// Scans the directory and returns matching typed paths (File or Dir).
     ///
     /// Results are sorted by path alphabetically.
@@ -612,7 +606,7 @@ mod tests {
         fn entries_returns_empty_for_empty_dir() {
             let temp = TempDir::new().unwrap();
             let scanner = DirScanner::new(temp.path());
-            let entries = scanner.entries(DirScanInput::new()).unwrap();
+            let entries = scanner.entries_typed(DirScanInput::new()).unwrap();
             assert!(entries.is_empty());
         }
     }
@@ -788,7 +782,7 @@ mod tests {
             write_file(temp.path(), "a.toml", b"test content");
 
             let scanner = DirScanner::new(temp.path());
-            let entries = scanner.entries(DirScanInput::new()).unwrap();
+            let entries = scanner.entries_typed(DirScanInput::new()).unwrap();
             let expected = temp.path().join("a.toml");
 
             assert_eq!(entries.len(), 1);
@@ -819,7 +813,7 @@ mod tests {
             write_file(temp.path(), "a.toml", b"");
 
             let scanner = DirScanner::new(temp.path());
-            let entries = scanner.entries(DirScanInput::new()).unwrap();
+            let entries = scanner.entries_typed(DirScanInput::new()).unwrap();
             let expected_a = temp.path().join("a.toml");
             let expected_z = temp.path().join("z.toml");
 

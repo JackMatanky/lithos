@@ -50,10 +50,9 @@ use std::{
 use super::{
     entry::FsEntry,
     error::{FsError, PathValidationError},
-    file::FileName,
-    format::FileFormat,
+    format::{FileFormat, parse_from_format, sniff_structured_format},
     metadata::{FileMetadata, FsTimes},
-    types::{self, Json, Toml, Yaml},
+    name::FileName,
     validator::Validator,
 };
 
@@ -384,7 +383,7 @@ impl Reader {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        Ok(scanner.entries(DirScanInput::new().with_pattern(pattern))?)
+        Ok(scanner.entries_typed(DirScanInput::new().with_pattern(pattern))?)
     }
 
     /// Reads a file's content as raw bytes.
@@ -610,7 +609,7 @@ impl Reader {
         T: serde::de::DeserializeOwned,
     {
         let format = Self::classify_path(path, Some(content));
-        Ok(types::parse_from_format(path, content, format)?)
+        Ok(parse_from_format(path, content, format)?)
     }
 
     /// Detects the file format based on path extension and optional content
@@ -627,14 +626,8 @@ impl Reader {
 
         if let Some(content) = content {
             let trimmed = content.trim_start();
-            if Json::detect(trimmed) {
-                return FileFormat::Json;
-            }
-            if Yaml::detect(trimmed) {
-                return FileFormat::Yaml;
-            }
-            if Toml::detect(trimmed) {
-                return FileFormat::Toml;
+            if let Some(format) = sniff_structured_format(trimmed) {
+                return format;
             }
         }
 

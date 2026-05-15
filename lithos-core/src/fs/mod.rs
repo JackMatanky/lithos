@@ -20,7 +20,7 @@
 //! |----------------------------------|--------------------------------------------------|
 //! | Validate a vault path string     | [`PathValidator::validate_vault_path`]           |
 //! | Validate an arbitrary path       | [`PathValidator::new_flexible`] + `.validate()`  |
-//! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries()` |
+//! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries_typed()` |
 //! | Read files from a vault root     | [`FsReader::new`]                                |
 //! | Write files to a vault root      | [`FsWriter::new`]                                |
 //!
@@ -39,8 +39,6 @@
 pub mod entry;
 /// Filesystem error types.
 pub mod error;
-/// Ergonomic conversions for filesystem entries.
-pub mod file;
 /// File format detection and classification.
 pub mod format;
 /// Filesystem metadata types for files and directories.
@@ -53,8 +51,6 @@ pub mod path;
 pub mod reader;
 /// Directory scanning utilities for finding files matching criteria.
 pub mod scanner;
-/// Structured data parsers (TOML/JSON/YAML) — module-internal.
-pub(crate) mod types;
 /// Security-critical path validation utilities.
 pub mod validator;
 /// Root-scoped filesystem writer with atomic-replace semantics.
@@ -69,10 +65,11 @@ pub use entry::{FsDir, FsEntry, FsFile};
 pub use error::{
     FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
 };
-pub use file::FileName;
 pub use format::{FileExtensionRef, FileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
-pub use name::{BaseName, BaseNameRef, DirName, DirNameRef, FileNameRef};
+pub use name::{
+    BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef,
+};
 pub use path::{
     AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, RelativePath,
 };

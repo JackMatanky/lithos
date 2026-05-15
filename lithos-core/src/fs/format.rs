@@ -1,8 +1,11 @@
 //! File format detection and classification.
 
-use std::ffi::OsStr;
+use std::{ffi::OsStr, path::Path};
 
 use rkyv::{Archive, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+
+use super::error::ParseError;
 
 /// Supported file formats for structured parsing and classification.
 #[derive(
@@ -69,6 +72,175 @@ impl FileFormat {
     }
 }
 
+#[inline]
+fn extension_is_supported(path: &Path, extensions: &[&str]) -> bool {
+    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
+        extensions.iter().any(|candidate| ext.eq_ignore_ascii_case(candidate))
+    })
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct JsonParser;
+
+impl JsonParser {
+    #[inline]
+    fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        trimmed.starts_with('{') || trimmed.starts_with('[')
+    }
+
+    #[inline]
+    fn parse<T: DeserializeOwned>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError> {
+        if !extension_is_supported(path, &["json"]) {
+            return Err(ParseError::UnsupportedFormat {
+                path: path.to_path_buf(),
+                supported: &["json"],
+            });
+        }
+
+        serde_json::from_str(content).map_err(|error| ParseError::Json {
+            path: path.to_path_buf(),
+            message: error.to_string().into(),
+            line: Some(error.line()),
+            column: Some(error.column()),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct TomlParser;
+
+impl TomlParser {
+    #[inline]
+    fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        !trimmed.starts_with('{')
+            && (trimmed.contains('[')
+                || (trimmed.contains('=') && !trimmed.contains(':')))
+    }
+
+    #[inline]
+    fn parse<T: DeserializeOwned>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError> {
+        if !extension_is_supported(path, &["toml"]) {
+            return Err(ParseError::UnsupportedFormat {
+                path: path.to_path_buf(),
+                supported: &["toml"],
+            });
+        }
+
+        toml::from_str(content).map_err(|error| {
+            let (line, column) = error
+                .span()
+                .and_then(|span| content.get(..span.start))
+                .map_or((None, None), |prefix| {
+                    let line_no = prefix.lines().count();
+                    let col = prefix.lines().last().map_or(0, str::len);
+                    (Some(line_no), Some(col))
+                });
+
+            ParseError::Toml {
+                path: path.to_path_buf(),
+                message: error.message().into(),
+                line,
+                column,
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct YamlParser;
+
+impl YamlParser {
+    #[inline]
+    fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        !trimmed.starts_with('{')
+            && !trimmed.starts_with('[')
+            && (trimmed.starts_with("---")
+                || (trimmed.contains(':') && !trimmed.contains('=')))
+    }
+
+    #[inline]
+    fn parse<T: DeserializeOwned>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError> {
+        if !extension_is_supported(path, &["yaml", "yml"]) {
+            return Err(ParseError::UnsupportedFormat {
+                path: path.to_path_buf(),
+                supported: &["yaml", "yml"],
+            });
+        }
+
+        serde_yaml::from_str(content).map_err(|error| {
+            let (line, column) = error.location().map_or((None, None), |loc| {
+                (Some(loc.line()), Some(loc.column()))
+            });
+
+            ParseError::Yaml {
+                path: path.to_path_buf(),
+                message: error.to_string().into(),
+                line,
+                column,
+            }
+        })
+    }
+}
+
+/// Attempts to classify structured content from its textual shape.
+///
+/// Returns `Some(FileFormat)` for JSON/TOML/YAML-like payloads and `None`
+/// when no structured format signature is detected.
+#[inline]
+#[must_use]
+pub fn sniff_structured_format(content: &str) -> Option<FileFormat> {
+    if JsonParser::detect(content) {
+        return Some(FileFormat::Json);
+    }
+    if YamlParser::detect(content) {
+        return Some(FileFormat::Yaml);
+    }
+    if TomlParser::detect(content) {
+        return Some(FileFormat::Toml);
+    }
+    None
+}
+
+/// Parses structured content using an explicit file format classification.
+///
+/// # Errors
+/// Returns `ParseError::UnsupportedFormat` when `format` is not JSON/TOML/YAML,
+/// or parser-specific errors for malformed content.
+#[inline]
+pub(crate) fn parse_from_format<T: DeserializeOwned>(
+    path: &Path,
+    content: &str,
+    format: FileFormat,
+) -> Result<T, ParseError> {
+    match format {
+        FileFormat::Json => JsonParser::parse(path, content),
+        FileFormat::Toml => TomlParser::parse(path, content),
+        FileFormat::Yaml => YamlParser::parse(path, content),
+        FileFormat::Markdown
+        | FileFormat::Image
+        | FileFormat::Pdf
+        | FileFormat::Document
+        | FileFormat::Archive
+        | FileFormat::Binary
+        | FileFormat::Unknown => Err(ParseError::UnsupportedFormat {
+            path: path.to_path_buf(),
+            supported: &["json", "toml", "yaml", "yml"],
+        }),
+    }
+}
+
 /// Borrowed extension view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileExtensionRef<'a>(pub(crate) &'a OsStr);
@@ -91,6 +263,8 @@ impl FileExtensionRef<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     #[test]
@@ -128,5 +302,32 @@ mod tests {
         assert!(FileFormat::Yaml.is_structured());
         assert!(!FileFormat::Markdown.is_structured());
         assert!(!FileFormat::Image.is_structured());
+    }
+
+    #[test]
+    fn should_sniff_structured_format_by_content() {
+        assert_eq!(
+            sniff_structured_format("{\"k\":1}"),
+            Some(FileFormat::Json)
+        );
+        assert_eq!(
+            sniff_structured_format("name: test\nvalue: 42"),
+            Some(FileFormat::Yaml)
+        );
+        assert_eq!(
+            sniff_structured_format("name = \"test\""),
+            Some(FileFormat::Toml)
+        );
+        assert_eq!(sniff_structured_format("plain text"), None);
+    }
+
+    #[test]
+    fn parse_from_format_rejects_unsupported_format() {
+        let result: Result<serde_json::Value, ParseError> = parse_from_format(
+            Path::new("note.md"),
+            "# title",
+            FileFormat::Markdown,
+        );
+        assert!(matches!(result, Err(ParseError::UnsupportedFormat { .. })));
     }
 }

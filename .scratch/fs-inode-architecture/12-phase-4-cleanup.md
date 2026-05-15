@@ -23,14 +23,14 @@ ONLY after all Phase 3 subphases complete.
 
 ## Acceptance criteria
 
-- [ ] Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
-- [ ] Delete fs/types.rs (contents moved to format.rs)
-- [ ] Delete old DirScanner.entries() returning Vec<FileEntry>
-- [ ] Delete old FsReader.info() method
-- [ ] Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix)
-- [ ] Update all remaining consumers after deletions
-- [ ] Run `mise run verify` - no broken imports
-- [ ] Tests pass
+- [x] Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
+- [x] Delete fs/types.rs (contents moved to format.rs)
+- [x] Delete old DirScanner.entries() returning Vec<FileEntry>
+- [x] Delete old FsReader.info() method (already absent in current branch)
+- [x] Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix; already complete before this phase)
+- [x] Update all remaining consumers after deletions
+- [x] Run `mise run verify` - no broken imports
+- [x] Tests pass
 
 ## Blocked by
 
