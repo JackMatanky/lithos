@@ -3,7 +3,7 @@
 #MISE alias="b"
 #MISE depends=["fmt"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
-#MISE outputs=["{{vars.target_dir}}/debug/{{vars.binary_name}}", "{{vars.target_dir}}/release/{{vars.binary_name}}"]
+#MISE outputs=["{{vars.target_dir}}/debug/{{vars.binary_name}}"]
 #USAGE flag "-r --release" help="Build in release mode"
 #USAGE flag "-p --package <package>" help="Build a specific package" {
 #USAGE   choices "core" "cli"

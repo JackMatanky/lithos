@@ -33,16 +33,8 @@ wildcards = "allow"
 skip-tree = []
 
 [[bans.skip]]
-name = "getrandom"
-version = "0.2.17"
-
-[[bans.skip]]
 name = "unicode-width"
 version = "0.1.14"
-
-[[bans.skip]]
-name = "windows-sys"
-version = "0.60.2"
 
 [sources]
 unknown-registry = "deny"

@@ -14,7 +14,7 @@ use std::{
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
     config::aggregate::Config,
-    fs::FsReader,
+    fs::{DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsReader},
     note::{
         error::NoteProcessError,
         paths::NotePath,
@@ -22,7 +22,7 @@ use crate::{
         storage::RedbRepository as NoteRepository,
     },
     vault::{
-        model::{VaultFile, VaultFolder, VaultPath},
+        model::{DirId, DirView, FileId, FileView, NormalizedPath, VaultPath},
         storage::{RedbRepository as VaultRepository, Repository as _},
     },
 };
@@ -87,17 +87,17 @@ pub struct Unknown;
 #[derive(Debug)]
 pub struct Scanned {
     mode: ScanMode,
-    files: Vec<VaultFile>,
-    folders: Vec<VaultFolder>,
-    path_set: HashSet<VaultPath>,
+    files: Vec<ScannedFile>,
+    dirs: Vec<ScannedDir>,
+    path_set: HashSet<NormalizedPath>,
 }
 
 /// Status after comparison with routing candidates.
 #[derive(Debug)]
 pub struct Compared {
     mode: ScanMode,
-    path_set: HashSet<VaultPath>,
-    markdown_candidates: Vec<VaultFile>,
+    path_set: HashSet<NormalizedPath>,
+    markdown_candidates: Vec<NormalizedPath>,
     report: VaultProcessReport,
 }
 
@@ -105,7 +105,7 @@ pub struct Compared {
 #[derive(Debug)]
 pub struct Routed {
     mode: ScanMode,
-    path_set: HashSet<VaultPath>,
+    path_set: HashSet<NormalizedPath>,
     report: VaultProcessReport,
 }
 
@@ -116,10 +116,24 @@ pub struct Ready {
 }
 
 struct CompareOutcome {
-    markdown_candidates: Vec<VaultFile>,
-    file_updates: Vec<VaultFile>,
-    folder_updates: Vec<VaultFolder>,
+    markdown_candidates: Vec<NormalizedPath>,
+    file_updates: Vec<ScannedFile>,
+    dir_updates: Vec<ScannedDir>,
 }
+
+#[derive(Debug, Clone)]
+struct ScannedFile {
+    path: NormalizedPath,
+    view: FileView,
+}
+
+#[derive(Debug, Clone)]
+struct ScannedDir {
+    path: NormalizedPath,
+    view: DirView,
+}
+
+type ScanViews = (Vec<ScannedDir>, Vec<ScannedFile>);
 
 /// Scan mode indicating whether pruning should run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -345,26 +359,30 @@ impl VaultProcessor<Discovery, Unknown> {
         mode: ScanMode,
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
-        let files = Self::scan_files(source)?;
-        let folders = Self::scan_folders(source)?;
+        let (dirs, files) = Self::scan_views(source)?;
         let mut path_set =
-            HashSet::with_capacity(files.len().saturating_add(folders.len()));
+            HashSet::with_capacity(files.len().saturating_add(dirs.len()));
         for file in &files {
-            path_set.insert(file.path().clone());
+            path_set.insert(file.path.clone());
         }
-        for folder in &folders {
-            path_set.insert(folder.path().clone());
+        for dir in &dirs {
+            path_set.insert(dir.path.clone());
         }
 
         Ok(Self::transition(Comparison, Scanned {
             mode,
             files,
-            folders,
+            dirs,
             path_set,
         }))
     }
 
     #[inline]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Partial path handling performs validation, scan conversion, \
+                  and parent backfill in one transition stage"
+    )]
     fn discover_partial(
         self,
         source: &FsReader,
@@ -372,7 +390,9 @@ impl VaultProcessor<Discovery, Unknown> {
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
         let mut files = Vec::with_capacity(paths.len());
-        let mut folders = Vec::new();
+        let mut dirs = Vec::new();
+        let mut known_dirs = HashMap::<NormalizedPath, DirId>::new();
+
         for path in paths {
             source.validate_path(path.as_path()).map_err(|error| {
                 VaultFileError::InvalidPath {
@@ -387,135 +407,198 @@ impl VaultProcessor<Discovery, Unknown> {
                         message: error.to_string().into(),
                     }
                 })?;
+
+            let normalized =
+                NormalizedPath::try_new(path.as_str()).map_err(|error| {
+                    VaultFileError::InvalidPath {
+                        path: path.as_str().into(),
+                        reason: error.to_string().into(),
+                    }
+                })?;
             if metadata.is_dir() {
-                let folder = VaultFolder::try_new(path.clone(), &metadata)
-                    .map_err(|error| VaultFileError::InvalidPath {
-                        path: path.as_str().into(),
-                        reason: error.to_string().into(),
-                    })?;
-                folders.push(folder);
+                let parent = parent_path(&normalized)?;
+                let parent_id = parent
+                    .as_ref()
+                    .and_then(|parent| known_dirs.get(parent))
+                    .copied();
+                let name = last_component(path.as_path())?;
+                let dir = ScannedDir {
+                    path: normalized.clone(),
+                    view: DirView::new(
+                        DirId::new(),
+                        parent_id,
+                        DirName::new(name),
+                        DirMetadata::from(&metadata),
+                    ),
+                };
+                known_dirs.insert(normalized, dir.view.id());
+                dirs.push(dir);
             } else {
-                let file = VaultFile::try_new(path.clone(), &metadata)
-                    .map_err(|error| VaultFileError::InvalidPath {
-                        path: path.as_str().into(),
-                        reason: error.to_string().into(),
-                    })?;
-                files.push(file);
+                let parent = parent_path(&normalized)?;
+                let parent_id = parent
+                    .as_ref()
+                    .and_then(|parent| known_dirs.get(parent))
+                    .copied();
+                let filename = last_component(path.as_path())?;
+                let format = path
+                    .as_path()
+                    .extension()
+                    .map_or(FileFormat::Unknown, FileFormat::from_extension);
+                files.push(ScannedFile {
+                    path: normalized,
+                    view: FileView::new(
+                        FileId::new(),
+                        parent_id,
+                        FileName::new(filename),
+                        format,
+                        FileMetadata::from(&metadata),
+                        [0u8; 32],
+                    ),
+                });
             }
         }
 
-        let mut path_set =
-            HashSet::with_capacity(files.len().saturating_add(folders.len()));
-        for file in &files {
-            path_set.insert(file.path().clone());
+        let dir_ids_by_path = dirs
+            .iter()
+            .map(|dir| (dir.path.clone(), dir.view.id()))
+            .collect::<HashMap<_, _>>();
+
+        for dir in &mut dirs {
+            let parent = parent_path(&dir.path)?;
+            let parent_id = parent
+                .as_ref()
+                .and_then(|key| dir_ids_by_path.get(key))
+                .copied();
+            if parent_id == dir.view.parent_id() {
+                continue;
+            }
+            dir.view = DirView::new(
+                dir.view.id(),
+                parent_id,
+                dir.view.name().clone(),
+                dir.view.metadata().clone(),
+            );
         }
-        for folder in &folders {
-            path_set.insert(folder.path().clone());
+
+        for file in &mut files {
+            let parent = parent_path(&file.path)?;
+            let parent_id = parent
+                .as_ref()
+                .and_then(|key| dir_ids_by_path.get(key))
+                .copied();
+            if parent_id == file.view.parent_id() {
+                continue;
+            }
+            file.view = FileView::new(
+                file.view.id(),
+                parent_id,
+                file.view.name().clone(),
+                file.view.format(),
+                file.view.metadata().clone(),
+                *file.view.content_hash(),
+            );
+        }
+
+        let mut path_set =
+            HashSet::with_capacity(files.len().saturating_add(dirs.len()));
+        for file in &files {
+            path_set.insert(file.path.clone());
+        }
+        for dir in &dirs {
+            path_set.insert(dir.path.clone());
         }
 
         Ok(Self::transition(Comparison, Scanned {
             mode: ScanMode::Partial,
             files,
-            folders,
+            dirs,
             path_set,
         }))
     }
 
-    fn scan_files(source: &FsReader) -> Result<Vec<VaultFile>, VaultFileError> {
-        let pattern = "**/*";
-        let paths = source.filter_file_paths(pattern).map_err(|error| {
+    fn scan_views(source: &FsReader) -> Result<ScanViews, VaultFileError> {
+        let mut dir_paths = source.list_dirs("**/*").map_err(|error| {
             VaultFileError::ReadFailed {
                 path: "<vault>".into(),
                 message: error.to_string().into(),
             }
         })?;
+        dir_paths.sort_by(|left, right| {
+            let depth_left = left.components().count();
+            let depth_right = right.components().count();
+            depth_left.cmp(&depth_right).then_with(|| left.cmp(right))
+        });
 
-        let mut files = Vec::with_capacity(paths.len());
-        for file_path in paths {
-            // Convert absolute path to relative
-            let relative =
-                file_path.as_relative(source.root()).map_err(|error| {
-                    VaultFileError::ReadFailed {
-                        path: file_path.as_path().display().to_string().into(),
-                        message: error.to_string().into(),
-                    }
-                })?;
+        let mut dirs = Vec::with_capacity(dir_paths.len());
+        let mut dir_ids_by_path = HashMap::with_capacity(dir_paths.len());
+        for relative in dir_paths {
+            let path = normalized_path_from_relative(&relative)?;
+            let metadata = source.std_metadata(&relative).map_err(|error| {
+                VaultFileError::MetadataFailed {
+                    path: path.as_str().into(),
+                    message: error.to_string().into(),
+                }
+            })?;
+            let parent = parent_path(&path)?;
+            let parent_id = parent
+                .as_ref()
+                .and_then(|key| dir_ids_by_path.get(key))
+                .copied();
+            let dir = ScannedDir {
+                path: path.clone(),
+                view: DirView::new(
+                    DirId::new(),
+                    parent_id,
+                    DirName::new(last_component(&relative)?),
+                    DirMetadata::from(&metadata),
+                ),
+            };
+            dir_ids_by_path.insert(path, dir.view.id());
+            dirs.push(dir);
+        }
 
-            source.validate_path(relative.as_path()).map_err(|error| {
-                VaultFileError::InvalidPath {
-                    path: relative.as_str().unwrap_or("<invalid>").into(),
-                    reason: error.to_string().into(),
+        let file_entries =
+            source.filter_file_entries("**/*").map_err(|error| {
+                VaultFileError::ReadFailed {
+                    path: "<vault>".into(),
+                    message: error.to_string().into(),
                 }
             })?;
 
-            let vault_path = VaultPath::try_from_path(relative.as_path())
-                .map_err(|error| VaultFileError::InvalidPath {
-                    path: relative.as_str().unwrap_or("<invalid>").into(),
-                    reason: error.to_string().into(),
-                })?;
-
-            let metadata = source
-                .std_metadata(Path::new(vault_path.as_str()))
-                .map_err(|error| VaultFileError::MetadataFailed {
-                    path: vault_path.as_str().into(),
+        let mut files = Vec::with_capacity(file_entries.len());
+        for file_entry in file_entries {
+            let relative = file_entry
+                .path()
+                .as_relative(source.root())
+                .map_err(|error| VaultFileError::ReadFailed {
+                    path: "<vault>".into(),
                     message: error.to_string().into(),
                 })?;
-            let file =
-                VaultFile::try_new(vault_path, &metadata).map_err(|error| {
-                    VaultFileError::InvalidPath {
-                        path: relative.as_str().unwrap_or("<invalid>").into(),
-                        reason: error.to_string().into(),
-                    }
-                })?;
+            let path = normalized_path_from_relative(relative.as_path())?;
+            let parent = parent_path(&path)?;
+            let parent_id = parent
+                .as_ref()
+                .and_then(|key| dir_ids_by_path.get(key))
+                .copied();
+            let format = relative
+                .as_path()
+                .extension()
+                .map_or(FileFormat::Unknown, FileFormat::from_extension);
+            let file = ScannedFile {
+                path,
+                view: FileView::new(
+                    FileId::new(),
+                    parent_id,
+                    FileName::new(last_component(relative.as_path())?),
+                    format,
+                    file_entry.metadata().clone(),
+                    [0u8; 32],
+                ),
+            };
             files.push(file);
         }
-        Ok(files)
-    }
 
-    fn scan_folders(
-        source: &FsReader,
-    ) -> Result<Vec<VaultFolder>, VaultFileError> {
-        let pattern = "**/*";
-        let paths = source.list_dirs(pattern).map_err(|error| {
-            VaultFileError::ReadFailed {
-                path: "<vault>".into(),
-                message: error.to_string().into(),
-            }
-        })?;
-
-        let mut folders = Vec::with_capacity(paths.len());
-        for relative in paths {
-            source.validate_path(relative.as_path()).map_err(|error| {
-                VaultFileError::InvalidPath {
-                    path: relative.to_str().unwrap_or("<invalid>").into(),
-                    reason: error.to_string().into(),
-                }
-            })?;
-
-            let vault_path =
-                VaultPath::try_from_path(&relative).map_err(|error| {
-                    VaultFileError::InvalidPath {
-                        path: relative.to_str().unwrap_or("<invalid>").into(),
-                        reason: error.to_string().into(),
-                    }
-                })?;
-
-            let metadata = source
-                .std_metadata(Path::new(vault_path.as_str()))
-                .map_err(|error| VaultFileError::MetadataFailed {
-                    path: vault_path.as_str().into(),
-                    message: error.to_string().into(),
-                })?;
-            let folder = VaultFolder::try_new(vault_path, &metadata).map_err(
-                |error| VaultFileError::InvalidPath {
-                    path: relative.to_str().unwrap_or("<invalid>").into(),
-                    reason: error.to_string().into(),
-                },
-            )?;
-            folders.push(folder);
-        }
-
-        Ok(folders)
+        Ok((dirs, files))
     }
 }
 
@@ -527,7 +610,7 @@ impl VaultProcessor<Comparison, Scanned> {
     ) -> Result<VaultProcessor<Routing, Compared>, VaultProcessError> {
         let mut report = VaultProcessReport {
             files_scanned: self.status.files.len(),
-            folders_scanned: self.status.folders.len(),
+            folders_scanned: self.status.dirs.len(),
             ..VaultProcessReport::default()
         };
 
@@ -538,18 +621,13 @@ impl VaultProcessor<Comparison, Scanned> {
             }
         };
 
-        if !outcome.file_updates.is_empty()
-            || !outcome.folder_updates.is_empty()
-        {
-            repository.with_batch_write(|batch| {
-                for file in &outcome.file_updates {
-                    batch.put_file(file)?;
-                }
-                for folder in &outcome.folder_updates {
-                    batch.put_folder(folder)?;
-                }
-                Ok(())
-            })?;
+        if !outcome.file_updates.is_empty() || !outcome.dir_updates.is_empty() {
+            for file in &outcome.file_updates {
+                repository.save_file_view(&file.path, &file.view)?;
+            }
+            for dir in &outcome.dir_updates {
+                repository.save_dir_view(&dir.path, &dir.view)?;
+            }
         }
 
         Ok(Self::transition(Routing, Compared {
@@ -565,44 +643,48 @@ impl VaultProcessor<Comparison, Scanned> {
         repository: &VaultRepository<'_>,
         report: &mut VaultProcessReport,
     ) -> Result<CompareOutcome, VaultProcessError> {
-        let existing_files = repository.list_files()?;
-        let existing_folders = repository.list_folders()?;
+        let existing_file_paths = repository.list_file_paths()?;
+        let existing_dir_paths = repository.list_dir_paths()?;
 
-        let file_map = existing_files
-            .into_iter()
-            .map(|file| (file.path().clone(), file))
-            .collect::<HashMap<_, _>>();
-        let folder_map = existing_folders
-            .into_iter()
-            .map(|folder| (folder.path().clone(), folder))
-            .collect::<HashMap<_, _>>();
+        let mut file_map = HashMap::new();
+        for path in existing_file_paths {
+            if let Some(view) = repository.find_file_view_by_path(&path)? {
+                file_map.insert(path, view);
+            }
+        }
+        let mut dir_map = HashMap::new();
+        for path in existing_dir_paths {
+            if let Some(view) = repository.find_dir_view_by_path(&path)? {
+                dir_map.insert(path, view);
+            }
+        }
 
         let mut file_updates = Vec::new();
         let mut markdown_candidates = Vec::new();
         for file in &self.status.files {
-            let existing = file_map.get(file.path());
+            let existing = file_map.get(&file.path);
             let (should_update, should_route) =
-                evaluate_file(existing, file, report);
+                evaluate_file(existing, &file.view, report);
             if should_update {
                 file_updates.push(file.clone());
             }
             if should_route {
-                markdown_candidates.push(file.clone());
+                markdown_candidates.push(file.path.clone());
             }
         }
 
-        let mut folder_updates = Vec::new();
-        for folder in &self.status.folders {
-            let existing = folder_map.get(folder.path());
-            if evaluate_folder(existing, folder, report) {
-                folder_updates.push(folder.clone());
+        let mut dir_updates = Vec::new();
+        for dir in &self.status.dirs {
+            let existing = dir_map.get(&dir.path);
+            if evaluate_dir(existing, &dir.view, report) {
+                dir_updates.push(dir.clone());
             }
         }
 
         Ok(CompareOutcome {
             markdown_candidates,
             file_updates,
-            folder_updates,
+            dir_updates,
         })
     }
 
@@ -614,29 +696,29 @@ impl VaultProcessor<Comparison, Scanned> {
         let mut file_updates = Vec::new();
         let mut markdown_candidates = Vec::new();
         for file in &self.status.files {
-            let existing = repository.get_file(file.path())?;
+            let existing = repository.find_file_view_by_path(&file.path)?;
             let (should_update, should_route) =
-                evaluate_file(existing.as_ref(), file, report);
+                evaluate_file(existing.as_ref(), &file.view, report);
             if should_update {
                 file_updates.push(file.clone());
             }
             if should_route {
-                markdown_candidates.push(file.clone());
+                markdown_candidates.push(file.path.clone());
             }
         }
 
-        let mut folder_updates = Vec::new();
-        for folder in &self.status.folders {
-            let existing = repository.get_folder(folder.path())?;
-            if evaluate_folder(existing.as_ref(), folder, report) {
-                folder_updates.push(folder.clone());
+        let mut dir_updates = Vec::new();
+        for dir in &self.status.dirs {
+            let existing = repository.find_dir_view_by_path(&dir.path)?;
+            if evaluate_dir(existing.as_ref(), &dir.view, report) {
+                dir_updates.push(dir.clone());
             }
         }
 
         Ok(CompareOutcome {
             markdown_candidates,
             file_updates,
-            folder_updates,
+            dir_updates,
         })
     }
 }
@@ -651,7 +733,7 @@ impl VaultProcessor<Routing, Compared> {
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
         let mut report = self.status.report;
         for file in &self.status.markdown_candidates {
-            let info = NoteFileInfo::try_from_path(file.path().as_str(), true)
+            let info = NoteFileInfo::try_from_path(file.as_str(), true)
                 .map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new().process_file(
                 note_repository,
@@ -693,17 +775,20 @@ impl VaultProcessor<Prune, Routed> {
             }));
         }
 
-        let files = repository.list_files()?;
-        for file in files {
-            if self.status.path_set.contains(file.path()) {
+        let paths = repository.list_file_paths()?;
+        for path in paths {
+            if self.status.path_set.contains(&path) {
                 continue;
             }
-            repository.delete_file(file.path())?;
+            let Some(file) = repository.find_file_view_by_path(&path)? else {
+                continue;
+            };
+            repository.delete_file_view(file.id())?;
             bump(&mut report.files_deleted);
-            if !is_markdown_path(file.path().as_path()) {
+            if !is_markdown_path(Path::new(path.as_str())) {
                 continue;
             }
-            let note_path = NotePath::try_new(file.path().as_str())
+            let note_path = NotePath::try_new(path.as_str())
                 .map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new()
                 .record_deleted(note_repository, &note_path)?;
@@ -712,12 +797,14 @@ impl VaultProcessor<Prune, Routed> {
             }
         }
 
-        let folders = repository.list_folders()?;
-        for folder in folders {
-            if self.status.path_set.contains(folder.path()) {
+        let dir_paths = repository.list_dir_paths()?;
+        for path in dir_paths {
+            if self.status.path_set.contains(&path) {
                 continue;
             }
-            repository.delete_folder(folder.path())?;
+            if let Some(dir) = repository.find_dir_view_by_path(&path)? {
+                repository.delete_dir_view(dir.id())?;
+            }
             bump(&mut report.folders_deleted);
         }
 
@@ -750,15 +837,65 @@ impl Default for VaultProcessor<Discovery, Unknown> {
     }
 }
 
+fn normalized_path_from_relative(
+    relative: &Path,
+) -> Result<NormalizedPath, VaultFileError> {
+    let raw = relative.to_str().ok_or_else(|| VaultFileError::InvalidPath {
+        path: "<invalid>".into(),
+        reason: "path is not valid utf-8".into(),
+    })?;
+    NormalizedPath::try_new(raw).map_err(|error| VaultFileError::InvalidPath {
+        path: raw.into(),
+        reason: error.to_string().into(),
+    })
+}
+
+fn parent_path(
+    path: &NormalizedPath,
+) -> Result<Option<NormalizedPath>, VaultFileError> {
+    let parent = Path::new(path.as_str()).parent();
+    let Some(parent) = parent else {
+        return Ok(None);
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    let parent_str =
+        parent.to_str().ok_or_else(|| VaultFileError::InvalidPath {
+            path: path.as_str().into(),
+            reason: "parent path is not valid utf-8".into(),
+        })?;
+    Ok(Some(NormalizedPath::try_new(parent_str).map_err(|error| {
+        VaultFileError::InvalidPath {
+            path: parent_str.into(),
+            reason: error.to_string().into(),
+        }
+    })?))
+}
+
+fn last_component(path: &Path) -> Result<Box<str>, VaultFileError> {
+    let name =
+        path.file_name().and_then(|value| value.to_str()).ok_or_else(|| {
+            VaultFileError::InvalidPath {
+                path: path.to_string_lossy().into_owned().into_boxed_str(),
+                reason: "missing terminal path component".into(),
+            }
+        })?;
+    Ok(name.into())
+}
+
 #[inline]
 fn bump(value: &mut usize) {
     *value = value.saturating_add(1);
 }
 
 #[inline]
-fn metadata_match(stored: &VaultFile, current: &VaultFile) -> bool {
-    let size_match = stored.size() == current.size();
-    let mtime_match = match (stored.modified_at(), current.modified_at()) {
+fn metadata_match(stored: &FileView, current: &FileView) -> bool {
+    let size_match = stored.metadata().size() == current.metadata().size();
+    let mtime_match = match (
+        stored.metadata().times().modified_at(),
+        current.metadata().times().modified_at(),
+    ) {
         (Some(stored), Some(current)) => stored == current,
         (None, None) => true,
         _ => false,
@@ -767,8 +904,11 @@ fn metadata_match(stored: &VaultFile, current: &VaultFile) -> bool {
 }
 
 #[inline]
-fn folder_metadata_match(stored: &VaultFolder, current: &VaultFolder) -> bool {
-    match (stored.modified_at(), current.modified_at()) {
+fn dir_metadata_match(stored: &DirView, current: &DirView) -> bool {
+    match (
+        stored.metadata().times().modified_at(),
+        current.metadata().times().modified_at(),
+    ) {
         (Some(stored), Some(current)) => stored == current,
         (None, None) => true,
         _ => false,
@@ -776,11 +916,11 @@ fn folder_metadata_match(stored: &VaultFolder, current: &VaultFolder) -> bool {
 }
 
 fn evaluate_file(
-    existing: Option<&VaultFile>,
-    file: &VaultFile,
+    existing: Option<&FileView>,
+    file: &FileView,
     report: &mut VaultProcessReport,
 ) -> (bool, bool) {
-    let is_markdown = is_markdown_path(file.path().as_path());
+    let is_markdown = file.format() == FileFormat::Markdown;
     let should_update = match existing {
         Some(existing) if metadata_match(existing, file) => {
             bump(&mut report.files_fresh);
@@ -799,13 +939,13 @@ fn evaluate_file(
     (should_update, should_update && is_markdown)
 }
 
-fn evaluate_folder(
-    existing: Option<&VaultFolder>,
-    folder: &VaultFolder,
+fn evaluate_dir(
+    existing: Option<&DirView>,
+    dir: &DirView,
     report: &mut VaultProcessReport,
 ) -> bool {
     match existing {
-        Some(existing) if folder_metadata_match(existing, folder) => false,
+        Some(existing) if dir_metadata_match(existing, dir) => false,
         Some(_) => {
             bump(&mut report.folders_updated);
             true
@@ -813,6 +953,96 @@ fn evaluate_folder(
         None => {
             bump(&mut report.folders_added);
             true
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs::{DirMetadata, DirName, FileMetadata, FileName, FsTimes};
+
+    mod discovery_tests {
+        use super::*;
+
+        #[test]
+        fn normalized_path_helper_rejects_non_utf8_or_invalid() {
+            assert!(NormalizedPath::try_new("../outside").is_err());
+        }
+    }
+
+    mod parent_link_tests {
+        use super::*;
+
+        #[test]
+        fn parent_path_returns_none_for_root_file() {
+            let path = NormalizedPath::try_new("note.md").expect("path");
+            assert!(parent_path(&path).expect("parent").is_none());
+        }
+
+        #[test]
+        fn parent_path_returns_parent_for_nested_path() {
+            let path =
+                NormalizedPath::try_new("notes/a/note.md").expect("path");
+            let parent =
+                parent_path(&path).expect("parent").expect("some parent");
+            assert_eq!(parent.as_str(), "notes/a");
+        }
+    }
+
+    mod compare_tests {
+        use super::*;
+
+        fn sample_file(
+            size: u64,
+            modified: Option<std::time::SystemTime>,
+        ) -> FileView {
+            FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("note.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, modified), size, false),
+                [1u8; 32],
+            )
+        }
+
+        #[test]
+        fn evaluate_file_counts_add_when_missing() {
+            let mut report = VaultProcessReport::default();
+            let file = sample_file(10, None);
+            let (update, route) = evaluate_file(None, &file, &mut report);
+            assert!(update);
+            assert!(route);
+            assert_eq!(report.files_added(), 1);
+        }
+    }
+
+    mod route_tests {
+        use super::*;
+
+        #[test]
+        fn markdown_detection_is_extension_based() {
+            assert!(is_markdown_path(Path::new("notes/a.md")));
+            assert!(is_markdown_path(Path::new("notes/a.markdown")));
+            assert!(!is_markdown_path(Path::new("notes/a.txt")));
+        }
+    }
+
+    mod prune_tests {
+        use super::*;
+
+        #[test]
+        fn evaluate_dir_counts_add_when_missing() {
+            let mut report = VaultProcessReport::default();
+            let dir = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("notes".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            assert!(evaluate_dir(None, &dir, &mut report));
+            assert_eq!(report.folders_added(), 1);
         }
     }
 }
