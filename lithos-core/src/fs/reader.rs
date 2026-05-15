@@ -13,8 +13,8 @@
 //! # Features
 //!
 //! - **Directory scanning**: Glob-pattern filtering via
-//!   [`filter_dir`](Reader::filter_dir) and
-//!   [`list_entries`](Reader::list_entries)
+//!   [`filter_file_paths`](Reader::filter_file_paths) and
+//!   [`filter_entries`](Reader::filter_entries)
 //! - **File reading**: Raw bytes, UTF-8 strings, and structured parsing
 //!   (JSON/TOML/YAML)
 //! - **Format detection**: Automatic format classification by extension and
@@ -31,7 +31,7 @@
 //! let reader = FsReader::new("/vault");
 //!
 //! // Find all TOML files
-//! let schema_files = reader.filter_dir("schemas/**/*.toml")?;
+//! let schema_files = reader.filter_file_paths("schemas/**/*.toml")?;
 //!
 //! // Read and parse structured file
 //! let data: serde_json::Value =
@@ -153,22 +153,6 @@ impl Reader {
         self.root.join(path).exists()
     }
 
-    /// Filters files within the vault using a glob pattern.
-    ///
-    /// The pattern is relative to the vault root. Only files and symlinks are
-    /// returned; directories are excluded. Results are sorted alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_dir(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
-        use super::scanner::{DirScanInput, DirScanner};
-
-        let scanner = DirScanner::new(&self.root);
-        Ok(scanner.paths(DirScanInput::new().with_pattern(pattern))?)
-    }
-
     /// Filters paths within the vault using a glob pattern.
     ///
     /// Returns a mixed collection of files and directories.
@@ -184,7 +168,7 @@ impl Reader {
         use super::scanner::{DirScanInput, DirScanner};
 
         let scanner = DirScanner::new(&self.root);
-        Ok(scanner.paths_typed(
+        Ok(scanner.paths(
             DirScanInput::new().with_pattern(pattern).include_dirs(true),
         )?)
     }
@@ -303,18 +287,6 @@ impl Reader {
                 FsEntry::File(_) => None,
             })
             .collect())
-    }
-
-    /// Lists files matching a glob pattern within the vault.
-    ///
-    /// This is a compatibility alias for [`filter_dir`].
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
-        self.filter_dir(pattern)
     }
 
     /// Lists directories matching a glob pattern within the vault.
@@ -898,12 +870,15 @@ mod tests {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "schemas/b.json", b"{}");
             write_file(dir.path(), "schemas/a.json", b"{}");
-            let reader = Reader::new(dir.path());
-            let files = reader.filter_dir("schemas/**/*.json").expect("list");
-            assert_eq!(files, vec![
-                PathBuf::from("schemas/a.json"),
-                PathBuf::from("schemas/b.json")
-            ]);
+            let root = dir.path().to_path_buf();
+            let reader = Reader::new(&root);
+            let files =
+                reader.filter_file_paths("schemas/**/*.json").expect("list");
+            assert_eq!(files.len(), 2);
+            let first = files.first().expect("first file");
+            let second = files.get(1).expect("second file");
+            assert_eq!(first.as_path(), root.join("schemas/a.json"));
+            assert_eq!(second.as_path(), root.join("schemas/b.json"));
         }
 
         #[test]
@@ -913,7 +888,7 @@ mod tests {
             std::fs::create_dir_all(dir.path().join("subdir.json"))
                 .expect("dir");
             let reader = Reader::new(dir.path());
-            let files = reader.filter_dir("*.json").expect("list");
+            let files = reader.filter_file_paths("*.json").expect("list");
             assert_eq!(files.len(), 1);
         }
 
@@ -923,7 +898,7 @@ mod tests {
             let reader = Reader::new(dir.path());
             // glob::Pattern is very permissive - even "[invalid" is considered
             // valid It just won't match anything, which is fine
-            let result = reader.filter_dir("[invalid");
+            let result = reader.filter_file_paths("[invalid");
             assert!(result.is_ok());
             assert!(result.unwrap().is_empty());
         }
@@ -932,7 +907,7 @@ mod tests {
         fn returns_empty_when_no_matches() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let files = reader.filter_dir("*.json").expect("list");
+            let files = reader.filter_file_paths("*.json").expect("list");
             assert!(files.is_empty());
         }
 
@@ -947,7 +922,7 @@ mod tests {
             )
             .expect("symlink");
             let reader = Reader::new(dir.path());
-            let files = reader.filter_dir("*.json").expect("list");
+            let files = reader.filter_file_paths("*.json").expect("list");
             assert_eq!(files.len(), 2);
         }
     }

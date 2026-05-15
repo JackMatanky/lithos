@@ -97,40 +97,6 @@ impl DirScanner {
         &self.path
     }
 
-    /// Scans the directory and returns matching paths (relative to root).
-    ///
-    /// Results are sorted alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ScanError` if directory traversal fails or pattern is
-    /// invalid.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use lithos_core::fs::scanner::{DirScanInput, DirScanner};
-    ///
-    /// let scanner = DirScanner::new("/vault");
-    /// let paths =
-    ///     scanner.paths(DirScanInput::new().with_pattern("schemas/**/*.toml"))?;
-    /// # Ok::<(), lithos_core::fs::error::ScanError>(())
-    /// ```
-    #[inline]
-    pub fn paths(
-        &self,
-        input: DirScanInput,
-    ) -> Result<Vec<PathBuf>, ScanError> {
-        let mut results = self
-            .scan_internal(input)?
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect::<Vec<_>>();
-
-        results.sort();
-        Ok(results)
-    }
-
     /// Scans the directory and returns matching typed entries with metadata.
     ///
     /// Results are sorted by path alphabetically.
@@ -161,7 +127,7 @@ impl DirScanner {
     /// }
     /// # Ok::<(), lithos_core::fs::error::ScanError>(())
     /// ```
-    /// Scans the directory and returns matching typed paths (File or Dir).
+    /// Scans the directory and returns matching paths (File or Dir).
     ///
     /// Results are sorted by path alphabetically.
     ///
@@ -170,10 +136,7 @@ impl DirScanner {
     /// Returns `ScanError` if directory traversal fails or pattern is
     /// invalid.
     #[inline]
-    pub fn paths_typed(
-        &self,
-        input: DirScanInput,
-    ) -> Result<Vec<FsPath>, ScanError> {
+    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ScanError> {
         let walker = self.build_walker(&input);
         let mut results = Vec::new();
 
@@ -283,34 +246,6 @@ impl DirScanner {
         }
 
         Ok(Some(relative.to_path_buf()))
-    }
-
-    /// Internal scan implementation returning (path, metadata) pairs.
-    fn scan_internal(
-        &self,
-        input: DirScanInput,
-    ) -> Result<Vec<(PathBuf, std::fs::Metadata)>, ScanError> {
-        let walker = self.build_walker(&input);
-        let mut results = Vec::new();
-
-        for entry in walker {
-            let entry = entry.map_err(|e| ScanError::Traversal {
-                path: e.path().map(Path::to_path_buf).unwrap_or_default(),
-                source: e.into(),
-            })?;
-
-            if let Some(relative) = self.filter_entry(&entry, &input)? {
-                let metadata =
-                    entry.metadata().map_err(|e| ScanError::Traversal {
-                        path: entry.path().to_path_buf(),
-                        source: e.into(),
-                    })?;
-
-                results.push((relative, metadata));
-            }
-        }
-
-        Ok(results)
     }
 
     /// Builds a `WalkDir` iterator based on input configuration.
@@ -618,15 +553,18 @@ mod tests {
             write_file(temp.path(), "a.toml", b"");
             write_file(temp.path(), "b.yaml", b"");
             write_file(temp.path(), "sub/c.toml", b"");
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner
                 .paths(DirScanInput::new().with_pattern("**/*.toml"))
                 .unwrap();
 
             assert_eq!(paths.len(), 2);
-            assert!(paths.contains(&PathBuf::from("a.toml")));
-            assert!(paths.contains(&PathBuf::from("sub/c.toml")));
+            assert!(paths.iter().any(|p| p.as_path() == root.join("a.toml")));
+            assert!(
+                paths.iter().any(|p| p.as_path() == root.join("sub/c.toml"))
+            );
         }
 
         #[test]
@@ -635,15 +573,18 @@ mod tests {
             write_file(temp.path(), "z.toml", b"");
             write_file(temp.path(), "a.toml", b"");
             write_file(temp.path(), "m.toml", b"");
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner.paths(DirScanInput::new()).unwrap();
 
-            assert_eq!(paths, vec![
-                PathBuf::from("a.toml"),
-                PathBuf::from("m.toml"),
-                PathBuf::from("z.toml")
-            ]);
+            assert_eq!(paths.len(), 3);
+            let first = paths.first().expect("first path");
+            let second = paths.get(1).expect("second path");
+            let third = paths.get(2).expect("third path");
+            assert_eq!(first.as_path(), root.join("a.toml"));
+            assert_eq!(second.as_path(), root.join("m.toml"));
+            assert_eq!(third.as_path(), root.join("z.toml"));
         }
     }
 
@@ -656,15 +597,16 @@ mod tests {
             write_file(temp.path(), "a.toml", b"");
             write_file(temp.path(), "b.yaml", b"");
             write_file(temp.path(), "c.json", b"");
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner
                 .paths(DirScanInput::new().with_extensions(&["toml", "yaml"]))
                 .unwrap();
 
             assert_eq!(paths.len(), 2);
-            assert!(paths.contains(&PathBuf::from("a.toml")));
-            assert!(paths.contains(&PathBuf::from("b.yaml")));
+            assert!(paths.iter().any(|p| p.as_path() == root.join("a.toml")));
+            assert!(paths.iter().any(|p| p.as_path() == root.join("b.yaml")));
         }
 
         #[test]
@@ -690,8 +632,9 @@ mod tests {
             write_file(temp.path(), "schemas/a.toml", b"");
             write_file(temp.path(), "schemas/b.yaml", b"");
             write_file(temp.path(), "other/c.toml", b"");
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner
                 .paths(
                     DirScanInput::new()
@@ -702,7 +645,10 @@ mod tests {
 
             // Only schemas/a.toml matches BOTH pattern AND extension
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths.first(), Some(&PathBuf::from("schemas/a.toml")));
+            assert_eq!(
+                paths.first().unwrap().as_path(),
+                root.join("schemas/a.toml")
+            );
         }
     }
 
@@ -714,13 +660,14 @@ mod tests {
             let temp = TempDir::new().unwrap();
             write_file(temp.path(), "a.toml", b"");
             write_file(temp.path(), "sub/b.toml", b"");
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths =
                 scanner.paths(DirScanInput::new().recursive(false)).unwrap();
 
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths.first(), Some(&PathBuf::from("a.toml")));
+            assert_eq!(paths.first().unwrap().as_path(), root.join("a.toml"));
         }
 
         #[test]
@@ -746,12 +693,16 @@ mod tests {
             let temp = TempDir::new().unwrap();
             write_file(temp.path(), "file.toml", b"");
             std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner.paths(DirScanInput::new()).unwrap();
 
             assert_eq!(paths.len(), 1);
-            assert_eq!(paths.first(), Some(&PathBuf::from("file.toml")));
+            assert_eq!(
+                paths.first().unwrap().as_path(),
+                root.join("file.toml")
+            );
         }
 
         #[test]
@@ -759,15 +710,18 @@ mod tests {
             let temp = TempDir::new().unwrap();
             write_file(temp.path(), "file.toml", b"");
             std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
+            let root = temp.path().to_path_buf();
 
-            let scanner = DirScanner::new(temp.path());
+            let scanner = DirScanner::new(&root);
             let paths = scanner
                 .paths(DirScanInput::new().include_dirs(true).recursive(false))
                 .unwrap();
 
             assert_eq!(paths.len(), 2);
-            assert!(paths.contains(&PathBuf::from("file.toml")));
-            assert!(paths.contains(&PathBuf::from("subdir")));
+            assert!(
+                paths.iter().any(|p| p.as_path() == root.join("file.toml"))
+            );
+            assert!(paths.iter().any(|p| p.as_path() == root.join("subdir")));
         }
     }
 
@@ -836,7 +790,7 @@ mod tests {
             let root = temp.path().to_path_buf();
 
             let scanner = DirScanner::new(&root);
-            let paths = scanner.paths_typed(DirScanInput::new()).unwrap();
+            let paths = scanner.paths(DirScanInput::new()).unwrap();
 
             assert_eq!(paths.len(), 1);
             let path = paths.first().unwrap();
@@ -868,7 +822,7 @@ mod tests {
             let root = temp.path().to_path_buf();
 
             let scanner = DirScanner::new(&root);
-            let paths = scanner.paths_typed(DirScanInput::new()).unwrap();
+            let paths = scanner.paths(DirScanInput::new()).unwrap();
 
             assert_eq!(
                 paths.first().unwrap().as_path().file_name().unwrap(),
