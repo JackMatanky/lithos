@@ -1,4 +1,4 @@
-# Lithos Rust - AI Agent Reference
+# Lithos - AI Agent Reference
 
 ## Agent skills
 
@@ -57,6 +57,13 @@ This project is indexed by GitNexus as **lithos** (19085 symbols, 26829 relation
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+<!-- graphify:start -->
+# graphify
+
+- **graphify** (`~/.agents/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
+When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` before doing anything else.
+<!-- graphify:end -->
 
 <!-- mise:start -->
 # Mise — Environment & Task Orchestration
