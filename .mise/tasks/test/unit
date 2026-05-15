@@ -69,6 +69,7 @@ context_filter() {
 # Globals:
 #   usage_verbose
 #   usage_filter
+#   usage_package
 # Arguments:
 #   Reference to an array for arguments
 # Outputs:
@@ -77,7 +78,13 @@ context_filter() {
 add_nextest_args() {
     local -n _nextest_ref_args=$1
 
-    _nextest_ref_args+=("--lib" "--bins")
+    # CLI package is binary-only, so only test bins
+    if [[ "${usage_package:-}" == "cli" ]]; then
+        _nextest_ref_args+=("--bins")
+    else
+        _nextest_ref_args+=("--lib" "--bins")
+    fi
+
     _nextest_ref_args+=("--partition" "hash:1/1")
 
     if [[ "${usage_verbose:-}" == "1" ]]; then
@@ -137,6 +144,8 @@ build_test_arg() {
 
 #######################################
 # Execute unit tests using nextest and doc tests using cargo.
+# Globals:
+#   usage_package
 # Arguments:
 #   Arguments for cargo nextest run (array elements)
 #   --- separator ---
@@ -165,8 +174,13 @@ run_tests() {
     echo "🧪 Running unit tests (nextest)..."
     cargo nextest run "${nextest_args[@]}"
 
-    echo "📖 Running doc tests..."
-    cargo test --doc "${doc_args[@]}"
+    # Skip doc tests for binary-only packages (CLI)
+    if [[ "${usage_package:-}" == "cli" ]]; then
+        echo "📖 Skipping doc tests (binary-only package)..."
+    else
+        echo "📖 Running doc tests..."
+        cargo test --doc "${doc_args[@]}"
+    fi
 }
 
 #######################################
