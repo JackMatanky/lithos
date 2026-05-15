@@ -3,7 +3,6 @@
 #MISE alias="ti"
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
-#MISE outputs=["{{vars.nextest_dir}}/default"]
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
