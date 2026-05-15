@@ -78,7 +78,7 @@ junit_integration = "nextest-integration.xml"
 binary_name = "lithos"
 
 # Benchmark configuration
-bench_archive_dir = ".benchmarks/baselines"
+bench_archive_dir = ".benchmarks"
 bench_package_core = "lithos-core"
 bench_package_cli = "lithos-cli"
 

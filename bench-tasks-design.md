@@ -19,9 +19,9 @@
 
 ```
 #MISE description="Benchmark tasks: run (default), compare, list, open report"
-#MISE alias="tb"
+#MISE alias="bench"
 #MISE sources=["**/*.rs", "Cargo.toml", "benches/**/*"]
-#MISE outputs=[".benchmarks/baselines/*.json"]
+#MISE outputs=[".benchmarks/*.json"]
 #USAGE arg "[mode]" help="Operation mode" {
 #USAGE   choices "run" "compare" "list" "open"
 #USAGE   default "run"
@@ -45,12 +45,12 @@
 
 1. Generate baseline name: `<branch>-<date>-<time>-<sha>` (e.g., `main-2026-05-14-143022-a1b2c3d`)
 2. Run `cargo bench --bench <target>... [--package <pkg>] -- --save-baseline <name> [filter] [--quick] [--noplot]`
-3. Export via `critcmp --export <name> > .benchmarks/baselines/<name>.json`
+3. Export via `critcmp --export <name> > .benchmarks/<name>.json`
 4. Verify exported file is non-empty
 
 **Compare mode** (`compare <a> <b>`): Run critcmp with path resolution.
 
-**List mode** (`list`): Show archived baselines in `.benchmarks/baselines/`.
+**List mode** (`list`): Show archived baselines in `.benchmarks/`.
 
 **Open mode** (`open`): Open HTML report in default browser.
 
@@ -63,7 +63,7 @@
 | `discover_bench_targets()` | Find `[[bench]]` target names in Cargo.toml files |
 | `build_cargo_args()` | `--bench <target>...` + `--package` (via discovery) |
 | `build_bench_args()` | Always `--save-baseline`, optional filter/quick/noplot |
-| `ensure_archive_dir()` | `mkdir -p .benchmarks/baselines/` |
+| `ensure_archive_dir()` | `mkdir -p .benchmarks/` |
 | `verify_critcmp()` | Error if critcmp not installed |
 | `export_baseline()` | `critcmp --export` + non-empty verify |
 | `run_benchmarks()` | `cargo bench [cargo_args] -- [bench_args]` |
@@ -133,6 +133,6 @@ run = "mise run test:bench run -p cli"
 | File | Description |
 |------|-------------|
 | `.mise/tasks/test/bench` | Main bench task script (352 lines) |
-| `.benchmarks/baselines/*.json` | Archived baseline exports |
+| `.benchmarks/*.json` | Archived baseline exports |
 | `target/criterion/` | Criterion output directory |
 | `bench-tasks-design.md` | This design document |

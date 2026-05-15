@@ -2,7 +2,7 @@
 #MISE description="Benchmark tasks: run (default), compare, list, open report"
 #MISE alias="bench"
 #MISE sources=["**/*.rs", "Cargo.toml", "benches/**/*"]
-#MISE outputs=[".benchmarks/baselines/*.json"]
+#MISE outputs=[".benchmarks/*.json"]
 #USAGE arg "[mode]" help="Operation mode" {
 #USAGE   choices "run" "compare" "list" "open"
 #USAGE   default "run"
@@ -24,7 +24,7 @@ set -euo pipefail
 #######################################
 # SECTION 1: CONFIGURATION
 #######################################
-ARCHIVE_DIR="${MISE_VARS_BENCH_ARCHIVE_DIR:-.benchmarks/baselines}"
+ARCHIVE_DIR="${MISE_VARS_BENCH_ARCHIVE_DIR:-.benchmarks}"
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 
 #######################################
