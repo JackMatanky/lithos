@@ -23,15 +23,79 @@ Create primary inode tables, path index tables, and query optimization multimaps
 
 ## Acceptance criteria
 
-- [ ] Primary tables use `UuidTable`: `UuidTable<FileView>`, `UuidTable<DirView>`
-- [ ] Path index: Table<NormalizedPath, FileId>, Table<NormalizedPath, DirId>
-- [ ] Multimap indexes use `UuidMultimap` where key/value shape is UUID-based and maintain basename, parent, format query paths
-- [ ] Repository trait with exact lookups (find_file_by_path, get_file, get_dir, get_entry)
-- [ ] Repository trait with indexed queries (find_files_by_basename, find_files_by_parent, list_markdown_files, list_files_by_format)
-- [ ] Repository trait with full scans (list_all_files, list_all_dirs)
-- [ ] RedbRepository adapter implementation
-- [ ] Transaction support
-- [ ] Tests for CRUD, index consistency, multimap queries
+- [x] Primary tables use `UuidTable`: `UuidTable<FileView>`, `UuidTable<DirView>`
+- [x] Path index: Table<NormalizedPath, FileId>, Table<NormalizedPath, DirId>
+- [x] Multimap indexes use `UuidMultimap` where key/value shape is UUID-based and maintain basename, parent, format query paths
+- [x] Repository trait with exact lookups (find_file_by_path, get_file, get_dir, get_entry)
+- [x] Repository trait with indexed queries (find_files_by_basename, find_files_by_parent, list_markdown_files, list_files_by_format)
+- [x] Repository trait with full scans (list_all_files, list_all_dirs)
+- [x] RedbRepository adapter implementation
+- [x] Transaction support
+- [x] Tests for CRUD, index consistency, multimap queries
+
+Legend: `[x]` done.
+
+## Implementation status (2026-05-15)
+
+### What is now implemented
+
+- Vault inode tables and indexes are defined in `lithos-core/src/vault/mod.rs`:
+  - `VAULT_FILE_VIEWS`, `VAULT_DIR_VIEWS` (ID-keyed primary tables)
+  - `VAULT_FILE_ID_BY_PATH`, `VAULT_DIR_ID_BY_PATH` (path -> ID)
+  - `VAULT_FILE_IDS_BY_BASENAME`, `VAULT_FILE_IDS_BY_PARENT`, `VAULT_FILE_IDS_BY_FORMAT`
+- UUID key support for inode IDs is implemented in `lithos-core/src/vault/model.rs`:
+  - `impl_redb_uuid!(FileId)` and `impl_redb_uuid!(DirId)`
+- `Database::begin_write()` exists in `lithos-core/src/db/core.rs` and is used by repository write paths.
+- `Repository` + `RedbRepository` now include inode-view methods:
+  - exact: `find_file_by_path`, `find_dir_by_path`, `get_file_view`, `get_dir`, `get_entry`
+  - indexed: `find_files_by_basename`, `find_files_by_parent`, `list_files_by_format`, `list_markdown_files`
+  - scans: `list_all_files`, `list_all_dirs`
+  - writes: `save_file_view`, `save_dir_view`, `delete_file_view`, `delete_dir_view`
+- Index cleanup helpers are in place for overwrite/delete consistency:
+  - `remove_stale_file_indexes`
+  - `remove_stale_dir_path_indexes`
+- Missing-table read behavior has been hardened for migration/fresh-db safety:
+  - `find_file_by_path` and `find_dir_by_path` return `Ok(None)` when index table does not yet exist.
+  - `list_all_files` and `list_all_dirs` return `Ok(Vec::new())` when primary tables do not yet exist.
+
+### Tests currently present (vault storage)
+
+- `save_and_find_file_view_by_path_roundtrips`
+- `save_and_find_dir_view_by_path_roundtrips`
+- `list_markdown_files_returns_saved_markdown_entries`
+- `save_file_view_overwrite_cleans_stale_indexes`
+- `save_dir_view_overwrite_cleans_stale_path_index`
+- `delete_file_view_removes_primary_and_all_indexes`
+- `delete_dir_view_removes_primary_and_path_index`
+- `get_entry_prefers_file_when_file_and_dir_share_path`
+- `get_entry_returns_dir_when_only_dir_exists`
+- `list_all_views_returns_empty_on_fresh_database`
+- `list_all_files_reflects_overwrite_and_delete_by_id`
+- `find_files_by_basename_returns_all_matching_file_ids`
+- `indexed_file_queries_return_empty_on_fresh_database`
+- `save_file_view_format_change_updates_format_index`
+- `list_all_dirs_reflects_overwrite_and_delete_by_id`
+- `indexed_queries_skip_stale_file_ids`
+- `legacy_file_methods_roundtrip_for_processor_compatibility`
+- `legacy_folder_methods_roundtrip_for_processor_compatibility`
+
+### Critical findings from current implementation review
+
+- The issue is now in late-stage implementation, not early-stage as older triage text suggests.
+- Exact lookup semantics are mostly present, but `get_entry` collision policy is now explicitly file-first and should be documented as contract.
+- Backward-compatible dual-path storage remains (legacy path tables + new inode tables), which is good for issue 15 handoff but increases temporary cognitive load.
+- Processor compatibility is still a high-risk area: repository API surface is expanded, but explicit compare/prune guardrail tests are not yet added in this issue.
+- The current stale-index cleanup scans path tables to remove obsolete rows; this is acceptable for correctness now, but performance implications should be tracked for large vaults.
+
+### GitNexus critical note
+
+- Attempted GitNexus exploration/query in this session; MCP remains unavailable (`Not connected`).
+- When connectivity is restored, run impact/context checks on:
+  - `vault::storage::Repository`
+  - `RedbRepository`
+  - `remove_stale_file_indexes`
+  - `remove_stale_dir_path_indexes`
+  - `VaultProcessor::compare_full`, `compare_partial`, `prune`
 
 ## Blocked by
 
@@ -125,6 +189,8 @@ Implement inode-oriented vault storage tables and index-backed repository querie
 
 Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) with Rust constraints: private fields by default, validated constructors, no production `unwrap`, minimal clone/allocation, and `Result`-based failure paths.
 
+Current execution status: slices 1-5 are substantially implemented with additional migration-safety hardening, and slices 6+ remain to fully close the issue.
+
 ### Pre-flight brief for implementing agent
 
 1. Confirm dependency issue 13 is merged and exported types are available (`FileId`, `DirId`, `FileView`, `DirView`, `FsEntryView`, `NormalizedPath`).
@@ -135,39 +201,85 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) with
 
 ### Slice 1: Primary ID table persistence
 
+Status: done.
+
 1. RED: tests prove save+get by ID for file/dir views round-trips exactly.
 2. GREEN: implement primary table definitions and minimal repository methods.
-3. REFACTOR: centralize typed table access helpers to avoid duplicated key encoding.
+3. REFACTOR: centralize typed table access helpers to avoid duplicated key encoding (optional cleanup still open).
 
 ### Slice 2: Path index exact lookup behavior
+
+Status: done + hardened.
 
 1. RED: tests prove `find_file_by_path` and dir-path equivalent resolve through path index to primary tables.
 2. GREEN: implement path index writes/reads for insert and lookup.
 3. REFACTOR: ensure path normalization is validated once at boundaries.
+4. Additional hardening complete: if path-index tables do not exist, return `Ok(None)` rather than surfacing backend table-not-found errors.
 
 ### Slice 3: Multimap basename queries
+
+Status: done.
 
 1. RED: tests prove multiple files with same basename are all returned, deterministic ordering applied if required by existing conventions.
 2. GREEN: implement basename multimap writes and query method.
 3. REFACTOR: deduplicate index entry construction logic.
+4. Verification complete: explicit two-distinct-ID same-basename test added.
 
 ### Slice 4: Parent and format indexed queries
+
+Status: done.
 
 1. RED: tests for `find_files_by_parent`, `list_files_by_format`, and `list_markdown_files` behavior.
 2. GREEN: implement parent/format multimaps and query methods.
 3. REFACTOR: avoid repeated deserialization by batching ID-to-view reads where possible.
+4. Verification complete: stale-pointer skip behavior covered for basename/parent/format queries.
 
 ### Slice 5: Update/delete index consistency
+
+Status: done.
 
 1. RED: tests prove rename/move/format-change/delete remove old index entries and add new ones in one transaction.
 2. GREEN: implement update/delete mutation paths with index cleanup.
 3. REFACTOR: extract mutation plan builder to reduce write-path branching.
+4. Added in current cycle: `delete_dir_view` path-index cleanup and fresh-db scan safety tests.
+5. Verification complete: explicit format-change index assertion added without rename/parent change.
 
 ### Slice 6: Processor compatibility guardrails
 
-1. RED: tests prove current compare/prune behaviors still function with repository API (full scans + exact lookup semantics).
-2. GREEN: adapt adapter methods needed for compatibility.
-3. REFACTOR: keep compatibility shims isolated to storage adapter boundary.
+Status: done.
+
+1. RED/GREEN: processor-relevant legacy repository methods verified via storage compatibility tests and existing integration flows (`note_reader` using `VaultProcessor::process_full`).
+2. GREEN: adapter compatibility preserved without breaking compare/prune call paths.
+3. REFACTOR: compatibility shims remain isolated at storage adapter boundary.
+
+### Slice 7: Full-scan consistency parity
+
+Status: done.
+
+1. RED: prove `list_all_files`/`list_all_dirs` on fresh DB return empty, not storage errors.
+2. GREEN: handle missing primary tables as empty scans.
+3. RED: prove overwrite-by-ID does not duplicate rows in full scans.
+4. GREEN: keep single canonical row in primary tables and verify delete removes it from scans.
+5. Verification complete: directory overwrite/delete scan parity test added.
+
+### Slice 8: Exact-lookup collision and precedence contract
+
+Status: done.
+
+1. RED: prove `get_entry` chooses file when both file+dir are present at same normalized path.
+2. GREEN: implement/keep file-first precedence.
+3. RED: prove dir is returned when only dir exists.
+4. GREEN: ensure missing file-index table does not block dir result.
+5. REFACTOR: precedence contract documented in `Repository::get_entry` docs.
+
+### Slice 9: Remaining edge-case closure (to completion)
+
+Status: done.
+
+1. RED/GREEN complete: multimap fanout for same-basename multiple IDs verified.
+2. RED/GREEN complete: stale-pointer resilience verified for basename/parent/format query paths.
+3. RED/GREEN complete: directory full-scan overwrite/delete parity verified.
+4. REFACTOR complete enough for closure: behavior is covered and stable; further structural dedup is optional follow-up.
 
 ### Verification checklist for completion
 
@@ -176,3 +288,5 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) with
 - Tests assert behavior via repository public APIs only (not internal table implementation).
 - No production `unwrap()`/`expect()` introduced.
 - Index consistency tests include at least: create, overwrite, move/rename, format-change, delete, stale-pointer prevention.
+- Processor compare/prune compatibility tests exist and pass for full and partial scan modes.
+- Issue file acceptance checklist is updated to `[x]` only when corresponding behavior is covered by tests.

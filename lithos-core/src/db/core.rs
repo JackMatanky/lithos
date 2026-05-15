@@ -144,6 +144,16 @@ impl Database {
     pub fn begin_read(&self) -> Result<redb::ReadTransaction, DbError> {
         self.inner.begin_read().map_err(Into::into)
     }
+
+    /// Begin a new read-write transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DbError::Transaction`] if the transaction cannot be started.
+    #[inline]
+    pub fn begin_write(&self) -> Result<redb::WriteTransaction, DbError> {
+        self.inner.begin_write().map_err(Into::into)
+    }
 }
 
 #[cfg(test)]

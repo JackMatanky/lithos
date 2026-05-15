@@ -16,6 +16,7 @@ use crate::{
     fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, PathValidator,
     },
+    impl_redb_uuid,
     support::Blake3Hash,
     utils::UuidV7,
 };
@@ -113,6 +114,9 @@ impl Default for DirId {
         Self::new()
     }
 }
+
+impl_redb_uuid!(FileId);
+impl_redb_uuid!(DirId);
 
 /// Normalized, vault-relative path using forward slashes.
 #[derive(
