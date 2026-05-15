@@ -23,7 +23,7 @@ Create primary inode tables, path index tables, and query optimization multimaps
 
 ## Acceptance criteria
 
-- [x] Primary tables use `UuidTable`: `UuidTable<FileView>`, `UuidTable<DirView>`
+- [x] Primary tables use `UuidTable` with ID keys and serialized values: `UuidTable<FileId, &[u8]>`, `UuidTable<DirId, &[u8]>`
 - [x] Path index: Table<NormalizedPath, FileId>, Table<NormalizedPath, DirId>
 - [x] Multimap indexes use `UuidMultimap` where key/value shape is UUID-based and maintain basename, parent, format query paths
 - [x] Repository trait with exact lookups (find_file_by_path, get_file, get_dir, get_entry)
@@ -78,13 +78,15 @@ Legend: `[x]` done.
 - `indexed_queries_skip_stale_file_ids`
 - `legacy_file_methods_roundtrip_for_processor_compatibility`
 - `legacy_folder_methods_roundtrip_for_processor_compatibility`
+- `full_scan_reports_pruned_files_for_removed_notes`
+- `partial_scan_does_not_prune_unscanned_missing_notes`
 
 ### Critical findings from current implementation review
 
 - The issue is now in late-stage implementation, not early-stage as older triage text suggests.
 - Exact lookup semantics are mostly present, but `get_entry` collision policy is now explicitly file-first and should be documented as contract.
 - Backward-compatible dual-path storage remains (legacy path tables + new inode tables), which is good for issue 15 handoff but increases temporary cognitive load.
-- Processor compatibility is still a high-risk area: repository API surface is expanded, but explicit compare/prune guardrail tests are not yet added in this issue.
+- Processor compatibility guardrails now include explicit full/partial scan expectations via integration tests (full scan prunes removed files, partial scan does not prune unscanned paths).
 - The current stale-index cleanup scans path tables to remove obsolete rows; this is acceptable for correctness now, but performance implications should be tracked for large vaults.
 
 ### GitNexus critical note
@@ -189,7 +191,7 @@ Implement inode-oriented vault storage tables and index-backed repository querie
 
 Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) with Rust constraints: private fields by default, validated constructors, no production `unwrap`, minimal clone/allocation, and `Result`-based failure paths.
 
-Current execution status: slices 1-5 are substantially implemented with additional migration-safety hardening, and slices 6+ remain to fully close the issue.
+Current execution status: all slices below are complete with behavior coverage through unit and integration tests.
 
 ### Pre-flight brief for implementing agent
 
@@ -248,9 +250,10 @@ Status: done.
 
 Status: done.
 
-1. RED/GREEN: processor-relevant legacy repository methods verified via storage compatibility tests and existing integration flows (`note_reader` using `VaultProcessor::process_full`).
+1. RED/GREEN: processor-relevant legacy repository methods verified via storage compatibility tests and integration flows.
 2. GREEN: adapter compatibility preserved without breaking compare/prune call paths.
-3. REFACTOR: compatibility shims remain isolated at storage adapter boundary.
+3. RED/GREEN: explicit processor guardrails added for prune behavior in full vs partial scans (`full_scan_reports_pruned_files_for_removed_notes`, `partial_scan_does_not_prune_unscanned_missing_notes`).
+4. REFACTOR: compatibility shims remain isolated at storage adapter boundary.
 
 ### Slice 7: Full-scan consistency parity
 
