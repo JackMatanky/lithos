@@ -23,14 +23,60 @@ ONLY after all Phase 3 subphases complete.
 
 ## Acceptance criteria
 
+### Completed (Phase 4a — original scope)
+
 - [x] Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
 - [x] Delete fs/types.rs (contents moved to format.rs)
 - [x] Delete old DirScanner.entries() returning Vec<FileEntry>
 - [x] Delete old FsReader.info() method (already absent in current branch)
 - [x] Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix; already complete before this phase)
 - [x] Update all remaining consumers after deletions
-- [x] Run `mise run verify` - no broken imports
-- [x] Tests pass
+- [x] Run `mise run verify` — build/lint pass; 1 unrelated test failure in vault/storage.rs
+- [x] Tests pass (except unrelated vault test)
+
+### Post-hoc audit findings — missing from original ACs
+
+The PRD specifies Phase 4 more broadly than this issue captured. Three items were lost between PRD → issue:
+
+- [ ] Delete old DirScanner.paths() returning `Vec<PathBuf>` (PRD §Phase 4)
+- [ ] Rename DirScanner.paths_typed() → paths() (PRD §Phase 4)
+- [ ] Rename DirScanner.entries_typed() → entries() (PRD §Phase 4 — entries_typed → entries renames done manually)
+
+## Post-hoc audit: blast radius for remaining work
+
+### Removing `paths()` (returning Vec<PathBuf>)
+
+**Risk: CRITICAL** — 11 direct call sites break.
+
+| Depth | Who | What breaks |
+|-------|-----|-------------|
+| d=1 | `reader.rs:filter_dir()` | Calls `scanner.paths()`, returns `Result<Vec<PathBuf>, FsError>`. Will get `Vec<FsPath>` instead → type mismatch |
+| d=1 | `scanner.rs` — 10 tests | All call `scanner.paths(...)` and assert on `Vec<PathBuf>` results (relative paths, `.contains()`, `.first()`) |
+| d=2 | `reader.rs:list_files()` | Calls `filter_dir()` — indirect break on return type |
+| d=2 | `reader.rs` — 5 tests in `mod filter_dir` | Indirect via `filter_dir()` |
+| d=3 | `vault/processor.rs:scan_files()` | Indirect via `list_files()` (low confidence 0.5) |
+
+### Renaming `paths_typed()` → `paths()`
+
+**Risk: CRITICAL** — 3 direct call sites need rename.
+
+| Depth | Who | Action |
+|-------|-----|--------|
+| d=1 | `reader.rs:filter_paths()` | Change `scanner.paths_typed(...)` → `scanner.paths(...)` — zero logic change, identical return type |
+| d=1 | `scanner.rs` — 2 tests | Rename `.paths_typed()` → `.paths()` |
+| d=2 | `reader.rs:filter_file_paths()`, `filter_dir_paths()` | No direct change; call `filter_paths()` which is stable |
+
+### The `filter_dir()` problem
+
+After the rename, `filter_dir()` returns `Result<Vec<FsPath>, FsError>` — identical to `filter_paths()`. Options:
+
+- **Option A**: Change `filter_dir()` return type to `Result<Vec<FsPath>, FsError>` — breaking for callers (only `list_files()` + 5 tests in reader.rs)
+- **Option B**: Remove `filter_dir()` entirely (it's not in the PRD final API) and have callers use `filter_file_paths()` or `filter_paths()` instead
+
+### Cross-module consumers
+
+- `schema/discovery.rs` — rename `.entries_typed()` → `.entries()` (already done manually)
+- `fs/mod.rs` — update doc comment: `.entries_typed()` → `.entries()`
 
 ## Blocked by
 
@@ -78,7 +124,7 @@ ONLY after all Phase 3 subphases complete.
 
 Execute Phase 4 cleanup as a controlled breaking change, only after issues 08-11 are complete and merged.
 
-### Scope (must do)
+### Scope (original)
 
 1. Remove compatibility APIs:
    - Delete `DirScanner::entries()` alias after all call sites are migrated to `entries_typed()` or finalized replacement API.
@@ -90,6 +136,21 @@ Execute Phase 4 cleanup as a controlled breaking change, only after issues 08-11
    - Ensure typed metadata access remains under `FsReader::metadata()` only.
 4. Update all imports/re-exports/doc examples:
    - `fs/mod.rs`, reader/scanner docs, context docs, and any public API references.
+
+### Scope (post-hoc additions — Phase 4b)
+
+Discrepancies between PRD §Phase 4 and the original issue. Items missed during triage:
+
+1. Remove old `DirScanner::paths()` returning `Vec<PathBuf>`.
+2. Rename `DirScanner::paths_typed()` → `paths()` — remove `_typed` suffix.
+3. Rename `DirScanner::entries_typed()` → `entries()` — remove `_typed` suffix.
+4. Update `reader.rs:filter_dir()` — return type changes from `Vec<PathBuf>` to `Vec<FsPath>` after underlying `paths()` swap. Either:
+   - Change its return type to `Vec<FsPath>` (makes it identical to `filter_paths()`), or
+   - Remove it entirely (not in PRD final API).
+5. Update `reader.rs` internal call sites: `filter_paths()`, `filter_entries()`, `list_entries()` rename typed → untyped.
+6. Update `schema/discovery.rs` — rename `.entries_typed()` → `.entries()`.
+7. Update `scanner.rs` — all 10 test call sites that use old `paths()` need reworked assertions for `FsPath` return.
+8. Update `reader.rs` — all 6 test call sites in `mod filter_dir` for return type change.
 
 ### Non-goals
 
@@ -105,9 +166,11 @@ Execute Phase 4 cleanup as a controlled breaking change, only after issues 08-11
 
 ### Done when
 
-- All acceptance criteria in this issue are checked.
+- All acceptance criteria (original + post-hoc) are checked.
 - `mise run verify` passes.
 - No remaining imports of removed modules/APIs.
+- No remaining `_typed` suffix on any public API method.
+- `DirScanner` API surface matches PRD: `paths()` → `Vec<FsPath>`, `entries()` → `Vec<FsEntry>`, no old `paths()` returning `Vec<PathBuf>`.
 - Public docs/examples reflect final API.
 
 ## TDD Implementation Plan
@@ -161,3 +224,38 @@ Use vertical-slice TDD (one behavior at a time), with Rust best-practices constr
 - Explicit checks for deterministic sorting and typed entry/path returns.
 - Error-path tests for unsupported format and metadata/read failures.
 - No mock-heavy tests where real lightweight fixtures are feasible.
+
+## Remaining Work (Phase 4b — `_typed` suffix removal + `paths()` cleanup)
+
+### Post-hoc origin
+
+PRD §Phase 4 specifies deleting old `DirScanner.paths()` and renaming all `*_typed()` methods to remove the suffix. The original issue only targeted `entries()` and `metadata_typed()`, missing:
+- `DirScanner.paths()` deletion
+- `DirScanner.paths_typed()` → `paths()` rename
+- `DirScanner.entries_typed()` → `entries()` rename
+
+`entries_typed()` → `entries()` renames have been completed manually across the codebase.
+
+### Remaining work
+
+1. Delete `DirScanner::paths()` returning `Vec<PathBuf>` (scanner.rs:121-133).
+2. Rename `DirScanner::paths_typed()` → `paths()` (scanner.rs:175).
+3. Update `reader.rs:filter_dir()` — currently returns `Result<Vec<PathBuf>, FsError>`. After the rename, `scanner.paths()` returns `Vec<FsPath>`. Decide on its fate (change return type or remove).
+4. Rename `reader.rs:filter_paths()` internal call: `scanner.paths_typed(...)` → `scanner.paths(...)`.
+5. Update all test assertions that depended on old `paths()` returning relative `Vec<PathBuf>`:
+   - 10 test functions in scanner.rs
+   - 5 test functions in reader.rs `mod filter_dir`
+6. Update scanner.rs doc examples.
+7. Update `fs/mod.rs` doc table (line 23): `.entries_typed()` → `.entries()`.
+
+### TDD Slice 6: remove old `paths()`, rename `paths_typed()` → `paths()`
+
+1. RED: tests break when old `paths()` is removed — existing scanner tests call `scanner.paths()` expecting `Vec<PathBuf>`.
+2. GREEN: delete old `paths()`, rename `paths_typed()` → `paths()`, update all test call sites to use `FsPath` assertions.
+3. REFACTOR: tighten docs, remove dead comments, clean up the blank-line gap in doc comments at scanner.rs:165-175.
+
+### TDD Slice 7: fix `filter_dir()` fall-out
+
+1. RED: `filter_dir()` tests fail because `scanner.paths()` now returns `Vec<FsPath>` instead of `Vec<PathBuf>`.
+2. GREEN: either change `filter_dir()` return type to `Vec<FsPath>` (nudging it toward `filter_paths()` equivalence) or remove it and redirect callers.
+3. REFACTOR: deduplicate with `filter_paths()` if retaining.
