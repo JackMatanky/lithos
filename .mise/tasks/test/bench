@@ -1,135 +1,352 @@
 #!/usr/bin/env bash
-#MISE description="Run performance benchmarks for workspace crates using criterion"
+#MISE description="Benchmark tasks: run (default), compare, list, open report"
 #MISE alias="tb"
-#MISE sources=["**/*.rs", "Cargo.toml"]
-#USAGE arg "[filter]" help="Filter benchmarks by name"
-#USAGE flag "-p --package <package>" help="Run benchmarks for a specific package" {
+#MISE sources=["**/*.rs", "Cargo.toml", "benches/**/*"]
+#MISE outputs=[".benchmarks/baselines/*.json"]
+#USAGE arg "[mode]" help="Operation mode" {
+#USAGE   choices "run" "compare" "list" "open"
+#USAGE   default "run"
+#USAGE }
+#USAGE arg "[baseline_a]" help="First baseline (compare mode)"
+#USAGE arg "[baseline_b]" help="Second baseline (compare mode)"
+#USAGE flag "-p --package <package>" help="Run benchmarks for specific package" {
 #USAGE   choices "core" "cli"
 #USAGE }
+#USAGE flag "-f --filter <filter>" help="Filter benchmarks by name (run mode)"
+#USAGE flag "-q --quick" help="Quick mode (run mode)"
+#USAGE flag "-n --noplot" help="Disable plots (run mode)"
+#USAGE flag "--name <name>" help="Override baseline name (run mode)"
+#USAGE flag "-t --threshold <pct>" help="Hide comparisons below threshold (compare mode)"
+#USAGE flag "-g --group <regex>" help="Group by regex (compare mode)"
+
+set -euo pipefail
+
+#######################################
+# SECTION 1: CONFIGURATION
+#######################################
+ARCHIVE_DIR="${MISE_VARS_BENCH_ARCHIVE_DIR:-.benchmarks/baselines}"
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+
+#######################################
+# SECTION 2: DOMAIN UTILITIES
+# Pure functions - no side effects
+#######################################
 
 #######################################
 # Map shorthand package names to full cargo package names.
 # Globals:
-#   usage_package
+#   MISE_VARS_BENCH_PACKAGE_CORE
+#   MISE_VARS_BENCH_PACKAGE_CLI
 # Arguments:
-#   None
+#   Package shorthand (core|cli)
 # Outputs:
-#   Echoes the full package name
+#   Full package name
 #######################################
 map_package_name() {
-  case "${usage_package:-}" in
-  core)
-    echo "lithos-core"
-    ;;
-  cli)
-    echo "lithos"
-    ;;
-  *)
-    echo ""
-    ;;
+  case "${1:-}" in
+    core)
+      echo "${MISE_VARS_BENCH_PACKAGE_CORE:-lithos-core}"
+      ;;
+    cli)
+      echo "${MISE_VARS_BENCH_PACKAGE_CLI:-lithos-cli}"
+      ;;
+    *)
+      echo ""
+      ;;
   esac
 }
 
 #######################################
-# Build arguments for cargo bench.
-# Globals:
-#   usage_package
+# Generate a deterministic baseline name.
+# Outputs: <branch>-<date>-<time>-<sha_short>
+#######################################
+generate_baseline_name() {
+  local branch date_time sha
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  branch="${branch//\//-}"
+  date_time=$(date +%Y-%m-%d-%H%M%S)
+  sha=$(git rev-parse --short HEAD 2>/dev/null || echo "0000000")
+  echo "${branch}-${date_time}-${sha}"
+}
+
+#######################################
+# Discover benchmark target names from Cargo.toml files.
 # Arguments:
-#   Reference to an array for cargo arguments
-#   The resolved package name
+#   Search path (directory, e.g. "lithos-core" or "." for all)
 # Outputs:
-#   None
+#   One bench target name per line
+#######################################
+discover_bench_targets() {
+  local search_path=${1:-.}
+  find "${search_path}" -maxdepth 2 -name Cargo.toml \
+    -not -path '*/target/*' \
+    -exec awk '
+    /^\[\[bench\]\]$/ { in_bench = 1; next }
+    in_bench && /^name = / {
+      gsub(/.*name = "/, "")
+      gsub(/".*/, "")
+      print
+      in_bench = 0
+    }
+  ' {} \;
+}
+
+#######################################
+# Resolve a baseline reference to a file path or critcmp name.
+# Globals:
+#   ARCHIVE_DIR
+# Arguments:
+#   Baseline reference string
+# Outputs:
+#   Resolved path or name
+#######################################
+resolve_baseline_path() {
+  local ref=$1
+  if [[ -f "$ref" ]]; then
+    echo "$ref"
+  elif [[ -f "${ARCHIVE_DIR}/${ref}.json" ]]; then
+    echo "${ARCHIVE_DIR}/${ref}.json"
+  else
+    echo "$ref"
+  fi
+}
+
+#######################################
+# SECTION 3: VALIDATORS
+# Precondition checks
+#######################################
+
+#######################################
+# Verify critcmp is installed.
+#######################################
+verify_critcmp() {
+  if ! command -v critcmp &>/dev/null; then
+    echo "Error: critcmp is not installed." >&2
+    echo "Run: mise install" >&2
+    exit 1
+  fi
+}
+
+#######################################
+# Ensure the archive directory exists.
+#######################################
+ensure_archive_dir() {
+  mkdir -p "${ARCHIVE_DIR}"
+}
+
+#######################################
+# SECTION 4: EXECUTORS
+# Orchestration and side effects
+#######################################
+
+#######################################
+# Build base cargo bench arguments.
+# Globals:
+#   package
+# Outputs:
+#   One argument per line for mapfile
 #######################################
 build_cargo_args() {
-  local -n ref_cargo_args=$1
-  local package_name=$2
+  local pkg_name search_path
 
-  # We use --benches to target only explicit [[bench]] targets.
-  # This prevents Criterion-specific flags from being passed to unit test runners.
-  ref_cargo_args+=("--benches")
-
-  if [[ -n "${package_name}" ]]; then
-    ref_cargo_args+=("--package" "${package_name}")
+  if [[ -n "${package:-}" ]]; then
+    pkg_name=$(map_package_name "$package")
+    if [[ -n "$pkg_name" ]]; then
+      echo "--package"
+      echo "$pkg_name"
+      search_path="$pkg_name"
+    fi
   else
-    ref_cargo_args+=("--workspace")
+    search_path="."
   fi
+
+  # Discover and add bench targets
+  while IFS= read -r bench_name; do
+    echo "--bench"
+    echo "$bench_name"
+  done < <(discover_bench_targets "${search_path}")
 }
 
 #######################################
-# Build arguments for Criterion benchmarks.
+# Build criterion-specific bench arguments.
 # Globals:
-#   usage_filter
-#   usage_quick
-#   usage_noplot
+#   filter, quick, noplot
 # Arguments:
-#   Reference to an array for benchmark arguments
+#   Baseline name
 # Outputs:
-#   None
+#   One argument per line for mapfile
 #######################################
 build_bench_args() {
-  local -n ref_bench_args=$1
+  local baseline_name=$1
 
-  if [[ -n "${usage_filter:-}" ]]; then
-    ref_bench_args+=("${usage_filter}")
-  fi
+  echo "--save-baseline"
+  echo "$baseline_name"
 
-  if [[ "${usage_quick:-}" == "true" ]]; then
-    ref_bench_args+=("--quick")
-  fi
-
-  if [[ "${usage_noplot:-}" == "true" ]]; then
-    ref_bench_args+=("--noplot")
-  fi
+  [[ -n "${filter:-}" ]] && echo "$filter"
+  [[ "${quick:-false}" == "true" ]] && echo "--quick"
+  [[ "${noplot:-false}" == "true" ]] && echo "--noplot"
 }
 
 #######################################
-# Run performance benchmarks using cargo bench.
+# Run cargo bench with baseline.
+# Globals:
+#   package, filter, quick, noplot
 # Arguments:
-#   Cargo arguments array (reference)
-#   Benchmark arguments array (reference)
-# Outputs:
-#   Writes benchmark progress to stdout
+#   Baseline name
 #######################################
 run_benchmarks() {
-  local -n cargo_args_ref=$1
-  local -n bench_args_ref=$2
+  local baseline_name=$1
+  local cargo_args bench_args
+  mapfile -t cargo_args < <(build_cargo_args)
+  mapfile -t bench_args < <(build_bench_args "$baseline_name")
 
-  echo "🧪 Running benchmarks..."
-
-  # Correct syntax: cargo bench [cargo_args] [-- [bench_args]]
-  # We use the double dash to separate cargo arguments from Criterion/bench arguments.
-  if [[ ${#bench_args_ref[@]} -gt 0 ]]; then
-    cargo bench "${cargo_args_ref[@]}" -- "${bench_args_ref[@]}"
-  else
-    cargo bench "${cargo_args_ref[@]}"
-  fi
+  echo "Running benchmarks with baseline: ${baseline_name}"
+  cargo bench "${cargo_args[@]}" -- "${bench_args[@]}"
 }
 
 #######################################
-# Main entry point for the benchmark task.
+# Export criterion baseline to archive.
 # Globals:
-#   None
+#   ARCHIVE_DIR
 # Arguments:
-#   None
-# Outputs:
-#   None
+#   Baseline name
 #######################################
+export_baseline() {
+  local baseline_name=$1
+  local src_dir="target/criterion"
+  local dest_file="${ARCHIVE_DIR}/${baseline_name}.json"
+
+  if [[ ! -d "$src_dir" ]]; then
+    echo "Error: criterion output not found at $src_dir" >&2
+    exit 1
+  fi
+
+  ensure_archive_dir
+  critcmp --export "$baseline_name" > "$dest_file"
+  echo "Exported baseline to: ${dest_file}"
+}
+
+#######################################
+# SECTION 5: MODE HANDLERS
+# Command dispatch functions
+#######################################
+
+#######################################
+# Run benchmarks and archive baseline.
+# Globals:
+#   name
+#######################################
+cmd_run() {
+  local baseline_name="${name:-$(generate_baseline_name)}"
+  run_benchmarks "$baseline_name"
+  export_baseline "$baseline_name"
+  echo "✓ Benchmarks complete"
+  echo "  To compare: mise run test:bench compare ${baseline_name} <other>"
+}
+
+#######################################
+# Compare two baselines.
+# Arguments (positional or globals):
+#   $1/baseline_a - First baseline
+#   $2/baseline_b - Second baseline
+# Globals:
+#   threshold, group
+# Exits:
+#   1 if baseline arguments are missing
+#######################################
+cmd_compare() {
+  verify_critcmp
+
+  # Accept arguments from either positional params or USAGE-set globals
+  local baseline_a_val="${1:-${baseline_a:-}}"
+  local baseline_b_val="${2:-${baseline_b:-}}"
+
+  if [[ -z "$baseline_a_val" ]] || [[ -z "$baseline_b_val" ]]; then
+    echo "Error: compare mode requires two baseline arguments" >&2
+    echo "Usage: mise run test:bench compare <baseline_a> <baseline_b>" >&2
+    exit 1
+  fi
+
+  local path_a path_b args=()
+  path_a=$(resolve_baseline_path "$baseline_a_val")
+  path_b=$(resolve_baseline_path "$baseline_b_val")
+
+  [[ -n "${threshold:-}" ]] && args+=(--threshold "${threshold}")
+  [[ -n "${group:-}" ]] && args+=(--group "${group}")
+
+  critcmp "${args[@]}" "$path_a" "$path_b"
+}
+
+#######################################
+# List available baselines.
+# Globals:
+#   ARCHIVE_DIR
+#######################################
+cmd_list() {
+  if [[ ! -d "${ARCHIVE_DIR}" ]] || [[ -z "$(ls -A "${ARCHIVE_DIR}"/*.json 2>/dev/null)" ]]; then
+    echo "No baselines found in ${ARCHIVE_DIR}"
+    exit 0
+  fi
+
+  echo "Available baselines:"
+  for baseline in "${ARCHIVE_DIR}"/*.json; do
+    local name size date
+    name=$(basename "$baseline" .json)
+    size=$(du -h "$baseline" | cut -f1)
+    date=$(stat -f %Sm -t "%Y-%m-%d %H:%M:%S" "$baseline" 2>/dev/null || stat -c %y "$baseline" 2>/dev/null || echo "unknown")
+    printf "  %-50s  %8s  %s\n" "$name" "$size" "$date"
+  done
+}
+
+#######################################
+# Open criterion HTML report.
+#######################################
+cmd_open() {
+  local report_path="target/criterion/report/index.html"
+
+  if [[ ! -f "$report_path" ]]; then
+    echo "Error: No criterion report found at $report_path" >&2
+    echo "Run benchmarks first: mise run test:bench" >&2
+    exit 1
+  fi
+
+  if command -v open &>/dev/null; then
+    open "$report_path"
+  elif command -v xdg-open &>/dev/null; then
+    xdg-open "$report_path"
+  else
+    echo "Report available at: ${report_path}"
+  fi
+}
+
+# ────────────────────────────────────────────────────────────────────────────
+# 6. Main Entry Point
+# ────────────────────────────────────────────────────────────────────────────
+
 main() {
-  local resolved_package
-  resolved_package=$(map_package_name)
+  local mode="${1:-run}"
+  shift || true
 
-  # Shellcheck SC2034: Variables are used via nameref in build/run functions
-  # shellcheck disable=SC2034
-  local cargo_args=()
-  build_cargo_args cargo_args "${resolved_package}"
-
-  # shellcheck disable=SC2034
-  local bench_args=()
-  build_bench_args bench_args
-
-  run_benchmarks cargo_args bench_args
-
-  echo "✅ Benchmarking complete"
+  case "$mode" in
+    run)
+      cmd_run "$@"
+      ;;
+    list)
+      cmd_list "$@"
+      ;;
+    compare)
+      cmd_compare "$@"
+      ;;
+    report | open)
+      cmd_open
+      ;;
+    *)
+      echo "Error: Unknown mode '$mode'" >&2
+      echo "Valid modes: run, list, compare, report" >&2
+      echo "Use 'mise run test:bench --help' for full usage." >&2
+      exit 1
+      ;;
+  esac
 }
 
 main "$@"
