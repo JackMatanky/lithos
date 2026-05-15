@@ -28,6 +28,7 @@ Update save logic to populate all indexes. Delete old VaultPath, VaultFile, Vaul
 - [ ] Walkdir ordering guarantees parent-before-children
 - [ ] Empty directory handling
 - [ ] All indexes populated during save (path, basename, parent, format)
+- [ ] New storage table names/constants do not use `VAULT_`/`vault_` prefixes
 - [ ] Delete VaultPath, VaultFile, VaultFolder
 - [ ] Remove old VAULT_FILES_BY_PATH, VAULT_FOLDERS_BY_PATH tables
 - [ ] Existing tests pass
@@ -50,39 +51,56 @@ Update save logic to populate all indexes. Delete old VaultPath, VaultFile, Vaul
 
 ### Critical implementation effects (thorough)
 
-- `VaultProcessor` remains path-model based (`VaultFile`/`VaultFolder` + path-keyed compare/prune), so this issue is the main identity-model cutover point from path identity to inode-backed views.
-- The processor currently relies on two scan semantics that must remain intact after cutover:
-  - Full scan: compare all, then prune entries missing from discovered path set.
-  - Partial scan: compare only scanned inputs and never prune unseen paths.
-- Save path must become multi-surface and atomic: writing file/dir views plus all indexes (path, basename, parent, format) in the same transactional operation.
-- Parent linkage introduces ordering and graph correctness concerns:
-  - parent IDs are only resolvable when parent dirs are already materialized.
-  - walk ordering must remain parent-before-children, or implementation must stage unresolved parent links and backfill.
-- Empty-directory representation is now a first-class correctness requirement; the processor cannot infer only from files and must explicitly emit `DirView` for discovered directories.
-- Delete migration risk is high during cutover:
-  - legacy table removal (`VAULT_FILES_BY_PATH`, `VAULT_FOLDERS_BY_PATH`) must happen only after processor reads/writes are fully redirected.
-  - any residual legacy method callsites become hard runtime failures once tables/types are deleted.
-- Routing continuity must be preserved: markdown note routing currently derives from path-level decisions; the new flow must still identify markdown candidates deterministically from `FileView`/format data without regressions in note create/update/delete counts.
-- Index drift/stale pointer handling becomes part of runtime behavior: processor compare/prune should tolerate missing index pointers defensively where appropriate and avoid false prune/update churn.
+- Current processor flow is strictly path keyed: `process_full -> discover -> compare -> route -> prune` and `process_partial -> discover_partial -> compare -> route -> complete_partial` in `lithos-core/src/vault/processor.rs`.
+- `compare()` currently batch-writes `VaultFile`/`VaultFolder` through `RedbBatchVaultWriter::put_file/put_folder`; cutover must switch this to `save_file_view`/`save_dir_view` and ensure secondary index maintenance is atomic.
+- Full vs partial behavior is an existing contract already covered by integration tests:
+  - full scan prunes missing files/folders (`prune()` is only called from `process_full`)
+  - partial scan never prunes unscanned paths (`process_partial` ends with `complete_partial`).
+- Note routing is tightly coupled to markdown candidate generation in `compare_*` and `route()` (`NoteFileInfo::try_from_path`, `NoteProcessor::process_file`, plus note deletion in `prune()` via `record_deleted`). Any model change that weakens candidate parity will alter note counters.
+- Parent linkage is not represented in legacy model, but new acceptance criteria require stable `DirId` parent references. This introduces ordering/backfill obligations that do not exist in the current pipeline and must be made explicit in tests.
+- Storage trait is currently dual-surface (legacy + new): `Repository` contains both `get_file/list_files/save_file/delete_file` and new inode APIs (`find_file_by_path`, `list_all_files`, `find_files_by_parent`, `save_file_view`, `delete_file_view`, etc.). This issue is the integration seam where processor must stop using legacy methods.
+- Empty directory correctness remains a migration risk: legacy pipeline calls `scan_folders()` and persists folders, but new model requires explicit `DirView` persistence with path index integrity (`DIR_ID_BY_PATH` + `DIR_VIEWS`, i.e. unprefixed new table names) even for directories with no files.
+- Delete sequence risk remains high: removing `VaultPath`/`VaultFile`/`VaultFolder` and old tables before processor callsites are redirected causes compile/runtime breaks across compare/prune/save paths.
 
 ### Blast radius map (code-informed)
 
-- Primary hotspot: `lithos-core/src/vault/processor.rs` (`compare_full`, `compare_partial`, `prune`, transition/save pipeline).
-- Direct dependency boundary: `lithos-core/src/vault/storage.rs` repository API (new inode methods + temporary legacy compatibility methods).
-- Domain model dependency: `lithos-core/src/vault/model.rs` (`FileId`, `DirId`, `FileView`, `DirView`, `FsEntryView`, `NormalizedPath`).
-- Integration consumers likely affected:
-  - vault processing integration tests in `lithos-core/tests/note_reader.rs`
-  - any callsites expecting legacy path-keyed repository methods
-  - note routing side effects that depend on prune behavior and markdown detection.
+- Primary hotspot:
+  - `lithos-core/src/vault/processor.rs`
+  - symbols: `process_full`, `process_partial`, `compare`, `compare_full`, `compare_partial`, `route`, `prune`, `scan_files`, `scan_folders`.
+- Storage boundary hotspot:
+  - `lithos-core/src/vault/storage.rs`
+  - trait `Repository` plus `RedbRepository`/batch adapters.
+  - old tables still imported: `VAULT_FILES_BY_PATH`, `VAULT_FOLDERS_BY_PATH`.
+- Domain model hotspot:
+  - `lithos-core/src/vault/model.rs` (`FileId`, `DirId`, `FileView`, `DirView`, `FsEntryView`, `NormalizedPath`) with temporary legacy model coexistence.
+- Directly observable consumer impact (GitNexus + source review):
+  - `lithos-core/tests/note_reader.rs` full/partial scan regression tests call `VaultProcessor::process_full/process_partial`.
+  - note pipeline coupling at `lithos-core/src/note/processor.rs` via calls from `route()` and `prune()`.
+  - config coupling through `config.vault_metadata().root()` in both full and partial runs.
 
 ### Risk assessment
 
 - Overall risk: **HIGH**.
 - Why high:
-  - behavior change at a core execution flow boundary (discovery -> compare -> route -> prune)
-  - identity model migration plus deletion of compatibility types/tables
-  - potential data integrity regressions from multi-index update/delete maintenance
-  - correctness sensitivity around full vs partial prune semantics.
+  - this changes a core orchestrator (`VaultProcessor`) that fans into persistence and note routing.
+  - it is a data-model cutover with simultaneous write-path migration and deletion of compatibility structures.
+  - index correctness spans multiple tables and requires stale-edge cleanup on update/move/format change.
+  - scan-mode semantics are externally visible and already under integration test, so regressions are easy to introduce.
+
+### GitNexus findings (current run)
+
+- Index refreshed in-session (`npx gitnexus analyze`) before analysis.
+- Symbol context confirms call topology:
+  - `process_full` calls `discover`, `compare`, `route`, `prune`, `report`.
+  - `process_partial` calls `discover_partial`, `compare`, `route`, `complete_partial`, `report`.
+  - `route` calls into `note::processor` (`process_file`) and uses `NoteFileInfo::try_from_path`.
+  - `prune` calls repository list/delete methods and `NoteProcessor::record_deleted`.
+- Impact checks (upstream) show immediate breakpoints:
+  - `compare`: direct callers are `process_full` and `process_partial`.
+  - `route`: direct callers are `process_full` and `process_partial`.
+  - `prune`: direct caller is `process_full`.
+  - `compare_full`: called via `compare` (full/partial entry paths converge there).
+- Interpretation: most blast radius is concentrated in the vault module, but behavior ripples to note processing through routing/deletion and to integration tests through public processor APIs.
 
 ### GitNexus note
 
@@ -121,6 +139,36 @@ Integrate the vault processor with inode-oriented storage so scans produce and p
    - delete `VaultPath`, `VaultFile`, `VaultFolder` from processor-facing flow.
    - remove `VAULT_FILES_BY_PATH`, `VAULT_FOLDERS_BY_PATH` usage and definitions.
 
+### Detailed execution brief (recommended)
+
+1. Establish migration seam in processor:
+   - Introduce local conversion boundary from FS discovery outputs into `DirView`/`FileView` + `NormalizedPath`.
+   - Keep this boundary isolated so discovery internals can change without touching compare/prune logic repeatedly.
+2. Replace compare read path in two phases:
+   - first parity phase: read existing state via new view APIs while preserving exact full/partial behavior decisions.
+   - second cleanup phase: delete remaining path-keyed compare calls.
+3. Replace write path atomically:
+   - remove `with_batch_write` usage that writes legacy `put_file/put_folder`.
+   - use repository methods that guarantee index updates for primary + secondary index surfaces.
+4. Preserve routing parity:
+   - markdown candidate selection must remain deterministic for same vault contents.
+   - adapt only the boundary conversion needed to call note processor; do not change note processor semantics.
+5. Rework prune for ID/index model:
+   - full scan only; partial stays non-pruning.
+   - ensure prune decisions are based on discovered normalized paths mapped to persisted IDs.
+   - retain note deletion behavior for markdown file removals.
+6. Delete compatibility structures after green tests:
+   - remove legacy processor code paths and repository table dependencies.
+   - remove unused legacy constants/types and clean compile errors to completion.
+
+### Guardrails for the implementing agent
+
+- Keep all behavior checks through public APIs (`VaultProcessor`, repository trait methods used by tests).
+- Avoid introducing `unwrap()`/`expect()` in production paths.
+- Prefer borrowing over cloning in tight loops and compare passes; clone only where ownership is required for persistence buffers.
+- Keep conversion helpers total/validated (`Result` return) and attach path context on errors.
+- When uncertain about parent ordering guarantees from discovery, implement explicit deferred-parent backfill rather than assuming traversal order.
+
 ### Non-goals
 
 - No redesign of note processing behavior beyond preserving existing routing/prune outcomes.
@@ -145,7 +193,7 @@ Integrate the vault processor with inode-oriented storage so scans produce and p
 
 > *This was generated by AI during triage.*
 
-Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) through public processor/repository interfaces only. Prefer borrowing over cloning where possible, use `Result` for all fallible transitions, and avoid implementation-coupled tests.
+Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) through public processor/repository interfaces only. Prefer borrowing over cloning where possible, use `Result` for all fallible transitions, avoid implementation-coupled tests, and keep each test focused on one observable contract.
 
 ### Pre-flight decisions
 
@@ -154,23 +202,27 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 3. Choose cutover sequence explicitly:
    - staged bridge (temporary dual support), then delete legacy.
    - or immediate cutover if all callsites are in-scope and updateable now.
+4. Freeze behavioral contracts from current tests before edits:
+   - full scan prunes removed notes/files.
+   - partial scan does not prune unscanned missing paths.
+   - markdown routing counters remain stable for equivalent inputs.
 
 ### Slice 1: Build view graph from discovery
 
-1. RED: add integration test proving a full scan yields complete `FileView`/`DirView` sets for a representative vault tree.
-2. GREEN: implement minimal mapping from discovered FS entries to view entities.
-3. REFACTOR: extract conversion helpers to keep processor stage logic compact.
+1. RED: add integration test proving full scan yields complete `FileView`/`DirView` sets for a representative vault tree (nested dirs, mixed file formats, hidden files policy as currently defined).
+2. GREEN: implement minimal mapping from discovery outputs to view entities and normalized paths.
+3. REFACTOR: extract pure conversion helpers (`&Path` -> `NormalizedPath`, metadata -> view fields) with explicit error propagation.
 
 ### Slice 2: Parent ID linkage + ordering guarantee
 
 1. RED: add test asserting each child view references the correct parent `DirId`.
-2. RED: add test asserting parent directories are materialized before child linkage is finalized.
-3. GREEN: implement parent resolution strategy (ordered materialization or deferred backfill map).
+2. RED: add test asserting parent linkage remains correct even when discovery input order is not parent-first.
+3. GREEN: implement parent resolution strategy (ordered materialization or deferred backfill map keyed by normalized parent path).
 4. REFACTOR: isolate parent-resolution algorithm into a focused helper/module.
 
 ### Slice 3: Empty directory handling
 
-1. RED: test a tree with empty directories and verify corresponding `DirView` entries persist.
+1. RED: test a tree with empty directories and verify corresponding `DirView` entries persist and are queryable by path.
 2. GREEN: include empty dirs during discovery-to-view conversion and save stage.
 3. REFACTOR: ensure no file-derived assumptions remain in dir persistence.
 
@@ -178,19 +230,20 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 
 1. RED: test that save writes primary and all secondary indexes for new/updated entries.
 2. RED: test overwrite/move/format-change updates remove stale basename/parent/format/path index edges.
-3. GREEN: wire processor save path to repository methods that atomically maintain all index surfaces.
-4. REFACTOR: minimize duplicate serialization/index-key derivation work; avoid unnecessary allocations in hot loops.
+3. RED: test deleting a file view removes all index entries and leaves no orphan pointers.
+4. GREEN: wire processor save path to repository methods that atomically maintain all index surfaces.
+5. REFACTOR: minimize duplicate serialization/index-key derivation work; avoid unnecessary allocations in hot loops.
 
 ### Slice 5: Full vs partial prune semantics under new models
 
 1. RED: full-scan regression test confirms removed files/dirs are pruned.
 2. RED: partial-scan regression test confirms unscanned missing paths are not pruned.
-3. GREEN: adapt compare/prune internals to view/index world while preserving existing semantics.
+3. GREEN: adapt compare/prune internals to view/index world while preserving existing semantics and note-deletion hooks.
 4. REFACTOR: collapse shared compare logic without coupling tests to internal maps.
 
 ### Slice 6: Legacy cutover and deletion
 
-1. RED: compile/test breakpoints for remaining usages of `VaultPath`, `VaultFile`, `VaultFolder` and old path tables.
+1. RED: compile/test breakpoints for remaining usages of `VaultPath`, `VaultFile`, `VaultFolder` and old path tables in processor/storage integration paths.
 2. GREEN: remove legacy types/table constants and replace remaining callsites.
 3. RED: migration regression test verifies processor works end-to-end without legacy tables present.
 4. REFACTOR: remove temporary compatibility shims and dead code paths.
@@ -201,6 +254,19 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 2. GREEN: adapt routing handoff from path-based file objects to view/path-index-backed candidates.
 3. REFACTOR: keep route boundary type conversions local and explicit.
 
+### Suggested test inventory (explicit names)
+
+- `processor_full_scan_builds_complete_file_and_dir_views`
+- `processor_parent_ids_resolve_for_nested_directories`
+- `processor_parent_resolution_handles_non_parent_first_discovery_order`
+- `processor_persists_empty_directories_as_dir_views`
+- `repository_save_file_view_updates_all_secondary_indexes`
+- `repository_move_or_format_change_removes_stale_index_edges`
+- `repository_delete_file_view_removes_all_index_entries`
+- `processor_full_scan_prunes_missing_entries_and_records_note_deletes`
+- `processor_partial_scan_does_not_prune_unscanned_missing_entries`
+- `processor_markdown_routing_counters_match_legacy_behavior`
+
 ### Final verification gate
 
 - During slices: run targeted tests frequently (`mise run test:unit` plus relevant integration targets).
@@ -208,3 +274,11 @@ Use strict vertical-slice TDD (one behavior per RED->GREEN->REFACTOR cycle) thro
 - Ensure tests remain behavior-first:
   - no assertions on private intermediate maps/ordering unless they are public contracts
   - assert externally visible outcomes (persisted views, index query results, prune/routing reports).
+
+### Implementation order recommendation
+
+1. Add RED tests for slices 1-3 (view graph, parent links, empty dirs).
+2. Implement minimal GREEN for view persistence and parent resolution.
+3. Add RED tests for slice 4 index integrity, then GREEN atomic save/delete behavior.
+4. Add RED tests for slice 5-7 parity, then GREEN compare/prune/routing migration.
+5. Remove legacy paths only after all parity tests are green.
