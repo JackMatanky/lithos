@@ -211,9 +211,10 @@
               needless_borrowed_reference lints"
 )]
 
+use std::hint::black_box;
+
 use criterion::{
-    BenchmarkId, Criterion, Throughput, black_box, criterion_group,
-    criterion_main,
+    BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 };
 use lithos_core::{
     db::Database,

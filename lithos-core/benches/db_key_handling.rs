@@ -160,9 +160,9 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use criterion::{
-    Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use std::hint::black_box;
+
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lithos_core::{db::Database, utils::UuidV7};
 use redb::TableDefinition;
 use tempfile::TempDir;
