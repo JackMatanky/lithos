@@ -26,6 +26,78 @@ use rkyv::{
 
 use crate::db::DbError;
 
+/// A trait for types that can be safely serialized and deserialized to/from the
+/// database.
+///
+/// This trait acts as a codec boundary, hiding the complex `rkyv` trait bounds
+/// and validation logic from domain storage adapters. It provides both owned
+/// (`from_bytes`) and zero-copy (`with_view`) read paths.
+pub trait DbEntity: Sized {
+    /// The zero-copy view of the entity.
+    type View<'a>
+    where
+        Self: 'a;
+
+    /// Serializes the entity to bytes, ensuring correct alignment.
+    ///
+    /// # Errors
+    /// Returns [`DbError::Serialization`] if serialization fails.
+    fn to_bytes(&self) -> Result<AlignedVec, DbError>;
+
+    /// Deserializes the entity from bytes, validating them first.
+    ///
+    /// # Errors
+    /// Returns [`DbError::Deserialization`] if validation or deserialization
+    /// fails.
+    fn from_bytes(bytes: &[u8]) -> Result<Self, DbError>;
+
+    /// Accesses the zero-copy view of the entity from bytes.
+    ///
+    /// # Errors
+    /// Returns [`DbError::Deserialization`] if validation fails.
+    fn with_view<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(Self::View<'_>) -> R;
+}
+
+// Blanket implementation for any type that derives the necessary rkyv traits.
+impl<T> DbEntity for T
+where
+    T: 'static
+        + Archive
+        + for<'ser> Serialize<
+            rkyv::api::high::HighSerializer<
+                AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+    T::Archived: Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
+{
+    type View<'a> = &'a T::Archived;
+
+    #[inline]
+    fn to_bytes(&self) -> Result<AlignedVec, DbError> {
+        serialize(self)
+    }
+
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<Self, DbError> {
+        deserialize(bytes)
+    }
+
+    #[inline]
+    fn with_view<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(Self::View<'_>) -> R,
+    {
+        with_archived::<T, F, R>(bytes, f)
+    }
+}
+
 /// Serialize a value to rkyv-aligned bytes.
 ///
 /// Ensures the resulting buffer uses `AlignedVec` to meet `rkyv`'s 16-byte
@@ -167,6 +239,29 @@ mod tests {
             archived.name.as_str().to_owned()
         });
         assert_eq!(result.unwrap(), "zero-copy");
+    }
+
+    #[test]
+    fn db_entity_trait_works() {
+        let original = TestData {
+            id: 777,
+            name: "entity".to_owned(),
+        };
+
+        // Test to_bytes
+        let bytes = original.to_bytes().unwrap();
+        assert!(!bytes.is_empty());
+
+        // Test from_bytes
+        let deserialized = TestData::from_bytes(&bytes).unwrap();
+        assert_eq!(original, deserialized);
+
+        // Test with_view (zero-copy)
+        let result = TestData::with_view(&bytes, |view| {
+            assert_eq!(view.id, 777);
+            view.name.as_str().to_owned()
+        });
+        assert_eq!(result.unwrap(), "entity");
     }
 
     #[test]

@@ -38,7 +38,7 @@
 use redb::ReadableTable;
 
 use crate::{
-    db::{DbError, deserialize, serialize},
+    db::{DbEntity, DbError},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -62,9 +62,9 @@ use crate::{
 impl WriteRepository for RedbRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
-        let bytes = serialize(schema).map_err(SchemaStorageError::from)?;
+        let bytes = schema.to_bytes().map_err(SchemaStorageError::from)?;
         let id_bytes =
-            serialize(schema.id()).map_err(SchemaStorageError::from)?;
+            schema.id().to_bytes().map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -93,8 +93,8 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
 
                 for schema in schemas {
-                    let bytes = serialize(schema)?;
-                    let id_bytes = serialize(schema.id())?;
+                    let bytes = schema.to_bytes()?;
+                    let id_bytes = schema.id().to_bytes()?;
 
                     table.insert(*schema.id(), bytes.as_slice())?;
 
@@ -111,7 +111,7 @@ impl WriteRepository for RedbRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaStorageError> {
-        let bytes = serialize(bank).map_err(SchemaStorageError::from)?;
+        let bytes = bank.to_bytes().map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -129,7 +129,7 @@ impl WriteRepository for RedbRepository {
         path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaStorageError> {
-        let bytes = serialize(view).map_err(SchemaStorageError::from)?;
+        let bytes = view.to_bytes().map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -147,8 +147,8 @@ impl WriteRepository for RedbRepository {
         id: crate::schema::identifier::SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), SchemaStorageError> {
-        let view_bytes = serialize(view).map_err(SchemaStorageError::from)?;
-        let id_bytes = serialize(&id).map_err(SchemaStorageError::from)?;
+        let view_bytes = view.to_bytes().map_err(SchemaStorageError::from)?;
+        let id_bytes = id.to_bytes().map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -158,9 +158,8 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
 
                 if let Some(existing) = view_table.get(id)? {
-                    let existing_view = crate::db::deserialize::<RawSchemaView>(
-                        existing.value(),
-                    )?;
+                    let existing_view =
+                        RawSchemaView::from_bytes(existing.value())?;
                     if existing_view.path() != view.path() {
                         let stale_key = path_key(existing_view.path());
                         let _ = path_table.remove(stale_key)?;
@@ -180,7 +179,7 @@ impl WriteRepository for RedbRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageError> {
-        let bytes = serialize(graph).map_err(SchemaStorageError::from)?;
+        let bytes = graph.to_bytes().map_err(SchemaStorageError::from)?;
 
         self.store
             .write(|tx| {
@@ -237,14 +236,14 @@ fn load_delete_context(
     let raw_views = tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
 
     let schema_name = if let Some(schema_guard) = schemas.get(id)? {
-        let schema: Schema = deserialize(schema_guard.value())?;
+        let schema = Schema::from_bytes(schema_guard.value())?;
         Some(schema.name().clone())
     } else {
         None
     };
 
     let view_path = if let Some(view_guard) = raw_views.get(id)? {
-        let view: RawSchemaView = deserialize(view_guard.value())?;
+        let view = RawSchemaView::from_bytes(view_guard.value())?;
         Some(view.path().clone())
     } else {
         None
@@ -326,7 +325,7 @@ mod tests {
         use std::sync::Arc;
 
         use crate::{
-            db::Store,
+            db::{DbEntity, Store},
             schema::{
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},
@@ -400,7 +399,7 @@ mod tests {
                     vec![],
                     PropertyMap::new(),
                 );
-                let bytes = crate::db::serialize(&schema2)?;
+                let bytes = schema2.to_bytes()?;
                 table.insert(*schema2.id(), bytes.as_slice())?;
                 Err(crate::db::DbError::Serialization(
                     "forced failure".to_owned(),

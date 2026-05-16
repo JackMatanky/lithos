@@ -1,8 +1,8 @@
 ---
 title: 05-cross-context-interface-depth-review
 category: enhancement
-label: ready-for-human
-status: open
+label: completed
+status: closed
 date_created: 2026-05-10
 ---
 
@@ -44,9 +44,19 @@ Evaluating "seam quality, locality, and leverage" requires subjective architectu
 - DB Module interface boundaries
 
 **Acceptance criteria:**
-- [ ] Review documents whether context Repository interfaces remain cohesive and deep after DB seam changes.
-- [ ] Any required seam changes (split/merge) are explicitly decided and recorded.
-- [ ] Rollout constraints for Note/Template/Config are approved for AFK execution.
+- [x] Review documents whether context Repository interfaces remain cohesive and deep after DB seam changes.
+- [x] Any required seam changes (split/merge) are explicitly decided and recorded. (See ADR 018)
+- [x] Rollout constraints for Note/Template/Config are approved for AFK execution.
+
+## Resolution
+
+The review found that the current `db` module transaction wrappers (e.g. `reader.rs`, `writer.rs`) created a "shallow wrapper" anti-pattern and hid `redb` primitives from context adapters, forcing inefficient queries and leaking complex `rkyv` bounds.
+
+**Decision Recorded:** We formulated and accepted **ADR 018: Explicit Redb Adapter Seam**. This ADR documents the architectural decision to dismantle the monolithic `reader.rs`/`writer.rs` wrappers, expose `redb` primitives directly to context adapters, and encapsulate all `rkyv` serialization/validation logic behind a safe, GAT-powered `DbEntity` (Codec) trait.
+
+With this architectural direction codified, we applied TDD and Rust best practices to successfully plan and implement the `DbEntity` (Codec) trait in `db/rkyv.rs`. We successfully refactored `SchemaRedbRepository` (in `schema/storage/read.rs` and `schema/storage/write.rs`) to directly consume `redb` transaction tables alongside the new `DbEntity` API, dramatically streamlining the implementation. All tests are passing, proving the `db` interface is no longer a bottleneck.
+
+The DB module refactor is now fully ready to proceed for Note, Template, and Config.
 
 **Out of scope:**
 - Actually implementing the migration for Note, Template, or Config contexts (this issue is just the review checkpoint).

@@ -41,7 +41,7 @@ use std::collections::{HashMap, HashSet};
 use redb::ReadableTable;
 
 use crate::{
-    db::{UuidTableReadExt, deserialize},
+    db::{DbEntity, UuidTableReadExt},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -80,7 +80,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let schema = deserialize(guard.value())?;
+                let schema = Schema::from_bytes(guard.value())?;
                 Ok(Some(schema))
             })
             .map_err(SchemaStorageError::from)
@@ -103,7 +103,7 @@ impl ReadRepository for RedbRepository {
                     .into_iter()
                     .map(|guard_opt| {
                         guard_opt
-                            .map(|g| deserialize::<Schema>(g.value()))
+                            .map(|g| Schema::from_bytes(g.value()))
                             .transpose()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -134,7 +134,7 @@ impl ReadRepository for RedbRepository {
                 let mut schemas = Vec::new();
                 for result in table.iter()? {
                     let (_id_guard, schema_guard) = result?;
-                    schemas.push(deserialize(schema_guard.value())?);
+                    schemas.push(Schema::from_bytes(schema_guard.value())?);
                 }
 
                 Ok(schemas)
@@ -183,7 +183,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let view = deserialize(guard.value())?;
+                let view = RawSchemaView::from_bytes(guard.value())?;
                 Ok(Some(view))
             })
             .map_err(SchemaStorageError::from)
@@ -210,13 +210,13 @@ impl ReadRepository for RedbRepository {
                 let Some(id_guard) = path_table.get(path_key(path))? else {
                     return Ok(None);
                 };
-                let id: SchemaId = deserialize(id_guard.value())?;
+                let id = SchemaId::from_bytes(id_guard.value())?;
 
                 let Some(view_guard) = view_table.get(id)? else {
                     return Ok(None);
                 };
 
-                let view = deserialize(view_guard.value())?;
+                let view = RawSchemaView::from_bytes(view_guard.value())?;
                 Ok(Some(view))
             })
             .map_err(SchemaStorageError::from)
@@ -248,10 +248,10 @@ impl ReadRepository for RedbRepository {
 
                     let view = if let Some(id_bytes) = id_guard {
                         // Step 2: SchemaId → RawSchemaView lookup
-                        let id: SchemaId = deserialize(id_bytes.value())?;
+                        let id = SchemaId::from_bytes(id_bytes.value())?;
                         let view_guard = view_table.get(&id)?;
                         view_guard
-                            .map(|g| deserialize(g.value()))
+                            .map(|g| RawSchemaView::from_bytes(g.value()))
                             .transpose()?
                     } else {
                         None
@@ -280,7 +280,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let bank = deserialize(guard.value())?;
+                let bank = PropertyBank::from_bytes(guard.value())?;
                 Ok(Some(bank))
             })
             .map_err(SchemaStorageError::from)
@@ -305,7 +305,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let graph = deserialize(guard.value())?;
+                let graph = crate::schema::inheritance::InheritanceGraph::<()>::from_bytes(guard.value())?;
                 Ok(Some(graph))
             })
             .map_err(SchemaStorageError::from)
@@ -328,7 +328,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let view = deserialize(guard.value())?;
+                let view = RawPropertyBankView::from_bytes(guard.value())?;
                 Ok(Some(view))
             })
             .map_err(SchemaStorageError::from)
@@ -351,7 +351,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let id = deserialize(guard.value())?;
+                let id = SchemaId::from_bytes(guard.value())?;
                 Ok(Some(id))
             })
             .map_err(SchemaStorageError::from)
@@ -374,7 +374,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let id = deserialize(guard.value())?;
+                let id = SchemaId::from_bytes(guard.value())?;
                 Ok(Some(id))
             })
             .map_err(SchemaStorageError::from)
@@ -397,7 +397,7 @@ impl ReadRepository for RedbRepository {
                 for path in paths {
                     match table.get(path_key(path))? {
                         Some(guard) => {
-                            let id = deserialize(guard.value())?;
+                            let id = SchemaId::from_bytes(guard.value())?;
                             results.push(Some(id));
                         }
                         None => results.push(None),
@@ -424,7 +424,7 @@ impl ReadRepository for RedbRepository {
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
                     let name = parse_schema_name_key(k_guard.value())?;
-                    let id = deserialize(v_guard.value())?;
+                    let id = SchemaId::from_bytes(v_guard.value())?;
                     pairs.push((name, id));
                 }
                 Ok(pairs)
@@ -449,7 +449,7 @@ impl ReadRepository for RedbRepository {
                     let (k_guard, v_guard) = result?;
                     let path =
                         parse_relative_path_key(k_guard.value().as_str())?;
-                    let id = deserialize(v_guard.value())?;
+                    let id = SchemaId::from_bytes(v_guard.value())?;
                     pairs.push((path, id));
                 }
                 Ok(pairs)
