@@ -48,7 +48,6 @@ use std::{
 };
 
 use super::{
-    entry::FsEntry,
     error::{FsError, PathValidationError},
     format::{FileFormat, parse_from_format, sniff_structured_format},
     metadata::{FileMetadata, FsTimes},
@@ -287,75 +286,6 @@ impl Reader {
                 FsEntry::File(_) => None,
             })
             .collect())
-    }
-
-    /// Lists directories matching a glob pattern within the vault.
-    ///
-    /// The pattern is relative to the vault root. Only directories are
-    /// returned; files and non-directory symlinks are excluded. Results are
-    /// sorted alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError> {
-        use super::error::ReadError;
-
-        let full_pattern = self.root.join(pattern);
-        let pattern_str = full_pattern.to_str().ok_or_else(|| {
-            FsError::Path(super::error::PathError::InvalidUtf8(
-                full_pattern.clone(),
-            ))
-        })?;
-
-        let mut paths = Vec::new();
-        for entry in glob::glob(pattern_str).map_err(|e| {
-            FsError::Scan(super::error::ScanError::InvalidPattern {
-                pattern: pattern_str.into(),
-                message: e.msg.into(),
-            })
-        })? {
-            let path = entry.map_err(|e| {
-                FsError::Scan(super::error::ScanError::Traversal {
-                    path: e.path().to_path_buf(),
-                    source: e.into_error(),
-                })
-            })?;
-
-            if !path.is_dir() {
-                continue;
-            }
-
-            let relative = path.strip_prefix(&self.root).map_err(|_err| {
-                FsError::Read(ReadError::NotInBase {
-                    path: path.clone(),
-                    base: self.root.clone(),
-                })
-            })?;
-
-            paths.push(relative.to_path_buf());
-        }
-
-        paths.sort();
-        Ok(paths)
-    }
-
-    /// Lists file entries within the vault using a glob pattern.
-    ///
-    /// Similar to [`filter_dir`], but returns an [`FsEntry`] for each matching
-    /// entry with typed path and metadata.
-    /// Results are sorted by path alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn list_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, FsError> {
-        use super::scanner::{DirScanInput, DirScanner};
-
-        let scanner = DirScanner::new(&self.root);
-        Ok(scanner.entries(DirScanInput::new().with_pattern(pattern))?)
     }
 
     /// Reads a file's content as raw bytes.
@@ -927,7 +857,7 @@ mod tests {
         }
     }
 
-    mod list_entries {
+    mod filter_file_entries_additional {
         use super::*;
 
         #[test]
@@ -937,36 +867,34 @@ mod tests {
             write_file(dir.path(), "schemas/a.json", b"{}");
             let reader = Reader::new(dir.path());
             let entries =
-                reader.list_entries("schemas/**/*.json").expect("list");
+                reader.filter_file_entries("schemas/**/*.json").expect("list");
             let expected_a = dir.path().join("schemas/a.json");
             let expected_b = dir.path().join("schemas/b.json");
 
             assert_eq!(entries.len(), 2);
             assert_eq!(
-                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
+                entries.first().map(|e| e.path().as_path().to_path_buf()),
                 Some(expected_a)
             );
             assert_eq!(
-                entries.get(1).map(|e| e.path_ref().as_path().to_path_buf()),
+                entries.get(1).map(|e| e.path().as_path().to_path_buf()),
                 Some(expected_b)
             );
             assert_eq!(
                 entries
                     .first()
-                    .and_then(crate::fs::entry::FsEntry::filename)
+                    .and_then(|e| e.path().filename())
                     .map(|name| name.as_str().to_owned()),
                 Some("a.json".to_owned())
             );
             assert_eq!(
                 entries
                     .get(1)
-                    .and_then(crate::fs::entry::FsEntry::filename)
+                    .and_then(|e| e.path().filename())
                     .map(|name| name.as_str().to_owned()),
                 Some("b.json".to_owned())
             );
-            assert!(entries.first().is_some_and(|e| {
-                e.metadata().as_file().is_some_and(|meta| meta.size() > 0)
-            }));
+            assert!(entries.first().is_some_and(|e| e.metadata().size() > 0));
         }
 
         #[test]
@@ -976,7 +904,7 @@ mod tests {
             std::fs::create_dir_all(dir.path().join("subdir.json"))
                 .expect("dir");
             let reader = Reader::new(dir.path());
-            let entries = reader.list_entries("*.json").expect("list");
+            let entries = reader.filter_file_entries("*.json").expect("list");
             assert_eq!(entries.len(), 1);
         }
 
@@ -984,7 +912,7 @@ mod tests {
         fn returns_empty_when_no_matches() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let entries = reader.list_entries("*.json").expect("list");
+            let entries = reader.filter_file_entries("*.json").expect("list");
             assert!(entries.is_empty());
         }
     }

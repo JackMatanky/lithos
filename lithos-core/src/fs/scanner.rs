@@ -6,8 +6,8 @@
 //! ## Architecture
 //!
 //! `DirScanner` is a standalone utility that can be used independently or via
-//! [`crate::fs::reader::Reader`]'s convenience methods (`filter_dir` and
-//! `list_entries`). It uses [`walkdir`] for recursive traversal with
+//! [`crate::fs::reader::Reader`]'s convenience methods (`filter_entries` and
+//! `filter_dir_entries`). It uses [`walkdir`] for recursive traversal with
 //! configurable depth, symlink handling, and filtering.
 //!
 //! ## Design Decisions

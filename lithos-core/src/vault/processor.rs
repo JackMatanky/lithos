@@ -517,28 +517,43 @@ impl VaultProcessor<Discovery, Unknown> {
     }
 
     fn scan_views(source: &FsReader) -> Result<ScanViews, VaultFileError> {
-        let mut dir_paths = source.list_dirs("**/*").map_err(|error| {
-            VaultFileError::ReadFailed {
+        // Pre-compute relative paths for all directories before sorting
+        // This handles the fallible as_relative() call before sorting
+        let mut dir_entries: Vec<(
+            crate::fs::path::RelativePath,
+            crate::fs::entry::FsDir,
+        )> = source
+            .filter_dir_entries("**/*")
+            .map_err(|error| VaultFileError::ReadFailed {
                 path: "<vault>".into(),
                 message: error.to_string().into(),
-            }
-        })?;
-        dir_paths.sort_by(|left, right| {
-            let depth_left = left.components().count();
-            let depth_right = right.components().count();
-            depth_left.cmp(&depth_right).then_with(|| left.cmp(right))
+            })?
+            .into_iter()
+            .map(|entry| {
+                let relative = entry
+                    .path()
+                    .as_relative(source.root())
+                    .map_err(|error| VaultFileError::ReadFailed {
+                        path: "<vault>".into(),
+                        message: error.to_string().into(),
+                    })?;
+                Ok((relative, entry))
+            })
+            .collect::<Result<Vec<_>, VaultFileError>>()?;
+
+        // Sort by depth (component count), then by path
+        dir_entries.sort_by(|(rel_a, _), (rel_b, _)| {
+            let depth_a = rel_a.as_path().components().count();
+            let depth_b = rel_b.as_path().components().count();
+            depth_a
+                .cmp(&depth_b)
+                .then_with(|| rel_a.as_path().cmp(rel_b.as_path()))
         });
 
-        let mut dirs = Vec::with_capacity(dir_paths.len());
-        let mut dir_ids_by_path = HashMap::with_capacity(dir_paths.len());
-        for relative in dir_paths {
-            let path = normalized_path_from_relative(&relative)?;
-            let metadata = source.std_metadata(&relative).map_err(|error| {
-                VaultFileError::MetadataFailed {
-                    path: path.as_str().into(),
-                    message: error.to_string().into(),
-                }
-            })?;
+        let mut dirs = Vec::with_capacity(dir_entries.len());
+        let mut dir_ids_by_path = HashMap::with_capacity(dir_entries.len());
+        for (relative, entry) in dir_entries {
+            let path = normalized_path_from_relative(relative.as_path())?;
             let parent = parent_path(&path)?;
             let parent_id = parent
                 .as_ref()
@@ -549,8 +564,8 @@ impl VaultProcessor<Discovery, Unknown> {
                 view: DirView::new(
                     DirId::new(),
                     parent_id,
-                    DirName::new(last_component(&relative)?),
-                    DirMetadata::from(&metadata),
+                    DirName::new(last_component(relative.as_path())?),
+                    entry.metadata().clone(),
                 ),
             };
             dir_ids_by_path.insert(path, dir.view.id());
