@@ -538,7 +538,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::{
-        db::{Store, serialize},
+        db::{DbEntity, Store},
         fs::{
             RelativePath,
             metadata::{FileMetadata, FsTimes},
@@ -841,16 +841,16 @@ mod tests {
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     name_table
-                        .insert(name1.as_str(), serialize(&id1)?.as_slice())?;
+                        .insert(name1.as_str(), id1.to_bytes()?.as_slice())?;
                     name_table
-                        .insert(name2.as_str(), serialize(&id2)?.as_slice())?;
+                        .insert(name2.as_str(), id2.to_bytes()?.as_slice())?;
                     path_table.insert(
                         path1.as_path().to_string_lossy().to_string(),
-                        serialize(&id1)?.as_slice(),
+                        id1.to_bytes()?.as_slice(),
                     )?;
                     path_table.insert(
                         path2.as_path().to_string_lossy().to_string(),
-                        serialize(&id2)?.as_slice(),
+                        id2.to_bytes()?.as_slice(),
                     )?;
                     Ok(())
                 })
@@ -898,7 +898,7 @@ mod tests {
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
                     name_table.insert(
                         "bad name with spaces",
-                        serialize(&SchemaId::new())?.as_slice(),
+                        SchemaId::new().to_bytes()?.as_slice(),
                     )?;
                     Ok(())
                 })
@@ -924,7 +924,7 @@ mod tests {
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     path_table.insert(
                         String::new(),
-                        serialize(&SchemaId::new())?.as_slice(),
+                        SchemaId::new().to_bytes()?.as_slice(),
                     )?;
                     Ok(())
                 })
@@ -995,7 +995,7 @@ mod tests {
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     path_table.insert(
                         path.as_path().to_string_lossy().to_string(),
-                        serialize(&id)?.as_slice(),
+                        id.to_bytes()?.as_slice(),
                     )?;
                     Ok(())
                 })

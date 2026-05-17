@@ -5,7 +5,7 @@
 use redb::ReadableTable as _;
 
 use crate::{
-    db::{BatchReader, BatchWriter, Database, DbError, deserialize, serialize},
+    db::{BatchReader, BatchWriter, Database, DbEntity, DbError},
     fs::FileFormat,
     vault::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
@@ -299,7 +299,7 @@ impl Repository for RedbRepository<'_> {
         let Some(bytes) = views.get(id).map_err(storage_err)? else {
             return Ok(None);
         };
-        deserialize(bytes.value())
+        FileView::from_bytes(bytes.value())
             .map(Some)
             .map_err(VaultRepositoryError::Storage)
     }
@@ -327,7 +327,7 @@ impl Repository for RedbRepository<'_> {
         let Some(bytes) = views.get(id).map_err(storage_err)? else {
             return Ok(None);
         };
-        deserialize(bytes.value())
+        DirView::from_bytes(bytes.value())
             .map(Some)
             .map_err(VaultRepositoryError::Storage)
     }
@@ -344,7 +344,7 @@ impl Repository for RedbRepository<'_> {
         let Some(bytes) = table.get(id).map_err(storage_err)? else {
             return Ok(None);
         };
-        deserialize(bytes.value())
+        FileView::from_bytes(bytes.value())
             .map(Some)
             .map_err(VaultRepositoryError::Storage)
     }
@@ -358,7 +358,7 @@ impl Repository for RedbRepository<'_> {
         let Some(bytes) = table.get(id).map_err(storage_err)? else {
             return Ok(None);
         };
-        deserialize(bytes.value())
+        DirView::from_bytes(bytes.value())
             .map(Some)
             .map_err(VaultRepositoryError::Storage)
     }
@@ -400,7 +400,7 @@ impl Repository for RedbRepository<'_> {
             let id = id.map_err(storage_err)?.value();
             if let Some(bytes) = views.get(id).map_err(storage_err)? {
                 out.push(
-                    deserialize(bytes.value())
+                    FileView::from_bytes(bytes.value())
                         .map_err(VaultRepositoryError::Storage)?,
                 );
             }
@@ -436,7 +436,7 @@ impl Repository for RedbRepository<'_> {
             let id = id.map_err(storage_err)?.value();
             if let Some(bytes) = views.get(id).map_err(storage_err)? {
                 out.push(
-                    deserialize(bytes.value())
+                    FileView::from_bytes(bytes.value())
                         .map_err(VaultRepositoryError::Storage)?,
                 );
             }
@@ -470,7 +470,7 @@ impl Repository for RedbRepository<'_> {
             let id = id.map_err(storage_err)?.value();
             if let Some(bytes) = views.get(id).map_err(storage_err)? {
                 out.push(
-                    deserialize(bytes.value())
+                    FileView::from_bytes(bytes.value())
                         .map_err(VaultRepositoryError::Storage)?,
                 );
             }
@@ -498,7 +498,7 @@ impl Repository for RedbRepository<'_> {
         for row in table.iter().map_err(storage_err)? {
             let (_, bytes) = row.map_err(storage_err)?;
             out.push(
-                deserialize(bytes.value())
+                FileView::from_bytes(bytes.value())
                     .map_err(VaultRepositoryError::Storage)?,
             );
         }
@@ -543,7 +543,7 @@ impl Repository for RedbRepository<'_> {
         for row in table.iter().map_err(storage_err)? {
             let (_, bytes) = row.map_err(storage_err)?;
             out.push(
-                deserialize(bytes.value())
+                DirView::from_bytes(bytes.value())
                     .map_err(VaultRepositoryError::Storage)?,
             );
         }
@@ -582,7 +582,7 @@ impl Repository for RedbRepository<'_> {
         let tx =
             self.db.begin_write().map_err(VaultRepositoryError::Storage)?;
         remove_stale_file_indexes(&tx, file.id())?;
-        let bytes = serialize(file).map_err(VaultRepositoryError::Storage)?;
+        let bytes = file.to_bytes().map_err(VaultRepositoryError::Storage)?;
 
         {
             let mut table =
@@ -632,7 +632,7 @@ impl Repository for RedbRepository<'_> {
         let tx =
             self.db.begin_write().map_err(VaultRepositoryError::Storage)?;
         remove_stale_dir_path_indexes(&tx, dir.id())?;
-        let bytes = serialize(dir).map_err(VaultRepositoryError::Storage)?;
+        let bytes = dir.to_bytes().map_err(VaultRepositoryError::Storage)?;
         {
             let mut table =
                 tx.open_table(DIR_VIEWS.definition()).map_err(storage_err)?;
@@ -740,7 +740,7 @@ fn remove_stale_file_indexes(
             tx.open_table(FILE_VIEWS.definition()).map_err(storage_err)?;
         match table.get(file_id).map_err(storage_err)? {
             Some(bytes) => Some(
-                deserialize::<FileView>(bytes.value())
+                FileView::from_bytes(bytes.value())
                     .map_err(VaultRepositoryError::Storage)?,
             ),
             None => None,

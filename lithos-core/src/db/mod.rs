@@ -59,7 +59,7 @@ pub use core::{Database, Store};
 pub use error::{DbError, DbErrorKind};
 pub use read::ReadTx;
 pub use reader::BatchReader;
-pub use rkyv::{DbEntity, deserialize, serialize, with_archived};
+pub use rkyv::DbEntity;
 pub use table::{PathTable, Table, UuidMultimap, UuidTable};
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,

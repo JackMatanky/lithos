@@ -692,7 +692,7 @@ mod regression_tests {
     /// bug was wrong API usage.
     #[test]
     fn sequential_deserialization_pattern() -> TestResult {
-        use rkyv::{access, deserialize};
+        use lithos_core::db::DbEntity;
 
         // Create 2 schemas
         let (seq_field1_name, seq_field1) =
@@ -720,8 +720,8 @@ mod regression_tests {
         );
 
         // Serialize both
-        let bytes1 = rkyv::to_bytes::<rkyv::rancor::Error>(&schema1)?;
-        let bytes2 = rkyv::to_bytes::<rkyv::rancor::Error>(&schema2)?;
+        let bytes1 = schema1.to_bytes()?;
+        let bytes2 = schema2.to_bytes()?;
 
         // Simulate table scan: collect all bytes first
         let all_bytes = vec![bytes1, bytes2];
@@ -729,10 +729,7 @@ mod regression_tests {
 
         // Then deserialize sequentially (2-phase pattern)
         for bytes in &all_bytes {
-            let archived =
-                access::<rkyv::Archived<Schema>, rkyv::rancor::Error>(bytes)?;
-            let deserialized =
-                deserialize::<Schema, rkyv::rancor::Error>(archived)?;
+            let deserialized = Schema::from_bytes(bytes)?;
             results.push(deserialized);
         }
 
