@@ -86,8 +86,8 @@ impl Config {
     /// Return the version of this configuration.
     #[inline]
     #[must_use]
-    pub const fn version(&self) -> Version {
-        self.version
+    pub const fn version(&self) -> &Version {
+        &self.version
     }
 
     /// Return the logging configuration.
@@ -217,24 +217,37 @@ impl Config {
     /// # use lithos_core::config::aggregate::Config;
     /// # fn example(config: &Config) {
     /// let spec = config.to_schema_spec();
-    /// // spec.directory() returns "schemas"
-    /// // spec.property_bank() returns "schemas/property_bank.json"
+    /// // spec.root() returns vault root
+    /// // spec.directory() returns absolute path to schemas directory
+    /// // spec.property_bank() returns absolute path to property bank file
     /// # }
     /// ```
     #[inline]
     #[must_use]
+    #[allow(
+        clippy::expect_used,
+        reason = "property_bank_path() joins validated relative paths"
+    )]
     pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
         use super::paths::SchemaConfigSpec;
+        use crate::fs::{DirPath, RelativePath};
 
-        let vault_root = self.vault_metadata.root().as_path();
+        // Convert VaultRoot (PathBuf wrapper) to DirPath
+        let root =
+            DirPath::from(self.vault_metadata.root().as_path().to_path_buf());
 
-        // Join vault root with relative paths to create absolute paths
-        let schemas_dir =
-            vault_root.join(self.paths.schema.schemas_dir().as_path());
-        let property_bank = vault_root.join(self.paths.property_bank_path());
+        // property_bank_path() joins validated relative paths (schemas_dir +
+        // property_bank filename), so the result is guaranteed to be a
+        // valid RelativePath
+        let property_bank_rel =
+            RelativePath::try_from(self.paths.property_bank_path())
+                .expect("property bank path should be valid relative path");
 
-        // Use From<PathBuf> to bypass filesystem validation
-        SchemaConfigSpec::new(schemas_dir.into(), property_bank.into())
+        SchemaConfigSpec::new(
+            root,
+            self.paths.schema.schemas_dir().clone(),
+            property_bank_rel,
+        )
     }
 
     /// Create a new Config with the specified version, keeping all other fields

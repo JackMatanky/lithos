@@ -240,29 +240,11 @@ impl DiscoveryEngine {
     ) -> Result<Vec<FsEntry>, SchemaLoaderError> {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
-        // Derive vault_root and convert absolute schema directory to relative
-        // pattern
-        let schema_dir = spec.directory().as_path();
-        let vault_root = schema_dir.parent().ok_or_else(|| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::FileSystem {
-                    reason: "schema directory has no parent".into(),
-                },
-            ))
-        })?;
+        // Use relative schema directory path for pattern matching
+        let pattern =
+            format!("{}/**/*", spec.directory_relative().as_path().display());
 
-        let schema_dir_relative =
-            schema_dir.strip_prefix(vault_root).map_err(|_| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: "schema directory not within vault root".into(),
-                    },
-                ))
-            })?;
-
-        let pattern = format!("{}/**/*", schema_dir_relative.display());
-
-        DirScanner::new(vault_root)
+        DirScanner::new(spec.root().as_path())
             .entries(
                 DirScanInput::new()
                     .with_pattern(&pattern)
@@ -271,7 +253,7 @@ impl DiscoveryEngine {
             .map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::Io {
-                        path: schema_dir.to_path_buf(),
+                        path: spec.directory().as_path().to_path_buf(),
                         source: std::io::Error::other(e),
                     },
                 ))
@@ -292,18 +274,13 @@ impl DiscoveryEngine {
         let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
 
-        // Derive vault_root for relative path conversion
-        // SAFETY: scan_filesystem validates parent exists before calling this
-        let Some(vault_root) = spec.directory().as_path().parent() else {
-            return (None, Vec::new());
-        };
-
         for entry in entries {
             let Some(file) = entry.as_file() else {
                 continue;
             };
 
-            let Ok(relative) = file.path().as_path().strip_prefix(vault_root)
+            let Ok(relative) =
+                file.path().as_path().strip_prefix(spec.root().as_path())
             else {
                 continue;
             };
@@ -353,40 +330,8 @@ impl DiscoveryEngine {
     where
         R: ReadRepository,
     {
-        // Derive vault_root and convert absolute FilePath to RelativePath for
-        // database lookup SAFETY: scan_filesystem validates parent
-        // exists before calling this
-        let vault_root =
-            spec.directory().as_path().parent().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: "schema directory has no parent".into(),
-                    },
-                ))
-            })?;
-
-        let property_bank_path = spec
-            .property_bank()
-            .as_path()
-            .strip_prefix(vault_root)
-            .map_err(|_| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: "property bank path not within vault root"
-                            .into(),
-                    },
-                ))
-            })
-            .and_then(|p| {
-                RelativePath::try_from(p).map_err(|e| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
-                            reason: format!("invalid relative path: {e}")
-                                .into(),
-                        },
-                    ))
-                })
-            })?;
+        // Property bank path is already stored as relative in spec
+        let property_bank_path = spec.property_bank_relative();
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "iter over &[(RelativePath, FsEntry)] yields \
@@ -401,7 +346,7 @@ impl DiscoveryEngine {
 
         let property_bank_view = match property_bank_entry {
             Some(_) => repo
-                .get_raw_property_bank_view(&property_bank_path)
+                .get_raw_property_bank_view(property_bank_path)
                 .map_err(|e| SchemaLoaderError::Repository(e.into()))?,
             None => None,
         };
@@ -709,7 +654,7 @@ mod tests {
 
     #[test]
     fn run_finds_all_files() {
-        use crate::fs::{DirPath, FilePath};
+        use crate::fs::{DirPath, RelativePath};
 
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
@@ -721,11 +666,12 @@ mod tests {
         let schema1_path = schema_dir.join("schema1.json");
         std::fs::write(&schema1_path, "{}").unwrap();
 
-        // Create spec with absolute paths
-        let spec = SchemaConfigSpec::new(
-            DirPath::from(schema_dir.clone()),
-            FilePath::from(bank_path),
-        );
+        // Create spec with vault root and relative paths
+        let vault_root = DirPath::from(root.path().to_path_buf());
+        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = InMemoryRepository::new();
         let result = accepts_read_repository_only(&spec, &repo).unwrap();
@@ -737,7 +683,7 @@ mod tests {
 
     #[test]
     fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
-        use crate::fs::{DirPath, FilePath};
+        use crate::fs::{DirPath, RelativePath};
 
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
@@ -746,11 +692,12 @@ mod tests {
         let bank_path = schema_dir.join("property_bank.json");
         std::fs::write(&bank_path, "{}").unwrap();
 
-        // Create spec with absolute paths
-        let spec = SchemaConfigSpec::new(
-            DirPath::from(schema_dir),
-            FilePath::from(bank_path),
-        );
+        // Create spec with vault root and relative paths
+        let vault_root = DirPath::from(root.path().to_path_buf());
+        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = CountingReadRepo::new();
         let result = DiscoveryEngine::run(&spec, &repo).unwrap();

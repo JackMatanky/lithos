@@ -172,7 +172,7 @@ impl Repository for InMemoryRepository {
                 message: "Lock poisoned".into(),
             }
         })?;
-        let version = config.version();
+        let version = *config.version();
         configs.insert(vault_id, config.clone());
         versions.insert(vault_id, version);
         Ok(version)
