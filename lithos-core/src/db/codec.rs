@@ -134,125 +134,144 @@ mod tests {
         name: String,
     }
 
-    #[test]
-    fn serialize_produces_bytes() {
-        let data = TestData {
-            id: 42,
-            name: "test".to_owned(),
-        };
-        let result = data.to_bytes();
-        assert!(result.is_ok());
-        let bytes = result.unwrap();
-        assert!(!bytes.is_empty());
-    }
+    mod to_bytes {
+        use super::*;
 
-    #[test]
-    fn roundtrip_serialize_deserialize() {
-        let original = TestData {
-            id: 123,
-            name: "hello".to_owned(),
-        };
-        let bytes = original.to_bytes().unwrap();
-        let deserialized: TestData = TestData::from_bytes(&bytes).unwrap();
-        assert_eq!(original, deserialized);
-    }
-
-    #[test]
-    fn with_archived_zero_copy() {
-        let original = TestData {
-            id: 999,
-            name: "zero-copy".to_owned(),
-        };
-        let bytes = original.to_bytes().unwrap();
-        let result = TestData::with_archived(&bytes, |archived| {
-            assert_eq!(archived.id, 999);
-            archived.name.as_str().to_owned()
-        });
-        assert_eq!(result.unwrap(), "zero-copy");
-    }
-
-    #[test]
-    fn db_entity_trait_works() {
-        let original = TestData {
-            id: 777,
-            name: "entity".to_owned(),
-        };
-
-        // Test to_bytes
-        let bytes = original.to_bytes().unwrap();
-        assert!(!bytes.is_empty());
-
-        // Test from_bytes
-        let deserialized = TestData::from_bytes(&bytes).unwrap();
-        assert_eq!(original, deserialized);
-
-        // Test with_archived (zero-copy)
-        let result = TestData::with_archived(&bytes, |view| {
-            assert_eq!(view.id, 777);
-            view.name.as_str().to_owned()
-        });
-        assert_eq!(result.unwrap(), "entity");
-    }
-
-    #[test]
-    fn deserialize_returns_deserialization_error_for_invalid_bytes() {
-        let invalid_bytes = &[0u8, 1, 2, 3];
-        let result: Result<TestData, DbError> =
-            TestData::from_bytes(invalid_bytes);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DbError::Deserialization(_)));
-    }
-
-    #[test]
-    #[expect(
-        clippy::indexing_slicing,
-        clippy::integer_division,
-        clippy::integer_division_remainder_used,
-        reason = "Test intentionally truncates bytes to verify error handling"
-    )]
-    fn deserialize_validates_and_returns_error_for_truncated_bytes() {
-        let original = TestData {
-            id: 1,
-            name: "test".to_owned(),
-        };
-        let bytes = original.to_bytes().unwrap();
-        let truncated = &bytes[..bytes.len() / 2];
-        let result: Result<TestData, DbError> = TestData::from_bytes(truncated);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), DbError::Deserialization(_)));
-    }
-
-    #[test]
-    fn with_archived_alignment_fast_path_aligned() {
-        let original = TestData {
-            id: 1,
-            name: "aligned".to_owned(),
-        };
-        let bytes = original.to_bytes().unwrap();
-        let ptr = bytes.as_ptr() as usize;
-        if ptr.is_multiple_of(16) {
-            let result =
-                TestData::with_archived(&bytes, |archived| archived.id);
-            assert_eq!(result.unwrap(), 1);
+        #[test]
+        fn serialize_produces_bytes() {
+            let data = TestData {
+                id: 42,
+                name: "test".to_owned(),
+            };
+            let result = data.to_bytes();
+            assert!(result.is_ok());
+            let bytes = result.unwrap();
+            assert!(!bytes.is_empty());
         }
     }
 
-    #[test]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Test intentionally uses unaligned slice to verify error \
-                  handling"
-    )]
-    fn with_archived_alignment_slow_path_returns_error_for_invalid_unaligned_data()
-     {
-        let original = TestData {
-            id: 2,
-            name: "unaligned".to_owned(),
-        };
-        let bytes = original.to_bytes().unwrap();
-        let unaligned: Vec<u8> = bytes.iter().copied().collect();
-        let result =
-            TestData::with_archived(&unaligned[1..], |archived| archived.id);
-        result.unwrap_err();
+    mod from_bytes {
+        use super::*;
+
+        #[test]
+        fn roundtrip_serialize_deserialize() {
+            let original = TestData {
+                id: 123,
+                name: "hello".to_owned(),
+            };
+            let bytes = original.to_bytes().unwrap();
+            let deserialized: TestData = TestData::from_bytes(&bytes).unwrap();
+            assert_eq!(original, deserialized);
+        }
+
+        #[test]
+        fn deserialize_returns_deserialization_error_for_invalid_bytes() {
+            let invalid_bytes = &[0u8, 1, 2, 3];
+            let result: Result<TestData, DbError> =
+                TestData::from_bytes(invalid_bytes);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), DbError::Deserialization(_)));
+        }
+
+        #[test]
+        #[expect(
+            clippy::indexing_slicing,
+            clippy::integer_division,
+            clippy::integer_division_remainder_used,
+            reason = "Test intentionally truncates bytes to verify error \
+                      handling"
+        )]
+        fn deserialize_validates_and_returns_error_for_truncated_bytes() {
+            let original = TestData {
+                id: 1,
+                name: "test".to_owned(),
+            };
+            let bytes = original.to_bytes().unwrap();
+            let truncated = &bytes[..bytes.len() / 2];
+            let result: Result<TestData, DbError> =
+                TestData::from_bytes(truncated);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), DbError::Deserialization(_)));
+        }
+    }
+
+    mod with_archived {
+        use super::*;
+
+        #[test]
+        fn with_archived_zero_copy() {
+            let original = TestData {
+                id: 999,
+                name: "zero-copy".to_owned(),
+            };
+            let bytes = original.to_bytes().unwrap();
+            let result = TestData::with_archived(&bytes, |archived| {
+                assert_eq!(archived.id, 999);
+                archived.name.as_str().to_owned()
+            });
+            assert_eq!(result.unwrap(), "zero-copy");
+        }
+
+        #[test]
+        fn with_archived_alignment_fast_path_aligned() {
+            let original = TestData {
+                id: 1,
+                name: "aligned".to_owned(),
+            };
+            let bytes = original.to_bytes().unwrap();
+            let ptr = bytes.as_ptr() as usize;
+            if ptr.is_multiple_of(16) {
+                let result =
+                    TestData::with_archived(&bytes, |archived| archived.id);
+                assert_eq!(result.unwrap(), 1);
+            }
+        }
+
+        #[test]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "Test intentionally uses unaligned slice to verify error \
+                      handling"
+        )]
+        fn with_archived_alignment_slow_path_returns_error_for_invalid_unaligned_data()
+         {
+            let original = TestData {
+                id: 2,
+                name: "unaligned".to_owned(),
+            };
+            let bytes = original.to_bytes().unwrap();
+            let unaligned: Vec<u8> = bytes.iter().copied().collect();
+            let result = TestData::with_archived(&unaligned[1..], |archived| {
+                archived.id
+            });
+            result.unwrap_err();
+        }
+    }
+
+    mod db_entity_trait {
+        use super::*;
+
+        #[test]
+        fn db_entity_trait_works() {
+            let original = TestData {
+                id: 777,
+                name: "entity".to_owned(),
+            };
+
+            // Test to_bytes
+            let bytes = original.to_bytes().unwrap();
+            assert!(!bytes.is_empty());
+
+            // Test from_bytes
+            let deserialized = TestData::from_bytes(&bytes).unwrap();
+            assert_eq!(original, deserialized);
+
+            // Test with_archived (zero-copy)
+            let result = TestData::with_archived(&bytes, |view| {
+                assert_eq!(view.id, 777);
+                view.name.as_str().to_owned()
+            });
+            assert_eq!(result.unwrap(), "entity");
+        }
     }
 }

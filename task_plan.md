@@ -4,7 +4,7 @@
 Refactor `SchemaConfigSpec` to store `PathBuf` instead of `RelativePath`, with both the schema directory and property bank file paths resolved as absolute paths (joined to VaultRoot), eliminating the need to pass VaultRoot separately to builder.rs and discovery.rs.
 
 ## Current Phase
-Phase 1
+Phase 3 (TDD - Write Failing Tests)
 
 ## Phases
 
@@ -17,29 +17,35 @@ Phase 1
 - **Status:** complete
 
 ### Phase 2: Design & Planning
-- [ ] Design new SchemaConfigSpec API (PathBuf fields)
-- [ ] Plan migration path for existing tests
-- [ ] Identify all test files needing updates
-- [ ] Document design decisions
-- [ ] Get user approval on approach
-- **Status:** pending
+- [x] Design new SchemaConfigSpec API (DirPath/FilePath fields)
+- [x] Plan migration path for existing tests
+- [x] Identify all test files needing updates (4 files, ~8 tests)
+- [x] Document design decisions in findings.md
+- [x] Create isolated worktree for implementation
+- [x] Verify clean baseline (1157 unit + 38 integration tests passing)
+- [x] Create comprehensive TDD_PLAN.md with all test cases
+- **Status:** complete
 
 ### Phase 3: TDD - Write Failing Tests
-- [ ] Write test for SchemaConfigSpec with absolute paths
-- [ ] Write test for to_schema_spec with vault root joining
-- [ ] Write test for DiscoveryEngine with new SchemaConfigSpec
-- [ ] Write test for Builder with new SchemaConfigSpec
+- [ ] Test 1.1: SchemaConfigSpec accepts DirPath and FilePath (paths.rs)
+- [ ] Test 2.1: to_schema_spec creates absolute paths from vault root (aggregate.rs)
+- [ ] Test 3.1: DiscoveryEngine::run works without vault_root parameter (discovery.rs)
+- [ ] Test 4.1: Builder::load_all works with new signature (builder.rs)
+- [ ] Test 5.1: Update accepts_read_repository_only (discovery.rs tests)
+- [ ] Test 5.2: Update run_skips_schema_batch_lookups test (discovery.rs tests)
 - [ ] All tests should fail initially (RED phase)
 - **Status:** pending
+- **See:** TDD_PLAN.md in worktree for detailed test code
 
 ### Phase 4: Implementation - Make Tests Pass
-- [ ] Update SchemaConfigSpec struct (RelativePath → PathBuf)
-- [ ] Update SchemaConfigSpec::new() signature
-- [ ] Update Config::to_schema_spec() to join vault root
-- [ ] Update DiscoveryEngine::run() to use absolute paths
-- [ ] Update Builder::load_all() usage
+- [ ] Impl 1: SchemaConfigSpec struct (DirPath/FilePath fields, const accessors)
+- [ ] Impl 2: Config::to_schema_spec() joins vault root with relative paths
+- [ ] Impl 3: DiscoveryEngine::run() removes vault_root param, uses spec paths
+- [ ] Impl 4: Builder::load_all() removes vault_root argument
+- [ ] Impl 5: Update all discovery test call sites (3 tests)
 - [ ] All tests should pass (GREEN phase)
 - **Status:** pending
+- **See:** TDD_PLAN.md in worktree for implementation code
 
 ### Phase 5: Refactor & Clean Up
 - [ ] Remove vault_root parameter from DiscoveryEngine::run()

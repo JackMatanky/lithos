@@ -21,7 +21,7 @@
   - progress.md (created - this file)
 
 ### Phase 2: Design & Planning
-- **Status:** in_progress
+- **Status:** complete
 - **Started:** 2026-05-17
 - Actions taken:
   - Investigated DirPath and FilePath types in fs/path.rs
@@ -31,10 +31,18 @@
   - Ran gitnexus_context to see incoming/outgoing relationships
   - Updated findings.md with DirPath/FilePath discovery
   - Updated task_plan.md with refined decisions
+  - Created isolated worktree at .worktrees/refactor/schema-config-spec-absolute-paths
+  - Verified clean baseline (1157 unit tests + 38 integration tests passing)
 - Files created/modified:
   - findings.md (updated with DirPath/FilePath analysis and impact results)
   - task_plan.md (updated with DirPath/FilePath decisions)
   - progress.md (this file)
+
+## Worktree Information
+- **Branch:** refactor/schema-config-spec-absolute-paths
+- **Path:** /Users/jack/Documents/41_personal/lithos/.worktrees/refactor/schema-config-spec-absolute-paths
+- **Baseline:** ✅ 1157 unit tests + 38 integration tests PASSING
+- **TDD Plan:** See TDD_PLAN.md in worktree for detailed implementation steps
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |
