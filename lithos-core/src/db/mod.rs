@@ -56,7 +56,7 @@ mod writer;
 
 pub use core::{Database, Store};
 
-pub use codec::DbEntity;
+pub use codec::ArchivedEntity;
 pub use error::{DbError, DbErrorKind};
 pub use read::ReadTx;
 pub use reader::BatchReader;

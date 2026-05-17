@@ -38,7 +38,7 @@
 use redb::ReadableTable;
 
 use crate::{
-    db::{DbEntity, DbError},
+    db::{ArchivedEntity, DbError},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -325,7 +325,7 @@ mod tests {
         use std::sync::Arc;
 
         use crate::{
-            db::{DbEntity, Store},
+            db::{ArchivedEntity, Store},
             schema::{
                 aggregate::Schema,
                 identifier::{SchemaId, SchemaName},

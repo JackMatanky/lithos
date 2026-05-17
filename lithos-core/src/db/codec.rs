@@ -32,7 +32,7 @@ use crate::db::DbError;
 /// This trait acts as a codec boundary, hiding the complex `rkyv` trait bounds
 /// and validation logic from domain storage adapters. It provides both owned
 /// (`from_bytes`) and zero-copy (`with_archived`) read paths.
-pub trait DbEntity: Sized {
+pub trait ArchivedEntity: Sized {
     /// The zero-copy view of the entity.
     type View<'a>
     where
@@ -61,7 +61,7 @@ pub trait DbEntity: Sized {
 }
 
 // Blanket implementation for any type that derives the necessary rkyv traits.
-impl<T> DbEntity for T
+impl<T> ArchivedEntity for T
 where
     T: 'static
         + Archive

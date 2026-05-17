@@ -692,7 +692,7 @@ mod regression_tests {
     /// bug was wrong API usage.
     #[test]
     fn sequential_deserialization_pattern() -> TestResult {
-        use lithos_core::db::DbEntity;
+        use lithos_core::db::ArchivedEntity;
 
         // Create 2 schemas
         let (seq_field1_name, seq_field1) =

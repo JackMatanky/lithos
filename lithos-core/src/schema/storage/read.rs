@@ -41,7 +41,7 @@ use std::collections::{HashMap, HashSet};
 use redb::ReadableTable;
 
 use crate::{
-    db::{DbEntity, UuidTableReadExt},
+    db::{ArchivedEntity, UuidTableReadExt},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -538,7 +538,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::{
-        db::{DbEntity, Store},
+        db::{ArchivedEntity, Store},
         fs::{
             RelativePath,
             metadata::{FileMetadata, FsTimes},

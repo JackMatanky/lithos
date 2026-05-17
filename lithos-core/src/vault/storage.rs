@@ -5,7 +5,7 @@
 use redb::ReadableTable as _;
 
 use crate::{
-    db::{BatchReader, BatchWriter, Database, DbEntity, DbError},
+    db::{ArchivedEntity, BatchReader, BatchWriter, Database, DbError},
     fs::FileFormat,
     vault::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
