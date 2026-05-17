@@ -31,7 +31,7 @@ use crate::db::DbError;
 ///
 /// This trait acts as a codec boundary, hiding the complex `rkyv` trait bounds
 /// and validation logic from domain storage adapters. It provides both owned
-/// (`from_bytes`) and zero-copy (`with_view`) read paths.
+/// (`from_bytes`) and zero-copy (`with_archived`) read paths.
 pub trait DbEntity: Sized {
     /// The zero-copy view of the entity.
     type View<'a>
@@ -55,7 +55,7 @@ pub trait DbEntity: Sized {
     ///
     /// # Errors
     /// Returns [`DbError::Deserialization`] if validation fails.
-    fn with_view<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
+    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
     where
         F: FnOnce(Self::View<'_>) -> R;
 }
@@ -97,7 +97,7 @@ where
     }
 
     #[inline]
-    fn with_view<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
+    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
     where
         F: FnOnce(Self::View<'_>) -> R,
     {
@@ -164,7 +164,7 @@ mod tests {
             name: "zero-copy".to_owned(),
         };
         let bytes = original.to_bytes().unwrap();
-        let result = TestData::with_view(&bytes, |archived| {
+        let result = TestData::with_archived(&bytes, |archived| {
             assert_eq!(archived.id, 999);
             archived.name.as_str().to_owned()
         });
@@ -186,8 +186,8 @@ mod tests {
         let deserialized = TestData::from_bytes(&bytes).unwrap();
         assert_eq!(original, deserialized);
 
-        // Test with_view (zero-copy)
-        let result = TestData::with_view(&bytes, |view| {
+        // Test with_archived (zero-copy)
+        let result = TestData::with_archived(&bytes, |view| {
             assert_eq!(view.id, 777);
             view.name.as_str().to_owned()
         });
@@ -231,7 +231,8 @@ mod tests {
         let bytes = original.to_bytes().unwrap();
         let ptr = bytes.as_ptr() as usize;
         if ptr.is_multiple_of(16) {
-            let result = TestData::with_view(&bytes, |archived| archived.id);
+            let result =
+                TestData::with_archived(&bytes, |archived| archived.id);
             assert_eq!(result.unwrap(), 1);
         }
     }
@@ -251,7 +252,7 @@ mod tests {
         let bytes = original.to_bytes().unwrap();
         let unaligned: Vec<u8> = bytes.iter().copied().collect();
         let result =
-            TestData::with_view(&unaligned[1..], |archived| archived.id);
+            TestData::with_archived(&unaligned[1..], |archived| archived.id);
         result.unwrap_err();
     }
 }

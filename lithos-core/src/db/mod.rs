@@ -43,12 +43,12 @@
 //! # }
 //! ```
 
+mod codec;
 mod core;
 mod error;
 mod read;
 mod reader;
 pub mod retry;
-mod rkyv;
 mod table;
 mod uuid;
 mod write;
@@ -56,10 +56,10 @@ mod writer;
 
 pub use core::{Database, Store};
 
+pub use codec::DbEntity;
 pub use error::{DbError, DbErrorKind};
 pub use read::ReadTx;
 pub use reader::BatchReader;
-pub use rkyv::DbEntity;
 pub use table::{PathTable, Table, UuidMultimap, UuidTable};
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,
