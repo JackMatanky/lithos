@@ -20,8 +20,29 @@
   - findings.md (created)
   - progress.md (created - this file)
 
-### Phase 2: Design & Planning
+### Phase 2-6: Implementation (TDD)
 - **Status:** complete
+- **Started:** 2026-05-17
+- Actions taken:
+  - **RED Phase**: Wrote failing test for SchemaConfigSpec with DirPath/FilePath
+  - **GREEN Phase**: Implemented type changes across 3 files
+  - Updated SchemaConfigSpec to use DirPath (directory) and FilePath (property_bank)
+  - Updated Config::to_schema_spec() to join vault_root with relative paths
+  - Updated DiscoveryEngine::scan_filesystem() to convert absolute→relative pattern
+  - Updated DiscoveryEngine helper functions (separate_property_bank, query_cached_state)
+  - Updated all test call sites (aggregate.rs, discovery.rs, paths.rs)
+  - Fixed all compilation errors systematically
+  - Ran `mise run lint` - ✅ No warnings (clippy auto-fixed minor issues)
+  - Ran `mise run fmt` - ✅ Code formatted
+  - Ran `mise run test` - ✅ ALL PASSING (1157 unit + 38 integration)
+- Files modified:
+  - lithos-core/src/config/aggregate.rs (50 lines changed)
+  - lithos-core/src/config/paths.rs (112 lines changed)
+  - lithos-core/src/schema/discovery.rs (66 lines changed)
+- **Total:** 147 insertions(+), 81 deletions(-)
+
+### Phase 2: Design & Planning
+- **Status:** complete (see above for full implementation)
 - **Started:** 2026-05-17
 - Actions taken:
   - Investigated DirPath and FilePath types in fs/path.rs
@@ -39,10 +60,12 @@
   - progress.md (this file)
 
 ## Worktree Information
-- **Branch:** refactor/schema-config-spec-absolute-paths
+- **Branch:** `refactor/schema-config-spec` (renamed from refactor/schema-config-spec-absolute-paths)
 - **Path:** /Users/jack/Documents/41_personal/lithos/.worktrees/refactor/schema-config-spec-absolute-paths
 - **Baseline:** ✅ 1157 unit tests + 38 integration tests PASSING
 - **TDD Plan:** See TDD_PLAN.md in worktree for detailed implementation steps
+- **Final Status:** ✅ ALL TESTS PASSING (1157 unit + 38 integration)
+- **Changes:** 4 files modified (619 insertions, 81 deletions)
 
 ## Test Results
 | Test | Input | Expected | Actual | Status |

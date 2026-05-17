@@ -13,12 +13,6 @@
 //!   abstract the complexity of `AlignedVec` and pointer arithmetic away from
 //!   domain code.
 
-#![allow(
-    dead_code,
-    clippy::as_conversions,
-    reason = "Functions for issue-02 storage adapter use"
-)]
-
 use rkyv::{
     Archive, Deserialize, Portable, Serialize, api::high::HighDeserializer,
     util::AlignedVec,
@@ -101,6 +95,10 @@ where
     where
         F: FnOnce(Self::View<'_>) -> R,
     {
+        #[expect(
+            clippy::as_conversions,
+            reason = "Pointer to usize conversion required for alignment check"
+        )]
         let ptr_usize = bytes.as_ptr() as usize;
 
         if ptr_usize.is_multiple_of(16) {
@@ -219,6 +217,11 @@ mod tests {
                 name: "aligned".to_owned(),
             };
             let bytes = original.to_bytes().unwrap();
+            #[expect(
+                clippy::as_conversions,
+                reason = "Pointer to usize conversion required for alignment \
+                          check"
+            )]
             let ptr = bytes.as_ptr() as usize;
             if ptr.is_multiple_of(16) {
                 let result =
