@@ -138,7 +138,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn serialize_produces_bytes() {
+        fn produces_aligned_bytes() {
             let data = TestData {
                 id: 42,
                 name: "test".to_owned(),
@@ -154,7 +154,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn roundtrip_serialize_deserialize() {
+        fn roundtrips_valid_entity() {
             let original = TestData {
                 id: 123,
                 name: "hello".to_owned(),
@@ -165,7 +165,7 @@ mod tests {
         }
 
         #[test]
-        fn deserialize_returns_deserialization_error_for_invalid_bytes() {
+        fn returns_error_for_invalid_bytes() {
             let invalid_bytes = &[0u8, 1, 2, 3];
             let result: Result<TestData, DbError> =
                 TestData::from_bytes(invalid_bytes);
@@ -181,7 +181,7 @@ mod tests {
             reason = "Test intentionally truncates bytes to verify error \
                       handling"
         )]
-        fn deserialize_validates_and_returns_error_for_truncated_bytes() {
+        fn returns_error_for_truncated_bytes() {
             let original = TestData {
                 id: 1,
                 name: "test".to_owned(),
@@ -199,7 +199,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn with_archived_zero_copy() {
+        fn provides_zero_copy_access() {
             let original = TestData {
                 id: 999,
                 name: "zero-copy".to_owned(),
@@ -213,7 +213,7 @@ mod tests {
         }
 
         #[test]
-        fn with_archived_alignment_fast_path_aligned() {
+        fn uses_fast_path_when_aligned() {
             let original = TestData {
                 id: 1,
                 name: "aligned".to_owned(),
@@ -233,8 +233,7 @@ mod tests {
             reason = "Test intentionally uses unaligned slice to verify error \
                       handling"
         )]
-        fn with_archived_alignment_slow_path_returns_error_for_invalid_unaligned_data()
-         {
+        fn returns_error_for_invalid_unaligned_data() {
             let original = TestData {
                 id: 2,
                 name: "unaligned".to_owned(),
@@ -245,33 +244,6 @@ mod tests {
                 archived.id
             });
             result.unwrap_err();
-        }
-    }
-
-    mod db_entity_trait {
-        use super::*;
-
-        #[test]
-        fn db_entity_trait_works() {
-            let original = TestData {
-                id: 777,
-                name: "entity".to_owned(),
-            };
-
-            // Test to_bytes
-            let bytes = original.to_bytes().unwrap();
-            assert!(!bytes.is_empty());
-
-            // Test from_bytes
-            let deserialized = TestData::from_bytes(&bytes).unwrap();
-            assert_eq!(original, deserialized);
-
-            // Test with_archived (zero-copy)
-            let result = TestData::with_archived(&bytes, |view| {
-                assert_eq!(view.id, 777);
-                view.name.as_str().to_owned()
-            });
-            assert_eq!(result.unwrap(), "entity");
         }
     }
 }
