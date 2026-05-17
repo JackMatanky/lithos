@@ -225,24 +225,16 @@ impl Config {
     #[must_use]
     pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
         use super::paths::SchemaConfigSpec;
-        use crate::fs::RelativePath;
 
-        // Join schemas directory with property bank filename to get full path
-        let property_bank_path = self.paths.property_bank_path();
+        let vault_root = self.vault_metadata.root().as_path();
 
-        // Convert PathBuf to RelativePath
-        #[expect(
-            clippy::expect_used,
-            reason = "property_bank_path() joins validated relative paths; \
-                      result is guaranteed valid"
-        )]
-        let property_bank = RelativePath::try_from(property_bank_path)
-            .expect("property bank path must be valid");
+        // Join vault root with relative paths to create absolute paths
+        let schemas_dir =
+            vault_root.join(self.paths.schema.schemas_dir().as_path());
+        let property_bank = vault_root.join(self.paths.property_bank_path());
 
-        SchemaConfigSpec::new(
-            self.paths.schema.schemas_dir().clone(),
-            property_bank,
-        )
+        // Use From<PathBuf> to bypass filesystem validation
+        SchemaConfigSpec::new(schemas_dir.into(), property_bank.into())
     }
 
     /// Create a new Config with the specified version, keeping all other fields
@@ -651,15 +643,24 @@ mod tests {
 
             let spec = config.to_schema_spec();
 
+            // Should be absolute paths (vault root + relative paths)
             assert_eq!(
                 spec.directory().as_path(),
-                std::path::Path::new("schemas"),
-                "Directory should match config schemas_dir"
+                std::path::Path::new("/test-vault/schemas"),
+                "Directory should be absolute (vault root + schemas_dir)"
             );
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("schemas/property_bank.json"),
-                "Property bank should be schemas_dir joined with filename"
+                std::path::Path::new("/test-vault/schemas/property_bank.json"),
+                "Property bank should be absolute (vault root + path)"
+            );
+            assert!(
+                spec.directory().is_absolute(),
+                "Directory path should be absolute"
+            );
+            assert!(
+                spec.property_bank().is_absolute(),
+                "Property bank path should be absolute"
             );
         }
 
@@ -685,13 +686,14 @@ mod tests {
 
             let spec = config.to_schema_spec();
 
+            // Should be absolute paths (vault root + custom relative paths)
             assert_eq!(
                 spec.directory().as_path(),
-                std::path::Path::new("custom-schemas")
+                std::path::Path::new("/vault/custom-schemas")
             );
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("custom-schemas/custom-bank.json")
+                std::path::Path::new("/vault/custom-schemas/custom-bank.json")
             );
         }
     }
