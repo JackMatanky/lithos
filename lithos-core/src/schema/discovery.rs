@@ -196,28 +196,23 @@ impl DiscoveryEngine {
     pub(crate) fn run<R>(
         spec: &SchemaConfigSpec,
         repo: &R,
-        vault_root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
     where
         R: ReadRepository,
     {
         // Step 1: Scan filesystem
-        let entries = Self::scan_filesystem(spec, vault_root)?;
+        let entries = Self::scan_filesystem(spec)?;
 
         // Step 2: Separate property bank from schemas (O(n) single pass)
         let (property_bank_entry, schema_entries) =
-            Self::separate_property_bank(
-                entries,
-                spec.property_bank(),
-                vault_root,
-            );
+            Self::separate_property_bank(entries, spec);
 
         // Step 3: Query DB for all cached state (single transaction)
         let cached_state = Self::query_cached_state(
             repo,
             property_bank_entry.as_ref(),
             &schema_entries,
-            spec.property_bank(),
+            spec,
         )?;
 
         // Step 4: Combine filesystem + DB state into result
@@ -242,14 +237,14 @@ impl DiscoveryEngine {
     /// Returns error if filesystem scanning fails.
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
-        vault_root: &std::path::Path,
     ) -> Result<Vec<FsEntry>, SchemaLoaderError> {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
-        let schema_dir = spec.directory();
-        let pattern = format!("{}/**/*", schema_dir.as_path().display());
+        // Use relative schema directory path for pattern matching
+        let pattern =
+            format!("{}/**/*", spec.directory_relative().as_path().display());
 
-        DirScanner::new(vault_root)
+        DirScanner::new(spec.root().as_path())
             .entries(
                 DirScanInput::new()
                     .with_pattern(&pattern)
@@ -258,7 +253,7 @@ impl DiscoveryEngine {
             .map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::Io {
-                        path: schema_dir.as_path().to_path_buf(),
+                        path: spec.directory().as_path().to_path_buf(),
                         source: std::io::Error::other(e),
                     },
                 ))
@@ -274,10 +269,9 @@ impl DiscoveryEngine {
     )]
     fn separate_property_bank(
         entries: Vec<FsEntry>,
-        property_bank_path: &RelativePath,
-        vault_root: &std::path::Path,
+        spec: &SchemaConfigSpec,
     ) -> (Option<FsEntry>, Vec<(RelativePath, FsEntry)>) {
-        let mut property_bank = None;
+        let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
 
         for entry in entries {
@@ -285,7 +279,8 @@ impl DiscoveryEngine {
                 continue;
             };
 
-            let Ok(relative) = file.path().as_path().strip_prefix(vault_root)
+            let Ok(relative) =
+                file.path().as_path().strip_prefix(spec.root().as_path())
             else {
                 continue;
             };
@@ -294,14 +289,15 @@ impl DiscoveryEngine {
                 continue;
             };
 
-            if path == *property_bank_path {
-                property_bank = Some(entry);
+            // Compare absolute file path directly
+            if file.path().as_path() == spec.property_bank().as_path() {
+                property_bank_entry = Some(entry);
             } else {
                 schemas.push((path, entry));
             }
         }
 
-        if schemas.is_empty() && property_bank.is_none() {
+        if schemas.is_empty() && property_bank_entry.is_none() {
             tracing::info!(
                 "No schema files found; schema processing skipped. Add a \
                  schema file (json, yaml, or toml) to enable schema \
@@ -309,7 +305,7 @@ impl DiscoveryEngine {
             );
         }
 
-        (property_bank, schemas)
+        (property_bank_entry, schemas)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -329,11 +325,13 @@ impl DiscoveryEngine {
         repo: &R,
         property_bank_entry: Option<&FsEntry>,
         schema_entries: &[(RelativePath, FsEntry)],
-        property_bank_path: &RelativePath,
+        spec: &SchemaConfigSpec,
     ) -> Result<CachedState, SchemaLoaderError>
     where
         R: ReadRepository,
     {
+        // Property bank path is already stored as relative in spec
+        let property_bank_path = spec.property_bank_relative();
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "iter over &[(RelativePath, FsEntry)] yields \
@@ -465,7 +463,6 @@ impl DiscoveryEngine {
 mod tests {
     use std::{
         collections::HashMap,
-        path::PathBuf,
         sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -651,13 +648,14 @@ mod tests {
     fn accepts_read_repository_only<R: ReadRepository>(
         spec: &SchemaConfigSpec,
         repo: &R,
-        root: &std::path::Path,
     ) -> Result<DiscoveryResult, SchemaLoaderError> {
-        DiscoveryEngine::run(spec, repo, root)
+        DiscoveryEngine::run(spec, repo)
     }
 
     #[test]
     fn run_finds_all_files() {
+        use crate::fs::{DirPath, RelativePath};
+
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
         std::fs::create_dir_all(&schema_dir).unwrap();
@@ -668,15 +666,15 @@ mod tests {
         let schema1_path = schema_dir.join("schema1.json");
         std::fs::write(&schema1_path, "{}").unwrap();
 
-        let spec = SchemaConfigSpec::new(
-            RelativePath::try_from(PathBuf::from("schemas")).unwrap(),
-            RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
-                .unwrap(),
-        );
+        // Create spec with vault root and relative paths
+        let vault_root = DirPath::from(root.path().to_path_buf());
+        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = InMemoryRepository::new();
-        let result =
-            accepts_read_repository_only(&spec, &repo, root.path()).unwrap();
+        let result = accepts_read_repository_only(&spec, &repo).unwrap();
 
         assert_eq!(result.schemas.len(), 1);
         assert!(result.property_bank.is_some());
@@ -685,6 +683,8 @@ mod tests {
 
     #[test]
     fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
+        use crate::fs::{DirPath, RelativePath};
+
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
         std::fs::create_dir_all(&schema_dir).unwrap();
@@ -692,14 +692,15 @@ mod tests {
         let bank_path = schema_dir.join("property_bank.json");
         std::fs::write(&bank_path, "{}").unwrap();
 
-        let spec = SchemaConfigSpec::new(
-            RelativePath::try_from(PathBuf::from("schemas")).unwrap(),
-            RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
-                .unwrap(),
-        );
+        // Create spec with vault root and relative paths
+        let vault_root = DirPath::from(root.path().to_path_buf());
+        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = CountingReadRepo::new();
-        let result = DiscoveryEngine::run(&spec, &repo, root.path()).unwrap();
+        let result = DiscoveryEngine::run(&spec, &repo).unwrap();
 
         assert!(!result.has_schemas());
         assert_eq!(repo.raw_views_by_paths_calls.load(Ordering::Relaxed), 0);

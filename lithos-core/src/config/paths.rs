@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
-use crate::fs::{FileName, RelativePath};
+use crate::fs::{DirPath, FileName, FilePath, RelativePath};
 
 #[expect(
     clippy::expect_used,
@@ -437,10 +437,10 @@ impl std::fmt::Display for PropertyBank {
 ///
 /// # Design Rationale
 ///
-/// - **Minimizes imports**: Both fields are `RelativePath` (not `PropertyBank`
-///   type)
-/// - **Explicit paths**: `property_bank` is the full joined path, not just
-///   filename
+/// - **Type-safe paths**: Uses `DirPath`, `FilePath`, and `RelativePath` for
+///   compile-time enforcement
+/// - **Vault-rooted**: Stores vault root and relative paths, constructing
+///   absolute paths via `join_dir`/`join_file`
 /// - **Discovery-focused**: Used by `DiscoveryEngine::run()` instead of full
 ///   `Config`
 ///
@@ -449,22 +449,31 @@ impl std::fmt::Display for PropertyBank {
 /// ```rust
 /// use std::path::PathBuf;
 ///
-/// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+/// use lithos_core::{
+///     config::paths::SchemaConfigSpec,
+///     fs::{DirPath, RelativePath},
+/// };
 ///
-/// let directory = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
-/// let property_bank =
-///     RelativePath::try_from(PathBuf::from("schemas/property_bank.json"))
-///         .unwrap();
+/// let root: DirPath = PathBuf::from("/vault").into();
+/// let dir_rel = RelativePath::try_from("schemas").unwrap();
+/// let bank_rel =
+///     RelativePath::try_from("schemas/property_bank.json").unwrap();
 ///
-/// let spec = SchemaConfigSpec::new(directory, property_bank);
-/// assert_eq!(spec.directory().as_path(), std::path::Path::new("schemas"));
+/// let spec = SchemaConfigSpec::new(root, dir_rel, bank_rel);
+/// assert_eq!(
+///     spec.directory().as_path(),
+///     std::path::Path::new("/vault/schemas")
+/// );
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SchemaConfigSpec {
-    /// Directory containing schema files (e.g., "schemas").
+    /// Vault root directory (e.g., "/vault").
+    root: DirPath,
+    /// Relative path to schema directory from vault root (e.g., "schemas").
     directory: RelativePath,
-    /// Full path to property bank file (e.g., "`schemas/property_bank.json`").
+    /// Relative path to property bank file from vault root (e.g.,
+    /// "`schemas/property_bank.json`").
     property_bank: RelativePath,
 }
 
@@ -473,45 +482,71 @@ impl SchemaConfigSpec {
     ///
     /// # Arguments
     ///
-    /// * `directory` - The schemas directory path
-    /// * `property_bank` - The full path to the property bank file (directory +
-    ///   filename)
+    /// * `root` - Vault root directory
+    /// * `directory` - Relative path to schema directory from vault root
+    /// * `property_bank` - Relative path to property bank file from vault root
     ///
     /// # Examples
     ///
     /// ```rust
     /// use std::path::PathBuf;
     ///
-    /// use lithos_core::{config::paths::SchemaConfigSpec, fs::RelativePath};
+    /// use lithos_core::{
+    ///     config::paths::SchemaConfigSpec,
+    ///     fs::{DirPath, RelativePath},
+    /// };
     ///
-    /// let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
-    /// let bank =
-    ///     RelativePath::try_from(PathBuf::from("schemas/bank.json")).unwrap();
-    /// let spec = SchemaConfigSpec::new(dir, bank);
+    /// let root: DirPath = PathBuf::from("/vault").into();
+    /// let dir = RelativePath::try_from("schemas").unwrap();
+    /// let bank = RelativePath::try_from("schemas/bank.json").unwrap();
+    /// let spec = SchemaConfigSpec::new(root, dir, bank);
     /// ```
     #[inline]
     #[must_use]
     pub const fn new(
+        root: DirPath,
         directory: RelativePath,
         property_bank: RelativePath,
     ) -> Self {
         Self {
+            root,
             directory,
             property_bank,
         }
     }
 
-    /// Returns the schemas directory path.
+    /// Returns the vault root directory.
     #[inline]
     #[must_use]
-    pub const fn directory(&self) -> &RelativePath {
+    pub const fn root(&self) -> &DirPath {
+        &self.root
+    }
+
+    /// Returns the absolute schemas directory path.
+    #[inline]
+    #[must_use]
+    pub fn directory(&self) -> DirPath {
+        self.root.join_dir(&self.directory)
+    }
+
+    /// Returns the absolute property bank file path.
+    #[inline]
+    #[must_use]
+    pub fn property_bank(&self) -> FilePath {
+        self.root.join_file(&self.property_bank)
+    }
+
+    /// Returns the relative schema directory path.
+    #[inline]
+    #[must_use]
+    pub const fn directory_relative(&self) -> &RelativePath {
         &self.directory
     }
 
-    /// Returns the full property bank file path.
+    /// Returns the relative property bank path.
     #[inline]
     #[must_use]
-    pub const fn property_bank(&self) -> &RelativePath {
+    pub const fn property_bank_relative(&self) -> &RelativePath {
         &self.property_bank
     }
 }
@@ -581,39 +616,78 @@ mod tests {
 
         use super::super::*;
 
-        /// Test `SchemaConfigSpec` construction.
+        /// Test `SchemaConfigSpec` construction with vault root and relative
+        /// paths.
         #[test]
         fn constructs_with_valid_paths() {
-            let dir = RelativePath::try_from(PathBuf::from("schemas")).unwrap();
-            let bank =
-                RelativePath::try_from(PathBuf::from("schemas/bank.json"))
-                    .unwrap();
+            use crate::fs::{DirPath, RelativePath};
 
-            let spec = SchemaConfigSpec::new(dir, bank);
+            let root: DirPath = PathBuf::from("/vault").into();
+            let dir_rel = RelativePath::try_from("schemas").unwrap();
+            let bank_rel = RelativePath::try_from("schemas/bank.json").unwrap();
+
+            let spec = SchemaConfigSpec::new(root, dir_rel, bank_rel);
 
             assert_eq!(
                 spec.directory().as_path(),
-                std::path::Path::new("schemas")
+                std::path::Path::new("/vault/schemas")
             );
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("schemas/bank.json")
+                std::path::Path::new("/vault/schemas/bank.json")
             );
         }
 
-        /// Test `SchemaConfigSpec` accessors.
+        /// Test `SchemaConfigSpec` accessors return correct absolute and
+        /// relative paths.
         #[test]
         fn accessors_return_correct_values() {
-            let dir =
-                RelativePath::try_from(PathBuf::from("my-schemas")).unwrap();
-            let bank =
-                RelativePath::try_from(PathBuf::from("my-schemas/props.json"))
-                    .unwrap();
+            use crate::fs::{DirPath, RelativePath};
 
-            let spec = SchemaConfigSpec::new(dir.clone(), bank.clone());
+            let root: DirPath = PathBuf::from("/vault").into();
+            let dir_rel = RelativePath::try_from("my-schemas").unwrap();
+            let bank_rel =
+                RelativePath::try_from("my-schemas/props.json").unwrap();
 
-            assert_eq!(*spec.directory(), dir);
-            assert_eq!(*spec.property_bank(), bank);
+            let spec = SchemaConfigSpec::new(
+                root.clone(),
+                dir_rel.clone(),
+                bank_rel.clone(),
+            );
+
+            assert_eq!(spec.root().as_path(), root.as_path());
+            assert_eq!(spec.directory_relative(), &dir_rel);
+            assert_eq!(spec.property_bank_relative(), &bank_rel);
+            assert_eq!(
+                spec.directory().as_path(),
+                std::path::Path::new("/vault/my-schemas")
+            );
+            assert_eq!(
+                spec.property_bank().as_path(),
+                std::path::Path::new("/vault/my-schemas/props.json")
+            );
+        }
+
+        /// TDD Test 1.1: `SchemaConfigSpec` stores vault root and relative
+        /// paths, constructs absolute paths via `join_dir/join_file`.
+        #[test]
+        fn schema_config_spec_accepts_absolute_paths() {
+            use std::path::Path;
+
+            use crate::fs::{DirPath, RelativePath};
+
+            let root: DirPath = PathBuf::from("/vault").into();
+            let dir_rel = RelativePath::try_from("schemas").unwrap();
+            let bank_rel =
+                RelativePath::try_from("schemas/property_bank.json").unwrap();
+
+            let spec = SchemaConfigSpec::new(root, dir_rel, bank_rel);
+
+            assert_eq!(spec.directory().as_path(), Path::new("/vault/schemas"));
+            assert_eq!(
+                spec.property_bank().as_path(),
+                Path::new("/vault/schemas/property_bank.json")
+            );
         }
     }
 }

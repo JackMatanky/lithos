@@ -60,7 +60,6 @@ where
         let discovery = DiscoveryEngine::run(
             &self.config.to_schema_spec(),
             &self.repository,
-            self.source.root(),
         )?;
 
         // 2. Load property bank if present
