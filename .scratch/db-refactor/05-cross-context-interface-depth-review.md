@@ -47,6 +47,9 @@ Evaluating "seam quality, locality, and leverage" requires subjective architectu
 - [x] Review documents whether context Repository interfaces remain cohesive and deep after DB seam changes.
 - [x] Any required seam changes (split/merge) are explicitly decided and recorded. (See ADR 018)
 - [x] Rollout constraints for Note/Template/Config are approved for AFK execution.
+- [ ] Schema context repository correctly implements the segregated `ReadRepository` and `WriteRepository` traits.
+- [ ] Schema adapters interact with `redb` primitives directly, maintaining tight transaction scoping.
+- [ ] `ArchivedEntity` trait provides clean zero-copy reads without leaking `rkyv` bounds to the rest of the Schema context.
 
 ## Resolution
 
@@ -54,7 +57,14 @@ The review found that the current `db` module transaction wrappers (e.g. `reader
 
 **Decision Recorded:** We formulated and accepted **ADR 018: Explicit Redb Adapter Seam**. This ADR documents the architectural decision to dismantle the monolithic `reader.rs`/`writer.rs` wrappers, expose `redb` primitives directly to context adapters, and encapsulate all `rkyv` serialization/validation logic behind a safe, GAT-powered `DbEntity` (Codec) trait.
 
-With this architectural direction codified, we applied TDD and Rust best practices to successfully plan and implement the `DbEntity` (Codec) trait in `db/rkyv.rs`. We successfully refactored `SchemaRedbRepository` (in `schema/storage/read.rs` and `schema/storage/write.rs`) to directly consume `redb` transaction tables alongside the new `DbEntity` API, dramatically streamlining the implementation. All tests are passing, proving the `db` interface is no longer a bottleneck.
+With this architectural direction codified, we applied TDD and Rust best practices to successfully plan and implement the `ArchivedEntity` (Codec) trait in `db/codec.rs`. We successfully refactored `SchemaRedbRepository` (in `schema/storage/read.rs` and `schema/storage/write.rs`) to directly consume `redb` transaction tables alongside the new `ArchivedEntity` API, dramatically streamlining the implementation. All tests are passing, proving the `db` interface is no longer a bottleneck.
+
+**Implementation Notes:**
+- Renamed `DbEntity` to `ArchivedEntity` to clarify its role as bounding domain entities supporting zero-copy archival via `rkyv`.
+- Renamed `db/rkyv.rs` to `db/codec.rs` and method `with_view` to `with_archived`.
+- Migrated the `Vault` subsystem to use `ArchivedEntity` instead of standalone `serialize`/`deserialize` functions.
+- Removed standalone `serialize`, `deserialize`, and `with_archived` functions to enforce the trait boundary.
+- Updated `codec.rs` tests to strictly follow the test-developer-guide.md module-per-function naming and organization.
 
 The DB module refactor is now fully ready to proceed for Note, Template, and Config.
 
