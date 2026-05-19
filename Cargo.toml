@@ -45,7 +45,7 @@ uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 pulldown-cmark = "0.13"
 
 # Template Engine
-minijinja = "2.14"
+minijinja = "2.19"
 
 # Error Handling
 miette = { version = "7.6", features = ["fancy"] }
