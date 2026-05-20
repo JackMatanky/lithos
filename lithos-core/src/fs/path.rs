@@ -932,327 +932,515 @@ impl<'a> ParentDir<'a> {
 mod tests {
     use super::*;
 
-    mod relative_path {
+    mod relative {
         use super::*;
 
-        #[test]
-        fn should_reject_empty() {
-            let result = RelativePath::try_from(PathBuf::from(""));
-            let _error = result.unwrap_err();
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn rejects_empty_path() {
+                let result = RelativePath::try_from(PathBuf::from(""));
+                assert!(result.is_err(), "expected error for empty path");
+            }
+
+            #[test]
+            fn rejects_absolute_path() {
+                let result = RelativePath::try_from(PathBuf::from("/abs"));
+                assert!(result.is_err(), "expected error for absolute path");
+            }
+
+            #[test]
+            fn rejects_parent_traversal_component() {
+                let result = RelativePath::try_from(PathBuf::from("a/../b"));
+                assert!(result.is_err(), "expected parent traversal error");
+            }
+
+            #[test]
+            fn rejects_current_dir_component() {
+                let result = RelativePath::try_from(PathBuf::from("a/./b"));
+                assert!(
+                    result.is_err(),
+                    "expected current-dir component error"
+                );
+            }
+
+            #[test]
+            fn accepts_valid_relative_path() {
+                let path = RelativePath::try_from(PathBuf::from("a/b/c"))
+                    .expect("expected valid relative path");
+                assert_eq!(path.as_path(), Path::new("a/b/c"));
+            }
         }
 
-        #[test]
-        fn should_reject_absolute() {
-            let result = RelativePath::try_from(PathBuf::from("/abs"));
-            let _error = result.unwrap_err();
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_filename_when_present() {
+                let path =
+                    RelativePath::try_from(PathBuf::from("a/b/file.txt"))
+                        .expect("path should be valid");
+                let filename = path.filename().expect("filename should exist");
+                assert_eq!(filename.as_str(), "file.txt");
+            }
+
+            #[test]
+            fn returns_filename_from_try_filename_when_present() {
+                let path =
+                    RelativePath::try_from(PathBuf::from("a/b/file.txt"))
+                        .expect("path should be valid");
+                let filename = path
+                    .try_filename()
+                    .expect("try_filename should succeed")
+                    .expect("filename should exist");
+                assert_eq!(filename.as_str(), "file.txt");
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn returns_invalid_data_when_try_filename_is_non_utf8() {
+                use std::os::unix::ffi::OsStringExt as _;
+
+                let path = PathBuf::from("a")
+                    .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
+
+                let relative =
+                    RelativePath::try_from(path).expect("path should be valid");
+                let error = relative
+                    .try_filename()
+                    .expect_err("expected invalid utf-8 filename error");
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+            }
         }
 
-        #[test]
-        fn should_reject_parent_traversal() {
-            let result = RelativePath::try_from(PathBuf::from("a/../b"));
-            let _error = result.unwrap_err();
-        }
+        mod conversions {
+            use super::*;
 
-        #[test]
-        fn should_reject_curdir_component() {
-            let result = RelativePath::try_from(PathBuf::from("a/./b"));
-            let _error = result.unwrap_err();
-        }
-
-        #[test]
-        fn should_accept_valid_relative() {
-            let result = RelativePath::try_from(PathBuf::from("a/b/c"));
-            let path = result.unwrap();
-            assert_eq!(path.as_path(), Path::new("a/b/c"));
-        }
-
-        #[test]
-        fn should_extract_filename() {
-            let path =
-                RelativePath::try_from(PathBuf::from("a/b/file.txt")).unwrap();
-            let filename = path.filename().unwrap();
-            assert_eq!(filename.as_str(), "file.txt");
-        }
-
-        #[test]
-        fn try_filename_should_extract_filename() {
-            let path =
-                RelativePath::try_from(PathBuf::from("a/b/file.txt")).unwrap();
-            let filename = path.try_filename().unwrap().unwrap();
-            assert_eq!(filename.as_str(), "file.txt");
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn try_filename_should_report_invalid_utf8() {
-            use std::os::unix::ffi::OsStringExt as _;
-
-            let path = PathBuf::from("a")
-                .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
-
-            let relative = RelativePath::try_from(path).unwrap();
-            let error = relative.try_filename().unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
-        }
-
-        #[test]
-        fn should_support_try_from_str() {
-            let path = RelativePath::try_from("a/b/file.txt").unwrap();
-            assert_eq!(path.as_path(), Path::new("a/b/file.txt"));
+            #[test]
+            fn accepts_try_from_str_when_valid() {
+                let path = RelativePath::try_from("a/b/file.txt")
+                    .expect("string path should convert");
+                assert_eq!(path.as_path(), Path::new("a/b/file.txt"));
+            }
         }
     }
 
-    mod absolute_path {
+    mod normalized {
         use super::*;
 
-        #[test]
-        fn should_reject_empty() {
-            let result = AbsolutePath::try_from(PathBuf::from(""));
-            let _error = result.unwrap_err();
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn accepts_forward_slashes_when_valid() {
+                let path = NormalizedPath::try_new("notes/daily/today.md")
+                    .expect("path should be valid");
+                assert_eq!(path.as_str(), "notes/daily/today.md");
+            }
+
+            #[test]
+            fn normalizes_backslashes_to_forward_slashes() {
+                let path = NormalizedPath::try_new("notes\\daily\\today.md")
+                    .expect("path should be valid");
+                assert_eq!(path.as_str(), "notes/daily/today.md");
+            }
         }
 
-        #[test]
-        fn should_reject_relative() {
-            let result = AbsolutePath::try_from(PathBuf::from("rel"));
-            let _error = result.unwrap_err();
+        mod validation {
+            use super::*;
+            use crate::fs::PathError;
+
+            #[test]
+            fn rejects_parent_traversal_component() {
+                let path = NormalizedPath::try_new("../outside.md");
+                assert!(matches!(path, Err(PathError::ParentTraversal(_))));
+            }
+
+            #[test]
+            fn rejects_current_dir_component() {
+                let path = NormalizedPath::try_new("./notes/file.md");
+                assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
+            }
+
+            #[test]
+            fn rejects_empty_string() {
+                let path = NormalizedPath::try_new("");
+                assert!(matches!(path, Err(PathError::Empty)));
+            }
+
+            #[test]
+            fn rejects_absolute_path() {
+                let path = NormalizedPath::try_new("/usr/local/file.md");
+                assert!(matches!(path, Err(PathError::NotRelative(_))));
+            }
         }
 
-        #[test]
-        fn should_accept_valid_absolute() {
-            let result = AbsolutePath::try_from(PathBuf::from("/a/b/c"));
-            let _path = result.unwrap();
-        }
+        mod serialization {
+            use super::*;
 
-        #[test]
-        fn should_support_try_from_str() {
-            let path = AbsolutePath::try_from("/a/b/file.txt").unwrap();
-            assert_eq!(path.as_path(), Path::new("/a/b/file.txt"));
-        }
-
-        #[test]
-        fn should_extract_filename() {
-            let path =
-                AbsolutePath::try_from(PathBuf::from("/a/b/file.txt")).unwrap();
-            let filename = path.filename().unwrap();
-            assert_eq!(filename.as_str(), "file.txt");
-        }
-
-        #[test]
-        fn try_filename_should_extract_filename() {
-            let path =
-                AbsolutePath::try_from(PathBuf::from("/a/b/file.txt")).unwrap();
-            let filename = path.try_filename().unwrap().unwrap();
-            assert_eq!(filename.as_str(), "file.txt");
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn try_filename_should_report_invalid_utf8() {
-            use std::os::unix::ffi::OsStringExt as _;
-
-            let path = PathBuf::from("/tmp")
-                .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
-
-            let absolute = AbsolutePath::try_from(path).unwrap();
-            let error = absolute.try_filename().unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+            #[test]
+            fn preserves_value_across_rkyv_roundtrip() {
+                let original = NormalizedPath::try_new("notes/test.md")
+                    .expect("valid path");
+                let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
+                    .expect("serialize");
+                let archived = rkyv::access::<
+                    ArchivedNormalizedPath,
+                    rkyv::rancor::Error,
+                >(&bytes)
+                .expect("archive access");
+                let deserialized: NormalizedPath = rkyv::deserialize::<
+                    NormalizedPath,
+                    rkyv::rancor::Error,
+                >(archived)
+                .expect("deserialize");
+                assert_eq!(original, deserialized);
+            }
         }
     }
 
-    mod file_path {
+    mod absolute {
+        use super::*;
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn rejects_empty_path() {
+                let result = AbsolutePath::try_from(PathBuf::from(""));
+                assert!(result.is_err(), "expected error for empty path");
+            }
+
+            #[test]
+            fn rejects_relative_path() {
+                let result = AbsolutePath::try_from(PathBuf::from("rel"));
+                assert!(result.is_err(), "expected error for relative path");
+            }
+
+            #[test]
+            fn accepts_valid_absolute_path() {
+                let result = AbsolutePath::try_from(PathBuf::from("/a/b/c"));
+                assert!(result.is_ok(), "expected valid absolute path");
+            }
+        }
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_filename_when_present() {
+                let path =
+                    AbsolutePath::try_from(PathBuf::from("/a/b/file.txt"))
+                        .expect("path should be valid");
+                let filename = path.filename().expect("filename should exist");
+                assert_eq!(filename.as_str(), "file.txt");
+            }
+
+            #[test]
+            fn returns_filename_from_try_filename_when_present() {
+                let path =
+                    AbsolutePath::try_from(PathBuf::from("/a/b/file.txt"))
+                        .expect("path should be valid");
+                let filename = path
+                    .try_filename()
+                    .expect("try_filename should succeed")
+                    .expect("filename should exist");
+                assert_eq!(filename.as_str(), "file.txt");
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn returns_invalid_data_when_try_filename_is_non_utf8() {
+                use std::os::unix::ffi::OsStringExt as _;
+
+                let path = PathBuf::from("/tmp")
+                    .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
+
+                let absolute =
+                    AbsolutePath::try_from(path).expect("path should be valid");
+                let error = absolute
+                    .try_filename()
+                    .expect_err("expected invalid utf-8 filename error");
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+            }
+        }
+
+        mod conversions {
+            use super::*;
+
+            #[test]
+            fn accepts_try_from_str_when_valid_absolute() {
+                let path = AbsolutePath::try_from("/a/b/file.txt")
+                    .expect("string path should convert");
+                assert_eq!(path.as_path(), Path::new("/a/b/file.txt"));
+            }
+        }
+    }
+
+    mod file {
         use tempfile::NamedTempFile;
 
         use super::*;
 
-        #[test]
-        fn should_wrap_relative_path() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::from(temp.path().to_path_buf());
-            assert_eq!(path.as_path(), temp.path());
-        }
+        mod constructor {
+            use super::*;
 
-        #[test]
-        fn should_reject_empty_path() {
-            assert!(FilePath::new(PathBuf::from("")).is_err());
-        }
+            #[test]
+            fn wraps_pathbuf_with_from() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::from(temp.path().to_path_buf());
+                assert_eq!(path.as_path(), temp.path());
+            }
 
-        #[test]
-        fn should_reject_nonexistent_path() {
-            assert!(
-                FilePath::new(PathBuf::from("/nonexistent/file.txt")).is_err()
-            );
-        }
+            #[test]
+            fn rejects_empty_path() {
+                assert!(FilePath::new(PathBuf::from("")).is_err());
+            }
 
-        #[test]
-        fn should_accept_absolute_paths() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            assert_eq!(path.as_path(), temp.path());
-        }
+            #[test]
+            fn rejects_non_file_path() {
+                assert!(
+                    FilePath::new(PathBuf::from("/nonexistent/file.txt"))
+                        .is_err()
+                );
+            }
 
-        #[test]
-        fn should_convert_absolute_to_relative() {
-            let temp_dir = tempfile::TempDir::new().unwrap();
-            let temp = NamedTempFile::new_in(temp_dir.path()).unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let base = temp_dir.path();
-            let relative = path.as_relative(base).unwrap();
-            assert_eq!(
-                relative.as_path(),
-                Path::new(temp.path().file_name().unwrap())
-            );
-        }
-
-        #[test]
-        fn should_error_when_path_outside_base() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let base = Path::new("/other");
-            assert!(path.as_relative(base).is_err());
-        }
-
-        #[test]
-        fn should_detect_absolute_path() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            assert!(path.is_absolute());
-            assert!(!path.is_relative());
-        }
-
-        #[test]
-        fn should_detect_relative_path() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let rel_path = temp_dir.path().file_name().unwrap();
-            assert!(Path::new(rel_path).is_relative());
-        }
-
-        #[test]
-        fn should_extract_filename() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let filename = path.filename().unwrap();
-            assert_eq!(
-                filename.as_str(),
-                temp.path().file_name().unwrap().to_str().unwrap()
-            );
-        }
-
-        #[test]
-        fn should_extract_basename() {
-            let temp = NamedTempFile::new_in(std::env::temp_dir()).unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let base = path.basename();
-            assert!(base.is_some());
-        }
-
-        #[test]
-        fn should_extract_extension() {
-            let temp_path = std::env::temp_dir().join("test.md");
-            std::fs::write(&temp_path, "content").unwrap();
-            let path = FilePath::new(temp_path.clone()).unwrap();
-            assert!(path.has_extension());
-            let ext = path.extension_ref();
-            assert!(ext.is_some());
-            std::fs::remove_file(&temp_path).ok();
-        }
-
-        #[test]
-        fn should_return_parent() {
-            let temp_dir = tempfile::TempDir::new().unwrap();
-            let temp = NamedTempFile::new_in(temp_dir.path()).unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let is_root = matches!(path.parent(), ParentDir::Root);
-            assert!(!is_root, "expected path, got Root");
-            if let ParentDir::Path(p) = path.parent() {
-                assert_eq!(p, temp_dir.path());
+            #[test]
+            fn accepts_existing_absolute_file_path() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                assert_eq!(path.as_path(), temp.path());
             }
         }
 
-        #[test]
-        fn should_convert_to_pathbuf() {
-            let temp = NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
-            let buf: PathBuf = path.into();
-            assert_eq!(buf, temp.path().to_path_buf());
+        mod lookup {
+            use super::*;
+
+            #[test]
+            fn returns_relative_path_when_within_base() {
+                let temp_dir = tempfile::TempDir::new()
+                    .expect("temp dir should be created");
+                let temp = NamedTempFile::new_in(temp_dir.path())
+                    .expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                let relative = path
+                    .as_relative(temp_dir.path())
+                    .expect("path should be within base");
+                assert_eq!(
+                    relative.as_path(),
+                    Path::new(
+                        temp.path()
+                            .file_name()
+                            .expect("file name should exist")
+                    )
+                );
+            }
+
+            #[test]
+            fn returns_error_when_outside_base() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                assert!(path.as_relative(Path::new("/other")).is_err());
+            }
+
+            #[test]
+            fn returns_filename_when_present() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                let filename =
+                    path.filename().expect("filename should be present");
+                assert_eq!(
+                    filename.as_str(),
+                    temp.path()
+                        .file_name()
+                        .expect("file name should exist")
+                        .to_str()
+                        .expect("utf-8 file name expected")
+                );
+            }
+
+            #[test]
+            fn returns_basename_when_present() {
+                let temp = NamedTempFile::new_in(std::env::temp_dir())
+                    .expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                assert!(path.basename().is_some());
+            }
+
+            #[test]
+            fn returns_extension_when_present() {
+                let temp_path = std::env::temp_dir().join("test.md");
+                std::fs::write(&temp_path, "content")
+                    .expect("temp file should be writable");
+                let path = FilePath::new(temp_path.clone())
+                    .expect("file path should be valid");
+                assert!(path.has_extension());
+                assert!(path.extension_ref().is_some());
+                std::fs::remove_file(&temp_path).ok();
+            }
+
+            #[test]
+            fn returns_parent_directory_view() {
+                let temp_dir = tempfile::TempDir::new()
+                    .expect("temp dir should be created");
+                let temp = NamedTempFile::new_in(temp_dir.path())
+                    .expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                assert!(matches!(path.parent(), ParentDir::Path(_)));
+                if let ParentDir::Path(parent) = path.parent() {
+                    assert_eq!(parent, temp_dir.path());
+                }
+            }
+        }
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_true_for_is_absolute_on_absolute_path() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                assert!(path.is_absolute());
+                assert!(!path.is_relative());
+            }
+
+            #[test]
+            fn returns_true_for_relative_status_on_relative_example_path() {
+                let rel_path = Path::new("notes/file.md");
+                assert!(rel_path.is_relative());
+            }
+        }
+
+        mod conversions {
+            use super::*;
+
+            #[test]
+            fn converts_into_pathbuf_preserving_value() {
+                let temp =
+                    NamedTempFile::new().expect("temp file should be created");
+                let path = FilePath::new(temp.path().to_path_buf())
+                    .expect("file path should be valid");
+                let buf: PathBuf = path.into();
+                assert_eq!(buf, temp.path().to_path_buf());
+            }
         }
     }
 
-    mod dir_path {
+    mod dir {
         use tempfile::TempDir;
 
         use super::*;
 
-        #[test]
-        fn should_wrap_relative_path() {
-            let temp = TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-            assert_eq!(path.as_path(), temp.path());
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn wraps_pathbuf_with_new() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let path = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                assert_eq!(path.as_path(), temp.path());
+            }
+
+            #[test]
+            fn rejects_empty_path() {
+                assert!(DirPath::new(PathBuf::from("")).is_err());
+            }
+
+            #[test]
+            fn rejects_non_directory_path() {
+                assert!(
+                    DirPath::new(PathBuf::from("/nonexistent/dir")).is_err()
+                );
+            }
         }
 
-        #[test]
-        fn should_reject_empty_path() {
-            assert!(DirPath::new(PathBuf::from("")).is_err());
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_true_for_is_absolute_on_absolute_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let path = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                assert!(path.is_absolute());
+                assert!(!path.is_relative());
+            }
+
+            #[test]
+            fn returns_dirname_when_present() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let path = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                assert!(path.dirname().is_some());
+            }
+
+            #[test]
+            fn returns_parent_directory_view() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let path = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                assert!(matches!(path.parent(), ParentDir::Path(_)));
+            }
         }
 
-        #[test]
-        fn should_reject_nonexistent_path() {
-            assert!(DirPath::new(PathBuf::from("/nonexistent/dir")).is_err());
+        mod normalization {
+            use super::*;
+
+            #[test]
+            fn joins_child_path_preserving_structure() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let joined = dir.join("subdir/file.txt");
+                assert!(joined.to_string_lossy().ends_with("subdir/file.txt"));
+            }
+
+            #[test]
+            fn joins_child_file_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let file = dir.join_file("notes.txt");
+                assert!(
+                    file.as_path().to_string_lossy().ends_with("notes.txt")
+                );
+            }
+
+            #[test]
+            fn joins_child_directory_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let subdir = dir.join_dir("notes");
+                assert!(subdir.as_path().to_string_lossy().ends_with("notes"));
+            }
         }
 
-        #[test]
-        fn should_detect_absolute_path() {
-            let temp = TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-            assert!(path.is_absolute());
-            assert!(!path.is_relative());
-        }
+        mod conversions {
+            use super::*;
 
-        #[test]
-        fn should_extract_dirname() {
-            let temp = TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let name = path.dirname();
-            assert!(name.is_some());
-        }
-
-        #[test]
-        fn should_join_child_path() {
-            let temp = TempDir::new().unwrap();
-            let dir = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let joined = dir.join("subdir/file.txt");
-            assert!(joined.to_string_lossy().ends_with("subdir/file.txt"));
-        }
-
-        #[test]
-        fn should_join_child_file() {
-            let temp = TempDir::new().unwrap();
-            let dir = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let file = dir.join_file("notes.txt");
-            assert!(file.as_path().to_string_lossy().ends_with("notes.txt"));
-        }
-
-        #[test]
-        fn should_join_child_dir() {
-            let temp = TempDir::new().unwrap();
-            let dir = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let subdir = dir.join_dir("notes");
-            assert!(subdir.as_path().to_string_lossy().ends_with("notes"));
-        }
-
-        #[test]
-        fn should_return_parent() {
-            let temp = TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let is_root = matches!(path.parent(), ParentDir::Root);
-            assert!(!is_root, "expected path, got Root");
-        }
-
-        #[test]
-        fn should_convert_to_pathbuf() {
-            let temp = TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
-            let buf: PathBuf = path.into();
-            assert_eq!(buf, temp.path().to_path_buf());
+            #[test]
+            fn converts_into_pathbuf_preserving_value() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let path = DirPath::new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let buf: PathBuf = path.into();
+                assert_eq!(buf, temp.path().to_path_buf());
+            }
         }
     }
 
@@ -1261,123 +1449,80 @@ mod tests {
 
         use super::*;
 
-        #[test]
-        fn should_handle_file_and_dir_variants() {
-            let temp_dir = TempDir::new().unwrap();
-            let temp_file = NamedTempFile::new_in(temp_dir.path()).unwrap();
+        mod accessors {
+            use super::*;
 
-            let file = FilePath::new(temp_file.path().to_path_buf()).unwrap();
-            let dir = DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+            #[test]
+            fn returns_variant_flags_for_file_and_directory() {
+                let temp_dir =
+                    TempDir::new().expect("temp dir should be created");
+                let temp_file = NamedTempFile::new_in(temp_dir.path())
+                    .expect("temp file should be created");
 
-            let fs_file = FsPath::File(file);
-            let fs_dir = FsPath::Dir(dir);
+                let file = FilePath::new(temp_file.path().to_path_buf())
+                    .expect("file path should be valid");
+                let dir = DirPath::new(temp_dir.path().to_path_buf())
+                    .expect("dir path should be valid");
 
-            assert!(fs_file.is_file());
-            assert!(!fs_file.is_dir());
-            assert!(fs_dir.is_dir());
-            assert!(!fs_dir.is_file());
+                let fs_file = FsPath::File(file);
+                let fs_dir = FsPath::Dir(dir);
+
+                assert!(fs_file.is_file());
+                assert!(!fs_file.is_dir());
+                assert!(fs_dir.is_dir());
+                assert!(!fs_dir.is_file());
+            }
         }
 
-        #[test]
-        fn should_convert_to_relative_with_base() {
-            let temp_dir = TempDir::new().unwrap();
-            let temp_file = NamedTempFile::new_in(temp_dir.path()).unwrap();
+        mod conversions {
+            use super::*;
 
-            let dir_path = temp_dir.path().to_path_buf();
-            let base = dir_path.clone();
-            let file = FilePath::new(temp_file.path().to_path_buf()).unwrap();
-            let _dir = DirPath::new(dir_path).unwrap();
+            #[test]
+            fn returns_relative_path_when_within_base_for_file_variant() {
+                let temp_dir =
+                    TempDir::new().expect("temp dir should be created");
+                let temp_file = NamedTempFile::new_in(temp_dir.path())
+                    .expect("temp file should be created");
 
-            let fs_file = FsPath::File(file);
+                let file = FilePath::new(temp_file.path().to_path_buf())
+                    .expect("file path should be valid");
+                let fs_file = FsPath::File(file);
 
-            let rel_file = fs_file.as_relative(&base).unwrap();
-            assert_eq!(
-                rel_file.as_path(),
-                temp_file.path().file_name().unwrap()
-            );
+                let rel_file = fs_file
+                    .as_relative(temp_dir.path())
+                    .expect("relative conversion should succeed");
+                assert_eq!(
+                    rel_file.as_path(),
+                    temp_file
+                        .path()
+                        .file_name()
+                        .expect("file name should exist")
+                );
+            }
         }
     }
 
     mod parent_dir {
         use super::*;
 
-        #[test]
-        fn parent_dir_extracts_parent_path() {
-            let path = Path::new("a/b/c");
-            let parent = ParentDir::from_path(path);
+        mod accessors {
+            use super::*;
 
-            match parent {
-                ParentDir::Path(p) => assert_eq!(p, Path::new("a/b")),
-                #[allow(
-                    clippy::panic,
-                    reason = "Test expects ParentDir::Path variant"
-                )]
-                ParentDir::Root => panic!("Expected ParentDir::Path"),
+            #[test]
+            fn returns_parent_path_when_parent_exists() {
+                let path = Path::new("a/b/c");
+                let parent = ParentDir::from_path(path);
+                assert!(matches!(parent, ParentDir::Path(_)));
+                if let ParentDir::Path(value) = parent {
+                    assert_eq!(value, Path::new("a/b"));
+                }
             }
 
-            let root_path = Path::new("file.txt");
-            let root_parent = ParentDir::from_path(root_path);
-            assert!(matches!(root_parent, ParentDir::Root));
-        }
-    }
-
-    mod normalized_path {
-        use super::*;
-
-        #[test]
-        fn normalized_path_try_new_accepts_forward_slashes() {
-            let path = NormalizedPath::try_new("notes/daily/today.md");
-            assert!(path.is_ok());
-            assert_eq!(path.unwrap().as_str(), "notes/daily/today.md");
-        }
-
-        #[test]
-        fn normalized_path_try_new_converts_backslashes_to_forward_slashes() {
-            let path = NormalizedPath::try_new("notes\\daily\\today.md");
-            assert!(path.is_ok());
-            assert_eq!(path.unwrap().as_str(), "notes/daily/today.md");
-        }
-
-        #[test]
-        fn normalized_path_try_new_rejects_parent_traversal() {
-            let path = NormalizedPath::try_new("../outside.md");
-            assert!(path.is_err());
-        }
-
-        #[test]
-        fn normalized_path_try_new_rejects_current_dir_component() {
-            let path = NormalizedPath::try_new("./notes/file.md");
-            assert!(path.is_err());
-        }
-
-        #[test]
-        fn normalized_path_try_new_rejects_empty_string() {
-            let path = NormalizedPath::try_new("");
-            assert!(path.is_err());
-        }
-
-        #[test]
-        fn normalized_path_try_new_rejects_absolute_paths() {
-            let path = NormalizedPath::try_new("/usr/local/file.md");
-            assert!(path.is_err());
-        }
-
-        #[test]
-        fn normalized_path_rkyv_roundtrip_preserves_value() {
-            let original = NormalizedPath::try_new("notes/test.md").unwrap();
-            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
-                .expect("serialize");
-            let archived = rkyv::access::<
-                ArchivedNormalizedPath,
-                rkyv::rancor::Error,
-            >(&bytes)
-            .expect("archive access");
-            let deserialized: NormalizedPath = rkyv::deserialize::<
-                NormalizedPath,
-                rkyv::rancor::Error,
-            >(archived)
-            .expect("deserialize");
-            assert_eq!(original, deserialized);
+            #[test]
+            fn returns_root_when_no_parent_exists() {
+                let root_parent = ParentDir::from_path(Path::new("file.txt"));
+                assert!(matches!(root_parent, ParentDir::Root));
+            }
         }
     }
 }
