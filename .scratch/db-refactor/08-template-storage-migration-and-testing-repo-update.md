@@ -1,5 +1,5 @@
 ---
-title: 07-template-storage-migration-and-testing-repo-update
+title: 08-template-storage-migration-and-testing-repo-update
 category: enhancement
 label: needs-triage
 status: open
@@ -56,4 +56,4 @@ Plan established following the **Segregated Unified Repository** pattern (ADR 01
 
 ## Blocked by
 
-- `05-cross-context-interface-depth-review.md`
+- `06-db-testing-seam-and-in-memory-alignment.md`

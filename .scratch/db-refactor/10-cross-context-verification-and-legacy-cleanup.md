@@ -1,5 +1,5 @@
 ---
-title: 09-cross-context-verification-and-legacy-cleanup
+title: 10-cross-context-verification-and-legacy-cleanup
 category: enhancement
 label: needs-triage
 status: open
@@ -56,6 +56,6 @@ Plan updated to include the final naming standardization step defined in ADR 016
 
 ## Blocked by
 
-- `06-note-storage-migration-and-testing-repo-update.md`
-- `07-template-storage-migration-and-testing-repo-update.md`
-- `08-config-storage-migration-and-testing-repo-update.md`
+- `07-note-storage-migration-and-testing-repo-update.md`
+- `08-template-storage-migration-and-testing-repo-update.md`
+- `09-config-storage-migration-and-testing-repo-update.md`

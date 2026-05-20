@@ -43,9 +43,9 @@ Evaluating "seam quality, locality, and leverage" requires subjective architectu
 - [x] Review documents whether context Repository interfaces remain cohesive and deep after DB seam changes.
 - [x] Any required seam changes (split/merge) are explicitly decided and recorded. (See ADR 018)
 - [x] Rollout constraints for Note/Template/Config are approved for AFK execution.
-- [ ] Schema context repository correctly implements the segregated `ReadRepository` and `WriteRepository` traits.
-- [ ] Schema adapters interact with `redb` primitives directly, maintaining tight transaction scoping.
-- [ ] `ArchivedEntity` trait provides clean zero-copy reads without leaking `rkyv` bounds to the rest of the Schema context.
+- [x] Schema context repository correctly implements the segregated `ReadRepository` and `WriteRepository` traits.
+- [x] Schema adapters interact with `redb` primitives directly, maintaining tight transaction scoping.
+- [x] `ArchivedEntity` trait provides clean zero-copy reads without leaking `rkyv` bounds to the rest of the Schema context.
 
 ## Resolution
 
@@ -64,8 +64,106 @@ With this architectural direction codified, we applied TDD and Rust best practic
 
 The DB module refactor is now fully ready to proceed for Note, Template, and Config.
 
+## Architecture Review Addendum (2026-05-20)
+
+This addendum records follow-up architecture findings discovered during the
+cross-context depth review and resolves what belongs in this checkpoint versus
+later migration slices.
+
+### Scope guardrails from this review
+
+- This issue is a decision checkpoint, not an implementation slice.
+- Existing migration slices already own context implementations:
+  - `06-db-testing-seam-and-in-memory-alignment.md`
+  - `07-note-storage-migration-and-testing-repo-update.md`
+  - `08-template-storage-migration-and-testing-repo-update.md`
+  - `09-config-storage-migration-and-testing-repo-update.md`
+  - `10-cross-context-verification-and-legacy-cleanup.md`
+- Therefore, this issue records rollout constraints and architecture decisions
+  that those slices must follow.
+
+### Findings: seam quality, locality, leverage
+
+1. **Schema seam quality is acceptable post-ADR 018**
+   - `schema/storage/read.rs` and `schema/storage/write.rs` implement segregated
+     traits and use direct transaction table access through `Store`.
+   - `ArchivedEntity` in `db/codec.rs` provides the codec seam that hides rkyv
+     complexity from higher-level context logic.
+
+2. **Cross-context testing adapter designs are currently inconsistent**
+   - Schema has a rich in-memory Repository Adapter under
+     `schema/storage/testing.rs`.
+   - Config has an in-memory Repository Adapter under `config/testing.rs`.
+   - Template uses `FakeTemplateStorage` in `template/ports.rs`.
+   - Note currently relies primarily on redb-backed tests.
+   - This inconsistency risks semantic drift in lock handling, fault testing,
+     and invariant coverage across contexts.
+
+3. **Serialization placement policy is currently undefined**
+   - `save_many_schemas` in `schema/storage/write.rs` serializes inside the
+     `Store::write` closure.
+   - This is functionally correct but leaves policy ambiguous for upcoming
+     migrations (06/07/08).
+
+### Decision: db testing seam strategy
+
+We will **not** create a single shared in-memory Repository Adapter in `db`.
+That would pull context-specific projection semantics into the DB context and
+reduce locality.
+
+Instead, we will standardize via:
+
+- **Context-local in-memory Repository Adapters** (each context owns its
+  projection invariants), and
+- A shared `db::testing` infra layer for reusable test primitives.
+
+#### Planned `db::testing` primitives
+
+The shared testing layer should provide infrastructure only (no context
+business semantics):
+
+- `TestStoreFactory` utilities for temporary `Store` setup.
+- `FailureInjector` + `FailurePoint` for deterministic write/read failure tests.
+- `OpCounters` for standardized read/write/batch instrumentation.
+- Lock helper utilities for consistent lock-poison handling.
+- `InMemoryDbError` for infra-level testing failures (lock poison,
+  injected-failure, invariant helper failures), with context-specific
+  conversion adapters.
+
+### Decision: serialization policy status
+
+The team does **not** accept a code-shape policy yet for where serialization
+must occur relative to write transaction closures. We explicitly defer this to a
+follow-up issue so it can be resolved once and applied consistently to 07/08/09.
+
+### Rollout constraints for 07/08/09/10
+
+- 07/08/09 must align with the `db::testing` strategy above.
+- 07/08/09 must not introduce new ad-hoc in-memory patterns that bypass shared
+  test primitives once they exist.
+- 07/08/09 should track serialization placement as a known architectural
+  concern until follow-up policy is decided.
+- 10 should validate cross-context conformance to the chosen testing seam and
+  final serialization policy.
+
+### Follow-up issue required
+
+Create a dedicated follow-up issue for unresolved serialization placement
+policy near the end of the migration sequence.
+
+Recommended title:
+
+- `11-serialization-placement-policy-and-verification.md`
+
+Recommended scope:
+
+- Decide serialization placement policy with rationale and verification plan.
+- Validate policy impact after context migrations are complete.
+
 **Out of scope:**
 - Actually implementing the migration for Note, Template, or Config contexts (this issue is just the review checkpoint).
+- Implementing the `db::testing` layer itself.
+- Finalizing serialization placement code policy in this file.
 
 ## Blocked by
 - `04-complete-schema-adapter-migration.md`
