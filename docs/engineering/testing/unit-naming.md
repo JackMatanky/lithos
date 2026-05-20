@@ -10,28 +10,40 @@ scope: "Naming conventions and module organization for Rust unit tests"
 
 ## Context
 
-- Make failing tests self-explanatory in `nextest` output.
-- Keep naming and organization aligned with how this repository is written today.
-- Provide one canonical reference for both test names and test module structure.
-- Favor consistency over dogma: no CQRS-only naming model.
+- **Applies to**: all unit test functions (`#[test] fn ...`) in `lithos-core/src/**/*.rs`
+- **Purpose**: clear, predictable names and module structure that make failures understandable in `nextest`
+- **Core rule**: one behavior per test, one concern per module
 
-## Fast path
+## Quick Start (30 seconds)
 
-1. Choose structure:
-   - Multi-unit/complex file: Structure A (submodules).
-   - Small/simple file: Structure B (flat names).
-2. Choose module names with the selection flowchart.
-3. Name tests with the formula components.
-4. Pick one style per module (`returns_*` or `should_*`) and stay consistent.
-5. Run the validation checklist before finishing.
+1. Pick a structure:
+   - Multi-unit or complex file -> **Structure A (default)**
+   - Small/simple file with only 1-2 behaviors -> **Structure B**
+2. Pick module name from **Canonical Module Names** (first exact match wins).
+3. Name test function using the formula.
+4. Use `returns_*` / `rejects_*` / `accepts_*` verb-first naming for new tests.
+5. Run the checklist at the end.
 
-## The naming formula
+## Default Convention (use this unless a rule below says otherwise)
 
-Depending on file complexity, use one of two structures.
+- Use **Structure A** with submodules.
+- Use module names from the canonical tables.
+- Use verb-first function names (`returns_*`, `rejects_*`, `accepts_*`, `parses_*`).
+- Keep one behavior per test and one concern per module.
 
-### Structure A: With submodules (preferred)
+If you are uncertain, do this:
 
-Use for files with multiple functions, multiple concern groups, or rich behavior.
+1. Create a submodule named after the unit of work.
+2. Write function names as `action_expected_condition`.
+3. Prefer `lookup` for retrieval behavior and `validation` for rule checks.
+
+## The Naming Formula
+
+Depending on file complexity, use one of two shapes.
+
+### Structure A: With Submodules (Preferred)
+
+Use for files with multiple functions or multiple concern groups.
 
 ```rust
 #[cfg(test)]
@@ -47,18 +59,18 @@ mod tests {
 }
 ```
 
-Shape:
+Formula:
 
 - `mod [unit_of_work] { fn [action]_[expected]_[condition]() }`
-- `mod [unit_of_work] { fn [should_]?[action]_[expected]_[condition]() }`
+- Legacy style accepted: `fn should_[action]_[expected]_[condition]()`
 
 Combined reading:
 
 - `lookup::returns_none_when_record_is_missing()`
 
-### Structure B: Without submodules (small/simple files)
+### Structure B: Without Submodules (Simple Files)
 
-Use only for small files or value objects where submodules add noise.
+Use only for small files where submodules add noise.
 
 ```rust
 #[cfg(test)]
@@ -70,256 +82,242 @@ mod tests {
 }
 ```
 
-Shape:
+Formula:
 
 - `fn [unit_of_work]_[action]_[expected]_[condition]()`
-- `fn [unit_of_work]_[should_]?[action]_[expected]_[condition]()`
+- Legacy style accepted: `fn [unit_of_work]_should_[action]_[expected]_[condition]()`
 
 Combined reading:
 
 - `lookup_returns_none_when_record_is_missing()`
 
-## Formula components
+## Formula Components
 
 | Component | Description | Examples |
 | --- | --- | --- |
-| Unit of Work | Method, struct, or concept under test | `save`, `lookup`, `parse`, `validation` |
+| Unit of Work | Method, struct, or concept being tested | `save`, `lookup`, `parse`, `validation` |
 | Action (Verb) | What the code actively does | `returns`, `rejects`, `persists`, `emits` |
-| Expected | Specific outcome/state | `error`, `ok`, `none`, `record`, `true` |
-| Condition | Triggering state/circumstance | `when_missing`, `with_empty_input`, `if_locked` |
+| Expected | The outcome or state | `error`, `ok`, `none`, `record`, `true` |
+| Condition | Triggering circumstance | `when_missing`, `with_empty_input`, `if_locked` |
 
-## Accepted styles in this codebase
+## Decision Tree: Choose Structure
 
-Both styles are currently used and accepted:
+1. Testing several independent units in one file?
+   - Yes -> **Structure A**.
+2. File already uses submodules?
+   - Yes -> keep submodules and align naming inside them.
+3. Only one or two simple behaviors in a small file?
+   - Yes -> **Structure B** is acceptable.
+4. Unsure?
+   - Default to **Structure A** for better failure scanability.
 
-- `returns_error_when_input_is_invalid`
-- `should_return_error_when_input_is_invalid`
+Hard rule:
 
-Rule: within a given module, pick one style and stay consistent.
+- If the file has 3+ tests or 2+ units of work, use **Structure A**.
 
-## Decision tree: choose structure
+## Module Name Selection Matrix
 
-1. Is the file testing several independent units of work?
-   - Yes: use **Structure A** with submodules.
-2. Are tests already organized in submodules in this file?
-   - Yes: keep submodules and align naming inside them.
-3. Is there only one small unit with one or two behaviors?
-   - Yes: **Structure B** is acceptable.
-4. Does adding submodules improve scanability in failures?
-   - Yes: choose **Structure A**.
+Use the first row that matches your test intent.
 
-## Selection flowchart
-
-Use this flow when choosing module names for a test suite.
-
-1. Is this setup-only helper code?
-   - Use `fixtures`.
-2. Is this property-based testing only?
-   - Use `proptests`.
-3. Is the behavior tied to lifecycle/creation?
-   - Start with `constructor`, `builder`, or `defaults`.
-4. Is the behavior rule/invariant oriented?
-   - Start with `validation`, `invariants`, or `integrity`.
-5. Is the behavior domain operation oriented?
-   - Choose from operation modules (lookup, parse, serialization, upsert, etc.).
-6. Is this trait contract behavior?
-   - Use `conversions`, `formatting`, `equality`, `ordering`, `hashing`, or `cloning`.
-7. No canonical name fits cleanly?
-   - Use the exact unit/function name (`parse_frontmatter`, `process_note`).
-
-Tie-breakers:
-
-- Prefer the most behavior-specific name over a generic one.
-- If two names fit, choose the one that best predicts assertion type.
-- Keep one concern per module; split instead of mixing.
-
-## What to avoid
-
-- Generic names: `test_foo`, `test_basic`, `it_works`, `test_1`.
-- Mixed behaviors in one name: `returns_ok_and_updates_state`.
-- Prefix noise: `test_validate...`, `unit_test_for_...`.
-- Non-snake-case names: `testValidInput`, `TestValidInput`, `VALID_INPUT_TEST`.
-
-## Module organization
-
-### Rules
-
-- Use singular, descriptive module names.
-- Keep one concern per module.
-- Keep `fixtures` for setup helpers only.
-- Keep `proptests` for property-based suites only.
-- Keep submodule depth shallow unless there is strong readability benefit.
-
-### Standardized module naming convention
-
-Use these names in this order of preference when selecting a module name.
-
-#### 1) Lifecycle and construction
-
-| Module name | Use when | Why this name |
+| If the tests are about... | Use this module name | Notes |
 | --- | --- | --- |
-| `constructor` | Testing `new`, `try_new`, or canonical constructors | Signals object creation and entry invariants |
-| `builder` | Testing builder APIs and fluent configuration | Distinguishes staged construction from direct constructors |
-| `defaults` | Testing `Default` behavior and baseline values | Makes default-state expectations easy to find |
+| Shared setup only | `fixtures` | No assertions in this module |
+| Property-based behavior only | `proptests` | Keep generators and `proptest!` here |
+| Constructors and creation gates | `constructor` | Use `builder` only for builder APIs |
+| Default values | `defaults` | For `Default` baseline semantics |
+| Rule checks and rejection/acceptance | `validation` | Use `invariants` for cross-field always-true rules |
+| Structural consistency | `integrity` | Graph/link/schema consistency |
+| State transitions | `state` | Lifecycle/transition behavior |
+| Read access and derived reads | `accessors` | In-memory read behavior |
+| Borrowing/zero-copy views | `borrowing` | Lifetime and borrow contracts |
+| Retrieval by key/path/name | `lookup` | Prefer over many `find_by_*` variants |
+| Criteria matching/search | `search` | Free-form or multi-field matching |
+| Subset narrowing | `filter` | Predicate-driven subset behavior |
+| Windowing (limit/offset/cursor) | `pagination` | Paging mechanics |
+| Collection retrieval | `list` | Default or ordered lists |
+| Create/update/delete/upsert writes | `create` / `update` / `delete` / `upsert` | Pick exact operation |
+| Parse input into structure | `parse` | For syntax/grammar interpretation |
+| Structure to encoded output | `serialization` | Prefer over ambiguous `encoding` |
+| Encoded input to structure | `deserialization` | Decoder behavior |
+| Canonicalization/sanitization | `normalization` | Rewriting/cleanup behavior |
+| Index build/query maintenance | `indexing` | Index data path behavior |
+| Cache hit/miss/eviction | `caching` | Cache semantics |
+| Atomic commit/rollback | `transactions` | Write atomicity behavior |
+| Locking/concurrency control | `locking` | Acquire/release/contention behavior |
+| Type conversion contracts | `conversions` | `From`/`TryFrom`/`Into` |
+| Text rendering contracts | `formatting` | `Display`/`Debug` |
+| Equality/ordering/hash/clone contracts | `equality` / `ordering` / `hashing` / `cloning` | Trait behavior |
+| No canonical name fits precisely | exact unit/function name | Example: `parse_frontmatter`, `process_note` |
 
-#### 2) Rules and correctness
+Hard rules:
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `validation` | Field/rule acceptance and rejection behavior | Most direct term for input/rule checks |
-| `invariants` | Cross-field/domain invariants that must always hold | Highlights always-true business guarantees |
-| `integrity` | Structural consistency or graph/link coherence checks | Emphasizes whole-structure correctness |
+- Do not invent a new module name if a canonical name matches.
+- If two names fit, choose the more behavior-specific one.
+- Split modules instead of mixing concerns.
 
-#### 3) Behavior and transitions
+## Anti-Patterns (Flag These)
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `state` | State transitions and lifecycle behavior | Keeps transition semantics in one place |
-| `accessors` | Getters and derived-read behavior | Separates read access from mutation paths |
-| `borrowing` | Borrowed views, zero-copy access, lifetime-sensitive APIs | Makes ownership/borrowing contracts explicit |
+### Naming Problems
 
-#### 3a) Operation-oriented modules (cross-domain)
+- `test_foo`, `test_basic`, `test_1`, `it_works`
+- `returns_ok_and_updates_state` (multiple behaviors)
+- `testValidInput`, `TestValidInput`, `VALID_INPUT_TEST`
+- `test_validate_...`, `unit_test_for_...` (redundant prefixes)
+- `misc`, `other`, `general`, `helpers` as behavior modules
 
-Use these for filesystem, database, parsing, indexing, and similar operation-heavy units.
+### Module Problems
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `lookup` | Keyed retrieval by id/path/name/handle | Broad read-operation name usable beyond DB |
-| `search` | Query-like matching, fuzzy or multi-field retrieval | Distinguishes retrieval by criteria from direct lookup |
-| `filter` | Subset selection from in-memory or query result sets | Signals predicate-based narrowing |
-| `pagination` | Limit/offset/cursor windowing behavior | Standard name for page/window semantics |
-| `upsert` | Insert-or-update merge behavior | Explicitly communicates dual write semantics |
-| `create` | Pure create/persist-new behavior | Separates new-write behavior from updates |
-| `update` | Mutating existing record/entity behavior | Separates change behavior from create/delete |
-| `delete` | Removal behavior and delete constraints | Canonical destructive-operation label |
-| `list` | Ordered or default collection retrieval | Clear name for collection-return operations |
-| `parse` | Input-to-structured representation conversion | Canonical for syntax/format interpretation |
-| `serialization` | Structured data to encoded/wire format | Distinguishes output encoding from parsing |
-| `deserialization` | Encoded/wire format to structured data | Distinguishes input decoding from parsing rules |
-| `normalization` | Canonicalization, sanitization, or rewrite rules | Signals shape/format cleanup behavior |
-| `indexing` | Index build/update/read path behavior | Useful for search/catalog/index services |
-| `caching` | Cache hit/miss/eviction/fill behavior | Keeps cache semantics grouped and testable |
-| `transactions` | Atomicity, rollback, and commit semantics | Standard name for write atomicity behavior |
-| `locking` | Concurrency/lock acquisition/release semantics | Makes synchronization behavior explicit |
+- `mod tests_for_validation` instead of `mod validation`
+- Mixing fixtures, assertions, and proptests in one module
+- Deeply nested modules without a clear separation benefit
 
-Notes:
+## Canonical Module Names
 
-- Prefer `lookup` over many near-duplicates (`find_by_id`, `find_by_name`) unless method names themselves are `find_by_*` and module-per-function organization improves clarity.
-- Prefer `serialization`/`deserialization` over ambiguous `encoding` unless protocol semantics are primary.
-- Use `parse_*` function-specific modules when grammar/protocol has multiple independent parsers.
+Use these names as the default vocabulary for new tests.
 
-#### 4) Interop and representation
+### Core Structure
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `conversions` | `From`/`TryFrom`/`Into` transformations | Canonical name for type conversion behavior |
-| `formatting` | `Display`/`Debug` or user-facing textual rendering | Centralizes presentation contracts |
+| Module name | Use when |
+| --- | --- |
+| `constructor` | `new`, `try_new`, canonical constructors |
+| `builder` | builder APIs and fluent configuration |
+| `defaults` | `Default` impl and baseline values |
+| `validation` | field/rule acceptance and rejection |
+| `invariants` | cross-field/domain invariants |
+| `integrity` | structural consistency checks |
+| `state` | state transitions and lifecycle behavior |
+| `accessors` | getters and derived values |
+| `borrowing` | zero-copy or borrowed view behavior |
+| `conversions` | `From`/`TryFrom`/`Into` behavior |
+| `formatting` | `Display`/`Debug` rendering |
+| `equality` | `Eq`/`PartialEq` behavior |
+| `ordering` | `Ord`/`PartialOrd` behavior |
+| `hashing` | `Hash` behavior for keys/maps/sets |
+| `cloning` | `Clone` behavior |
 
-#### 5) Trait contract behavior
+### Operation-Oriented (Cross-Domain)
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `equality` | `Eq`/`PartialEq` semantics | Clear signal for equality rules |
-| `ordering` | `Ord`/`PartialOrd` behavior | Clear signal for ordering comparisons |
-| `hashing` | `Hash` behavior and key stability assumptions | Groups map/set-key expectations |
-| `cloning` | `Clone` behavior and copy semantics | Makes duplication behavior explicit |
+| Module name | Use when |
+| --- | --- |
+| `lookup` | keyed retrieval (`id`, `path`, `name`, handle) |
+| `search` | criteria-based retrieval or matching |
+| `filter` | subset selection by predicate |
+| `pagination` | limit/offset/cursor behavior |
+| `list` | collection retrieval behavior |
+| `create` | create/persist-new behavior |
+| `update` | mutation behavior of existing entities |
+| `delete` | removal behavior and constraints |
+| `upsert` | insert-or-update behavior |
+| `parse` | input-to-structure parsing |
+| `serialization` | structure-to-wire/encoded output |
+| `deserialization` | wire/encoded input-to-structure |
+| `normalization` | canonicalization/sanitization behavior |
+| `indexing` | index build/update/read behavior |
+| `caching` | cache hit/miss/evict/fill behavior |
+| `transactions` | atomicity/commit/rollback behavior |
+| `locking` | lock/concurrency behavior |
 
-#### 6) Test infrastructure modules
+### Infrastructure
 
-| Module name | Use when | Why this name |
-| --- | --- | --- |
-| `fixtures` | Shared setup helpers only (no assertions) | Prevents setup logic from mixing with behavior tests |
-| `proptests` | Property-based tests only | Keeps generative/invariant suites discoverable |
+| Module name | Use when |
+| --- | --- |
+| `fixtures` | shared setup helpers only (no assertions) |
+| `proptests` | property-based suites only |
 
-#### 7) Unit-specific module names
+### Unit-Specific
 
-When canonical names are too broad, use the exact unit/function name:
+When canonical names are too broad, use exact names:
 
 - `process_note`
 - `parse_frontmatter`
 
-Use unit-specific names when they are more precise than generic categories.
+Notes:
 
-Do not force command/query module pairs unless the code itself is modeled that way.
+- `find_by_*` module names are acceptable when matching a stable public API method family.
+- Do not force command/query module pairs unless the code itself is modeled that way.
 
-## Validation checklist
+## Naming Migration Rule
 
-### Test function names
+- Existing `should_*` names do not need immediate renaming.
+- New tests should use verb-first without `should_`.
+- If you touch an existing test block significantly, normalize names in that local block for consistency.
+
+## Validation Checklist
+
+### Test Function Names
 
 - [ ] Uses Structure A or B consistently for the file.
-- [ ] Follows formula shape for the chosen structure.
+- [ ] Follows the formula for the chosen structure.
 - [ ] Uses snake_case only.
 - [ ] Does not start with `test_`.
-- [ ] Does not include multiple behaviors joined by `and`.
-- [ ] Is specific enough to understand failure without opening test body.
+- [ ] Does not combine multiple behaviors with `and`.
+- [ ] Is descriptive enough to understand failure without opening test body.
+- [ ] Uses verb-first naming (`returns_*`, `rejects_*`, `accepts_*`, `parses_*`) for new tests.
 
-### Test module names
+### Test Module Names
 
 - [ ] Uses singular names (`constructor`, not `constructors`).
 - [ ] Uses canonical module names when applicable.
-- [ ] Keeps concerns separate (`validation` vs `proptests` vs `fixtures`).
+- [ ] Keeps concerns separate (`validation` vs `fixtures` vs `proptests`).
 - [ ] Improves scanability of test output.
 
-## Quick checklist
+## Correct Examples
 
-- Name states one behavior.
-- Name includes failure/success condition when relevant.
-- No `and` in the test name unless the behavior is truly atomic.
-- Module names are concise and singular where applicable.
-- Nearby tests use the same naming style.
+### Function Names
 
-## Canonical examples
+```rust
+#[test]
+fn returns_error_when_vault_path_is_invalid() {}
 
-### Structure A (preferred)
+#[test]
+fn rejects_empty_string_as_input() {}
+
+#[test]
+fn parses_valid_markdown_frontmatter() {}
+
+#[test]
+fn test_note_1() {} // bad: too vague
+```
+
+### Module Organization
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    mod lookup {
+    mod process_note {
         use super::*;
 
         #[test]
-        fn returns_none_when_record_is_missing() {}
+        fn returns_blob_when_larger_than_limit() {}
 
         #[test]
-        fn returns_record_when_key_exists() {}
+        fn fails_when_frontmatter_is_malformed() {}
     }
 
     mod validation {
         use super::*;
 
         #[test]
-        fn rejects_key_when_empty() {}
+        fn rejects_names_starting_with_numbers() {}
     }
 }
 ```
 
-### Structure B (small/simple)
+## Quick Reference
 
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lookup_returns_none_when_record_is_missing() {}
-
-    #[test]
-    fn lookup_returns_record_when_key_exists() {}
-}
-```
-
-## Repository notes
-
-- Current tests heavily use `should_*` and `returns_*`/`rejects_*` forms.
-- Core organization tends toward domain concern modules (`constructor`, `validation`, `conversions`) rather than CQRS buckets.
+| Aspect | Pattern | Example |
+| --- | --- | --- |
+| Structure A test | `[action]_[expected]_[condition]` | `returns_none_when_not_found` |
+| Structure B test | `[unit]_[action]_[expected]_[condition]` | `lookup_returns_none_when_not_found` |
+| Legacy style | `should_...` accepted for existing tests | `should_return_none_when_not_found` |
+| Module name | singular + concern-focused | `validation`, `lookup`, `proptests` |
 
 ## References
 
-- Rust Book: unit test structure and organization.
+- Rust Book: unit test structure and organization
   - https://doc.rust-lang.org/book/ch11-01-writing-tests.html
   - https://doc.rust-lang.org/book/ch11-03-test-organization.html
-- Rust API Guidelines: examples and failure documentation.
+- Rust API Guidelines: examples and failure documentation
   - https://rust-lang.github.io/api-guidelines/documentation.html
