@@ -1205,10 +1205,12 @@ GREEN:
 - Update all 5 error construction sites in `validate()` to use PathError variants
 - Update lines 365, 546: Remove `map_err` wrapping (PathError propagates via #[from])
 - Update path.rs tests (lines 845-905): Match on `PathError` variants instead of `io::Error`
+- Update doc comments: `/// # Errors` block on RelativePath `TryFrom` impls
 
 VERIFY:
 ```bash
 cargo test --lib fs::path::tests::relative_path_validation
+rg "std::io::Error" lithos-core/src/fs/path.rs | head -20  # Confirm no stale io::Error in RelativePath
 ```
 
 **Slice 2: AbsolutePath::validate() → PathError**
@@ -1234,13 +1236,17 @@ GREEN:
 - Update `impl TryFrom<&str> for AbsolutePath` (line 275): `type Error = PathError`
 - Update 2 error construction sites in `validate()`
 - Update path.rs tests (lines 915-961): Match on `PathError` variants
+- Update doc comments: `/// # Errors` block on AbsolutePath `TryFrom` impls
 
 VERIFY:
 ```bash
 cargo test --lib fs::path::tests::absolute_path_validation
+rg "std::io::Error" lithos-core/src/fs/path.rs | head -20
 ```
 
 **Slice 3: FilePath::new() → PathError**
+
+⚠️ **Bug fix**: scanner.rs:176 currently discards the original error with `|_e|` and replaces it with the wrong variant (`PathError::InvalidUtf8`). Removing `map_err` fixes this — the true `PathError` from `FilePath::new` propagates correctly.
 
 RED:
 ```rust
@@ -1255,21 +1261,27 @@ pub fn new(path: PathBuf) -> Result<Self, PathError> {
     Ok(Self(path))
 }
 ```
-- Observe compile errors at scanner.rs line 206, path.rs tests
+- Observe compile errors at scanner.rs line 176, path.rs line 543 (TryFrom<RelativePath>), line 552 (TryFrom<&str>), path.rs tests
 
 GREEN:
 - Update return type signature
 - Update 2 error construction sites
-- Update scanner.rs line 206: Remove `map_err` (PathError → ScanError via #[from])
+- Update `TryFrom<RelativePath> for FilePath` (line 543): `type Error = PathError`
+- Update `TryFrom<&str> for FilePath` (line 552): `type Error = PathError`
+- Update scanner.rs line 176: Remove `map_err(|_e| ScanError::Path(PathError::InvalidUtf8(...)))` — `FilePath::new(path)?` propagates via `#[from]`
 - Update path.rs tests (lines 981-1079): Match on `PathError` variants
+- Update doc comments: `/// # Errors` on `FilePath::new`, `TryFrom<RelativePath>`, `TryFrom<&str>`
 
 VERIFY:
 ```bash
 cargo test --lib fs::path::tests::file_path
 cargo test --lib fs::scanner
+rg "std::io::Error" lithos-core/src/fs/path.rs | head -20
 ```
 
 **Slice 4: DirPath::new() → PathError**
+
+⚠️ **Bug fix**: scanner.rs:172 currently discards the original error with `|_e|` and replaces it with the wrong variant (`PathError::InvalidUtf8`). Removing `map_err` fixes this — the true `PathError` from `DirPath::new` propagates correctly.
 
 RED:
 ```rust
@@ -1284,21 +1296,40 @@ pub fn new(path: PathBuf) -> Result<Self, PathError> {
     Ok(Self(path))
 }
 ```
-- Observe compile errors at scanner.rs line 202, path.rs tests
+- Observe compile errors at scanner.rs line 172, path.rs tests
+- `DirPath::from(PathBuf)` (line 748) unchanged — out of scope (Issue 01 item)
 
 GREEN:
 - Update return type signature
 - Update 2 error construction sites
-- Update scanner.rs line 202: Remove `map_err`
+- Update scanner.rs line 172: Remove `map_err(|_e| ScanError::Path(PathError::InvalidUtf8(...)))` — `DirPath::new(path)?` propagates via `#[from]`
 - Update path.rs tests (lines 1093-1104): Match on `PathError` variants
+- Update doc comments: `/// # Errors` on `DirPath::new`
 
 VERIFY:
 ```bash
 cargo test --lib fs::path::tests::dir_path
 cargo test --lib fs::scanner
+rg "std::io::Error" lithos-core/src/fs/path.rs | head -20
 ```
 
 **Slice 5: FileName::try_from(&Path) → PathError**
+
+🔴 **Compile blocker**: reader.rs:456 wraps `FileName::try_from` result in `ReadError::Io { source }`. `ReadError::Io` expects `source: std::io::Error`, but after migration `FileName::try_from` returns `PathError`. **Will not compile** — must change.
+
+```rust
+// BEFORE (WON'T COMPILE after Phase 2.5):
+FileName::try_from(path).map_err(|source| {
+    FsError::Read(ReadError::Io {     // ReadError::Io expects io::Error, not PathError
+        path: path.to_path_buf(),
+        source,                         // PathError can't go here
+    })
+})
+
+// AFTER:
+FileName::try_from(path)?               // Auto-converts via FsError::Path(#[from] PathError)
+Also update doc comment: `# Returns FsError::Path` (was `FsError::Read`)
+```
 
 RED:
 ```rust
@@ -1312,21 +1343,26 @@ fn try_from(path: &Path) -> Result<Self, Self::Error> {
     Ok(Self::new(name.into()))
 }
 ```
-- Observe compile errors at path.rs lines 74, 233 (try_filename wraps io::Error)
-- Observe compile errors at reader.rs line 456 (map_err expects io::Error)
+- Observe compile errors at path.rs lines 74, 326 (try_filename wraps io::Error)
+- Observe compile errors at reader.rs line 456 (ReadError::Io expects io::Error, got PathError — WON'T COMPILE)
+- path.rs lines 1013, 1165: `assert_eq!(error.kind(), std::io::ErrorKind::InvalidData)` — assertion on io::Error kind, must change
 
 GREEN:
 - Update `impl TryFrom<&Path> for FileName` (line 118): `type Error = PathError`
-- Update 2 error construction sites
+- Update 2 error construction sites to use `PathError::NoFileName` / `PathError::InvalidUtf8`
 - Update path.rs lines 72-77: Change `try_filename()` signature to `Result<Option<FileName>, PathError>`
-- Update path.rs lines 231-236: Same for AbsolutePath::try_filename()
-- Update reader.rs line 456: Remove `map_err` wrapping (PathError → FsError via #[from])
-- Update name.rs tests: Match on `PathError` variants
+- Update path.rs lines 326-331: Same for AbsolutePath::try_filename()
+- Update reader.rs line 453-462: Replace `map_err(|source| FsError::Read(ReadError::Io { ... }))` with `FileName::try_from(path)?` (direct `#[from]` conversion to `FsError::Path`)
+- Update reader.rs line 450-451 doc comment: `# Returns FsError::Path` (was `FsError::Read`)
+- Update path.rs tests lines 1013, 1165: `assert_eq!(error.kind(), io::ErrorKind::InvalidData)` → `assert!(matches!(error, PathError::InvalidUtf8(_)))`
+- Update name.rs tests: Match on `PathError` variants instead of `io::Error`
+- Update doc comments: `/// # Errors` on `FileName::try_from`, `try_filename()`
 
 VERIFY:
 ```bash
 cargo test --lib fs::name::tests::filename
 cargo test --lib fs::reader::tests::filename
+rg "std::io::Error" lithos-core/src/fs/name.rs | head -20
 ```
 
 **Slice 6: BaseName::try_from → PathError**
@@ -1359,17 +1395,30 @@ impl TryFrom<&Path> for BaseName {
 
 GREEN:
 - Update both `impl TryFrom` error types
-- Update 2 error construction sites
+- Update 2 error construction sites to use `PathError::NoStem`
 - Update name.rs tests: Match on `PathError` variants
+- Update doc comments: `/// # Errors` on both `BaseName::try_from` variants
 
 VERIFY:
 ```bash
 cargo test --lib fs::name::tests::basename
+rg "std::io::Error" lithos-core/src/fs/name.rs | head -20
 ```
 
 **Slice 7: Integration & Finalization**
 
 GREEN:
+- Verify no production code bypasses validation via `From<PathBuf>`:
+  ```bash
+  rg "FilePath::from\(" lithos-core/src/fs/
+  rg "DirPath::from\(" lithos-core/src/fs/
+  ```
+  (These are infallible and bypass `FilePath::new`/`DirPath::new` validation. Any hits in scanner.rs or reader.rs are pre-existing — add a `// TODO(#01): ` comment.)
+- Verify no stale `std::io::Error` references remain in migrated modules:
+  ```bash
+  rg "std::io::Error" lithos-core/src/fs/path.rs lithos-core/src/fs/name.rs
+  ```
+  (Expected: `std::io::Error` only in `RelativePath::try_filename` doc comment if not already updated, and any remaining `io::Error` in helper methods unrelated to constructors.)
 - Run full test suite: `mise run test`
 - Run clippy: `mise run lint`
 - Run formatter: `mise run fmt`
@@ -1378,6 +1427,7 @@ GREEN:
 VERIFY:
 - All 1157 unit tests pass
 - Zero clippy warnings
+- No stale `io::Error` references in constructors
 - ADR 017 acceptance criteria met
 
 ### Test Organization
@@ -1421,6 +1471,14 @@ cargo test --lib fs::name::tests::basename
 cargo test --lib fs::scanner
 cargo test --lib fs::reader
 
+# Stale io::Error check (run after each slice)
+rg "std::io::Error" lithos-core/src/fs/path.rs | head -30   # Should be 0 in constructors
+rg "std::io::Error" lithos-core/src/fs/name.rs | head -20   # Should be 0 after Slices 5-6
+
+# Validation bypass check (run once at end)
+rg "FilePath::from\(" lithos-core/src/fs/ --color never   # Flag any production bypasses
+rg "DirPath::from\(" lithos-core/src/fs/ --color never     # Flag any production bypasses
+
 # Full verification (run at end)
 mise run verify  # fmt + lint + tests + adr:validate
 ```
@@ -1439,14 +1497,21 @@ mise run verify  # fmt + lint + tests + adr:validate
 **Risk 4: Test churn due to error matching changes**
 - *Mitigation*: Vertical slices ensure one module at a time. Each slice verified before moving to next. Pattern matching on PathError variants is simpler than io::Error kind checks.
 
+**Risk 5: `From<PathBuf>` bypasses new PathError enforcement**
+- *Mitigation*: `FilePath::from()` and `DirPath::from()` (lines 568, 748) are infallible and bypass validation entirely. After Phase 2.5, the contrast becomes sharper. Tracked in Issue 01. Add `grep` verification step to Slice 7 to detect any production usage of `FilePath::from()`/`DirPath::from()` in scanner.rs/reader.rs.
+
 ### Success Criteria
 
 ✅ All 6 constructor methods return `PathError` instead of `std::io::Error`
-✅ All 156 call sites updated and compiling
-✅ path.rs lines 365, 546 remove `map_err` wrapping (direct propagation)
-✅ scanner.rs lines 202, 206 remove `map_err` wrapping (direct propagation)
-✅ reader.rs line 456 removes `map_err` wrapping (direct propagation)
-✅ All 40 path/name tests updated to match PathError variants
+✅ All call sites updated and compiling (compiler-enforced)
+✅ path.rs lines 460, 641 remove `map_err(|e| ReadError::Io { source: e })` — direct propagation via `#[from]`
+✅ scanner.rs lines 172, 176 remove `map_err(|_e| ScanError::Path(PathError::InvalidUtf8(...)))` — fixes latent bug (wrong error variant)
+✅ reader.rs line 456 replaces `map_err(|source| FsError::Read(ReadError::Io { source }))` with `FileName::try_from(path)?` — compile blocker
+✅ reader.rs filename() doc comment updated: `# Returns FsError::Path` (was `FsError::Read`)
+✅ All path/name tests updated to match `PathError` variants (not `io::ErrorKind`)
+✅ All doc comments referencing `std::io::Error` in constructors updated to `PathError`
+✅ No stale `std::io::Error` references in constructor code (verified via `rg`)
+✅ No production `FilePath::from()`/`DirPath::from()` calls in scanner.rs/reader.rs (verified via `rg`)
 ✅ All tests pass (`mise run test`)
 ✅ Zero clippy warnings (`mise run lint`)
 ✅ ADR 017 Phase 2 complete (all fs/ module return types migrated)
