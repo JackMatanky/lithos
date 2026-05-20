@@ -448,57 +448,129 @@ mod tests {
 
     use super::*;
 
-    // Helper to create test files
-    fn write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf {
-        let path = root.join(relative);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("create test dirs");
+    mod fixtures {
+        use super::*;
+
+        /// Helper to create test files with content.
+        pub(super) fn write_file(
+            root: &Path,
+            relative: &str,
+            contents: &[u8],
+        ) -> PathBuf {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("create test dirs");
+            }
+            std::fs::write(&path, contents).expect("write test file");
+            path
         }
-        std::fs::write(&path, contents).expect("write test file");
-        path
     }
 
-    mod dir_scan_input {
+    mod defaults {
         use super::*;
 
         #[test]
-        fn default_has_expected_values() {
+        fn returns_no_pattern_by_default() {
             let input = DirScanInput::default();
             assert!(input.pattern.is_none());
-            assert!(input.extensions.is_none());
-            assert!(!input.include_dirs);
-            assert!(!input.follow_symlinks);
-            assert!(input.recursive);
         }
 
         #[test]
-        fn builder_pattern_works() {
-            let input = DirScanInput::new()
-                .with_pattern("**/*.toml")
-                .with_extensions(&["toml", "yaml"])
-                .include_dirs(true)
-                .follow_symlinks(true)
-                .recursive(false);
+        fn returns_no_extensions_by_default() {
+            let input = DirScanInput::default();
+            assert!(input.extensions.is_none());
+        }
 
-            assert_eq!(input.pattern, Some("**/*.toml"));
-            assert_eq!(input.extensions, Some(&["toml", "yaml"][..]));
-            assert!(input.include_dirs);
-            assert!(input.follow_symlinks);
-            assert!(!input.recursive);
+        #[test]
+        fn excludes_dirs_by_default() {
+            let input = DirScanInput::default();
+            assert!(!input.include_dirs);
+        }
+
+        #[test]
+        fn ignores_symlinks_by_default() {
+            let input = DirScanInput::default();
+            assert!(!input.follow_symlinks);
+        }
+
+        #[test]
+        fn enables_recursion_by_default() {
+            let input = DirScanInput::default();
+            assert!(input.recursive);
         }
     }
 
-    mod dir_scanner_basics {
+    mod builder {
         use super::*;
 
         #[test]
-        fn new_stores_path() {
+        fn sets_pattern_when_with_pattern_called() {
+            let input = DirScanInput::new().with_pattern("**/*.toml");
+            assert_eq!(input.pattern, Some("**/*.toml"));
+        }
+
+        #[test]
+        fn sets_extensions_when_with_extensions_called() {
+            let input = DirScanInput::new().with_extensions(&["toml", "yaml"]);
+            assert_eq!(input.extensions, Some(&["toml", "yaml"][..]));
+        }
+
+        #[test]
+        fn enables_dir_inclusion_when_include_dirs_called() {
+            let input = DirScanInput::new().include_dirs(true);
+            assert!(input.include_dirs);
+        }
+
+        #[test]
+        fn enables_symlink_following_when_follow_symlinks_called() {
+            let input = DirScanInput::new().follow_symlinks(true);
+            assert!(input.follow_symlinks);
+        }
+
+        #[test]
+        fn disables_recursion_when_recursive_false() {
+            let input = DirScanInput::new().recursive(false);
+            assert!(!input.recursive);
+        }
+
+        #[test]
+        fn chains_multiple_builder_calls() {
+            let input = DirScanInput::new()
+                .with_pattern("**/*.toml")
+                .with_extensions(&["toml"])
+                .include_dirs(true);
+
+            assert_eq!(input.pattern, Some("**/*.toml"));
+            assert_eq!(input.extensions, Some(&["toml"][..]));
+            assert!(input.include_dirs);
+        }
+    }
+
+    mod constructor {
+        use super::*;
+
+        #[test]
+        fn creates_scanner_with_provided_path() {
             let scanner = DirScanner::new("/test/path");
             assert_eq!(scanner.path(), Path::new("/test/path"));
         }
+    }
+
+    mod accessors {
+        use super::*;
 
         #[test]
-        fn paths_returns_empty_for_empty_dir() {
+        fn path_returns_constructor_value() {
+            let scanner = DirScanner::new("/vault");
+            assert_eq!(scanner.path(), Path::new("/vault"));
+        }
+    }
+
+    mod paths {
+        use super::*;
+
+        #[test]
+        fn returns_empty_when_dir_is_empty() {
             let temp = TempDir::new().unwrap();
             let scanner = DirScanner::new(temp.path());
             let paths = scanner.paths(DirScanInput::new()).unwrap();
@@ -506,233 +578,88 @@ mod tests {
         }
 
         #[test]
-        fn entries_returns_empty_for_empty_dir() {
+        fn returns_sorted_paths_alphabetically() {
+            let temp = TempDir::new().unwrap();
+            fixtures::write_file(temp.path(), "z.toml", b"");
+            fixtures::write_file(temp.path(), "a.toml", b"");
+            fixtures::write_file(temp.path(), "m.toml", b"");
+            let root = temp.path().to_path_buf();
+
+            let scanner = DirScanner::new(&root);
+            let paths = scanner.paths(DirScanInput::new()).unwrap();
+
+            assert_eq!(paths.len(), 3);
+            assert_eq!(
+                paths.first().expect("first path").as_path(),
+                root.join("a.toml")
+            );
+            assert_eq!(
+                paths.get(1).expect("second path").as_path(),
+                root.join("m.toml")
+            );
+            assert_eq!(
+                paths.get(2).expect("third path").as_path(),
+                root.join("z.toml")
+            );
+        }
+
+        #[test]
+        fn returns_absolute_fs_paths() {
+            let temp = TempDir::new().unwrap();
+            fixtures::write_file(temp.path(), "a.toml", b"");
+            let root = temp.path().to_path_buf();
+
+            let scanner = DirScanner::new(&root);
+            let paths = scanner.paths(DirScanInput::new()).unwrap();
+
+            assert_eq!(paths.len(), 1);
+            let path = paths.first().expect("path");
+            assert!(path.is_file());
+            assert_eq!(path.as_path(), root.join("a.toml"));
+        }
+    }
+
+    mod entries {
+        use super::*;
+
+        #[test]
+        fn returns_empty_when_dir_is_empty() {
             let temp = TempDir::new().unwrap();
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
             assert!(entries.is_empty());
         }
-    }
-
-    mod pattern_filtering {
-        use super::*;
 
         #[test]
-        fn paths_matches_glob_pattern() {
+        fn returns_entries_with_metadata() {
             let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"");
-            write_file(temp.path(), "b.yaml", b"");
-            write_file(temp.path(), "sub/c.toml", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner
-                .paths(DirScanInput::new().with_pattern("**/*.toml"))
-                .unwrap();
-
-            assert_eq!(paths.len(), 2);
-            assert!(paths.iter().any(|p| p.as_path() == root.join("a.toml")));
-            assert!(
-                paths.iter().any(|p| p.as_path() == root.join("sub/c.toml"))
-            );
-        }
-
-        #[test]
-        fn paths_sorts_results() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "z.toml", b"");
-            write_file(temp.path(), "a.toml", b"");
-            write_file(temp.path(), "m.toml", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner.paths(DirScanInput::new()).unwrap();
-
-            assert_eq!(paths.len(), 3);
-            let first = paths.first().expect("first path");
-            let second = paths.get(1).expect("second path");
-            let third = paths.get(2).expect("third path");
-            assert_eq!(first.as_path(), root.join("a.toml"));
-            assert_eq!(second.as_path(), root.join("m.toml"));
-            assert_eq!(third.as_path(), root.join("z.toml"));
-        }
-    }
-
-    mod extension_filtering {
-        use super::*;
-
-        #[test]
-        fn paths_filters_by_extensions() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"");
-            write_file(temp.path(), "b.yaml", b"");
-            write_file(temp.path(), "c.json", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner
-                .paths(DirScanInput::new().with_extensions(&["toml", "yaml"]))
-                .unwrap();
-
-            assert_eq!(paths.len(), 2);
-            assert!(paths.iter().any(|p| p.as_path() == root.join("a.toml")));
-            assert!(paths.iter().any(|p| p.as_path() == root.join("b.yaml")));
-        }
-
-        #[test]
-        fn extensions_are_case_insensitive() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.TOML", b"");
-
-            let scanner = DirScanner::new(temp.path());
-            let paths = scanner
-                .paths(DirScanInput::new().with_extensions(&["toml"]))
-                .unwrap();
-
-            assert_eq!(paths.len(), 1);
-        }
-    }
-
-    mod combined_filters {
-        use super::*;
-
-        #[test]
-        fn pattern_and_extensions_use_and_semantics() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "schemas/a.toml", b"");
-            write_file(temp.path(), "schemas/b.yaml", b"");
-            write_file(temp.path(), "other/c.toml", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner
-                .paths(
-                    DirScanInput::new()
-                        .with_pattern("schemas/**/*")
-                        .with_extensions(&["toml"]),
-                )
-                .unwrap();
-
-            // Only schemas/a.toml matches BOTH pattern AND extension
-            assert_eq!(paths.len(), 1);
-            assert_eq!(
-                paths.first().unwrap().as_path(),
-                root.join("schemas/a.toml")
-            );
-        }
-    }
-
-    mod recursive_control {
-        use super::*;
-
-        #[test]
-        fn non_recursive_only_finds_immediate_children() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"");
-            write_file(temp.path(), "sub/b.toml", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths =
-                scanner.paths(DirScanInput::new().recursive(false)).unwrap();
-
-            assert_eq!(paths.len(), 1);
-            assert_eq!(paths.first().unwrap().as_path(), root.join("a.toml"));
-        }
-
-        #[test]
-        fn recursive_finds_nested_files() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"");
-            write_file(temp.path(), "sub/b.toml", b"");
-            write_file(temp.path(), "sub/deep/c.toml", b"");
-
-            let scanner = DirScanner::new(temp.path());
-            let paths =
-                scanner.paths(DirScanInput::new().recursive(true)).unwrap();
-
-            assert_eq!(paths.len(), 3);
-        }
-    }
-
-    mod directory_handling {
-        use super::*;
-
-        #[test]
-        fn excludes_directories_by_default() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "file.toml", b"");
-            std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner.paths(DirScanInput::new()).unwrap();
-
-            assert_eq!(paths.len(), 1);
-            assert_eq!(
-                paths.first().unwrap().as_path(),
-                root.join("file.toml")
-            );
-        }
-
-        #[test]
-        fn includes_directories_when_requested() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "file.toml", b"");
-            std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner
-                .paths(DirScanInput::new().include_dirs(true).recursive(false))
-                .unwrap();
-
-            assert_eq!(paths.len(), 2);
-            assert!(
-                paths.iter().any(|p| p.as_path() == root.join("file.toml"))
-            );
-            assert!(paths.iter().any(|p| p.as_path() == root.join("subdir")));
-        }
-    }
-
-    mod entries_method {
-        use super::*;
-
-        #[test]
-        fn returns_file_entries_with_metadata() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"test content");
+            fixtures::write_file(temp.path(), "a.toml", b"test content");
 
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
             let expected = temp.path().join("a.toml");
 
             assert_eq!(entries.len(), 1);
+            let entry = entries.first().expect("entry");
+            assert_eq!(entry.path_ref().as_path(), expected);
             assert_eq!(
-                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
-                Some(expected)
-            );
-            assert_eq!(
-                entries
-                    .first()
-                    .and_then(crate::fs::entry::FsEntry::filename)
-                    .map(|name| name.as_str().to_owned()),
+                entry.filename().map(|n| n.as_str().to_owned()),
                 Some("a.toml".to_owned())
             );
             assert_eq!(
-                entries.first().and_then(|e| e
+                entry
                     .metadata()
                     .as_file()
-                    .map(crate::fs::metadata::FileMetadata::size)),
+                    .map(crate::fs::metadata::FileMetadata::size),
                 Some(12)
             );
         }
 
         #[test]
-        fn sorts_entries_by_path() {
+        fn returns_sorted_entries_alphabetically() {
             let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "z.toml", b"");
-            write_file(temp.path(), "a.toml", b"");
+            fixtures::write_file(temp.path(), "z.toml", b"");
+            fixtures::write_file(temp.path(), "a.toml", b"");
 
             let scanner = DirScanner::new(temp.path());
             let entries = scanner.entries(DirScanInput::new()).unwrap();
@@ -740,68 +667,211 @@ mod tests {
             let expected_z = temp.path().join("z.toml");
 
             assert_eq!(
-                entries.first().map(|e| e.path_ref().as_path().to_path_buf()),
-                Some(expected_a)
+                entries.first().expect("first entry").path_ref().as_path(),
+                expected_a
             );
             assert_eq!(
-                entries.get(1).map(|e| e.path_ref().as_path().to_path_buf()),
-                Some(expected_z)
+                entries.get(1).expect("second entry").path_ref().as_path(),
+                expected_z
             );
         }
-    }
-
-    mod typed_scanning {
-        use super::*;
 
         #[test]
-        fn paths_returns_absolute_fs_paths() {
+        fn returns_entries_with_absolute_paths() {
             let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"");
-            let root = temp.path().to_path_buf();
-
-            let scanner = DirScanner::new(&root);
-            let paths = scanner.paths(DirScanInput::new()).unwrap();
-
-            assert_eq!(paths.len(), 1);
-            let path = paths.first().unwrap();
-            assert!(path.is_file());
-            assert_eq!(path.as_path(), root.join("a.toml"));
-        }
-
-        #[test]
-        fn entries_returns_fs_entries_with_absolute_paths() {
-            let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "a.toml", b"test content");
+            fixtures::write_file(temp.path(), "a.toml", b"test content");
             let root = temp.path().to_path_buf();
 
             let scanner = DirScanner::new(&root);
             let entries = scanner.entries(DirScanInput::new()).unwrap();
 
             assert_eq!(entries.len(), 1);
-            let entry = entries.first().unwrap();
+            let entry = entries.first().expect("entry");
             assert!(entry.is_file());
             assert_eq!(entry.path().as_path(), root.join("a.toml"));
             assert_eq!(entry.as_file().unwrap().metadata().size(), 12);
         }
+    }
+
+    mod filter {
+        use super::*;
+
+        mod pattern {
+            use super::*;
+
+            #[test]
+            fn returns_only_paths_matching_glob() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "a.toml", b"");
+                fixtures::write_file(temp.path(), "b.yaml", b"");
+                fixtures::write_file(temp.path(), "sub/c.toml", b"");
+                let root = temp.path().to_path_buf();
+
+                let scanner = DirScanner::new(&root);
+                let paths = scanner
+                    .paths(DirScanInput::new().with_pattern("**/*.toml"))
+                    .unwrap();
+
+                assert_eq!(paths.len(), 2);
+                assert!(
+                    paths.iter().any(|p| p.as_path() == root.join("a.toml"))
+                );
+                assert!(
+                    paths
+                        .iter()
+                        .any(|p| p.as_path() == root.join("sub/c.toml"))
+                );
+            }
+        }
+
+        mod extension {
+            use super::*;
+
+            #[test]
+            fn returns_only_files_with_specified_extensions() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "a.toml", b"");
+                fixtures::write_file(temp.path(), "b.yaml", b"");
+                fixtures::write_file(temp.path(), "c.json", b"");
+                let root = temp.path().to_path_buf();
+
+                let scanner = DirScanner::new(&root);
+                let paths = scanner
+                    .paths(
+                        DirScanInput::new().with_extensions(&["toml", "yaml"]),
+                    )
+                    .unwrap();
+
+                assert_eq!(paths.len(), 2);
+                assert!(
+                    paths.iter().any(|p| p.as_path() == root.join("a.toml"))
+                );
+                assert!(
+                    paths.iter().any(|p| p.as_path() == root.join("b.yaml"))
+                );
+            }
+
+            #[test]
+            fn matches_extensions_case_insensitively() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "a.TOML", b"");
+
+                let scanner = DirScanner::new(temp.path());
+                let paths = scanner
+                    .paths(DirScanInput::new().with_extensions(&["toml"]))
+                    .unwrap();
+
+                assert_eq!(paths.len(), 1);
+            }
+        }
+
+        mod combined {
+            use super::*;
+
+            #[test]
+            fn returns_only_matches_satisfying_pattern_and_extension() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "schemas/a.toml", b"");
+                fixtures::write_file(temp.path(), "schemas/b.yaml", b"");
+                fixtures::write_file(temp.path(), "other/c.toml", b"");
+                let root = temp.path().to_path_buf();
+
+                let scanner = DirScanner::new(&root);
+                let paths = scanner
+                    .paths(
+                        DirScanInput::new()
+                            .with_pattern("schemas/**/*")
+                            .with_extensions(&["toml"]),
+                    )
+                    .unwrap();
+
+                // Only schemas/a.toml matches BOTH
+                assert_eq!(paths.len(), 1);
+                assert_eq!(
+                    paths.first().expect("path").as_path(),
+                    root.join("schemas/a.toml")
+                );
+            }
+        }
+
+        mod directories {
+            use super::*;
+
+            #[test]
+            fn excludes_directories_by_default() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "file.toml", b"");
+                std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
+                let root = temp.path().to_path_buf();
+
+                let scanner = DirScanner::new(&root);
+                let paths = scanner.paths(DirScanInput::new()).unwrap();
+
+                assert_eq!(paths.len(), 1);
+                assert_eq!(
+                    paths.first().expect("path").as_path(),
+                    root.join("file.toml")
+                );
+            }
+
+            #[test]
+            fn includes_directories_when_include_dirs_enabled() {
+                let temp = TempDir::new().unwrap();
+                fixtures::write_file(temp.path(), "file.toml", b"");
+                std::fs::create_dir_all(temp.path().join("subdir")).unwrap();
+                let root = temp.path().to_path_buf();
+
+                let scanner = DirScanner::new(&root);
+                let paths = scanner
+                    .paths(
+                        DirScanInput::new().include_dirs(true).recursive(false),
+                    )
+                    .unwrap();
+
+                assert_eq!(paths.len(), 2);
+                assert!(
+                    paths.iter().any(|p| p.as_path() == root.join("file.toml"))
+                );
+                assert!(
+                    paths.iter().any(|p| p.as_path() == root.join("subdir"))
+                );
+            }
+        }
+    }
+
+    mod traversal {
+        use super::*;
 
         #[test]
-        fn typed_results_are_sorted() {
+        fn returns_only_immediate_children_when_non_recursive() {
             let temp = TempDir::new().unwrap();
-            write_file(temp.path(), "z.toml", b"");
-            write_file(temp.path(), "a.toml", b"");
+            fixtures::write_file(temp.path(), "a.toml", b"");
+            fixtures::write_file(temp.path(), "sub/b.toml", b"");
             let root = temp.path().to_path_buf();
 
             let scanner = DirScanner::new(&root);
-            let paths = scanner.paths(DirScanInput::new()).unwrap();
+            let paths =
+                scanner.paths(DirScanInput::new().recursive(false)).unwrap();
 
+            assert_eq!(paths.len(), 1);
             assert_eq!(
-                paths.first().unwrap().as_path().file_name().unwrap(),
-                "a.toml"
+                paths.first().expect("path").as_path(),
+                root.join("a.toml")
             );
-            assert_eq!(
-                paths.get(1).unwrap().as_path().file_name().unwrap(),
-                "z.toml"
-            );
+        }
+
+        #[test]
+        fn returns_nested_files_when_recursive() {
+            let temp = TempDir::new().unwrap();
+            fixtures::write_file(temp.path(), "a.toml", b"");
+            fixtures::write_file(temp.path(), "sub/b.toml", b"");
+            fixtures::write_file(temp.path(), "sub/deep/c.toml", b"");
+
+            let scanner = DirScanner::new(temp.path());
+            let paths =
+                scanner.paths(DirScanInput::new().recursive(true)).unwrap();
+
+            assert_eq!(paths.len(), 3);
         }
     }
 
