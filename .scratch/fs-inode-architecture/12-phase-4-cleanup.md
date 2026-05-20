@@ -390,3 +390,160 @@ These are primarily in test code and internal vault processor logic. The types a
 - [x] No imports of `VaultPath`, `VaultFile`, `VaultFolder`, `PathParts`, `FolderParts` remain
 - [x] vault/mod.rs exports only: `DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath`
 - [x] Vault processor uses inode-based types throughout
+
+## GitNexus + TDD + Rust Best Practices Review
+
+> *Added 2026-05-20. Used gitnexus-impact-analysis, tdd, and rust-best-practices skills.*
+
+### Status: ~70% of the plan is already complete
+
+The codebase has been refactored beyond what this issue describes. **6 of 8 scope items are DONE:**
+
+| Scope Item | Status | Evidence |
+|---|---|---|
+| Delete old `DirScanner::paths()` returning Vec<PathBuf> | ✅ DONE | scanner.rs:138 - `paths()` returns `Vec<FsPath>` |
+| Rename `paths_typed()` → `paths()` | ✅ DONE | No `paths_typed()` exists; method at scanner.rs:139 is `paths()` |
+| Rename `entries_typed()` → `entries()` | ✅ DONE | No `entries_typed()` exists; method at scanner.rs:167 is `entries()` |
+| Delete `fs/file.rs` | ✅ DONE | File does not exist |
+| Delete `fs/types.rs` | ✅ DONE | File does not exist |
+| Remove old `entries()` compatibility alias | ✅ DONE | No alias found |
+| `filter_dir()` removal/rename | ✅ DONE | Replaced by `filter_paths()`, `filter_dir_paths()`, `filter_dir_entries()` |
+| Delete vault legacy types | ⚠️ NOT DONE | VaultPath, VaultFile, VaultFolder, PathParts, FolderParts still present |
+
+**The scanner/reader cleanup (TDD Slices 1-7 in original plan) should be REMOVED.** The remaining work is entirely vault legacy type deletion.
+
+---
+
+### Remaining work: vault legacy type deletion
+
+#### Actual usage found
+
+| Type | Usage | File:Line |
+|---|---|---|
+| `VaultPath` | Production: processor function signatures | processor.rs:341, 389 |
+| `VaultPath` | Production: processor internal iteration | processor.rs:396 (discover_partial) |
+| `VaultPath` | Production: processor path operations | processor.rs:397, 404, 412, 424, 442 |
+| `VaultPath` | Test: construction and passing | tests/note_reader.rs:45, 400-403 |
+| `VaultPath` | Export: public re-export | vault/mod.rs:33-34 |
+| `VaultFile` | Export only (no production callers) | vault/mod.rs:33 |
+| `VaultFolder` | Export only (no production callers) | vault/mod.rs:34 |
+| `PathParts` | Internal to VaultFile::try_new | model.rs:586-621 |
+| `FolderParts` | Internal to VaultFolder::try_new | model.rs:624-645 |
+
+#### Critical hidden dependency found
+
+`NormalizedPath::try_new()` calls `VaultPath::normalize()` (private method):
+
+```rust
+// model.rs:136
+pub fn try_new(path: &str) -> Result<Self, VaultPathError> {
+    let normalized = VaultPath::normalize(path);  // ← private method!
+}
+```
+
+If VaultPath is deleted first, NormalizedPath's **constructor breaks**. Must extract `normalize()` as a private free function in model.rs before removing VaultPath.
+
+#### NormalizedPath API gap
+
+`VaultPath` provides `as_path()` and `as_str()`. `NormalizedPath` only provides `as_str()`. The processor uses both:
+
+- `path.as_path()` at processor.rs:397, 404, 424, 442 → `Path::new(path.as_str())`
+- `path.as_str()` at processor.rs:412 → `NormalizedPath::as_str()` (direct equivalent)
+
+#### GitNexus impact
+
+All 5 legacy types show **0 upstream dependencies, LOW risk**. However, the index is stale - note_reader.rs and vault/mod.rs exports are not captured. Manual analysis confirms actual blast radius is **2 production call sites + 1 test file**, still LOW.
+
+#### Blast radius for VaultPath → NormalizedPath migration
+
+| File | Change |
+|---|---|
+| vault/processor.rs:341 | `process_partial(paths: &[VaultPath])` → `&[NormalizedPath]` |
+| vault/processor.rs:389 | `discover_partial(paths: &[VaultPath])` → `&[NormalizedPath]` |
+| vault/processor.rs:397 | `path.as_path()` → `Path::new(path.as_str())` |
+| vault/processor.rs:404 | `path.as_path()` → `Path::new(path.as_str())` |
+| vault/processor.rs:412 | `path.as_str()` — direct equivalent |
+| vault/processor.rs:424 | `last_component(path.as_path())` → `Path::new(path.as_str())` |
+| vault/processor.rs:442 | `path.as_path().extension()` → `Path::new(path.as_str()).extension()` |
+| tests/note_reader.rs:45 | Import `VaultPath` → `NormalizedPath` |
+| tests/note_reader.rs:400 | `VaultPath::try_new("notes/keep.md")` → `NormalizedPath::try_new(...)` |
+
+---
+
+### Side effects and risks
+
+1. **🔴 CRITICAL: NormalizedPath breaks if VaultPath deleted first.** Must extract `normalize()` as a private free function before removing VaultPath. TDD Slice order: fix NormalizedPath → delete VaultPath → delete dependent types.
+
+2. **🟡 HIGH: `process_partial()` public API changes.** Any external callers of `VaultProcessor::process_partial()` passing `&[VaultPath]` break. Must search workspace for callers.
+
+3. **🟡 HIGH: PathParts/FolderParts duplicate fs/name.rs.** `PathParts` extracts basename/filename/parent/extension from `&Path`. This duplicates `FileName::try_from(&Path)` and `DirName::try_from(&Path)` in `lithos-core/src/fs/name.rs`. Consider replacing rather than just deleting.
+
+4. **🟢 LOW: `VaultPathError` still needed.** `NormalizedPath::try_new()` returns `VaultPathError`. Even after deleting VaultPath, this type lives on at vault/mod.rs:30. Either rename to NormalizedPathError or keep under generic name.
+
+5. **🟢 LOW: Backward compat.** If external code imports `vault::VaultPath`, deletion is a breaking change. Check for external consumers.
+
+---
+
+### Minor issues found (quick fixes)
+
+| Issue | File:Line | Description |
+|---|---|---|
+| Orphaned doc comment | scanner.rs:100-129 | `///` doc block about `entries()` placed before `paths()` - duplicate/misplaced |
+| Stale test function name | scanner.rs:787 | `paths_typed_returns_absolute_fs_paths` → rename to `paths_returns_absolute_fs_paths` |
+| Terse entries doc | scanner.rs:158-165 | `entries()` doc comment is short; orphaned block at 100-129 has a better code example |
+| Hidden coupling | model.rs:136 | NormalizedPath::try_new calls VaultPath::normalize() - must extract before deletion |
+
+---
+
+### Revised TDD plan (vault-only)
+
+#### Pre-flight
+
+1. Search workspace for `VaultProcessor::process_partial` callers in adapter crates
+2. Search workspace for `vault::VaultPath` imports outside vault/ context
+3. Run `mise run test` to establish baseline
+
+#### Slice 1: Extract `normalize()` helper
+
+1. RED: Add test that NormalizedPath::try_new works with backslash paths (tests normalize logic)
+2. GREEN: Extract `fn normalize(path: &str) -> Cow<'_, str>` as private free function in model.rs. Update NormalizedPath::try_new to use it instead of `VaultPath::normalize()`.
+3. REFACTOR: Update VaultPath::normalize() to call the extracted function (deduplicate)
+
+#### Slice 2: Migrate vault processor API
+
+1. RED: Change `process_partial(paths: &[VaultPath])` → `process_partial(paths: &[NormalizedPath])` at processor.rs:341 — compiler catches all breaks
+2. GREEN: Update `discover_partial` at processor.rs:389; replace `path.as_path()` with `Path::new(path.as_str())` at lines 397, 404, 424, 442
+3. REFACTOR: Clean up imports; remove VaultPath from use statements
+
+#### Slice 3: Migrate test code
+
+1. RED: Change tests/note_reader.rs:45 import from VaultPath to NormalizedPath
+2. GREEN: Replace `VaultPath::try_new("notes/keep.md")` with `NormalizedPath::try_new("notes/keep.md")`
+3. REFACTOR: Verify test behavior unchanged
+
+#### Slice 4: Delete VaultPath, VaultFile, VaultFolder
+
+1. RED: Remove struct definitions from model.rs — compiler catches dependent code
+2. GREEN: Fix any remaining references
+3. REFACTOR: Remove from vault/mod.rs exports (lines 33-34)
+
+#### Slice 5: Delete PathParts, FolderParts
+
+1. RED: Remove struct definitions from model.rs lines 586-645
+2. GREEN: Verify compilation
+3. REFACTOR: Consolidate orphaned test helpers in `#[cfg(test)]` block
+
+#### Slice 6: Fix minor issues (optional, low effort)
+
+1. Move orphaned doc comment from scanner.rs:100-129 to above entries() at scanner.rs:158
+2. Rename test `paths_typed_returns_absolute_fs_paths` → `paths_returns_absolute_fs_paths`
+
+#### Verification
+
+- [x] `mise run test:unit` passes
+- [x] `mise run verify` passes
+- [x] No imports of VaultPath, VaultFile, VaultFolder, PathParts, FolderParts remain
+- [x] vault/mod.rs exports only: DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath
+- [x] Vault processor uses NormalizedPath throughout
+- [x] NormalizedPath::try_new works independently of VaultPath
+- [x] No stale `_typed` test function names in scanner.rs
