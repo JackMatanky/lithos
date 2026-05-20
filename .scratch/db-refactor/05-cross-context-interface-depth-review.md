@@ -1,18 +1,14 @@
 ---
 title: 05-cross-context-interface-depth-review
 category: enhancement
-label: completed
-status: closed
+label: ready-for-human
+status: open
 date_created: 2026-05-10
 ---
 
 ## Type
 
 HITL
-
-## Labels
-
-- ready-for-human
 
 ## What to build
 
