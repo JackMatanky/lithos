@@ -145,3 +145,123 @@ impl FilePath {
 - [ ] Add `as_relative()` methods to `FilePath`, `DirPath`, `FsPath`
 - [ ] Add tests for `as_relative()` (valid prefix strip, error on outside path)
 - [ ] Update existing tests if needed (should still pass)
+
+## Post-Completion Review: Path Type Safety Issues
+
+**Category:** bug / enhancement
+**Summary:** FilePath/DirPath have type safety violations that must be fixed
+
+### Issue 1: Infallible `From<PathBuf>` Bypasses Validation
+
+**Current behavior at `path.rs:473` and `path.rs:653`:**
+```rust
+impl From<PathBuf> for FilePath {
+    fn from(path: PathBuf) -> Self {
+        Self(path)  // No validation! Path might not refer to a file!
+    }
+}
+```
+
+Both `FilePath` and `DirPath` have infallible `From<PathBuf>` impls that bypass all validation in `FilePath::new()` / `DirPath::new()`. This violates "parse, don't validate" because code can create a `FilePath` wrapping a directory path (type lie).
+
+**Call sites using `From<PathBuf>` (blast radius):**
+- `config/paths.rs:457,499,625,647,679` — `DirPath::from(PathBuf::from("/vault"))` in doc examples and tests
+- `discovery.rs:670,696` — `DirPath::from(root.path().to_path_buf())` in tests
+- `path.rs:975` — `FilePath::from(temp.path().to_path_buf())` in its own test
+
+**Additionally, `DirPath::join_file()` and `DirPath::join_dir()` (lines 610-625) construct FilePath/DirPath directly without validation:**
+```rust
+pub fn join_file<P>(&self, child: P) -> FilePath {
+    FilePath(self.0.join(child))  // Direct construction, bypasses new()
+}
+```
+These are used by `SchemaConfigSpec::directory()` and `SchemaConfigSpec::property_bank()` — which is safe since both operands are already validated, but they still bypass the constructor.
+
+**Desired behavior:**
+- Change to `TryFrom<PathBuf>` (falls back to validating constructor)
+- OR remove the `From` impl and require explicit construction
+- OR document that `From<PathBuf>` is intentionally unchecked (if that's the design choice)
+- `join_file`/`join_dir` should use validated construction or be explicitly documented as unchecked
+
+### Issue 2: Filesystem I/O in Constructors (Design Decision)
+
+**Current behavior:** `FilePath::new()` calls `path.is_file()` (line 332), `DirPath::new()` calls `path.is_dir()` (line 513), both performing filesystem I/O.
+
+**Analysis:**
+- Requires actual file/dir existence at construction time — surprising for a constructor
+- TOCTOU race condition between construction and use
+- Error type is `std::io::Error` instead of `PathError` (which already has `NotAFile`/`NotADirectory` variants — see `error.rs:55-65`)
+- Contradicts modularity: a lightweight path type shouldn't reach into the filesystem
+
+**Options:**
+1. **Remove I/O from constructors** — Make `FilePath`/`DirPath` purely syntactic (like `RelativePath`/`AbsolutePath`). Move filesystem existence checks to `FsReader`/`DirScanner` where I/O belongs.
+2. **Keep I/O but fix error type** — Change return type to `Result<Self, PathError>` using existing `PathError::NotAFile` / `PathError::NotADirectory` variants. This is what `PathError` was designed for (`error.rs:54-65`).
+
+**This decision cascades to Issue 1** — if I/O is removed, `From<PathBuf>` becomes less dangerous (just no type-level file/dir distinction but no I/O surprise). If I/O is kept, `From<PathBuf>` is definitely wrong.
+
+### Issue 3: Incomplete Validation for `AbsolutePath`
+
+**Current state:**
+
+| Validation Check | RelativePath | AbsolutePath |
+|---|---|---|
+| Non-empty | ✅ | ✅ |
+| `.` (curdir) | ✅ | ❌ |
+| `..` (parentdir) | ✅ | ❌ |
+| Platform prefix | ✅ | ❌ |
+| Relative/Absolute | ✅ (must be relative) | ✅ (must be absolute) |
+
+`AbsolutePath::validate()` only checks non-empty and absolute (lines 238-252). It should also reject `..`, `.`, and platform prefixes.
+
+**Impact:** Medium. `AbsolutePath` is used throughout the codebase for vault roots, file paths, and schema directory paths. A path like `/vault/../etc/passwd` would pass validation but escape the intended scope.
+
+### Key Interfaces Affected
+
+| Symbol | File | Issue | Blast Radius |
+|---|---|---|---|
+| `FilePath` struct | `path.rs:317` | Issues 1, 2 | LOW — 4 symbols, Fs module only |
+| `DirPath` struct | `path.rs:498` | Issues 1, 2 | LOW — 4 symbols, 2 processes affected |
+| `AbsolutePath::validate()` | `path.rs:238` | Issue 3 | Fs module, config |
+| `PathError` enum | `error.rs:49` | Target error type | Already has `NotAFile`/`NotADirectory` variants |
+| `DirPath::join_file()` | `path.rs:610` | Issue 1 (sub) | Used by `SchemaConfigSpec::property_bank()` |
+| `DirPath::join_dir()` | `path.rs:620` | Issue 1 (sub) | Used by `SchemaConfigSpec::directory()` |
+
+**Risk assessment:** LOW (limited to Fs module, no critical execution flows)
+
+### TDD Plan: Vertical Slices
+
+**Slice 1: Fix `AbsolutePath::validate()`**
+- RED: Test `AbsolutePath` rejects `..`, `.`, platform prefixes
+- GREEN: Add checks to `AbsolutePath::validate()` matching `RelativePath::validate()`
+- REFACTOR: Extract common validation into a shared helper
+
+**Slice 2: Switch `FilePath::new()` / `DirPath::new()` error type to `PathError`**
+- RED: Tests expect `PathError` variants (`NotAFile`, `NotADirectory`)
+- GREEN: Change return type from `Result<Self, std::io::Error>` to `Result<Self, PathError>`
+- NOTE: This is independent of the I/O-in-constructor decision
+
+**Slice 3: Decide and fix `From<PathBuf>` on `FilePath` and `DirPath`**
+- Decision needed: remove, change to `TryFrom`, or document as unchecked
+- If `TryFrom`: update all call sites (config/paths.rs, discovery.rs tests)
+- If unchecked: add doc comment explaining the tradeoff
+- If remove: fix `join_file`/`join_dir` construction pattern
+
+**Slice 4: Fix `DirPath::join_file()` / `DirPath::join_dir()`**
+- RED: Test that `join_file`/`join_dir` validate or are documented
+- GREEN: Either route through `new()` or document unchecked construction
+- NOTE: Since both operands are already validated (`DirPath` + `RelativePath`), routing through `new()` would add needless I/O — so the fix depends on Slice 5
+
+**Slice 5: Decide on I/O in constructors**
+- Decision needed: keep (with PathError) or remove (pure syntactic)
+- If keep: fix error types (Slice 2), document semantics
+- If remove: strip `is_file()`/`is_dir()` calls, update tests, update `join_file`/`join_dir` to use validated construction
+
+### Acceptance Criteria
+
+- [ ] Decision documented on `From<PathBuf>` strategy (remove/change/unchecked)
+- [ ] Decision documented on I/O in constructors (keep or move)
+- [ ] `AbsolutePath` validation made consistent with `RelativePath` (`..`, `.`, prefix checks)
+- [ ] `FilePath::new()` / `DirPath::new()` error type changed to `PathError`
+- [ ] All call sites updated to use proper construction
+- [ ] Tests updated for all changes
+- [ ] `mise run verify` passes
