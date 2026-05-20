@@ -36,6 +36,10 @@ skip-tree = []
 name = "unicode-width"
 version = "0.1.14"
 
+[[bans.skip]]
+name = "wit-bindgen"
+version = "0.46.0"
+
 [sources]
 unknown-registry = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
