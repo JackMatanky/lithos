@@ -14,7 +14,10 @@ use std::{
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
     config::aggregate::Config,
-    fs::{DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsReader},
+    fs::{
+        DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsReader,
+        NormalizedPath,
+    },
     note::{
         error::NoteProcessError,
         paths::NotePath,
@@ -22,7 +25,7 @@ use crate::{
         storage::RedbRepository as NoteRepository,
     },
     vault::{
-        model::{DirId, DirView, FileId, FileView, NormalizedPath},
+        model::{DirId, DirView, FileId, FileView},
         storage::{RedbRepository as VaultRepository, Repository as _},
     },
 };

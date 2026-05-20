@@ -71,7 +71,8 @@ pub use name::{
     BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef,
 };
 pub use path::{
-    AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, RelativePath,
+    AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, NormalizedPath,
+    RelativePath,
 };
 #[expect(
     clippy::module_name_repetitions,

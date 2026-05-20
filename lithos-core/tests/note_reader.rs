@@ -37,12 +37,13 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         db::Database,
+        fs::NormalizedPath,
         note::{
             aggregate::Note,
             storage::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
-        vault::{NormalizedPath, VaultProcessor},
+        vault::VaultProcessor,
     };
     use tempfile::TempDir;
 

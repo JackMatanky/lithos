@@ -179,6 +179,101 @@ impl std::fmt::Display for RelativePath {
     }
 }
 
+/// Normalized vault-relative path using forward slashes.
+///
+/// This type enforces vault-relative path constraints and normalizes all
+/// paths to use forward slashes (`/`) for cross-platform compatibility.
+///
+/// # Use Cases
+///
+/// - Database storage keys (consistent across platforms)
+/// - Serialized path representation in rkyv archives
+/// - Path comparison and hashing (`HashMap` keys, `HashSet` members)
+///
+/// # Comparison with [`RelativePath`]
+///
+/// - [`NormalizedPath`]: Forward slashes, `Box<str>` storage, `as_str() ->
+///   &str`
+/// - [`RelativePath`]: Platform slashes, `PathBuf` storage, `as_path() ->
+///   &Path`
+///
+/// Use [`RelativePath`] for filesystem operations; use [`NormalizedPath`]
+/// for storage and serialization.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NormalizedPath(Box<str>);
+
+impl NormalizedPath {
+    /// Creates a new normalized vault-relative path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError`] when path validation fails.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let normalized = Self::normalize_slashes(path);
+        let normalized = normalized.as_ref().trim();
+
+        if normalized.is_empty() {
+            return Err(super::PathError::Empty);
+        }
+
+        let path_buf = PathBuf::from(normalized);
+        if path_buf.is_absolute() {
+            return Err(super::PathError::NotRelative(path_buf));
+        }
+
+        for component in path_buf.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(super::PathError::ParentTraversal(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::CurDir => {
+                    return Err(super::PathError::CurrentDirComponent(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::Prefix(_) => {
+                    return Err(super::PathError::PlatformPrefix(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::RootDir | Component::Normal(_) => {}
+            }
+        }
+
+        Ok(Self(normalized.into()))
+    }
+
+    #[inline]
+    fn normalize_slashes(path: &str) -> std::borrow::Cow<'_, str> {
+        if path.contains('\\') {
+            let mut owned = String::with_capacity(path.len());
+            for ch in path.chars() {
+                if ch == '\\' {
+                    owned.push('/');
+                } else {
+                    owned.push(ch);
+                }
+            }
+            std::borrow::Cow::Owned(owned)
+        } else {
+            std::borrow::Cow::Borrowed(path)
+        }
+    }
+
+    /// Returns the normalized path string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A validated absolute path.
 ///
 /// This type ensures that paths are fully resolved and absolute on the
@@ -1223,6 +1318,66 @@ mod tests {
             let root_path = Path::new("file.txt");
             let root_parent = ParentDir::from_path(root_path);
             assert!(matches!(root_parent, ParentDir::Root));
+        }
+    }
+
+    mod normalized_path {
+        use super::*;
+
+        #[test]
+        fn normalized_path_try_new_accepts_forward_slashes() {
+            let path = NormalizedPath::try_new("notes/daily/today.md");
+            assert!(path.is_ok());
+            assert_eq!(path.unwrap().as_str(), "notes/daily/today.md");
+        }
+
+        #[test]
+        fn normalized_path_try_new_converts_backslashes_to_forward_slashes() {
+            let path = NormalizedPath::try_new("notes\\daily\\today.md");
+            assert!(path.is_ok());
+            assert_eq!(path.unwrap().as_str(), "notes/daily/today.md");
+        }
+
+        #[test]
+        fn normalized_path_try_new_rejects_parent_traversal() {
+            let path = NormalizedPath::try_new("../outside.md");
+            assert!(path.is_err());
+        }
+
+        #[test]
+        fn normalized_path_try_new_rejects_current_dir_component() {
+            let path = NormalizedPath::try_new("./notes/file.md");
+            assert!(path.is_err());
+        }
+
+        #[test]
+        fn normalized_path_try_new_rejects_empty_string() {
+            let path = NormalizedPath::try_new("");
+            assert!(path.is_err());
+        }
+
+        #[test]
+        fn normalized_path_try_new_rejects_absolute_paths() {
+            let path = NormalizedPath::try_new("/usr/local/file.md");
+            assert!(path.is_err());
+        }
+
+        #[test]
+        fn normalized_path_rkyv_roundtrip_preserves_value() {
+            let original = NormalizedPath::try_new("notes/test.md").unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
+                .expect("serialize");
+            let archived = rkyv::access::<
+                ArchivedNormalizedPath,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .expect("archive access");
+            let deserialized: NormalizedPath = rkyv::deserialize::<
+                NormalizedPath,
+                rkyv::rancor::Error,
+            >(archived)
+            .expect("deserialize");
+            assert_eq!(original, deserialized);
         }
     }
 }

@@ -16,6 +16,12 @@ _Avoid_: random scan, unrestricted walk
 The safety check that enforces root scope and normalized paths.
 _Avoid_: best-effort check, loose validation
 
+**Normalized Path**:
+A vault-relative path normalized to forward slashes for cross-platform storage keys.
+Use [`NormalizedPath`] for database keys and serialized path storage.
+Use [`FsPath`], [`DirPath`], and [`FilePath`] for filesystem operations.
+_Avoid_: platform-specific path, absolute storage key
+
 ## Invariants
 
 - File operations remain constrained to validated vault roots.

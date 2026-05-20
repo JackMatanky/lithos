@@ -1,14 +1,9 @@
 //! Vault domain types for files and folders.
 
-use std::borrow::Cow;
-
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::VaultPathError;
 use crate::{
-    fs::{
-        DirMetadata, DirName, FileFormat, FileMetadata, FileName, PathValidator,
-    },
+    fs::{DirMetadata, DirName, FileFormat, FileMetadata, FileName},
     impl_redb_uuid,
     support::Blake3Hash,
     utils::UuidV7,
@@ -110,53 +105,6 @@ impl Default for DirId {
 
 impl_redb_uuid!(FileId);
 impl_redb_uuid!(DirId);
-
-#[inline]
-fn normalize(path: &str) -> Cow<'_, str> {
-    if path.contains('\\') {
-        let mut owned = String::with_capacity(path.len());
-        for ch in path.chars() {
-            if ch == '\\' {
-                owned.push('/');
-            } else {
-                owned.push(ch);
-            }
-        }
-        Cow::Owned(owned)
-    } else {
-        Cow::Borrowed(path)
-    }
-}
-
-/// Normalized, vault-relative path using forward slashes.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct NormalizedPath(Box<str>);
-
-impl NormalizedPath {
-    /// Creates a new normalized vault-relative path.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`VaultPathError`] when path validation fails.
-    #[inline]
-    pub fn try_new(path: &str) -> Result<Self, VaultPathError> {
-        let normalized = normalize(path);
-        let normalized = normalized.as_ref().trim();
-        PathValidator::validate_vault_path(normalized, None)
-            .map_err(VaultPathError::from)?;
-        Ok(Self(normalized.into()))
-    }
-
-    /// Returns the normalized path string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 /// File entry view with stable inode identity.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -364,15 +312,6 @@ mod tests {
 
         assert_eq!(file_id.as_bytes().len(), 16);
         assert_eq!(dir_id.as_bytes().len(), 16);
-    }
-
-    #[test]
-    fn normalized_path_normalizes_separators_and_validates() {
-        let normalized =
-            NormalizedPath::try_new("notes\\daily\\today.md").expect("ok");
-        assert_eq!(normalized.as_str(), "notes/daily/today.md");
-
-        assert!(NormalizedPath::try_new("../outside.md").is_err());
     }
 
     #[test]

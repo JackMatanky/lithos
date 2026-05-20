@@ -6,14 +6,12 @@ use redb::ReadableTable as _;
 
 use crate::{
     db::{ArchivedEntity, BatchReader, BatchWriter, Database, DbError},
-    fs::FileFormat,
+    fs::{FileFormat, NormalizedPath},
     vault::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
         FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
         error::VaultRepositoryError,
-        model::{
-            DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath,
-        },
+        model::{DirId, DirView, FileId, FileView, FsEntryView},
     },
 };
 
@@ -849,12 +847,11 @@ mod tests {
         db::Database,
         fs::{
             DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
+            NormalizedPath,
         },
         vault::{
             FILE_VIEWS,
-            model::{
-                DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath,
-            },
+            model::{DirId, DirView, FileId, FileView, FsEntryView},
         },
     };
 
