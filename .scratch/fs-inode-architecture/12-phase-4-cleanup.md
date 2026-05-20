@@ -259,3 +259,134 @@ PRD §Phase 4 specifies deleting old `DirScanner.paths()` and renaming all `*_ty
 1. RED: `filter_dir()` tests fail because `scanner.paths()` now returns `Vec<FsPath>` instead of `Vec<PathBuf>`.
 2. GREEN: either change `filter_dir()` return type to `Vec<FsPath>` (nudging it toward `filter_paths()` equivalence) or remove it and redirect callers.
 3. REFACTOR: deduplicate with `filter_paths()` if retaining.
+
+## Post-Review: Vault Legacy Type Deletion
+
+> *Added 2026-05-20 after agent review.*
+
+### Context
+
+Review identified that `vault/model.rs` still contains legacy path-keyed types that should be deleted now that inode-based types (FileId, DirId, FileView, DirView, FsEntryView, NormalizedPath) are complete:
+
+- `VaultPath` (Struct:lithos-core/src/vault/model.rs:VaultPath, line 350)
+- `VaultFile` (Struct:lithos-core/src/vault/model.rs:VaultFile, line 418)
+- `VaultFolder` (Struct:lithos-core/src/vault/model.rs:VaultFolder, line 517)
+- `PathParts` (Struct:lithos-core/src/vault/model.rs:PathParts, line 585)
+- `FolderParts` (Struct:lithos-core/src/vault/model.rs:FolderParts, line 623)
+
+These types are currently exported from `vault/mod.rs` and used in tests and processor logic.
+
+### GitNexus Impact Analysis
+
+Ran `gitnexus_impact` for all five legacy types (2026-05-20):
+
+**Result**: All five types show **ZERO upstream dependencies** in the knowledge graph:
+- VaultPath: 0 direct callers, 0 processes affected, risk: LOW
+- VaultFile: 0 direct callers, 0 processes affected, risk: LOW
+- VaultFolder: 0 direct callers, 0 processes affected, risk: LOW
+- PathParts: 0 direct callers, 0 processes affected, risk: LOW
+- FolderParts: 0 direct callers, 0 processes affected, risk: LOW
+
+**Caveat**: GitNexus may not have indexed recent changes or test code. Manual grep confirms actual usage exists:
+
+```
+lithos-core/tests/note_reader.rs:45: vault::{VaultPath, VaultProcessor}
+lithos-core/tests/note_reader.rs:400: VaultPath::try_new("notes/keep.md")
+lithos-core/src/vault/mod.rs:33-34: pub use model::{..VaultFile, VaultFolder, VaultPath}
+lithos-core/src/vault/processor.rs:25: use model::{...VaultPath}
+lithos-core/src/vault/processor.rs:341,389: paths: &[VaultPath]
+```
+
+These are primarily in test code and internal vault processor logic. The types appear to be vestigial but not yet fully replaced.
+
+### Agent Brief: Delete Vault Legacy Types
+
+**Outcome**: Remove path-keyed vault types after verifying all usage has migrated to inode-based types.
+
+**Scope**:
+
+1. **Verify migration status**:
+   - Confirm `VaultPath`, `VaultFile`, `VaultFolder` are no longer used in production vault logic
+   - Check that `vault/storage.rs` Repository implementation uses inode-based tables (FILE_VIEWS, DIR_VIEWS, FILE_ID_BY_PATH, DIR_ID_BY_PATH)
+   - Check that `vault/processor.rs` scan/compare logic uses FileView/DirView/FsEntryView
+
+2. **Delete types from vault/model.rs**:
+   - Remove `VaultPath` struct and impl (lines 350-415 approx)
+   - Remove `VaultFile` struct and impl (lines 418-515 approx)
+   - Remove `VaultFolder` struct and impl (lines 517-582 approx)
+   - Remove `PathParts` struct and impl (lines 585-621 approx)
+   - Remove `FolderParts` struct and impl (lines 623-639 approx)
+
+3. **Update vault/mod.rs exports**:
+   - Remove `VaultFile`, `VaultFolder`, `VaultPath` from public re-exports (line 33-34)
+   - Verify only inode-based types are exported: `DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath`
+
+4. **Update test code**:
+   - Migrate `tests/note_reader.rs` usage of `VaultPath` to `NormalizedPath` or appropriate inode type
+   - Update any vault processor tests that use legacy types
+
+5. **Verify no broken imports**:
+   - Run `mise run verify` to catch any broken imports
+   - Check that no other modules import these types
+
+**Non-goals**:
+- No changes to fs/ context types
+- No vault storage schema migration (inode tables already exist)
+- No changes to note/schema/template contexts
+
+**Constraints**:
+- Preserve vault path safety invariants
+- Keep deterministic scan/compare behavior
+- No `unwrap()`/`panic!` in production paths
+
+**Done when**:
+- All five legacy types deleted from vault/model.rs
+- vault/mod.rs exports only inode-based types
+- All tests pass (`mise run verify`)
+- No remaining imports of deleted types
+
+### TDD Plan: Vault Legacy Type Deletion
+
+**Pre-flight**:
+
+1. Run `mise run test` to establish baseline
+2. Verify vault storage tests use inode-based types
+3. Identify all test files importing legacy types
+
+**Slice 1: Verify inode migration in processor**
+
+1. RED: Read vault/processor.rs — if still using VaultPath in function signatures, tests will need updating
+2. GREEN: Update processor to use NormalizedPath instead of VaultPath in internal logic
+3. REFACTOR: Ensure scan_files/prune_orphans use FileView/DirView throughout
+
+**Slice 2: Migrate test code**
+
+1. RED: Update tests/note_reader.rs to import NormalizedPath instead of VaultPath
+2. GREEN: Replace `VaultPath::try_new(...)` with `NormalizedPath::try_new(...)`
+3. REFACTOR: Verify test behavior unchanged (same validation, same path semantics)
+
+**Slice 3: Delete VaultPath**
+
+1. RED: Remove VaultPath struct and impl from vault/model.rs — dependent code breaks
+2. GREEN: Fix any remaining compilation errors by replacing with NormalizedPath
+3. REFACTOR: Remove from vault/mod.rs exports
+
+**Slice 4: Delete VaultFile and VaultFolder**
+
+1. RED: Remove VaultFile and VaultFolder structs from vault/model.rs
+2. GREEN: Verify no compilation errors (should be unused after processor migration)
+3. REFACTOR: Remove from vault/mod.rs exports
+
+**Slice 5: Delete PathParts and FolderParts**
+
+1. RED: Remove internal PathParts and FolderParts helper structs
+2. GREEN: Verify compilation (these are internal helpers for deleted types)
+3. REFACTOR: Clean up any orphaned helper functions
+
+**Verification**:
+
+- [ ] `mise run test:unit` passes
+- [ ] `mise run verify` passes (fmt, lint, tests)
+- [ ] No imports of `VaultPath`, `VaultFile`, `VaultFolder`, `PathParts`, `FolderParts` remain
+- [ ] vault/mod.rs exports only: `DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath`
+- [ ] Vault processor uses inode-based types throughout

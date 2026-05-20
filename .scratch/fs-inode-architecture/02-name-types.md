@@ -724,3 +724,326 @@ The `name.rs` refactor is complete. All critical issues from the post-implementa
 5. ✅ All tests passing, Clippy clean
 
 **Issue 08 (`FileInfo` → `FileMetadata` migration) can now proceed with a clean `name.rs` foundation.**
+
+---
+
+## Post-Completion Issue: FileName API Encourages Misuse
+
+**Category:** enhancement (API design)
+**Summary:** FileName provides too many convenience methods, encouraging use as primary API instead of FilePath/DirPath
+
+### Current Behavior
+
+**Problem:** FileName has too many convenience methods which encourage developers to use FileName directly instead of the path types (FilePath/DirPath) as the primary API:
+
+**FileName API Surface (lithos-core/src/fs/name.rs:14-87):**
+- `basename_str() -> &str` - extracts stem as string slice
+- `basename() -> Option<BaseName>` - extracts stem as owned type
+- `extension() -> Option<&str>` - extracts file extension
+- `as_path() -> &Path` - converts to Path reference
+- `as_str() -> &str` - string view (minimal API for storage)
+
+**Production Usage Patterns:**
+```rust
+// identifier.rs:320 - Direct FileName method usage
+let name = filename.basename_str();
+Self::try_new(name)
+
+// schema_processor.rs:1195 - FileName basename extraction
+.filename(path.as_path())
+.map(|f| f.basename_str().to_owned().into_boxed_str())
+
+// storage.rs:605 - FileName basename indexing
+table.insert(file.name().basename_str(), file.id())
+```
+
+**Why This Is Wrong:**
+1. **Bypasses Type Safety:** Developers work directly with `FileName`: `filename.basename_str()`, `filename.extension()`. This bypasses FilePath/DirPath type safety guarantees.
+2. **Inverted API Hierarchy:** PRD intended FilePath/DirPath as primary access points, name types as storage primitives only.
+3. **Encourages Allocations:** Methods like `basename_str()` return `&str` slices that often get immediately allocated (`.to_owned().into_boxed_str()`), defeating zero-copy design.
+4. **API Confusion:** Two basename methods (`basename_str()` and `basename()`) create confusion about which to use.
+
+### Desired Behavior
+
+**Primary API:** Developers primarily use path types with extraction methods:
+```rust
+// Preferred pattern
+file_path.basename() -> &str           // Zero-copy extraction
+file_path.extension() -> Option<&str>  // Zero-copy extraction
+file_path.filename() -> FileName       // When storage needed
+```
+
+**Minimal FileName API:**
+```rust
+impl FileName {
+    fn as_str(&self) -> &str           // Only method needed for storage/serialization
+    // Remove: basename_str(), basename(), extension(), as_path()
+}
+```
+
+**Extraction Delegation:** Path types know they have a filename component:
+```rust
+impl FilePath {
+    fn basename(&self) -> &str                // Infallible - FilePath guarantees filename exists
+    fn extension(&self) -> Option<&str>       // Zero-copy extraction
+    fn filename(&self) -> FileName            // When owned type needed
+}
+```
+
+**Zero-Copy Borrowing:** Use FileNameRef for borrowed views when possible:
+```rust
+impl FileNameRef<'_> {
+    fn as_str(&self) -> &str                  // Minimal borrowed view
+    // Extraction happens at path level, not name level
+}
+```
+
+### Impact Analysis (GitNexus)
+
+**FileName Usage Scope:**
+- **Risk Level:** MEDIUM
+- **Direct Call Sites:** 25 matches for `basename_str|\.extension\(` across 13 files
+- **Affected Contexts:** `schema`, `vault`, `template`, `fs`
+
+**Key Call Sites:**
+1. **`schema/identifier.rs:320`** - Direct `basename_str()` usage
+2. **`schema/schema_processor.rs:1195,1260,1298,1386,2053`** - 5× `basename_str()` pattern
+3. **`vault/storage.rs:605,756`** - Basename indexing in storage layer
+4. **`fs/path.rs:430,444`** - Extension checks (already on path type)
+
+**Path Type Extension Usage (Already Correct Pattern):**
+- `vault/model.rs:610` - `path.extension()`
+- `vault/processor.rs:41,445,600` - `path.extension()`
+- `note/paths.rs:62` - `normalized_path.extension()`
+- `fs/reader.rs:522` - `path.extension()`
+- `fs/scanner.rs:281` - `path.extension()`
+- `fs/validator.rs:223` - `path.extension()`
+- `fs/format.rs:77` - `path.extension()`
+
+**Observation:** Extension extraction is already primarily done via path types (8 call sites), not FileName methods. This validates the proposed API direction.
+
+### Acceptance Criteria
+
+- [ ] **Audit FileName usage** to find direct `basename_str()` / `basename()` / `extension()` / `as_path()` calls
+  - Grep results: 25 matches across 13 files
+  - Concentrated in: `schema/schema_processor.rs` (5×), `vault/storage.rs` (2×), `schema/identifier.rs` (1×)
+- [ ] **Migrate call sites** to use FilePath/DirPath extraction methods
+  - Pattern: `filename.basename_str()` → `file_path.basename()`
+  - Pattern: `filename.extension()` → `file_path.extension()` (many already correct)
+- [ ] **Remove convenience methods from FileName**
+  - Keep: `as_str()` (minimal storage API)
+  - Remove: `basename_str()`, `basename()`, `extension()`, `as_path()`
+- [ ] **Add extraction methods to FilePath/DirPath**
+  - `FilePath::basename(&self) -> &str` - infallible, FilePath guarantees filename exists
+  - `FilePath::extension(&self) -> Option<&str>` - zero-copy extraction
+  - Leverage internal `Path` for zero-copy operations
+- [ ] **Update FileNameRef API**
+  - Keep minimal borrowed view: `as_str()`
+  - No extraction methods (extraction happens at path level)
+- [ ] **All tests updated**
+  - Update test assertions using removed methods
+  - Add tests for new FilePath/DirPath extraction methods
+- [ ] **Documentation updated**
+  - Document correct usage patterns: "Use FilePath/DirPath for extraction, FileName for storage"
+  - Add examples showing preferred patterns
+  - Deprecation comments on removed methods during transition
+
+### Out of Scope
+
+- **Error type changes** (covered in Issue 08 - `FileInfo` → `FileMetadata` migration)
+- **Adding new name types** (DirName, BaseName are already complete)
+- **Changing storage format** (Box<str> is correct per Apollo Ch3)
+
+### TDD Plan
+
+Following vertical slice approach (one test → one implementation → repeat):
+
+#### Phase 1: Add FilePath Extraction Methods (New Capability)
+
+**RED:**
+```rust
+// lithos-core/src/fs/path.rs tests
+#[test]
+fn file_path_basename_extracts_stem() {
+    let path = FilePath::try_from("/vault/notes/my-note.md").unwrap();
+    assert_eq!(path.basename(), "my-note");
+}
+
+#[test]
+fn file_path_extension_extracts_ext() {
+    let path = FilePath::try_from("/vault/notes/my-note.md").unwrap();
+    assert_eq!(path.extension(), Some("md"));
+}
+```
+
+**GREEN:**
+```rust
+impl FilePath {
+    #[inline]
+    #[must_use]
+    pub fn basename(&self) -> &str {
+        self.0.file_stem()
+            .and_then(|s| s.to_str())
+            .expect("FilePath guarantees valid UTF-8 filename with stem")
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        self.0.extension().and_then(|s| s.to_str())
+    }
+}
+```
+
+**REFACTOR:** None yet - first tracer bullet complete.
+
+#### Phase 2: Migrate Call Sites (Behavior Preservation)
+
+**Call Site Priority (12 total):**
+1. `schema/identifier.rs:320` (1 site) - Critical path
+2. `schema/schema_processor.rs` (5 sites) - High frequency
+3. `vault/storage.rs` (2 sites) - Storage indexing
+4. Test files (4 sites) - Low risk
+
+**RED (for each call site):**
+```rust
+// Example: schema/identifier.rs:320
+#[test]
+fn identifier_from_path_uses_filepath_basename() {
+    let path = FilePath::try_from("/vault/notes/my-note.md").unwrap();
+    let id = Identifier::try_from_path(&path).unwrap();
+    assert_eq!(id.as_str(), "my-note");
+}
+```
+
+**GREEN:**
+```rust
+// schema/identifier.rs:320
+// OLD: let name = filename.basename_str();
+// NEW: let name = path.basename();
+pub fn try_from_path(path: &FilePath) -> Result<Self, IdentifierError> {
+    let name = path.basename();
+    Self::try_new(name)
+}
+```
+
+**REFACTOR:** Run all tests, verify behavior unchanged.
+
+**Repeat for each call site** (vertical slicing, one site at a time).
+
+#### Phase 3: Remove FileName Convenience Methods (API Restriction)
+
+**RED:**
+```rust
+// Compilation should fail after removal
+#[test]
+#[should_not_compile] // Using compiletest_rs or similar
+fn filename_basename_str_removed() {
+    let name = FileName::from("note.md".to_owned());
+    let _ = name.basename_str(); // Should not compile
+}
+```
+
+**GREEN:**
+```rust
+// lithos-core/src/fs/name.rs
+impl FileName {
+    // KEEP
+    pub fn as_str(&self) -> &str { &self.0 }
+
+    // REMOVE (comment out first to ensure tests fail)
+    // pub fn basename_str(&self) -> &str { ... }
+    // pub fn basename(&self) -> Option<BaseName> { ... }
+    // pub fn extension(&self) -> Option<&str> { ... }
+    // pub fn as_path(&self) -> &Path { ... }
+}
+```
+
+**REFACTOR:**
+- Remove commented-out methods permanently
+- Update module documentation
+- Add deprecation notes in CHANGELOG
+
+#### Phase 4: Verification (Evidence Before Assertions)
+
+**Verification Checklist:**
+- [ ] `mise run test` - All tests pass
+- [ ] `mise run lint` - Clippy clean
+- [ ] `mise run fmt` - Formatting consistent
+- [ ] `rg "\.basename_str\(\)" --type rust` - Zero matches
+- [ ] `rg "filename\.extension\(\)" --type rust` - Zero matches (except in name.rs tests)
+- [ ] `rg "filename\.as_path\(\)" --type rust` - Zero matches
+- [ ] Git diff review - Only intended changes
+
+### Migration Strategy
+
+**Step-by-step (Risk-Mitigated):**
+
+1. **Add new FilePath methods** (non-breaking addition)
+   - Tests first (RED), implementation (GREEN), verify (REFACTOR)
+   - Commit: "feat(fs): add basename/extension methods to FilePath"
+
+2. **Migrate call sites one file at a time** (preserving behavior)
+   - `schema/identifier.rs` → Commit + verify
+   - `schema/schema_processor.rs` → Commit + verify
+   - `vault/storage.rs` → Commit + verify
+   - Test files → Commit + verify
+
+3. **Remove FileName convenience methods** (breaking change, but no remaining usage)
+   - Comment out methods, run tests (should fail if any usage remains)
+   - Delete methods permanently
+   - Commit: "refactor(fs): restrict FileName API to storage primitive"
+
+4. **Update documentation** (clarity)
+   - Module-level docs in `fs/name.rs`
+   - Usage examples in `fs/path.rs`
+   - Commit: "docs(fs): document FilePath as primary extraction API"
+
+**Rollback Plan:** Each commit is independently revertible. If Phase 2 reveals unexpected coupling, can abort before Phase 3.
+
+### Apollo Rust Best Practices Compliance
+
+**Chapter 1 (API Design):**
+- ✅ Prefer explicit APIs: FilePath methods are explicit about path-level operations
+- ✅ Small interfaces: FileName reduced to single `as_str()` method
+- ✅ Return `&str` over `String`: All extraction methods return `&str` (zero-copy)
+
+**Chapter 3 (Performance):**
+- ✅ Zero-copy extraction: `basename()` and `extension()` operate on internal `Path` without allocation
+- ✅ Avoid unnecessary clones: Path methods leverage existing `Path` reference
+
+**Chapter 4 (Error Handling):**
+- ✅ `basename()` is infallible on FilePath (type guarantees filename exists)
+- ✅ `extension()` returns `Option` (explicit failure case)
+
+**Chapter 5 (Testing):**
+- ✅ Test public behavior: Tests verify extraction correctness through FilePath API
+- ✅ Behavior-focused names: `file_path_basename_extracts_stem`
+- ✅ One assertion per test: Each test verifies one extraction behavior
+
+### Open Questions for User
+
+1. **FileNameRef handling:** Should `FileNameRef` also lose extraction methods, or keep them for borrowed view use cases?
+   - Recommendation: Keep minimal API (`as_str()` only) for consistency
+
+2. **DirName API:** Should DirName follow same pattern (no extraction methods)?
+   - Recommendation: Yes, DirPath should be primary API for dirname operations
+
+3. **Transition period:** Should we deprecate methods first before removing?
+   - Recommendation: Direct removal is safe since this is pre-1.0 and all usage is internal
+
+4. **BaseName preservation:** Should `FileName::basename() -> Option<BaseName>` stay for owned type conversion?
+   - Recommendation: Remove it - use `FilePath::basename()` for `&str`, explicit `BaseName::try_from()` if owned needed
+
+### Related Issues
+
+- **Issue 08:** `FileInfo` → `FileMetadata` migration (blocked by this API cleanup)
+- **Post-Implementation Review (2026-05-13):** Identified API confusion with basename methods
+- **Phase 1 Refactor (Completed):** Consolidated basename API, removed dead conversions
+
+### Status
+
+**Status:** needs-triage
+**Priority:** HIGH - Blocks Issue 08, affects API design across contexts
+**Complexity:** MEDIUM - 25 call sites across 13 files, requires careful migration
+**Estimated Effort:** 3-4 hours with TDD discipline (4 phases × 1 hour each)
