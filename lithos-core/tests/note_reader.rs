@@ -42,7 +42,7 @@ mod tests {
             storage::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
-        vault::{VaultPath, VaultProcessor},
+        vault::{NormalizedPath, VaultProcessor},
     };
     use tempfile::TempDir;
 
@@ -397,7 +397,8 @@ mod tests {
         std::fs::remove_file(&drop_path).expect("remove drop note");
 
         let partial_paths = vec![
-            VaultPath::try_new("notes/keep.md").expect("partial vault path"),
+            NormalizedPath::try_new("notes/keep.md")
+                .expect("partial vault path"),
         ];
         let partial = VaultProcessor::new()
             .process_partial(db.as_ref(), &config, &partial_paths)

@@ -2,7 +2,7 @@
 title: 12-phase-4-old-code-cleanup
 category: enhancement
 label: ready-for-agent
-status: ready-for-agent
+status: completed
 date_created: 2026-05-11
 ---
 
@@ -38,9 +38,9 @@ ONLY after all Phase 3 subphases complete.
 
 The PRD specifies Phase 4 more broadly than this issue captured. Three items were lost between PRD → issue:
 
-- [ ] Delete old DirScanner.paths() returning `Vec<PathBuf>` (PRD §Phase 4)
-- [ ] Rename DirScanner.paths_typed() → paths() (PRD §Phase 4)
-- [ ] Rename DirScanner.entries_typed() → entries() (PRD §Phase 4 — entries_typed → entries renames done manually)
+- [x] Delete old DirScanner.paths() returning `Vec<PathBuf>` (PRD §Phase 4)
+- [x] Rename DirScanner.paths_typed() → paths() (PRD §Phase 4)
+- [x] Rename DirScanner.entries_typed() → entries() (PRD §Phase 4 — entries_typed → entries renames done manually)
 
 ## Post-hoc audit: blast radius for remaining work
 
@@ -385,8 +385,8 @@ These are primarily in test code and internal vault processor logic. The types a
 
 **Verification**:
 
-- [ ] `mise run test:unit` passes
-- [ ] `mise run verify` passes (fmt, lint, tests)
-- [ ] No imports of `VaultPath`, `VaultFile`, `VaultFolder`, `PathParts`, `FolderParts` remain
-- [ ] vault/mod.rs exports only: `DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath`
-- [ ] Vault processor uses inode-based types throughout
+- [x] `mise run test:unit` passes
+- [x] `mise run verify` passes (fmt, lint, tests)
+- [x] No imports of `VaultPath`, `VaultFile`, `VaultFolder`, `PathParts`, `FolderParts` remain
+- [x] vault/mod.rs exports only: `DirId, DirView, FileId, FileView, FsEntryView, NormalizedPath`
+- [x] Vault processor uses inode-based types throughout

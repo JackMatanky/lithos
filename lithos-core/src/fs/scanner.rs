@@ -97,36 +97,6 @@ impl DirScanner {
         &self.path
     }
 
-    /// Scans the directory and returns matching typed entries with metadata.
-    ///
-    /// Results are sorted by path alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ScanError` if directory traversal fails, pattern is
-    /// invalid, or metadata cannot be read.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use lithos_core::fs::scanner::{DirScanInput, DirScanner};
-    ///
-    /// let scanner = DirScanner::new("/vault");
-    /// let entries = scanner
-    ///     .entries(DirScanInput::new().with_extensions(&["toml", "yaml"]))?;
-    ///
-    /// for entry in entries {
-    ///     let Some(filename) = entry.filename() else {
-    ///         continue;
-    ///     };
-    ///     let metadata = entry.metadata();
-    ///     let Some(file_meta) = metadata.as_file() else {
-    ///         continue;
-    ///     };
-    ///     println!("{}: {} bytes", filename.as_str(), file_meta.size());
-    /// }
-    /// # Ok::<(), lithos_core::fs::error::ScanError>(())
-    /// ```
     /// Scans the directory and returns matching paths (File or Dir).
     ///
     /// Results are sorted by path alphabetically.
@@ -784,7 +754,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn paths_typed_returns_absolute_fs_paths() {
+        fn paths_returns_absolute_fs_paths() {
             let temp = TempDir::new().unwrap();
             write_file(temp.path(), "a.toml", b"");
             let root = temp.path().to_path_buf();

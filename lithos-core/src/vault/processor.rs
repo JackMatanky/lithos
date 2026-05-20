@@ -22,7 +22,7 @@ use crate::{
         storage::RedbRepository as NoteRepository,
     },
     vault::{
-        model::{DirId, DirView, FileId, FileView, NormalizedPath, VaultPath},
+        model::{DirId, DirView, FileId, FileView, NormalizedPath},
         storage::{RedbRepository as VaultRepository, Repository as _},
     },
 };
@@ -338,7 +338,7 @@ impl VaultProcessor<Discovery, Unknown> {
         self,
         db: &crate::db::Database,
         config: &Config,
-        paths: &[VaultPath],
+        paths: &[NormalizedPath],
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
         let repository = VaultRepository::new(db);
@@ -386,7 +386,7 @@ impl VaultProcessor<Discovery, Unknown> {
     fn discover_partial(
         self,
         source: &FsReader,
-        paths: &[VaultPath],
+        paths: &[NormalizedPath],
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
         let mut files = Vec::with_capacity(paths.len());
@@ -394,18 +394,17 @@ impl VaultProcessor<Discovery, Unknown> {
         let mut known_dirs = HashMap::<NormalizedPath, DirId>::new();
 
         for path in paths {
-            source.validate_path(path.as_path()).map_err(|error| {
-                VaultFileError::InvalidPath {
+            source.validate_path(Path::new(path.as_str())).map_err(
+                |error| VaultFileError::InvalidPath {
                     path: path.as_str().into(),
                     reason: error.to_string().into(),
-                }
-            })?;
-            let metadata =
-                source.std_metadata(path.as_path()).map_err(|error| {
-                    VaultFileError::MetadataFailed {
-                        path: path.as_str().into(),
-                        message: error.to_string().into(),
-                    }
+                },
+            )?;
+            let metadata = source
+                .std_metadata(Path::new(path.as_str()))
+                .map_err(|error| VaultFileError::MetadataFailed {
+                    path: path.as_str().into(),
+                    message: error.to_string().into(),
                 })?;
 
             let normalized =
@@ -421,7 +420,7 @@ impl VaultProcessor<Discovery, Unknown> {
                     .as_ref()
                     .and_then(|parent| known_dirs.get(parent))
                     .copied();
-                let name = last_component(path.as_path())?;
+                let name = last_component(Path::new(path.as_str()))?;
                 let dir = ScannedDir {
                     path: normalized.clone(),
                     view: DirView::new(
@@ -439,9 +438,8 @@ impl VaultProcessor<Discovery, Unknown> {
                     .as_ref()
                     .and_then(|parent| known_dirs.get(parent))
                     .copied();
-                let filename = last_component(path.as_path())?;
-                let format = path
-                    .as_path()
+                let filename = last_component(Path::new(path.as_str()))?;
+                let format = Path::new(path.as_str())
                     .extension()
                     .map_or(FileFormat::Unknown, FileFormat::from_extension);
                 files.push(ScannedFile {
