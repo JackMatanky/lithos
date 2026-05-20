@@ -2,7 +2,7 @@
 title: "Lithos Testing Docs"
 status: "active"
 owner: "engineering"
-last_updated: "2026-05-06"
+last_updated: "2026-05-20"
 source_of_truth:
   - "_bmad-output/test-developer-guide.md"
 scope: "Canonical index for active testing documentation"
@@ -17,6 +17,7 @@ This folder is the active, single-purpose testing documentation surface for Lith
 - [Testing Policy](./policy.md)
 - [Testing Commands](./commands.md)
 - [Unit Testing](./unit.md)
+- [Unit Test Naming](./unit-naming.md)
 - [Integration Testing](./integration.md)
 - [E2E Testing](./e2e.md)
 - [Safety and Determinism](./safety-determinism.md)
