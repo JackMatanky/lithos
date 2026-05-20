@@ -169,13 +169,13 @@ impl DirScanner {
         })?;
 
         if metadata.is_dir() {
-            DirPath::new(path.to_path_buf()).map(FsPath::Dir).map_err(|_e| {
-                ScanError::Path(PathError::InvalidUtf8(path.to_path_buf()))
-            })
+            DirPath::new(path.to_path_buf())
+                .map(FsPath::Dir)
+                .map_err(ScanError::from)
         } else {
-            FilePath::new(path.to_path_buf()).map(FsPath::File).map_err(|_e| {
-                ScanError::Path(PathError::InvalidUtf8(path.to_path_buf()))
-            })
+            FilePath::new(path.to_path_buf())
+                .map(FsPath::File)
+                .map_err(ScanError::from)
         }
     }
 

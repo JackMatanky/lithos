@@ -115,25 +115,15 @@ impl AsRef<Path> for FileName {
 }
 
 impl TryFrom<&Path> for FileName {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let name = path
             .file_name()
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path terminates in .. or is empty",
-                )
-            })?
+            .ok_or_else(|| super::PathError::NoFileName(path.to_path_buf()))?
             .to_str()
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Path contains invalid UTF-8",
-                )
-            })?;
+            .ok_or_else(|| super::PathError::InvalidUtf8(path.to_path_buf()))?;
 
         Ok(Self::new(name.into()))
     }
@@ -183,7 +173,7 @@ impl BaseName {
 }
 
 impl TryFrom<FileName> for BaseName {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(name: FileName) -> Result<Self, Self::Error> {
@@ -192,28 +182,20 @@ impl TryFrom<FileName> for BaseName {
             .and_then(|s| s.to_str())
             .map(|s| BaseName::new(s.into()))
             .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path has no stem component",
-                )
+                super::PathError::NoStem(Path::new(name.as_str()).to_path_buf())
             })
     }
 }
 
 impl TryFrom<&Path> for BaseName {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         path.file_stem()
             .and_then(|s| s.to_str())
             .map(|s| Self::new(s.into()))
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path has no stem component",
-                )
-            })
+            .ok_or_else(|| super::PathError::NoStem(path.to_path_buf()))
     }
 }
 

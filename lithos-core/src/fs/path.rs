@@ -69,7 +69,7 @@ impl RelativePath {
     /// Returns an error when a filename exists but cannot be represented as
     /// valid UTF-8.
     #[inline]
-    pub fn try_filename(&self) -> Result<Option<FileName>, std::io::Error> {
+    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
         match self.0.file_name() {
             Some(_) => FileName::try_from(self.0.as_path()).map(Some),
             None => Ok(None),
@@ -77,18 +77,12 @@ impl RelativePath {
     }
 
     /// Private helper to validate relative path invariants.
-    fn validate(path: &Path) -> Result<(), std::io::Error> {
+    fn validate(path: &Path) -> Result<(), super::PathError> {
         if path.as_os_str().is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path cannot be empty",
-            ));
+            return Err(super::PathError::Empty);
         }
         if path.is_absolute() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path must be relative",
-            ));
+            return Err(super::PathError::NotRelative(path.to_path_buf()));
         }
         let has_cur_dir = if let Some(s) = path.to_str() {
             s.split(['/', '\\']).any(|segment| segment == ".")
@@ -99,24 +93,21 @@ impl RelativePath {
         };
 
         if has_cur_dir {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path must not contain current directory components (.)",
+            return Err(super::PathError::CurrentDirComponent(
+                path.to_path_buf(),
             ));
         }
 
         for component in path.components() {
             match component {
                 Component::ParentDir => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain parent components (..)",
+                    return Err(super::PathError::ParentTraversal(
+                        path.to_path_buf(),
                     ));
                 }
                 Component::Prefix(_) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Path must not contain platform-specific prefixes",
+                    return Err(super::PathError::PlatformPrefix(
+                        path.to_path_buf(),
                     ));
                 }
                 Component::CurDir
@@ -129,7 +120,7 @@ impl RelativePath {
 }
 
 impl TryFrom<PathBuf> for RelativePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
@@ -138,7 +129,7 @@ impl TryFrom<PathBuf> for RelativePath {
 }
 
 impl TryFrom<&Path> for RelativePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
@@ -148,7 +139,7 @@ impl TryFrom<&Path> for RelativePath {
 }
 
 impl TryFrom<&str> for RelativePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -323,32 +314,26 @@ impl AbsolutePath {
     /// Returns an error when a filename exists but cannot be represented as
     /// valid UTF-8.
     #[inline]
-    pub fn try_filename(&self) -> Result<Option<FileName>, std::io::Error> {
+    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
         match self.0.file_name() {
             Some(_) => FileName::try_from(self.0.as_path()).map(Some),
             None => Ok(None),
         }
     }
 
-    fn validate(path: &Path) -> Result<(), std::io::Error> {
+    fn validate(path: &Path) -> Result<(), super::PathError> {
         if path.as_os_str().is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path cannot be empty",
-            ));
+            return Err(super::PathError::Empty);
         }
         if !path.is_absolute() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Path must be absolute: {}", path.to_string_lossy()),
-            ));
+            return Err(super::PathError::NotAbsolute(path.to_path_buf()));
         }
         Ok(())
     }
 }
 
 impl TryFrom<PathBuf> for AbsolutePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
@@ -357,7 +342,7 @@ impl TryFrom<PathBuf> for AbsolutePath {
 }
 
 impl TryFrom<&Path> for AbsolutePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
@@ -367,7 +352,7 @@ impl TryFrom<&Path> for AbsolutePath {
 }
 
 impl TryFrom<&str> for AbsolutePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -417,18 +402,12 @@ impl FilePath {
     /// # Errors
     /// Returns error if path is empty or does not refer to a file.
     #[inline]
-    pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
+    pub fn new(path: PathBuf) -> Result<Self, super::PathError> {
         if path.as_os_str().is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path cannot be empty",
-            ));
+            return Err(super::PathError::Empty);
         }
         if !path.is_file() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path does not refer to a file",
-            ));
+            return Err(super::PathError::NotAFile(path));
         }
         Ok(Self(path))
     }
@@ -459,7 +438,7 @@ impl FilePath {
 
         RelativePath::try_from(rel).map_err(|e| ReadError::Io {
             path: self.0.clone(),
-            source: e,
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e),
         })
     }
 
@@ -541,7 +520,7 @@ impl FilePath {
 }
 
 impl TryFrom<RelativePath> for FilePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
@@ -550,7 +529,7 @@ impl TryFrom<RelativePath> for FilePath {
 }
 
 impl TryFrom<&str> for FilePath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -598,18 +577,12 @@ impl DirPath {
     /// # Errors
     /// Returns error if path is empty or does not refer to a directory.
     #[inline]
-    pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
+    pub fn new(path: PathBuf) -> Result<Self, super::PathError> {
         if path.as_os_str().is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path cannot be empty",
-            ));
+            return Err(super::PathError::Empty);
         }
         if !path.is_dir() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path does not refer to a directory",
-            ));
+            return Err(super::PathError::NotADirectory(path));
         }
         Ok(Self(path))
     }
@@ -640,7 +613,7 @@ impl DirPath {
 
         RelativePath::try_from(rel).map_err(|e| ReadError::Io {
             path: self.0.clone(),
-            source: e,
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e),
         })
     }
 
@@ -721,7 +694,7 @@ impl DirPath {
 }
 
 impl TryFrom<RelativePath> for DirPath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
@@ -730,7 +703,7 @@ impl TryFrom<RelativePath> for DirPath {
 }
 
 impl TryFrom<&str> for DirPath {
-    type Error = std::io::Error;
+    type Error = super::PathError;
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -1010,7 +983,7 @@ mod tests {
                 let error = relative
                     .try_filename()
                     .expect_err("expected invalid utf-8 filename error");
-                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+                assert!(matches!(error, crate::fs::PathError::InvalidUtf8(_)));
             }
         }
 
@@ -1162,7 +1135,7 @@ mod tests {
                 let error = absolute
                     .try_filename()
                     .expect_err("expected invalid utf-8 filename error");
-                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+                assert!(matches!(error, crate::fs::PathError::InvalidUtf8(_)));
             }
         }
 

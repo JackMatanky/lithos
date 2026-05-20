@@ -447,18 +447,11 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError::Read`] if the path has no filename or the filename
+    /// Returns [`FsError::Path`] if the path has no filename or the filename
     /// is not valid UTF-8.
     #[inline]
     pub fn filename(&self, path: &Path) -> Result<FileName, FsError> {
-        use super::error::ReadError;
-
-        FileName::try_from(path).map_err(|source| {
-            FsError::Read(ReadError::Io {
-                path: path.to_path_buf(),
-                source,
-            })
-        })
+        Ok(FileName::try_from(path)?)
     }
 
     /// Validates a path using the internal validator.

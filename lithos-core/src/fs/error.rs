@@ -305,96 +305,119 @@ mod tests {
     mod parse_error {
         use super::*;
 
-        #[rstest]
-        #[case::json(ParseError::Json {
-            path: PathBuf::from("data.json"),
-            message: "unexpected token".into(),
-            line: Some(10),
-            column: Some(5),
-        }, "data.json")]
-        #[case::toml(ParseError::Toml {
-            path: PathBuf::from("config.toml"),
-            message: "invalid key".into(),
-            line: None,
-            column: None,
-        }, "config.toml")]
-        #[case::yaml(ParseError::Yaml {
-            path: PathBuf::from("data.yaml"),
-            message: "parse error".into(),
-            line: Some(5),
-            column: Some(10),
-        }, "data.yaml")]
-        fn includes_path_in_message(
-            #[case] error: ParseError,
-            #[case] expected_path: &str,
-        ) {
-            let msg = format!("{error}");
-            assert!(msg.contains(expected_path));
-        }
+        mod formatting {
+            use super::*;
 
-        #[test]
-        fn formats_unsupported_format_error_with_list() {
-            let error = ParseError::UnsupportedFormat {
-                path: PathBuf::from("data.xml"),
-                supported: &["json", "toml", "yaml"],
-            };
-            let msg = format!("{error}");
-            assert!(
-                msg.contains("json")
-                    && msg.contains("toml")
-                    && msg.contains("yaml")
-            );
+            #[rstest]
+            #[case::json(ParseError::Json {
+                path: PathBuf::from("data.json"),
+                message: "unexpected token".into(),
+                line: Some(10),
+                column: Some(5),
+            }, "data.json")]
+            #[case::toml(ParseError::Toml {
+                path: PathBuf::from("config.toml"),
+                message: "invalid key".into(),
+                line: None,
+                column: None,
+            }, "config.toml")]
+            #[case::yaml(ParseError::Yaml {
+                path: PathBuf::from("data.yaml"),
+                message: "parse error".into(),
+                line: Some(5),
+                column: Some(10),
+            }, "data.yaml")]
+            fn includes_path_in_message(
+                #[case] error: ParseError,
+                #[case] expected_path: &str,
+            ) {
+                let msg = format!("{error}");
+                assert!(msg.contains(expected_path));
+            }
+
+            #[test]
+            fn formats_unsupported_format_error_with_list() {
+                let error = ParseError::UnsupportedFormat {
+                    path: PathBuf::from("data.xml"),
+                    supported: &["json", "toml", "yaml"],
+                };
+                let msg = format!("{error}");
+                assert!(
+                    msg.contains("json")
+                        && msg.contains("toml")
+                        && msg.contains("yaml")
+                );
+            }
         }
     }
 
     mod path_validation_error {
         use super::*;
 
-        #[rstest]
-        #[case::empty(PathValidationError::EmptyPath, "empty")]
-        #[case::traversal(PathValidationError::PathTraversalError, "traversal")]
-        #[case::symlink(PathValidationError::SymlinkEscapeError, "symlink")]
-        fn formats_message_containing_expected_keyword(
-            #[case] error: PathValidationError,
-            #[case] keyword: &str,
-        ) {
-            let msg = format!("{error}").to_lowercase();
-            assert!(msg.contains(keyword), "Expected '{keyword}' in: {msg}");
-        }
+        mod formatting {
+            use super::*;
 
-        #[test]
-        fn formats_restricted_path_error_with_path() {
-            let error = PathValidationError::RestrictedPathError(
-                PathBuf::from(".git/config"),
-            );
-            assert!(format!("{error}").contains(".git/config"));
-        }
+            #[rstest]
+            #[case::empty(PathValidationError::EmptyPath, "empty")]
+            #[case::traversal(
+                PathValidationError::PathTraversalError,
+                "traversal"
+            )]
+            #[case::symlink(PathValidationError::SymlinkEscapeError, "symlink")]
+            fn formats_message_containing_expected_keyword(
+                #[case] error: PathValidationError,
+                #[case] keyword: &str,
+            ) {
+                let msg = format!("{error}").to_lowercase();
+                assert!(
+                    msg.contains(keyword),
+                    "Expected '{keyword}' in: {msg}"
+                );
+            }
 
-        #[test]
-        fn formats_invalid_extension_error_with_required() {
-            let error = PathValidationError::InvalidExtension {
-                path: PathBuf::from("note.txt"),
-                required: "md".into(),
-            };
-            let msg = format!("{error}");
-            assert!(msg.contains("note.txt") && msg.contains(".md"));
-        }
+            #[test]
+            fn formats_restricted_path_error_with_path() {
+                let error = PathValidationError::RestrictedPathError(
+                    PathBuf::from(".git/config"),
+                );
+                assert!(format!("{error}").contains(".git/config"));
+            }
 
-        #[test]
-        fn formats_relative_root_error_with_path() {
-            let error = PathValidationError::RelativeRoot(PathBuf::from(
-                "relative/path",
-            ));
-            let msg = format!("{error}");
-            assert!(msg.contains("relative/path") && msg.contains("absolute"));
+            #[test]
+            fn formats_invalid_extension_error_with_required() {
+                let error = PathValidationError::InvalidExtension {
+                    path: PathBuf::from("note.txt"),
+                    required: "md".into(),
+                };
+                let msg = format!("{error}");
+                assert!(msg.contains("note.txt") && msg.contains(".md"));
+            }
+
+            #[test]
+            fn formats_relative_root_error_with_path() {
+                let error = PathValidationError::RelativeRoot(PathBuf::from(
+                    "relative/path",
+                ));
+                let msg = format!("{error}");
+                assert!(
+                    msg.contains("relative/path") && msg.contains("absolute")
+                );
+            }
         }
     }
 
     mod path_error {
         use super::*;
 
-        mod display_messages {
+        mod formatting {
             use super::*;
+
+            #[test]
+            fn formats_empty_without_path_context() {
+                let error = PathError::Empty;
+                let msg = format!("{error}");
+                assert!(msg.to_lowercase().contains("empty"));
+            }
 
             #[test]
             fn formats_not_a_file_with_path() {
@@ -516,7 +539,7 @@ mod tests {
     mod read_error {
         use super::*;
 
-        mod display_messages {
+        mod formatting {
             use super::*;
 
             #[test]
@@ -558,7 +581,7 @@ mod tests {
     mod scan_error {
         use super::*;
 
-        mod display_messages {
+        mod formatting {
             use super::*;
 
             #[test]
@@ -621,8 +644,11 @@ mod tests {
             #[test]
             fn converts_from_path_error_automatically() {
                 let path_error = PathError::NotAFile(PathBuf::from("file"));
-                let _scan_error: ScanError = path_error.into();
-                // Compilation success proves the #[from] conversion works
+                let scan_error: ScanError = path_error.into();
+                assert!(matches!(
+                    scan_error,
+                    ScanError::Path(PathError::NotAFile(_))
+                ));
             }
         }
 
@@ -666,14 +692,22 @@ mod tests {
                         "not found",
                     ),
                 };
-                let _fs_error: FsError = read_error.into();
+                let fs_error: FsError = read_error.into();
+                assert!(matches!(
+                    fs_error,
+                    FsError::Read(ReadError::Io { .. })
+                ));
             }
 
             #[test]
             fn converts_from_scan_error_automatically() {
                 let scan_error =
                     ScanError::UnsupportedEntryType(PathBuf::from("/dev/null"));
-                let _fs_error: FsError = scan_error.into();
+                let fs_error: FsError = scan_error.into();
+                assert!(matches!(
+                    fs_error,
+                    FsError::Scan(ScanError::UnsupportedEntryType(_))
+                ));
             }
 
             #[test]
@@ -684,19 +718,28 @@ mod tests {
                     line: None,
                     column: None,
                 };
-                let _fs_error: FsError = parse_error.into();
+                let fs_error: FsError = parse_error.into();
+                assert!(matches!(
+                    fs_error,
+                    FsError::Parse(ParseError::Json { .. })
+                ));
             }
 
             #[test]
             fn converts_from_path_error_automatically() {
                 let path_error = PathError::Empty;
-                let _fs_error: FsError = path_error.into();
+                let fs_error: FsError = path_error.into();
+                assert!(matches!(fs_error, FsError::Path(PathError::Empty)));
             }
 
             #[test]
             fn converts_from_validation_error_automatically() {
                 let validation_error = PathValidationError::EmptyPath;
-                let _fs_error: FsError = validation_error.into();
+                let fs_error: FsError = validation_error.into();
+                assert!(matches!(
+                    fs_error,
+                    FsError::Validation(PathValidationError::EmptyPath)
+                ));
             }
         }
     }
