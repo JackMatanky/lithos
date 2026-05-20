@@ -949,3 +949,510 @@ impl From<crate::fs::ReadError> for NoteIngestError {
 
 **Next Action:**
 Phase 3.3 — Replace dummy-path hack in note/error.rs with proper `From<ReadError>`.
+
+---
+
+## Agent Brief - Phase 2.5: Path and Name Constructor Error Types
+
+**Category:** bug (blocking issue completion)
+
+**Summary:** Complete fs-error-redesign by migrating path.rs and name.rs constructors from std::io::Error to PathError
+
+### Current Behavior
+
+**path.rs constructors still return std::io::Error:**
+- `RelativePath::try_from` (lines 80-128, 132-148): Returns `std::io::Error` with InvalidInput messages
+  - Empty path → `io::Error::new(InvalidInput, "Path cannot be empty")`
+  - Absolute path → `io::Error::new(InvalidInput, "Path must be relative")`
+  - Current dir component → `io::Error::new(InvalidInput, "Path must not contain current directory components (.)")`
+  - Parent traversal → `io::Error::new(InvalidInput, "Path must not contain parent components (..)")`
+  - Platform prefix → `io::Error::new(InvalidInput, "Path must not contain platform-specific prefixes")`
+
+- `AbsolutePath::try_from` (lines 238-252, 256-281): Returns `std::io::Error`
+  - Empty path → `io::Error::new(InvalidInput, "Path cannot be empty")`
+  - Relative path → `io::Error::new(InvalidInput, "Path must be absolute: {path}")`
+
+- `FilePath::new` (lines 325-339): Returns `std::io::Error`
+  - Empty path → `io::Error::new(InvalidInput, "Path cannot be empty")`
+  - Not a file → `io::Error::new(InvalidInput, "Path does not refer to a file")`
+
+- `DirPath::new` (lines 506-520): Returns `std::io::Error`
+  - Empty path → `io::Error::new(InvalidInput, "Path cannot be empty")`
+  - Not a directory → `io::Error::new(InvalidInput, "Path does not refer to a directory")`
+
+**name.rs constructors still return std::io::Error:**
+- `FileName::try_from(&Path)` (lines 117-140): Returns `std::io::Error`
+  - No filename → `io::Error::new(InvalidInput, "Path terminates in .. or is empty")`
+  - Invalid UTF-8 → `io::Error::new(InvalidData, "Path contains invalid UTF-8")`
+
+- `BaseName::try_from(FileName)` (lines 185-200): Returns `std::io::Error`
+  - No stem → `io::Error::new(InvalidInput, "Path has no stem component")`
+
+- `BaseName::try_from(&Path)` (lines 203-218): Returns `std::io::Error`
+  - No stem → `io::Error::new(InvalidInput, "Path has no stem component")`
+
+**This violates ADR 017's error hierarchy design:**
+- ADR 017 specifies PathError with 11 self-documenting variants for path construction
+- Current io::Error strings discard semantic information
+- entry.rs wraps io::Error in PathError (lines 365, 546), losing context
+- Causes cascading problems in issues 09, 10, 11, 12
+
+### Desired Behavior
+
+**All path constructors return PathError:**
+- `RelativePath::validate()` → Use PathError variants directly
+  - Empty → `PathError::Empty`
+  - Absolute → `PathError::NotRelative(path.to_path_buf())`
+  - Current dir → `PathError::CurrentDirComponent(path.to_path_buf())`
+  - Parent traversal → `PathError::ParentTraversal(path.to_path_buf())`
+  - Platform prefix → `PathError::PlatformPrefix(path.to_path_buf())`
+
+- `AbsolutePath::validate()` → Use PathError variants
+  - Empty → `PathError::Empty`
+  - Relative → `PathError::NotAbsolute(path.to_path_buf())`
+
+- `FilePath::new()` → Use PathError variants
+  - Empty → `PathError::Empty`
+  - Not a file → `PathError::NotAFile(path.clone())`
+
+- `DirPath::new()` → Use PathError variants
+  - Empty → `PathError::Empty`
+  - Not a directory → `PathError::NotADirectory(path.clone())`
+
+**All name constructors return PathError:**
+- `FileName::try_from` → Use PathError variants
+  - No filename → `PathError::NoFileName(path.to_path_buf())`
+  - Invalid UTF-8 → `PathError::InvalidUtf8(path.to_path_buf())`
+
+- `BaseName::try_from` → Use PathError variants
+  - No stem (from FileName) → `PathError::NoStem(PathBuf::from(name.as_str()))`
+  - No stem (from &Path) → `PathError::NoStem(path.to_path_buf())`
+
+**Error messages preserve full context:**
+- Path included in all variants (PathBuf stored in enum)
+- Display impl formats contextual messages automatically
+- No information loss when propagating via `?`
+
+**entry.rs propagates PathError cleanly:**
+- `ScanError::Path(#[from])` auto-converts PathError → ScanError
+- No manual wrapping via `map_err(|e| ReadError::Io { source: e })`
+- Direct propagation: `FilePath::new(path)?` just works
+
+### Key Interfaces
+
+**path.rs return type changes:**
+```rust
+// Current:
+impl TryFrom<PathBuf> for RelativePath {
+    type Error = std::io::Error;  // ❌
+}
+
+// After migration:
+impl TryFrom<PathBuf> for RelativePath {
+    type Error = PathError;  // ✅
+}
+
+// Similar for AbsolutePath, FilePath::new, DirPath::new
+```
+
+**name.rs return type changes:**
+```rust
+// Current:
+impl TryFrom<&Path> for FileName {
+    type Error = std::io::Error;  // ❌
+}
+
+// After migration:
+impl TryFrom<&Path> for FileName {
+    type Error = PathError;  // ✅
+}
+
+// Similar for BaseName variants
+```
+
+### Acceptance Criteria
+
+- [ ] `RelativePath::try_from` returns `Result<Self, PathError>`
+  - [ ] `validate()` constructs PathError variants (Empty, NotRelative, CurrentDirComponent, ParentTraversal, PlatformPrefix)
+  - [ ] All call sites updated (see Impact Analysis below)
+
+- [ ] `AbsolutePath::try_from` returns `Result<Self, PathError>`
+  - [ ] `validate()` constructs PathError variants (Empty, NotAbsolute)
+  - [ ] All call sites updated
+
+- [ ] `FilePath::new` returns `Result<Self, PathError>`
+  - [ ] Constructs PathError::Empty or PathError::NotAFile
+  - [ ] All call sites updated (scanner.rs line 206, path.rs tests)
+
+- [ ] `DirPath::new` returns `Result<Self, PathError>`
+  - [ ] Constructs PathError::Empty or PathError::NotADirectory
+  - [ ] All call sites updated (scanner.rs line 202, path.rs tests)
+
+- [ ] `FileName::try_from` returns `Result<Self, PathError>`
+  - [ ] Constructs PathError::NoFileName or PathError::InvalidUtf8
+  - [ ] All call sites updated (path.rs line 74/233, reader.rs line 456, name.rs line 64)
+
+- [ ] `BaseName::try_from` (both variants) return `Result<Self, PathError>`
+  - [ ] Constructs PathError::NoStem
+  - [ ] All call sites updated (path.rs line 423, name.rs lines 193, 355, 362, 373, 380)
+
+- [ ] `path.rs` lines 365 & 546 updated
+  - [ ] Remove `map_err(|e| ReadError::Io { path, source: e })`
+  - [ ] `RelativePath::try_from(rel)?` propagates directly (ScanError::Path auto-converts)
+
+- [ ] `scanner.rs` lines 202 & 206 updated
+  - [ ] Remove `map_err(|_e| ScanError::Path(...))`
+  - [ ] `DirPath::new(path)?` and `FilePath::new(path)?` propagate directly
+
+- [ ] All tests updated and passing
+  - [ ] path.rs tests expect `PathError` variants
+  - [ ] name.rs tests expect `PathError` variants
+  - [ ] Integration tests in scanner.rs, entry.rs work with new types
+
+- [ ] `mise run verify` passes
+  - [ ] All 1157 unit tests pass
+  - [ ] No clippy warnings
+  - [ ] ADR 017 implementation complete
+
+### Out of Scope
+
+- Changing whether FilePath/DirPath perform filesystem I/O (design decision for later)
+- Adding new error variants to PathError (11 variants are sufficient per ADR 017)
+- Changing FsError hierarchy or other error types
+- Modifying PathValidationError (unchanged per ADR 017)
+
+### Impact Analysis (GitNexus)
+
+**Symbols analyzed:**
+- `Struct:lithos-core/src/fs/path.rs:RelativePath`
+- `Struct:lithos-core/src/fs/path.rs:FilePath`
+- `Struct:lithos-core/src/fs/path.rs:DirPath`
+- `Struct:lithos-core/src/fs/name.rs:FileName`
+
+**Impact summary:**
+- `RelativePath`: 0 direct callers (used via TryFrom trait)
+- `FilePath`: 3 impacted symbols (d=1: DirPath.join_file; d=2: test + config usage)
+- `DirPath`: 3 impacted symbols (d=1: DirPath.join_dir; d=2: test + config usage)
+- `FileName`: 0 direct callers (used via TryFrom trait)
+
+**Risk: LOW**
+- Compiler enforces all call site migrations
+- No execution flows affected (no processes returned by GitNexus)
+- All changes confined to fs/ module internal methods
+- Zero cross-module dependencies at symbol level
+
+**Call site inventory (from grep):**
+
+**RelativePath::try_from call sites (56 total):**
+- schema/: 21 sites (all in tests, using `.unwrap()`)
+- config/: 0 sites (no direct usage)
+- note/: 0 sites (no direct usage)
+- vault/: 0 sites (no direct usage)
+- fs/: 35 sites
+  - path.rs lines 365, 546: **CRITICAL** — currently wrapping in ReadError::Io
+  - path.rs lines 845-905: 13 test sites (expect io::Error)
+  - schema_processor.rs: 3 sites (`.map_err()` handling)
+  - discovery.rs: 2 sites (`let Ok(path) = RelativePath::try_from(...)`)
+  - builder.rs: 1 site (`.map_err()` handling)
+
+**AbsolutePath::try_from call sites (8 total):**
+- All in path.rs tests (lines 915-961)
+- All use `.unwrap()` or `assert!(result.is_err())`
+
+**FilePath::new call sites (22 total):**
+- fs/scanner.rs line 206: **CRITICAL** — currently `map_err(|_e| ScanError::Path(...))`
+- fs/path.rs lines 981-1079: 21 test sites (expect io::Error)
+
+**DirPath::new call sites (5 total):**
+- fs/scanner.rs line 202: **CRITICAL** — currently `map_err(|_e| ScanError::Path(...))`
+- fs/path.rs lines 1093-1104: 4 test sites (expect io::Error)
+
+**FileName::try_from call sites (7 total):**
+- fs/path.rs lines 74, 233: Used in try_filename() (returns io::Error)
+- fs/reader.rs line 456: **CRITICAL** — wrapped in `map_err(|source| FsError::Path(source))`
+- fs/name.rs line 64: Used in basename() (returns Option)
+
+**BaseName::try_from call sites (6 total):**
+- fs/path.rs line 423: Used in basename() (returns Option)
+- fs/name.rs lines 193, 355, 362, 373, 380: Internal usage and tests
+
+### TDD Plan (Vertical Slices)
+
+**Prerequisites:**
+- [x] PathError already defined with 11 variants (Phase 1 complete)
+- [x] `#[from]` conversions already in place (PathError → ScanError, PathError → FsError)
+
+**Slice 1: RelativePath::validate() → PathError**
+
+RED:
+```rust
+// path.rs line 80
+fn validate(path: &Path) -> Result<(), PathError> {  // Change return type
+    if path.as_os_str().is_empty() {
+        return Err(PathError::Empty);  // Change error construction
+    }
+    // ... more changes
+}
+```
+- Observe compile errors at TryFrom impl sites (type Error mismatch)
+- Observe compile errors at lines 365, 546 (map_err expects io::Error)
+- Observe compile errors in path.rs tests (io::Error assertions fail)
+
+GREEN:
+- Update `impl TryFrom<PathBuf> for RelativePath` (line 132): `type Error = PathError`
+- Update `impl TryFrom<&Path> for RelativePath` (line 141): `type Error = PathError`
+- Update `impl TryFrom<&str> for RelativePath` (line 150): `type Error = PathError`
+- Update all 5 error construction sites in `validate()` to use PathError variants
+- Update lines 365, 546: Remove `map_err` wrapping (PathError propagates via #[from])
+- Update path.rs tests (lines 845-905): Match on `PathError` variants instead of `io::Error`
+
+VERIFY:
+```bash
+cargo test --lib fs::path::tests::relative_path_validation
+```
+
+**Slice 2: AbsolutePath::validate() → PathError**
+
+RED:
+```rust
+// path.rs line 238
+fn validate(path: &Path) -> Result<(), PathError> {
+    if path.as_os_str().is_empty() {
+        return Err(PathError::Empty);
+    }
+    if !path.is_absolute() {
+        return Err(PathError::NotAbsolute(path.to_path_buf()));
+    }
+    Ok(())
+}
+```
+- Observe compile errors at TryFrom impl sites
+
+GREEN:
+- Update `impl TryFrom<PathBuf> for AbsolutePath` (line 256): `type Error = PathError`
+- Update `impl TryFrom<&Path> for AbsolutePath` (line 265): `type Error = PathError`
+- Update `impl TryFrom<&str> for AbsolutePath` (line 275): `type Error = PathError`
+- Update 2 error construction sites in `validate()`
+- Update path.rs tests (lines 915-961): Match on `PathError` variants
+
+VERIFY:
+```bash
+cargo test --lib fs::path::tests::absolute_path_validation
+```
+
+**Slice 3: FilePath::new() → PathError**
+
+RED:
+```rust
+// path.rs line 325
+pub fn new(path: PathBuf) -> Result<Self, PathError> {
+    if path.as_os_str().is_empty() {
+        return Err(PathError::Empty);
+    }
+    if !path.is_file() {
+        return Err(PathError::NotAFile(path));
+    }
+    Ok(Self(path))
+}
+```
+- Observe compile errors at scanner.rs line 206, path.rs tests
+
+GREEN:
+- Update return type signature
+- Update 2 error construction sites
+- Update scanner.rs line 206: Remove `map_err` (PathError → ScanError via #[from])
+- Update path.rs tests (lines 981-1079): Match on `PathError` variants
+
+VERIFY:
+```bash
+cargo test --lib fs::path::tests::file_path
+cargo test --lib fs::scanner
+```
+
+**Slice 4: DirPath::new() → PathError**
+
+RED:
+```rust
+// path.rs line 506
+pub fn new(path: PathBuf) -> Result<Self, PathError> {
+    if path.as_os_str().is_empty() {
+        return Err(PathError::Empty);
+    }
+    if !path.is_dir() {
+        return Err(PathError::NotADirectory(path));
+    }
+    Ok(Self(path))
+}
+```
+- Observe compile errors at scanner.rs line 202, path.rs tests
+
+GREEN:
+- Update return type signature
+- Update 2 error construction sites
+- Update scanner.rs line 202: Remove `map_err`
+- Update path.rs tests (lines 1093-1104): Match on `PathError` variants
+
+VERIFY:
+```bash
+cargo test --lib fs::path::tests::dir_path
+cargo test --lib fs::scanner
+```
+
+**Slice 5: FileName::try_from(&Path) → PathError**
+
+RED:
+```rust
+// name.rs line 121
+fn try_from(path: &Path) -> Result<Self, Self::Error> {
+    let name = path
+        .file_name()
+        .ok_or(PathError::NoFileName(path.to_path_buf()))?
+        .to_str()
+        .ok_or(PathError::InvalidUtf8(path.to_path_buf()))?;
+    Ok(Self::new(name.into()))
+}
+```
+- Observe compile errors at path.rs lines 74, 233 (try_filename wraps io::Error)
+- Observe compile errors at reader.rs line 456 (map_err expects io::Error)
+
+GREEN:
+- Update `impl TryFrom<&Path> for FileName` (line 118): `type Error = PathError`
+- Update 2 error construction sites
+- Update path.rs lines 72-77: Change `try_filename()` signature to `Result<Option<FileName>, PathError>`
+- Update path.rs lines 231-236: Same for AbsolutePath::try_filename()
+- Update reader.rs line 456: Remove `map_err` wrapping (PathError → FsError via #[from])
+- Update name.rs tests: Match on `PathError` variants
+
+VERIFY:
+```bash
+cargo test --lib fs::name::tests::filename
+cargo test --lib fs::reader::tests::filename
+```
+
+**Slice 6: BaseName::try_from → PathError**
+
+RED:
+```rust
+// name.rs lines 189-200, 207-218
+impl TryFrom<FileName> for BaseName {
+    type Error = PathError;
+    fn try_from(name: FileName) -> Result<Self, Self::Error> {
+        Path::new(name.as_str())
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| BaseName::new(s.into()))
+            .ok_or(PathError::NoStem(PathBuf::from(name.as_str())))
+    }
+}
+
+impl TryFrom<&Path> for BaseName {
+    type Error = PathError;
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| Self::new(s.into()))
+            .ok_or(PathError::NoStem(path.to_path_buf()))
+    }
+}
+```
+- Observe compile errors at path.rs line 423, name.rs internal usage
+
+GREEN:
+- Update both `impl TryFrom` error types
+- Update 2 error construction sites
+- Update name.rs tests: Match on `PathError` variants
+
+VERIFY:
+```bash
+cargo test --lib fs::name::tests::basename
+```
+
+**Slice 7: Integration & Finalization**
+
+GREEN:
+- Run full test suite: `mise run test`
+- Run clippy: `mise run lint`
+- Run formatter: `mise run fmt`
+- Run full verification: `mise run verify`
+
+VERIFY:
+- All 1157 unit tests pass
+- Zero clippy warnings
+- ADR 017 acceptance criteria met
+
+### Test Organization
+
+**Existing tests to update:**
+- `fs/path.rs::tests::relative_path_validation` (lines 843-905): 9 tests
+- `fs/path.rs::tests::absolute_path_validation` (lines 913-961): 6 tests
+- `fs/path.rs::tests::file_path` (lines 979-1079): 13 tests
+- `fs/path.rs::tests::dir_path` (lines 1091-1104): 3 tests
+- `fs/name.rs::tests` (lines 345-385): 6 tests
+
+**Test update pattern:**
+```rust
+// Before (OLD):
+let result = RelativePath::try_from(PathBuf::from(""));
+assert!(result.is_err());
+let err = result.unwrap_err();
+assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+// After (NEW):
+let result = RelativePath::try_from(PathBuf::from(""));
+assert!(matches!(result, Err(PathError::Empty)));
+```
+
+**Behavioral focus:**
+- Tests verify public interface behavior (construction succeeds/fails)
+- Tests match on PathError variants (not error strings)
+- Tests survive internal refactors (no testing implementation details)
+- One assertion per test where possible
+
+### Verification Commands
+
+```bash
+# Per-module verification (run after each slice)
+cargo test --lib fs::path::tests::relative_path_validation
+cargo test --lib fs::path::tests::absolute_path_validation
+cargo test --lib fs::path::tests::file_path
+cargo test --lib fs::path::tests::dir_path
+cargo test --lib fs::name::tests::filename
+cargo test --lib fs::name::tests::basename
+cargo test --lib fs::scanner
+cargo test --lib fs::reader
+
+# Full verification (run at end)
+mise run verify  # fmt + lint + tests + adr:validate
+```
+
+### Risks & Mitigations
+
+**Risk 1: Breaking schema/config/note consumers**
+- *Mitigation*: All consumer sites use `.unwrap()` in tests or have `map_err()` handlers. Compiler enforces exhaustive match. Zero production propagation sites.
+
+**Risk 2: PathError propagation breaks with #[from]**
+- *Mitigation*: `ScanError::Path(#[from] PathError)` and `FsError::Path(#[from] PathError)` already defined in Phase 1. Auto-conversions tested (scan_error::conversions, fs_error::conversions).
+
+**Risk 3: FilePath/DirPath I/O semantics change**
+- *Mitigation*: Out of scope. Only error types change; `.is_file()`/`.is_dir()` calls remain. Future ADR can decide whether to remove I/O from constructors.
+
+**Risk 4: Test churn due to error matching changes**
+- *Mitigation*: Vertical slices ensure one module at a time. Each slice verified before moving to next. Pattern matching on PathError variants is simpler than io::Error kind checks.
+
+### Success Criteria
+
+✅ All 6 constructor methods return `PathError` instead of `std::io::Error`
+✅ All 156 call sites updated and compiling
+✅ path.rs lines 365, 546 remove `map_err` wrapping (direct propagation)
+✅ scanner.rs lines 202, 206 remove `map_err` wrapping (direct propagation)
+✅ reader.rs line 456 removes `map_err` wrapping (direct propagation)
+✅ All 40 path/name tests updated to match PathError variants
+✅ All tests pass (`mise run test`)
+✅ Zero clippy warnings (`mise run lint`)
+✅ ADR 017 Phase 2 complete (all fs/ module return types migrated)
+
+---
+
+## Next Action
+
+Phase 2.5 — Migrate path.rs and name.rs constructors from `std::io::Error` to `PathError` using TDD vertical slices (7 slices total, ~2 hours estimated).
