@@ -180,3 +180,176 @@ Use vertical-slice TDD with behavior-first tests through public interfaces, and 
 - Deterministic assertions for helper outputs and normalization.
 - Error-path tests for invalid IDs/paths.
 - rkyv archive roundtrip coverage for new model types.
+
+## Post-Review: Move NormalizedPath to fs/path.rs
+
+> *Added 2026-05-20 after agent review.*
+
+### Context
+
+The acceptance criteria for this issue include `NormalizedPath` as a vault model type. However, review reveals that:
+
+1. **NormalizedPath is currently in vault/model.rs** (line 125-149)
+2. **NormalizedPath should belong in fs/path.rs** — it's a general-purpose validated path type, not vault-specific
+3. **fs/path.rs already contains RelativePath** — a validated vault-relative path with similar invariants
+
+NormalizedPath and RelativePath have overlapping responsibilities:
+
+**NormalizedPath** (vault/model.rs:125):
+- Normalized vault-relative path using forward slashes
+- Validates with `PathValidator::validate_vault_path`
+- Returns string via `as_str() -> &str`
+- Stores `Box<str>` (string-based)
+
+**RelativePath** (fs/path.rs:37):
+- Validated vault-relative path
+- Enforces: relative, no `..`, no `.`, not empty
+- Returns path via `as_path() -> &Path`
+- Stores `PathBuf` (path-based)
+
+### GitNexus Impact Analysis
+
+Ran `gitnexus_impact` for NormalizedPath (2026-05-20):
+
+**Result**: **ZERO upstream dependencies** in knowledge graph:
+- NormalizedPath: 0 direct callers, 0 processes affected, risk: LOW
+
+**Caveat**: Manual grep shows actual usage:
+
+```
+lithos-core/src/vault/mod.rs:33: pub use model::{...NormalizedPath...}
+lithos-core/src/vault/processor.rs:25: use model::{...NormalizedPath...}
+lithos-core/src/vault/processor.rs:857,870: -> Result<NormalizedPath, VaultFileError>
+```
+
+NormalizedPath is used in vault processor's internal path normalization logic (functions `normalize_path` and `normalize_parent`).
+
+### Decision: Move or Keep?
+
+Two options:
+
+**Option A: Move NormalizedPath to fs/path.rs**
+- Pro: Path validation belongs in fs/ context (per CONTEXT.md: "Path validation is required before filesystem access")
+- Pro: Consolidates path types in one module (RelativePath, AbsolutePath, NormalizedPath)
+- Pro: Makes NormalizedPath reusable across contexts (not just vault)
+- Con: Requires updating imports in vault/processor.rs and vault/mod.rs
+- Con: Need to decide how NormalizedPath relates to RelativePath (are they redundant?)
+
+**Option B: Keep NormalizedPath in vault/model.rs, consolidate with RelativePath later**
+- Pro: Minimal changes, issue acceptance criteria already met
+- Pro: Defer path type consolidation to separate refactor issue
+- Con: Path types remain split across fs/ and vault/ contexts
+- Con: Violates fs/ context boundary ("path validation before filesystem access")
+
+**Recommendation**: **Option A** — move to fs/path.rs. The FS context owns path validation (per CONTEXT.md), and NormalizedPath is fundamentally a validated path type, not a vault-specific domain concept.
+
+### Agent Brief: Move NormalizedPath to fs/path.rs
+
+**Outcome**: Relocate NormalizedPath from vault/model.rs to fs/path.rs, making it available as a general-purpose validated path type.
+
+**Scope**:
+
+1. **Move type definition**:
+   - Cut NormalizedPath struct and impl from vault/model.rs (lines 121-149)
+   - Paste into fs/path.rs (after RelativePath, before AbsolutePath if present)
+   - Update internal imports: change `VaultPathError` to appropriate fs error type
+   - Update `PathValidator::validate_vault_path` call (already uses fs validator)
+
+2. **Update imports**:
+   - vault/model.rs: add `use crate::fs::NormalizedPath;`
+   - vault/processor.rs: change `use model::{...NormalizedPath...}` to `use crate::fs::NormalizedPath;`
+   - vault/mod.rs: update exports — either:
+     - Re-export from fs: `pub use crate::fs::NormalizedPath;`
+     - Or remove from vault exports entirely (breaking change)
+
+3. **Update error handling**:
+   - NormalizedPath currently returns `VaultPathError` on validation failure
+   - After move, should return fs-context error type (likely `FsError` or path-specific variant)
+   - Update vault/processor.rs call sites to convert error type if needed
+
+4. **Update tests**:
+   - Check if NormalizedPath has tests in vault/model.rs
+   - Move tests to fs/path.rs test module
+   - Verify behavior unchanged
+
+5. **Verify fs/path.rs structure**:
+   - NormalizedPath should fit naturally alongside RelativePath
+   - Consider if NormalizedPath and RelativePath should be consolidated (separate issue)
+
+**Non-goals**:
+- No behavior changes to NormalizedPath validation logic
+- No consolidation of NormalizedPath and RelativePath (defer to future issue)
+- No changes to vault storage schema
+
+**Constraints**:
+- Preserve exact validation behavior (forward slashes, vault-relative)
+- Keep `as_str() -> &str` interface (vault processor depends on string access)
+- No `unwrap()`/`panic!` in production paths
+
+**Done when**:
+- NormalizedPath defined in fs/path.rs
+- vault/model.rs no longer contains NormalizedPath definition
+- vault/processor.rs imports from fs, not model
+- vault/mod.rs exports updated (or removed)
+- All tests pass (`mise run verify`)
+- No broken imports
+
+### TDD Plan: Move NormalizedPath to fs/path.rs
+
+**Pre-flight**:
+
+1. Run `mise run test` to establish baseline
+2. Read fs/path.rs structure to identify insertion point
+3. Identify fs error type to replace VaultPathError
+
+**Slice 1: Copy NormalizedPath to fs/path.rs (keeping original)**
+
+1. RED: Copy NormalizedPath to fs/path.rs, fix error type to fs-context error
+2. GREEN: Verify NormalizedPath compiles in new location (tests may not exist yet)
+3. REFACTOR: Adjust imports, ensure rkyv derives work
+
+**Slice 2: Add fs re-export and update vault imports**
+
+1. RED: Add `pub use path::NormalizedPath;` to fs/mod.rs
+2. GREEN: Update vault/processor.rs to `use crate::fs::NormalizedPath;`
+3. REFACTOR: Verify vault processor still compiles, tests still pass
+
+**Slice 3: Update vault/mod.rs exports**
+
+1. RED: Decide on vault export strategy:
+   - Option A: Re-export from fs (`pub use crate::fs::NormalizedPath;`)
+   - Option B: Remove from vault exports (breaking change for external users)
+2. GREEN: Implement chosen option
+3. REFACTOR: Update any broken imports in tests
+
+**Slice 4: Delete original from vault/model.rs**
+
+1. RED: Remove NormalizedPath definition from vault/model.rs
+2. GREEN: Verify no compilation errors (all imports should use fs now)
+3. REFACTOR: Clean up any orphaned imports
+
+**Slice 5: Move tests (if any)**
+
+1. RED: Search for NormalizedPath tests in vault/model.rs test module
+2. GREEN: Move tests to fs/path.rs test module, verify they pass
+3. REFACTOR: Ensure test coverage includes vault-specific usage patterns
+
+**Verification**:
+
+- [ ] `mise run test:unit` passes
+- [ ] `mise run verify` passes (fmt, lint, tests)
+- [ ] NormalizedPath defined in fs/path.rs only
+- [ ] vault/processor.rs imports from crate::fs
+- [ ] vault/mod.rs exports updated (or removed)
+- [ ] No duplicate definitions
+- [ ] Validation behavior unchanged (forward slashes, vault-relative)
+
+### Design Note: NormalizedPath vs RelativePath
+
+Both types enforce vault-relative path constraints. Future work should evaluate:
+
+1. **Are they redundant?** Can one replace the other?
+2. **String vs Path storage**: NormalizedPath uses `Box<str>`, RelativePath uses `PathBuf`. Why?
+3. **Accessor differences**: `as_str()` vs `as_path()` — are both needed?
+
+Consider creating follow-up issue: "Consolidate NormalizedPath and RelativePath in fs/path.rs"
