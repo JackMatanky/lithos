@@ -353,3 +353,146 @@ Both types enforce vault-relative path constraints. Future work should evaluate:
 3. **Accessor differences**: `as_str()` vs `as_path()` — are both needed?
 
 Consider creating follow-up issue: "Consolidate NormalizedPath and RelativePath in fs/path.rs"
+
+---
+
+## REVISED PLAN (Post-Review 2026-05-20)
+
+> **Review Summary**: Original plan is structurally sound but has 4 critical gaps. See `.scratch/fs-inode-architecture/13-PLAN-REVIEW.md` for full analysis.
+
+### Critical Gaps Addressed
+
+1. ✅ **Error type migration** — Added Slice 1 to migrate from `VaultPathError` to `PathValidationError` before moving
+2. ✅ **Test coverage** — Added Slice 0 to write comprehensive tests before refactor (TDD discipline)
+3. ✅ **rkyv compatibility** — Added pre-flight check to verify archive format safety
+4. ✅ **Impact analysis** — Documented all 63 usage sites (10 trait methods, 4 struct fields)
+
+### Revised TDD Plan
+
+**Pre-flight Verification** (5 checks before starting):
+
+1. Verify rkyv archive format (module-agnostic or needs migration?)
+2. Verify PathValidator location (ensure no circular dependency)
+3. Catalog all NormalizedPath usage (expected: 63 matches)
+4. Check external usage (determines export strategy)
+5. Run baseline tests (`mise run test:unit` — establish GREEN)
+
+**Slice 0: Write NormalizedPath Behavior Tests** (RED → GREEN)
+
+*Goal: Establish behavior contract before moving code*
+
+- Write 7 comprehensive tests in `vault/model.rs::normalized_path_tests`:
+  1. `normalized_path_try_new_accepts_forward_slashes`
+  2. `normalized_path_try_new_converts_backslashes_to_forward_slashes`
+  3. `normalized_path_try_new_rejects_parent_traversal`
+  4. `normalized_path_try_new_rejects_current_dir_component`
+  5. `normalized_path_try_new_rejects_empty_string`
+  6. `normalized_path_try_new_rejects_absolute_paths`
+  7. `normalized_path_rkyv_roundtrip_preserves_value`
+- Verify all tests pass before proceeding
+- Run: `cargo test normalized_path_tests`
+
+**Slice 1: Change NormalizedPath Error Type** (RED → GREEN)
+
+*Goal: Migrate from `VaultPathError` to `PathValidationError` before moving*
+
+- Change `NormalizedPath::try_new()` to return `Result<Self, PathValidationError>`
+- Update error handling: remove `.map_err(VaultPathError::from)?`
+- Update `vault/processor.rs` call sites (2 functions):
+  - `normalize_path()` line 855
+  - `normalize_parent()` line 867
+- Both need to convert `PathValidationError` to `VaultFileError::InvalidPath`
+- Run: `cargo check && cargo test`
+
+**Slice 2: Copy NormalizedPath to fs/path.rs** (REFACTOR)
+
+*Goal: Duplicate type in new location (keeping original)*
+
+- Copy struct + impl from `vault/model.rs` to `fs/path.rs` (after `RelativePath`)
+- Copy test module to `fs/path.rs::tests`
+- Add re-export to `fs/mod.rs`: `pub use path::NormalizedPath;`
+- Verify rkyv derives work in new location
+- Run: `cargo check && cargo test normalized_path_tests`
+
+**Slice 3: Update vault imports to use fs::NormalizedPath** (GREEN)
+
+*Goal: Point all vault code at new location*
+
+- Update `vault/model.rs`: add `use crate::fs::NormalizedPath;`
+- Update `vault/processor.rs`: change import from `model::NormalizedPath` to `crate::fs::NormalizedPath`
+- Update `vault/storage.rs`: change import from `model::NormalizedPath` to `crate::fs::NormalizedPath`
+- Run: `cargo check && cargo test`
+
+**Slice 4: Update vault/mod.rs export strategy** (GREEN)
+
+*Goal: Implement export decision based on pre-flight check*
+
+- **If external usage found**: Re-export with deprecation
+  ```rust
+  #[deprecated(since = "0.x.0", note = "Moved to crate::fs::NormalizedPath")]
+  pub use crate::fs::NormalizedPath;
+  ```
+- **If no external usage**: Remove from exports
+- Run: `cargo check && cargo test && cargo clippy -- -D warnings`
+
+**Slice 5: Delete original from vault/model.rs** (GREEN)
+
+*Goal: Remove duplicate definition*
+
+- Delete `NormalizedPath` struct + impl (~lines 136-156)
+- Delete `normalized_path_tests` module (moved to fs/path.rs)
+- Keep `use crate::fs::NormalizedPath;` import
+- Run: `cargo check && cargo test`
+- Verify: `grep "struct NormalizedPath" lithos-core/src/vault/model.rs` returns nothing
+
+**Slice 6: Update context documentation** (GREEN)
+
+*Goal: Reflect new module boundary in docs*
+
+- Update `lithos-core/src/fs/CONTEXT.md` — add NormalizedPath to "Language" section
+- Update `lithos-core/src/vault/CONTEXT.md` — add to "Not Owned Here"
+- Add comprehensive doc comment to `NormalizedPath` explaining:
+  - Use cases (storage keys, serialization)
+  - Comparison with `RelativePath`
+  - When to use each
+- Run: `cargo doc --no-deps --open` and verify docs render correctly
+
+**Final Verification**:
+
+- [ ] `cargo check` passes with no warnings
+- [ ] `cargo clippy -- -D warnings` passes
+- [ ] `mise run test:unit` passes
+- [ ] `mise run verify` passes (fmt + lint + tests + adr:validate)
+- [ ] `grep "struct NormalizedPath" lithos-core/src/vault/model.rs` returns nothing
+- [ ] `grep "NormalizedPath" lithos-core/src/fs/path.rs` shows definition and tests
+- [ ] `rg "use.*vault.*NormalizedPath" lithos-core/src` returns 0 (or only deprecation)
+- [ ] Doc comments explain when to use `NormalizedPath` vs `RelativePath`
+- [ ] CONTEXT.md files updated
+
+**Regression Tests**:
+1. `cargo test vault::storage`
+2. `cargo test vault::processor`
+3. Verify rkyv roundtrip (covered by Slice 0 tests)
+
+### Revised Effort Estimate
+
+**1.5-2 hours** (up from 1 hour):
+- +15 min: Write tests (Slice 0)
+- +15 min: Error type migration (Slice 1)
+- +15 min: Documentation updates (Slice 6)
+
+### Side Effects Documented
+
+**Low Risk**:
+- ✅ Downstream contexts (note, schema, template) don't directly use `NormalizedPath`
+- ✅ Performance unchanged (same `Box<str>` representation)
+- ✅ rkyv format unchanged (if module-agnostic)
+
+**Medium Risk** (mitigated by export strategy):
+- ⚠️ External API users importing `vault::NormalizedPath`
+
+### Follow-up Issues
+
+1. **Issue 13.1**: Consolidate `NormalizedPath` and `RelativePath` (add `.normalized()` conversion)
+2. **Issue 13.2**: Move `PathValidator` to `fs/` if currently in `vault/`
+3. **Issue 13.3**: Add `NormalizedPath -> RelativePath` conversion
