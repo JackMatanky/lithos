@@ -23,7 +23,7 @@ categories = ["command-line-utilities", "template-engine"]
 
 [workspace.dependencies]
 # Core Runtime
-rayon = "1.10"
+rayon = "1.12"
 
 # Persistence
 redb = "4.1"
