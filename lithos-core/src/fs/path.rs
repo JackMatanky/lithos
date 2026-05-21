@@ -427,8 +427,8 @@ impl FilePath {
     pub fn as_relative(
         &self,
         base: &Path,
-    ) -> Result<RelativePath, super::error::ReadError> {
-        use super::error::ReadError;
+    ) -> Result<RelativePath, super::error::FsError> {
+        use super::error::{FsError, ReadError};
 
         let rel =
             self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
@@ -436,10 +436,7 @@ impl FilePath {
                 base: base.to_path_buf(),
             })?;
 
-        RelativePath::try_from(rel).map_err(|e| ReadError::Io {
-            path: self.0.clone(),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e),
-        })
+        RelativePath::try_from(rel).map_err(FsError::from)
     }
 
     /// Returns `true` if the path is absolute.
@@ -602,8 +599,8 @@ impl DirPath {
     pub fn as_relative(
         &self,
         base: &Path,
-    ) -> Result<RelativePath, super::error::ReadError> {
-        use super::error::ReadError;
+    ) -> Result<RelativePath, super::error::FsError> {
+        use super::error::{FsError, ReadError};
 
         let rel =
             self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
@@ -611,10 +608,7 @@ impl DirPath {
                 base: base.to_path_buf(),
             })?;
 
-        RelativePath::try_from(rel).map_err(|e| ReadError::Io {
-            path: self.0.clone(),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e),
-        })
+        RelativePath::try_from(rel).map_err(FsError::from)
     }
 
     /// Returns `true` if the path is absolute.
@@ -800,12 +794,8 @@ impl FsPath {
         base: &Path,
     ) -> Result<RelativePath, super::error::FsError> {
         match self {
-            Self::File(p) => {
-                p.as_relative(base).map_err(super::error::FsError::Read)
-            }
-            Self::Dir(p) => {
-                p.as_relative(base).map_err(super::error::FsError::Read)
-            }
+            Self::File(p) => p.as_relative(base),
+            Self::Dir(p) => p.as_relative(base),
         }
     }
 }

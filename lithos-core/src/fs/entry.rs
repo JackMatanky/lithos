@@ -113,10 +113,7 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
 
     #[inline]
     fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
-        use super::{
-            error::{PathError, ScanError},
-            metadata::{DirMetadata, FileMetadata},
-        };
+        use super::error::ScanError;
 
         // Get metadata first (before consuming entry)
         let std_metadata = entry.metadata().map_err(|e| {
@@ -131,17 +128,13 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
         let path = entry.into_path();
 
         if std_metadata.is_dir() {
-            // Clone for success path, move original to error (rare)
-            let dir_path = DirPath::new(path.clone()).map_err(|_source| {
-                ScanError::Path(PathError::NotADirectory(path))
-            })?;
+            let dir_path =
+                DirPath::new(path.clone()).map_err(ScanError::from)?;
             let dir_metadata = DirMetadata::from(&std_metadata);
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
-            // Clone for success path, move original to error (rare)
-            let file_path = FilePath::new(path.clone()).map_err(|_source| {
-                ScanError::Path(PathError::NotAFile(path))
-            })?;
+            let file_path =
+                FilePath::new(path.clone()).map_err(ScanError::from)?;
             let file_metadata = FileMetadata::from(&std_metadata);
             Ok(Self::File(FsFile::new(file_path, file_metadata)))
         }
