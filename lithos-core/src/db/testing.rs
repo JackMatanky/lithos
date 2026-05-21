@@ -22,7 +22,14 @@
 //! cross-context fake storage module.
 
 #![cfg(test)]
-#![allow(dead_code, reason = "Test utilities shared across contexts")]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "catch_unwind required for lock poisoning tests"
+)]
+#![expect(
+    clippy::panic,
+    reason = "panic! required to trigger lock poisoning in tests"
+)]
 
 use std::sync::{
     Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
@@ -58,6 +65,7 @@ pub(crate) enum InMemoryDbError {
 
     /// Test invariant was violated.
     #[error("Invariant violation: {message}")]
+    #[expect(dead_code, reason = "Reserved for future test scenarios")]
     InvariantViolation {
         /// Description of the invariant that was violated.
         message: Box<str>,
@@ -77,8 +85,9 @@ pub(crate) enum InMemoryDbError {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```rust,no_run
 /// use std::sync::RwLock;
+///
 /// use lithos_core::db::testing::read_lock;
 ///
 /// let data = RwLock::new(42);
@@ -159,11 +168,13 @@ impl OpCounters {
     }
 
     /// Increments the delete operation counter.
+    #[expect(dead_code, reason = "Reserved for future test scenarios")]
     pub(crate) fn inc_delete(&self) {
         self.deletes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the injected failure counter.
+    #[expect(dead_code, reason = "Reserved for future test scenarios")]
     pub(crate) fn inc_injected_failure(&self) {
         self.injected_failures.fetch_add(1, Ordering::Relaxed);
     }
@@ -219,8 +230,10 @@ pub(crate) enum FailurePoint {
     /// Before a write operation.
     BeforeWrite,
     /// After serialization but before commit.
+    #[expect(dead_code, reason = "Reserved for future test scenarios")]
     AfterSerialize,
     /// Before committing a transaction.
+    #[expect(dead_code, reason = "Reserved for future test scenarios")]
     BeforeCommit,
 }
 
@@ -270,13 +283,11 @@ impl InMemoryHarness {
         &self,
         point: FailurePoint,
     ) -> Result<(), InMemoryDbError> {
-        match &self.injector {
-            Some(inj) => inj.fail_at(point),
-            None => Ok(()),
-        }
+        self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))
     }
 
     /// Returns a reference to the operation counters.
+    #[expect(dead_code, reason = "Will be used in Phase 5 schema integration")]
     pub(crate) fn counters(&self) -> &OpCounters {
         &self.counters
     }
@@ -299,7 +310,7 @@ impl TestStore {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```rust,no_run
     /// use lithos_core::db::testing::TestStore;
     ///
     /// let (_tempdir, store) = TestStore::open_temp().unwrap();
@@ -318,6 +329,7 @@ impl TestStore {
     /// # Errors
     ///
     /// Returns `DbError` if the temporary directory or store cannot be created.
+    #[expect(dead_code, reason = "Reserved for multi-threaded test scenarios")]
     pub(crate) fn open_temp_arc()
     -> Result<(tempfile::TempDir, Arc<Store>), DbError> {
         let (tempdir, store) = Self::open_temp()?;
@@ -339,19 +351,12 @@ mod tests {
         use super::*;
 
         /// Poisons a lock by panicking while holding it.
-        #[allow(
-            clippy::panic,
-            reason = "Intentional panic to poison lock for testing"
-        )]
-        pub(crate) fn poison_lock<T: Send + Sync + 'static>(
-            lock: &Arc<RwLock<T>>,
-        ) {
-            let lock_clone = Arc::clone(lock);
-            let _ = thread::spawn(move || {
-                let _guard = lock_clone.write().unwrap();
-                panic!("poisoning lock");
-            })
-            .join();
+        pub(crate) fn poison_lock<T>(lock: &RwLock<T>) {
+            let _ =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _guard = lock.write().unwrap();
+                    panic!("poison");
+                }));
         }
 
         /// Test injector that always fails.
@@ -410,7 +415,7 @@ mod tests {
         #[test]
         fn returns_error_when_read_lock_poisoned() {
             // Arrange
-            let data = Arc::new(RwLock::new(0));
+            let data = RwLock::new(0);
             fixtures::poison_lock(&data);
 
             // Act
@@ -459,6 +464,41 @@ mod tests {
             // Assert
             assert_eq!(*guard1, 42);
             assert_eq!(*guard2, 42);
+        }
+
+        #[test]
+        fn captures_context_in_write_lock_error() {
+            // Arrange
+            let data = RwLock::new(0);
+            fixtures::poison_lock(&data);
+
+            // Act
+            let result = write_lock(&data, "my_write_op");
+
+            // Assert
+            assert!(
+                matches!(result, Err(InMemoryDbError::LockPoisoned { context }) if context == "my_write_op")
+            );
+        }
+
+        #[test]
+        fn captures_context_in_mutex_lock_error() {
+            // Arrange
+            let data = Mutex::new(0);
+            // Poison the mutex
+            let _ =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _guard = data.lock().unwrap();
+                    panic!("poison");
+                }));
+
+            // Act
+            let result = mutex_lock(&data, "my_mutex_op");
+
+            // Assert
+            assert!(
+                matches!(result, Err(InMemoryDbError::LockPoisoned { context }) if context == "my_mutex_op")
+            );
         }
     }
 
