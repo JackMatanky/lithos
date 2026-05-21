@@ -196,174 +196,240 @@ creating a shallow cross-context fake storage module.
 
 ## TDD Implementation Plan
 
+### Test Suite Organization
+
+Following **Structure A** (with submodules) per `docs/engineering/testing/unit-naming.md`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    mod fixtures { /* test helpers only */ }
+    mod locking { /* 5 tests */ }
+    mod counters { /* 5 tests */ }
+    mod failure_injection { /* 3 tests */ }
+    mod store_creation { /* 2 tests */ }
+    mod schema_integration { /* 2 tests */ }
+    mod contracts { /* 2 tests */ }
+}
+```
+
+**Total: 19 tests** across 6 concern modules + 1 fixtures module
+
+### Naming Convention
+
+- **Module names**: Canonical names from unit-naming.md (`locking`, `counters`, `contracts`)
+- **Test functions**: Verb-first formula: `[action]_[expected]_[condition]`
+- **Examples**: `returns_guard_when_not_poisoned`, `increments_read_count`, `verifies_idempotent_delete`
+
 ### Red-Green-Refactor Sequence
 
 Follow vertical slicing: one test → one implementation → repeat.
 
-#### Phase 1: Foundation (Error Type + Lock Helpers)
-- **Test 1**: `lock_helpers::should_acquire_read_lock_when_not_poisoned`
-- **Test 2**: `lock_helpers::should_return_lock_poisoned_error_when_poisoned`
-- **Test 3**: `lock_helpers::should_acquire_write_lock_when_not_poisoned`
-- **Test 4**: `lock_helpers::should_acquire_mutex_lock_when_not_poisoned`
-- **Refactor**: Extract common test utilities, add doc comments
+#### Phase 1: Lock Helpers (5 tests)
 
-#### Phase 2: Operation Instrumentation
-- **Test 5**: `op_counters::should_start_with_zero_counts`
-- **Test 6**: `op_counters::should_increment_read_count`
-- **Test 7**: `op_counters::should_increment_write_and_batch_counts`
-- **Test 8**: `op_counters::should_be_thread_safe`
+**Module**: `locking` (canonical name for lock/concurrency behavior)
 
-#### Phase 3: Failure Injection
-- **Test 9**: `failure_injection::should_succeed_when_no_failure_configured`
-- **Test 10**: `failure_injection::should_inject_failure_when_configured`
-- **Test 11**: `failure_injection::should_increment_injected_failures_counter`
+1. **`returns_read_guard_when_not_poisoned`**
+   - Arrange: `RwLock::new(42)`
+   - Act: `read_lock(&data, "test")`
+   - Assert: `unwrap()` succeeds, `*guard == 42`
 
-#### Phase 4: Store Creation Helpers
-- **Test 12**: `test_store::should_create_temp_store`
-- **Test 13**: `test_store::should_create_temp_store_arc`
-- **Test 14**: `test_store::should_cleanup_temp_directory_on_drop`
+2. **`returns_error_when_read_lock_poisoned`**
+   - Arrange: poisoned RwLock (panic in write guard)
+   - Act: `read_lock(&data, "test")`
+   - Assert: `Err(InMemoryDbError::LockPoisoned { .. })`
 
-#### Phase 5: Demonstration in Schema Context
-- **Test 15**: `should_use_db_testing_lock_helpers` (in
-  `schema/storage/testing.rs`)
-- **Test 16**: `should_track_operations_with_counters` (in
-  `schema/storage/testing.rs`)
-- **Implementation**: Add `From<InMemoryDbError>` for `InMemoryError`, refactor
-  one read method
+3. **`returns_write_guard_when_not_poisoned`**
+   - Arrange: `RwLock::new(42)`
+   - Act: `write_lock(&data, "test")`
+   - Assert: `unwrap()` succeeds, can mutate `*guard = 100`
 
-#### Phase 6: Contract Test Scaffolding (Minimal)
-- **Test 17**: `contract_tests::should_provide_atomicity_harness`
-- **Implementation**: Stub `test_batch_atomicity` function
+4. **`returns_mutex_guard_when_not_poisoned`**
+   - Arrange: `Mutex::new(42)`
+   - Act: `mutex_lock(&data, "test")`
+   - Assert: `unwrap()` succeeds, `*guard == 42`
 
-#### Phase 7: Documentation & Polish
-- **Test 18**: Doc test in module-level comment demonstrating lock helpers
-- **Final verification**: All tests pass, no clippy warnings, comprehensive docs
+5. **`allows_concurrent_read_locks`**
+   - Arrange: `Arc<RwLock<_>>`
+   - Act: acquire 2 read guards simultaneously
+   - Assert: both succeed, see same data (verifies RwLock semantics)
 
-### Rust Best Practices
-- Use `&T` parameters where possible (borrowing over cloning)
-- Return `Result<T, E>` for fallible operations; never `unwrap()` outside tests
-- Use `AtomicUsize` for counters (lock-free, thread-safe)
-- Test naming: `mod function_name { #[test] fn should_behavior_when_condition() }`
-- One assertion per test when possible
-- Doc comments with examples on all public items
+**Refactor checkpoint**: Extract `poison_lock` test helper to `fixtures` module
+
+#### Phase 2: Operation Counters (5 tests)
+
+**Module**: `counters` (operation instrumentation behavior)
+
+6. **`starts_with_zero`**
+   - Arrange: `OpCounters::default()`
+   - Act: `snapshot()`
+   - Assert: all fields == 0
+
+7. **`increments_read_count`**
+   - Arrange: default counters
+   - Act: `inc_read()` twice
+   - Assert: `snapshot().reads == 2`
+
+8. **`increments_write_and_batch_counts`**
+   - Arrange: default counters
+   - Act: `inc_write()`, `inc_batch()`
+   - Assert: `writes == 1, batches == 1`
+
+9. **`increments_concurrently_from_multiple_threads`**
+   - Arrange: `Arc<OpCounters>`, 10 threads
+   - Act: each thread calls `inc_read()` 100 times
+   - Assert: `reads == 1000` (verifies atomicity)
+
+10. **`resets_all_counters_to_zero`**
+    - Arrange: counters with incremented values
+    - Act: `reset()`
+    - Assert: all fields == 0 (critical for test isolation)
+
+**Implementation**: Add `OpCounters::reset()` method
+
+#### Phase 3: Failure Injection (3 tests)
+
+**Module**: `failure_injection`
+
+11. **`succeeds_when_no_injector_configured`**
+    - Arrange: `InMemoryHarness::new()` (no injector)
+    - Act: `fail_at(FailurePoint::BeforeWrite)`
+    - Assert: `Ok(())`
+
+12. **`injects_failure_when_injector_configured`**
+    - Arrange: harness with `AlwaysFailInjector`
+    - Act: `fail_at(FailurePoint::BeforeWrite)`
+    - Assert: `Err(InMemoryDbError::InjectedFailure { .. })`
+
+13. **`injects_selectively_by_failure_point`**
+    - Arrange: harness with `SelectiveInjector { fail_on_write: true }`
+    - Act: call `fail_at` for both `BeforeRead` and `BeforeWrite`
+    - Assert: read succeeds, write fails (granular control)
+
+**Refactor checkpoint**: Add `AlwaysFailInjector` and `SelectiveInjector` to `fixtures`
+
+#### Phase 4: Store Creation (2 tests)
+
+**Module**: `store_creation`
+
+14. **`creates_temp_store`**
+    - Act: `TestStore::open_temp()`
+    - Assert: store is usable (`store.read().unwrap()` succeeds)
+
+15. **`creates_stores_with_unique_paths`**
+    - Arrange: create 2 stores
+    - Assert: `path1 != path2` (verifies test isolation)
+
+#### Phase 5: Schema Integration (2 tests)
+
+**Module**: `schema_integration` (in `schema/storage/testing.rs`)
+
+16. **`converts_all_error_variants`**
+    - Test `From<InMemoryDbError>` for all 3 variants:
+      - `LockPoisoned` → `InMemoryError::LockPoisoned`
+      - `InjectedFailure` → `InMemoryError::Internal`
+      - `InvariantViolation` → `InMemoryError::Internal`
+
+17. **`maintains_lock_semantics_after_migration`**
+    - Arrange: InMemoryRepository using db::testing lock helpers
+    - Act: save + find operations
+    - Assert: counters reflect expected lock acquisitions (regression guard)
+
+**Implementation**: Add `From<InMemoryDbError>` impl in `schema/storage/testing.rs`
+
+#### Phase 6: Contract Tests (2 tests)
+
+**Module**: `contracts` (correctness properties)
+
+18. **`verifies_index_consistency_after_delete`**
+    - Arrange: repo with saved entity (creates primary + index entry)
+    - Act: delete entity
+    - Assert: both primary data AND index entry removed
+
+19. **`verifies_idempotent_delete`**
+    - Arrange: repo with saved entity
+    - Act: delete twice
+    - Assert: both return `Ok(())`, entity doesn't exist
+
+**Implementation**: Stub `test_batch_atomicity` scaffolding for future use
+
+#### Phase 7: Documentation
+
+20. **Doc test in module comment**
+    - Example usage of `read_lock`, `write_lock`
+    - Demonstrates `OpCounters` snapshot
+    - Shows `InMemoryHarness` basic setup
+
+### Test Suite Standards Compliance
+
+✅ **Follows `unit-naming.md` Structure A** (submodules for 6+ concerns)
+✅ **Canonical module names**: `locking`, `counters`, `contracts`, `fixtures`
+✅ **Verb-first naming**: `returns_*`, `increments_*`, `verifies_*`
+✅ **One behavior per test**: Each test verifies single contract
+✅ **Fast tests**: All <10ms except concurrency test (~50ms acceptable)
+✅ **Clear failure diagnosis**: Names readable in nextest output
 
 ### Estimated Effort
-- **Core: 18 tests**, ~250 LOC across `db/testing.rs` + schema integration
-- **Extended: 37 tests** (19 additional edge cases), ~500 LOC total
-- **Core effort**: 2-3 hours for experienced Rust developer
-- **Extended effort**: 4-6 hours including edge cases
 
-## Extended Test Cases & Edge Scenarios
+- **19 tests**, ~280 LOC in `db/testing.rs` + ~40 LOC schema integration
+- **3-4 hours** for experienced Rust developer following TDD discipline
+- **Test velocity**: ~15-20 minutes per test (write→implement→verify)
 
-### Phase 1 Extensions: Lock Helpers
+## Test Value Rationale
 
-**Test 1a**: `lock_helpers::should_preserve_context_string_in_error`
-- Verify context string propagation for debugging
-- Assert error contains exact context passed to lock helper
+### Included Tests (19 total)
 
-**Test 1b**: `lock_helpers::should_allow_multiple_concurrent_read_locks`
-- Verify RwLock read-read concurrency semantics
-- Multiple readers should coexist without blocking
+**Critical path coverage**:
+- Lock acquisition happy paths (read/write/mutex)
+- Error handling (poison detection)
+- Counter instrumentation (increment, snapshot, reset)
+- Failure injection framework (no-op, always-fail, selective)
+- Store creation (basic + isolation)
+- Error conversion (From<InMemoryDbError>)
+- Correctness contracts (idempotency, index consistency)
 
-**Test 1c**: `lock_helpers::should_block_write_during_read`
-- Verify RwLock read-write exclusion semantics
-- Write should block while read lock is held
+**Thread safety proofs**:
+- Concurrent read locks (RwLock semantics)
+- Concurrent counter increments (AtomicUsize correctness)
 
-### Phase 2 Extensions: Operation Counters
+**Test infrastructure**:
+- Counter reset (test isolation)
+- Unique store paths (test isolation)
 
-**Test 2a**: `op_counters::should_handle_counter_overflow_gracefully`
-- Document wrapping behavior at `usize::MAX`
-- Verify `fetch_add` wraps correctly (not panics)
+### Excluded Tests (18 removed)
 
-**Test 2b**: `op_counters::should_support_concurrent_mixed_operations`
-- Verify atomicity under realistic workload (5 readers, 3 writers, 2 batchers)
-- Assert exact expected counts: 500 reads, 300 writes, 200 batches
+**Stdlib behavior tests** (not our code):
+- RwLock write blocking behavior
+- Arc strong_count semantics
+- Counter overflow wrapping
+- TempDir cleanup on drop
 
-**Test 2c**: `op_counters::should_support_reset_or_clear` ⭐ **P0 - Must have**
-- Enable test isolation (reset counters between test cases)
-- Add `OpCounters::reset()` method setting all counters to 0
+**Advanced features** (not needed for MVP):
+- Probabilistic failure injection
+- Dynamic injector replacement
+- Mixed concurrent operation stress tests
 
-### Phase 3 Extensions: Failure Injection
+**Implementation details** (low diagnostic value):
+- Context string preservation in errors
+- Error message wording verification
 
-**Test 3a**: `failure_injection::should_support_selective_failure_points` ⭐ **P1 - Should have**
-- Enable granular failure testing (fail writes but not reads)
-- Implement `SelectiveInjector` example in tests
+**Integration test territory** (cross-boundary behavior):
+- Batch atomicity with injected failures
+- Complex multi-index consistency scenarios
 
-**Test 3b**: `failure_injection::should_support_probabilistic_failures`
-- Enable fuzzing-style failure testing (fail every Nth call)
-- Implement `ProbabilisticInjector` with configurable frequency
+### Alignment with Unit Testing Standards
 
-**Test 3c**: `failure_injection::should_support_dynamic_injector_replacement`
-- Support mid-test failure mode changes
-- Add `InMemoryHarness::set_injector(Option<Box<dyn FailureInjector>>)` method
+Per `docs/engineering/testing/unit.md`:
+- ✅ "Protect behavior contracts and edge cases, not implementation noise"
+- ✅ "Verify domain invariants and validation failures first"
+- ✅ "Cover error variants and boundary values"
+- ✅ "Keep tests fast: most <10ms"
 
-### Phase 4 Extensions: Store Creation
-
-**Test 4a**: `test_store::should_handle_concurrent_store_creation`
-- Verify no race conditions in temp directory creation (5 threads)
-- Each store should be independent and usable
-
-**Test 4b**: `test_store::should_create_stores_with_unique_paths` ⭐ **P1 - Should have**
-- Verify test isolation (no shared temp directories)
-- Assert path1 ≠ path2 and both exist
-
-**Test 4c**: `test_store::should_survive_arc_cloning`
-- Verify Arc semantics for shared test fixtures
-- Write through original, read through clone, verify strong_count = 2
-
-### Phase 5 Extensions: Schema Integration
-
-**Test 5a**: `schema_integration::should_convert_all_inmemory_error_variants` ⭐ **P1 - Should have**
-- Verify complete `From<InMemoryDbError>` mapping
-- Test all 3 variants: `LockPoisoned`, `InjectedFailure`, `InvariantViolation`
-
-**Test 5b**: `schema_integration::should_maintain_lock_semantics_after_migration`
-- Verify no behavioral regression after lock helper migration
-- Assert counters reflect expected lock acquisitions
-
-### Phase 6 Extensions: Contract Test Harness
-
-**Test 6a**: `contract_tests::should_verify_batch_atomicity_on_failure`
-- Verify batch operations are truly atomic (all-or-nothing)
-- Inject failure at commit, assert NO schemas saved
-
-**Test 6b**: `contract_tests::should_verify_index_consistency_after_delete` ⭐ **P0 - Must have**
-- Verify indices stay consistent with primary data
-- After delete, both primary and index entries removed
-
-**Test 6c**: `contract_tests::should_verify_idempotent_delete` ⭐ **P0 - Must have**
-- Verify delete operations are idempotent (no error on repeated delete)
-- Second delete of non-existent entity returns Ok(())
-
-### Phase 7 Extensions: Error Messages
-
-**Test 7a**: `error_messages::should_provide_actionable_lock_poisoned_messages`
-- Verify error messages help debugging
-- Assert message contains "Lock poisoned" and operation context
-
-**Test 7b**: `error_messages::should_provide_detailed_injected_failure_messages`
-- Verify failure injection is debuggable
-- Assert message contains failure point and reason
-
-### Edge Cases Summary
-
-| Category | Coverage |
-|----------|----------|
-| **Concurrency** | Multi-reader RwLock, write blocking, mixed concurrent ops |
-| **Boundaries** | Counter overflow (wrapping), usize::MAX handling |
-| **State management** | Reset/clear, dynamic injector replacement |
-| **Isolation** | Unique temp paths, test fixture independence |
-| **Atomicity** | Batch all-or-nothing, index consistency |
-| **Idempotency** | Repeated deletes, no-op handling |
-| **Ergonomics** | Error message quality, debugging information |
-
-### Test Priority
-
-- **P0 (Must-have)**: Original 18 + Tests 2c, 6b, 6c = **21 tests**
-- **P1 (Should-have)**: Tests 1b, 3a, 4b, 5a = **+4 tests** (25 total)
-- **P2 (Nice-to-have)**: Remaining tests = **+12 tests** (37 total)
-
-**Recommendation**: Implement P0 (21 tests) for issue completion, defer P1/P2 to follow-up hardening issue if time-constrained.
+Per `docs/engineering/testing/unit-naming.md`:
+- ✅ Structure A (submodules for 6+ concerns)
+- ✅ Canonical module names (`locking`, `counters`, `contracts`)
+- ✅ Verb-first formula (`returns_*`, `increments_*`, `verifies_*`)
+- ✅ One behavior per test
 
 ## Final Acceptance Checklist
 
