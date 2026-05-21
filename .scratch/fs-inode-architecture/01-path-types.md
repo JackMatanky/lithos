@@ -265,3 +265,30 @@ These are used by `SchemaConfigSpec::directory()` and `SchemaConfigSpec::propert
 - [ ] All call sites updated to use proper construction
 - [ ] Tests updated for all changes
 - [ ] `mise run verify` passes
+
+---
+
+## Maintainer Decisions (Locked)
+
+These decisions supersede earlier open questions in this issue.
+
+1. **Constructor invariant for `FilePath`/`DirPath`: keep filesystem I/O checks for now.**
+   - Keep `is_file()` / `is_dir()` checks in constructors.
+   - Keep constructor error type as `PathError` variants (`NotAFile`, `NotADirectory`, etc.).
+   - Rationale: preserve current domain invariant during this migration.
+
+2. **Remove infallible `From<PathBuf>` for `FilePath` and `DirPath`.**
+   - Do not allow unchecked construction via `From<PathBuf>`.
+   - Use fallible construction (`TryFrom<PathBuf>` / `new`) only.
+
+3. **Replace `join_file`/`join_dir` with a single `join_path` API returning `FsPath`.**
+   - Introduce `DirPath::join_path<P>(&self, child: P) -> FsPath`.
+   - `FsPath` becomes the delegation point to `FilePath`/`DirPath` behavior.
+   - Migration note: keep `join_file`/`join_dir` temporarily if needed behind deprecation, then remove after call-site migration.
+
+4. **Do not invest in `AbsolutePath`/`RelativePath` hardening in this issue.**
+   - Skip additional `AbsolutePath` / `RelativePath` validation work here.
+   - These types are being replaced by `FsPath`, `FilePath`, `DirPath`, and `NormalizedPath`.
+
+5. **Verification gate remains project-standard.**
+   - Final acceptance requires `mise run verify`.

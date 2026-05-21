@@ -1047,3 +1047,34 @@ impl FileName {
 **Priority:** HIGH - Blocks Issue 08, affects API design across contexts
 **Complexity:** MEDIUM - 25 call sites across 13 files, requires careful migration
 **Estimated Effort:** 3-4 hours with TDD discipline (4 phases × 1 hour each)
+
+---
+
+## Maintainer Decisions (Locked)
+
+These decisions resolve the remaining open items for this issue and align with Issue 01.
+
+1. **Issue execution order: Issue 01 first, then Issue 02.**
+   - Reason: Issue 01 defines path invariants and construction rules that Issue 02 depends on.
+
+2. **`FileName` remains a minimal storage primitive.**
+   - Keep minimal API (`as_str`, required conversions).
+   - Remove convenience extraction surface from owned `FileName` as call sites migrate.
+
+3. **Path-level extraction is the primary API.**
+   - Extraction logic should live on path-centric types (`FsPath`/`FilePath`/`DirPath`) rather than on `FileName`.
+   - Borrowed/zero-copy access is preferred where possible.
+
+4. **`FileNameRef`/`DirNameRef` stay minimal.**
+   - Keep view/accessor behavior minimal; avoid re-expanding convenience extraction API.
+
+5. **Align path joining usage with Issue 01 decision.**
+   - Plan migration assuming a unified `DirPath::join_path(...) -> FsPath` API.
+   - Replace call-site patterns that currently rely on `join_file`/`join_dir` specifics.
+
+6. **Do not add new work for `AbsolutePath`/`RelativePath` in this issue.**
+   - This issue should target name/path API cleanup only.
+   - `AbsolutePath`/`RelativePath` concerns are intentionally excluded due to planned replacement.
+
+7. **Verification standard.**
+   - Final acceptance requires `mise run verify`.
