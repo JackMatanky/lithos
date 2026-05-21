@@ -129,12 +129,12 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
 
         if std_metadata.is_dir() {
             let dir_path =
-                DirPath::new(path.clone()).map_err(ScanError::from)?;
+                DirPath::try_new(path.clone()).map_err(ScanError::from)?;
             let dir_metadata = DirMetadata::from(&std_metadata);
             Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
         } else {
             let file_path =
-                FilePath::new(path.clone()).map_err(ScanError::from)?;
+                FilePath::try_new(path.clone()).map_err(ScanError::from)?;
             let file_metadata = FileMetadata::from(&std_metadata);
             Ok(Self::File(FsFile::new(file_path, file_metadata)))
         }
@@ -301,7 +301,8 @@ mod tests {
             #[test]
             fn returns_true_for_file_variant() {
                 let temp = tempfile::NamedTempFile::new().unwrap();
-                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let path =
+                    FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
                     FsFile::new(path, FileMetadata::new(times, 0, false));
@@ -315,7 +316,7 @@ mod tests {
             #[test]
             fn returns_false_for_dir_variant() {
                 let temp = tempfile::TempDir::new().unwrap();
-                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir = FsDir::new(path, DirMetadata::new(times, false));
                 let entry = FsEntry::Dir(dir);
@@ -332,7 +333,7 @@ mod tests {
             #[test]
             fn returns_true_for_dir_variant() {
                 let temp = tempfile::TempDir::new().unwrap();
-                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir = FsDir::new(path, DirMetadata::new(times, false));
                 let entry = FsEntry::Dir(dir);
@@ -345,7 +346,8 @@ mod tests {
             #[test]
             fn returns_false_for_file_variant() {
                 let temp = tempfile::NamedTempFile::new().unwrap();
-                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let path =
+                    FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
                     FsFile::new(path, FileMetadata::new(times, 0, false));
@@ -363,7 +365,8 @@ mod tests {
             #[test]
             fn returns_some_for_file_variant() {
                 let temp = tempfile::NamedTempFile::new().unwrap();
-                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let path =
+                    FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
                     FsFile::new(path, FileMetadata::new(times, 512, false));
@@ -382,7 +385,7 @@ mod tests {
             #[test]
             fn returns_none_for_dir_variant() {
                 let temp = tempfile::TempDir::new().unwrap();
-                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir = FsDir::new(path, DirMetadata::new(times, false));
                 let entry = FsEntry::Dir(dir);
@@ -402,7 +405,7 @@ mod tests {
             #[test]
             fn returns_some_for_dir_variant() {
                 let temp = tempfile::TempDir::new().unwrap();
-                let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+                let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir = FsDir::new(path, DirMetadata::new(times, false));
                 let entry = FsEntry::Dir(dir.clone());
@@ -423,7 +426,8 @@ mod tests {
             #[test]
             fn returns_none_for_file_variant() {
                 let temp = tempfile::NamedTempFile::new().unwrap();
-                let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+                let path =
+                    FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
                     FsFile::new(path, FileMetadata::new(times, 512, false));
@@ -442,7 +446,7 @@ mod tests {
             fn returns_file_path_for_file_entry() {
                 let temp_file = tempfile::NamedTempFile::new().unwrap();
                 let file_path =
-                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                    FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file_entry = FsEntry::File(FsFile::new(
                     file_path,
@@ -458,7 +462,7 @@ mod tests {
             fn returns_dir_path_for_dir_entry() {
                 let temp_dir = tempfile::TempDir::new().unwrap();
                 let dir_path =
-                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                    DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir_entry = FsEntry::Dir(FsDir::new(
                     dir_path,
@@ -478,7 +482,7 @@ mod tests {
             fn returns_file_path_ref_for_file_entry() {
                 let temp_file = tempfile::NamedTempFile::new().unwrap();
                 let file_path =
-                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                    FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file_entry = FsEntry::File(FsFile::new(
                     file_path.clone(),
@@ -495,7 +499,7 @@ mod tests {
             fn returns_dir_path_ref_for_dir_entry() {
                 let temp_dir = tempfile::TempDir::new().unwrap();
                 let dir_path =
-                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                    DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let dir_entry = FsEntry::Dir(FsDir::new(
                     dir_path.clone(),
@@ -512,7 +516,7 @@ mod tests {
             fn borrows_without_cloning() {
                 let temp_file = tempfile::NamedTempFile::new().unwrap();
                 let file_path =
-                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                    FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file_entry = FsEntry::File(FsFile::new(
                     file_path.clone(),
@@ -535,7 +539,7 @@ mod tests {
             fn filename_returns_terminal_component_for_file() {
                 let temp_file = tempfile::NamedTempFile::new().unwrap();
                 let file_path =
-                    FilePath::new(temp_file.path().to_path_buf()).unwrap();
+                    FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let file_entry = FsEntry::File(FsFile::new(
                     file_path,
                     FileMetadata::new(FsTimes::new(None, None), 7, false),
@@ -549,7 +553,7 @@ mod tests {
             fn metadata_preserves_variant() {
                 let temp_dir = tempfile::TempDir::new().unwrap();
                 let dir_path =
-                    DirPath::new(temp_dir.path().to_path_buf()).unwrap();
+                    DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
                 let entry = FsEntry::Dir(FsDir::new(
                     dir_path,
                     DirMetadata::new(FsTimes::new(None, None), false),
@@ -567,7 +571,7 @@ mod tests {
         #[test]
         fn returns_stored_path() {
             let temp = tempfile::NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+            let path = FilePath::try_new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = FileMetadata::new(times, 1024, false);
 
@@ -579,7 +583,7 @@ mod tests {
         #[test]
         fn returns_stored_metadata() {
             let temp = tempfile::NamedTempFile::new().unwrap();
-            let path = FilePath::new(temp.path().to_path_buf()).unwrap();
+            let path = FilePath::try_new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = FileMetadata::new(times.clone(), 1024, false);
 
@@ -599,7 +603,7 @@ mod tests {
         #[test]
         fn returns_stored_path() {
             let temp = tempfile::TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+            let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = DirMetadata::new(times, false);
 
@@ -611,7 +615,7 @@ mod tests {
         #[test]
         fn returns_stored_metadata() {
             let temp = tempfile::TempDir::new().unwrap();
-            let path = DirPath::new(temp.path().to_path_buf()).unwrap();
+            let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = DirMetadata::new(times.clone(), false);
 

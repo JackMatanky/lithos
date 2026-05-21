@@ -292,3 +292,47 @@ These decisions supersede earlier open questions in this issue.
 
 5. **Verification gate remains project-standard.**
    - Final acceptance requires `mise run verify`.
+
+---
+
+## Implementation Notes (Post-Completion Refactor)
+
+### Applied Changes
+
+1. **Removed unchecked construction paths**
+   - Deleted infallible `From<PathBuf>` construction for `FilePath`/`DirPath`.
+   - Added fallible conversion path via `TryFrom<PathBuf>`.
+
+2. **Introduced explicit fallible constructors**
+   - Renamed constructors to `try_new(...)` for both `FilePath` and `DirPath`.
+   - All `TryFrom` implementations now route through `try_new(...)`.
+
+3. **Centralized invariants per type (internal validation)**
+   - Added internal-only `validate(&Path)` for `FilePath`.
+   - Added internal-only `validate(&Path)` for `DirPath`.
+   - `try_new(...)` is now the single public entry point that enforces each type's invariants.
+
+4. **Unified path joining API**
+   - Added `DirPath::join_path(...) -> FsPath`.
+   - Removed `join_file(...)` and `join_dir(...)` from the API surface.
+
+5. **Scanner conversion trait alignment**
+   - Added `impl TryFrom<walkdir::DirEntry> for FsPath` with `PathError`.
+   - `DirScanner` now delegates conversion to `FsPath::try_from(entry)` and maps into `ScanError`.
+   - Conversion uses `DirEntry::into_path()` ownership transfer rather than borrowing/cloning.
+
+### Call Site Migration Summary
+
+- Migrated call sites from `FilePath::new(...)` / `DirPath::new(...)` to `try_new(...)`.
+- Updated scanner and discovery paths to use trait-driven conversion and fallible path construction.
+- Updated config and schema tests that used synthetic/nonexistent absolute roots so they create real temp directories/files where required by invariants.
+
+### Verification
+
+- `mise run lint` passes.
+- `mise run verify` passes after migration.
+
+### Notes for Next Issue (SchemaConfigSpec)
+
+- `SchemaConfigSpec` still carries relative components plus accessor resolution logic.
+- Next refactor should evaluate whether the schema-facing contract should carry execution-ready `DirPath`/`FilePath` values directly, while keeping relocatable relative intent at aggregate config level.

@@ -233,8 +233,10 @@ impl Config {
         use crate::fs::{DirPath, RelativePath};
 
         // Convert VaultRoot (PathBuf wrapper) to DirPath
-        let root =
-            DirPath::from(self.vault_metadata.root().as_path().to_path_buf());
+        let root = DirPath::try_from(
+            self.vault_metadata.root().as_path().to_path_buf(),
+        )
+        .expect("vault root should resolve to a valid directory path");
 
         // property_bank_path() joins validated relative paths (schemas_dir +
         // property_bank filename), so the result is guaranteed to be a
@@ -652,19 +654,41 @@ mod tests {
 
         #[test]
         fn to_schema_spec_constructs_correct_paths() {
-            let config = fixtures::test_config();
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let schemas_dir = root.path().join("schemas");
+            std::fs::create_dir_all(&schemas_dir)
+                .expect("schemas dir should be created");
+            let property_bank = schemas_dir.join("property_bank.json");
+            std::fs::write(&property_bank, "{}")
+                .expect("property bank should be writable");
+
+            let vault = crate::config::raw::RawVaultConfig {
+                vault_path: root.path().to_string_lossy().to_string(),
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
 
             let spec = config.to_schema_spec();
 
             // Should be absolute paths (vault root + relative paths)
             assert_eq!(
                 spec.directory().as_path(),
-                std::path::Path::new("/test-vault/schemas"),
+                schemas_dir.as_path(),
                 "Directory should be absolute (vault root + schemas_dir)"
             );
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("/test-vault/schemas/property_bank.json"),
+                property_bank.as_path(),
                 "Property bank should be absolute (vault root + path)"
             );
             assert!(
@@ -679,8 +703,16 @@ mod tests {
 
         #[test]
         fn to_schema_spec_respects_custom_paths() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let custom_schemas = root.path().join("custom-schemas");
+            std::fs::create_dir_all(&custom_schemas)
+                .expect("custom schemas dir should be created");
+            let custom_bank = custom_schemas.join("custom-bank.json");
+            std::fs::write(&custom_bank, "{}")
+                .expect("custom property bank should be writable");
+
             let vault = crate::config::raw::RawVaultConfig {
-                vault_path: "/vault".to_owned(),
+                vault_path: root.path().to_string_lossy().to_string(),
                 paths: crate::config::raw::RawVaultPaths {
                     schemas_dir: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
@@ -692,7 +724,10 @@ mod tests {
                 None,
                 Some(&vault),
                 fixtures::vault_id(),
-                fixtures::vault_root("/vault"),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
                 Version::initial(),
             )
             .unwrap();
@@ -700,14 +735,8 @@ mod tests {
             let spec = config.to_schema_spec();
 
             // Should be absolute paths (vault root + custom relative paths)
-            assert_eq!(
-                spec.directory().as_path(),
-                std::path::Path::new("/vault/custom-schemas")
-            );
-            assert_eq!(
-                spec.property_bank().as_path(),
-                std::path::Path::new("/vault/custom-schemas/custom-bank.json")
-            );
+            assert_eq!(spec.directory().as_path(), custom_schemas.as_path());
+            assert_eq!(spec.property_bank().as_path(), custom_bank.as_path());
         }
     }
 }

@@ -237,7 +237,7 @@ impl DiscoveryEngine {
                     .map(|m| m.as_file().cloned().unwrap_or(default_metadata))
                     .map_err(ConfigIngestError::from)?;
 
-                let file_path = FilePath::new(path.clone())
+                let file_path = FilePath::try_new(path.clone())
                     .map_err(ConfigIngestError::from)?;
 
                 return Ok(Some(FsEntry::File(FsFile::new(file_path, info))));
@@ -271,7 +271,7 @@ impl DiscoveryEngine {
             .map_err(ConfigIngestError::from)?;
 
         let full_path = vault_root.as_path().join(relative_path);
-        let file_path = FilePath::new(full_path.clone())
+        let file_path = FilePath::try_new(full_path.clone())
             .map_err(ConfigIngestError::from)?;
 
         Ok(Some(FsEntry::File(FsFile::new(file_path, info))))

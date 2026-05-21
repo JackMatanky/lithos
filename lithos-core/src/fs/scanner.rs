@@ -25,7 +25,7 @@ use walkdir::WalkDir;
 use super::{
     entry::FsEntry,
     error::{PathError, ScanError},
-    path::{DirPath, FilePath, FsPath},
+    path::FsPath,
 };
 
 /// Standalone directory scanner for finding files matching criteria.
@@ -117,7 +117,7 @@ impl DirScanner {
             })?;
 
             if self.filter_entry(&entry, &input)?.is_some() {
-                results.push(Self::to_fs_path(&entry)?);
+                results.push(FsPath::try_from(entry).map_err(ScanError::from)?);
             }
         }
 
@@ -158,26 +158,6 @@ impl DirScanner {
     }
 
     // ─── Private Helper Methods ───────────────────────────────────────
-
-    /// Converts a `walkdir::DirEntry` to a typed `FsPath`.
-    fn to_fs_path(entry: &walkdir::DirEntry) -> Result<FsPath, ScanError> {
-        // Borrow the path first; only clone when construction succeeds
-        let path = entry.path();
-        let metadata = entry.metadata().map_err(|e| ScanError::Traversal {
-            path: path.to_path_buf(),
-            source: e.into(),
-        })?;
-
-        if metadata.is_dir() {
-            DirPath::new(path.to_path_buf())
-                .map(FsPath::Dir)
-                .map_err(ScanError::from)
-        } else {
-            FilePath::new(path.to_path_buf())
-                .map(FsPath::File)
-                .map_err(ScanError::from)
-        }
-    }
 
     /// Checks if a `walkdir::DirEntry` matches the scan input criteria.
     ///

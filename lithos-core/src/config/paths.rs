@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
-use crate::fs::{DirPath, FileName, FilePath, RelativePath};
+use crate::fs::{DirPath, FileName, FilePath, FsPath, RelativePath};
 
 #[expect(
     clippy::expect_used,
@@ -446,7 +446,7 @@ impl std::fmt::Display for PropertyBank {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,no_run
 /// use std::path::PathBuf;
 ///
 /// use lithos_core::{
@@ -454,7 +454,7 @@ impl std::fmt::Display for PropertyBank {
 ///     fs::{DirPath, RelativePath},
 /// };
 ///
-/// let root: DirPath = PathBuf::from("/vault").into();
+/// let root = DirPath::try_from(PathBuf::from("/vault")).unwrap();
 /// let dir_rel = RelativePath::try_from("schemas").unwrap();
 /// let bank_rel =
 ///     RelativePath::try_from("schemas/property_bank.json").unwrap();
@@ -488,7 +488,7 @@ impl SchemaConfigSpec {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// use std::path::PathBuf;
     ///
     /// use lithos_core::{
@@ -496,7 +496,7 @@ impl SchemaConfigSpec {
     ///     fs::{DirPath, RelativePath},
     /// };
     ///
-    /// let root: DirPath = PathBuf::from("/vault").into();
+    /// let root = DirPath::try_from(PathBuf::from("/vault")).unwrap();
     /// let dir = RelativePath::try_from("schemas").unwrap();
     /// let bank = RelativePath::try_from("schemas/bank.json").unwrap();
     /// let spec = SchemaConfigSpec::new(root, dir, bank);
@@ -523,17 +523,36 @@ impl SchemaConfigSpec {
     }
 
     /// Returns the absolute schemas directory path.
+    #[expect(
+        clippy::unreachable,
+        reason = "directory paths are relative without extensions by invariant"
+    )]
     #[inline]
     #[must_use]
     pub fn directory(&self) -> DirPath {
-        self.root.join_dir(&self.directory)
+        match self.root.join_path(&self.directory) {
+            FsPath::Dir(path) => path,
+            FsPath::File(_) => unreachable!(
+                "directory relative path unexpectedly classified as file"
+            ),
+        }
     }
 
     /// Returns the absolute property bank file path.
+    #[expect(
+        clippy::unreachable,
+        reason = "property bank path includes a file extension by invariant"
+    )]
     #[inline]
     #[must_use]
     pub fn property_bank(&self) -> FilePath {
-        self.root.join_file(&self.property_bank)
+        match self.root.join_path(&self.property_bank) {
+            FsPath::File(path) => path,
+            FsPath::Dir(_) => unreachable!(
+                "property bank relative path unexpectedly classified as \
+                 directory"
+            ),
+        }
     }
 
     /// Returns the relative schema directory path.
@@ -612,8 +631,6 @@ mod tests {
     }
 
     mod schema_config_spec {
-        use std::path::PathBuf;
-
         use super::super::*;
 
         /// Test `SchemaConfigSpec` construction with vault root and relative
@@ -622,19 +639,24 @@ mod tests {
         fn constructs_with_valid_paths() {
             use crate::fs::{DirPath, RelativePath};
 
-            let root: DirPath = PathBuf::from("/vault").into();
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let schemas_dir = root.path().join("schemas");
+            std::fs::create_dir_all(&schemas_dir)
+                .expect("schemas dir should be created");
+            std::fs::write(schemas_dir.join("bank.json"), "{}")
+                .expect("property bank fixture should be writable");
+
+            let root = DirPath::try_from(root.path().to_path_buf())
+                .expect("temp root should convert");
             let dir_rel = RelativePath::try_from("schemas").unwrap();
             let bank_rel = RelativePath::try_from("schemas/bank.json").unwrap();
 
             let spec = SchemaConfigSpec::new(root, dir_rel, bank_rel);
 
-            assert_eq!(
-                spec.directory().as_path(),
-                std::path::Path::new("/vault/schemas")
-            );
+            assert_eq!(spec.directory().as_path(), schemas_dir.as_path());
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("/vault/schemas/bank.json")
+                schemas_dir.join("bank.json").as_path()
             );
         }
 
@@ -644,7 +666,15 @@ mod tests {
         fn accessors_return_correct_values() {
             use crate::fs::{DirPath, RelativePath};
 
-            let root: DirPath = PathBuf::from("/vault").into();
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let schemas_dir = root.path().join("my-schemas");
+            std::fs::create_dir_all(&schemas_dir)
+                .expect("schemas dir should be created");
+            std::fs::write(schemas_dir.join("props.json"), "{}")
+                .expect("property bank fixture should be writable");
+
+            let root = DirPath::try_from(root.path().to_path_buf())
+                .expect("temp root should convert");
             let dir_rel = RelativePath::try_from("my-schemas").unwrap();
             let bank_rel =
                 RelativePath::try_from("my-schemas/props.json").unwrap();
@@ -658,13 +688,10 @@ mod tests {
             assert_eq!(spec.root().as_path(), root.as_path());
             assert_eq!(spec.directory_relative(), &dir_rel);
             assert_eq!(spec.property_bank_relative(), &bank_rel);
-            assert_eq!(
-                spec.directory().as_path(),
-                std::path::Path::new("/vault/my-schemas")
-            );
+            assert_eq!(spec.directory().as_path(), schemas_dir.as_path());
             assert_eq!(
                 spec.property_bank().as_path(),
-                std::path::Path::new("/vault/my-schemas/props.json")
+                schemas_dir.join("props.json").as_path()
             );
         }
 
@@ -672,22 +699,26 @@ mod tests {
         /// paths, constructs absolute paths via `join_dir/join_file`.
         #[test]
         fn schema_config_spec_accepts_absolute_paths() {
-            use std::path::Path;
-
             use crate::fs::{DirPath, RelativePath};
 
-            let root: DirPath = PathBuf::from("/vault").into();
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let schemas_dir = root.path().join("schemas");
+            std::fs::create_dir_all(&schemas_dir)
+                .expect("schemas dir should be created");
+            let bank_path = schemas_dir.join("property_bank.json");
+            std::fs::write(&bank_path, "{}")
+                .expect("property bank fixture should be writable");
+
+            let root = DirPath::try_from(root.path().to_path_buf())
+                .expect("temp root should convert");
             let dir_rel = RelativePath::try_from("schemas").unwrap();
             let bank_rel =
                 RelativePath::try_from("schemas/property_bank.json").unwrap();
 
             let spec = SchemaConfigSpec::new(root, dir_rel, bank_rel);
 
-            assert_eq!(spec.directory().as_path(), Path::new("/vault/schemas"));
-            assert_eq!(
-                spec.property_bank().as_path(),
-                Path::new("/vault/schemas/property_bank.json")
-            );
+            assert_eq!(spec.directory().as_path(), schemas_dir.as_path());
+            assert_eq!(spec.property_bank().as_path(), bank_path.as_path());
         }
     }
 }

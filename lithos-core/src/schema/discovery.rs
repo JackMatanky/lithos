@@ -667,7 +667,8 @@ mod tests {
         std::fs::write(&schema1_path, "{}").unwrap();
 
         // Create spec with vault root and relative paths
-        let vault_root = DirPath::from(root.path().to_path_buf());
+        let vault_root = DirPath::try_from(root.path().to_path_buf())
+            .expect("temp root should convert to DirPath");
         let dir_rel = RelativePath::try_from("schemas").unwrap();
         let bank_rel =
             RelativePath::try_from("schemas/property_bank.json").unwrap();
@@ -693,7 +694,8 @@ mod tests {
         std::fs::write(&bank_path, "{}").unwrap();
 
         // Create spec with vault root and relative paths
-        let vault_root = DirPath::from(root.path().to_path_buf());
+        let vault_root = DirPath::try_from(root.path().to_path_buf())
+            .expect("temp root should convert to DirPath");
         let dir_rel = RelativePath::try_from("schemas").unwrap();
         let bank_rel =
             RelativePath::try_from("schemas/property_bank.json").unwrap();
