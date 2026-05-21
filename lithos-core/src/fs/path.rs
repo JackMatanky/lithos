@@ -17,369 +17,162 @@ use super::{
     name::{BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef},
 };
 
-/// A validated vault-relative path.
-///
-/// This type ensures that paths do not escape the vault root using `..`
-/// traversal and are kept relative for portability.
-///
-/// # Invariants
-///
-/// - Must be a relative path.
-/// - Must not contain `..` (parent directory traversal).
-/// - Must not contain `.` (current directory components).
-/// - Must not contain platform-specific path prefixes.
-/// - Must not be empty.
+/// Unified path enum representing either a file or a directory.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct RelativePath(
-    /// Internal path storage.
-    #[rkyv(with = AsString)]
-    PathBuf,
-);
+pub enum FsPath {
+    /// A file path.
+    File(FilePath),
+    /// A directory path.
+    Dir(DirPath),
+}
 
-impl RelativePath {
-    /// Return the inner path.
+impl FsPath {
+    /// Returns the underlying path.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
-        &self.0
+        match self {
+            Self::File(p) => p.as_path(),
+            Self::Dir(p) => p.as_path(),
+        }
     }
 
-    /// Returns the underlying path as a UTF-8 string slice if it is valid
-    /// UTF-8.
+    /// Returns `true` if this is a file path.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.to_str()
+    pub fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
     }
 
-    /// Returns the filename component of this path if it exists.
+    /// Returns `true` if this is a directory path.
     #[inline]
     #[must_use]
-    pub fn filename(&self) -> Option<FileName> {
-        self.try_filename().ok().flatten()
+    pub fn is_dir(&self) -> bool {
+        matches!(self, Self::Dir(_))
     }
 
-    /// Returns the filename component of this path if it exists.
+    /// Returns the file path if this is a file.
+    #[inline]
+    #[must_use]
+    pub fn as_file(&self) -> Option<&FilePath> {
+        match self {
+            Self::File(p) => Some(p),
+            Self::Dir(_) => None,
+        }
+    }
+
+    /// Returns the directory path if this is a directory.
+    #[inline]
+    #[must_use]
+    pub fn as_dir(&self) -> Option<&DirPath> {
+        match self {
+            Self::Dir(p) => Some(p),
+            Self::File(_) => None,
+        }
+    }
+
+    /// Convert to vault-relative path by stripping base prefix.
     ///
     /// # Errors
-    /// Returns an error when a filename exists but cannot be represented as
-    /// valid UTF-8.
+    /// Returns error if path is not within the base directory.
     #[inline]
-    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
-        match self.0.file_name() {
-            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
-            None => Ok(None),
+    pub fn as_relative(
+        &self,
+        base: &Path,
+    ) -> Result<RelativePath, super::error::FsError> {
+        match self {
+            Self::File(p) => p.as_relative(base),
+            Self::Dir(p) => p.as_relative(base),
         }
     }
+}
 
-    /// Private helper to validate relative path invariants.
-    fn validate(path: &Path) -> Result<(), super::PathError> {
-        if path.as_os_str().is_empty() {
-            return Err(super::PathError::Empty);
-        }
-        if path.is_absolute() {
-            return Err(super::PathError::NotRelative(path.to_path_buf()));
-        }
-        let has_cur_dir = if let Some(s) = path.to_str() {
-            s.split(['/', '\\']).any(|segment| segment == ".")
+impl TryFrom<walkdir::DirEntry> for FsPath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
+        let file_type = entry.file_type();
+        let path = entry.into_path();
+
+        if file_type.is_dir() {
+            DirPath::try_new(path).map(Self::Dir)
         } else {
-            path.to_string_lossy()
-                .split(['/', '\\'])
-                .any(|segment| segment == ".")
-        };
-
-        if has_cur_dir {
-            return Err(super::PathError::CurrentDirComponent(
-                path.to_path_buf(),
-            ));
+            FilePath::try_new(path).map(Self::File)
         }
-
-        for component in path.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(super::PathError::ParentTraversal(
-                        path.to_path_buf(),
-                    ));
-                }
-                Component::Prefix(_) => {
-                    return Err(super::PathError::PlatformPrefix(
-                        path.to_path_buf(),
-                    ));
-                }
-                Component::CurDir
-                | Component::Normal(_)
-                | Component::RootDir => {}
-            }
-        }
-        Ok(())
     }
 }
 
-impl TryFrom<PathBuf> for RelativePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
+/// A zero-copy reference to either a file or directory path.
+///
+/// This enum provides a borrowed view into an `FsPath` without cloning the
+/// underlying paths. Useful for operations that need to inspect paths without
+/// taking ownership.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FsPathRef<'a> {
+    /// A reference to a file path.
+    File(&'a FilePath),
+    /// A reference to a directory path.
+    Dir(&'a DirPath),
 }
 
-impl TryFrom<&Path> for RelativePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        Self::validate(path)?;
-        Ok(Self(path.to_path_buf()))
-    }
-}
-
-impl TryFrom<&str> for RelativePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_from(Path::new(value))
-    }
-}
-
-impl AsRef<Path> for RelativePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
-impl ArchivedRelativePath {
-    /// Return the inner path as a standard library [`Path`].
+impl<'a> FsPathRef<'a> {
+    /// Returns the underlying path.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
-        Path::new(self.0.as_str())
-    }
-}
-
-impl std::fmt::Display for RelativePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
-/// Normalized vault-relative path using forward slashes.
-///
-/// This type enforces vault-relative path constraints and normalizes all
-/// paths to use forward slashes (`/`) for cross-platform compatibility.
-///
-/// # Use Cases
-///
-/// - Database storage keys (consistent across platforms)
-/// - Serialized path representation in rkyv archives
-/// - Path comparison and hashing (`HashMap` keys, `HashSet` members)
-///
-/// # Comparison with [`RelativePath`]
-///
-/// - [`NormalizedPath`]: Forward slashes, `Box<str>` storage, `as_str() ->
-///   &str`
-/// - [`RelativePath`]: Platform slashes, `PathBuf` storage, `as_path() ->
-///   &Path`
-///
-/// Use [`RelativePath`] for filesystem operations; use [`NormalizedPath`]
-/// for storage and serialization.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct NormalizedPath(Box<str>);
-
-impl NormalizedPath {
-    /// Creates a new normalized vault-relative path.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PathError`] when path validation fails.
-    #[inline]
-    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let normalized = Self::normalize_slashes(path);
-        let normalized = normalized.as_ref().trim();
-
-        if normalized.is_empty() {
-            return Err(super::PathError::Empty);
-        }
-
-        let path_buf = PathBuf::from(normalized);
-        if path_buf.is_absolute() {
-            return Err(super::PathError::NotRelative(path_buf));
-        }
-
-        for component in path_buf.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(super::PathError::ParentTraversal(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::CurDir => {
-                    return Err(super::PathError::CurrentDirComponent(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::Prefix(_) => {
-                    return Err(super::PathError::PlatformPrefix(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::RootDir | Component::Normal(_) => {}
-            }
-        }
-
-        Ok(Self(normalized.into()))
-    }
-
-    #[inline]
-    fn normalize_slashes(path: &str) -> std::borrow::Cow<'_, str> {
-        if path.contains('\\') {
-            let mut owned = String::with_capacity(path.len());
-            for ch in path.chars() {
-                if ch == '\\' {
-                    owned.push('/');
-                } else {
-                    owned.push(ch);
-                }
-            }
-            std::borrow::Cow::Owned(owned)
-        } else {
-            std::borrow::Cow::Borrowed(path)
+        match self {
+            Self::File(p) => p.as_path(),
+            Self::Dir(p) => p.as_path(),
         }
     }
 
-    /// Returns the normalized path string.
+    /// Returns `true` if this is a file path.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub const fn is_file(&self) -> bool {
+        matches!(self, Self::File(_))
     }
-}
 
-/// A validated absolute path.
-///
-/// This type ensures that paths are fully resolved and absolute on the
-/// filesystem.
-///
-/// # Invariants
-///
-/// - Must be an absolute path.
-/// - Must not be empty.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct AbsolutePath(
-    /// Internal path storage.
-    #[rkyv(with = AsString)]
-    PathBuf,
-);
-
-impl AbsolutePath {
-    /// Return the inner path.
+    /// Returns `true` if this is a directory path.
     #[inline]
     #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
+    pub const fn is_dir(&self) -> bool {
+        matches!(self, Self::Dir(_))
     }
 
-    /// Returns the underlying path as a UTF-8 string slice if it is valid
-    /// UTF-8.
+    /// Returns the file path if this is a file.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.to_str()
-    }
-
-    /// Returns the filename component of this path if it exists.
-    #[inline]
-    #[must_use]
-    pub fn filename(&self) -> Option<FileName> {
-        self.try_filename().ok().flatten()
-    }
-
-    /// Returns the filename component of this path if it exists.
-    ///
-    /// # Errors
-    /// Returns an error when a filename exists but cannot be represented as
-    /// valid UTF-8.
-    #[inline]
-    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
-        match self.0.file_name() {
-            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
-            None => Ok(None),
+    pub const fn as_file(&self) -> Option<&'a FilePath> {
+        match self {
+            Self::File(p) => Some(p),
+            Self::Dir(_) => None,
         }
     }
 
-    fn validate(path: &Path) -> Result<(), super::PathError> {
-        if path.as_os_str().is_empty() {
-            return Err(super::PathError::Empty);
-        }
-        if !path.is_absolute() {
-            return Err(super::PathError::NotAbsolute(path.to_path_buf()));
-        }
-        Ok(())
-    }
-}
-
-impl TryFrom<PathBuf> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
-}
-
-impl TryFrom<&Path> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        Self::validate(path)?;
-        Ok(Self(path.to_path_buf()))
-    }
-}
-
-impl TryFrom<&str> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_from(Path::new(value))
-    }
-}
-
-impl AsRef<Path> for AbsolutePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
-impl ArchivedAbsolutePath {
-    /// Return the inner path as a standard library [`Path`].
+    /// Returns the directory path if this is a directory.
     #[inline]
     #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.0.as_str())
+    pub const fn as_dir(&self) -> Option<&'a DirPath> {
+        match self {
+            Self::Dir(p) => Some(p),
+            Self::File(_) => None,
+        }
     }
-}
 
-impl std::fmt::Display for AbsolutePath {
+    /// Convert to an owned `FsPath` by cloning the underlying path.
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
+    #[must_use]
+    pub fn to_owned(&self) -> FsPath {
+        match self {
+            Self::File(p) => FsPath::File((*p).clone()),
+            Self::Dir(p) => FsPath::Dir((*p).clone()),
+        }
     }
 }
 
@@ -740,165 +533,6 @@ impl From<DirPath> for PathBuf {
     }
 }
 
-/// Unified path enum representing either a file or a directory.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub enum FsPath {
-    /// A file path.
-    File(FilePath),
-    /// A directory path.
-    Dir(DirPath),
-}
-
-impl FsPath {
-    /// Returns the underlying path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        match self {
-            Self::File(p) => p.as_path(),
-            Self::Dir(p) => p.as_path(),
-        }
-    }
-
-    /// Returns `true` if this is a file path.
-    #[inline]
-    #[must_use]
-    pub fn is_file(&self) -> bool {
-        matches!(self, Self::File(_))
-    }
-
-    /// Returns `true` if this is a directory path.
-    #[inline]
-    #[must_use]
-    pub fn is_dir(&self) -> bool {
-        matches!(self, Self::Dir(_))
-    }
-
-    /// Returns the file path if this is a file.
-    #[inline]
-    #[must_use]
-    pub fn as_file(&self) -> Option<&FilePath> {
-        match self {
-            Self::File(p) => Some(p),
-            Self::Dir(_) => None,
-        }
-    }
-
-    /// Returns the directory path if this is a directory.
-    #[inline]
-    #[must_use]
-    pub fn as_dir(&self) -> Option<&DirPath> {
-        match self {
-            Self::Dir(p) => Some(p),
-            Self::File(_) => None,
-        }
-    }
-
-    /// Convert to vault-relative path by stripping base prefix.
-    ///
-    /// # Errors
-    /// Returns error if path is not within the base directory.
-    #[inline]
-    pub fn as_relative(
-        &self,
-        base: &Path,
-    ) -> Result<RelativePath, super::error::FsError> {
-        match self {
-            Self::File(p) => p.as_relative(base),
-            Self::Dir(p) => p.as_relative(base),
-        }
-    }
-}
-
-impl TryFrom<walkdir::DirEntry> for FsPath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
-        let file_type = entry.file_type();
-        let path = entry.into_path();
-
-        if file_type.is_dir() {
-            DirPath::try_new(path).map(Self::Dir)
-        } else {
-            FilePath::try_new(path).map(Self::File)
-        }
-    }
-}
-
-/// A zero-copy reference to either a file or directory path.
-///
-/// This enum provides a borrowed view into an `FsPath` without cloning the
-/// underlying paths. Useful for operations that need to inspect paths without
-/// taking ownership.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FsPathRef<'a> {
-    /// A reference to a file path.
-    File(&'a FilePath),
-    /// A reference to a directory path.
-    Dir(&'a DirPath),
-}
-
-impl<'a> FsPathRef<'a> {
-    /// Returns the underlying path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        match self {
-            Self::File(p) => p.as_path(),
-            Self::Dir(p) => p.as_path(),
-        }
-    }
-
-    /// Returns `true` if this is a file path.
-    #[inline]
-    #[must_use]
-    pub const fn is_file(&self) -> bool {
-        matches!(self, Self::File(_))
-    }
-
-    /// Returns `true` if this is a directory path.
-    #[inline]
-    #[must_use]
-    pub const fn is_dir(&self) -> bool {
-        matches!(self, Self::Dir(_))
-    }
-
-    /// Returns the file path if this is a file.
-    #[inline]
-    #[must_use]
-    pub const fn as_file(&self) -> Option<&'a FilePath> {
-        match self {
-            Self::File(p) => Some(p),
-            Self::Dir(_) => None,
-        }
-    }
-
-    /// Returns the directory path if this is a directory.
-    #[inline]
-    #[must_use]
-    pub const fn as_dir(&self) -> Option<&'a DirPath> {
-        match self {
-            Self::Dir(p) => Some(p),
-            Self::File(_) => None,
-        }
-    }
-
-    /// Convert to an owned `FsPath` by cloning the underlying path.
-    #[inline]
-    #[must_use]
-    pub fn to_owned(&self) -> FsPath {
-        match self {
-            Self::File(p) => FsPath::File((*p).clone()),
-            Self::Dir(p) => FsPath::Dir((*p).clone()),
-        }
-    }
-}
-
 /// A zero-copy view of a parent directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentDir<'a> {
@@ -918,6 +552,372 @@ impl<'a> ParentDir<'a> {
             Some(p) => Self::Path(p),
             None => Self::Root,
         }
+    }
+}
+
+/// Normalized vault-relative path using forward slashes.
+///
+/// This type enforces vault-relative path constraints and normalizes all
+/// paths to use forward slashes (`/`) for cross-platform compatibility.
+///
+/// # Use Cases
+///
+/// - Database storage keys (consistent across platforms)
+/// - Serialized path representation in rkyv archives
+/// - Path comparison and hashing (`HashMap` keys, `HashSet` members)
+///
+/// # Comparison with [`RelativePath`]
+///
+/// - [`NormalizedPath`]: Forward slashes, `Box<str>` storage, `as_str() ->
+///   &str`
+/// - [`RelativePath`]: Platform slashes, `PathBuf` storage, `as_path() ->
+///   &Path`
+///
+/// Use [`RelativePath`] for filesystem operations; use [`NormalizedPath`]
+/// for storage and serialization.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NormalizedPath(Box<str>);
+
+impl NormalizedPath {
+    /// Creates a new normalized vault-relative path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError`] when path validation fails.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let normalized = Self::normalize_slashes(path);
+        let normalized = normalized.as_ref().trim();
+
+        if normalized.is_empty() {
+            return Err(super::PathError::Empty);
+        }
+
+        let path_buf = PathBuf::from(normalized);
+        if path_buf.is_absolute() {
+            return Err(super::PathError::NotRelative(path_buf));
+        }
+
+        for component in path_buf.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(super::PathError::ParentTraversal(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::CurDir => {
+                    return Err(super::PathError::CurrentDirComponent(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::Prefix(_) => {
+                    return Err(super::PathError::PlatformPrefix(
+                        PathBuf::from(normalized),
+                    ));
+                }
+                Component::RootDir | Component::Normal(_) => {}
+            }
+        }
+
+        Ok(Self(normalized.into()))
+    }
+
+    #[inline]
+    fn normalize_slashes(path: &str) -> std::borrow::Cow<'_, str> {
+        if path.contains('\\') {
+            let mut owned = String::with_capacity(path.len());
+            for ch in path.chars() {
+                if ch == '\\' {
+                    owned.push('/');
+                } else {
+                    owned.push(ch);
+                }
+            }
+            std::borrow::Cow::Owned(owned)
+        } else {
+            std::borrow::Cow::Borrowed(path)
+        }
+    }
+
+    /// Returns the normalized path string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A validated vault-relative path.
+///
+/// This type ensures that paths do not escape the vault root using `..`
+/// traversal and are kept relative for portability.
+///
+/// # Invariants
+///
+/// - Must be a relative path.
+/// - Must not contain `..` (parent directory traversal).
+/// - Must not contain `.` (current directory components).
+/// - Must not contain platform-specific path prefixes.
+/// - Must not be empty.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct RelativePath(
+    /// Internal path storage.
+    #[rkyv(with = AsString)]
+    PathBuf,
+);
+
+impl RelativePath {
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Returns the underlying path as a UTF-8 string slice if it is valid
+    /// UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
+
+    /// Returns the filename component of this path if it exists.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> Option<FileName> {
+        self.try_filename().ok().flatten()
+    }
+
+    /// Returns the filename component of this path if it exists.
+    ///
+    /// # Errors
+    /// Returns an error when a filename exists but cannot be represented as
+    /// valid UTF-8.
+    #[inline]
+    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
+        match self.0.file_name() {
+            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Private helper to validate relative path invariants.
+    fn validate(path: &Path) -> Result<(), super::PathError> {
+        if path.as_os_str().is_empty() {
+            return Err(super::PathError::Empty);
+        }
+        if path.is_absolute() {
+            return Err(super::PathError::NotRelative(path.to_path_buf()));
+        }
+        let has_cur_dir = if let Some(s) = path.to_str() {
+            s.split(['/', '\\']).any(|segment| segment == ".")
+        } else {
+            path.to_string_lossy()
+                .split(['/', '\\'])
+                .any(|segment| segment == ".")
+        };
+
+        if has_cur_dir {
+            return Err(super::PathError::CurrentDirComponent(
+                path.to_path_buf(),
+            ));
+        }
+
+        for component in path.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(super::PathError::ParentTraversal(
+                        path.to_path_buf(),
+                    ));
+                }
+                Component::Prefix(_) => {
+                    return Err(super::PathError::PlatformPrefix(
+                        path.to_path_buf(),
+                    ));
+                }
+                Component::CurDir
+                | Component::Normal(_)
+                | Component::RootDir => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+impl TryFrom<PathBuf> for RelativePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+        Self::try_from(path.as_path())
+    }
+}
+
+impl TryFrom<&Path> for RelativePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        Self::validate(path)?;
+        Ok(Self(path.to_path_buf()))
+    }
+}
+
+impl TryFrom<&str> for RelativePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(Path::new(value))
+    }
+}
+
+impl AsRef<Path> for RelativePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl ArchivedRelativePath {
+    /// Return the inner path as a standard library [`Path`].
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.0.as_str())
+    }
+}
+
+impl std::fmt::Display for RelativePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
+/// A validated absolute path.
+///
+/// This type ensures that paths are fully resolved and absolute on the
+/// filesystem.
+///
+/// # Invariants
+///
+/// - Must be an absolute path.
+/// - Must not be empty.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct AbsolutePath(
+    /// Internal path storage.
+    #[rkyv(with = AsString)]
+    PathBuf,
+);
+
+impl AbsolutePath {
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Returns the underlying path as a UTF-8 string slice if it is valid
+    /// UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
+
+    /// Returns the filename component of this path if it exists.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> Option<FileName> {
+        self.try_filename().ok().flatten()
+    }
+
+    /// Returns the filename component of this path if it exists.
+    ///
+    /// # Errors
+    /// Returns an error when a filename exists but cannot be represented as
+    /// valid UTF-8.
+    #[inline]
+    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
+        match self.0.file_name() {
+            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    fn validate(path: &Path) -> Result<(), super::PathError> {
+        if path.as_os_str().is_empty() {
+            return Err(super::PathError::Empty);
+        }
+        if !path.is_absolute() {
+            return Err(super::PathError::NotAbsolute(path.to_path_buf()));
+        }
+        Ok(())
+    }
+}
+
+impl TryFrom<PathBuf> for AbsolutePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+        Self::try_from(path.as_path())
+    }
+}
+
+impl TryFrom<&Path> for AbsolutePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        Self::validate(path)?;
+        Ok(Self(path.to_path_buf()))
+    }
+}
+
+impl TryFrom<&str> for AbsolutePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(Path::new(value))
+    }
+}
+
+impl AsRef<Path> for AbsolutePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl ArchivedAbsolutePath {
+    /// Return the inner path as a standard library [`Path`].
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.0.as_str())
+    }
+}
+
+impl std::fmt::Display for AbsolutePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
     }
 }
 

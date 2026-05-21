@@ -97,34 +97,6 @@ impl DirScanner {
         &self.path
     }
 
-    /// Scans the directory and returns matching paths (File or Dir).
-    ///
-    /// Results are sorted by path alphabetically.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ScanError` if directory traversal fails or pattern is
-    /// invalid.
-    #[inline]
-    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ScanError> {
-        let walker = self.build_walker(&input);
-        let mut results = Vec::new();
-
-        for entry in walker {
-            let entry = entry.map_err(|e| ScanError::Traversal {
-                path: e.path().map(Path::to_path_buf).unwrap_or_default(),
-                source: e.into(),
-            })?;
-
-            if self.filter_entry(&entry, &input)?.is_some() {
-                results.push(FsPath::try_from(entry).map_err(ScanError::from)?);
-            }
-        }
-
-        results.sort_by(|a, b| a.as_path().cmp(b.as_path()));
-        Ok(results)
-    }
-
     /// Scans the directory and returns matching typed entries with metadata.
     ///
     /// Results are sorted by path alphabetically.
@@ -154,6 +126,34 @@ impl DirScanner {
 
         results
             .sort_by(|a, b| a.path_ref().as_path().cmp(b.path_ref().as_path()));
+        Ok(results)
+    }
+
+    /// Scans the directory and returns matching paths (File or Dir).
+    ///
+    /// Results are sorted by path alphabetically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ScanError` if directory traversal fails or pattern is
+    /// invalid.
+    #[inline]
+    pub fn paths(&self, input: DirScanInput) -> Result<Vec<FsPath>, ScanError> {
+        let walker = self.build_walker(&input);
+        let mut results = Vec::new();
+
+        for entry in walker {
+            let entry = entry.map_err(|e| ScanError::Traversal {
+                path: e.path().map(Path::to_path_buf).unwrap_or_default(),
+                source: e.into(),
+            })?;
+
+            if self.filter_entry(&entry, &input)?.is_some() {
+                results.push(FsPath::try_from(entry).map_err(ScanError::from)?);
+            }
+        }
+
+        results.sort_by(|a, b| a.as_path().cmp(b.as_path()));
         Ok(results)
     }
 
