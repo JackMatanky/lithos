@@ -681,6 +681,36 @@ impl From<InMemoryError> for crate::schema::error::SchemaRepositoryError {
     }
 }
 
+/// Convert `db::testing::InMemoryDbError` to `InMemoryError`.
+///
+/// Enables Schema context to use shared `db::testing` primitives while
+/// maintaining its own error surface.
+#[cfg(test)]
+impl From<crate::db::testing::InMemoryDbError> for InMemoryError {
+    fn from(err: crate::db::testing::InMemoryDbError) -> Self {
+        use crate::db::testing::InMemoryDbError as DbTestError;
+
+        match err {
+            DbTestError::LockPoisoned {
+                context,
+            } => Self::LockPoisoned {
+                context: context.into(),
+            },
+            DbTestError::InjectedFailure {
+                reason,
+                ..
+            } => Self::Internal {
+                message: format!("Injected failure: {reason}").into(),
+            },
+            DbTestError::InvariantViolation {
+                message,
+            } => Self::Internal {
+                message,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,5 +743,116 @@ mod tests {
         // Clear
         repo.clear();
         assert_eq!(repo.schema_count(), 0);
+    }
+
+    mod integration_with_db_testing {
+        use std::{
+            sync::{Arc, RwLock},
+            thread,
+        };
+
+        use super::*;
+        use crate::db::testing::{InMemoryDbError, read_lock};
+
+        /// Test helper: poisons a lock by panicking while holding it.
+        #[allow(
+            clippy::panic,
+            reason = "Intentional panic to poison lock for testing"
+        )]
+        fn poison_lock<T: Send + Sync + 'static>(lock: &Arc<RwLock<T>>) {
+            let lock_clone = Arc::clone(lock);
+            let _ = thread::spawn(move || {
+                let _guard = lock_clone.write().unwrap();
+                panic!("poisoning lock");
+            })
+            .join();
+        }
+
+        #[test]
+        fn converts_lock_poisoned_error_from_db_testing() {
+            // Arrange: create a poisoned lock
+            let lock = Arc::new(RwLock::new(42));
+            poison_lock(&lock);
+
+            // Act: attempt to acquire lock using db::testing helper
+            let result = read_lock(&lock, "test_lock");
+
+            // Assert: db::testing error converts to InMemoryError
+            assert!(result.is_err());
+            let db_err = result.unwrap_err();
+            assert!(matches!(db_err, InMemoryDbError::LockPoisoned { .. }));
+
+            let mem_err: InMemoryError = db_err.into();
+            assert!(matches!(mem_err, InMemoryError::LockPoisoned { .. }));
+        }
+
+        #[test]
+        fn converts_injected_failure_from_db_testing() {
+            // Arrange: create an injected failure error
+            use crate::db::testing::FailurePoint;
+            let db_err = InMemoryDbError::InjectedFailure {
+                point: FailurePoint::BeforeWrite,
+                reason: "test failure".into(),
+            };
+
+            // Act: convert to InMemoryError
+            let mem_err: InMemoryError = db_err.into();
+
+            // Assert: converts to Internal variant
+            assert!(matches!(mem_err, InMemoryError::Internal { .. }));
+            assert!(format!("{mem_err}").contains("Injected failure"));
+        }
+    }
+
+    mod contracts {
+        use super::*;
+
+        #[test]
+        fn verifies_index_consistency_after_delete() {
+            // Arrange: create repo with a saved schema
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema = Schema::new(
+                id,
+                name.clone(),
+                Vec::new(),
+                vec![],
+                PropertyMap::new(),
+            );
+
+            repo.save_schema(&schema).unwrap();
+            assert_eq!(repo.schema_count(), 1);
+            assert!(repo.find_schema_id_by_name(&name).unwrap().is_some());
+
+            // Act: delete the schema
+            repo.delete_schema(id).unwrap();
+
+            // Assert: both primary data and index entry removed
+            assert_eq!(repo.schema_count(), 0);
+            assert!(repo.find_schema_id_by_name(&name).unwrap().is_none());
+        }
+
+        #[test]
+        fn verifies_idempotent_delete() {
+            // Arrange: create repo with a saved schema
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+
+            repo.save_schema(&schema).unwrap();
+            assert_eq!(repo.schema_count(), 1);
+
+            // Act: delete twice
+            let first_delete = repo.delete_schema(id);
+            let second_delete = repo.delete_schema(id);
+
+            // Assert: both return Ok(()), entity doesn't exist
+            assert!(first_delete.is_ok());
+            assert!(second_delete.is_ok());
+            assert_eq!(repo.schema_count(), 0);
+        }
     }
 }
