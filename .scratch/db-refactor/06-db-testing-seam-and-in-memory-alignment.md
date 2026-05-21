@@ -200,6 +200,7 @@ creating a shallow cross-context fake storage module.
 
 Following **Structure A** (with submodules) per `docs/engineering/testing/unit-naming.md`:
 
+**In `lithos-core/src/db/testing.rs`:**
 ```rust
 #[cfg(test)]
 mod tests {
@@ -207,13 +208,24 @@ mod tests {
     mod locking { /* 5 tests */ }
     mod counters { /* 5 tests */ }
     mod failure_injection { /* 3 tests */ }
-    mod store_creation { /* 2 tests */ }
-    mod schema_integration { /* 2 tests */ }
-    mod contracts { /* 2 tests */ }
+    mod constructors { /* 2 tests */ }
 }
 ```
 
-**Total: 19 tests** across 6 concern modules + 1 fixtures module
+**In `lithos-core/src/schema/storage/testing.rs`:**
+```rust
+#[cfg(test)]
+mod tests {
+    mod integration {
+        /* 2 tests demonstrating db::testing usage */
+    }
+    mod contracts {
+        /* 2 tests for repository correctness properties */
+    }
+}
+```
+
+**Total: 19 tests** across 4 infra modules (db) + 2 integration modules (schema)
 
 ### Naming Convention
 
@@ -308,9 +320,9 @@ Follow vertical slicing: one test → one implementation → repeat.
 
 **Refactor checkpoint**: Add `AlwaysFailInjector` and `SelectiveInjector` to `fixtures`
 
-#### Phase 4: Store Creation (2 tests)
+#### Phase 4: Store Constructors (2 tests)
 
-**Module**: `store_creation`
+**Module**: `constructors` (canonical name for creation/construction behavior)
 
 14. **`creates_temp_store`**
     - Act: `TestStore::open_temp()`
@@ -322,7 +334,8 @@ Follow vertical slicing: one test → one implementation → repeat.
 
 #### Phase 5: Schema Integration (2 tests)
 
-**Module**: `schema_integration` (in `schema/storage/testing.rs`)
+**Location**: `lithos-core/src/schema/storage/testing.rs`
+**Module**: `integration` (demonstrates db::testing usage in context)
 
 16. **`converts_all_error_variants`**
     - Test `From<InMemoryDbError>` for all 3 variants:
@@ -337,9 +350,10 @@ Follow vertical slicing: one test → one implementation → repeat.
 
 **Implementation**: Add `From<InMemoryDbError>` impl in `schema/storage/testing.rs`
 
-#### Phase 6: Contract Tests (2 tests)
+#### Phase 6: Repository Contract Tests (2 tests)
 
-**Module**: `contracts` (correctness properties)
+**Location**: `lithos-core/src/schema/storage/testing.rs`
+**Module**: `contracts` (repository correctness properties)
 
 18. **`verifies_index_consistency_after_delete`**
     - Arrange: repo with saved entity (creates primary + index entry)
@@ -362,39 +376,45 @@ Follow vertical slicing: one test → one implementation → repeat.
 
 ### Test Suite Standards Compliance
 
-✅ **Follows `unit-naming.md` Structure A** (submodules for 6+ concerns)
-✅ **Canonical module names**: `locking`, `counters`, `contracts`, `fixtures`
-✅ **Verb-first naming**: `returns_*`, `increments_*`, `verifies_*`
+✅ **Follows `unit-naming.md` Structure A** (submodules for 4+ concerns per file)
+✅ **Canonical module names**: `locking`, `counters`, `constructors`, `integration`, `contracts`, `fixtures`
+✅ **Verb-first naming**: `returns_*`, `increments_*`, `verifies_*`, `creates_*`
 ✅ **One behavior per test**: Each test verifies single contract
+✅ **Correct test placement**: Infra tests in `db/testing.rs`, context integration in `schema/storage/testing.rs`
 ✅ **Fast tests**: All <10ms except concurrency test (~50ms acceptable)
 ✅ **Clear failure diagnosis**: Names readable in nextest output
 
 ### Estimated Effort
 
-- **19 tests**, ~280 LOC in `db/testing.rs` + ~40 LOC schema integration
+- **15 tests in `db/testing.rs`**, ~230 LOC (infra primitives)
+- **4 tests in `schema/storage/testing.rs`**, ~90 LOC (integration + contracts)
+- **Total: 19 tests, ~320 LOC**
 - **3-4 hours** for experienced Rust developer following TDD discipline
 - **Test velocity**: ~15-20 minutes per test (write→implement→verify)
+
+### Test Distribution
+
+| File | Modules | Tests | Purpose |
+|------|---------|-------|---------|
+| `db/testing.rs` | `locking`, `counters`, `failure_injection`, `constructors`, `fixtures` | 15 | Infrastructure primitives |
+| `schema/storage/testing.rs` | `integration`, `contracts` | 4 | Context usage demonstration |
 
 ## Test Value Rationale
 
 ### Included Tests (19 total)
 
-**Critical path coverage**:
+**In `db/testing.rs` (15 tests)**:
 - Lock acquisition happy paths (read/write/mutex)
 - Error handling (poison detection)
 - Counter instrumentation (increment, snapshot, reset)
 - Failure injection framework (no-op, always-fail, selective)
-- Store creation (basic + isolation)
-- Error conversion (From<InMemoryDbError>)
-- Correctness contracts (idempotency, index consistency)
+- Store constructors (basic + isolation via unique paths)
+- Thread safety proofs (concurrent reads, atomic increments)
 
-**Thread safety proofs**:
-- Concurrent read locks (RwLock semantics)
-- Concurrent counter increments (AtomicUsize correctness)
-
-**Test infrastructure**:
-- Counter reset (test isolation)
-- Unique store paths (test isolation)
+**In `schema/storage/testing.rs` (4 tests)**:
+- Error conversion (`From<InMemoryDbError>`)
+- Lock semantics preservation (regression guard)
+- Repository correctness contracts (idempotency, index consistency)
 
 ### Excluded Tests (18 removed)
 
@@ -426,10 +446,11 @@ Per `docs/engineering/testing/unit.md`:
 - ✅ "Keep tests fast: most <10ms"
 
 Per `docs/engineering/testing/unit-naming.md`:
-- ✅ Structure A (submodules for 6+ concerns)
-- ✅ Canonical module names (`locking`, `counters`, `contracts`)
-- ✅ Verb-first formula (`returns_*`, `increments_*`, `verifies_*`)
+- ✅ Structure A (submodules per concern)
+- ✅ Canonical module names (`locking`, `counters`, `constructors`, `integration`, `contracts`)
+- ✅ Verb-first formula (`returns_*`, `increments_*`, `creates_*`, `verifies_*`)
 - ✅ One behavior per test
+- ✅ Correct placement (infra in db, integration in schema)
 
 ## Final Acceptance Checklist
 
