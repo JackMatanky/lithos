@@ -74,18 +74,21 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
   - `id: SchemaId` (explicit identity, avoids key/payload ambiguity)
   - `name: SchemaName` (validated)
   - `properties: PropertyMap` (fully expanded, domain `Property` types)
-  - `extends: Option<SchemaName>` (name-based, not ID-based)
+  - `extends: Vec<SchemaName>` (name-based, not ID-based)
+    - Uses `Vec` to align with final `Schema.parents: Vec<SchemaId>` capability
+    - Raw parsing currently only supports `Option<SchemaName>`; BaseSchema paves the way for multiple inheritance
   - `excludes: Vec<PropertyName>`
 - Persistence: per-ID table via repository adapter
 - Archived with `rkyv` for efficient serialization
 
 **ExtendsDelta Type**
 - Location: `lithos-core/src/schema/delta.rs` (extend existing module)
-- Enum variants:
+- Enum variants designed for multiple inheritance support:
   - `Unchanged`
   - `Added(SchemaName)`
   - `Removed(SchemaName)`
   - `Rewired { from: SchemaName, to: SchemaName }`
+- Note: Can operate on individual parents within the `Vec<SchemaName>`; batch operations handled by applying multiple deltas
 - Name-based (not ID-based) to keep BaseSchemaProcessor file-local
 
 **BaseSchemaChange Handoff Envelope**

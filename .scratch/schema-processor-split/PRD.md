@@ -23,7 +23,7 @@ The processor cannot be meaningfully refactored because its stages mix file-leve
 Introduce **BaseSchema** as an intermediate domain type between `RawSchema` (syntax-validated input) and `Schema` (fully resolved aggregate with inheritance applied). BaseSchema represents a **self-contained, file-local schema** with:
 
 - Resolved `PropertyMap` (all `$ref` entries expanded to domain `Property` types)
-- Validated schema name, extends reference, and excludes list
+- Validated schema name, extends list (`Vec<SchemaName>` to pave the way for multiple inheritance), and excludes list
 - No cross-schema dependencies resolved (inheritance not applied)
 
 Split schema processing into **two independent processors**:
