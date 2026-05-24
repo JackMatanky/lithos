@@ -491,7 +491,7 @@ impl DirPath {
         &self,
         file: &FileName,
     ) -> Result<FilePath, super::PathError> {
-        FilePath::try_new(self.join(file.as_path()))
+        FilePath::try_new(self.join(Path::new(file.as_str())))
     }
 
     /// Appends a validated directory name to this directory path.

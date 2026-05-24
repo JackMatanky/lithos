@@ -6,7 +6,7 @@ use redb::ReadableTable as _;
 
 use crate::{
     db::{ArchivedEntity, BatchReader, BatchWriter, Database, DbError},
-    fs::{FileFormat, NormalizedPath},
+    fs::{BaseName, FileFormat, NormalizedPath},
     vault::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
         FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
@@ -599,9 +599,13 @@ impl Repository for RedbRepository<'_> {
             let mut table = tx
                 .open_multimap_table(FILE_IDS_BY_BASENAME)
                 .map_err(storage_err)?;
-            table
-                .insert(file.name().basename_str(), file.id())
-                .map_err(storage_err)?;
+            let basename =
+                BaseName::try_from(file.name().clone()).map_err(|error| {
+                    VaultRepositoryError::ConstraintViolation {
+                        message: error.to_string().into(),
+                    }
+                })?;
+            table.insert(basename.as_str(), file.id()).map_err(storage_err)?;
         }
         if let Some(parent_id) = file.parent_id() {
             let mut table = tx
@@ -750,9 +754,13 @@ fn remove_stale_file_indexes(
             let mut table = tx
                 .open_multimap_table(FILE_IDS_BY_BASENAME)
                 .map_err(storage_err)?;
-            table
-                .remove(prior.name().basename_str(), file_id)
-                .map_err(storage_err)?;
+            let basename =
+                BaseName::try_from(prior.name().clone()).map_err(|error| {
+                    VaultRepositoryError::ConstraintViolation {
+                        message: error.to_string().into(),
+                    }
+                })?;
+            table.remove(basename.as_str(), file_id).map_err(storage_err)?;
         }
         if let Some(parent_id) = prior.parent_id() {
             let mut table = tx

@@ -89,6 +89,21 @@ use crate::{
     support::hash::Blake3Hash,
 };
 
+fn schema_stem_from_path(
+    source: &FsReader,
+    path: &std::path::Path,
+) -> Result<Box<str>, SchemaLoaderError> {
+    source
+        .filename(path)
+        .and_then(|name| {
+            crate::fs::BaseName::try_from(name)
+                .map_err(crate::fs::FsError::from)
+        })
+        .map(|basename| basename.as_str().to_owned().into_boxed_str())
+        .map_err(SchemaIngestionError::from)
+        .map_err(SchemaLoaderError::Ingestion)
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  STAGE MARKERS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1190,11 +1205,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
 
             let content_hash = Blake3Hash::compute(content.as_bytes());
 
-            let schema_name = source
-                .filename(path.as_path())
-                .map(|f| f.basename_str().to_owned().into_boxed_str())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
+            let schema_name = schema_stem_from_path(source, path.as_path())?;
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
                 path.as_path(),
                 &content,
@@ -1254,13 +1265,10 @@ impl SchemaProcessor<FileParsed, Compared> {
                         PipelinePayload::Compared(ComparedPayload::Stale(
                             payload,
                         )) => {
-                            let schema_name = source
-                                .filename(payload.path.as_path())
-                                .map(|f| {
-                                    f.basename_str().to_owned().into_boxed_str()
-                                })
-                                .map_err(SchemaIngestionError::from)
-                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let schema_name = schema_stem_from_path(
+                                source,
+                                payload.path.as_path(),
+                            )?;
                             let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
@@ -1292,13 +1300,10 @@ impl SchemaProcessor<FileParsed, Compared> {
                         PipelinePayload::Compared(
                             ComparedPayload::StaleBankReferences(payload),
                         ) => {
-                            let schema_name = source
-                                .filename(payload.path.as_path())
-                                .map(|f| {
-                                    f.basename_str().to_owned().into_boxed_str()
-                                })
-                                .map_err(SchemaIngestionError::from)
-                                .map_err(SchemaLoaderError::Ingestion)?;
+                            let schema_name = schema_stem_from_path(
+                                source,
+                                payload.path.as_path(),
+                            )?;
                             let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
@@ -1381,11 +1386,8 @@ impl SchemaProcessor<FileParsed, Compared> {
         let mut parsed_new = NewBatch::new();
 
         for (id, read) in new_schemas.into_sorted_iter() {
-            let schema_name = source
-                .filename(read.path.as_path())
-                .map(|f| f.basename_str().to_owned().into_boxed_str())
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
+            let schema_name =
+                schema_stem_from_path(source, read.path.as_path())?;
             let metadata_for_raw = read.metadata.clone();
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
                 read.path.as_path(),
@@ -1783,7 +1785,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
-                                Self::schema_stem(source, payload.path.as_path())?;
+                                schema_stem_from_path(
+                                    source,
+                                    payload.path.as_path(),
+                                )?;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -1837,7 +1842,10 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
-                                Self::schema_stem(source, payload.path.as_path())?;
+                                schema_stem_from_path(
+                                    source,
+                                    payload.path.as_path(),
+                                )?;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
@@ -2042,17 +2050,6 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             rebuild_ids,
             deleted_ids,
         }))
-    }
-
-    fn schema_stem(
-        source: &FsReader,
-        path: &std::path::Path,
-    ) -> Result<Box<str>, SchemaLoaderError> {
-        source
-            .filename(path)
-            .map(|f| f.basename_str().to_owned().into_boxed_str())
-            .map_err(SchemaIngestionError::from)
-            .map_err(SchemaLoaderError::Ingestion)
     }
 
     fn build_version(
