@@ -968,6 +968,23 @@ self.harness.counters().inc_read();
 - Leverages existing `From<InMemoryDbError> for InMemoryError` implementation
 - No manual error construction - let type system do the work
 
+### Direction Update (2026-05-24)
+
+Based on implementation review and maintainability concerns:
+
+1. **`InMemoryError` is now considered technical debt in Schema storage testing.**
+   - It currently adds an unnecessary conversion hop (`InMemoryDbError -> InMemoryError -> SchemaStorageError`).
+   - Planned refactor direction: prefer direct conversion from `InMemoryDbError` to `SchemaStorageError` and remove `to_storage_error()` call-sites.
+   - Goal: reduce ceremony in repository methods and simplify error flow for contributors.
+
+2. **`db/testing.rs` organization is already complete and should be treated as done.**
+   - The file was already reorganized per `docs/refs/rust/best_practices_canonical/ordering-discipline.md` during Phase 0 (Step 0.6 + Step 0.8).
+   - No additional structural reorganization is required there before continuing Phase 5.
+
+3. **Reorganization of `schema/storage/testing.rs` should land as a separate refactor commit.**
+   - Keep behavior-preserving file ordering / API-tour improvements isolated from functional changes.
+   - This preserves review clarity and makes TDD progression easier to audit.
+
 **Quality Gates:**
 - ✅ All 1197 tests passing
 - ✅ Clippy clean (no warnings)
@@ -1003,6 +1020,7 @@ After Phase 0 + Phase 5 completion:
   - [x] Tests verify counter instrumentation works end-to-end
   - [ ] Step 5.4: Tests verify failure injection works end-to-end
   - [ ] Step 5.5: Remove obsolete helper/dummy tests
+  - [ ] **Refactor follow-up (separate commit):** remove `InMemoryError`/`to_storage_error()` indirection where possible and reorganize `schema/storage/testing.rs` for API-tour readability
 - [ ] Contract test scaffolding deferred to Issue #10 (cross-context repository correctness contracts)
 - [x] All tests pass (`mise run test`)
 - [x] No clippy warnings (`mise run lint`)

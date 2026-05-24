@@ -74,6 +74,36 @@ use crate::{
 };
 
 // ============================================================================
+// Error Types
+// ============================================================================
+
+/// Convert `db::testing::InMemoryDbError` directly to `SchemaStorageError`.
+///
+/// This avoids an intermediate custom error conversion at call sites that
+/// only need to satisfy repository trait error contracts.
+#[cfg(test)]
+impl From<crate::db::testing::InMemoryDbError> for SchemaStorageError {
+    fn from(err: crate::db::testing::InMemoryDbError) -> Self {
+        use crate::db::testing::InMemoryDbError as DbTestError;
+
+        let db_error = match err {
+            DbTestError::LockPoisoned {
+                context,
+            } => DbError::Corruption(format!("Lock poisoned: {context}")),
+            DbTestError::InjectedFailure {
+                reason,
+                ..
+            } => DbError::Corruption(format!("Injected failure: {reason}")),
+            DbTestError::InvariantViolation {
+                message,
+            } => DbError::Corruption(message.into()),
+        };
+
+        SchemaStorageError::Storage(db_error)
+    }
+}
+
+// ============================================================================
 // InMemoryRepository - For Pure Unit Tests
 // ============================================================================
 
@@ -612,36 +642,6 @@ impl WriteRepository for InMemoryRepository {
         }
         raw_views.remove(&id);
         Ok(())
-    }
-}
-
-// ============================================================================
-// Error Conversions
-// ============================================================================
-
-/// Convert `db::testing::InMemoryDbError` directly to `SchemaStorageError`.
-///
-/// This avoids an intermediate custom error conversion at call sites that
-/// only need to satisfy repository trait error contracts.
-#[cfg(test)]
-impl From<crate::db::testing::InMemoryDbError> for SchemaStorageError {
-    fn from(err: crate::db::testing::InMemoryDbError) -> Self {
-        use crate::db::testing::InMemoryDbError as DbTestError;
-
-        let db_error = match err {
-            DbTestError::LockPoisoned {
-                context,
-            } => DbError::Corruption(format!("Lock poisoned: {context}")),
-            DbTestError::InjectedFailure {
-                reason,
-                ..
-            } => DbError::Corruption(format!("Injected failure: {reason}")),
-            DbTestError::InvariantViolation {
-                message,
-            } => DbError::Corruption(message.into()),
-        };
-
-        SchemaStorageError::Storage(db_error)
     }
 }
 
