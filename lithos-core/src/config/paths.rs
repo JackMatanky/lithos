@@ -507,7 +507,7 @@ impl SchemaConfigSpec {
                 let filename =
                     FileName::new(segment.into_owned().into_boxed_str());
                 return Ok(FilePath::from_pathbuf_unchecked(
-                    current.join(filename.as_path()),
+                    current.join(std::path::Path::new(filename.as_str())),
                 ));
             }
 

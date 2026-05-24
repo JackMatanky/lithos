@@ -18,7 +18,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    fs::RelativePath,
+    fs::{BaseName, RelativePath},
     schema::error::{SchemaError, SchemaNameError, SchemaSyntaxError},
     utils::UuidV7,
 };
@@ -316,9 +316,15 @@ impl TryFrom<&RelativePath> for SchemaName {
                 },
             ))
         })?;
+        let basename = BaseName::try_from(filename).map_err(|_| {
+            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                SchemaNameError::InvalidFormat {
+                    name: format!("Path has no basename: {path}").into(),
+                },
+            ))
+        })?;
 
-        let name = filename.basename_str();
-        Self::try_new(name)
+        Self::try_new(basename.as_str())
     }
 }
 

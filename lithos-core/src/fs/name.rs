@@ -26,58 +26,6 @@ impl FileName {
         &self.0
     }
 
-    /// Get the basename as a string slice (filename without extension).
-    ///
-    /// Uses Obsidian terminology where "basename" means filename without
-    /// extension. Returns an empty string if the basename cannot be extracted.
-    ///
-    /// For the owned `BaseName` type with explicit error handling, use
-    /// [`basename()`](Self::basename).
-    #[inline]
-    #[must_use]
-    pub fn basename_str(&self) -> &str {
-        Path::new(self.as_str())
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-    }
-
-    /// Get the basename as an owned `BaseName` (filename without extension).
-    ///
-    /// Uses Obsidian terminology where "basename" means filename without
-    /// extension. Returns `None` if the basename would be empty or cannot
-    /// be extracted.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::FileName;
-    ///
-    /// let name = FileName::from("my-note.md".to_owned());
-    /// let base = name.basename();
-    /// assert!(base.is_some());
-    /// assert_eq!(base.unwrap().as_str(), "my-note");
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> Option<BaseName> {
-        BaseName::try_from(Path::new(self.as_str())).ok()
-    }
-
-    /// Get the file extension.
-    #[inline]
-    #[must_use]
-    pub fn extension(&self) -> Option<&str> {
-        Path::new(self.as_str()).extension().and_then(|s| s.to_str())
-    }
-
-    /// Get the underlying filename as a `Path`.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.as_str())
-    }
-
     /// Get a borrowed view of this filename.
     #[inline]
     #[must_use]
@@ -107,13 +55,6 @@ impl AsRef<str> for FileName {
     }
 }
 
-impl AsRef<Path> for FileName {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
 impl TryFrom<&Path> for FileName {
     type Error = super::PathError;
 
@@ -133,19 +74,12 @@ impl TryFrom<&Path> for FileName {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileNameRef<'a>(pub(crate) &'a OsStr);
 
-impl<'a> FileNameRef<'a> {
+impl FileNameRef<'_> {
     /// Get the filename as a string slice if it is valid UTF-8.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         self.0.to_str()
-    }
-
-    /// Get the basename view.
-    #[inline]
-    #[must_use]
-    pub fn basename(&self) -> BaseNameRef<'a> {
-        BaseNameRef(Path::new(self.0).file_stem().unwrap_or(self.0))
     }
 }
 
@@ -255,73 +189,20 @@ mod tests {
     mod file_name {
         use super::*;
 
-        mod basename {
-            use super::*;
-
-            #[test]
-            fn returns_some_for_simple_filename() {
-                let name = FileName::from("my-note.md".to_owned());
-                let base = name.basename();
-                assert!(base.is_some());
-                assert_eq!(base.unwrap().as_str(), "my-note");
-            }
-
-            #[test]
-            fn returns_some_for_hidden_file_with_extension() {
-                let name = FileName::from(".md".to_owned());
-                let base = name.basename();
-                assert!(base.is_some());
-                assert_eq!(base.unwrap().as_str(), ".md");
-            }
-
-            #[test]
-            fn handles_double_extension() {
-                let name = FileName::from("archive.tar.gz".to_owned());
-                let base = name.basename();
-                assert!(base.is_some());
-                // Note: file_stem() on "archive.tar.gz" is "archive.tar"
-                assert_eq!(base.unwrap().as_str(), "archive.tar");
-            }
-        }
-
-        mod basename_str {
-            use super::*;
-
-            #[test]
-            fn returns_stem_for_simple_filename() {
-                let name = FileName::from("my-note.md".to_owned());
-                assert_eq!(name.basename_str(), "my-note");
-            }
-
-            #[test]
-            fn returns_stem_for_hidden_file() {
-                let name = FileName::from(".md".to_owned());
-                assert_eq!(name.basename_str(), ".md");
-            }
+        #[test]
+        fn exposes_string_view_for_storage() {
+            let name = FileName::from("my-note.md".to_owned());
+            assert_eq!(name.as_str(), "my-note.md");
         }
     }
 
     mod file_name_ref {
         use super::*;
 
-        mod basename {
-            use super::*;
-
-            #[test]
-            fn extracts_borrowed_basename_view() {
-                let name = FileName::from("my-note.md".to_owned());
-                let name_ref = name.as_ref();
-                let base_ref = name_ref.basename();
-                assert_eq!(base_ref.as_str(), Some("my-note"));
-            }
-
-            #[test]
-            fn handles_double_extension() {
-                let name = FileName::from("archive.tar.gz".to_owned());
-                let base_ref = name.as_ref().basename();
-                // Note: file_stem() on "archive.tar.gz" is "archive.tar"
-                assert_eq!(base_ref.as_str(), Some("archive.tar"));
-            }
+        #[test]
+        fn exposes_utf8_view_when_valid() {
+            let name = FileName::from("my-note.md".to_owned());
+            assert_eq!(name.as_ref().as_str(), Some("my-note.md"));
         }
     }
 
