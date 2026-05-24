@@ -57,7 +57,7 @@ use std::{
 use crate::{
     db::{
         DbError,
-        testing::{InMemoryHarness, read_lock, write_lock},
+        testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
     },
     fs::RelativePath,
     schema::{
@@ -200,10 +200,6 @@ impl InMemoryRepository {
     /// let repo = InMemoryRepository::with_harness(harness);
     /// ```
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "Will be used in Step 5.4 for failure injection tests"
-    )]
     pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
         Self {
             harness: Arc::new(harness),
@@ -267,6 +263,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let schemas = read_lock(&self.schemas, "find_schema_by_id")?;
         self.harness.counters().inc_read();
 
@@ -278,6 +276,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let schemas = read_lock(&self.schemas, "find_many_schemas_by_id")?;
         self.harness.counters().inc_read();
 
@@ -289,6 +289,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Schema>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let schemas = read_lock(&self.schemas, "find_schemas_by_ids")?;
         self.harness.counters().inc_read();
 
@@ -297,6 +299,8 @@ impl ReadRepository for InMemoryRepository {
 
     #[inline]
     fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let schemas = read_lock(&self.schemas, "list_schemas")?;
         self.harness.counters().inc_read();
 
@@ -311,6 +315,8 @@ impl ReadRepository for InMemoryRepository {
         std::collections::HashMap<SchemaId, Vec<PropertyName>>,
         SchemaStorageError,
     > {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let schemas =
             read_lock(&self.schemas, "find_schemas_using_properties")?;
         self.harness.counters().inc_read();
@@ -336,6 +342,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let views = read_lock(&self.raw_schema_views, "get_raw_schema_view")?;
         self.harness.counters().inc_read();
 
@@ -347,6 +355,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let path_to_id = read_lock(
             &self.path_to_id,
             "find_raw_schema_view_by_path (path_to_id)",
@@ -367,6 +377,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let path_to_id = read_lock(
             &self.path_to_id,
             "find_raw_schema_views_by_paths (path_to_id)",
@@ -391,6 +403,8 @@ impl ReadRepository for InMemoryRepository {
     fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let bank = read_lock(&self.property_bank, "get_property_bank")?;
         self.harness.counters().inc_read();
 
@@ -401,6 +415,8 @@ impl ReadRepository for InMemoryRepository {
     fn get_topological_graph(
         &self,
     ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let graph =
             read_lock(&self.topological_graph, "get_topological_graph")?;
         self.harness.counters().inc_read();
@@ -413,6 +429,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let views =
             read_lock(&self.raw_bank_views, "get_raw_property_bank_view")?;
         self.harness.counters().inc_read();
@@ -425,6 +443,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let name_to_id = read_lock(&self.name_to_id, "find_schema_id_by_name")?;
         self.harness.counters().inc_read();
 
@@ -436,6 +456,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let path_to_id = read_lock(&self.path_to_id, "find_schema_id_by_path")?;
         self.harness.counters().inc_read();
 
@@ -447,6 +469,8 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let path_to_id =
             read_lock(&self.path_to_id, "find_schema_ids_by_paths")?;
         self.harness.counters().inc_read();
@@ -458,6 +482,8 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_name_id_pairs(
         &self,
     ) -> Result<NameIdPairs, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let name_to_id =
             read_lock(&self.name_to_id, "list_schema_name_id_pairs")?;
         self.harness.counters().inc_read();
@@ -471,6 +497,8 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_path_id_pairs(
         &self,
     ) -> Result<PathIdPairs, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let path_to_id =
             read_lock(&self.path_to_id, "list_schema_path_id_pairs")?;
         self.harness.counters().inc_read();
@@ -481,6 +509,8 @@ impl ReadRepository for InMemoryRepository {
 
     #[inline]
     fn get_schema_index(&self) -> Result<SchemaIndex, SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
         let name_to_id =
             read_lock(&self.name_to_id, "get_schema_index (name_to_id)")?;
         self.harness.counters().inc_read();
@@ -502,6 +532,8 @@ impl ReadRepository for InMemoryRepository {
 impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut schemas_map =
             write_lock(&self.schemas, "save_schema (schemas)")?;
         self.harness.counters().inc_write();
@@ -520,6 +552,8 @@ impl WriteRepository for InMemoryRepository {
         &self,
         schemas: &[Schema],
     ) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut schemas_map =
             write_lock(&self.schemas, "save_many_schemas (schemas)")?;
         self.harness.counters().inc_write();
@@ -540,6 +574,8 @@ impl WriteRepository for InMemoryRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut storage =
             write_lock(&self.property_bank, "save_property_bank")?;
         self.harness.counters().inc_write();
@@ -554,6 +590,8 @@ impl WriteRepository for InMemoryRepository {
         path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut views =
             write_lock(&self.raw_bank_views, "save_raw_property_bank_view")?;
         self.harness.counters().inc_write();
@@ -568,6 +606,8 @@ impl WriteRepository for InMemoryRepository {
         id: SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut views =
             write_lock(&self.raw_schema_views, "save_raw_schema_view (views)")?;
         self.harness.counters().inc_write();
@@ -586,6 +626,8 @@ impl WriteRepository for InMemoryRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut storage =
             write_lock(&self.topological_graph, "save_topological_graph")?;
         self.harness.counters().inc_write();
@@ -596,6 +638,8 @@ impl WriteRepository for InMemoryRepository {
 
     #[inline]
     fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
         let mut schemas = write_lock(&self.schemas, "delete_schema (schemas)")?;
         self.harness.counters().inc_write();
 
@@ -811,6 +855,44 @@ mod tests {
 
     mod integration {
         use super::*;
+        use crate::db::testing::{
+            FailureInjector, FailurePoint, InMemoryDbError,
+        };
+
+        struct FailOnWrite;
+        struct FailOnRead;
+
+        impl FailureInjector for FailOnWrite {
+            fn fail_at(
+                &self,
+                point: FailurePoint,
+            ) -> Result<(), InMemoryDbError> {
+                if point == FailurePoint::BeforeWrite {
+                    return Err(InMemoryDbError::InjectedFailure {
+                        point,
+                        reason: "write injection".into(),
+                    });
+                }
+
+                Ok(())
+            }
+        }
+
+        impl FailureInjector for FailOnRead {
+            fn fail_at(
+                &self,
+                point: FailurePoint,
+            ) -> Result<(), InMemoryDbError> {
+                if point == FailurePoint::BeforeRead {
+                    return Err(InMemoryDbError::InjectedFailure {
+                        point,
+                        reason: "read injection".into(),
+                    });
+                }
+
+                Ok(())
+            }
+        }
 
         #[test]
         fn exposes_harness_for_instrumentation() {
@@ -859,6 +941,44 @@ mod tests {
             // Assert: 1 read (schemas map)
             let snapshot = repo.harness().counters().snapshot();
             assert_eq!(snapshot.reads, 1);
+        }
+
+        #[test]
+        fn respects_write_failure_injection() {
+            // Arrange
+            let harness = InMemoryHarness::with_injector(Box::new(FailOnWrite));
+            let repo = InMemoryRepository::with_harness(harness);
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+
+            // Act
+            let result = repo.save_schema(&schema);
+
+            // Assert
+            assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
+        }
+
+        #[test]
+        fn respects_read_failure_injection() {
+            // Arrange
+            let setup_repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+            setup_repo.save_schema(&schema).unwrap();
+
+            let harness = InMemoryHarness::with_injector(Box::new(FailOnRead));
+            let repo = InMemoryRepository::with_harness(harness);
+            repo.save_schema(&schema).unwrap();
+
+            // Act
+            let result = repo.find_schema_by_id(id);
+
+            // Assert
+            assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
         }
     }
 }

@@ -830,7 +830,7 @@ The foundation is now ready for Schema integration:
 
 ---
 
-### Phase 5: Schema Integration (Steps 5.1-5.3) - ✅ STEPS 5.1-5.3 COMPLETE
+### Phase 5: Schema Integration (Steps 5.1-5.4) - ✅ STEPS 5.1-5.4 COMPLETE
 
 **Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
 
@@ -838,6 +838,9 @@ The foundation is now ready for Schema integration:
 1. `4b6c0809` - Step 5.1: Embed InMemoryHarness in InMemoryRepository (RED-GREEN-REFACTOR)
 2. `845d5cc6` - Step 5.2: Convert all write operations to use harness (RED-GREEN-REFACTOR)
 3. `c20ee68c` - Step 5.3: Convert all read operations to use read_lock + counters (RED-GREEN-REFACTOR)
+4. `28ecab2d` - Refactor: remove `InMemoryError` indirection (`InMemoryDbError -> SchemaStorageError` direct path)
+5. `02905f70` - Refactor: reorder `schema/storage/testing.rs` for API-tour readability + update issue notes
+6. `ad42f1f7` - Refactor: move error conversion section near end (before tests)
 
 #### Step 5.1: Embed InMemoryHarness - ✅ COMPLETE
 
@@ -862,7 +865,7 @@ The foundation is now ready for Schema integration:
 
 **Impact:**
 - `InMemoryHarness::counters()` no longer has `#[expect(dead_code)]` (actively used)
-- `with_harness()` still has `#[expect(dead_code)]` (will be used in Step 5.4 for failure injection)
+- `with_harness()` is now used in integration tests for failure injection (Step 5.4 complete)
 
 #### Step 5.2: Convert Write Operations - ✅ COMPLETE
 
@@ -947,26 +950,57 @@ self.harness.counters().inc_read();
 - Removed `InMemoryError::lock_poisoned()` - genuinely unused (helpers create `InMemoryDbError::LockPoisoned` directly)
 - Simplified module-level lint expectations
 
+#### Step 5.4: Failure Injection Support - ✅ COMPLETE
+
+**RED (write path):**
+- Added test `respects_write_failure_injection`
+- Expected failure observed: repository ignored injected failures and returned `Ok(())`
+
+**GREEN (write path):**
+- Added `self.harness.fail_at(FailurePoint::BeforeWrite)?;` at top of `save_schema`
+- Test now passes, returning `Err(SchemaStorageError::Storage(_))` as expected
+
+**RED (read path):**
+- Added test `respects_read_failure_injection`
+- Expected failure observed: repository ignored read injection and returned `Ok(...)`
+
+**GREEN (read path):**
+- Added `self.harness.fail_at(FailurePoint::BeforeRead)?;` at top of `find_schema_by_id`
+- Test now passes, returning `Err(SchemaStorageError::Storage(_))`
+
+**REFACTOR (full coverage):**
+- Applied `BeforeRead` checks to all `ReadRepository` methods
+- Applied `BeforeWrite` checks to all `WriteRepository` methods
+- Removed obsolete `#[expect(dead_code)]` from `with_harness`
+- Added direct conversion coverage tests for lock-poisoned and injected failure mapping to `SchemaStorageError`
+
+**Rust best-practices notes:**
+- Prefer direct `?` propagation over custom conversion helpers
+- Removed `to_storage_error()` and intermediate `InMemoryError` conversion path
+- Kept conversions explicit at module boundary (`From<InMemoryDbError> for SchemaStorageError`)
+- Cleaned unfulfilled lint expectations (`clippy::exhaustive_enums`, `clippy::doc_markdown`) after enum removal
+
 ### Phase 5 Progress Summary
 
 **Completed:**
 - ✅ Step 5.1: Embedded `InMemoryHarness` in `InMemoryRepository`
 - ✅ Step 5.2: All write operations instrumented (13 lock acquisitions across 7 methods)
 - ✅ Step 5.3: All read operations instrumented (19 lock acquisitions across 14 methods)
+- ✅ Step 5.4: Failure injection wired for all read/write methods and verified via integration tests
 
 **Pending:**
-- ⏳ Step 5.4: Add failure injection support test
 - ⏳ Step 5.5: Remove duplicate helpers and dummy tests from Schema
 
 **Instrumentation Totals:**
 - **21 repository methods** converted to use `db::testing` harness
 - **32 lock acquisitions** instrumented (13 write + 19 read)
 - **Pattern scales cleanly:** Methods with multiple locks naturally increment counters multiple times
+- **Failure injection coverage:** all repository read/write entrypoints now gate through `FailurePoint::BeforeRead/BeforeWrite`
 
 **Error Handling:**
-- All methods use consistent pattern: `.map_err(|e| to_storage_error(e.into()))?`
-- Leverages existing `From<InMemoryDbError> for InMemoryError` implementation
-- No manual error construction - let type system do the work
+- All repository lock helper calls use direct `?` propagation
+- Conversion path simplified to `InMemoryDbError -> SchemaStorageError`
+- `InMemoryError` and `to_storage_error()` removed from `schema/storage/testing.rs`
 
 ### Direction Update (2026-05-24)
 
@@ -986,7 +1020,7 @@ Based on implementation review and maintainability concerns:
    - This preserves review clarity and makes TDD progression easier to audit.
 
 **Quality Gates:**
-- ✅ All 1197 tests passing
+- ✅ All `schema::storage::testing` tests passing (13 tests)
 - ✅ Clippy clean (no warnings)
 - ✅ TDD discipline maintained (RED-GREEN-REFACTOR for each step)
 - ✅ Pre-commit hooks passing (fmt, clippy, tests, conventional commits)
@@ -1012,15 +1046,15 @@ After Phase 0 + Phase 5 completion:
   - [x] Step 0.6: Reorganize per ordering discipline
   - [x] Step 0.7: Move TestStore to Store::open_temp()
   - [x] Step 0.8: Move module-level lint expects to specific functions
-- [x] **Phase 5 Steps 5.1-5.3 complete**: Schema context demonstrates usage by:
+- [x] **Phase 5 Steps 5.1-5.4 complete**: Schema context demonstrates usage by:
   - [x] Step 5.1: `InMemoryRepository` embeds `Arc<InMemoryHarness>` with `harness()` accessor
   - [x] Step 5.2: All write operations (7 methods, 13 locks) use `write_lock` + `inc_write()`
   - [x] Step 5.3: All read operations (14 methods, 19 locks) use `read_lock` + `inc_read()`
-  - [x] Implementing `From<InMemoryDbError>` for its error type (already existed)
+  - [x] Implementing direct `From<InMemoryDbError> for SchemaStorageError`
   - [x] Tests verify counter instrumentation works end-to-end
-  - [ ] Step 5.4: Tests verify failure injection works end-to-end
+  - [x] Step 5.4: Tests verify failure injection works end-to-end (`respects_write_failure_injection`, `respects_read_failure_injection`)
   - [ ] Step 5.5: Remove obsolete helper/dummy tests
-  - [ ] **Refactor follow-up (separate commit):** remove `InMemoryError`/`to_storage_error()` indirection where possible and reorganize `schema/storage/testing.rs` for API-tour readability
+  - [x] **Refactor follow-up complete:** removed `InMemoryError`/`to_storage_error()` indirection and reorganized `schema/storage/testing.rs` for API-tour readability
 - [ ] Contract test scaffolding deferred to Issue #10 (cross-context repository correctness contracts)
 - [x] All tests pass (`mise run test`)
 - [x] No clippy warnings (`mise run lint`)
