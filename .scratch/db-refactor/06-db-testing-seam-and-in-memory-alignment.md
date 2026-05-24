@@ -559,22 +559,47 @@ Per `docs/engineering/testing/unit-naming.md`:
    - **Expected**: Fails to compile (`harness()` method doesn't exist).
 
 **GREEN**:
-1. Add field to `InMemoryRepository` struct:
+1. Add imports to `schema/storage/testing.rs`:
    ```rust
-   harness: Arc<InMemoryHarness>,
+   use crate::db::testing::{InMemoryHarness, InMemoryDbError, read_lock, write_lock};
    ```
-2. Update `InMemoryRepository::new()` to initialize:
+2. Add field to `InMemoryRepository` struct:
    ```rust
-   harness: Arc::new(InMemoryHarness::new()),
+   harness: InMemoryHarness,
    ```
-3. Add public accessor:
+   **Note:** No `Arc` needed - `InMemoryHarness` contains `OpCounters` (already thread-safe with `AtomicUsize`) and `Option<Box<dyn FailureInjector + Send + Sync>>`.
+3. Update `InMemoryRepository::new()` to initialize:
+   ```rust
+   harness: InMemoryHarness::new(),
+   ```
+4. Add public accessor:
    ```rust
    pub fn harness(&self) -> &InMemoryHarness {
        &self.harness
    }
    ```
-4. Update `Default` impl to use `Self::new()`.
-5. Verify test compiles and passes.
+5. Implement `From<InMemoryDbError>` for `InMemoryError`:
+   ```rust
+   impl From<InMemoryDbError> for InMemoryError {
+       fn from(err: InMemoryDbError) -> Self {
+           match err {
+               InMemoryDbError::LockPoisoned { context } => {
+                   InMemoryError::LockPoisoned { context: context.into() }
+               }
+               InMemoryDbError::InjectedFailure { point, reason } => {
+                   InMemoryError::InvariantViolation {
+                       message: format!("Injected failure at {point:?}: {reason}").into(),
+                   }
+               }
+               InMemoryDbError::InvariantViolation { message } => {
+                   InMemoryError::InvariantViolation { message }
+               }
+           }
+       }
+   }
+   ```
+6. Update `Default` impl to use `Self::new()`.
+7. Verify test compiles and passes.
 
 **REFACTOR**:
 - Add `InMemoryRepository::with_harness(harness: InMemoryHarness) -> Self` constructor for tests that need custom failure injectors.
