@@ -452,16 +452,684 @@ Per `docs/engineering/testing/unit-naming.md`:
 - ✅ One behavior per test
 - ✅ Correct placement (infra in db, integration in schema)
 
+## Revised TDD Implementation Plan (2026-05-21)
+
+### Phase 0: Refactor `db/testing.rs` Foundation
+
+**Goal**: Clean up code quality, idioms, and test hygiene in `db/testing.rs` before building Schema integration on top of it.
+
+#### Step 0.1: Clean Test Output (Fix Panic Pollution)
+
+**Current Issue**: `poison_lock` fixture spawns a thread and panics, polluting `cargo test` stderr output with unwanted panic traces.
+
+**RED**:
+1. Run `cargo test db::testing::tests::locking::returns_error_when_read_lock_poisoned` and observe panic stacktrace in output.
+
+**GREEN**:
+1. Refactor `poison_lock` in `db/testing.rs::tests::fixtures`:
+   ```rust
+   pub(crate) fn poison_lock<T: Send + Sync + 'static>(lock: &Arc<RwLock<T>>) {
+       let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+           let _guard = lock.write().unwrap();
+           panic!("poison");
+       }));
+   }
+   ```
+2. Re-run test; verify no panic trace appears in output while test still passes.
+
+**REFACTOR**:
+- Remove `#[allow(clippy::panic, reason = "...")]` attribute from `poison_lock` (no longer spawns thread, just uses catch_unwind).
+
+#### Step 0.2: Add Missing Error Context Tests
+
+**Current Issue**: No tests verify that `write_lock` and `mutex_lock` correctly capture and propagate the `ctx` parameter on lock poisoning.
+
+**RED**:
+1. Write test `locking::captures_context_in_write_lock_error`:
+   - Arrange: poisoned `RwLock`
+   - Act: `write_lock(&lock, "my_write_op")`
+   - Assert: `matches!(err, InMemoryDbError::LockPoisoned { context } if context == "my_write_op")`
+   - **Expected**: Test fails to compile (not written yet).
+
+**GREEN**:
+1. Implement test body.
+2. Verify test passes (lock helpers already capture `ctx` correctly).
+
+**REFACTOR**:
+1. Add similar test `locking::captures_context_in_mutex_lock_error`.
+
+#### Step 0.3: Refactor Idiomatic Option Handling
+
+**Current Issue**: `InMemoryHarness::fail_at` uses manual `match` instead of idiomatic `map_or`.
+
+**RED**: (No failing test, pure refactor for idioms)
+
+**GREEN**:
+1. Replace in `db/testing.rs`:
+   ```rust
+   pub(crate) fn fail_at(&self, point: FailurePoint) -> Result<(), InMemoryDbError> {
+       self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))
+   }
+   ```
+2. Run `cargo test db::testing` to ensure all tests still pass.
+
+**REFACTOR**: None (already refactored).
+
+#### Step 0.4: Remove Overbroad Lint Suppression
+
+**Current Issue**: `#![allow(dead_code, reason = "...")]` at file level masks new dead code.
+
+**RED**: (No failing test, pure cleanup)
+
+**GREEN**:
+1. Remove `#![allow(dead_code, reason = "Test utilities shared across contexts")]` from top of `db/testing.rs`.
+2. Run `cargo check --tests`.
+3. For any legitimately unused items (like `FailurePoint::AfterSerialize`, `FailurePoint::BeforeCommit`, `InvariantViolation`, `inc_delete`, `inc_injected_failure`), apply targeted `#[expect(dead_code)]` with reason "Reserved for future test scenarios".
+
+**REFACTOR**: None.
+
+#### Step 0.5: Fix Doc Test Hygiene
+
+**Current Issue**: Doc tests are marked `ignore`, which silently rots if module ever becomes non-test.
+
+**RED**: (No failing test, documentation hygiene)
+
+**GREEN**:
+1. Remove `` ```ignore `` from doc tests in:
+   - `read_lock`
+   - `TestStore::open_temp`
+2. Replace with `` ```rust,no_run `` (structurally valid but won't execute in test suite).
+3. Verify `cargo doc --no-deps` builds without warnings.
+
+**REFACTOR**: None.
+
+---
+
+### Phase 5: Integrate `db::testing` into `InMemoryRepository`
+
+**Goal**: Wire `InMemoryHarness` into `schema::storage::testing::InMemoryRepository` and convert all lock acquisitions to use `db::testing::read_lock`/`write_lock` with operation counters.
+
+#### Step 5.1: Embed `InMemoryHarness` in `InMemoryRepository`
+
+**RED**:
+1. Write test `schema/storage/testing.rs::tests::integration::exposes_harness_for_instrumentation`:
+   - Arrange: `let repo = InMemoryRepository::new();`
+   - Act: `let harness = repo.harness();`
+   - Assert: `harness.counters().snapshot().reads == 0`
+   - **Expected**: Fails to compile (`harness()` method doesn't exist).
+
+**GREEN**:
+1. Add imports to `schema/storage/testing.rs`:
+   ```rust
+   use crate::db::testing::{InMemoryHarness, InMemoryDbError, read_lock, write_lock};
+   ```
+2. Add field to `InMemoryRepository` struct:
+   ```rust
+   harness: InMemoryHarness,
+   ```
+   **Note:** No `Arc` needed - `InMemoryHarness` contains `OpCounters` (already thread-safe with `AtomicUsize`) and `Option<Box<dyn FailureInjector + Send + Sync>>`.
+3. Update `InMemoryRepository::new()` to initialize:
+   ```rust
+   harness: InMemoryHarness::new(),
+   ```
+4. Add public accessor:
+   ```rust
+   pub fn harness(&self) -> &InMemoryHarness {
+       &self.harness
+   }
+   ```
+5. Implement `From<InMemoryDbError>` for `InMemoryError`:
+   ```rust
+   impl From<InMemoryDbError> for InMemoryError {
+       fn from(err: InMemoryDbError) -> Self {
+           match err {
+               InMemoryDbError::LockPoisoned { context } => {
+                   InMemoryError::LockPoisoned { context: context.into() }
+               }
+               InMemoryDbError::InjectedFailure { point, reason } => {
+                   InMemoryError::InvariantViolation {
+                       message: format!("Injected failure at {point:?}: {reason}").into(),
+                   }
+               }
+               InMemoryDbError::InvariantViolation { message } => {
+                   InMemoryError::InvariantViolation { message }
+               }
+           }
+       }
+   }
+   ```
+6. Update `Default` impl to use `Self::new()`.
+7. Verify test compiles and passes.
+
+**REFACTOR**:
+- Add `InMemoryRepository::with_harness(harness: InMemoryHarness) -> Self` constructor for tests that need custom failure injectors.
+
+#### Step 5.2: Convert `save_schema` to use `write_lock` + Counters
+
+**RED**:
+1. Update test `schema/storage/testing.rs::tests::integration::exposes_harness_for_instrumentation`:
+   - Act: Add `repo.save_schema(&schema).unwrap();` after harness check.
+   - Assert: Add `assert_eq!(repo.harness().counters().snapshot().writes, 2);` (one for `schemas` map, one for `name_to_id` map).
+   - **Expected**: Test fails (counters not incremented).
+
+**GREEN**:
+1. In `schema/storage/testing.rs`, add at top of file:
+   ```rust
+   use crate::db::testing::{read_lock, write_lock};
+   ```
+2. Replace in `save_schema`:
+   ```rust
+   // OLD:
+   let mut schemas_map = self.schemas.write().map_err(|_| {
+       to_storage_error(InMemoryError::lock_poisoned("save_schema (schemas)"))
+   })?;
+
+   // NEW:
+   let mut schemas_map = write_lock(&self.schemas, "save_schema (schemas)")
+       .map_err(|e| to_storage_error(e.into()))?;
+   self.harness.counters().inc_write();
+   ```
+3. Repeat for `name_to_id` write lock in same method.
+4. Verify test passes.
+
+**REFACTOR**:
+- Convert remaining `WriteRepository` methods (`save_many_schemas`, `save_property_bank`, `save_raw_schema_view`, `save_topological_graph`, `delete_schema`) to use `write_lock` + `inc_write()`.
+
+#### Step 5.3: Convert Read Operations to use `read_lock` + Counters
+
+**RED**:
+1. Write test `schema/storage/testing.rs::tests::integration::instruments_read_operations`:
+   - Arrange: `InMemoryRepository` with saved schema.
+   - Act: `repo.find_schema_by_id(id).unwrap();`
+   - Assert: `repo.harness().counters().snapshot().reads == 1`
+   - **Expected**: Test fails (reads not counted).
+
+**GREEN**:
+1. Replace in `find_schema_by_id`:
+   ```rust
+   // OLD:
+   let schemas = self.schemas.read().map_err(|_| {
+       to_storage_error(InMemoryError::lock_poisoned("find_schema_by_id"))
+   })?;
+
+   // NEW:
+   let schemas = read_lock(&self.schemas, "find_schema_by_id")
+       .map_err(|e| to_storage_error(e.into()))?;
+   self.harness.counters().inc_read();
+   ```
+2. Verify test passes.
+
+**REFACTOR**:
+- Convert all `ReadRepository` methods to use `read_lock` + `inc_read()`.
+- Remove manual `to_storage_error(InMemoryError::lock_poisoned(...))` wrappers (now handled by `?` on `db::testing` error conversion).
+
+#### Step 5.4: Failure Injection Support
+
+**RED**:
+1. Write test `schema/storage/testing.rs::tests::integration::respects_write_failure_injection`:
+   - Arrange: Create `SelectiveInjector { fail_on_write: true }`.
+   - Arrange: `let repo = InMemoryRepository::with_harness(InMemoryHarness::with_injector(Box::new(injector)));`
+   - Act: `let result = repo.save_schema(&schema);`
+   - Assert: `assert!(matches!(result, Err(SchemaStorageError::Storage(_))))`
+   - **Expected**: Test passes unexpectedly (failure injection not wired).
+
+**GREEN**:
+1. Add to top of `save_schema` (before any lock acquisition):
+   ```rust
+   self.harness.fail_at(FailurePoint::BeforeWrite)
+       .map_err(|e| to_storage_error(e.into()))?;
+   ```
+2. Add to top of `find_schema_by_id`:
+   ```rust
+   self.harness.fail_at(FailurePoint::BeforeRead)
+       .map_err(|e| to_storage_error(e.into()))?;
+   ```
+3. Verify test now correctly returns error.
+
+**REFACTOR**:
+- Add `fail_at` checks to all write methods (use `BeforeWrite`) and all read methods (use `BeforeRead`).
+
+#### Step 5.5: Remove Obsolete Tests
+
+**RED**: (No failing test, cleanup)
+
+**GREEN**:
+1. Delete `schema/storage/testing.rs::tests::integration_with_db_testing` module entirely (these were dummy error conversion tests that don't test actual repository behavior).
+2. Delete `schema/storage/testing.rs::tests::contracts` module entirely (contract scaffolding belongs in `db::testing`, not hardcoded per-context).
+3. Run `cargo test` to ensure no regressions.
+
+**REFACTOR**: None.
+
+---
+
+## Implementation Notes (Phase 0 Complete)
+
+### Phase 0: Foundation Refactor (8 Steps) - ✅ COMPLETE
+
+**Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
+
+**Commits:**
+1. `8feedb8b` - Steps 0.1-0.5: Foundation refactor (catch_unwind, context tests, map_or, lint hygiene)
+2. `a208c49c` - Step 0.6: Reorganize per ordering discipline
+3. `88a2bc09` - Step 0.7: Move TestStore to Store::open_temp()
+4. `629ed97d` - Step 0.8: Move module-level lint expects to specific functions
+
+#### Step 0.1: Clean Test Output
+- **Change:** Refactored `poison_lock` to use `std::panic::catch_unwind` instead of `thread::spawn`
+- **Rationale:** Eliminates stderr pollution, reduces thread overhead, removes `Arc` requirement
+- **Impact:** Cleaner test output, simpler signature: `&RwLock<T>` instead of `&Arc<RwLock<T>>`
+
+#### Step 0.2: Add Missing Error Context Tests
+- **Added:** `captures_context_in_write_lock_error` - verifies `ctx` parameter propagated to error
+- **Added:** `captures_context_in_mutex_lock_error` - verifies `ctx` parameter propagated to error
+- **Rationale:** Original implementation had `ctx` parameter but no tests verifying it works
+
+#### Step 0.3: Refactor Idiomatic Option Handling
+- **Change:** `InMemoryHarness::fail_at` uses `map_or` instead of manual `match`
+- **Rationale:** Follows Apollo Rust Best Practices for Option handling
+- **Code:** `self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))`
+
+#### Step 0.4: Remove Overbroad Lint Suppression
+- **Change:** Removed module-level `#![allow(dead_code)]`
+- **Added:** Targeted `#[expect(dead_code)]` to 6 legitimately unused items:
+  - `InvariantViolation` variant (reserved for future)
+  - `FailurePoint::AfterSerialize` (reserved for future)
+  - `FailurePoint::BeforeCommit` (reserved for future)
+  - `OpCounters::inc_delete()` (reserved for future)
+  - `OpCounters::inc_injected_failure()` (reserved for future)
+  - `InMemoryHarness::counters()` (will be used in Phase 5)
+- **Rationale:** Prevents accidentally adding dead code without justification
+
+#### Step 0.5: Fix Doc Test Hygiene
+- **Change:** Replaced ` ```ignore ` with ` ```rust,no_run ` in doc examples
+- **Added:** Module-level `#[expect]` for `clippy::disallowed_methods` and `clippy::panic`
+- **Rationale:** Doc tests should compile even if they can't run; lint suppressions for test-specific needs
+
+#### Step 0.6: Reorganize Per Ordering Discipline
+- **Goal:** Follow `docs/refs/rust/best_practices_canonical/ordering-discipline.md`
+- **New order:** Error Types → **Test Harness (Primary API)** → Operation Instrumentation → Failure Injection → Lock Helpers → Tests
+- **Key change:** `InMemoryHarness` promoted to primary API position (after errors)
+- **Removed:** "Test Store Constructors" section (moved in Step 0.7)
+- **Added:** Usage example to `InMemoryHarness` showing embedding pattern
+- **Added:** Doc comments to all `OpCountersSnapshot` fields
+- **Rationale:** "Tour of APIs, most important first" - contexts interact with `InMemoryHarness` 95% of the time
+
+#### Step 0.7: Move TestStore to Store::open_temp()
+- **Goal:** Follow Rust best practice - test utilities as methods on the type they construct
+- **Changes:**
+  - Added `Store::open_temp()` as `#[cfg(test)] pub(crate)` method in `db/core.rs`
+  - Added `Store::open_temp_arc()` for multi-threaded scenarios (currently unused)
+  - Moved 2 constructor tests from `db::testing::tests::constructors` → `db::core::tests::store`
+  - Removed `TestStore` struct and impl from `db/testing.rs`
+  - Removed unused imports: `Arc`, `DbError`, `Store`
+  - Updated module doc: removed "store constructors" from DB ownership
+- **Rationale:**
+  - `TestStore` was only used in its own tests (not by any context modules)
+  - Different use case: on-disk `redb` stores vs in-memory infrastructure
+  - `Store::open_temp()` is more discoverable and follows Rust conventions
+  - Fixes broken doc examples in `schema/repository.rs` that referenced `Store::open_temp()`
+- **Impact:** `db/testing.rs` now purely focuses on in-memory harness infrastructure
+
+#### Step 0.8: Move Module-Level Lint Expects to Specific Functions
+- **Change:** Removed module-level `#[expect(clippy::disallowed_methods)]` and `#[expect(clippy::panic)]`
+- **Added:** Scoped `#[expect]` to specific functions:
+  - `fixtures::poison_lock()` - uses `catch_unwind` + `panic!` to poison locks
+  - `captures_context_in_mutex_lock_error()` - test that poisons mutex inline
+- **Rationale:** Lint suppressions should be adjacent to violations for clarity and to prevent accidental use elsewhere
+- **Impact:** Cleaner module header (only `#![cfg(test)]`), better documentation of why each violation is necessary
+
+### Final db/testing.rs Structure
+
+**Module header:**
+```rust
+#![cfg(test)]
+
+use std::sync::{
+    Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    atomic::{AtomicUsize, Ordering},
+};
+```
+
+**Section order:**
+1. **Error Types** - `InMemoryDbError`
+2. **Test Harness (Primary API)** - `InMemoryHarness` (orchestrates counters + injectors)
+3. **Operation Instrumentation** - `OpCounters`, `OpCountersSnapshot`
+4. **Failure Injection** - `FailurePoint`, `FailureInjector` trait
+5. **Lock Helpers** - `read_lock`, `write_lock`, `mutex_lock`
+6. **Tests** - 15 tests in 4 modules (`fixtures`, `locking`, `counters`, `failure_injection`)
+
+**Test count:** 15 tests (down from 17 - 2 constructor tests moved to `db/core.rs`)
+
+### Key Decisions
+
+1. **Use `catch_unwind` for lock poisoning** - Cleaner, faster, no thread overhead or stderr pollution
+2. **Use `map_or` for Option handling** - More idiomatic than manual match per Apollo Rust Best Practices
+3. **Module visibility:** All items in `db/testing.rs` are `pub(crate)` (registered as `pub(crate) mod testing` in `db/mod.rs`)
+4. **`InMemoryHarness` is the primary API** - Contexts embed this, not individual primitives
+5. **`TestStore` → `Store::open_temp()`** - Test utilities belong on the type itself
+6. **Scoped lint suppressions** - `#[expect]` adjacent to violations, not module-level
+7. **Removed `Arc` requirement from `poison_lock`** - Simplified to `&RwLock<T>` (no thread spawn needed with `catch_unwind`)
+
+### Quality Gates (All Passing ✅)
+
+- ✅ All 15 `db::testing` tests passing (<10ms each)
+- ✅ All 4 `db::core::tests::store` tests passing (includes 2 moved constructor tests)
+- ✅ No clippy warnings
+- ✅ Code formatted
+- ✅ Pre-commit hooks passed (fmt, clippy, tests, conventional commits)
+
+### Phase 5 Readiness
+
+The foundation is now ready for Schema integration:
+- ✅ Clean, idiomatic Rust code
+- ✅ Well-documented with usage examples
+- ✅ Proper ordering (most important APIs first)
+- ✅ All lint suppressions scoped and justified
+- ✅ No overbroad suppressions that could hide future issues
+- ✅ `InMemoryHarness` ready to be embedded in `schema::storage::testing::InMemoryRepository`
+
+---
+
+### Phase 5: Schema Integration (Steps 5.1-5.5) - ✅ STEPS 5.1-5.5 COMPLETE
+
+**Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
+
+**Commits:**
+1. `4b6c0809` - Step 5.1: Embed InMemoryHarness in InMemoryRepository (RED-GREEN-REFACTOR)
+2. `845d5cc6` - Step 5.2: Convert all write operations to use harness (RED-GREEN-REFACTOR)
+3. `c20ee68c` - Step 5.3: Convert all read operations to use read_lock + counters (RED-GREEN-REFACTOR)
+4. `28ecab2d` - Refactor: remove `InMemoryError` indirection (`InMemoryDbError -> SchemaStorageError` direct path)
+5. `02905f70` - Refactor: reorder `schema/storage/testing.rs` for API-tour readability + update issue notes
+6. `ad42f1f7` - Refactor: move error conversion section near end (before tests)
+7. `413d531d` - Step 5.4: complete failure injection wiring + issue notes update
+8. `c03e67a5` - Step 5.5: remove obsolete test modules + finalize Phase 5 notes
+9. `e81f795e` - remove broad lint expectations; keep only code-adjacent lint compliance (`#[inline]`)
+10. `0372ff79` - align test naming/module structure with `docs/engineering/testing/unit*.md`
+11. `0cc3cde5` - tighten visibility (`pub(crate)`) and prune low-value doc examples
+
+#### Step 5.1: Embed InMemoryHarness - ✅ COMPLETE
+
+**RED:**
+- Test `exposes_harness_for_instrumentation` fails: `InMemoryRepository` has no `harness()` method
+
+**GREEN:**
+- Added `harness: Arc<InMemoryHarness>` field to `InMemoryRepository`
+- Added `pub(crate) fn harness(&self) -> &InMemoryHarness` accessor method
+- Initialized harness in `new()`: `harness: Arc::new(InMemoryHarness::new())`
+- Implemented manual `Debug` for `InMemoryHarness` (can't auto-derive due to `Box<dyn FailureInjector>`)
+- Updated `Default` impl to delegate to `Self::new()`
+
+**REFACTOR:**
+- Added `with_harness(harness: InMemoryHarness) -> Self` constructor for failure injection tests
+- Fixed visibility to `pub(crate)` to match `InMemoryHarness` visibility (clippy `private-interfaces` lint)
+
+**Key Decisions:**
+- **Use `Arc<InMemoryHarness>`**: Preserves `Clone` derive on `InMemoryRepository` (already uses Arc extensively)
+- **Manual `Debug` impl**: Shows `counters` snapshot + `has_injector` boolean (can't show injector internals)
+- **`pub(crate)` visibility**: Matches `InMemoryHarness` visibility, prevents lint warnings
+
+**Impact:**
+- `InMemoryHarness::counters()` no longer has `#[expect(dead_code)]` (actively used)
+- `with_harness()` is now used in integration tests for failure injection (Step 5.4 complete)
+
+#### Step 5.2: Convert Write Operations - ✅ COMPLETE
+
+**RED:**
+- Test `instruments_write_operations` fails: `writes` counter is 0, expected 2
+
+**GREEN:**
+- Converted `save_schema` to use `write_lock()` helper
+- Added counter instrumentation: `self.harness.counters().inc_write()`
+- Error propagation now uses direct `?` via `From<InMemoryDbError> for SchemaStorageError`
+
+**REFACTOR:**
+- Converted all 6 remaining `WriteRepository` methods to use harness pattern:
+  - `save_many_schemas` (2 writes: schemas + name_to_id)
+  - `save_property_bank` (1 write)
+  - `save_raw_schema_view` (2 writes: raw_schema_views + path_to_id)
+  - `save_topological_graph` (1 write)
+  - `save_raw_bank_view` (1 write)
+  - `delete_schema` (5 writes: schemas, name_to_id, path_to_id, raw_schema_views, raw_bank_views)
+- Total: **7 methods, 13 write lock acquisitions**
+- Removed `write_lock` import temporarily (not yet used in read methods)
+
+**Pattern:**
+```rust
+let mut map = write_lock(&self.field, "context_string")
+    ?;
+self.harness.counters().inc_write();
+```
+
+**Quality:**
+- All 1197 tests pass
+- Clippy clean (no warnings)
+
+#### Step 5.3: Convert Read Operations - ✅ COMPLETE
+
+**RED:**
+- Test `instruments_read_operations` fails: `reads` counter is 0, expected 1
+
+**GREEN:**
+- Converted `find_schema_by_id` to use `read_lock()` helper
+- Re-added `read_lock` import
+- Added counter instrumentation: `self.harness.counters().inc_read()`
+
+**REFACTOR:**
+- Converted all 13 remaining `ReadRepository` methods to use harness pattern
+- Methods with multiple locks (e.g., `find_raw_schema_view_by_path`, `get_schema_index`) increment counter for each lock acquisition
+- **Removed unused `InMemoryError::lock_poisoned()` method** - helpers use `InMemoryDbError` directly
+- **Removed `clippy::map_err_ignore` from module-level `#[expect]`** - no longer needed with new error handling pattern
+
+**Read Methods Instrumented (14 total, 19 lock acquisitions):**
+- `find_schema_by_id` (1 lock)
+- `find_many_schemas_by_id` (1 lock)
+- `find_schemas_by_ids` (1 lock)
+- `list_schemas` (1 lock)
+- `find_schemas_using_properties` (1 lock)
+- `get_raw_schema_view` (1 lock)
+- `find_raw_schema_view_by_path` (2 locks: path_to_id + views)
+- `find_raw_schema_views_by_paths` (2 locks: path_to_id + views)
+- `get_property_bank` (1 lock)
+- `get_topological_graph` (1 lock)
+- `get_raw_property_bank_view` (1 lock)
+- `find_schema_id_by_name` (1 lock)
+- `find_schema_id_by_path` (1 lock)
+- `find_schema_ids_by_paths` (1 lock)
+- `list_schema_name_id_pairs` (1 lock)
+- `list_schema_path_id_pairs` (1 lock)
+- `get_schema_index` (2 locks: name_to_id + path_to_id)
+
+**Pattern:**
+```rust
+let data = read_lock(&self.field, "context_string")
+    ?;
+self.harness.counters().inc_read();
+```
+
+**Quality:**
+- All 1197 tests pass
+- Clippy clean (no warnings)
+- 10 schema storage tests passing
+
+**Cleanup:**
+- Removed `InMemoryError::lock_poisoned()` - genuinely unused (helpers create `InMemoryDbError::LockPoisoned` directly)
+- Simplified module-level lint expectations
+
+#### Step 5.4: Failure Injection Support - ✅ COMPLETE
+
+**RED (write path):**
+- Added test `respects_write_failure_injection`
+- Expected failure observed: repository ignored injected failures and returned `Ok(())`
+
+**GREEN (write path):**
+- Added `self.harness.fail_at(FailurePoint::BeforeWrite)?;` at top of `save_schema`
+- Test now passes, returning `Err(SchemaStorageError::Storage(_))` as expected
+
+**RED (read path):**
+- Added test `respects_read_failure_injection`
+- Expected failure observed: repository ignored read injection and returned `Ok(...)`
+
+**GREEN (read path):**
+- Added `self.harness.fail_at(FailurePoint::BeforeRead)?;` at top of `find_schema_by_id`
+- Test now passes, returning `Err(SchemaStorageError::Storage(_))`
+
+**REFACTOR (full coverage):**
+- Applied `BeforeRead` checks to all `ReadRepository` methods
+- Applied `BeforeWrite` checks to all `WriteRepository` methods
+- Removed obsolete `#[expect(dead_code)]` from `with_harness`
+- Added direct conversion coverage tests for lock-poisoned and injected failure mapping to `SchemaStorageError`
+
+**Rust best-practices notes:**
+- Prefer direct `?` propagation over custom conversion helpers
+- Removed `to_storage_error()` and intermediate `InMemoryError` conversion path
+- Kept conversions explicit at module boundary (`From<InMemoryDbError> for SchemaStorageError`)
+- Cleaned unfulfilled lint expectations (`clippy::exhaustive_enums`, `clippy::doc_markdown`) after enum removal
+
+### Phase 5 Progress Summary
+
+**Completed:**
+- ✅ Step 5.1: Embedded `InMemoryHarness` in `InMemoryRepository`
+- ✅ Step 5.2: All write operations instrumented (13 lock acquisitions across 7 methods)
+- ✅ Step 5.3: All read operations instrumented (19 lock acquisitions across 14 methods)
+- ✅ Step 5.4: Failure injection wired for all read/write methods and verified via integration tests
+- ✅ Step 5.5: Removed obsolete helper/dummy test modules from Schema storage testing
+
+**Pending:**
+- (none for Phase 5)
+
+**Instrumentation Totals:**
+- **21 repository methods** converted to use `db::testing` harness
+- **32 lock acquisitions** instrumented (13 write + 19 read)
+- **Pattern scales cleanly:** Methods with multiple locks naturally increment counters multiple times
+- **Failure injection coverage:** all repository read/write entrypoints now gate through `FailurePoint::BeforeRead/BeforeWrite`
+
+**Error Handling:**
+- All repository lock helper calls use direct `?` propagation
+- Conversion path simplified to `InMemoryDbError -> SchemaStorageError`
+- `InMemoryError` and `to_storage_error()` removed from `schema/storage/testing.rs`
+
+### Direction Update (2026-05-24)
+
+Based on implementation review and maintainability concerns:
+
+1. **`InMemoryError` is now considered technical debt in Schema storage testing.**
+   - It currently adds an unnecessary conversion hop (`InMemoryDbError -> InMemoryError -> SchemaStorageError`).
+   - Planned refactor direction: prefer direct conversion from `InMemoryDbError` to `SchemaStorageError` and remove `to_storage_error()` call-sites.
+   - Goal: reduce ceremony in repository methods and simplify error flow for contributors.
+
+2. **`db/testing.rs` organization is already complete and should be treated as done.**
+   - The file was already reorganized per `docs/refs/rust/best_practices_canonical/ordering-discipline.md` during Phase 0 (Step 0.6 + Step 0.8).
+   - No additional structural reorganization is required there before continuing Phase 5.
+
+3. **Reorganization of `schema/storage/testing.rs` should land as a separate refactor commit.**
+   - Keep behavior-preserving file ordering / API-tour improvements isolated from functional changes.
+   - This preserves review clarity and makes TDD progression easier to audit.
+
+**Quality Gates:**
+- ✅ All `schema::storage::testing` tests passing (8 tests after Step 5.5 cleanup)
+- ✅ Clippy clean (no warnings)
+- ✅ TDD discipline maintained (RED-GREEN-REFACTOR for each step)
+- ✅ Pre-commit hooks passing (fmt, clippy, tests, conventional commits)
+
+#### Step 5.5: Remove Obsolete Tests - ✅ COMPLETE
+
+**GREEN (cleanup step):**
+- Removed `tests::integration_with_db_testing` module from `schema/storage/testing.rs`
+  - Removed lock-poison conversion helper tests that validated conversion glue rather than repository behavior
+- Removed `tests::contracts` module from `schema/storage/testing.rs`
+  - Removed idempotent-delete/index-consistency tests from this context-local harness file
+
+**Rationale:**
+- Keep this module focused on repository behavior + harness integration
+- Avoid duplicate/placeholder scaffolding in Schema context test doubles
+- Align with Phase 5 plan to defer shared contract scaffolding to Issue #10
+
+**Post-cleanup test inventory:**
+- `defaults::returns_zero_schema_count_when_new`
+- `defaults::returns_zero_schema_count_when_default`
+- `accessors::returns_zero_schema_count_after_clear`
+- `accessors::returns_zeroed_counters_when_harness_is_fresh`
+- `update::increments_write_counter_when_save_schema_succeeds`
+- `update::returns_storage_error_when_before_write_failure_is_injected`
+- `lookup::increments_read_counter_when_find_schema_by_id_succeeds`
+- `lookup::returns_storage_error_when_before_read_failure_is_injected`
+
+### Additional Phase 5 hardening (post-Step 5.5)
+
+- Removed broad module-level lint expectations from `schema/storage/testing.rs`
+- Added required `#[inline]` on public/public(crate) methods to satisfy strict clippy profile
+- Tightened visibility for schema storage testing utilities:
+  - `schema::storage::testing` exported as `pub(crate) mod testing`
+  - `InMemoryRepository` and helper methods now `pub(crate)`
+- Pruned low-value doc examples (`new()`, `with_harness()`, module/type examples) to reduce documentation drift risk
+- Kept doc comments focused on purpose, constraints, and behavior contracts
+
+---
+
+### Acceptance Criteria Updates
+
+After Phase 0 + Phase 5 completion:
+
+- [x] `lithos-core/src/db/testing.rs` exists and compiles under `#[cfg(test)]`
+- [x] ~~`TestStore` is implemented with `open_temp()` and `open_temp_arc()` methods~~ **Moved to `Store::open_temp()` in `db/core.rs` (Step 0.7)**
+- [x] Generic lock helpers (`read_lock`, `write_lock`, `mutex_lock`) are implemented and return `InMemoryDbError` on poison
+- [x] `OpCounters` struct is implemented with atomic fields and `inc_*` + `snapshot()` methods
+- [x] `FailurePoint` enum, `FailureInjector` trait, and `InMemoryHarness` struct are implemented
+- [x] `InMemoryDbError` enum is defined with `LockPoisoned`, `InjectedFailure`, `InvariantViolation` variants
+- [x] ✅ **Phase 0 complete (8 steps)**: `db::testing` refactored per Rust best practices
+  - [x] Step 0.1: Clean test output (catch_unwind instead of thread::spawn)
+  - [x] Step 0.2: Add missing error context tests
+  - [x] Step 0.3: Refactor idiomatic option handling (map_or)
+  - [x] Step 0.4: Remove overbroad lint suppression (targeted #[expect])
+  - [x] Step 0.5: Fix doc test hygiene (rust,no_run)
+  - [x] Step 0.6: Reorganize per ordering discipline
+  - [x] Step 0.7: Move TestStore to Store::open_temp()
+  - [x] Step 0.8: Move module-level lint expects to specific functions
+- [x] **Phase 5 Steps 5.1-5.5 complete**: Schema context demonstrates usage by:
+  - [x] Step 5.1: `InMemoryRepository` embeds `Arc<InMemoryHarness>` with `harness()` accessor
+  - [x] Step 5.2: All write operations (7 methods, 13 locks) use `write_lock` + `inc_write()`
+  - [x] Step 5.3: All read operations (14 methods, 19 locks) use `read_lock` + `inc_read()`
+  - [x] Implementing direct `From<InMemoryDbError> for SchemaStorageError`
+  - [x] Tests verify counter instrumentation works end-to-end
+  - [x] Step 5.4: Tests verify failure injection works end-to-end (`respects_write_failure_injection`, `respects_read_failure_injection`)
+  - [x] Step 5.5: Remove obsolete helper/dummy tests
+  - [x] **Refactor follow-up complete:** removed `InMemoryError`/`to_storage_error()` indirection and reorganized `schema/storage/testing.rs` for API-tour readability
+- [ ] Contract test scaffolding deferred to Issue #10 (cross-context repository correctness contracts)
+- [x] All tests pass (`mise run test`)
+- [x] No clippy warnings (`mise run lint`)
+- [x] Documentation exists in module-level doc comment explaining "infra-only" boundary and non-goals
+
 ## Final Acceptance Checklist
 
-- [ ] Shared in-memory testing infra is available in `db::testing`.
+- [x] Shared in-memory testing infra is available in `db::testing`.
 - [ ] Context adapters (Schema/Note/Template/Config) can consume the shared
-      infra without moving context invariants into DB.
-- [ ] Cross-context guidance for in-memory adapter shape is documented.
+      infra without moving context invariants into DB. *(Schema complete; Note/Template/Config migration slices not completed in this issue.)*
+- [ ] Cross-context guidance for in-memory adapter shape is documented. *(Partially documented here; broader cross-context rollout docs still pending.)*
 - [ ] Note/Template/Config migration slices (07/08/09) reference this seam and
-      apply it during implementation.
-- [ ] TDD red-green-refactor cycle followed for all 18 tests.
-- [ ] All phases completed sequentially (no horizontal slicing).
+      apply it during implementation. *(Not completed in this issue.)*
+- [x] TDD red-green-refactor cycle followed for all phases (0 + 1-5).
+- [x] All phases completed sequentially (no horizontal slicing).
+
+## Acceptance Criteria Not Met
+
+The following acceptance criteria remain intentionally unmet for Issue 06 scope
+and are delegated to Issues 07/08/09:
+
+1. **Cross-context adoption not complete**
+   - Note/Template/Config have not yet been migrated to the shared seam in this issue.
+2. **Cross-context rollout documentation incomplete**
+   - Additional guidance beyond this issue notes is still needed.
+3. **Contract scaffolding not implemented here**
+   - Deferred to Issue #10 by design.
+
+### Migration Strategy Decision (2026-05-24)
+
+- In-memory adapter adoption for Note/Template/Config will be implemented in the
+  same issues as their full context storage migrations (07/08/09) to avoid
+  duplicate work and churn.
+- Issue 06 remains the seam foundation + Schema proving ground.
+- Cross-context adapter criteria now live explicitly in 07/08/09 acceptance
+  checklists.
 
 ## Blocked by
 

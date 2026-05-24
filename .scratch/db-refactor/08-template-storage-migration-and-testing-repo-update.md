@@ -33,6 +33,10 @@ Template persistence uses the legacy v1 repository and storage pattern.
 2. Define `TemplateRepository` as a marker trait extending both.
 3. Implement `TemplateRedbRepository` split across `template/storage/read.rs` and `template/storage/write.rs`.
 4. Update `testing.rs` in-memory adapter to implement the new segregated traits.
+5. Adopt the shared `db::testing` seam in Template's in-memory adapter:
+   - Use `read_lock` / `write_lock` helpers
+   - Embed `InMemoryHarness` for counters/failure injection
+   - Map `InMemoryDbError` directly into Template storage errors
 
 **Key interfaces:**
 - `TemplateReadRepository` / `TemplateWriteRepository`
@@ -44,6 +48,9 @@ Template persistence uses the legacy v1 repository and storage pattern.
 - [ ] `TemplateRedbRepository` implemented split across `read.rs` and `write.rs`.
 - [ ] Template `testing.rs` in-memory Repository Adapter updated and passing tests.
 - [ ] Existing Template behavior tests pass with new storage seam.
+- [ ] Template in-memory adapter uses `db::testing::{read_lock, write_lock, InMemoryHarness}`.
+- [ ] Template in-memory adapter supports failure injection (`BeforeRead`/`BeforeWrite`) and has integration tests for both paths.
+- [ ] Template in-memory adapter follows naming/structure conventions from `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`.
 
 **Revision Note (2026-05-12):**
 Plan established following the **Segregated Unified Repository** pattern (ADR 016).
@@ -53,6 +60,16 @@ Plan established following the **Segregated Unified Repository** pattern (ADR 01
 - [ ] Template Repository Adapter uses the new storage module layout and DB seam.
 - [ ] Template `testing.rs` in-memory Repository Adapter is updated to the new interface and passes tests.
 - [ ] Existing Template behavior tests pass, with added coverage for changed batch/error semantics where needed.
+- [ ] Cross-context adapter adoption complete for Template:
+  - [ ] lock helpers use `db::testing` primitives
+  - [ ] harness counters wired and verified
+  - [ ] failure injection wired and verified
+  - [ ] direct `InMemoryDbError` mapping in place
+
+## Cross-context guidance reference
+
+- This issue must apply the shared adapter guidance established by Issue 06
+  (DB seam foundation) and keep adapter behavior local to Template context.
 
 ## Blocked by
 

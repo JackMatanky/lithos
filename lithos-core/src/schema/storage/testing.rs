@@ -7,7 +7,6 @@
 //! # Exports
 //!
 //! - [`InMemoryRepository`] - HashMap-backed [`Repository`] implementation
-//! - [`InMemoryError`] - Error type for in-memory operations
 //!
 //! # Design Rationale
 //!
@@ -21,37 +20,7 @@
 //! IO from unit tests while maintaining test extent (can still test full
 //! pipelines end-to-end).
 //!
-//! # Example
-//!
-//! ```ignore
-//! use lithos_core::schema::storage::testing::InMemoryRepository;
-//! use lithos_core::schema::repository::Repository;
-//!
-//! #[test]
-//! fn test_schema_resolution() {
-//!     let repo = InMemoryRepository::new();
-//!     repo.save_schema(&schema).unwrap();
-//!
-//!     // Pure computation test - no filesystem I/O
-//!     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
-//!     assert_eq!(loaded, Some(schema));
-//! }
-//! ```
-//!
 //! [`Repository`]: crate::schema::repository::Repository
-
-// Test-only code: relax pedantic lints for pragmatic test utilities
-#![expect(
-    clippy::missing_inline_in_public_items,
-    clippy::map_err_ignore,
-    clippy::significant_drop_tightening,
-    clippy::pattern_type_mismatch,
-    clippy::exhaustive_enums,
-    clippy::iter_over_hash_type,
-    clippy::doc_markdown,
-    clippy::doc_paragraphs_missing_punctuation,
-    reason = "Test utilities prioritize readability over micro-optimizations"
-)]
 
 use std::{
     collections::HashMap,
@@ -59,7 +28,10 @@ use std::{
 };
 
 use crate::{
-    db::DbError,
+    db::{
+        DbError,
+        testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
+    },
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -90,7 +62,7 @@ use crate::{
 /// All internal state is protected by `RwLock` for thread-safe concurrent
 /// access. Multiple readers can read simultaneously; writers get exclusive
 /// access. Lock poisoning (if a thread panics while holding a lock) is
-/// reported as [`InMemoryError::LockPoisoned`].
+/// reported via `SchemaStorageError::Storage(DbError::Corruption(...))`.
 ///
 /// # Performance Characteristics
 ///
@@ -117,27 +89,13 @@ use crate::{
 ///   serialization/durability)
 /// - Production code (no persistence guarantees)
 ///
-/// # Example
-///
-/// ```ignore
-/// use lithos_core::schema::storage::testing::InMemoryRepository;
-/// use lithos_core::schema::repository::Repository;
-///
-/// #[test]
-/// fn test_schema_crud() {
-///     let repo = InMemoryRepository::new();
-///     repo.save_schema(&schema).unwrap();
-///     assert_eq!(repo.schema_count(), 1);
-///
-///     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
-///     assert_eq!(loaded, Some(schema));
-/// }
-/// ```
-///
 /// [`Repository`]: crate::schema::repository::Repository
 /// [`RedbRepository`]: crate::schema::storage::RedbRepository
 #[derive(Debug, Clone)]
-pub struct InMemoryRepository {
+pub(crate) struct InMemoryRepository {
+    /// Test harness for operation instrumentation and failure injection
+    harness: Arc<InMemoryHarness>,
+
     /// Schema storage: `SchemaId` → `Schema`
     schemas: Arc<RwLock<HashMap<SchemaId, Schema>>>,
 
@@ -163,16 +121,11 @@ pub struct InMemoryRepository {
 
 impl InMemoryRepository {
     /// Creates a new empty in-memory repository.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let repo = InMemoryRepository::new();
-    /// assert_eq!(repo.schema_count(), 0);
-    /// ```
     #[must_use]
-    pub fn new() -> Self {
+    #[inline]
+    pub(crate) fn new() -> Self {
         Self {
+            harness: Arc::new(InMemoryHarness::new()),
             schemas: Arc::new(RwLock::new(HashMap::new())),
             name_to_id: Arc::new(RwLock::new(HashMap::new())),
             property_bank: Arc::new(RwLock::new(None)),
@@ -183,6 +136,32 @@ impl InMemoryRepository {
         }
     }
 
+    /// Creates a new repository with the specified test harness.
+    ///
+    /// Useful for tests that need custom failure injection behavior.
+    #[must_use]
+    pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
+        Self {
+            harness: Arc::new(harness),
+            schemas: Arc::new(RwLock::new(HashMap::new())),
+            name_to_id: Arc::new(RwLock::new(HashMap::new())),
+            property_bank: Arc::new(RwLock::new(None)),
+            raw_schema_views: Arc::new(RwLock::new(HashMap::new())),
+            path_to_id: Arc::new(RwLock::new(HashMap::new())),
+            raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
+            topological_graph: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Returns a reference to the test harness for instrumentation.
+    ///
+    /// Allows tests to inspect operation counters and configure failure
+    /// injection.
+    #[must_use]
+    pub(crate) fn harness(&self) -> &InMemoryHarness {
+        &self.harness
+    }
+
     /// Returns the number of schemas currently stored (test helper).
     ///
     /// # Panics
@@ -190,7 +169,8 @@ impl InMemoryRepository {
     /// Panics if the lock is poisoned (another thread panicked while holding
     /// the lock).
     #[must_use]
-    pub fn schema_count(&self) -> usize {
+    #[inline]
+    pub(crate) fn schema_count(&self) -> usize {
         self.schemas.read().expect("Lock poisoned").len()
     }
 
@@ -201,7 +181,8 @@ impl InMemoryRepository {
     /// # Panics
     ///
     /// Panics if any lock is poisoned.
-    pub fn clear(&self) {
+    #[inline]
+    pub(crate) fn clear(&self) {
         self.schemas.write().expect("Lock poisoned").clear();
         self.name_to_id.write().expect("Lock poisoned").clear();
         *self.property_bank.write().expect("Lock poisoned") = None;
@@ -213,70 +194,10 @@ impl InMemoryRepository {
 }
 
 impl Default for InMemoryRepository {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Error type for InMemoryRepository operations.
-///
-/// Since this is an in-memory implementation, most operations cannot fail.
-/// This error type exists to satisfy the Repository trait's associated Error
-/// type.
-#[derive(Debug, thiserror::Error)]
-pub enum InMemoryError {
-    /// A generic error occurred (used for trait compatibility).
-    #[error("In-memory repository error: {message}")]
-    Internal {
-        /// Error message describing what went wrong.
-        message: Box<str>,
-    },
-
-    /// Lock was poisoned (another thread panicked while holding the lock).
-    #[error("Lock poisoned: {context}")]
-    LockPoisoned {
-        /// Context describing which lock was poisoned.
-        context: Box<str>,
-    },
-}
-
-impl InMemoryError {
-    /// Creates an internal error with a message.
-    ///
-    /// Used for trait compatibility when an operation logically cannot fail
-    /// but the trait signature requires a `Result`.
-    fn internal(message: impl Into<Box<str>>) -> Self {
-        Self::Internal {
-            message: message.into(),
-        }
-    }
-
-    /// Creates a lock poisoned error with context.
-    ///
-    /// Indicates that a thread panicked while holding a lock, leaving shared
-    /// state in an inconsistent state. This typically indicates a bug in test
-    /// code or the repository implementation.
-    fn lock_poisoned(context: impl Into<Box<str>>) -> Self {
-        Self::LockPoisoned {
-            context: context.into(),
-        }
-    }
-}
-
-/// Converts an [`InMemoryError`] to a [`SchemaStorageError`].
-///
-/// Maps in-memory repository errors to the storage error type expected by
-/// the [`Repository`] trait. Since [`InMemoryRepository`] operations rarely
-/// fail, this is primarily used for lock poisoning errors.
-///
-/// [`Repository`]: crate::schema::repository::Repository
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "error conversion consumes formatted message"
-)]
-#[inline]
-fn to_storage_error(err: InMemoryError) -> SchemaStorageError {
-    SchemaStorageError::from(DbError::Corruption(err.to_string()))
 }
 
 impl ReadRepository for InMemoryRepository {
@@ -285,9 +206,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("find_schema_by_id"))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let schemas = read_lock(&self.schemas, "find_schema_by_id")?;
+        self.harness.counters().inc_read();
+
         Ok(schemas.get(&id).cloned())
     }
 
@@ -296,11 +219,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_many_schemas_by_id",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let schemas = read_lock(&self.schemas, "find_many_schemas_by_id")?;
+        self.harness.counters().inc_read();
+
         Ok(ids.iter().map(|id| schemas.get(id).cloned()).collect())
     }
 
@@ -309,19 +232,21 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schemas_by_ids",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let schemas = read_lock(&self.schemas, "find_schemas_by_ids")?;
+        self.harness.counters().inc_read();
+
         Ok(ids.iter().filter_map(|id| schemas.get(id).cloned()).collect())
     }
 
     #[inline]
     fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("list_schemas"))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let schemas = read_lock(&self.schemas, "list_schemas")?;
+        self.harness.counters().inc_read();
+
         Ok(schemas.values().cloned().collect())
     }
 
@@ -333,11 +258,12 @@ impl ReadRepository for InMemoryRepository {
         std::collections::HashMap<SchemaId, Vec<PropertyName>>,
         SchemaStorageError,
     > {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schemas_using_properties",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let schemas =
+            read_lock(&self.schemas, "find_schemas_using_properties")?;
+        self.harness.counters().inc_read();
+
         let mut usage: std::collections::HashMap<SchemaId, Vec<PropertyName>> =
             HashMap::new();
         for (schema_id, schema) in schemas.iter() {
@@ -359,11 +285,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_raw_schema_view",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let views = read_lock(&self.raw_schema_views, "get_raw_schema_view")?;
+        self.harness.counters().inc_read();
+
         Ok(views.get(&id).cloned())
     }
 
@@ -372,16 +298,20 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_view_by_path (path_to_id)",
-            ))
-        })?;
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_view_by_path (views)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "find_raw_schema_view_by_path (path_to_id)",
+        )?;
+        self.harness.counters().inc_read();
+
+        let views = read_lock(
+            &self.raw_schema_views,
+            "find_raw_schema_view_by_path (views)",
+        )?;
+        self.harness.counters().inc_read();
+
         Ok(path_to_id.get(path).and_then(|id| views.get(id).cloned()))
     }
 
@@ -390,16 +320,20 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_views_by_paths (path_to_id)",
-            ))
-        })?;
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_views_by_paths (views)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "find_raw_schema_views_by_paths (path_to_id)",
+        )?;
+        self.harness.counters().inc_read();
+
+        let views = read_lock(
+            &self.raw_schema_views,
+            "find_raw_schema_views_by_paths (views)",
+        )?;
+        self.harness.counters().inc_read();
+
         Ok(paths
             .iter()
             .map(|path| {
@@ -412,9 +346,11 @@ impl ReadRepository for InMemoryRepository {
     fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaStorageError> {
-        let bank = self.property_bank.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("get_property_bank"))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let bank = read_lock(&self.property_bank, "get_property_bank")?;
+        self.harness.counters().inc_read();
+
         Ok(bank.clone())
     }
 
@@ -422,11 +358,12 @@ impl ReadRepository for InMemoryRepository {
     fn get_topological_graph(
         &self,
     ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageError> {
-        let graph = self.topological_graph.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_topological_graph",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let graph =
+            read_lock(&self.topological_graph, "get_topological_graph")?;
+        self.harness.counters().inc_read();
+
         Ok(graph.clone())
     }
 
@@ -435,11 +372,12 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
-        let views = self.raw_bank_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_raw_property_bank_view",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let views =
+            read_lock(&self.raw_bank_views, "get_raw_property_bank_view")?;
+        self.harness.counters().inc_read();
+
         Ok(views.get(path).cloned())
     }
 
@@ -448,11 +386,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_id_by_name",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let name_to_id = read_lock(&self.name_to_id, "find_schema_id_by_name")?;
+        self.harness.counters().inc_read();
+
         Ok(name_to_id.get(name).copied())
     }
 
@@ -461,11 +399,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_id_by_path",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id = read_lock(&self.path_to_id, "find_schema_id_by_path")?;
+        self.harness.counters().inc_read();
+
         Ok(path_to_id.get(path).copied())
     }
 
@@ -474,11 +412,12 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_ids_by_paths",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_schema_ids_by_paths")?;
+        self.harness.counters().inc_read();
+
         Ok(paths.iter().map(|path| path_to_id.get(path).copied()).collect())
     }
 
@@ -486,11 +425,12 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_name_id_pairs(
         &self,
     ) -> Result<NameIdPairs, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "list_schema_name_id_pairs",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let name_to_id =
+            read_lock(&self.name_to_id, "list_schema_name_id_pairs")?;
+        self.harness.counters().inc_read();
+
         let pairs: Vec<_> =
             name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect();
         Ok(pairs.into())
@@ -500,11 +440,11 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_path_id_pairs(
         &self,
     ) -> Result<PathIdPairs, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "list_schema_path_id_pairs",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "list_schema_path_id_pairs")?;
+        self.harness.counters().inc_read();
         let pairs: Vec<_> =
             path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect();
         Ok(pairs.into())
@@ -512,22 +452,22 @@ impl ReadRepository for InMemoryRepository {
 
     #[inline]
     fn get_schema_index(&self) -> Result<SchemaIndex, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_schema_index (name_to_id)",
-            ))
-        })?;
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_schema_index (path_to_id)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let name_to_id =
+            read_lock(&self.name_to_id, "get_schema_index (name_to_id)")?;
+        self.harness.counters().inc_read();
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "get_schema_index (path_to_id)")?;
+        self.harness.counters().inc_read();
+
         let name_pairs: Vec<_> =
             name_to_id.iter().map(|(n, id)| (n.clone(), *id)).collect();
         let path_pairs: Vec<_> =
             path_to_id.iter().map(|(p, id)| (p.clone(), *id)).collect();
         SchemaIndex::from_pairs(name_pairs, path_pairs).map_err(|e| {
-            to_storage_error(InMemoryError::internal(e.to_string()))
+            SchemaStorageError::from(DbError::Corruption(e.to_string()))
         })
     }
 }
@@ -535,16 +475,16 @@ impl ReadRepository for InMemoryRepository {
 impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
-        let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_schema (schemas)",
-            ))
-        })?;
-        let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_schema (name_to_id)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut schemas_map =
+            write_lock(&self.schemas, "save_schema (schemas)")?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id_map =
+            write_lock(&self.name_to_id, "save_schema (name_to_id)")?;
+        self.harness.counters().inc_write();
+
         schemas_map.insert(*schema.id(), schema.clone());
         name_to_id_map.insert(schema.name().clone(), *schema.id());
         Ok(())
@@ -555,16 +495,16 @@ impl WriteRepository for InMemoryRepository {
         &self,
         schemas: &[Schema],
     ) -> Result<(), SchemaStorageError> {
-        let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_many_schemas (schemas)",
-            ))
-        })?;
-        let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_many_schemas (name_to_id)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut schemas_map =
+            write_lock(&self.schemas, "save_many_schemas (schemas)")?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id_map =
+            write_lock(&self.name_to_id, "save_many_schemas (name_to_id)")?;
+        self.harness.counters().inc_write();
+
         for schema in schemas {
             schemas_map.insert(*schema.id(), schema.clone());
             name_to_id_map.insert(schema.name().clone(), *schema.id());
@@ -577,9 +517,12 @@ impl WriteRepository for InMemoryRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaStorageError> {
-        let mut storage = self.property_bank.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("save_property_bank"))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut storage =
+            write_lock(&self.property_bank, "save_property_bank")?;
+        self.harness.counters().inc_write();
+
         *storage = Some(bank.clone());
         Ok(())
     }
@@ -590,11 +533,12 @@ impl WriteRepository for InMemoryRepository {
         path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaStorageError> {
-        let mut views = self.raw_bank_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_property_bank_view",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut views =
+            write_lock(&self.raw_bank_views, "save_raw_property_bank_view")?;
+        self.harness.counters().inc_write();
+
         views.insert(path.clone(), view.clone());
         Ok(())
     }
@@ -605,16 +549,16 @@ impl WriteRepository for InMemoryRepository {
         id: SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), SchemaStorageError> {
-        let mut views = self.raw_schema_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_schema_view (views)",
-            ))
-        })?;
-        let mut path_to_id = self.path_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_schema_view (path_to_id)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut views =
+            write_lock(&self.raw_schema_views, "save_raw_schema_view (views)")?;
+        self.harness.counters().inc_write();
+
+        let mut path_to_id =
+            write_lock(&self.path_to_id, "save_raw_schema_view (path_to_id)")?;
+        self.harness.counters().inc_write();
+
         path_to_id.insert(view.file_path().clone(), id);
         views.insert(id, view.clone());
         Ok(())
@@ -625,32 +569,31 @@ impl WriteRepository for InMemoryRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageError> {
-        let mut storage = self.topological_graph.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_topological_graph",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut storage =
+            write_lock(&self.topological_graph, "save_topological_graph")?;
+        self.harness.counters().inc_write();
+
         *storage = Some(graph.clone());
         Ok(())
     }
 
     #[inline]
     fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageError> {
-        let mut schemas = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (schemas)",
-            ))
-        })?;
-        let mut name_to_id = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (name_to_id)",
-            ))
-        })?;
-        let mut raw_views = self.raw_schema_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (raw_views)",
-            ))
-        })?;
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut schemas = write_lock(&self.schemas, "delete_schema (schemas)")?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id =
+            write_lock(&self.name_to_id, "delete_schema (name_to_id)")?;
+        self.harness.counters().inc_write();
+
+        let mut raw_views =
+            write_lock(&self.raw_schema_views, "delete_schema (raw_views)")?;
+        self.harness.counters().inc_write();
+
         if let Some(schema) = schemas.remove(&id) {
             name_to_id.remove(schema.name());
         }
@@ -660,58 +603,193 @@ impl WriteRepository for InMemoryRepository {
 }
 
 // ============================================================================
-// Error Conversions
+// Error Conversion
 // ============================================================================
 
-/// Convert `InMemoryError` to `SchemaRepositoryError` for loader compatibility.
-impl From<InMemoryError> for crate::schema::error::SchemaRepositoryError {
-    fn from(err: InMemoryError) -> Self {
+/// Convert `db::testing::InMemoryDbError` directly to `SchemaStorageError`.
+///
+/// This avoids an intermediate custom error conversion at call sites that
+/// only need to satisfy repository trait error contracts.
+#[cfg(test)]
+impl From<crate::db::testing::InMemoryDbError> for SchemaStorageError {
+    #[inline]
+    fn from(err: crate::db::testing::InMemoryDbError) -> Self {
+        use crate::db::testing::InMemoryDbError as DbTestError;
+
         let db_error = match err {
-            InMemoryError::Internal {
-                message,
-            } => DbError::Corruption(message.into()),
-            InMemoryError::LockPoisoned {
+            DbTestError::LockPoisoned {
                 context,
             } => DbError::Corruption(format!("Lock poisoned: {context}")),
+            DbTestError::InjectedFailure {
+                reason,
+                ..
+            } => DbError::Corruption(format!("Injected failure: {reason}")),
+            DbTestError::InvariantViolation {
+                message,
+            } => DbError::Corruption(message.into()),
         };
 
-        Self::Storage(crate::schema::error::SchemaStorageError::Storage(
-            db_error,
-        ))
+        SchemaStorageError::Storage(db_error)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
 
-    #[test]
-    fn new_repository_is_empty() {
-        let repo = InMemoryRepository::new();
-        assert_eq!(repo.schema_count(), 0);
+    mod fixtures {
+        use super::*;
+
+        pub(super) struct FailOnWrite;
+        pub(super) struct FailOnRead;
+
+        impl FailureInjector for FailOnWrite {
+            fn fail_at(
+                &self,
+                point: FailurePoint,
+            ) -> Result<(), InMemoryDbError> {
+                if point == FailurePoint::BeforeWrite {
+                    return Err(InMemoryDbError::InjectedFailure {
+                        point,
+                        reason: "write injection".into(),
+                    });
+                }
+
+                Ok(())
+            }
+        }
+
+        impl FailureInjector for FailOnRead {
+            fn fail_at(
+                &self,
+                point: FailurePoint,
+            ) -> Result<(), InMemoryDbError> {
+                if point == FailurePoint::BeforeRead {
+                    return Err(InMemoryDbError::InjectedFailure {
+                        point,
+                        reason: "read injection".into(),
+                    });
+                }
+
+                Ok(())
+            }
+        }
     }
 
-    #[test]
-    fn default_repository_is_empty() {
-        let repo = InMemoryRepository::default();
-        assert_eq!(repo.schema_count(), 0);
+    mod defaults {
+        use super::*;
+
+        #[test]
+        fn returns_zero_schema_count_when_new() {
+            let repo = InMemoryRepository::new();
+            assert_eq!(repo.schema_count(), 0);
+        }
+
+        #[test]
+        fn returns_zero_schema_count_when_default() {
+            let repo = InMemoryRepository::default();
+            assert_eq!(repo.schema_count(), 0);
+        }
     }
 
-    #[test]
-    fn clear_resets_all_state() {
-        let repo = InMemoryRepository::new();
+    mod accessors {
+        use super::*;
 
-        // Add some data
-        let id = SchemaId::new();
-        let name = SchemaName::try_new("test-schema").unwrap();
-        let schema =
-            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+        #[test]
+        fn returns_zero_schema_count_after_clear() {
+            let repo = InMemoryRepository::new();
 
-        repo.save_schema(&schema).unwrap();
-        assert_eq!(repo.schema_count(), 1);
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
 
-        // Clear
-        repo.clear();
-        assert_eq!(repo.schema_count(), 0);
+            repo.save_schema(&schema).unwrap();
+            assert_eq!(repo.schema_count(), 1);
+
+            repo.clear();
+            assert_eq!(repo.schema_count(), 0);
+        }
+
+        #[test]
+        fn returns_zeroed_counters_when_harness_is_fresh() {
+            let repo = InMemoryRepository::new();
+
+            let harness = repo.harness();
+
+            let snapshot = harness.counters().snapshot();
+            assert_eq!(snapshot.reads, 0);
+            assert_eq!(snapshot.writes, 0);
+        }
+    }
+
+    mod update {
+        use super::*;
+        use crate::schema::storage::testing::tests::fixtures::FailOnWrite;
+
+        #[test]
+        fn increments_write_counter_when_save_schema_succeeds() {
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+
+            repo.save_schema(&schema).unwrap();
+
+            let snapshot = repo.harness().counters().snapshot();
+            assert_eq!(snapshot.writes, 2);
+        }
+
+        #[test]
+        fn returns_storage_error_when_before_write_failure_is_injected() {
+            let harness = InMemoryHarness::with_injector(Box::new(FailOnWrite));
+            let repo = InMemoryRepository::with_harness(harness);
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+
+            let result = repo.save_schema(&schema);
+
+            assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
+        }
+    }
+
+    mod lookup {
+        use super::*;
+        use crate::schema::storage::testing::tests::fixtures::FailOnRead;
+
+        #[test]
+        fn increments_read_counter_when_find_schema_by_id_succeeds() {
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+            repo.save_schema(&schema).unwrap();
+
+            let _result = repo.find_schema_by_id(id).unwrap();
+
+            let snapshot = repo.harness().counters().snapshot();
+            assert_eq!(snapshot.reads, 1);
+        }
+
+        #[test]
+        fn returns_storage_error_when_before_read_failure_is_injected() {
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+
+            let harness = InMemoryHarness::with_injector(Box::new(FailOnRead));
+            let repo = InMemoryRepository::with_harness(harness);
+            repo.save_schema(&schema).unwrap();
+
+            let result = repo.find_schema_by_id(id);
+
+            assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
+        }
     }
 }

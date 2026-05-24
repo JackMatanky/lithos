@@ -43,7 +43,7 @@ mod write;
 pub mod tables;
 
 #[cfg(test)]
-pub mod testing;
+pub(crate) mod testing;
 
 use std::sync::Arc;
 

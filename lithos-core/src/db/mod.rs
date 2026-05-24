@@ -50,6 +50,8 @@ mod read;
 mod reader;
 pub mod retry;
 mod table;
+#[cfg(test)]
+pub(crate) mod testing;
 mod uuid;
 mod write;
 mod writer;
