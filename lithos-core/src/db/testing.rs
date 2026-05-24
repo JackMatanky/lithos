@@ -7,8 +7,8 @@
 //!
 //! # Architecture Boundaries
 //!
-//! - **DB owns**: Lock helpers, operation counters, failure injectors, store
-//!   constructors, error types for testing infrastructure.
+//! - **DB owns**: Lock helpers, operation counters, failure injectors, error
+//!   types for in-memory testing infrastructure.
 //! - **Contexts own**: Domain projection logic, entity-specific indices,
 //!   business invariants, in-memory repository adapter implementations.
 //!
@@ -32,11 +32,9 @@
 )]
 
 use std::sync::{
-    Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
     atomic::{AtomicUsize, Ordering},
 };
-
-use crate::db::{DbError, Store};
 
 // ============================================================================
 // Error Types
@@ -320,50 +318,6 @@ pub(crate) fn mutex_lock<'a, T>(
     lock.lock().map_err(|_| InMemoryDbError::LockPoisoned {
         context: ctx,
     })
-}
-
-// ============================================================================
-// Test Store Constructors
-// ============================================================================
-
-/// Utilities for creating temporary stores in tests.
-pub(crate) struct TestStore;
-
-impl TestStore {
-    /// Creates a temporary store that will be cleaned up when the `TempDir`
-    /// is dropped.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if the temporary directory or store cannot be created.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lithos_core::db::testing::TestStore;
-    ///
-    /// let (_tempdir, store) = TestStore::open_temp().unwrap();
-    /// store.read(|tx| Ok(())).unwrap();
-    /// ```
-    pub(crate) fn open_temp() -> Result<(tempfile::TempDir, Store), DbError> {
-        let tempdir = tempfile::tempdir().map_err(|e| {
-            DbError::Open(format!("Failed to create tempdir: {e}"))
-        })?;
-        let store = Store::open(&tempdir.path().join("test.redb"))?;
-        Ok((tempdir, store))
-    }
-
-    /// Creates a temporary store wrapped in `Arc` for shared access.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if the temporary directory or store cannot be created.
-    #[expect(dead_code, reason = "Reserved for multi-threaded test scenarios")]
-    pub(crate) fn open_temp_arc()
-    -> Result<(tempfile::TempDir, Arc<Store>), DbError> {
-        let (tempdir, store) = Self::open_temp()?;
-        Ok((tempdir, Arc::new(store)))
-    }
 }
 
 // ============================================================================
@@ -667,31 +621,6 @@ mod tests {
             // Act & Assert
             assert!(harness.fail_at(FailurePoint::BeforeRead).is_ok());
             assert!(harness.fail_at(FailurePoint::BeforeWrite).is_err());
-        }
-    }
-
-    mod constructors {
-        use super::*;
-
-        #[test]
-        fn creates_temp_store() {
-            // Act
-            let (_tempdir, store) = TestStore::open_temp().unwrap();
-
-            // Assert: store is usable
-            store.read(|_tx| Ok(())).unwrap();
-        }
-
-        #[test]
-        fn creates_stores_with_unique_paths() {
-            // Arrange & Act
-            let (dir1, _store1) = TestStore::open_temp().unwrap();
-            let (dir2, _store2) = TestStore::open_temp().unwrap();
-
-            // Assert
-            assert_ne!(dir1.path(), dir2.path());
-            assert!(dir1.path().exists());
-            assert!(dir2.path().exists());
         }
     }
 }

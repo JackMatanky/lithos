@@ -100,6 +100,43 @@ impl Store {
         write_tx.inner.commit()?;
         Ok(result)
     }
+
+    /// Creates a temporary store that will be cleaned up when the `TempDir`
+    /// is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the temporary directory or store cannot be created.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use lithos_core::db::Store;
+    ///
+    /// let (_tempdir, store) = Store::open_temp().unwrap();
+    /// store.read(|tx| Ok(())).unwrap();
+    /// ```
+    #[cfg(test)]
+    pub(crate) fn open_temp() -> Result<(tempfile::TempDir, Self), DbError> {
+        let tempdir = tempfile::tempdir().map_err(|e| {
+            DbError::Open(format!("Failed to create tempdir: {e}"))
+        })?;
+        let store = Self::open(&tempdir.path().join("test.redb"))?;
+        Ok((tempdir, store))
+    }
+
+    /// Creates a temporary store wrapped in `Arc` for shared access.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the temporary directory or store cannot be created.
+    #[cfg(test)]
+    #[expect(dead_code, reason = "Reserved for multi-threaded test scenarios")]
+    pub(crate) fn open_temp_arc()
+    -> Result<(tempfile::TempDir, std::sync::Arc<Self>), DbError> {
+        let (tempdir, store) = Self::open_temp()?;
+        Ok((tempdir, std::sync::Arc::new(store)))
+    }
 }
 
 impl Database {
@@ -240,6 +277,27 @@ mod tests {
             })?;
 
             Ok(())
+        }
+
+        #[test]
+        fn creates_temp_store() {
+            // Act
+            let (_tempdir, store) = Store::open_temp().unwrap();
+
+            // Assert: store is usable
+            store.read(|_tx| Ok(())).unwrap();
+        }
+
+        #[test]
+        fn creates_stores_with_unique_paths() {
+            // Arrange & Act
+            let (dir1, _store1) = Store::open_temp().unwrap();
+            let (dir2, _store2) = Store::open_temp().unwrap();
+
+            // Assert
+            assert_ne!(dir1.path(), dir2.path());
+            assert!(dir1.path().exists());
+            assert!(dir2.path().exists());
         }
     }
 
