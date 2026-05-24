@@ -104,6 +104,13 @@ impl BaseName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Get a borrowed view of this basename.
+    #[inline]
+    #[must_use]
+    pub fn as_ref(&self) -> BaseNameRef<'_> {
+        BaseNameRef(OsStr::new(self.as_str()))
+    }
 }
 
 impl TryFrom<FileName> for BaseName {
@@ -174,11 +181,34 @@ impl DirName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Get a borrowed view of this directory name.
+    #[inline]
+    #[must_use]
+    pub fn as_ref(&self) -> DirNameRef<'_> {
+        DirNameRef(OsStr::new(self.as_str()))
+    }
+}
+
+impl AsRef<str> for DirName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
 }
 
 /// Borrowed directory name view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
+
+impl DirNameRef<'_> {
+    /// Get the directory name as a string slice if it is valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -208,6 +238,12 @@ mod tests {
 
     mod base_name {
         use super::*;
+
+        #[test]
+        fn exposes_borrowed_view() {
+            let name = BaseName::new("readme".to_owned().into_boxed_str());
+            assert_eq!(name.as_ref().as_str(), Some("readme"));
+        }
 
         mod try_from_path {
             use super::*;
@@ -243,6 +279,16 @@ mod tests {
                 let base = BaseName::try_from(name);
                 assert!(base.is_err());
             }
+        }
+    }
+
+    mod dir_name {
+        use super::*;
+
+        #[test]
+        fn exposes_borrowed_view() {
+            let name = DirName::new("notes".to_owned().into_boxed_str());
+            assert_eq!(name.as_ref().as_str(), Some("notes"));
         }
     }
 }
