@@ -212,83 +212,222 @@ impl DirNameRef<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        ffi::OsStr,
+        os::unix::ffi::OsStrExt,
+        path::{Path, PathBuf},
+    };
 
     use super::*;
 
-    mod file_name {
+    mod file {
         use super::*;
 
-        #[test]
-        fn exposes_string_view_for_storage() {
-            let name = FileName::from("my-note.md".to_owned());
-            assert_eq!(name.as_str(), "my-note.md");
-        }
-    }
-
-    mod file_name_ref {
-        use super::*;
-
-        #[test]
-        fn exposes_utf8_view_when_valid() {
-            let name = FileName::from("my-note.md".to_owned());
-            assert_eq!(name.as_ref().as_str(), Some("my-note.md"));
-        }
-    }
-
-    mod base_name {
-        use super::*;
-
-        #[test]
-        fn exposes_borrowed_view() {
-            let name = BaseName::new("readme".to_owned().into_boxed_str());
-            assert_eq!(name.as_ref().as_str(), Some("readme"));
-        }
-
-        mod try_from_path {
+        mod accessors {
             use super::*;
 
             #[test]
-            fn constructs_from_file_stem() {
-                let path = PathBuf::from("readme.md");
-                let base = BaseName::try_from(path.as_path()).unwrap();
-                assert_eq!(base.as_str(), "readme");
+            fn returns_inner_str_for_as_str() {
+                let name = FileName::from("my-note.md".to_owned());
+                assert_eq!(name.as_str(), "my-note.md");
             }
 
             #[test]
-            fn extracts_from_full_path() {
-                let path = PathBuf::from("notes/app.md");
-                let base = BaseName::try_from(path.as_path()).unwrap();
-                assert_eq!(base.as_str(), "app");
+            fn returns_inner_str_for_as_ref_str() {
+                let name = FileName::from("my-note.md".to_owned());
+                assert_eq!(
+                    <FileName as AsRef<str>>::as_ref(&name),
+                    "my-note.md"
+                );
             }
         }
 
-        mod try_from_filename {
+        mod conversions {
             use super::*;
 
             #[test]
-            fn converts_filename_with_extension() {
+            fn returns_borrowed_view_from_as_ref() {
+                let name = FileName::from("my-note.md".to_owned());
+                assert_eq!(name.as_ref().as_str(), Some("my-note.md"));
+            }
+
+            #[test]
+            fn roundtrips_into_string() {
+                let name = FileName::from("my-note.md".to_owned());
+                let result: String = name.into();
+                assert_eq!(result, "my-note.md");
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn constructs_when_path_has_valid_utf8_filename() {
+                let path = Path::new("notes/app.md");
+                let result = FileName::try_from(path);
+                assert!(
+                    result.is_ok(),
+                    "expected valid filename, got {result:?}"
+                );
+            }
+
+            #[test]
+            fn returns_error_when_path_has_no_filename() {
+                let path = Path::new("/");
+                let result = FileName::try_from(path);
+                assert!(matches!(
+                    result,
+                    Err(crate::fs::PathError::NoFileName(_))
+                ));
+            }
+
+            #[test]
+            fn returns_error_when_filename_is_not_utf8() {
+                let path = Path::new(OsStr::from_bytes(b"\xff.md"));
+                let result = FileName::try_from(path);
+                assert!(matches!(
+                    result,
+                    Err(crate::fs::PathError::InvalidUtf8(_))
+                ));
+            }
+        }
+
+        mod borrowing {
+            use super::*;
+
+            #[test]
+            fn returns_some_when_utf8() {
+                let name = FileNameRef(OsStr::new("my-note.md"));
+                assert_eq!(name.as_str(), Some("my-note.md"));
+            }
+
+            #[test]
+            fn returns_none_when_not_utf8() {
+                let name = FileNameRef(OsStr::from_bytes(b"\xff.md"));
+                assert_eq!(name.as_str(), None);
+            }
+        }
+    }
+
+    mod base {
+        use super::*;
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_inner_str_for_as_str() {
+                let name = BaseName::new("readme".to_owned().into_boxed_str());
+                assert_eq!(name.as_str(), "readme");
+            }
+
+            #[test]
+            fn returns_inner_str_for_as_ref_str() {
+                let name = BaseName::new("readme".to_owned().into_boxed_str());
+                assert_eq!(<BaseName as AsRef<str>>::as_ref(&name), "readme");
+            }
+        }
+
+        mod conversions {
+            use super::*;
+
+            #[test]
+            fn constructs_from_filename_with_extension() {
                 let name = FileName::from("document.txt".to_owned());
-                let base = BaseName::try_from(name).unwrap();
-                assert_eq!(base.as_str(), "document");
+                let result = BaseName::try_from(name);
+                assert!(
+                    result.is_ok(),
+                    "expected basename conversion, got {result:?}"
+                );
             }
 
             #[test]
-            fn returns_error_for_empty_filename() {
+            fn returns_error_when_filename_has_no_stem() {
                 let name = FileName::from(String::new());
-                let base = BaseName::try_from(name);
-                assert!(base.is_err());
+                let result = BaseName::try_from(name);
+                assert!(matches!(result, Err(crate::fs::PathError::NoStem(_))));
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn constructs_from_path_with_stem() {
+                let path = PathBuf::from("readme.md");
+                let result = BaseName::try_from(path.as_path());
+                assert!(
+                    result.is_ok(),
+                    "expected stem from path, got {result:?}"
+                );
+            }
+
+            #[test]
+            fn returns_error_when_path_has_no_stem() {
+                let path = Path::new("..");
+                let result = BaseName::try_from(path);
+                assert!(matches!(result, Err(crate::fs::PathError::NoStem(_))));
+            }
+
+            #[test]
+            fn returns_error_when_stem_is_not_utf8() {
+                let path = Path::new(OsStr::from_bytes(b"\xff.md"));
+                let result = BaseName::try_from(path);
+                assert!(matches!(result, Err(crate::fs::PathError::NoStem(_))));
+            }
+        }
+
+        mod borrowing {
+            use super::*;
+
+            #[test]
+            fn returns_some_when_utf8() {
+                let name = BaseName::new("readme".to_owned().into_boxed_str());
+                assert_eq!(name.as_ref().as_str(), Some("readme"));
+            }
+
+            #[test]
+            fn returns_none_when_not_utf8() {
+                let name = BaseNameRef(OsStr::from_bytes(b"\xff"));
+                assert_eq!(name.as_str(), None);
             }
         }
     }
 
-    mod dir_name {
+    mod dir {
         use super::*;
 
-        #[test]
-        fn exposes_borrowed_view() {
-            let name = DirName::new("notes".to_owned().into_boxed_str());
-            assert_eq!(name.as_ref().as_str(), Some("notes"));
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_inner_str_for_as_str() {
+                let name = DirName::new("notes".to_owned().into_boxed_str());
+                assert_eq!(name.as_str(), "notes");
+            }
+
+            #[test]
+            fn returns_inner_str_for_as_ref_str() {
+                let name = DirName::new("notes".to_owned().into_boxed_str());
+                assert_eq!(<DirName as AsRef<str>>::as_ref(&name), "notes");
+            }
+        }
+
+        mod borrowing {
+            use super::*;
+
+            #[test]
+            fn returns_some_when_utf8() {
+                let name = DirName::new("notes".to_owned().into_boxed_str());
+                assert_eq!(name.as_ref().as_str(), Some("notes"));
+            }
+
+            #[test]
+            fn returns_none_when_not_utf8() {
+                let name = DirNameRef(OsStr::from_bytes(b"\xff"));
+                assert_eq!(name.as_str(), None);
+            }
         }
     }
 }
