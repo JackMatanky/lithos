@@ -43,7 +43,6 @@
 // Test-only code: relax pedantic lints for pragmatic test utilities
 #![expect(
     clippy::missing_inline_in_public_items,
-    clippy::map_err_ignore,
     clippy::significant_drop_tightening,
     clippy::pattern_type_mismatch,
     clippy::exhaustive_enums,
@@ -61,7 +60,7 @@ use std::{
 use crate::{
     db::{
         DbError,
-        testing::{InMemoryHarness, write_lock},
+        testing::{InMemoryHarness, read_lock, write_lock},
     },
     fs::RelativePath,
     schema::{
@@ -290,22 +289,11 @@ pub enum InMemoryError {
 impl InMemoryError {
     /// Creates an internal error with a message.
     ///
-    /// Used for trait compatibility when an operation logically cannot fail
-    /// but the trait signature requires a `Result`.
+    /// This is typically used for unexpected conditions during in-memory
+    /// operations, such as index construction failures.
     fn internal(message: impl Into<Box<str>>) -> Self {
         Self::Internal {
             message: message.into(),
-        }
-    }
-
-    /// Creates a lock poisoned error with context.
-    ///
-    /// Indicates that a thread panicked while holding a lock, leaving shared
-    /// state in an inconsistent state. This typically indicates a bug in test
-    /// code or the repository implementation.
-    fn lock_poisoned(context: impl Into<Box<str>>) -> Self {
-        Self::LockPoisoned {
-            context: context.into(),
         }
     }
 }
@@ -332,9 +320,10 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("find_schema_by_id"))
-        })?;
+        let schemas = read_lock(&self.schemas, "find_schema_by_id")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(schemas.get(&id).cloned())
     }
 
@@ -343,11 +332,10 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_many_schemas_by_id",
-            ))
-        })?;
+        let schemas = read_lock(&self.schemas, "find_many_schemas_by_id")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(ids.iter().map(|id| schemas.get(id).cloned()).collect())
     }
 
@@ -356,19 +344,19 @@ impl ReadRepository for InMemoryRepository {
         &self,
         ids: &[SchemaId],
     ) -> Result<Vec<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schemas_by_ids",
-            ))
-        })?;
+        let schemas = read_lock(&self.schemas, "find_schemas_by_ids")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(ids.iter().filter_map(|id| schemas.get(id).cloned()).collect())
     }
 
     #[inline]
     fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("list_schemas"))
-        })?;
+        let schemas = read_lock(&self.schemas, "list_schemas")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(schemas.values().cloned().collect())
     }
 
@@ -380,11 +368,10 @@ impl ReadRepository for InMemoryRepository {
         std::collections::HashMap<SchemaId, Vec<PropertyName>>,
         SchemaStorageError,
     > {
-        let schemas = self.schemas.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schemas_using_properties",
-            ))
-        })?;
+        let schemas = read_lock(&self.schemas, "find_schemas_using_properties")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         let mut usage: std::collections::HashMap<SchemaId, Vec<PropertyName>> =
             HashMap::new();
         for (schema_id, schema) in schemas.iter() {
@@ -406,11 +393,10 @@ impl ReadRepository for InMemoryRepository {
         &self,
         id: SchemaId,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_raw_schema_view",
-            ))
-        })?;
+        let views = read_lock(&self.raw_schema_views, "get_raw_schema_view")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(views.get(&id).cloned())
     }
 
@@ -419,16 +405,20 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_view_by_path (path_to_id)",
-            ))
-        })?;
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_view_by_path (views)",
-            ))
-        })?;
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "find_raw_schema_view_by_path (path_to_id)",
+        )
+        .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
+        let views = read_lock(
+            &self.raw_schema_views,
+            "find_raw_schema_view_by_path (views)",
+        )
+        .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(path_to_id.get(path).and_then(|id| views.get(id).cloned()))
     }
 
@@ -437,16 +427,20 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_views_by_paths (path_to_id)",
-            ))
-        })?;
-        let views = self.raw_schema_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_raw_schema_views_by_paths (views)",
-            ))
-        })?;
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "find_raw_schema_views_by_paths (path_to_id)",
+        )
+        .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
+        let views = read_lock(
+            &self.raw_schema_views,
+            "find_raw_schema_views_by_paths (views)",
+        )
+        .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(paths
             .iter()
             .map(|path| {
@@ -459,9 +453,10 @@ impl ReadRepository for InMemoryRepository {
     fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaStorageError> {
-        let bank = self.property_bank.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("get_property_bank"))
-        })?;
+        let bank = read_lock(&self.property_bank, "get_property_bank")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(bank.clone())
     }
 
@@ -469,11 +464,10 @@ impl ReadRepository for InMemoryRepository {
     fn get_topological_graph(
         &self,
     ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageError> {
-        let graph = self.topological_graph.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_topological_graph",
-            ))
-        })?;
+        let graph = read_lock(&self.topological_graph, "get_topological_graph")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(graph.clone())
     }
 
@@ -482,11 +476,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
-        let views = self.raw_bank_views.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_raw_property_bank_view",
-            ))
-        })?;
+        let views =
+            read_lock(&self.raw_bank_views, "get_raw_property_bank_view")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(views.get(path).cloned())
     }
 
@@ -495,11 +489,10 @@ impl ReadRepository for InMemoryRepository {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_id_by_name",
-            ))
-        })?;
+        let name_to_id = read_lock(&self.name_to_id, "find_schema_id_by_name")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(name_to_id.get(name).copied())
     }
 
@@ -508,11 +501,10 @@ impl ReadRepository for InMemoryRepository {
         &self,
         path: &RelativePath,
     ) -> Result<Option<SchemaId>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_id_by_path",
-            ))
-        })?;
+        let path_to_id = read_lock(&self.path_to_id, "find_schema_id_by_path")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(path_to_id.get(path).copied())
     }
 
@@ -521,11 +513,11 @@ impl ReadRepository for InMemoryRepository {
         &self,
         paths: &[RelativePath],
     ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "find_schema_ids_by_paths",
-            ))
-        })?;
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_schema_ids_by_paths")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         Ok(paths.iter().map(|path| path_to_id.get(path).copied()).collect())
     }
 
@@ -533,11 +525,11 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_name_id_pairs(
         &self,
     ) -> Result<NameIdPairs, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "list_schema_name_id_pairs",
-            ))
-        })?;
+        let name_to_id =
+            read_lock(&self.name_to_id, "list_schema_name_id_pairs")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         let pairs: Vec<_> =
             name_to_id.iter().map(|(name, id)| (name.clone(), *id)).collect();
         Ok(pairs.into())
@@ -547,11 +539,10 @@ impl ReadRepository for InMemoryRepository {
     fn list_schema_path_id_pairs(
         &self,
     ) -> Result<PathIdPairs, SchemaStorageError> {
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "list_schema_path_id_pairs",
-            ))
-        })?;
+        let path_to_id =
+            read_lock(&self.path_to_id, "list_schema_path_id_pairs")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
         let pairs: Vec<_> =
             path_to_id.iter().map(|(path, id)| (path.clone(), *id)).collect();
         Ok(pairs.into())
@@ -559,16 +550,16 @@ impl ReadRepository for InMemoryRepository {
 
     #[inline]
     fn get_schema_index(&self) -> Result<SchemaIndex, SchemaStorageError> {
-        let name_to_id = self.name_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_schema_index (name_to_id)",
-            ))
-        })?;
-        let path_to_id = self.path_to_id.read().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "get_schema_index (path_to_id)",
-            ))
-        })?;
+        let name_to_id =
+            read_lock(&self.name_to_id, "get_schema_index (name_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "get_schema_index (path_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_read();
+
         let name_pairs: Vec<_> =
             name_to_id.iter().map(|(n, id)| (n.clone(), *id)).collect();
         let path_pairs: Vec<_> =
@@ -935,6 +926,24 @@ mod tests {
             // Assert: 2 writes (schemas map + name_to_id map)
             let snapshot = repo.harness().counters().snapshot();
             assert_eq!(snapshot.writes, 2);
+        }
+
+        #[test]
+        fn instruments_read_operations() {
+            // Arrange
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+            repo.save_schema(&schema).unwrap();
+
+            // Act
+            let _result = repo.find_schema_by_id(id).unwrap();
+
+            // Assert: 1 read (schemas map)
+            let snapshot = repo.harness().counters().snapshot();
+            assert_eq!(snapshot.reads, 1);
         }
     }
 }
