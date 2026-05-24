@@ -59,7 +59,10 @@ use std::{
 };
 
 use crate::{
-    db::{DbError, testing::InMemoryHarness},
+    db::{
+        DbError,
+        testing::{InMemoryHarness, write_lock},
+    },
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -579,16 +582,16 @@ impl ReadRepository for InMemoryRepository {
 impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
-        let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_schema (schemas)",
-            ))
-        })?;
-        let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_schema (name_to_id)",
-            ))
-        })?;
+        let mut schemas_map =
+            write_lock(&self.schemas, "save_schema (schemas)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id_map =
+            write_lock(&self.name_to_id, "save_schema (name_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         schemas_map.insert(*schema.id(), schema.clone());
         name_to_id_map.insert(schema.name().clone(), *schema.id());
         Ok(())
@@ -599,16 +602,16 @@ impl WriteRepository for InMemoryRepository {
         &self,
         schemas: &[Schema],
     ) -> Result<(), SchemaStorageError> {
-        let mut schemas_map = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_many_schemas (schemas)",
-            ))
-        })?;
-        let mut name_to_id_map = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_many_schemas (name_to_id)",
-            ))
-        })?;
+        let mut schemas_map =
+            write_lock(&self.schemas, "save_many_schemas (schemas)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id_map =
+            write_lock(&self.name_to_id, "save_many_schemas (name_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         for schema in schemas {
             schemas_map.insert(*schema.id(), schema.clone());
             name_to_id_map.insert(schema.name().clone(), *schema.id());
@@ -621,9 +624,10 @@ impl WriteRepository for InMemoryRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaStorageError> {
-        let mut storage = self.property_bank.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned("save_property_bank"))
-        })?;
+        let mut storage = write_lock(&self.property_bank, "save_property_bank")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         *storage = Some(bank.clone());
         Ok(())
     }
@@ -634,11 +638,11 @@ impl WriteRepository for InMemoryRepository {
         path: &RelativePath,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaStorageError> {
-        let mut views = self.raw_bank_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_property_bank_view",
-            ))
-        })?;
+        let mut views =
+            write_lock(&self.raw_bank_views, "save_raw_property_bank_view")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         views.insert(path.clone(), view.clone());
         Ok(())
     }
@@ -649,16 +653,16 @@ impl WriteRepository for InMemoryRepository {
         id: SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), SchemaStorageError> {
-        let mut views = self.raw_schema_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_schema_view (views)",
-            ))
-        })?;
-        let mut path_to_id = self.path_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_raw_schema_view (path_to_id)",
-            ))
-        })?;
+        let mut views =
+            write_lock(&self.raw_schema_views, "save_raw_schema_view (views)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
+        let mut path_to_id =
+            write_lock(&self.path_to_id, "save_raw_schema_view (path_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         path_to_id.insert(view.file_path().clone(), id);
         views.insert(id, view.clone());
         Ok(())
@@ -669,32 +673,31 @@ impl WriteRepository for InMemoryRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaStorageError> {
-        let mut storage = self.topological_graph.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "save_topological_graph",
-            ))
-        })?;
+        let mut storage =
+            write_lock(&self.topological_graph, "save_topological_graph")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         *storage = Some(graph.clone());
         Ok(())
     }
 
     #[inline]
     fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageError> {
-        let mut schemas = self.schemas.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (schemas)",
-            ))
-        })?;
-        let mut name_to_id = self.name_to_id.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (name_to_id)",
-            ))
-        })?;
-        let mut raw_views = self.raw_schema_views.write().map_err(|_| {
-            to_storage_error(InMemoryError::lock_poisoned(
-                "delete_schema (raw_views)",
-            ))
-        })?;
+        let mut schemas = write_lock(&self.schemas, "delete_schema (schemas)")
+            .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id =
+            write_lock(&self.name_to_id, "delete_schema (name_to_id)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
+        let mut raw_views =
+            write_lock(&self.raw_schema_views, "delete_schema (raw_views)")
+                .map_err(|e| to_storage_error(e.into()))?;
+        self.harness.counters().inc_write();
+
         if let Some(schema) = schemas.remove(&id) {
             name_to_id.remove(schema.name());
         }
@@ -915,6 +918,23 @@ mod tests {
             let snapshot = harness.counters().snapshot();
             assert_eq!(snapshot.reads, 0);
             assert_eq!(snapshot.writes, 0);
+        }
+
+        #[test]
+        fn instruments_write_operations() {
+            // Arrange
+            let repo = InMemoryRepository::new();
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
+
+            // Act
+            repo.save_schema(&schema).unwrap();
+
+            // Assert: 2 writes (schemas map + name_to_id map)
+            let snapshot = repo.harness().counters().snapshot();
+            assert_eq!(snapshot.writes, 2);
         }
     }
 }
