@@ -210,6 +210,17 @@ impl FilePath {
         Ok(Self(path))
     }
 
+    /// Create a file path without checking filesystem existence.
+    ///
+    /// Intended for planned/configuration paths that may not exist yet.
+    // TODO(.scratch/pathkey-migration): Remove this escape hatch after
+    // SchemaConfigSpec pathkey migration defines explicit planned-path types.
+    #[inline]
+    #[must_use]
+    pub(crate) fn from_pathbuf_unchecked(path: PathBuf) -> Self {
+        Self(path)
+    }
+
     /// Return the inner path.
     #[inline]
     #[must_use]
@@ -469,6 +480,31 @@ impl DirPath {
         P: AsRef<Path>,
     {
         self.0.join(child)
+    }
+
+    /// Appends a validated filename to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing file.
+    #[inline]
+    pub fn append_filename(
+        &self,
+        file: &FileName,
+    ) -> Result<FilePath, super::PathError> {
+        FilePath::try_new(self.join(file.as_path()))
+    }
+
+    /// Appends a validated directory name to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing
+    /// directory.
+    #[inline]
+    pub fn append_dirname(
+        &self,
+        dir: &DirName,
+    ) -> Result<DirPath, super::PathError> {
+        DirPath::try_new(self.join(dir.as_str()))
     }
 
     /// Joins a child path and classifies it by path shape.
@@ -1459,6 +1495,58 @@ mod tests {
 
                 let joined = dir.join_path("child");
                 assert!(joined.is_dir());
+            }
+
+            #[test]
+            fn appends_filename_to_existing_file() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let child_name = FileName::new("notes.txt".into());
+                let child = temp.path().join("notes.txt");
+                std::fs::write(&child, "content")
+                    .expect("child file should be writable");
+
+                let file = dir
+                    .append_filename(&child_name)
+                    .expect("append filename should produce file path");
+                assert_eq!(file.as_path(), child.as_path());
+            }
+
+            #[test]
+            fn appends_filename_rejects_missing_file() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let child_name = FileName::new("missing.txt".into());
+
+                assert!(dir.append_filename(&child_name).is_err());
+            }
+
+            #[test]
+            fn appends_dirname_to_existing_dir() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let child_name = DirName::new("notes".into());
+                let child = temp.path().join("notes");
+                std::fs::create_dir_all(&child)
+                    .expect("child directory should be created");
+
+                let subdir = dir
+                    .append_dirname(&child_name)
+                    .expect("append dirname should produce dir path");
+                assert_eq!(subdir.as_path(), child.as_path());
+            }
+
+            #[test]
+            fn appends_dirname_rejects_missing_dir() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let child_name = DirName::new("missing".into());
+
+                assert!(dir.append_dirname(&child_name).is_err());
             }
         }
 

@@ -46,12 +46,12 @@ create_stamp_file() {
 #   Writes formatting progress to stdout
 #######################################
 main() {
-    local args=()
     if [[ "${usage_check:-}" == "1" ]]; then
-        args+=("--check")
+        run_rustfmt --check
+    else
+        run_rustfmt
     fi
 
-    run_rustfmt "${args[@]}"
     create_stamp_file
     echo "✅ Formatting complete"
 }

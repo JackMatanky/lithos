@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
-use crate::fs::{DirPath, FileName, FilePath, FsPath, RelativePath};
+use crate::fs::{DirName, DirPath, FileName, FilePath, RelativePath};
 
 #[expect(
     clippy::expect_used,
@@ -478,6 +478,46 @@ pub struct SchemaConfigSpec {
 }
 
 impl SchemaConfigSpec {
+    fn resolve_dirpath(
+        root: &DirPath,
+        relative: &RelativePath,
+    ) -> Result<DirPath, crate::fs::PathError> {
+        let mut current = root.clone();
+        for component in relative.as_path().components() {
+            let segment = component.as_os_str().to_string_lossy();
+
+            let dirname = DirName::new(segment.into_owned().into_boxed_str());
+            current = current.append_dirname(&dirname)?;
+        }
+
+        Ok(current)
+    }
+
+    fn resolve_filepath(
+        root: &DirPath,
+        relative: &RelativePath,
+    ) -> Result<FilePath, crate::fs::PathError> {
+        let mut components = relative.as_path().components().peekable();
+        let mut current = root.clone();
+
+        while let Some(component) = components.next() {
+            let segment = component.as_os_str().to_string_lossy();
+
+            if components.peek().is_none() {
+                let filename =
+                    FileName::new(segment.into_owned().into_boxed_str());
+                return Ok(FilePath::from_pathbuf_unchecked(
+                    current.join(filename.as_path()),
+                ));
+            }
+
+            let dirname = DirName::new(segment.into_owned().into_boxed_str());
+            current = current.append_dirname(&dirname)?;
+        }
+
+        Ok(FilePath::from_pathbuf_unchecked(root.join(relative.as_path())))
+    }
+
     /// Creates a new schema configuration specification.
     ///
     /// # Arguments
@@ -523,36 +563,29 @@ impl SchemaConfigSpec {
     }
 
     /// Returns the absolute schemas directory path.
-    #[expect(
-        clippy::unreachable,
-        reason = "directory paths are relative without extensions by invariant"
-    )]
+    ///
+    /// # Panics
+    /// Panics if the stored relative path cannot be resolved under the vault
+    /// root as an existing directory.
+    #[expect(clippy::expect_used, reason = "schema spec invariants")]
     #[inline]
     #[must_use]
     pub fn directory(&self) -> DirPath {
-        match self.root.join_path(&self.directory) {
-            FsPath::Dir(path) => path,
-            FsPath::File(_) => unreachable!(
-                "directory relative path unexpectedly classified as file"
-            ),
-        }
+        Self::resolve_dirpath(&self.root, &self.directory)
+            .expect("schema directory path should resolve under vault root")
     }
 
     /// Returns the absolute property bank file path.
-    #[expect(
-        clippy::unreachable,
-        reason = "property bank path includes a file extension by invariant"
-    )]
+    ///
+    /// # Panics
+    /// Panics if the stored relative path cannot be resolved under the vault
+    /// root as an existing file.
+    #[expect(clippy::expect_used, reason = "schema spec invariants")]
     #[inline]
     #[must_use]
     pub fn property_bank(&self) -> FilePath {
-        match self.root.join_path(&self.property_bank) {
-            FsPath::File(path) => path,
-            FsPath::Dir(_) => unreachable!(
-                "property bank relative path unexpectedly classified as \
-                 directory"
-            ),
-        }
+        Self::resolve_filepath(&self.root, &self.property_bank)
+            .expect("property bank path should resolve under vault root")
     }
 
     /// Returns the relative schema directory path.
