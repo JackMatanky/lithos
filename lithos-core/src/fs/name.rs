@@ -1,4 +1,16 @@
-//! Owned and borrowed filename components.
+//! Owned and borrowed UTF-8 name components for filesystem paths.
+//!
+//! This module defines storage-oriented value objects for filename parts:
+//! - [`FileName`]: full filename component (for example `note.md`)
+//! - [`BaseName`]: filename stem without extension (for example `note`)
+//! - [`DirName`]: directory-name component
+//!
+//! The owned types store UTF-8 text as `Box<str>`. Borrowed `*Ref` types are
+//! lightweight views over `OsStr` and expose UTF-8 access as `Option<&str>`.
+//!
+//! Constructors in this module are wrapper constructors for already-validated
+//! values; they do not perform path validation. Path-level extraction and
+//! validation should be handled by path-centric APIs.
 
 use std::{ffi::OsStr, path::Path};
 
@@ -12,21 +24,27 @@ use rkyv::{Archive, Deserialize, Serialize};
 pub struct FileName(Box<str>);
 
 impl FileName {
-    /// Create a new filename from a boxed string.
+    /// Create a new filename from a boxed UTF-8 string.
+    ///
+    /// This constructor wraps the provided value without performing path-level
+    /// validation.
     #[inline]
     #[must_use]
     pub fn new(filename: Box<str>) -> Self {
         Self(filename)
     }
 
-    /// Get the filename as a string.
+    /// Get the filename as a UTF-8 string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Get a borrowed view of this filename.
+    /// Get a borrowed filename view.
+    ///
+    /// The borrowed view preserves non-UTF-8 compatibility through
+    /// [`FileNameRef::as_str`].
     #[inline]
     #[must_use]
     pub fn as_ref(&self) -> FileNameRef<'_> {
@@ -58,6 +76,25 @@ impl AsRef<str> for FileName {
 impl TryFrom<&Path> for FileName {
     type Error = super::PathError;
 
+    /// Build a [`FileName`] from a filesystem path.
+    ///
+    /// # Errors
+    ///
+    /// Returns:
+    /// - [`super::PathError::NoFileName`] when `path` has no filename
+    ///   component.
+    /// - [`super::PathError::InvalidUtf8`] when filename is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_core::fs::FileName;
+    ///
+    /// let name = FileName::try_from(Path::new("notes/readme.md")).unwrap();
+    /// assert_eq!(name.as_str(), "readme.md");
+    /// ```
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let name = path
@@ -75,7 +112,9 @@ impl TryFrom<&Path> for FileName {
 pub struct FileNameRef<'a>(pub(crate) &'a OsStr);
 
 impl FileNameRef<'_> {
-    /// Get the filename as a string slice if it is valid UTF-8.
+    /// Get the filename as a UTF-8 string slice.
+    ///
+    /// Returns `None` when the underlying `OsStr` is not valid UTF-8.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -91,21 +130,27 @@ impl FileNameRef<'_> {
 pub struct BaseName(Box<str>);
 
 impl BaseName {
-    /// Create a new basename.
+    /// Create a new basename from a boxed UTF-8 string.
+    ///
+    /// This constructor wraps the provided value without performing path-level
+    /// stem extraction or validation.
     #[inline]
     #[must_use]
     pub fn new(name: Box<str>) -> Self {
         Self(name)
     }
 
-    /// Get the basename as a string.
+    /// Get the basename as a UTF-8 string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Get a borrowed view of this basename.
+    /// Get a borrowed basename view.
+    ///
+    /// The borrowed view preserves non-UTF-8 compatibility through
+    /// [`BaseNameRef::as_str`].
     #[inline]
     #[must_use]
     pub fn as_ref(&self) -> BaseNameRef<'_> {
@@ -116,6 +161,22 @@ impl BaseName {
 impl TryFrom<FileName> for BaseName {
     type Error = super::PathError;
 
+    /// Build a [`BaseName`] from an owned [`FileName`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`super::PathError::NoStem`] when the filename has no valid
+    /// UTF-8 stem.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::{BaseName, FileName};
+    ///
+    /// let base =
+    ///     BaseName::try_from(FileName::from("note.md".to_owned())).unwrap();
+    /// assert_eq!(base.as_str(), "note");
+    /// ```
     #[inline]
     fn try_from(name: FileName) -> Result<Self, Self::Error> {
         Path::new(name.as_str())
@@ -131,6 +192,23 @@ impl TryFrom<FileName> for BaseName {
 impl TryFrom<&Path> for BaseName {
     type Error = super::PathError;
 
+    /// Build a [`BaseName`] from a filesystem path stem.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`super::PathError::NoStem`] when `path` has no valid UTF-8
+    /// stem.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_core::fs::BaseName;
+    ///
+    /// let base = BaseName::try_from(Path::new("notes/readme.md")).unwrap();
+    /// assert_eq!(base.as_str(), "readme");
+    /// ```
     #[inline]
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         path.file_stem()
@@ -152,7 +230,9 @@ impl AsRef<str> for BaseName {
 pub struct BaseNameRef<'a>(pub(crate) &'a OsStr);
 
 impl BaseNameRef<'_> {
-    /// Get the basename as a string slice if it is valid UTF-8.
+    /// Get the basename as a UTF-8 string slice.
+    ///
+    /// Returns `None` when the underlying `OsStr` is not valid UTF-8.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -168,21 +248,27 @@ impl BaseNameRef<'_> {
 pub struct DirName(Box<str>);
 
 impl DirName {
-    /// Create a new directory name.
+    /// Create a new directory name from a boxed UTF-8 string.
+    ///
+    /// This constructor wraps the provided value without performing path-level
+    /// validation.
     #[inline]
     #[must_use]
     pub fn new(name: Box<str>) -> Self {
         Self(name)
     }
 
-    /// Get the directory name as a string.
+    /// Get the directory name as a UTF-8 string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Get a borrowed view of this directory name.
+    /// Get a borrowed directory-name view.
+    ///
+    /// The borrowed view preserves non-UTF-8 compatibility through
+    /// [`DirNameRef::as_str`].
     #[inline]
     #[must_use]
     pub fn as_ref(&self) -> DirNameRef<'_> {
@@ -202,7 +288,9 @@ impl AsRef<str> for DirName {
 pub struct DirNameRef<'a>(pub(crate) &'a OsStr);
 
 impl DirNameRef<'_> {
-    /// Get the directory name as a string slice if it is valid UTF-8.
+    /// Get the directory name as a UTF-8 string slice.
+    ///
+    /// Returns `None` when the underlying `OsStr` is not valid UTF-8.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
