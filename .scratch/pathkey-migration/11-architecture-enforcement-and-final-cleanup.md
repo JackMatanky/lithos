@@ -1,15 +1,15 @@
 ---
 title: "Issue 11: Architecture enforcement and final cleanup for path migration"
 category: "enhancement"
-label: "needs-triage"
-status: "open"
+label: "ready-for-agent"
+status: "ready-for-agent"
 date_created: "2026-05-25"
 date_completed: null
 ---
 
 # Issue 11: Architecture enforcement and final cleanup for path migration
 
-Labels: `needs-triage`
+Labels: `ready-for-agent`
 Type: AFK
 
 ## Parent
@@ -20,14 +20,27 @@ Type: AFK
 
 Finalize migration governance with architecture tests enforcing boundary rules, remove transitional aliases when criteria are met, and publish cleanup documentation.
 
-## Acceptance criteria
+## Agent Brief
 
-- [ ] Architecture tests enforce: repository boundaries use `PathKey`, `Relative*Path` restricted to config, no conversion methods on `Relative*Path`.
-- [ ] `NormalizedPath` transitional alias removal criteria defined and executed when ready.
-- [ ] Final `RelativePath` removal criteria validated against usage audit.
-- [ ] Migration cleanup notes document boundary rules and approved conversion seams.
+**Category:** enhancement
+**Summary:** Finalize boundary enforcement and retire transitional path-migration artifacts.
 
-## Blocked by
+**Current behavior:**
+Migration scaffolding (like the `NormalizedPath` alias and isolated `RelativePath` references) persists, waiting for final validation before deletion.
 
-- `.scratch/pathkey-migration/08-absolutepath-removal-matrix.md`
-- `.scratch/pathkey-migration/10-relativepath-deprecation-phase.md`
+**Desired behavior:**
+The migration concludes. The architecture enforces rigid path taxonomy (`Relative*Path` in config, `DirPath`/`FilePath` in I/O, `PathKey` at repository bounds). Transitional aliases (`NormalizedPath`) and the `RelativePath` type itself are deleted.
+
+**Key interfaces:**
+- Architecture test suite
+- `PathKey` and `fs::path` module exports
+
+**Acceptance criteria:**
+- [ ] The `NormalizedPath` type alias is completely deleted.
+- [ ] The `RelativePath` type is completely deleted, governed by the previously compiled usage inventory.
+- [ ] Architecture tests are hardened to enforce the strict 3-tier boundary rules permanently.
+- [ ] Traceable to PRD User Stories: #13, #14, #21, #22.
+
+**Out of scope:**
+- Introducing new path semantics.
+- Re-opening earlier repository migration contexts.

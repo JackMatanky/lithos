@@ -1,15 +1,15 @@
 ---
 title: "Issue 07: Note/template context hard cut from RelativePath to PathKey"
 category: "enhancement"
-label: "needs-triage"
-status: "open"
+label: "ready-for-agent"
+status: "ready-for-agent"
 date_created: "2026-05-25"
 date_completed: null
 ---
 
 # Issue 07: Note/template context hard cut from RelativePath to PathKey
 
-Labels: `needs-triage`
+Labels: `ready-for-agent`
 Type: AFK
 
 ## Parent
@@ -20,14 +20,26 @@ Type: AFK
 
 Migrate note/template repository and storage boundaries from `RelativePath` to `PathKey`, completing canonical key usage across contexts.
 
-## Acceptance criteria
+## Agent Brief
 
-- [ ] Note/template repository interfaces use `PathKey` only.
-- [ ] Callers derive keys only at repository boundary seams.
-- [ ] End-to-end tests confirm unchanged note/template behavior after migration.
-- [ ] No remaining note/template repository signatures accept `RelativePath`.
+**Category:** enhancement
+**Summary:** Complete note/template context migration to `PathKey` repository/storage boundaries.
 
-## Blocked by
+**Current behavior:**
+Note and template persistence boundaries rely on `RelativePath`, leaving them out of sync with schema and vault context path type standards.
 
-- `.scratch/pathkey-migration/01-pathkey-core.md`
-- `.scratch/pathkey-migration/06-vault-cut-relativepath-to-pathkey.md`
+**Desired behavior:**
+Note and template repositories process `PathKey` exclusively. This brings the entire system's repository boundaries under the unified `PathKey` paradigm.
+
+**Key interfaces:**
+- Note repository/storage trait signatures
+- Template repository/storage trait signatures
+
+**Acceptance criteria:**
+- [ ] Zero instances of `RelativePath` in note and template repository traits.
+- [ ] Boundary conversions reliably map target files to `PathKey`s via root scope.
+- [ ] End-to-end functionality for notes and templates is verified by existing test suites.
+- [ ] Traceable to PRD User Stories: #5, #12, #23.
+
+**Out of scope:**
+- Broad removal of `RelativePath` outside of repository signatures.
