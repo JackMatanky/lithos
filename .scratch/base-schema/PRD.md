@@ -13,7 +13,7 @@ context: .scratch/schema-processor-split/
 
 ## Problem Statement
 
-Schema processing currently lacks an intermediate domain state between `RawSchema` (syntax-validated input) and `Schema` (fully resolved aggregate with inheritance applied). The existing `schema_processor.rs` (~2900 lines) conflates file-local processing (parsing, validation, property expansion) with cross-schema concerns (inheritance graph construction, property merging).
+Schema processing currently lacks an intermediate domain state between `RawSchema` (syntax-validated input) and `Schema` (fully resolved aggregate with inheritance applied). The existing `schema_processor.rs` (~3200 lines) conflates file-local processing (parsing, validation, property expansion) with cross-schema concerns (inheritance graph construction, property merging).
 
 This Phase 1 PRD focuses on introducing the missing intermediate layer: **BaseSchema** as a persisted domain type with its own file-local processor pipeline.
 
@@ -246,9 +246,8 @@ Avoid:
 
 ### Modified Files
 
-1. **`lithos-core/src/schema/delta.rs`** (~50 lines added)
-   - Add `ExtendsDelta` enum
-   - Add `ExcludesDelta` (if not already present as standalone type)
+1. **`lithos-core/src/schema/delta.rs`** (~40 lines added)
+   - Add `ExtendsDelta` enum (ExcludesDelta already exists in this module)
 
 2. **`lithos-core/src/schema/mod.rs`** (~10 lines)
    - Export `base_schema`, `base_schema_processor`
@@ -256,11 +255,18 @@ Avoid:
 3. **`lithos-core/src/schema/repository.rs`** (~40 lines)
    - Add `save_base_schema`, `get_base_schema`, `find_base_schemas_by_ids`, `delete_base_schema` to trait
 
-4. **`lithos-core/src/storage/redb_adapter.rs`** (~80 lines)
-   - Implement BaseSchema repository methods
-   - Add `base_schema_by_id` table
+4. **`lithos-core/src/schema/storage/write.rs`** (~40 lines added)
+   - Implement BaseSchema write repository methods (`save_base_schema`, `delete_base_schema`)
 
-**Total new code**: ~1200-1500 lines (including tests)
+5. **`lithos-core/src/schema/storage/read.rs`** (~40 lines added)
+   - Implement BaseSchema read repository methods (`get_base_schema`, `find_base_schemas_by_ids`)
+
+6. **`lithos-core/src/schema/storage/tables.rs`** (~10 lines added)
+   - Add `BASE_SCHEMA_BY_ID` table definition
+
+**Total new code**: ~1250-1550 lines (including tests)
+
+**Note**: Storage implementation split across `schema/storage/` module (not a monolithic `redb_adapter.rs`)
 
 ## Test Matrix
 

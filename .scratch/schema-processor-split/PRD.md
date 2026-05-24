@@ -9,7 +9,7 @@ created: 2026-05-24
 
 ## Problem Statement
 
-The current schema processing pipeline (`lithos-core/src/schema/schema_processor.rs`, ~2900 lines) conflates two distinct responsibilities: individual schema file processing (parsing, validation, property expansion) and cross-schema concerns (inheritance graph construction, property merging). This monolithic design prevents:
+The current schema processing pipeline (`lithos-core/src/schema/schema_processor.rs`, ~3200 lines) conflates two distinct responsibilities: individual schema file processing (parsing, validation, property expansion) and cross-schema concerns (inheritance graph construction, property merging). This monolithic design prevents:
 
 1. **Parallel processing** of independent schema files during the parse/validate/expand phase
 2. **Incremental updates** with surgical property re-expansion when only property bank references change
@@ -173,7 +173,7 @@ This architecture enables:
 - Performance comparable or better
 - No dead code remaining
 
-**Estimated Effort**: ~100-150 lines modifications, ~3000 lines deleted
+**Estimated Effort**: ~100-150 lines modifications, ~3300 lines deleted (~3200 from schema_processor.rs, ~73 from views/properties.rs, ~30 from storage)
 
 ## Key Architectural Decisions
 
@@ -230,7 +230,7 @@ This architecture enables:
 
 ## Further Notes
 
-- This PRD treats the inheritance processor replacement as a **rewrite from scratch**, not a refactor, due to the rigid coupling in the existing ~2900-line `schema_processor.rs`
+- This PRD treats the inheritance processor replacement as a **rewrite from scratch**, not a refactor, due to the rigid coupling in the existing ~3200-line `schema_processor.rs`
 - The architecture is optimized for maintainability, deterministic incremental behavior, and clear separation of concerns
 - Phase 1 is intentionally non-breaking: it adds infrastructure without changing existing behavior
 - The BaseSchemaProcessor pattern deliberately mirrors the proven PropertyBankProcessor typestate design for consistency
