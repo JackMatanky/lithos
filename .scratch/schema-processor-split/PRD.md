@@ -106,7 +106,7 @@ This architecture enables:
 
 33. As a developer, I want all three deltas (property, excludes, extends) always carried with explicit Unchanged/Empty variants in StaleReady, so that downstream logic is deterministic without Option unpacking.
 
-34. As a developer, I want StaleReferences to use RawSchemaView.current().changed_bank_references(delta_names) for intersection checks, so that reference staleness detection is consistent with existing flow.
+34. As a developer, I want StaleReferences to use `SchemaVersion.changed_bank_references(&bank_delta)` for intersection checks, where `SchemaVersion.bank_references: HashMap<PropertyName, PropertyName>` maps schema property names to bank property names, so that reference staleness detection is consistent with existing flow.
 
 35. As a developer, I want stale_reference_names included in PropertyDelta.upserts (not separate), so that the handoff contract stays minimal and semantic.
 
@@ -217,6 +217,78 @@ This architecture enables:
 - No dead code remaining
 
 **Estimated Effort**: ~100-150 lines modifications, ~3300 lines deleted (~3200 from schema_processor.rs, ~73 from views/properties.rs, ~30 from storage)
+
+## Existing View Architecture (What Stays vs What Changes)
+
+### Current View Types
+
+The codebase has three main persisted view types for schema processing:
+
+#### 1. **RawSchemaView** (`views/raw.rs`) - **STAYS**
+- Manages version history: `path: RelativePath` + `versions: Vec<SchemaVersion>`
+- Purpose: staleness detection, incremental updates, stable identity
+- Key methods: `current()`, `current_mut()`, `add_version()`, `update_content_hash()`
+- **Stays unchanged** in this architecture
+
+#### 2. **SchemaVersion** (`views/snapshots.rs`) - **STAYS (modified in Phase 0)**
+- Stores per-version metadata and typed fields:
+  - `metadata: FileMetadata` (file stats for staleness)
+  - `hashes: HashRecord` (content hash + per-property hashes)
+  - `version: Box<str>` (schema format version)
+  - `extends: Option<SchemaName>` → **Phase 0**: `Vec<SchemaName>`
+  - `excludes: Vec<PropertyName>`
+  - `bank_references: HashMap<PropertyName, PropertyName>` → **CRITICAL**
+    - Maps **schema property name** → **bank property name**
+    - Extracted during parsing from `$ref` entries
+    - Example: `{ "created_at": "timestamp", "owner": "user_ref" }`
+  - `expanded_properties: Option<PropertyMap>` (optional cache, similar to BasePropertiesView)
+  - `recorded_at: SystemTime`
+- Key method: `changed_bank_references(&bank_delta: &HashSet<PropertyName>) -> Vec<PropertyName>`
+  - Takes set of **bank property names that changed**
+  - Returns **schema property names affected**
+  - This is how `StaleReferences` detection works!
+- **Stays but modified**: `extends` field becomes `Vec<SchemaName>` in Phase 0
+
+#### 3. **BasePropertiesView** (`views/properties.rs`) - **REMOVED in Phase 3**
+- Purpose: cache for expanded local properties
+- Fields:
+  - `properties: PropertyMap` (local properties only, $ref resolved)
+  - `hash: RawPropertyHashIndex` (for cache validation)
+  - `recorded_at: SystemTime`
+- **Replaced by**: `BaseSchema.properties: PropertyMap` (always present, not optional)
+
+### Redundancy and Unification
+
+**Current redundancy**:
+- `SchemaVersion.expanded_properties: Option<PropertyMap>` (optional cache)
+- `BasePropertiesView.properties: PropertyMap` (separate cache with validation hash)
+
+**After BaseSchema**:
+- `BaseSchema.properties: PropertyMap` (always present, domain-level, not just cache)
+- Replaces the need for separate `BasePropertiesView`
+- `SchemaVersion.expanded_properties` may still exist as an optimization, but BaseSchema is the source of truth
+
+### Division of Responsibility After All Phases
+
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| `RawSchemaView` | Version history, path → identity mapping | **Stays** |
+| `SchemaVersion` | Per-version metadata, `bank_references` mapping, staleness detection | **Stays (Phase 0: extends → Vec)** |
+| `BaseSchema` | Domain-level intermediate type: `SchemaId`, expanded `PropertyMap`, `Vec<SchemaName>` extends | **NEW (Phase 1)** |
+| `Schema` | Final aggregate: full inheritance applied | **Stays** |
+| `BasePropertiesView` | Property cache | **Removed (Phase 3)** |
+
+### StaleReferences Detection: Full Chain
+
+```
+1. Property bank changes → set of changed bank property names: HashSet<PropertyName>
+2. For each schema:
+   - RawSchemaView.current() → Option<&SchemaVersion>
+   - SchemaVersion.bank_references: HashMap<schema_prop_name → bank_prop_name>
+   - SchemaVersion.changed_bank_references(&bank_delta) → Vec<schema_prop_name>
+3. If result is non-empty → StaleReferences status
+4. Targeted re-expansion: only the affected schema properties
+```
 
 ## Key Architectural Decisions
 

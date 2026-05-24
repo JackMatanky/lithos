@@ -111,11 +111,17 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 - Location: `lithos-core/src/schema/base_schema_processor.rs` (new file, ~800-1000 lines)
 
 **StaleReferences Handling**
-- Trigger: `RawSchemaView.current().changed_bank_references(delta_names)` non-empty
-- Orthogonal to file staleness (Fresh + StaleReferences is valid state)
-- Incremental path:
+- **Underlying mechanism**: `SchemaVersion.bank_references: HashMap<PropertyName, PropertyName>`
+  - Maps **schema property name** → **bank property name** (extracted during parsing from `$ref` entries)
+  - Example: `{ "created_at": "timestamp", "owner": "user_ref" }`
+- **Trigger**: `SchemaVersion.changed_bank_references(&bank_delta)` returns non-empty
+  - `bank_delta: &HashSet<PropertyName>` = set of **bank property names** that changed
+  - Returns `Vec<PropertyName>` = **schema property names** affected by the bank change
+- **Full call chain**: `RawSchemaView.current() -> Option<&SchemaVersion> -> .changed_bank_references(&bank_delta)`
+- **Orthogonal to file staleness**: Fresh + StaleReferences is valid state (file unchanged, but bank changed)
+- **Incremental path**:
   - Parse file
-  - Targeted re-expand: only properties referencing changed bank entries
+  - Targeted re-expand: only properties whose bank references changed
   - Preserve existing `PropertyId` by name via `with_ids(...)`
   - Avoid full rebuild unless fallback triggered
 
