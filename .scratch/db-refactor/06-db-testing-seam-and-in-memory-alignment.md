@@ -677,18 +677,154 @@ Per `docs/engineering/testing/unit-naming.md`:
 
 ---
 
+## Implementation Notes (Phase 0 Complete)
+
+### Phase 0: Foundation Refactor (8 Steps) - ✅ COMPLETE
+
+**Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
+
+**Commits:**
+1. `8feedb8b` - Steps 0.1-0.5: Foundation refactor (catch_unwind, context tests, map_or, lint hygiene)
+2. `a208c49c` - Step 0.6: Reorganize per ordering discipline
+3. `88a2bc09` - Step 0.7: Move TestStore to Store::open_temp()
+4. `629ed97d` - Step 0.8: Move module-level lint expects to specific functions
+
+#### Step 0.1: Clean Test Output
+- **Change:** Refactored `poison_lock` to use `std::panic::catch_unwind` instead of `thread::spawn`
+- **Rationale:** Eliminates stderr pollution, reduces thread overhead, removes `Arc` requirement
+- **Impact:** Cleaner test output, simpler signature: `&RwLock<T>` instead of `&Arc<RwLock<T>>`
+
+#### Step 0.2: Add Missing Error Context Tests
+- **Added:** `captures_context_in_write_lock_error` - verifies `ctx` parameter propagated to error
+- **Added:** `captures_context_in_mutex_lock_error` - verifies `ctx` parameter propagated to error
+- **Rationale:** Original implementation had `ctx` parameter but no tests verifying it works
+
+#### Step 0.3: Refactor Idiomatic Option Handling
+- **Change:** `InMemoryHarness::fail_at` uses `map_or` instead of manual `match`
+- **Rationale:** Follows Apollo Rust Best Practices for Option handling
+- **Code:** `self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))`
+
+#### Step 0.4: Remove Overbroad Lint Suppression
+- **Change:** Removed module-level `#![allow(dead_code)]`
+- **Added:** Targeted `#[expect(dead_code)]` to 6 legitimately unused items:
+  - `InvariantViolation` variant (reserved for future)
+  - `FailurePoint::AfterSerialize` (reserved for future)
+  - `FailurePoint::BeforeCommit` (reserved for future)
+  - `OpCounters::inc_delete()` (reserved for future)
+  - `OpCounters::inc_injected_failure()` (reserved for future)
+  - `InMemoryHarness::counters()` (will be used in Phase 5)
+- **Rationale:** Prevents accidentally adding dead code without justification
+
+#### Step 0.5: Fix Doc Test Hygiene
+- **Change:** Replaced ` ```ignore ` with ` ```rust,no_run ` in doc examples
+- **Added:** Module-level `#[expect]` for `clippy::disallowed_methods` and `clippy::panic`
+- **Rationale:** Doc tests should compile even if they can't run; lint suppressions for test-specific needs
+
+#### Step 0.6: Reorganize Per Ordering Discipline
+- **Goal:** Follow `docs/refs/rust/best_practices_canonical/ordering-discipline.md`
+- **New order:** Error Types → **Test Harness (Primary API)** → Operation Instrumentation → Failure Injection → Lock Helpers → Tests
+- **Key change:** `InMemoryHarness` promoted to primary API position (after errors)
+- **Removed:** "Test Store Constructors" section (moved in Step 0.7)
+- **Added:** Usage example to `InMemoryHarness` showing embedding pattern
+- **Added:** Doc comments to all `OpCountersSnapshot` fields
+- **Rationale:** "Tour of APIs, most important first" - contexts interact with `InMemoryHarness` 95% of the time
+
+#### Step 0.7: Move TestStore to Store::open_temp()
+- **Goal:** Follow Rust best practice - test utilities as methods on the type they construct
+- **Changes:**
+  - Added `Store::open_temp()` as `#[cfg(test)] pub(crate)` method in `db/core.rs`
+  - Added `Store::open_temp_arc()` for multi-threaded scenarios (currently unused)
+  - Moved 2 constructor tests from `db::testing::tests::constructors` → `db::core::tests::store`
+  - Removed `TestStore` struct and impl from `db/testing.rs`
+  - Removed unused imports: `Arc`, `DbError`, `Store`
+  - Updated module doc: removed "store constructors" from DB ownership
+- **Rationale:**
+  - `TestStore` was only used in its own tests (not by any context modules)
+  - Different use case: on-disk `redb` stores vs in-memory infrastructure
+  - `Store::open_temp()` is more discoverable and follows Rust conventions
+  - Fixes broken doc examples in `schema/repository.rs` that referenced `Store::open_temp()`
+- **Impact:** `db/testing.rs` now purely focuses on in-memory harness infrastructure
+
+#### Step 0.8: Move Module-Level Lint Expects to Specific Functions
+- **Change:** Removed module-level `#[expect(clippy::disallowed_methods)]` and `#[expect(clippy::panic)]`
+- **Added:** Scoped `#[expect]` to specific functions:
+  - `fixtures::poison_lock()` - uses `catch_unwind` + `panic!` to poison locks
+  - `captures_context_in_mutex_lock_error()` - test that poisons mutex inline
+- **Rationale:** Lint suppressions should be adjacent to violations for clarity and to prevent accidental use elsewhere
+- **Impact:** Cleaner module header (only `#![cfg(test)]`), better documentation of why each violation is necessary
+
+### Final db/testing.rs Structure
+
+**Module header:**
+```rust
+#![cfg(test)]
+
+use std::sync::{
+    Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    atomic::{AtomicUsize, Ordering},
+};
+```
+
+**Section order:**
+1. **Error Types** - `InMemoryDbError`
+2. **Test Harness (Primary API)** - `InMemoryHarness` (orchestrates counters + injectors)
+3. **Operation Instrumentation** - `OpCounters`, `OpCountersSnapshot`
+4. **Failure Injection** - `FailurePoint`, `FailureInjector` trait
+5. **Lock Helpers** - `read_lock`, `write_lock`, `mutex_lock`
+6. **Tests** - 15 tests in 4 modules (`fixtures`, `locking`, `counters`, `failure_injection`)
+
+**Test count:** 15 tests (down from 17 - 2 constructor tests moved to `db/core.rs`)
+
+### Key Decisions
+
+1. **Use `catch_unwind` for lock poisoning** - Cleaner, faster, no thread overhead or stderr pollution
+2. **Use `map_or` for Option handling** - More idiomatic than manual match per Apollo Rust Best Practices
+3. **Module visibility:** All items in `db/testing.rs` are `pub(crate)` (registered as `pub(crate) mod testing` in `db/mod.rs`)
+4. **`InMemoryHarness` is the primary API** - Contexts embed this, not individual primitives
+5. **`TestStore` → `Store::open_temp()`** - Test utilities belong on the type itself
+6. **Scoped lint suppressions** - `#[expect]` adjacent to violations, not module-level
+7. **Removed `Arc` requirement from `poison_lock`** - Simplified to `&RwLock<T>` (no thread spawn needed with `catch_unwind`)
+
+### Quality Gates (All Passing ✅)
+
+- ✅ All 15 `db::testing` tests passing (<10ms each)
+- ✅ All 4 `db::core::tests::store` tests passing (includes 2 moved constructor tests)
+- ✅ No clippy warnings
+- ✅ Code formatted
+- ✅ Pre-commit hooks passed (fmt, clippy, tests, conventional commits)
+
+### Phase 5 Readiness
+
+The foundation is now ready for Schema integration:
+- ✅ Clean, idiomatic Rust code
+- ✅ Well-documented with usage examples
+- ✅ Proper ordering (most important APIs first)
+- ✅ All lint suppressions scoped and justified
+- ✅ No overbroad suppressions that could hide future issues
+- ✅ `InMemoryHarness` ready to be embedded in `schema::storage::testing::InMemoryRepository`
+
+---
+
 ### Acceptance Criteria Updates
 
 After Phase 0 + Phase 5 completion:
 
 - [x] `lithos-core/src/db/testing.rs` exists and compiles under `#[cfg(test)]`
-- [x] `TestStore` is implemented with `open_temp()` and `open_temp_arc()` methods
+- [x] ~~`TestStore` is implemented with `open_temp()` and `open_temp_arc()` methods~~ **Moved to `Store::open_temp()` in `db/core.rs` (Step 0.7)**
 - [x] Generic lock helpers (`read_lock`, `write_lock`, `mutex_lock`) are implemented and return `InMemoryDbError` on poison
 - [x] `OpCounters` struct is implemented with atomic fields and `inc_*` + `snapshot()` methods
 - [x] `FailurePoint` enum, `FailureInjector` trait, and `InMemoryHarness` struct are implemented
 - [x] `InMemoryDbError` enum is defined with `LockPoisoned`, `InjectedFailure`, `InvariantViolation` variants
-- [ ] ✅ **Phase 0 complete**: `db::testing` refactored per Rust best practices (clean tests, idiomatic code, targeted lint suppressions)
-- [ ] ✅ **Phase 5 complete**: Schema context demonstrates usage by:
+- [x] ✅ **Phase 0 complete (8 steps)**: `db::testing` refactored per Rust best practices
+  - [x] Step 0.1: Clean test output (catch_unwind instead of thread::spawn)
+  - [x] Step 0.2: Add missing error context tests
+  - [x] Step 0.3: Refactor idiomatic option handling (map_or)
+  - [x] Step 0.4: Remove overbroad lint suppression (targeted #[expect])
+  - [x] Step 0.5: Fix doc test hygiene (rust,no_run)
+  - [x] Step 0.6: Reorganize per ordering discipline
+  - [x] Step 0.7: Move TestStore to Store::open_temp()
+  - [x] Step 0.8: Move module-level lint expects to specific functions
+- [ ] **Phase 5 pending**: Schema context demonstrates usage by:
   - [x] Converting existing lock acquisition to use `db::testing::read_lock` / `write_lock`
   - [x] Implementing `From<InMemoryDbError>` for its error type
   - [x] `InMemoryRepository` embeds `InMemoryHarness` and instruments all operations with counters
