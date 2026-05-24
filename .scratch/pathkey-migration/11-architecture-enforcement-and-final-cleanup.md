@@ -43,3 +43,34 @@ The migration concludes. The architecture permanently enforces rigid path taxono
 
 **Out of scope:**
 - Introducing new path semantics.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+- Delete temporary migration structures and strictly enforce the final state.
+
+**Behaviors to Test (Prioritized):**
+1. The codebase compiles and tests pass with `NormalizedPath` completely absent.
+2. Architecture tests enforce a zero-tolerance policy on `RelativePath` (pending audit completion).
+
+### 2. Tracer Bullet: Alias Removal
+**Behavior:** The codebase compiles and tests pass with `NormalizedPath` completely absent.
+- **RED:** Delete `pub type NormalizedPath = PathKey;`. Codebase fails to compile.
+- **GREEN:** Resolve any lingering references.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Final Architecture Gate
+**Behavior:** Architecture tests enforce a zero-tolerance policy on `RelativePath`.
+- **RED:** Write architecture test asserting `RelativePath` does not exist anywhere in `lithos-core` outside of explicitly allowed legacy tests.
+- **GREEN:** Ensure the test suite passes, and remove any `#[expect(deprecated)]` tags.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added

@@ -61,3 +61,40 @@ pub struct RelativeFilePath(Box<str>);
 **Out of scope:**
 - Materialization to `DirPath`/`FilePath`.
 - Replacing existing paths in `SchemaConfigSpec` (done in slice 04).
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- `RelativeDirPath` and `RelativeFilePath` encode the "unresolved, relative config state" using the Type State Pattern.
+- They must expose *zero* conversion or materialization methods.
+
+**Behaviors to Test (Prioritized):**
+1. Configuration loader accepts valid relative paths as declarative wrappers.
+2. Configuration loader rejects absolute or traversal paths.
+
+### 2. Tracer Bullet: Valid Declaration
+**Behavior:** Configuration loader accepts valid relative paths as declarative wrappers.
+- **RED:** Write `test_valid_relative_dir` asserting `RelativeDirPath::try_new("config/dir")` succeeds.
+- **GREEN:** Implement `RelativeDirPath(Box<str>)` with minimal validation (UTF-8, no leading `/`, no `.`/`..`).
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Invariant Rejection
+**Behavior:** Configuration loader rejects absolute or traversal paths.
+- **RED:** Write `test_reject_absolute` (`/config`) and `test_reject_traversal` (`../config`).
+- **GREEN:** Expand validation logic.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 4. Refactor
+- [ ] Verify *no* conversion methods (`to_path`, etc.) are implemented (Rust Best Practice: Type State Pattern).
+- [ ] Ensure `Box<str>` is used instead of `PathBuf` for optimal memory layout.

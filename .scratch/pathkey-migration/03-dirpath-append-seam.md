@@ -69,3 +69,39 @@ impl DirPath {
 
 **Out of scope:**
 - Modifying callers outside of the `fs` module to use this seam (done in slice 04+).
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Centralize materialization logic into `DirPath::append_file` and `DirPath::append_dir` using static dispatch via generic traits (`FileFragment`, `DirFragment`).
+
+**Behaviors to Test (Prioritized):**
+1. System safely joins a directory path and a relative file fragment into a valid execution file path.
+2. System safely joins a directory path and a relative dir fragment into a valid execution dir path.
+
+### 2. Tracer Bullet: Append File
+**Behavior:** System safely joins a directory path and a relative file fragment into a valid execution file path.
+- **RED:** Write `test_dirpath_append_file` where a `DirPath` and `RelativeFilePath` are joined.
+- **GREEN:** Define `FileFragment` trait, implement it for `RelativeFilePath`, and implement `DirPath::append_file<T: FileFragment>`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Append Dir
+**Behavior:** System safely joins a directory path and a relative dir fragment into a valid execution dir path.
+- **RED:** Write `test_dirpath_append_dir` joining a `DirPath` and `RelativeDirPath`.
+- **GREEN:** Define `DirFragment` trait, implement it for `RelativeDirPath`, and implement `DirPath::append_dir<T: DirFragment>`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 4. Refactor
+- [ ] Verify static dispatch is used (`<T: FileFragment>`) over `dyn` trait objects (Rust Best Practice: Generics and Dispatch).
+- [ ] Avoid unnecessary allocations when pushing paths.

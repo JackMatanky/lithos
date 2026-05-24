@@ -56,3 +56,39 @@ Replace all `&RelativePath` parameters with `&PathKey` in:
 
 **Out of scope:**
 - Vault context or note context repository signatures.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Repositories exclusively take canonical `&PathKey` references.
+- Integration tests must verify end-to-end data retrieval using `PathKey` via the Redb mocks.
+
+**Behaviors to Test (Prioritized):**
+1. Schema repositories retrieve data using explicit canonical keys (`PathKey`).
+2. Discovery engine converts scanned filesystem paths into canonical keys before querying the repository.
+
+### 2. Tracer Bullet: Repository Takes PathKey
+**Behavior:** Schema repositories retrieve data using explicit canonical keys (`PathKey`).
+- **RED:** Modify `find_raw_schema_view_by_path` test to pass a `PathKey` instead of `RelativePath`.
+- **GREEN:** Update repository traits and storage/Redb implementations to accept `&PathKey`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Discovery Boundary Conversion
+**Behavior:** Discovery engine converts scanned filesystem paths into canonical keys before querying the repository.
+- **RED:** Write a test verifying `DiscoveryEngine::separate_property_bank` correctly resolves the key.
+- **GREEN:** Replace manual `strip_prefix` chains in `DiscoveryEngine` and `Builder` with `.as_key(root)?`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 4. Refactor
+- [ ] Batch read operations (`find_raw_schema_views_by_paths`) must take `&[PathKey]` instead of `Vec`s (Rust Best Practice: Borrowing).

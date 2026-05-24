@@ -43,3 +43,35 @@ Begin staged `RelativePath` retirement by deprecating remaining approved uses an
 
 **Out of scope:**
 - Complete purging of all `RelativePath` references from the codebase.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Implement compile-time static analysis (architecture tests + `#[deprecated]`) to enforce the migration boundaries automatically.
+
+**Behaviors to Test (Prioritized):**
+1. The compiler formally warns on new `RelativePath` usage.
+2. Architecture tests explicitly fail if `RelativePath` exists within schema, vault, or note boundaries.
+
+### 2. Tracer Bullet: Deprecation Attribute
+**Behavior:** The compiler formally warns on new `RelativePath` usage.
+- **RED:** Add `#[deprecated]` to `RelativePath`. Build the project and verify warnings appear.
+- **GREEN:** Apply `#[expect(deprecated)]` explicitly to the legacy modules whitelisted in the audit (Rust Best Practice: Linting).
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Architecture Boundary Tests
+**Behavior:** Architecture tests explicitly fail if `RelativePath` exists within schema, vault, or note boundaries.
+- **RED:** Write a test in `path_migration_architecture.rs` scanning the AST of `src/schema/repository.rs` for `RelativePath`.
+- **GREEN:** Run tests. They should pass if the previous slices were completed cleanly, locking the boundary.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added

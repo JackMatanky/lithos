@@ -72,3 +72,52 @@ impl SchemaConfigSpec {
 
 **Out of scope:**
 - Schema repository hard cuts (done in Slice 05).
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- `SchemaConfigSpec` strictly stores declarative semantics. Execution paths and persistence boundaries are derived lazily.
+- Removes panics and FS checks from config loading.
+
+**Behaviors to Test (Prioritized):**
+1. System successfully loads configuration semantics without interacting with the filesystem.
+2. System derives operational file/dir paths using the append seam on demand.
+3. System derives persistence boundary keys (`PathKey`) using root-scoping on demand.
+
+### 2. Tracer Bullet: Pure Declarative Construction
+**Behavior:** System successfully loads configuration semantics without interacting with the filesystem.
+- **RED:** Write `test_schema_config_spec_new` with valid syntax but non-existent files. Assert no panics.
+- **GREEN:** Change `SchemaConfigSpec` fields. Remove any `expect()` or `fs::metadata` checks from `Config::to_schema_spec()`. Return `Result<SchemaConfigSpec, ConfigError>`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Deriving Execution Paths
+**Behavior:** System derives operational file/dir paths using the append seam on demand.
+- **RED:** Write `test_schema_directory_path` asserting correct join of root + relative config.
+- **GREEN:** Implement `schema_directory_path` and `property_bank_file_path` using `append_dir` and `append_file`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 4. Incremental Loop: Deriving Persistence Keys
+**Behavior:** System derives persistence boundary keys (`PathKey`) using root-scoping on demand.
+- **RED:** Write `test_property_bank_key` asserting correct `PathKey` representation.
+- **GREEN:** Implement `schema_directory_key` and `property_bank_key` utilizing `.as_key(root)`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 5. Refactor
+- [ ] Ensure all `expect()` calls in `to_schema_spec()` are converted to `Result` handling with `?` (Rust Best Practice: Error Handling).
+- [ ] Ensure `VaultRoot` is a thin newtype over `DirPath`.

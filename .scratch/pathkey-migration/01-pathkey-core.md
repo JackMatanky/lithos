@@ -102,3 +102,65 @@ pub type NormalizedPath = PathKey;
 
 **Out of scope:**
 - Repository signature migration (handled in subsequent slices).
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- `PathKey` should encapsulate all normalization logic. The public interface only exposes `try_new` and `from_rooted_path`.
+- Internally, use `Cow<'_, str>` to achieve zero-cost abstractions for already-canonical paths (Rust Best Practice: Performance).
+
+**Behaviors to Test (Prioritized):**
+1. System accepts canonical paths without allocation.
+2. System normalizes non-canonical paths (duplicate/trailing slashes).
+3. System rejects invalid structures (empty, absolute, traversals).
+4. System derives valid root-scoped keys from absolute paths, rejecting outside-root paths.
+
+### 2. Tracer Bullet: Canonical Path Acceptance
+**Behavior:** System accepts canonical paths without allocation.
+- **RED:** Write test `test_accepts_canonical_path` asserting `PathKey::try_new("a/b")` succeeds.
+- **GREEN:** Implement `PathKey::try_new` pipeline (`trim` -> `normalize` -> `validate`). Use `Box<str>` for compact immutable ownership.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 3. Incremental Loop: Normalization
+**Behavior:** System normalizes non-canonical paths (duplicate/trailing slashes).
+- **RED:** Write tests `test_normalizes_backslashes` (`a\\b` -> `a/b`), `test_normalizes_duplicates` (`a//b` -> `a/b`), `test_removes_trailing` (`a/b/` -> `a/b`).
+- **GREEN:** Expand `normalize` to handle these. Ensure `Cow::Owned` is used only when modification is needed.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 4. Incremental Loop: Invariant Rejection
+**Behavior:** System rejects invalid structures (empty, absolute, traversals).
+- **RED:** Write tests `test_rejects_empty`, `test_rejects_absolute` (`/a`), `test_rejects_traversal` (`a/../b`).
+- **GREEN:** Expand `validate` to return `PathError` variants using `thiserror` (Rust Best Practice: Error Handling).
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 5. Incremental Loop: Root-Scoped Derivation
+**Behavior:** System derives valid root-scoped keys from absolute paths, rejecting outside-root paths.
+- **RED:** Write tests `test_from_rooted_path_valid` and `test_from_rooted_path_outside_root`.
+- **GREEN:** Implement `from_rooted_path` using `strip_prefix`.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
+
+### 6. Refactor
+- [ ] Review borrowing and ownership: `try_new` takes `&str` instead of `String`.
+- [ ] Ensure `PathError` uses `thiserror`.
+- [ ] Add `///` doc comments for public APIs (Rust Best Practice: Documentation).

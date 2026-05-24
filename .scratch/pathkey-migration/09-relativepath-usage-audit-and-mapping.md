@@ -43,3 +43,19 @@ A comprehensive audit maps every single remaining `RelativePath` reference to it
 
 **Out of scope:**
 - Executing the actual code replacements defined in the inventory.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+- This is a documentation/audit slice, verifying completeness of the migration strategy.
+
+### 2. Tracer Bullet: Audit Validation
+**Behavior:** System identifies all remaining `RelativePath` references.
+- **RED:** Write a CI script/test that searches the codebase for `RelativePath` and fails if unmapped usages exist.
+- **GREEN:** Generate `.scratch/pathkey-migration/relativepath-usage-inventory.md` mapping every finding to its target type.
+**Checklist:**
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
