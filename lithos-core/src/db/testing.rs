@@ -22,14 +22,6 @@
 //! cross-context fake storage module.
 
 #![cfg(test)]
-#![expect(
-    clippy::disallowed_methods,
-    reason = "catch_unwind required for lock poisoning tests"
-)]
-#![expect(
-    clippy::panic,
-    reason = "panic! required to trigger lock poisoning in tests"
-)]
 
 use std::sync::{
     Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
@@ -334,6 +326,11 @@ mod tests {
         use super::*;
 
         /// Poisons a lock by panicking while holding it.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "catch_unwind required to poison lock for testing"
+        )]
+        #[expect(clippy::panic, reason = "Intentional panic to poison lock")]
         pub(crate) fn poison_lock<T>(lock: &RwLock<T>) {
             let _ =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -465,6 +462,11 @@ mod tests {
         }
 
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "catch_unwind required to poison mutex for testing"
+        )]
+        #[expect(clippy::panic, reason = "Intentional panic to poison mutex")]
         fn captures_context_in_mutex_lock_error() {
             // Arrange
             let data = Mutex::new(0);
