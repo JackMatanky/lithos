@@ -20,23 +20,6 @@
 //! IO from unit tests while maintaining test extent (can still test full
 //! pipelines end-to-end).
 //!
-//! # Example
-//!
-//! ```ignore
-//! use lithos_core::schema::storage::testing::InMemoryRepository;
-//! use lithos_core::schema::repository::Repository;
-//!
-//! #[test]
-//! fn test_schema_resolution() {
-//!     let repo = InMemoryRepository::new();
-//!     repo.save_schema(&schema).unwrap();
-//!
-//!     // Pure computation test - no filesystem I/O
-//!     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
-//!     assert_eq!(loaded, Some(schema));
-//! }
-//! ```
-//!
 //! [`Repository`]: crate::schema::repository::Repository
 
 use std::{
@@ -106,27 +89,10 @@ use crate::{
 ///   serialization/durability)
 /// - Production code (no persistence guarantees)
 ///
-/// # Example
-///
-/// ```ignore
-/// use lithos_core::schema::storage::testing::InMemoryRepository;
-/// use lithos_core::schema::repository::Repository;
-///
-/// #[test]
-/// fn test_schema_crud() {
-///     let repo = InMemoryRepository::new();
-///     repo.save_schema(&schema).unwrap();
-///     assert_eq!(repo.schema_count(), 1);
-///
-///     let loaded = repo.find_schema_by_id(schema.id()).unwrap();
-///     assert_eq!(loaded, Some(schema));
-/// }
-/// ```
-///
 /// [`Repository`]: crate::schema::repository::Repository
 /// [`RedbRepository`]: crate::schema::storage::RedbRepository
 #[derive(Debug, Clone)]
-pub struct InMemoryRepository {
+pub(crate) struct InMemoryRepository {
     /// Test harness for operation instrumentation and failure injection
     harness: Arc<InMemoryHarness>,
 
@@ -155,16 +121,9 @@ pub struct InMemoryRepository {
 
 impl InMemoryRepository {
     /// Creates a new empty in-memory repository.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let repo = InMemoryRepository::new();
-    /// assert_eq!(repo.schema_count(), 0);
-    /// ```
     #[must_use]
     #[inline]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             harness: Arc::new(InMemoryHarness::new()),
             schemas: Arc::new(RwLock::new(HashMap::new())),
@@ -180,16 +139,6 @@ impl InMemoryRepository {
     /// Creates a new repository with the specified test harness.
     ///
     /// Useful for tests that need custom failure injection behavior.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use lithos_core::db::testing::InMemoryHarness;
-    /// use lithos_core::schema::storage::testing::InMemoryRepository;
-    ///
-    /// let harness = InMemoryHarness::with_injector(Box::new(my_injector));
-    /// let repo = InMemoryRepository::with_harness(harness);
-    /// ```
     #[must_use]
     pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
         Self {
@@ -221,7 +170,7 @@ impl InMemoryRepository {
     /// the lock).
     #[must_use]
     #[inline]
-    pub fn schema_count(&self) -> usize {
+    pub(crate) fn schema_count(&self) -> usize {
         self.schemas.read().expect("Lock poisoned").len()
     }
 
@@ -233,7 +182,7 @@ impl InMemoryRepository {
     ///
     /// Panics if any lock is poisoned.
     #[inline]
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.schemas.write().expect("Lock poisoned").clear();
         self.name_to_id.write().expect("Lock poisoned").clear();
         *self.property_bank.write().expect("Lock poisoned") = None;
