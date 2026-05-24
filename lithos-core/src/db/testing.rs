@@ -33,6 +33,7 @@
 
 use std::sync::{
     Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use crate::db::{DbError, Store};
@@ -73,70 +74,78 @@ pub(crate) enum InMemoryDbError {
 }
 
 // ============================================================================
-// Lock Helpers
+// Test Harness (Primary API)
 // ============================================================================
 
-/// Acquires a read lock on an `RwLock`, mapping poison errors to
-/// `InMemoryDbError`.
+/// Test harness that holds operation counters and an optional failure injector.
 ///
-/// # Errors
+/// Contexts embed this in their in-memory repository adapter state to gain
+/// shared instrumentation and failure injection capabilities.
 ///
-/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
+/// # Usage
 ///
-/// # Examples
+/// Embed `InMemoryHarness` in your in-memory repository adapter:
 ///
 /// ```rust,no_run
 /// use std::sync::RwLock;
 ///
-/// use lithos_core::db::testing::read_lock;
+/// use lithos_core::db::testing::{InMemoryHarness, read_lock, write_lock};
 ///
-/// let data = RwLock::new(42);
-/// let guard = read_lock(&data, "my_operation").unwrap();
-/// assert_eq!(*guard, 42);
+/// struct InMemoryRepository {
+///     data: RwLock<Vec<String>>,
+///     harness: InMemoryHarness,
+/// }
+///
+/// impl InMemoryRepository {
+///     fn read_all(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+///         let guard = read_lock(&self.data, "read_all")?;
+///         Ok(guard.clone())
+///     }
+/// }
 /// ```
-pub(crate) fn read_lock<'a, T>(
-    lock: &'a RwLock<T>,
-    ctx: &'static str,
-) -> Result<RwLockReadGuard<'a, T>, InMemoryDbError> {
-    lock.read().map_err(|_| InMemoryDbError::LockPoisoned {
-        context: ctx,
-    })
+#[derive(Default)]
+pub(crate) struct InMemoryHarness {
+    counters: OpCounters,
+    injector: Option<Box<dyn FailureInjector + Send + Sync>>,
 }
 
-/// Acquires a write lock on an `RwLock`, mapping poison errors to
-/// `InMemoryDbError`.
-///
-/// # Errors
-///
-/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
-pub(crate) fn write_lock<'a, T>(
-    lock: &'a RwLock<T>,
-    ctx: &'static str,
-) -> Result<RwLockWriteGuard<'a, T>, InMemoryDbError> {
-    lock.write().map_err(|_| InMemoryDbError::LockPoisoned {
-        context: ctx,
-    })
-}
+impl InMemoryHarness {
+    /// Creates a new harness with no failure injector.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
 
-/// Acquires a lock on a `Mutex`, mapping poison errors to `InMemoryDbError`.
-///
-/// # Errors
-///
-/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
-pub(crate) fn mutex_lock<'a, T>(
-    lock: &'a Mutex<T>,
-    ctx: &'static str,
-) -> Result<MutexGuard<'a, T>, InMemoryDbError> {
-    lock.lock().map_err(|_| InMemoryDbError::LockPoisoned {
-        context: ctx,
-    })
+    /// Creates a new harness with the specified failure injector.
+    pub(crate) fn with_injector(
+        injector: Box<dyn FailureInjector + Send + Sync>,
+    ) -> Self {
+        Self {
+            counters: OpCounters::default(),
+            injector: Some(injector),
+        }
+    }
+
+    /// Attempts to inject a failure at the specified point.
+    ///
+    /// If an injector is configured, delegates to it. Otherwise returns
+    /// `Ok(())`.
+    pub(crate) fn fail_at(
+        &self,
+        point: FailurePoint,
+    ) -> Result<(), InMemoryDbError> {
+        self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))
+    }
+
+    /// Returns a reference to the operation counters.
+    #[expect(dead_code, reason = "Will be used in Phase 5 schema integration")]
+    pub(crate) fn counters(&self) -> &OpCounters {
+        &self.counters
+    }
 }
 
 // ============================================================================
 // Operation Instrumentation
 // ============================================================================
-
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Operation counters for tracking in-memory repository activity.
 ///
@@ -212,9 +221,13 @@ impl OpCounters {
 pub(crate) struct OpCountersSnapshot {
     /// Number of read operations.
     pub(crate) reads: usize,
+    /// Number of write operations.
     pub(crate) writes: usize,
+    /// Number of batch operations.
     pub(crate) batches: usize,
+    /// Number of delete operations.
     pub(crate) deletes: usize,
+    /// Number of injected failures.
     pub(crate) injected_failures: usize,
 }
 
@@ -249,48 +262,64 @@ pub(crate) trait FailureInjector {
     fn fail_at(&self, point: FailurePoint) -> Result<(), InMemoryDbError>;
 }
 
-/// Test harness that holds operation counters and an optional failure injector.
+// ============================================================================
+// Lock Helpers
+// ============================================================================
+
+/// Acquires a read lock on an `RwLock`, mapping poison errors to
+/// `InMemoryDbError`.
 ///
-/// Contexts embed this in their in-memory repository adapter state to gain
-/// shared instrumentation and failure injection capabilities.
-#[derive(Default)]
-pub(crate) struct InMemoryHarness {
-    counters: OpCounters,
-    injector: Option<Box<dyn FailureInjector + Send + Sync>>,
+/// # Errors
+///
+/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use std::sync::RwLock;
+///
+/// use lithos_core::db::testing::read_lock;
+///
+/// let data = RwLock::new(42);
+/// let guard = read_lock(&data, "my_operation").unwrap();
+/// assert_eq!(*guard, 42);
+/// ```
+pub(crate) fn read_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    ctx: &'static str,
+) -> Result<RwLockReadGuard<'a, T>, InMemoryDbError> {
+    lock.read().map_err(|_| InMemoryDbError::LockPoisoned {
+        context: ctx,
+    })
 }
 
-impl InMemoryHarness {
-    /// Creates a new harness with no failure injector.
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
+/// Acquires a write lock on an `RwLock`, mapping poison errors to
+/// `InMemoryDbError`.
+///
+/// # Errors
+///
+/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
+pub(crate) fn write_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    ctx: &'static str,
+) -> Result<RwLockWriteGuard<'a, T>, InMemoryDbError> {
+    lock.write().map_err(|_| InMemoryDbError::LockPoisoned {
+        context: ctx,
+    })
+}
 
-    /// Creates a new harness with the specified failure injector.
-    pub(crate) fn with_injector(
-        injector: Box<dyn FailureInjector + Send + Sync>,
-    ) -> Self {
-        Self {
-            counters: OpCounters::default(),
-            injector: Some(injector),
-        }
-    }
-
-    /// Attempts to inject a failure at the specified point.
-    ///
-    /// If an injector is configured, delegates to it. Otherwise returns
-    /// `Ok(())`.
-    pub(crate) fn fail_at(
-        &self,
-        point: FailurePoint,
-    ) -> Result<(), InMemoryDbError> {
-        self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))
-    }
-
-    /// Returns a reference to the operation counters.
-    #[expect(dead_code, reason = "Will be used in Phase 5 schema integration")]
-    pub(crate) fn counters(&self) -> &OpCounters {
-        &self.counters
-    }
+/// Acquires a lock on a `Mutex`, mapping poison errors to `InMemoryDbError`.
+///
+/// # Errors
+///
+/// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
+pub(crate) fn mutex_lock<'a, T>(
+    lock: &'a Mutex<T>,
+    ctx: &'static str,
+) -> Result<MutexGuard<'a, T>, InMemoryDbError> {
+    lock.lock().map_err(|_| InMemoryDbError::LockPoisoned {
+        context: ctx,
+    })
 }
 
 // ============================================================================
