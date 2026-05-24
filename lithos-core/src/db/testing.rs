@@ -99,6 +99,15 @@ pub(crate) struct InMemoryHarness {
     injector: Option<Box<dyn FailureInjector + Send + Sync>>,
 }
 
+impl std::fmt::Debug for InMemoryHarness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InMemoryHarness")
+            .field("counters", &self.counters)
+            .field("has_injector", &self.injector.is_some())
+            .finish()
+    }
+}
+
 impl InMemoryHarness {
     /// Creates a new harness with no failure injector.
     pub(crate) fn new() -> Self {
@@ -127,7 +136,6 @@ impl InMemoryHarness {
     }
 
     /// Returns a reference to the operation counters.
-    #[expect(dead_code, reason = "Will be used in Phase 5 schema integration")]
     pub(crate) fn counters(&self) -> &OpCounters {
         &self.counters
     }

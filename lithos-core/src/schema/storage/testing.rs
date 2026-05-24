@@ -59,7 +59,7 @@ use std::{
 };
 
 use crate::{
-    db::DbError,
+    db::{DbError, testing::InMemoryHarness},
     fs::RelativePath,
     schema::{
         aggregate::Schema,
@@ -138,6 +138,9 @@ use crate::{
 /// [`RedbRepository`]: crate::schema::storage::RedbRepository
 #[derive(Debug, Clone)]
 pub struct InMemoryRepository {
+    /// Test harness for operation instrumentation and failure injection
+    harness: Arc<InMemoryHarness>,
+
     /// Schema storage: `SchemaId` → `Schema`
     schemas: Arc<RwLock<HashMap<SchemaId, Schema>>>,
 
@@ -173,6 +176,7 @@ impl InMemoryRepository {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            harness: Arc::new(InMemoryHarness::new()),
             schemas: Arc::new(RwLock::new(HashMap::new())),
             name_to_id: Arc::new(RwLock::new(HashMap::new())),
             property_bank: Arc::new(RwLock::new(None)),
@@ -181,6 +185,46 @@ impl InMemoryRepository {
             raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
             topological_graph: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Creates a new repository with the specified test harness.
+    ///
+    /// Useful for tests that need custom failure injection behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::db::testing::InMemoryHarness;
+    /// use lithos_core::schema::storage::testing::InMemoryRepository;
+    ///
+    /// let harness = InMemoryHarness::with_injector(Box::new(my_injector));
+    /// let repo = InMemoryRepository::with_harness(harness);
+    /// ```
+    #[must_use]
+    #[expect(
+        dead_code,
+        reason = "Will be used in Step 5.4 for failure injection tests"
+    )]
+    pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
+        Self {
+            harness: Arc::new(harness),
+            schemas: Arc::new(RwLock::new(HashMap::new())),
+            name_to_id: Arc::new(RwLock::new(HashMap::new())),
+            property_bank: Arc::new(RwLock::new(None)),
+            raw_schema_views: Arc::new(RwLock::new(HashMap::new())),
+            path_to_id: Arc::new(RwLock::new(HashMap::new())),
+            raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
+            topological_graph: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Returns a reference to the test harness for instrumentation.
+    ///
+    /// Allows tests to inspect operation counters and configure failure
+    /// injection.
+    #[must_use]
+    pub(crate) fn harness(&self) -> &InMemoryHarness {
+        &self.harness
     }
 
     /// Returns the number of schemas currently stored (test helper).
@@ -855,4 +899,24 @@ mod tests {
             assert_eq!(repo.schema_count(), 0);
         }
     }
+
+    mod integration {
+        use super::*;
+
+        #[test]
+        fn exposes_harness_for_instrumentation() {
+            // Arrange
+            let repo = InMemoryRepository::new();
+
+            // Act
+            let harness = repo.harness();
+
+            // Assert: counters start at zero
+            let snapshot = harness.counters().snapshot();
+            assert_eq!(snapshot.reads, 0);
+            assert_eq!(snapshot.writes, 0);
+        }
+    }
 }
+// Temporarily adding this to prevent compilation failure during refactor.
+// This file will be fully updated during Phase 5.
