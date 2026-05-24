@@ -687,45 +687,13 @@ impl From<crate::db::testing::InMemoryDbError> for SchemaStorageError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
 
-    #[test]
-    fn new_repository_is_empty() {
-        let repo = InMemoryRepository::new();
-        assert_eq!(repo.schema_count(), 0);
-    }
-
-    #[test]
-    fn default_repository_is_empty() {
-        let repo = InMemoryRepository::default();
-        assert_eq!(repo.schema_count(), 0);
-    }
-
-    #[test]
-    fn clear_resets_all_state() {
-        let repo = InMemoryRepository::new();
-
-        // Add some data
-        let id = SchemaId::new();
-        let name = SchemaName::try_new("test-schema").unwrap();
-        let schema =
-            Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
-
-        repo.save_schema(&schema).unwrap();
-        assert_eq!(repo.schema_count(), 1);
-
-        // Clear
-        repo.clear();
-        assert_eq!(repo.schema_count(), 0);
-    }
-
-    mod integration {
+    mod fixtures {
         use super::*;
-        use crate::db::testing::{
-            FailureInjector, FailurePoint, InMemoryDbError,
-        };
 
-        struct FailOnWrite;
-        struct FailOnRead;
+        pub(super) struct FailOnWrite;
+        pub(super) struct FailOnRead;
 
         impl FailureInjector for FailOnWrite {
             fn fail_at(
@@ -758,59 +726,75 @@ mod tests {
                 Ok(())
             }
         }
+    }
+
+    mod defaults {
+        use super::*;
 
         #[test]
-        fn exposes_harness_for_instrumentation() {
-            // Arrange
+        fn returns_zero_schema_count_when_new() {
+            let repo = InMemoryRepository::new();
+            assert_eq!(repo.schema_count(), 0);
+        }
+
+        #[test]
+        fn returns_zero_schema_count_when_default() {
+            let repo = InMemoryRepository::default();
+            assert_eq!(repo.schema_count(), 0);
+        }
+    }
+
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn returns_zero_schema_count_after_clear() {
             let repo = InMemoryRepository::new();
 
-            // Act
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, Vec::new(), vec![], PropertyMap::new());
+
+            repo.save_schema(&schema).unwrap();
+            assert_eq!(repo.schema_count(), 1);
+
+            repo.clear();
+            assert_eq!(repo.schema_count(), 0);
+        }
+
+        #[test]
+        fn returns_zeroed_counters_when_harness_is_fresh() {
+            let repo = InMemoryRepository::new();
+
             let harness = repo.harness();
 
-            // Assert: counters start at zero
             let snapshot = harness.counters().snapshot();
             assert_eq!(snapshot.reads, 0);
             assert_eq!(snapshot.writes, 0);
         }
+    }
+
+    mod update {
+        use super::*;
+        use crate::schema::storage::testing::tests::fixtures::FailOnWrite;
 
         #[test]
-        fn instruments_write_operations() {
-            // Arrange
+        fn increments_write_counter_when_save_schema_succeeds() {
             let repo = InMemoryRepository::new();
             let id = SchemaId::new();
             let name = SchemaName::try_new("test-schema").unwrap();
             let schema =
                 Schema::new(id, name, vec![], vec![], PropertyMap::default());
 
-            // Act
             repo.save_schema(&schema).unwrap();
 
-            // Assert: 2 writes (schemas map + name_to_id map)
             let snapshot = repo.harness().counters().snapshot();
             assert_eq!(snapshot.writes, 2);
         }
 
         #[test]
-        fn instruments_read_operations() {
-            // Arrange
-            let repo = InMemoryRepository::new();
-            let id = SchemaId::new();
-            let name = SchemaName::try_new("test-schema").unwrap();
-            let schema =
-                Schema::new(id, name, vec![], vec![], PropertyMap::default());
-            repo.save_schema(&schema).unwrap();
-
-            // Act
-            let _result = repo.find_schema_by_id(id).unwrap();
-
-            // Assert: 1 read (schemas map)
-            let snapshot = repo.harness().counters().snapshot();
-            assert_eq!(snapshot.reads, 1);
-        }
-
-        #[test]
-        fn respects_write_failure_injection() {
-            // Arrange
+        fn returns_storage_error_when_before_write_failure_is_injected() {
             let harness = InMemoryHarness::with_injector(Box::new(FailOnWrite));
             let repo = InMemoryRepository::with_harness(harness);
             let id = SchemaId::new();
@@ -818,31 +802,44 @@ mod tests {
             let schema =
                 Schema::new(id, name, vec![], vec![], PropertyMap::default());
 
-            // Act
             let result = repo.save_schema(&schema);
 
-            // Assert
             assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
         }
+    }
+
+    mod lookup {
+        use super::*;
+        use crate::schema::storage::testing::tests::fixtures::FailOnRead;
 
         #[test]
-        fn respects_read_failure_injection() {
-            // Arrange
-            let setup_repo = InMemoryRepository::new();
+        fn increments_read_counter_when_find_schema_by_id_succeeds() {
+            let repo = InMemoryRepository::new();
             let id = SchemaId::new();
             let name = SchemaName::try_new("test-schema").unwrap();
             let schema =
                 Schema::new(id, name, vec![], vec![], PropertyMap::default());
-            setup_repo.save_schema(&schema).unwrap();
+            repo.save_schema(&schema).unwrap();
+
+            let _result = repo.find_schema_by_id(id).unwrap();
+
+            let snapshot = repo.harness().counters().snapshot();
+            assert_eq!(snapshot.reads, 1);
+        }
+
+        #[test]
+        fn returns_storage_error_when_before_read_failure_is_injected() {
+            let id = SchemaId::new();
+            let name = SchemaName::try_new("test-schema").unwrap();
+            let schema =
+                Schema::new(id, name, vec![], vec![], PropertyMap::default());
 
             let harness = InMemoryHarness::with_injector(Box::new(FailOnRead));
             let repo = InMemoryRepository::with_harness(harness);
             repo.save_schema(&schema).unwrap();
 
-            // Act
             let result = repo.find_schema_by_id(id);
 
-            // Assert
             assert!(matches!(result, Err(SchemaStorageError::Storage(_))));
         }
     }
