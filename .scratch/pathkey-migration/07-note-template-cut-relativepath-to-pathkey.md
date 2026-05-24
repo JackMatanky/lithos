@@ -32,14 +32,16 @@ Note and template persistence boundaries rely on `RelativePath`, leaving them ou
 Note and template repositories process `PathKey` exclusively. This brings the entire system's repository boundaries under the unified `PathKey` paradigm.
 
 **Key interfaces:**
-- Note repository/storage trait signatures
-- Template repository/storage trait signatures
+- Note repository read/write trait signatures.
+- Template repository read/write trait signatures.
+- Note/template storage table key types in Redb schema.
+- Boundary conversion call sites orchestrating note/template saves/lookups.
 
 **Acceptance criteria:**
 - [ ] Zero instances of `RelativePath` in note and template repository traits.
-- [ ] Boundary conversions reliably map target files to `PathKey`s via root scope.
+- [ ] Zero instances of `RelativePath` in note and template storage table definitions.
+- [ ] Boundary conversions reliably map target files to `PathKey`s via root scope `as_key(root)`.
 - [ ] End-to-end functionality for notes and templates is verified by existing test suites.
-- [ ] Traceable to PRD User Stories: #5, #12, #23.
 
 **Out of scope:**
 - Broad removal of `RelativePath` outside of repository signatures.

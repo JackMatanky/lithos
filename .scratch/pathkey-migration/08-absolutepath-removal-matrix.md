@@ -29,17 +29,22 @@ Remove `AbsolutePath` from production flows, replacing with `DirPath`/`FilePath`
 `AbsolutePath` exists alongside `DirPath`/`FilePath`, creating overlapping semantics and unclear handling policies when resolution fails.
 
 **Desired behavior:**
-`AbsolutePath` is completely excised. All instances are replaced by `DirPath` or `FilePath`. For operations that previously panicked or ambiguously failed, an explicit matrix dictates fallback severity: boundary/security checks trigger hard errors; optional/discovery features downgrade to warn+continue; noise goes to trace.
+`AbsolutePath` is completely excised. All instances are replaced by `DirPath` or `FilePath`. For operations that previously panicked or ambiguously failed, an explicit matrix dictates fallback severity:
+- **Boundary/security checks**: Hard error.
+- **Optional/discovery features**: Downgrade to warning + continue.
+- **Low-value/noise**: Downgrade to trace-only.
 
 **Key interfaces:**
-- Internal `fs` boundary signatures previously taking `AbsolutePath`
-- Structured logging points invoking `tracing::warn!` or `tracing::trace!` (with `context`, `root`, `path`, `decision` fields)
+- Internal `fs` boundary signatures previously taking `AbsolutePath`.
+- Structured logging points invoking `tracing::warn!` or `tracing::trace!`.
+- `TrustedVaultPath` (migrate from `AbsolutePath` wrapper to thin newtype over `DirPath`).
 
 **Acceptance criteria:**
-- [ ] `AbsolutePath` is deleted from the codebase.
+- [ ] `AbsolutePath` is completely deleted from the codebase.
+- [ ] `TrustedVaultPath` wraps `DirPath`.
 - [ ] Every replacement is documented via comments or commit logs highlighting the severity choice (Error vs Warn vs Trace).
-- [ ] Downgraded checks utilize structured `tracing` fields.
-- [ ] Traceable to PRD User Stories: #7, #14.
+- [ ] Downgraded checks utilize structured `tracing` fields: `context`, `root`, `path`, `decision`.
+- [ ] No panic regressions introduced during replacement.
 
 **Out of scope:**
-- Deletion of `RelativePath` (done in subsequent phases).
+- Deletion of `RelativePath`.

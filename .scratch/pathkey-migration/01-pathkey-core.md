@@ -29,21 +29,76 @@ Implement `PathKey` as the canonical persistence-key type by renaming `Normalize
 `NormalizedPath` exists but lacks canonical key semantics, complete normalization guarantees (duplicate/trailing separators), and robust root-scoped conversion error coverage.
 
 **Desired behavior:**
-`PathKey` replaces `NormalizedPath` as the persistence-key primitive. Normalization strictly follows a `trim -> normalize -> validate` pipeline utilizing "parse, don't validate", preserving leading `/`, and optimizing with `Cow` (zero-copy when canonical, single-allocation otherwise). Filesystem-to-key conversion is root-scoped and fallible.
+Rename `NormalizedPath` → `PathKey` as the persistence-key primitive. Keep `PathKey` as `Box<str>` internally for compact immutable ownership. Make all filesystem→key conversions root-scoped and fallible via `PathKey::from_rooted_path(root, path)` and convenience `as_key(root)` methods.
 
 **Key interfaces:**
-- `PathKey::try_new(path: &str) -> Result<Self, PathError>`
-- `PathKey::from_rooted_path(root: &DirPath, path: &Path) -> Result<Self, PathError>`
-- `FilePath::as_key(root: &DirPath)`, `DirPath::as_key(root: &DirPath)`
-- `PathError::OutsideRoot`, `PathError::InvalidUtf8`
-- `NormalizedPath` (deprecated type alias)
+
+1. **Core Type:**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+pub struct PathKey(Box<str>);
+```
+
+2. **Constructors & Normalization:**
+The implementation must follow the **"parse, don't validate"** principle.
+```rust
+impl PathKey {
+    pub fn try_new(path: &str) -> Result<Self, PathError> {
+        let trimmed = Self::trim(path);
+        let normalized = Self::normalize(trimmed);
+        Self::validate(normalized.as_ref())?;
+        Ok(Self(normalized.into_owned().into_boxed_str()))
+    }
+
+    // - Converts `\` to `/`
+    // - Deduplicates `//`
+    // - Removes trailing `/`
+    // - Preserves leading `/` for absolute path detection
+    // - Returns Cow::Borrowed if already canonical
+    fn normalize(path: &str) -> Cow<'_, str> { /* ... */ }
+
+    // Checks for empty, absolute (leading `/`), `..`, `.`, platform prefixes
+    fn validate(path: &str) -> Result<(), PathError> { /* ... */ }
+}
+```
+
+3. **Root-Scoped Conversions:**
+```rust
+impl PathKey {
+    pub fn from_rooted_path(root: &DirPath, path: &Path) -> Result<Self, PathError> {
+        let relative = path.strip_prefix(root.as_path())
+            .map_err(|_| PathError::OutsideRoot { /* ... */ })?;
+        let utf8 = relative.to_str()
+            .ok_or_else(|| PathError::InvalidUtf8 { /* ... */ })?;
+        Self::try_new(utf8)
+    }
+}
+
+// Implement on FilePath, DirPath, FsPath:
+pub fn as_key(&self, root: &DirPath) -> Result<PathKey, PathError>
+```
+
+4. **Error Types (Add to PathError):**
+```rust
+pub enum PathError {
+    OutsideRoot { root: PathBuf, path: PathBuf },
+    InvalidUtf8 { path: PathBuf },
+}
+```
+
+5. **Deprecation Alias:**
+```rust
+#[deprecated(note = "Use PathKey instead")]
+pub type NormalizedPath = PathKey;
+```
 
 **Acceptance criteria:**
-- [ ] `PathKey` successfully parses valid strings and rejects traversals (`..`), current dir (`.`), and absolute paths post-normalization.
-- [ ] Normalization pipeline deduplicates separators, removes trailing separators, and enforces forward slashes in one pass (single allocation).
+- [ ] `PathKey` exists and implements the `trim -> normalize -> validate` pipeline utilizing "parse, don't validate", preserving leading `/`, and optimizing with `Cow` (zero-copy when canonical, single-allocation otherwise).
+- [ ] Normalization explicitly removes trailing separators (except root `/`) and deduplicates separators.
+- [ ] `from_rooted_path` and `as_key` methods are implemented and fallible.
 - [ ] `PathError::OutsideRoot` and `PathError::InvalidUtf8` are surfaced when converting from filesystem paths.
-- [ ] Traceable to PRD User Stories: #8, #15, #16, #21.
+- [ ] Comprehensive tests cover normalization rules, traversal rejection, UTF-8 validation, and outside-root cases.
 
 **Out of scope:**
 - Repository signature migration (handled in subsequent slices).
-- Unicode normalization (e.g., NFC).

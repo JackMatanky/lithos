@@ -29,17 +29,35 @@ Introduce `RelativeDirPath` and `RelativeFilePath` as declarative config value w
 Relative paths in configuration share types with operational I/O or persistence keys, leading to boundary leakage and ad hoc resolution logic scattered across the codebase.
 
 **Desired behavior:**
-Configuration declarations use `RelativeDirPath` and `RelativeFilePath`. These are strict string wrappers that validate relative, multi-segment formats (canonical separators, no traversal) but have absolutely no active conversion or materialization methods.
+Introduce `RelativeDirPath` and `RelativeFilePath` as declarative config value wrappers. These are strictly string-backed, preventing accidental usage as host filesystem paths. They must be passive: validation and accessors only, with absolutely no conversion or materialization methods.
 
 **Key interfaces:**
-- `RelativeDirPath` and `RelativeFilePath` structs.
-- Construction validation rejecting absolute, empty, or traversal components.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+pub struct RelativeDirPath(Box<str>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+pub struct RelativeFilePath(Box<str>);
+```
+
+**Validation Rules (applied on construction):**
+- Must be valid UTF-8.
+- Must be relative (no leading `/` or platform prefixes).
+- Must not contain traversal components (`.` or `..`).
+- Must have normalized separators (forward slashes only, no duplicates).
+
+**Strict Constraints:**
+- They must NOT wrap `PathBuf` or `Path`.
+- They must NOT implement methods like `to_path()`, `resolve()`, `as_key()`, `to_dir_path_under()`, etc.
+- Only expose primitive accessors like `as_str() -> &str`.
 
 **Acceptance criteria:**
-- [ ] Both types are string wrappers, explicitly avoiding `PathBuf`.
+- [ ] `RelativeDirPath` and `RelativeFilePath` are implemented as string wrappers.
 - [ ] Validation correctly rejects absolute paths, empty paths, and `.`/`..` components.
-- [ ] Types expose basic accessors (e.g., `as_str()`) but NO conversion APIs (`to_path`, `resolve`, `as_key`).
-- [ ] Traceable to PRD/Post-PRD User Stories: #17, #23.
+- [ ] Types expose NO conversion APIs whatsoever.
+- [ ] Tests cover accepted and rejected forms.
 
 **Out of scope:**
-- Key or filesystem materialization logic (handled by `DirPath` seams).
+- Materialization to `DirPath`/`FilePath`.
+- Replacing existing paths in `SchemaConfigSpec` (done in slice 04).

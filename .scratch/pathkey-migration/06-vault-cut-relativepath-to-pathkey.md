@@ -29,18 +29,18 @@ Migrate vault repository/storage boundaries and callers from `RelativePath` to `
 Vault boundary APIs use `RelativePath` semantics for persistence-facing keys, decoupling them from the new `PathKey` canonical format.
 
 **Desired behavior:**
-Vault repository and storage interfaces are strictly updated to `PathKey`. Callers must derive these keys using root-scoped seams before crossing the vault repository boundary.
+Vault repository and storage interfaces are strictly updated to `PathKey`. Callers must derive these keys using root-scoped seams (`as_key(root)`) before crossing the vault repository boundary.
 
 **Key interfaces:**
-- Vault repository read/write traits
-- Vault persistence storage definitions
-- Vault-level `as_key(root)` derivations at call sites
+- Vault repository read/write traits (e.g., `find_vault_file_by_path`, batch methods).
+- Vault persistence storage definitions (Redb table keys).
+- Call sites orchestrating vault operations.
 
 **Acceptance criteria:**
-- [ ] Vault repository interfaces no longer reference `RelativePath`; they mandate `PathKey`.
-- [ ] All vault integration and unit tests pass, verifying key lookups are unbroken.
+- [ ] Vault repository interfaces no longer reference `RelativePath`; they mandate `&PathKey` or `&[PathKey]`.
+- [ ] Vault storage table definitions use `PathKey`.
 - [ ] Caller derivation relies on formal `as_key(root)` boundaries.
-- [ ] Traceable to PRD User Stories: #5, #11, #23.
+- [ ] All vault integration and unit tests pass, verifying key lookups are unbroken.
 
 **Out of scope:**
 - Note and template repository migration.

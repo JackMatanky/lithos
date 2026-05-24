@@ -32,14 +32,14 @@ Create a full inventory of remaining `RelativePath` usage and map each call site
 A comprehensive audit maps every single remaining `RelativePath` reference to its strict successor type. The output is a committed markdown document tracking completion state.
 
 **Key interfaces:**
-- A markdown inventory (e.g., `.scratch/pathkey-migration/relativepath-usage-inventory.md`)
-- Source code references containing `RelativePath`
+- A markdown inventory file: `.scratch/pathkey-migration/relativepath-usage-inventory.md`
+- Target replacement types: `PathKey`, `DirPath`, `FilePath`, `RelativeDirPath`, `RelativeFilePath`.
 
 **Acceptance criteria:**
 - [ ] An inventory artifact is committed listing all remaining `RelativePath` usage.
-- [ ] Each entry designates the target type (`PathKey`, `DirPath`, `FilePath`, `RelativeDirPath`, or `RelativeFilePath`) with a brief rationale.
+- [ ] Each entry designates the target type with a brief rationale based on semantic boundaries.
 - [ ] Any ambiguous/unresolvable usages are explicitly flagged.
-- [ ] Traceable to PRD User Stories: #14, #23.
+- [ ] Follow-up migration tasks are linked from inventory sections.
 
 **Out of scope:**
 - Executing the actual code replacements defined in the inventory.

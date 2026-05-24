@@ -26,23 +26,49 @@ Redesign `SchemaConfigSpec` to store config semantics (`root`, `schema_directory
 **Summary:** Redesign `SchemaConfigSpec` to store config declarations and derive operational paths/keys lazily without existence checks.
 
 **Current behavior:**
-`SchemaConfigSpec` stores `RelativePath`s but exposes mixed relative/absolute accessors. It enforces filesystem existence too early (causing panics via `expect()`) and pushes component joining to consumers.
+`SchemaConfigSpec` stores `RelativePath`s but exposes mixed relative/absolute accessors with `unreachable!` branches. It forces target path existence checks at config construction time (causing panics via `expect()`) instead of at operational boundaries.
 
 **Desired behavior:**
-The spec stores exact configuration intent (`RelativeDirPath`, `RelativeFilePath`). Operational execution paths (`DirPath`, `FilePath`) and persistence boundaries (`PathKey`) are derived lazily via fallible methods. The constructor never checks filesystem existence.
+`SchemaConfigSpec` becomes execution-facing. It stores exact configuration semantics (`RelativeDirPath`, `RelativeFilePath`). Operational execution paths (`DirPath`, `FilePath`) and persistence boundaries (`PathKey`) are derived lazily via fallible methods. The constructor never checks filesystem existence.
 
 **Key interfaces:**
-- `SchemaConfigSpec` (fields: `root: VaultRoot`, `schema_directory: RelativeDirPath`, `property_bank_file: RelativeFilePath`)
-- `SchemaConfigSpec::directory_path() -> Result<DirPath, PathError>`
-- `SchemaConfigSpec::directory_key() -> Result<PathKey, PathError>`
-- `Config::to_schema_spec() -> Result<SchemaConfigSpec, ConfigError>`
+
+1. **Struct Definition:**
+```rust
+pub struct SchemaConfigSpec {
+    root: VaultRoot, // Thin wrapper over DirPath
+    schema_directory: RelativeDirPath,
+    property_bank_file: RelativeFilePath,
+}
+```
+
+2. **Derived Methods (Fallible):**
+```rust
+impl SchemaConfigSpec {
+    // Uses root.as_dir_path().append_dir(&self.schema_directory)
+    pub fn schema_directory_path(&self) -> Result<DirPath, PathError> { /* ... */ }
+
+    // Uses root.as_dir_path().append_file(&self.property_bank_file)
+    pub fn property_bank_file_path(&self) -> Result<FilePath, PathError> { /* ... */ }
+
+    // Derives via schema_directory_path()?.as_key(root)
+    pub fn schema_directory_key(&self) -> Result<PathKey, PathError> { /* ... */ }
+
+    // Derives via property_bank_file_path()?.as_key(root)
+    pub fn property_bank_key(&self) -> Result<PathKey, PathError> { /* ... */ }
+}
+```
+
+3. **Construction:**
+- `Config::to_schema_spec()` must be refactored to use fallible conversions (`Result<SchemaConfigSpec, ConfigError>`) instead of panic-based `expect()`.
 
 **Acceptance criteria:**
-- [ ] `SchemaConfigSpec` initialization is decoupled from target path existence on disk.
-- [ ] `directory_key()` and `property_bank_key()` reliably yield `PathKey`s via boundary conversion rules.
-- [ ] `Config::to_schema_spec()` uses `TryFrom`/fallible logic—no `expect()` panics.
-- [ ] Traceable to PRD User Stories: #2, #3, #9, #17, #18.
+- [ ] `SchemaConfigSpec` stores `VaultRoot`, `RelativeDirPath`, and `RelativeFilePath`.
+- [ ] `VaultRoot` is migrated from a raw `PathBuf` wrapper to a thin newtype over `DirPath`.
+- [ ] Derived methods materialize execution paths using the `DirPath::append_*` generic seam.
+- [ ] Derived methods expose repository boundary keys (`PathKey`).
+- [ ] Construction does not require the schema directory or property bank file to exist on disk.
+- [ ] `Config::to_schema_spec()` uses no `expect()` or panics for path assembly.
 
 **Out of scope:**
-- Modifying vault or note repository behavior.
-- Full discovery engine refactoring (keys derived here, but usage is next slice).
+- Schema repository hard cuts (done in Slice 05).

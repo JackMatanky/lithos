@@ -26,22 +26,33 @@ Perform schema context hard cut so all repository/storage boundaries use `PathKe
 **Summary:** Complete schema-context repository/storage migration from `RelativePath` to `PathKey`.
 
 **Current behavior:**
-Schema repository trait signatures, discovery pipelines (`DiscoveryEngine`), and config-to-schema handoffs (`Builder`) use `RelativePath`, requiring ad hoc `strip_prefix` chains.
+Repository trait signatures accept `RelativePath` for database keys. `DiscoveryEngine` and `Builder` contain ad hoc `strip_prefix` + `RelativePath::try_from` conversion chains at every boundary.
 
 **Desired behavior:**
 All Schema-related repository traits and storage boundaries mandate `PathKey`. Upstream callers (`DiscoveryEngine`, `Builder`) construct `PathKey`s via `entry.path().as_key(root)` instead of manual prefix stripping.
 
 **Key interfaces:**
-- `schema::repository::ReadRepository` & `WriteRepository` (e.g., `find_raw_schema_views_by_paths(&[PathKey])`)
-- `schema::storage` table definitions
-- `DiscoveryEngine::separate_property_bank`
-- `Builder::load_property_bank`
+
+1. **Repository Traits (`lithos-core/src/schema/repository.rs`):**
+Replace all `&RelativePath` parameters with `&PathKey` in:
+- `find_raw_schema_view_by_path`
+- `find_raw_schema_views_by_paths`
+- `get_raw_property_bank_view`
+- `find_schema_id_by_path`
+- `find_schema_ids_by_paths`
+
+2. **Storage (`lithos-core/src/schema/storage/*`):**
+- Update schema storage table key types from `RelativePath` to `PathKey`.
+
+3. **Call Sites:**
+- `DiscoveryEngine::separate_property_bank`: Replace manual `strip_prefix` + `RelativePath::try_from` with `file.path().as_key(spec.root())`.
+- `Builder::load_property_bank`: Replace `strip_prefix` logic with `entry.path().as_key(root)`.
+- Update `query_cached_state` to accept `PathKey`.
 
 **Acceptance criteria:**
-- [ ] Schema boundaries (`ReadRepository`, `WriteRepository`) accept `&PathKey` exclusively; no `RelativePath`.
-- [ ] `DiscoveryEngine` and `Builder` use `as_key(root)` for repository lookups without `strip_prefix`.
-- [ ] All schema integration tests pass, confirming accurate key round-tripping.
-- [ ] Traceable to PRD User Stories: #1, #4, #5, #6, #10, #19, #20, #24, #25.
+- [ ] All schema repository boundary signatures use `PathKey` exclusively.
+- [ ] Manual `strip_prefix + RelativePath::try_from` chains are removed from discovery and builder call sites.
+- [ ] All schema integration tests pass, confirming accurate key round-tripping through Redb storage.
 
 **Out of scope:**
 - Vault context or note context repository signatures.

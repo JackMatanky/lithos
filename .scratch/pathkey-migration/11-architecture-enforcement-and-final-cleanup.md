@@ -29,18 +29,17 @@ Finalize migration governance with architecture tests enforcing boundary rules, 
 Migration scaffolding (like the `NormalizedPath` alias and isolated `RelativePath` references) persists, waiting for final validation before deletion.
 
 **Desired behavior:**
-The migration concludes. The architecture enforces rigid path taxonomy (`Relative*Path` in config, `DirPath`/`FilePath` in I/O, `PathKey` at repository bounds). Transitional aliases (`NormalizedPath`) and the `RelativePath` type itself are deleted.
+The migration concludes. The architecture permanently enforces rigid path taxonomy (`Relative*Path` in config, `DirPath`/`FilePath` in I/O, `PathKey` at repository bounds). Transitional aliases (`NormalizedPath`) and the `RelativePath` type itself are deleted based on the audit.
 
 **Key interfaces:**
-- Architecture test suite
-- `PathKey` and `fs::path` module exports
+- Architecture test suite (`lithos-core/tests/path_migration_architecture.rs`).
+- `PathKey` and `fs::path` module exports.
 
 **Acceptance criteria:**
+- [ ] Architecture tests enforce: repository boundaries use `PathKey`, `Relative*Path` restricted to config, no conversion methods on `Relative*Path`.
 - [ ] The `NormalizedPath` type alias is completely deleted.
-- [ ] The `RelativePath` type is completely deleted, governed by the previously compiled usage inventory.
-- [ ] Architecture tests are hardened to enforce the strict 3-tier boundary rules permanently.
-- [ ] Traceable to PRD User Stories: #13, #14, #21, #22.
+- [ ] Final `RelativePath` removal criteria are validated against the usage audit, and the type is deleted if zero references remain.
+- [ ] Migration cleanup notes document stable boundary rules and approved conversion seams.
 
 **Out of scope:**
 - Introducing new path semantics.
-- Re-opening earlier repository migration contexts.
