@@ -830,7 +830,7 @@ The foundation is now ready for Schema integration:
 
 ---
 
-### Phase 5: Schema Integration (Steps 5.1-5.4) - ✅ STEPS 5.1-5.4 COMPLETE
+### Phase 5: Schema Integration (Steps 5.1-5.5) - ✅ STEPS 5.1-5.5 COMPLETE
 
 **Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
 
@@ -841,6 +841,7 @@ The foundation is now ready for Schema integration:
 4. `28ecab2d` - Refactor: remove `InMemoryError` indirection (`InMemoryDbError -> SchemaStorageError` direct path)
 5. `02905f70` - Refactor: reorder `schema/storage/testing.rs` for API-tour readability + update issue notes
 6. `ad42f1f7` - Refactor: move error conversion section near end (before tests)
+7. `413d531d` - Step 5.4: complete failure injection wiring + issue notes update
 
 #### Step 5.1: Embed InMemoryHarness - ✅ COMPLETE
 
@@ -987,9 +988,10 @@ self.harness.counters().inc_read();
 - ✅ Step 5.2: All write operations instrumented (13 lock acquisitions across 7 methods)
 - ✅ Step 5.3: All read operations instrumented (19 lock acquisitions across 14 methods)
 - ✅ Step 5.4: Failure injection wired for all read/write methods and verified via integration tests
+- ✅ Step 5.5: Removed obsolete helper/dummy test modules from Schema storage testing
 
 **Pending:**
-- ⏳ Step 5.5: Remove duplicate helpers and dummy tests from Schema
+- (none for Phase 5)
 
 **Instrumentation Totals:**
 - **21 repository methods** converted to use `db::testing` harness
@@ -1020,10 +1022,34 @@ Based on implementation review and maintainability concerns:
    - This preserves review clarity and makes TDD progression easier to audit.
 
 **Quality Gates:**
-- ✅ All `schema::storage::testing` tests passing (13 tests)
+- ✅ All `schema::storage::testing` tests passing (8 tests after Step 5.5 cleanup)
 - ✅ Clippy clean (no warnings)
 - ✅ TDD discipline maintained (RED-GREEN-REFACTOR for each step)
 - ✅ Pre-commit hooks passing (fmt, clippy, tests, conventional commits)
+
+#### Step 5.5: Remove Obsolete Tests - ✅ COMPLETE
+
+**GREEN (cleanup step):**
+- Removed `tests::integration_with_db_testing` module from `schema/storage/testing.rs`
+  - Removed lock-poison conversion helper tests that validated conversion glue rather than repository behavior
+- Removed `tests::contracts` module from `schema/storage/testing.rs`
+  - Removed idempotent-delete/index-consistency tests from this context-local harness file
+
+**Rationale:**
+- Keep this module focused on repository behavior + harness integration
+- Avoid duplicate/placeholder scaffolding in Schema context test doubles
+- Align with Phase 5 plan to defer shared contract scaffolding to Issue #10
+
+**Post-cleanup test inventory:**
+- `new_repository_is_empty`
+- `default_repository_is_empty`
+- `clear_resets_all_state`
+- integration tests:
+  - `exposes_harness_for_instrumentation`
+  - `instruments_write_operations`
+  - `instruments_read_operations`
+  - `respects_write_failure_injection`
+  - `respects_read_failure_injection`
 
 ---
 
@@ -1046,14 +1072,14 @@ After Phase 0 + Phase 5 completion:
   - [x] Step 0.6: Reorganize per ordering discipline
   - [x] Step 0.7: Move TestStore to Store::open_temp()
   - [x] Step 0.8: Move module-level lint expects to specific functions
-- [x] **Phase 5 Steps 5.1-5.4 complete**: Schema context demonstrates usage by:
+- [x] **Phase 5 Steps 5.1-5.5 complete**: Schema context demonstrates usage by:
   - [x] Step 5.1: `InMemoryRepository` embeds `Arc<InMemoryHarness>` with `harness()` accessor
   - [x] Step 5.2: All write operations (7 methods, 13 locks) use `write_lock` + `inc_write()`
   - [x] Step 5.3: All read operations (14 methods, 19 locks) use `read_lock` + `inc_read()`
   - [x] Implementing direct `From<InMemoryDbError> for SchemaStorageError`
   - [x] Tests verify counter instrumentation works end-to-end
   - [x] Step 5.4: Tests verify failure injection works end-to-end (`respects_write_failure_injection`, `respects_read_failure_injection`)
-  - [ ] Step 5.5: Remove obsolete helper/dummy tests
+  - [x] Step 5.5: Remove obsolete helper/dummy tests
   - [x] **Refactor follow-up complete:** removed `InMemoryError`/`to_storage_error()` indirection and reorganized `schema/storage/testing.rs` for API-tour readability
 - [ ] Contract test scaffolding deferred to Issue #10 (cross-context repository correctness contracts)
 - [x] All tests pass (`mise run test`)
