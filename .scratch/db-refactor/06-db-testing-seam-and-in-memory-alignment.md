@@ -830,6 +830,152 @@ The foundation is now ready for Schema integration:
 
 ---
 
+### Phase 5: Schema Integration (Steps 5.1-5.3) - ✅ STEPS 5.1-5.3 COMPLETE
+
+**Branch:** `feat/db-testing-seam` (worktree at `.worktrees/feat/db-testing-seam`)
+
+**Commits:**
+1. `4b6c0809` - Step 5.1: Embed InMemoryHarness in InMemoryRepository (RED-GREEN-REFACTOR)
+2. `845d5cc6` - Step 5.2: Convert all write operations to use harness (RED-GREEN-REFACTOR)
+3. `c20ee68c` - Step 5.3: Convert all read operations to use read_lock + counters (RED-GREEN-REFACTOR)
+
+#### Step 5.1: Embed InMemoryHarness - ✅ COMPLETE
+
+**RED:**
+- Test `exposes_harness_for_instrumentation` fails: `InMemoryRepository` has no `harness()` method
+
+**GREEN:**
+- Added `harness: Arc<InMemoryHarness>` field to `InMemoryRepository`
+- Added `pub(crate) fn harness(&self) -> &InMemoryHarness` accessor method
+- Initialized harness in `new()`: `harness: Arc::new(InMemoryHarness::new())`
+- Implemented manual `Debug` for `InMemoryHarness` (can't auto-derive due to `Box<dyn FailureInjector>`)
+- Updated `Default` impl to delegate to `Self::new()`
+
+**REFACTOR:**
+- Added `with_harness(harness: InMemoryHarness) -> Self` constructor for failure injection tests
+- Fixed visibility to `pub(crate)` to match `InMemoryHarness` visibility (clippy `private-interfaces` lint)
+
+**Key Decisions:**
+- **Use `Arc<InMemoryHarness>`**: Preserves `Clone` derive on `InMemoryRepository` (already uses Arc extensively)
+- **Manual `Debug` impl**: Shows `counters` snapshot + `has_injector` boolean (can't show injector internals)
+- **`pub(crate)` visibility**: Matches `InMemoryHarness` visibility, prevents lint warnings
+
+**Impact:**
+- `InMemoryHarness::counters()` no longer has `#[expect(dead_code)]` (actively used)
+- `with_harness()` still has `#[expect(dead_code)]` (will be used in Step 5.4 for failure injection)
+
+#### Step 5.2: Convert Write Operations - ✅ COMPLETE
+
+**RED:**
+- Test `instruments_write_operations` fails: `writes` counter is 0, expected 2
+
+**GREEN:**
+- Converted `save_schema` to use `write_lock()` helper
+- Added counter instrumentation: `self.harness.counters().inc_write()`
+- Error conversion pattern: `.map_err(|e| to_storage_error(e.into()))?` (leverages `From<InMemoryDbError>`)
+
+**REFACTOR:**
+- Converted all 6 remaining `WriteRepository` methods to use harness pattern:
+  - `save_many_schemas` (2 writes: schemas + name_to_id)
+  - `save_property_bank` (1 write)
+  - `save_raw_schema_view` (2 writes: raw_schema_views + path_to_id)
+  - `save_topological_graph` (1 write)
+  - `save_raw_bank_view` (1 write)
+  - `delete_schema` (5 writes: schemas, name_to_id, path_to_id, raw_schema_views, raw_bank_views)
+- Total: **7 methods, 13 write lock acquisitions**
+- Removed `write_lock` import temporarily (not yet used in read methods)
+
+**Pattern:**
+```rust
+let mut map = write_lock(&self.field, "context_string")
+    .map_err(|e| to_storage_error(e.into()))?;
+self.harness.counters().inc_write();
+```
+
+**Quality:**
+- All 1197 tests pass
+- Clippy clean (no warnings)
+
+#### Step 5.3: Convert Read Operations - ✅ COMPLETE
+
+**RED:**
+- Test `instruments_read_operations` fails: `reads` counter is 0, expected 1
+
+**GREEN:**
+- Converted `find_schema_by_id` to use `read_lock()` helper
+- Re-added `read_lock` import
+- Added counter instrumentation: `self.harness.counters().inc_read()`
+
+**REFACTOR:**
+- Converted all 13 remaining `ReadRepository` methods to use harness pattern
+- Methods with multiple locks (e.g., `find_raw_schema_view_by_path`, `get_schema_index`) increment counter for each lock acquisition
+- **Removed unused `InMemoryError::lock_poisoned()` method** - helpers use `InMemoryDbError` directly
+- **Removed `clippy::map_err_ignore` from module-level `#[expect]`** - no longer needed with new error handling pattern
+
+**Read Methods Instrumented (14 total, 19 lock acquisitions):**
+- `find_schema_by_id` (1 lock)
+- `find_many_schemas_by_id` (1 lock)
+- `find_schemas_by_ids` (1 lock)
+- `list_schemas` (1 lock)
+- `find_schemas_using_properties` (1 lock)
+- `get_raw_schema_view` (1 lock)
+- `find_raw_schema_view_by_path` (2 locks: path_to_id + views)
+- `find_raw_schema_views_by_paths` (2 locks: path_to_id + views)
+- `get_property_bank` (1 lock)
+- `get_topological_graph` (1 lock)
+- `get_raw_property_bank_view` (1 lock)
+- `find_schema_id_by_name` (1 lock)
+- `find_schema_id_by_path` (1 lock)
+- `find_schema_ids_by_paths` (1 lock)
+- `list_schema_name_id_pairs` (1 lock)
+- `list_schema_path_id_pairs` (1 lock)
+- `get_schema_index` (2 locks: name_to_id + path_to_id)
+
+**Pattern:**
+```rust
+let data = read_lock(&self.field, "context_string")
+    .map_err(|e| to_storage_error(e.into()))?;
+self.harness.counters().inc_read();
+```
+
+**Quality:**
+- All 1197 tests pass
+- Clippy clean (no warnings)
+- 10 schema storage tests passing
+
+**Cleanup:**
+- Removed `InMemoryError::lock_poisoned()` - genuinely unused (helpers create `InMemoryDbError::LockPoisoned` directly)
+- Simplified module-level lint expectations
+
+### Phase 5 Progress Summary
+
+**Completed:**
+- ✅ Step 5.1: Embedded `InMemoryHarness` in `InMemoryRepository`
+- ✅ Step 5.2: All write operations instrumented (13 lock acquisitions across 7 methods)
+- ✅ Step 5.3: All read operations instrumented (19 lock acquisitions across 14 methods)
+
+**Pending:**
+- ⏳ Step 5.4: Add failure injection support test
+- ⏳ Step 5.5: Remove duplicate helpers and dummy tests from Schema
+
+**Instrumentation Totals:**
+- **21 repository methods** converted to use `db::testing` harness
+- **32 lock acquisitions** instrumented (13 write + 19 read)
+- **Pattern scales cleanly:** Methods with multiple locks naturally increment counters multiple times
+
+**Error Handling:**
+- All methods use consistent pattern: `.map_err(|e| to_storage_error(e.into()))?`
+- Leverages existing `From<InMemoryDbError> for InMemoryError` implementation
+- No manual error construction - let type system do the work
+
+**Quality Gates:**
+- ✅ All 1197 tests passing
+- ✅ Clippy clean (no warnings)
+- ✅ TDD discipline maintained (RED-GREEN-REFACTOR for each step)
+- ✅ Pre-commit hooks passing (fmt, clippy, tests, conventional commits)
+
+---
+
 ### Acceptance Criteria Updates
 
 After Phase 0 + Phase 5 completion:
@@ -849,11 +995,14 @@ After Phase 0 + Phase 5 completion:
   - [x] Step 0.6: Reorganize per ordering discipline
   - [x] Step 0.7: Move TestStore to Store::open_temp()
   - [x] Step 0.8: Move module-level lint expects to specific functions
-- [ ] **Phase 5 pending**: Schema context demonstrates usage by:
-  - [x] Converting existing lock acquisition to use `db::testing::read_lock` / `write_lock`
-  - [x] Implementing `From<InMemoryDbError>` for its error type
-  - [x] `InMemoryRepository` embeds `InMemoryHarness` and instruments all operations with counters
-  - [x] Tests verify counter instrumentation and failure injection work end-to-end
+- [x] **Phase 5 Steps 5.1-5.3 complete**: Schema context demonstrates usage by:
+  - [x] Step 5.1: `InMemoryRepository` embeds `Arc<InMemoryHarness>` with `harness()` accessor
+  - [x] Step 5.2: All write operations (7 methods, 13 locks) use `write_lock` + `inc_write()`
+  - [x] Step 5.3: All read operations (14 methods, 19 locks) use `read_lock` + `inc_read()`
+  - [x] Implementing `From<InMemoryDbError>` for its error type (already existed)
+  - [x] Tests verify counter instrumentation works end-to-end
+  - [ ] Step 5.4: Tests verify failure injection works end-to-end
+  - [ ] Step 5.5: Remove obsolete helper/dummy tests
 - [ ] Contract test scaffolding deferred to Issue #10 (cross-context repository correctness contracts)
 - [x] All tests pass (`mise run test`)
 - [x] No clippy warnings (`mise run lint`)
