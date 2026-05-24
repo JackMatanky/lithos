@@ -336,3 +336,95 @@ These decisions supersede earlier open questions in this issue.
 
 - `SchemaConfigSpec` still carries relative components plus accessor resolution logic.
 - Next refactor should evaluate whether the schema-facing contract should carry execution-ready `DirPath`/`FilePath` values directly, while keeping relocatable relative intent at aggregate config level.
+
+---
+
+## Plan Update: Typed Append API (Post-Implementation Continuation)
+
+**Date:** 2026-05-24
+**Status:** Proposed implementation plan for review
+
+### Why this update
+
+The current `DirPath::join_path(...) -> FsPath` path-classification heuristic (extension => file, no extension => dir) is too ambiguous for domain-safe composition. We are also planning to phase out `RelativePath`, so we need composition APIs that do not depend on relative path wrappers.
+
+### Updated API Direction
+
+Keep `DirPath::join(...) -> PathBuf` as a low-level composition primitive, and introduce typed composition methods:
+
+```rust
+impl DirPath {
+    pub fn append_filename(
+        &self,
+        file: &FileName,
+    ) -> Result<FilePath, PathError>;
+
+    pub fn append_dirname(
+        &self,
+        dir: &DirName,
+    ) -> Result<DirPath, PathError>;
+}
+```
+
+Optional API (only if needed by real call sites):
+
+```rust
+impl FilePath {
+    pub fn prepend_dir(
+        &self,
+        base: &DirPath,
+    ) -> Result<FilePath, PathError>;
+}
+```
+
+### Design Constraints
+
+1. Preserve constructor invariants: `FilePath::try_new` and `DirPath::try_new` remain the only public invariant gates.
+2. No unchecked direct tuple construction (`FilePath(path)` / `DirPath(path)`) outside type internals.
+3. Prefer semantic types (`FileName`, `DirName`) over generic `PathBuf` for domain composition.
+4. Keep `PathBuf` interfaces at infrastructure boundaries (scanner/OS/config parsing), then convert into typed domain values ASAP.
+
+### TDD Implementation Plan (Vertical Slices)
+
+#### Slice 1 - `append_filename` contract
+- RED: Add failing tests for existing file append success and missing file failure.
+- GREEN: Implement `DirPath::append_filename(&FileName)` using `self.as_path().join(...)` + `FilePath::try_new`.
+- REFACTOR: Tighten docs and error assertions to concrete `PathError` variants.
+
+#### Slice 2 - `append_dirname` contract
+- RED: Add failing tests for existing dir append success and missing dir failure.
+- GREEN: Implement `DirPath::append_dirname(&DirName)` using `join(...)` + `DirPath::try_new`.
+- REFACTOR: Remove duplicated test setup helpers.
+
+#### Slice 3 - Config call-site migration off `join_path`
+- RED: Update `SchemaConfigSpec::directory()` and `SchemaConfigSpec::property_bank()` tests to expect typed append behavior (no variant-matching + `unreachable!`).
+- GREEN: Replace `join_path` call sites in `config/paths.rs` with typed append methods.
+- REFACTOR: Simplify accessor logic now that intent is explicit.
+
+#### Slice 4 - De-risk legacy `join_path`
+- RED: Add tests proving config/spec paths no longer depend on extension heuristic.
+- GREEN: Deprecate `join_path` (or remove if no remaining production callers).
+- REFACTOR: Add migration notes for remaining test-only or transitional callers.
+
+#### Slice 5 - `RelativePath` removal readiness
+- RED: Add tests that composition paths remain valid using `FileName`/`DirName`-based APIs without introducing new `RelativePath` dependencies.
+- GREEN: Remove incidental `RelativePath` coupling in path composition call paths.
+- REFACTOR: Ensure docs reference `NormalizedPath` for storage and typed path APIs for filesystem operations.
+
+### Acceptance Criteria for this continuation
+
+- [ ] `DirPath::append_filename(&FileName)` implemented and tested
+- [ ] `DirPath::append_dirname(&DirName)` implemented and tested
+- [ ] `SchemaConfigSpec` path accessors migrated away from `join_path` heuristic branching
+- [ ] No production call sites require extension-based `join_path` classification
+- [ ] `join_path` deprecated or removed with documented migration path
+- [ ] Composition logic does not introduce new `RelativePath` dependencies
+- [ ] `cargo test -p lithos-core --lib -- "fs::path::"` passes
+- [ ] `cargo clippy --all-targets` passes
+- [ ] `mise run verify` passes
+
+### Risk and blast-radius notes
+
+- Primary files affected: `lithos-core/src/fs/path.rs`, `lithos-core/src/config/paths.rs`, related tests.
+- Process sensitivity: `Config::to_schema_spec` participates in schema builder flow (`Builder_load_all_orchestrates_discovery -> To_schema_spec`).
+- Risk level: LOW to MEDIUM; mitigated by migrating config call sites early and validating via targeted path/config tests before full verify.
