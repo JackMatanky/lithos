@@ -33,6 +33,10 @@ Config persistence uses the legacy v1 repository and storage pattern.
 2. Define `ConfigRepository` as a marker trait extending both.
 3. Implement `ConfigRedbRepository` split across `config/storage/read.rs` and `config/storage/write.rs`.
 4. Update `testing.rs` in-memory adapter to implement the new segregated traits.
+5. Adopt the shared `db::testing` seam in Config's in-memory adapter:
+   - Use `read_lock` / `write_lock` helpers
+   - Embed `InMemoryHarness` for counters/failure injection
+   - Map `InMemoryDbError` directly into Config storage errors
 
 **Key interfaces:**
 - `ConfigReadRepository` / `ConfigWriteRepository`
@@ -44,6 +48,9 @@ Config persistence uses the legacy v1 repository and storage pattern.
 - [ ] `ConfigRedbRepository` implemented split across `read.rs` and `write.rs`.
 - [ ] Config `testing.rs` in-memory Repository Adapter updated and passing tests.
 - [ ] Existing Config behavior tests pass with new storage seam.
+- [ ] Config in-memory adapter uses `db::testing::{read_lock, write_lock, InMemoryHarness}`.
+- [ ] Config in-memory adapter supports failure injection (`BeforeRead`/`BeforeWrite`) and has integration tests for both paths.
+- [ ] Config in-memory adapter follows naming/structure conventions from `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`.
 
 **Revision Note (2026-05-12):**
 Plan established following the **Segregated Unified Repository** pattern (ADR 016).
@@ -53,6 +60,16 @@ Plan established following the **Segregated Unified Repository** pattern (ADR 01
 - [ ] Config Repository Adapter uses the new storage module layout and DB seam.
 - [ ] Config `testing.rs` in-memory Repository Adapter is updated to the new interface and passes tests.
 - [ ] Existing Config behavior tests pass, with added coverage for changed batch/error semantics where needed.
+- [ ] Cross-context adapter adoption complete for Config:
+  - [ ] lock helpers use `db::testing` primitives
+  - [ ] harness counters wired and verified
+  - [ ] failure injection wired and verified
+  - [ ] direct `InMemoryDbError` mapping in place
+
+## Cross-context guidance reference
+
+- This issue must apply the shared adapter guidance established by Issue 06
+  (DB seam foundation) and keep adapter behavior local to Config context.
 
 ## Blocked by
 

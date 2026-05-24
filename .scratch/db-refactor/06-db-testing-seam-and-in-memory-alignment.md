@@ -842,6 +842,10 @@ The foundation is now ready for Schema integration:
 5. `02905f70` - Refactor: reorder `schema/storage/testing.rs` for API-tour readability + update issue notes
 6. `ad42f1f7` - Refactor: move error conversion section near end (before tests)
 7. `413d531d` - Step 5.4: complete failure injection wiring + issue notes update
+8. `c03e67a5` - Step 5.5: remove obsolete test modules + finalize Phase 5 notes
+9. `e81f795e` - remove broad lint expectations; keep only code-adjacent lint compliance (`#[inline]`)
+10. `0372ff79` - align test naming/module structure with `docs/engineering/testing/unit*.md`
+11. `0cc3cde5` - tighten visibility (`pub(crate)`) and prune low-value doc examples
 
 #### Step 5.1: Embed InMemoryHarness - ✅ COMPLETE
 
@@ -876,7 +880,7 @@ The foundation is now ready for Schema integration:
 **GREEN:**
 - Converted `save_schema` to use `write_lock()` helper
 - Added counter instrumentation: `self.harness.counters().inc_write()`
-- Error conversion pattern: `.map_err(|e| to_storage_error(e.into()))?` (leverages `From<InMemoryDbError>`)
+- Error propagation now uses direct `?` via `From<InMemoryDbError> for SchemaStorageError`
 
 **REFACTOR:**
 - Converted all 6 remaining `WriteRepository` methods to use harness pattern:
@@ -892,7 +896,7 @@ The foundation is now ready for Schema integration:
 **Pattern:**
 ```rust
 let mut map = write_lock(&self.field, "context_string")
-    .map_err(|e| to_storage_error(e.into()))?;
+    ?;
 self.harness.counters().inc_write();
 ```
 
@@ -938,7 +942,7 @@ self.harness.counters().inc_write();
 **Pattern:**
 ```rust
 let data = read_lock(&self.field, "context_string")
-    .map_err(|e| to_storage_error(e.into()))?;
+    ?;
 self.harness.counters().inc_read();
 ```
 
@@ -1041,15 +1045,24 @@ Based on implementation review and maintainability concerns:
 - Align with Phase 5 plan to defer shared contract scaffolding to Issue #10
 
 **Post-cleanup test inventory:**
-- `new_repository_is_empty`
-- `default_repository_is_empty`
-- `clear_resets_all_state`
-- integration tests:
-  - `exposes_harness_for_instrumentation`
-  - `instruments_write_operations`
-  - `instruments_read_operations`
-  - `respects_write_failure_injection`
-  - `respects_read_failure_injection`
+- `defaults::returns_zero_schema_count_when_new`
+- `defaults::returns_zero_schema_count_when_default`
+- `accessors::returns_zero_schema_count_after_clear`
+- `accessors::returns_zeroed_counters_when_harness_is_fresh`
+- `update::increments_write_counter_when_save_schema_succeeds`
+- `update::returns_storage_error_when_before_write_failure_is_injected`
+- `lookup::increments_read_counter_when_find_schema_by_id_succeeds`
+- `lookup::returns_storage_error_when_before_read_failure_is_injected`
+
+### Additional Phase 5 hardening (post-Step 5.5)
+
+- Removed broad module-level lint expectations from `schema/storage/testing.rs`
+- Added required `#[inline]` on public/public(crate) methods to satisfy strict clippy profile
+- Tightened visibility for schema storage testing utilities:
+  - `schema::storage::testing` exported as `pub(crate) mod testing`
+  - `InMemoryRepository` and helper methods now `pub(crate)`
+- Pruned low-value doc examples (`new()`, `with_harness()`, module/type examples) to reduce documentation drift risk
+- Kept doc comments focused on purpose, constraints, and behavior contracts
 
 ---
 
@@ -1088,14 +1101,35 @@ After Phase 0 + Phase 5 completion:
 
 ## Final Acceptance Checklist
 
-- [ ] Shared in-memory testing infra is available in `db::testing`.
+- [x] Shared in-memory testing infra is available in `db::testing`.
 - [ ] Context adapters (Schema/Note/Template/Config) can consume the shared
-      infra without moving context invariants into DB.
-- [ ] Cross-context guidance for in-memory adapter shape is documented.
+      infra without moving context invariants into DB. *(Schema complete; Note/Template/Config migration slices not completed in this issue.)*
+- [ ] Cross-context guidance for in-memory adapter shape is documented. *(Partially documented here; broader cross-context rollout docs still pending.)*
 - [ ] Note/Template/Config migration slices (07/08/09) reference this seam and
-      apply it during implementation.
-- [ ] TDD red-green-refactor cycle followed for all phases (0 + 1-5).
-- [ ] All phases completed sequentially (no horizontal slicing).
+      apply it during implementation. *(Not completed in this issue.)*
+- [x] TDD red-green-refactor cycle followed for all phases (0 + 1-5).
+- [x] All phases completed sequentially (no horizontal slicing).
+
+## Acceptance Criteria Not Met
+
+The following acceptance criteria remain intentionally unmet for Issue 06 scope
+and are delegated to Issues 07/08/09:
+
+1. **Cross-context adoption not complete**
+   - Note/Template/Config have not yet been migrated to the shared seam in this issue.
+2. **Cross-context rollout documentation incomplete**
+   - Additional guidance beyond this issue notes is still needed.
+3. **Contract scaffolding not implemented here**
+   - Deferred to Issue #10 by design.
+
+### Migration Strategy Decision (2026-05-24)
+
+- In-memory adapter adoption for Note/Template/Config will be implemented in the
+  same issues as their full context storage migrations (07/08/09) to avoid
+  duplicate work and churn.
+- Issue 06 remains the seam foundation + Schema proving ground.
+- Cross-context adapter criteria now live explicitly in 07/08/09 acceptance
+  checklists.
 
 ## Blocked by
 
