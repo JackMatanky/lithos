@@ -9,7 +9,9 @@ context: .scratch/schema-processor-split/
 # PRD: BaseSchema Domain Type and File Processor
 
 > **Parent PRD**: `.scratch/schema-processor-split/PRD.md`
-> This implements **Phase 1** of the schema processor split architecture. See parent PRD for full architectural rationale.
+> This implements **Phase 1** of the schema processor split architecture.
+> **Depends on**: Phase 0 (RawSchema.extends and SchemaVersion.extends refactored to Vec<SchemaName>)
+> See parent PRD for full architectural rationale.
 
 ## Problem Statement
 

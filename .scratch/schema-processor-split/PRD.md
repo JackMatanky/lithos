@@ -110,11 +110,54 @@ This architecture enables:
 
 35. As a developer, I want stale_reference_names included in PropertyDelta.upserts (not separate), so that the handoff contract stays minimal and semantic.
 
-## Three-Phase Implementation Roadmap
+## Four-Phase Implementation Roadmap
+
+### Phase 0: Raw Type Alignment (Multiple Inheritance Prep)
+
+**Goals**: Refactor intermediate raw types to use `Vec<SchemaName>` for extends, aligning with the final `Schema.parents: Vec<SchemaId>` capability.
+
+**Background**:
+- Final `Schema` aggregate: `parents: Vec<SchemaId>` (supports multiple inheritance)
+- Current intermediate types: `extends: Option<SchemaName>` (single only)
+- This creates a capability mismatch that must be resolved before BaseSchema can use `Vec<SchemaName>`
+
+**Files to Modify**:
+1. **`lithos-core/src/schema/raw/aggregate.rs`**
+   - `RawSchema.extends: Option<SchemaName>` → `RawSchema.extends: Vec<SchemaName>`
+   - Update `extends()` accessor and related methods
+
+2. **`lithos-core/src/schema/views/snapshots.rs`**
+   - `SchemaVersion.extends: Option<SchemaName>` → `SchemaVersion.extends: Vec<SchemaName>`
+   - Update `extends()` accessor and serialization
+
+3. **Any code consuming `RawSchema.extends` or `SchemaVersion.extends`**
+   - `schema_processor.rs` - update parsing and inheritance graph building
+   - Tests that construct `RawSchema` instances
+
+**Migration Strategy**:
+- For backward compatibility during transition:
+  - Empty `Vec<SchemaName>` = no parent (equivalent to `None`)
+  - Single-element `Vec<SchemaName>` = single parent (equivalent to `Some(name)`)
+  - Multiple elements = multiple inheritance (new capability)
+
+**Deliverables**:
+- `RawSchema.extends: Vec<SchemaName>`
+- `SchemaVersion.extends: Vec<SchemaName>`
+- All consuming code updated to handle Vec
+- All tests passing
+
+**Acceptance Criteria**:
+- All existing tests pass
+- Schema files with single `extends` work as before
+- Schema files with empty extends work as before
+
+**Estimated Effort**: ~100-150 lines modifications, no new files
 
 ### Phase 1: BaseSchema + BaseSchemaProcessor
 
 **Implemented in**: `.scratch/base-schema/`
+
+**Depends on**: Phase 0 (Raw types use Vec<SchemaName>)
 
 **Goals**: Introduce new intermediate domain type and file-local processor without changing existing behavior.
 
@@ -162,7 +205,7 @@ This architecture enables:
 
 **Deliverables**:
 - Modified `Builder` flow using BaseSchemaProcessor → InheritanceProcessor pipeline
-- Removed `schema_processor.rs` (~2900 lines)
+- Removed `schema_processor.rs` (~3200 lines)
 - Removed `views/properties.rs` (~73 lines)
 - Removed BasePropertiesView table
 - Integration tests confirming identical behavior
