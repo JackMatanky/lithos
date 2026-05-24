@@ -39,16 +39,6 @@
 //!
 //! [`Repository`]: crate::schema::repository::Repository
 
-// Test-only code: relax pedantic lints for pragmatic test utilities
-#![expect(
-    clippy::missing_inline_in_public_items,
-    clippy::significant_drop_tightening,
-    clippy::pattern_type_mismatch,
-    clippy::iter_over_hash_type,
-    clippy::doc_paragraphs_missing_punctuation,
-    reason = "Test utilities prioritize readability over micro-optimizations"
-)]
-
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -173,6 +163,7 @@ impl InMemoryRepository {
     /// assert_eq!(repo.schema_count(), 0);
     /// ```
     #[must_use]
+    #[inline]
     pub fn new() -> Self {
         Self {
             harness: Arc::new(InMemoryHarness::new()),
@@ -229,6 +220,7 @@ impl InMemoryRepository {
     /// Panics if the lock is poisoned (another thread panicked while holding
     /// the lock).
     #[must_use]
+    #[inline]
     pub fn schema_count(&self) -> usize {
         self.schemas.read().expect("Lock poisoned").len()
     }
@@ -240,6 +232,7 @@ impl InMemoryRepository {
     /// # Panics
     ///
     /// Panics if any lock is poisoned.
+    #[inline]
     pub fn clear(&self) {
         self.schemas.write().expect("Lock poisoned").clear();
         self.name_to_id.write().expect("Lock poisoned").clear();
@@ -252,6 +245,7 @@ impl InMemoryRepository {
 }
 
 impl Default for InMemoryRepository {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -669,6 +663,7 @@ impl WriteRepository for InMemoryRepository {
 /// only need to satisfy repository trait error contracts.
 #[cfg(test)]
 impl From<crate::db::testing::InMemoryDbError> for SchemaStorageError {
+    #[inline]
     fn from(err: crate::db::testing::InMemoryDbError) -> Self {
         use crate::db::testing::InMemoryDbError as DbTestError;
 
