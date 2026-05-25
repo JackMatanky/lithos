@@ -110,13 +110,12 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{FsReader, RelativePath, metadata::FileMetadata},
+    fs::{FsReader, PathKey, metadata::FileMetadata},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-            SchemaStorageError,
         },
         property::PropertyName,
         raw::RawPropertyBank,
@@ -580,17 +579,15 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
+        path_key: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
         self.status.view.update_metadata(self.status.metadata);
 
         repository
-            .save_raw_property_bank_view(
-                self.status.view.file_path(),
-                &self.status.view,
-            )
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .save_raw_property_bank_view(path_key, &self.status.view)
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition(Construction, Fresh))
     }
@@ -607,6 +604,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
+        path_key: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
@@ -614,15 +612,11 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(SchemaRepositoryError::Storage)
             .map_err(SchemaLoaderError::Repository)?;
 
         repository
-            .save_raw_property_bank_view(
-                self.status.view.file_path(),
-                &self.status.view,
-            )
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .save_raw_property_bank_view(path_key, &self.status.view)
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition(Construction, Fresh))
     }
@@ -670,7 +664,7 @@ impl PropertyBankProcessor<Construction, New> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn create<R: WriteRepository>(
         self,
-        path: &RelativePath,
+        path: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     {
@@ -692,13 +686,13 @@ impl PropertyBankProcessor<Construction, New> {
     #[inline]
     fn persist<R: WriteRepository>(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let property_hashes = self.status.raw.properties().compute_hashes();
         let raw_hash =
@@ -713,7 +707,7 @@ impl PropertyBankProcessor<Construction, New> {
 
         repository
             .save_raw_property_bank_view(path, &view)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+            .map_err(SchemaLoaderError::Repository)
     }
 }
 
@@ -731,16 +725,16 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn update<R: Repository>(
         self,
-        path: &RelativePath,
+        path: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     {
         let mut bank = repository
             .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+            .map_err(SchemaLoaderError::Repository)?
             .ok_or(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::Storage(
-                    SchemaStorageError::PropertyBankNotFound,
+                SchemaIngestionError::Repository(
+                    SchemaRepositoryError::PropertyBankNotFound,
                 ),
             ))?;
 
@@ -773,13 +767,13 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[inline]
     fn persist<R: WriteRepository>(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
@@ -790,7 +784,7 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         repository
             .save_raw_property_bank_view(path, &view)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+            .map_err(SchemaLoaderError::Repository)
     }
 }
 
@@ -814,9 +808,9 @@ impl PropertyBankProcessor<Construction, Fresh> {
         drop(self);
         let bank = repository
             .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-            .ok_or(SchemaIngestionError::Storage(
-                SchemaStorageError::PropertyBankNotFound,
+            .map_err(SchemaLoaderError::Repository)?
+            .ok_or(SchemaIngestionError::Repository(
+                SchemaRepositoryError::PropertyBankNotFound,
             ))?;
 
         Ok(Self::transition(Completed, FreshReady {

@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         error::SchemaError,
         identifier::{SchemaId, SchemaName},
@@ -30,7 +30,7 @@ pub struct SchemaIndexEntry {
     /// Schema validated name.
     name: SchemaName,
     /// Schema vault-relative path (optional if built from name/id only).
-    path: Option<RelativePath>,
+    path: Option<PathKey>,
 }
 
 impl SchemaIndexEntry {
@@ -48,7 +48,7 @@ impl SchemaIndexEntry {
     /// Sets the path for the entry.
     #[inline]
     #[must_use]
-    pub fn with_path(mut self, path: RelativePath) -> Self {
+    pub fn with_path(mut self, path: PathKey) -> Self {
         self.path = Some(path);
         self
     }
@@ -77,7 +77,7 @@ impl SchemaIndexEntry {
     /// Returns the schema path, if available.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> Option<&RelativePath> {
+    pub fn path(&self) -> Option<&PathKey> {
         self.path.as_ref()
     }
 }
@@ -91,7 +91,7 @@ pub struct SchemaIndex {
     entries: Vec<SchemaIndexEntry>,
     name_index: HashMap<SchemaName, usize>,
     id_index: HashMap<SchemaId, usize>,
-    path_index: HashMap<RelativePath, usize>,
+    path_index: HashMap<PathKey, usize>,
 }
 
 impl SchemaIndex {
@@ -180,7 +180,7 @@ impl SchemaIndex {
     /// name.
     pub fn from_path_id_pairs<I>(pairs: I) -> Result<Self, SchemaError>
     where
-        I: IntoIterator<Item = (RelativePath, SchemaId)>,
+        I: IntoIterator<Item = (PathKey, SchemaId)>,
     {
         let iter = pairs.into_iter();
         let (low, high) = iter.size_hint();
@@ -207,7 +207,7 @@ impl SchemaIndex {
     ) -> Result<Self, SchemaError>
     where
         I: IntoIterator<Item = (SchemaName, SchemaId)>,
-        J: IntoIterator<Item = (RelativePath, SchemaId)>,
+        J: IntoIterator<Item = (PathKey, SchemaId)>,
     {
         let name_iter = name_pairs.into_iter();
         let path_iter = path_pairs.into_iter();
@@ -267,7 +267,7 @@ impl SchemaIndex {
     #[must_use]
     pub fn get_entry_by_path(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Option<&SchemaIndexEntry> {
         let &idx = self.path_index.get(path)?;
         self.entries.get(idx)
@@ -290,7 +290,7 @@ impl SchemaIndex {
     /// Get schema ID by path.
     #[inline]
     #[must_use]
-    pub fn get_id_by_path(&self, path: &RelativePath) -> Option<SchemaId> {
+    pub fn get_id_by_path(&self, path: &PathKey) -> Option<SchemaId> {
         self.get_entry_by_path(path).map(SchemaIndexEntry::id)
     }
 
@@ -302,9 +302,7 @@ impl SchemaIndex {
     }
 
     /// Iterate over path→ID pairs.
-    pub fn iter_path_id(
-        &self,
-    ) -> impl Iterator<Item = (&RelativePath, &SchemaId)> {
+    pub fn iter_path_id(&self) -> impl Iterator<Item = (&PathKey, &SchemaId)> {
         self.entries.iter().filter_map(|e| e.path().map(|p| (p, e.id_ref())))
     }
 
@@ -354,7 +352,7 @@ impl SchemaIndex {
     /// Returns `SchemaError` if the name cannot be derived from the path.
     pub fn insert_path(
         &mut self,
-        path: RelativePath,
+        path: PathKey,
         id: SchemaId,
     ) -> Result<(), SchemaError> {
         if let Some(&idx) = self.id_index.get(&id) {
@@ -469,7 +467,7 @@ impl Extend<(SchemaName, SchemaId)> for NameIdPairs {
 
 /// Collection of path→ID pairs for schema discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct PathIdPairs(Vec<(RelativePath, SchemaId)>);
+pub struct PathIdPairs(Vec<(PathKey, SchemaId)>);
 
 impl PathIdPairs {
     /// Creates a new empty `PathIdPairs`.
@@ -483,17 +481,17 @@ impl PathIdPairs {
     }
 
     /// Pushes a new pair into the collection.
-    pub fn push(&mut self, pair: (RelativePath, SchemaId)) {
+    pub fn push(&mut self, pair: (PathKey, SchemaId)) {
         self.0.push(pair);
     }
 
     /// Consumes the collection and returns the inner `Vec`.
-    pub fn into_vec(self) -> Vec<(RelativePath, SchemaId)> {
+    pub fn into_vec(self) -> Vec<(PathKey, SchemaId)> {
         self.0
     }
 
     /// Returns an iterator over the pairs.
-    pub fn iter(&self) -> impl Iterator<Item = &(RelativePath, SchemaId)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(PathKey, SchemaId)> {
         self.0.iter()
     }
 
@@ -508,15 +506,13 @@ impl PathIdPairs {
     }
 
     /// Returns the first pair in the collection.
-    pub fn first(&self) -> Option<&(RelativePath, SchemaId)> {
+    pub fn first(&self) -> Option<&(PathKey, SchemaId)> {
         self.0.first()
     }
 }
 
-impl FromIterator<(RelativePath, SchemaId)> for PathIdPairs {
-    fn from_iter<I: IntoIterator<Item = (RelativePath, SchemaId)>>(
-        iter: I,
-    ) -> Self {
+impl FromIterator<(PathKey, SchemaId)> for PathIdPairs {
+    fn from_iter<I: IntoIterator<Item = (PathKey, SchemaId)>>(iter: I) -> Self {
         Self(iter.into_iter().collect())
     }
 }
@@ -525,24 +521,21 @@ impl FromIterator<(RelativePath, SchemaId)> for PathIdPairs {
     clippy::missing_trait_methods,
     reason = "Delegate to inner Vec for performance-sensitive defaults"
 )]
-impl Extend<(RelativePath, SchemaId)> for PathIdPairs {
-    fn extend<I: IntoIterator<Item = (RelativePath, SchemaId)>>(
-        &mut self,
-        iter: I,
-    ) {
+impl Extend<(PathKey, SchemaId)> for PathIdPairs {
+    fn extend<I: IntoIterator<Item = (PathKey, SchemaId)>>(&mut self, iter: I) {
         self.0.extend(iter);
     }
 }
 
-impl From<Vec<(RelativePath, SchemaId)>> for PathIdPairs {
-    fn from(vec: Vec<(RelativePath, SchemaId)>) -> Self {
+impl From<Vec<(PathKey, SchemaId)>> for PathIdPairs {
+    fn from(vec: Vec<(PathKey, SchemaId)>) -> Self {
         Self(vec)
     }
 }
 
 impl IntoIterator for PathIdPairs {
     type IntoIter = std::vec::IntoIter<Self::Item>;
-    type Item = (RelativePath, SchemaId);
+    type Item = (PathKey, SchemaId);
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -578,8 +571,8 @@ mod tests {
         let id2 = SchemaId::new();
 
         let index = SchemaIndex::from_path_id_pairs([
-            (RelativePath::try_from("schemas/user.json").unwrap(), id1),
-            (RelativePath::try_from("schemas/task.json").unwrap(), id2),
+            (PathKey::try_new("schemas/user.json").unwrap(), id1),
+            (PathKey::try_new("schemas/task.json").unwrap(), id2),
         ])
         .unwrap();
 
@@ -614,8 +607,8 @@ mod tests {
         let id2 = SchemaId::new();
 
         let mut pairs = PathIdPairs::new();
-        pairs.push((RelativePath::try_from("schemas/user.json").unwrap(), id1));
-        pairs.push((RelativePath::try_from("schemas/task.json").unwrap(), id2));
+        pairs.push((PathKey::try_new("schemas/user.json").unwrap(), id1));
+        pairs.push((PathKey::try_new("schemas/task.json").unwrap(), id2));
 
         assert_eq!(pairs.len(), 2);
         assert!(!pairs.is_empty());
@@ -638,8 +631,7 @@ mod tests {
         let id1 = SchemaId::new();
 
         let pairs: PathIdPairs =
-            vec![(RelativePath::try_from("schemas/user.json").unwrap(), id1)]
-                .into();
+            vec![(PathKey::try_new("schemas/user.json").unwrap(), id1)].into();
         assert_eq!(pairs.len(), 1);
     }
 
@@ -651,7 +643,7 @@ mod tests {
         let pairs: NameIdPairs = vec![(name1, id1)].into_iter().collect();
         assert_eq!(pairs.len(), 1);
 
-        let path1 = RelativePath::try_from("schemas/user.json").unwrap();
+        let path1 = PathKey::try_new("schemas/user.json").unwrap();
         let id2 = SchemaId::new();
         let p_pairs: PathIdPairs = vec![(path1, id2)].into_iter().collect();
         assert_eq!(p_pairs.len(), 1);

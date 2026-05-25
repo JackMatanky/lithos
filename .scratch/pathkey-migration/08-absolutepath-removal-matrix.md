@@ -1,9 +1,9 @@
 ---
 title: "Issue 08: Remove AbsolutePath with decision matrix and tracing policy"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 
@@ -48,3 +48,38 @@ Remove `AbsolutePath` from production flows, replacing with `DirPath`/`FilePath`
 
 **Out of scope:**
 - Deletion of `RelativePath`.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Explicitly map operational downgrades using structured tracing instead of panics or silent failures.
+
+**Behaviors to Test (Prioritized):**
+1. Hard boundary checks map invalid paths to formal `Result::Err`.
+2. Optional feature failures emit structured downgrade traces instead of failing.
+
+### 2. Tracer Bullet: Hard Error Replacement
+**Behavior:** Hard boundary checks map invalid paths to formal `Result::Err`.
+- **RED:** Call a strictly required boundary check with an invalid path. Assert it returns a mapped error.
+- **GREEN:** Replace `AbsolutePath` with `DirPath`/`FilePath`. Return `Result` instead of panic.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 3. Incremental Loop: Tracing/Downgrade
+**Behavior:** Optional feature failures emit structured downgrade traces instead of failing.
+- **RED:** Using `tracing-test`, assert an optional resolution failure emits a `tracing::warn!` or `tracing::trace!` event with the appropriate `decision` context.
+- **GREEN:** Implement structured `tracing` fields for downgraded `AbsolutePath` checks.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 4. Refactor
+- [ ] Document all downgraded checks with `//` comments explaining *why* the severity was chosen (Rust Best Practice: Comments explain why).

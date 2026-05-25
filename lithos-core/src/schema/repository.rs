@@ -1,11 +1,11 @@
 //! Schema repository trait and error types.
 
 use crate::{
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        error::SchemaStorageError,
+        error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         inheritance::InheritanceGraph,
         property::PropertyName,
@@ -21,8 +21,8 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if the database read or deserialization
-    /// fails.
+    /// Returns [`SchemaRepositoryError`] if the database read or
+    /// deserialization fails.
     ///
     /// # Examples
     ///
@@ -43,7 +43,7 @@ pub trait ReadRepository {
     fn find_schema_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Schema>, SchemaStorageError>;
+    ) -> Result<Option<Schema>, SchemaRepositoryError>;
 
     /// Find multiple schemas by ID in a single transaction.
     ///
@@ -52,12 +52,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_many_schemas_by_id(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Option<Schema>>, SchemaStorageError>;
+    ) -> Result<Vec<Option<Schema>>, SchemaRepositoryError>;
 
     /// Find multiple schemas by ID, skipping missing entries.
     ///
@@ -65,20 +65,20 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_schemas_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Schema>, SchemaStorageError>;
+    ) -> Result<Vec<Schema>, SchemaRepositoryError>;
 
     /// List all persisted schema aggregates.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
-    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError>;
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaRepositoryError>;
 
     /// Find schemas using any of the provided property names.
     ///
@@ -87,14 +87,14 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_schemas_using_properties(
         &self,
         property_names: &[PropertyName],
     ) -> Result<
         std::collections::HashMap<SchemaId, Vec<PropertyName>>,
-        SchemaStorageError,
+        SchemaRepositoryError,
     >;
 
     /// Get a raw schema view by schema ID.
@@ -103,12 +103,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn get_raw_schema_view(
         &self,
         id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageError>;
+    ) -> Result<Option<RawSchemaView>, SchemaRepositoryError>;
 
     /// Find a raw schema view by schema file path.
     ///
@@ -119,7 +119,7 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     ///
     /// # Examples
@@ -127,12 +127,12 @@ pub trait ReadRepository {
     /// ```rust,ignore
     /// use lithos_core::schema::repository::ReadRepository;
     /// use lithos_core::schema::storage::RedbRepository;
-    /// use lithos_core::fs::RelativePath;
+    /// use lithos_core::fs::PathKey;
     /// use std::sync::Arc;
     ///
     /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
-    /// let path = RelativePath::try_from("schemas/note.json")?;
+    /// let path = PathKey::try_new("schemas/note.json")?;
     ///
     /// // Cross-table lookup: path → ID → view
     /// if let Some(view) = repo.find_raw_schema_view_by_path(&path)? {
@@ -142,8 +142,8 @@ pub trait ReadRepository {
     /// ```
     fn find_raw_schema_view_by_path(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageError>;
+        path: &PathKey,
+    ) -> Result<Option<RawSchemaView>, SchemaRepositoryError>;
 
     /// Find raw schema views by file paths in a single transaction.
     ///
@@ -155,12 +155,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_raw_schema_views_by_paths(
         &self,
-        paths: &[RelativePath],
-    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError>;
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaRepositoryError>;
 
     /// Get the Property Bank singleton.
     ///
@@ -168,11 +168,11 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn get_property_bank(
         &self,
-    ) -> Result<Option<PropertyBank>, SchemaStorageError>;
+    ) -> Result<Option<PropertyBank>, SchemaRepositoryError>;
 
     /// Get the topological inheritance graph singleton.
     ///
@@ -180,11 +180,11 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn get_topological_graph(
         &self,
-    ) -> Result<Option<InheritanceGraph<()>>, SchemaStorageError>;
+    ) -> Result<Option<InheritanceGraph<()>>, SchemaRepositoryError>;
 
     /// Get the raw property bank view by path.
     ///
@@ -192,12 +192,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn get_raw_property_bank_view(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, SchemaStorageError>;
+        path: &PathKey,
+    ) -> Result<Option<RawPropertyBankView>, SchemaRepositoryError>;
 
     /// Find a schema ID by its name.
     ///
@@ -205,12 +205,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_schema_id_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<SchemaId>, SchemaStorageError>;
+    ) -> Result<Option<SchemaId>, SchemaRepositoryError>;
 
     /// Find a schema ID by its path.
     ///
@@ -218,12 +218,12 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_schema_id_by_path(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<SchemaId>, SchemaStorageError>;
+        path: &PathKey,
+    ) -> Result<Option<SchemaId>, SchemaRepositoryError>;
 
     /// Find multiple schema IDs by their paths in a single transaction.
     ///
@@ -232,42 +232,42 @@ pub trait ReadRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn find_schema_ids_by_paths(
         &self,
-        paths: &[RelativePath],
-    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError>;
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<SchemaId>>, SchemaRepositoryError>;
 
     /// List all schema name to ID mappings.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<crate::schema::index::NameIdPairs, SchemaStorageError>;
+    ) -> Result<crate::schema::index::NameIdPairs, SchemaRepositoryError>;
 
     /// List all schema path to ID mappings.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<crate::schema::index::PathIdPairs, SchemaStorageError>;
+    ) -> Result<crate::schema::index::PathIdPairs, SchemaRepositoryError>;
 
     /// Get unified index combining name, path, and ID lookups.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database read or deserialization
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
     /// fails.
     fn get_schema_index(
         &self,
-    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageError>;
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaRepositoryError>;
 }
 
 /// Segregated write interface for schema persistence.
@@ -279,7 +279,7 @@ pub trait WriteRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     ///
     /// # Examples
@@ -300,7 +300,8 @@ pub trait WriteRepository {
     /// );
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError>;
+    fn save_schema(&self, schema: &Schema)
+    -> Result<(), SchemaRepositoryError>;
 
     /// Save multiple schemas in a single transaction.
     ///
@@ -309,7 +310,7 @@ pub trait WriteRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     ///
     /// # Examples
@@ -333,30 +334,30 @@ pub trait WriteRepository {
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Save the Property Bank singleton.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Save the raw property bank view for a given path.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     fn save_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         view: &RawPropertyBankView,
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Save a raw schema view for a schema ID.
     ///
@@ -364,31 +365,31 @@ pub trait WriteRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     fn save_raw_schema_view(
         &self,
         id: SchemaId,
         view: &RawSchemaView,
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Save the topological inheritance graph singleton.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if serialization or database write
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
     /// fails.
     fn save_topological_graph(
         &self,
         graph: &InheritanceGraph<()>,
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Delete a schema aggregate and all related indexes/views.
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] if database write fails.
-    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaStorageError>;
+    /// Returns [`SchemaRepositoryError`] if database write fails.
+    fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaRepositoryError>;
 }
 
 /// Unified interface for schema persistence and retrieval.

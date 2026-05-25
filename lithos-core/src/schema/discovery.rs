@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{DirScanInput, DirScanner, FsEntry, RelativePath},
+    fs::{DirScanInput, DirScanner, FsEntry, PathKey},
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
@@ -105,7 +105,7 @@ impl PropertyBankDiscovery {
 #[derive(Debug)]
 pub(crate) struct DiscoveryResult {
     /// Discovered schema files (path → discovery data).
-    schemas: HashMap<RelativePath, SchemaDiscovery>,
+    schemas: HashMap<PathKey, SchemaDiscovery>,
     /// Discovered property bank file (if present).
     property_bank: Option<PropertyBankDiscovery>,
     /// Inheritance graph from database (if exists).
@@ -117,7 +117,7 @@ pub(crate) struct DiscoveryResult {
 impl DiscoveryResult {
     /// Returns the discovered schemas.
     #[inline]
-    pub(crate) fn schemas(&self) -> &HashMap<RelativePath, SchemaDiscovery> {
+    pub(crate) fn schemas(&self) -> &HashMap<PathKey, SchemaDiscovery> {
         &self.schemas
     }
 
@@ -167,8 +167,8 @@ impl DiscoveryResult {
 struct CachedState {
     graph: Option<InheritanceGraph<()>>,
     property_bank_view: Option<RawPropertyBankView>,
-    schema_views: HashMap<RelativePath, RawSchemaView>,
-    schema_ids: HashMap<RelativePath, SchemaId>,
+    schema_views: HashMap<PathKey, RawSchemaView>,
+    schema_ids: HashMap<PathKey, SchemaId>,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -241,8 +241,9 @@ impl DiscoveryEngine {
         const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
 
         // Use relative schema directory path for pattern matching
-        let pattern =
-            format!("{}/**/*", spec.directory_relative().as_path().display());
+        let pattern = format!("{}/**/*", spec.directory_relative().as_str());
+        let schema_directory =
+            spec.schema_directory_path().map_err(SchemaIngestionError::from)?;
 
         DirScanner::new(spec.root().as_path())
             .entries(
@@ -253,7 +254,7 @@ impl DiscoveryEngine {
             .map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
                     crate::schema::error::SchemaFileError::Io {
-                        path: spec.directory().as_path().to_path_buf(),
+                        path: schema_directory.as_path().to_path_buf(),
                         source: std::io::Error::other(e),
                     },
                 ))
@@ -270,30 +271,30 @@ impl DiscoveryEngine {
     fn separate_property_bank(
         entries: Vec<FsEntry>,
         spec: &SchemaConfigSpec,
-    ) -> (Option<FsEntry>, Vec<(RelativePath, FsEntry)>) {
+    ) -> (Option<FsEntry>, Vec<(PathKey, FsEntry)>) {
         let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
+        let property_bank_path =
+            spec.property_bank_file_path().ok().map(std::convert::Into::into);
 
         for entry in entries {
             let Some(file) = entry.as_file() else {
                 continue;
             };
 
-            let Ok(relative) =
-                file.path().as_path().strip_prefix(spec.root().as_path())
-            else {
-                continue;
-            };
-
-            let Ok(path) = RelativePath::try_from(relative) else {
+            let Ok(path_key) = file.path().as_key(spec.root()) else {
                 continue;
             };
 
             // Compare absolute file path directly
-            if file.path().as_path() == spec.property_bank().as_path() {
+            if property_bank_path.as_ref().is_some_and(
+                |property_bank_abs: &std::path::PathBuf| {
+                    file.path().as_path() == property_bank_abs.as_path()
+                },
+            ) {
                 property_bank_entry = Some(entry);
             } else {
-                schemas.push((path, entry));
+                schemas.push((path_key, entry));
             }
         }
 
@@ -324,40 +325,40 @@ impl DiscoveryEngine {
     fn query_cached_state<R>(
         repo: &R,
         property_bank_entry: Option<&FsEntry>,
-        schema_entries: &[(RelativePath, FsEntry)],
+        schema_entries: &[(PathKey, FsEntry)],
         spec: &SchemaConfigSpec,
     ) -> Result<CachedState, SchemaLoaderError>
     where
         R: ReadRepository,
     {
-        // Property bank path is already stored as relative in spec
-        let property_bank_path = spec.property_bank_relative();
+        let property_bank_path =
+            spec.property_bank_key().map_err(SchemaIngestionError::from)?;
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iter over &[(RelativePath, FsEntry)] yields \
-                      &&(RelativePath, FsEntry)"
+            reason = "iter over &[(PathKey, FsEntry)] yields &&(PathKey, \
+                      FsEntry)"
         )]
-        let schema_paths: Vec<_> =
+        let schema_keys: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
         let graph = repo
             .get_topological_graph()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let property_bank_view = match property_bank_entry {
             Some(_) => repo
-                .get_raw_property_bank_view(property_bank_path)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?,
+                .get_raw_property_bank_view(&property_bank_path)
+                .map_err(SchemaLoaderError::Repository)?,
             None => None,
         };
 
-        let (schema_views, schema_ids) = if schema_paths.is_empty() {
+        let (schema_views, schema_ids) = if schema_keys.is_empty() {
             (HashMap::new(), HashMap::new())
         } else {
             let schema_views = repo
-                .find_raw_schema_views_by_paths(&schema_paths)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-            let schema_views = schema_paths
+                .find_raw_schema_views_by_paths(&schema_keys)
+                .map_err(SchemaLoaderError::Repository)?;
+            let schema_views = schema_keys
                 .iter()
                 .cloned()
                 .zip(schema_views)
@@ -365,9 +366,9 @@ impl DiscoveryEngine {
                 .collect();
 
             let schema_ids = repo
-                .find_schema_ids_by_paths(&schema_paths)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
-            let schema_ids = schema_paths
+                .find_schema_ids_by_paths(&schema_keys)
+                .map_err(SchemaLoaderError::Repository)?;
+            let schema_ids = schema_keys
                 .iter()
                 .cloned()
                 .zip(schema_ids)
@@ -395,7 +396,7 @@ impl DiscoveryEngine {
     /// allocations.
     fn build_result(
         property_bank_entry: Option<FsEntry>,
-        schema_entries: Vec<(RelativePath, FsEntry)>,
+        schema_entries: Vec<(PathKey, FsEntry)>,
         mut cached: CachedState,
     ) -> DiscoveryResult {
         // Build property bank discovery
@@ -499,7 +500,7 @@ mod tests {
         fn find_schema_by_id(
             &self,
             id: SchemaId,
-        ) -> Result<Option<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Option<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_by_id(id)
         }
@@ -507,22 +508,24 @@ mod tests {
         fn find_many_schemas_by_id(
             &self,
             ids: &[SchemaId],
-        ) -> Result<Vec<Option<Schema>>, crate::schema::error::SchemaStorageError>
-        {
+        ) -> Result<
+            Vec<Option<Schema>>,
+            crate::schema::error::SchemaRepositoryError,
+        > {
             self.inner.find_many_schemas_by_id(ids)
         }
 
         fn find_schemas_by_ids(
             &self,
             ids: &[SchemaId],
-        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schemas_by_ids(ids)
         }
 
         fn list_schemas(
             &self,
-        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schemas()
         }
@@ -532,7 +535,7 @@ mod tests {
             property_names: &[PropertyName],
         ) -> Result<
             HashMap<SchemaId, Vec<PropertyName>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.find_schemas_using_properties(property_names)
         }
@@ -542,27 +545,27 @@ mod tests {
             id: SchemaId,
         ) -> Result<
             Option<RawSchemaView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_raw_schema_view(id)
         }
 
         fn find_raw_schema_view_by_path(
             &self,
-            path: &RelativePath,
+            path: &PathKey,
         ) -> Result<
             Option<RawSchemaView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.find_raw_schema_view_by_path(path)
         }
 
         fn find_raw_schema_views_by_paths(
             &self,
-            paths: &[RelativePath],
+            paths: &[PathKey],
         ) -> Result<
             Vec<Option<RawSchemaView>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.raw_views_by_paths_calls.fetch_add(1, Ordering::Relaxed);
             self.inner.find_raw_schema_views_by_paths(paths)
@@ -572,7 +575,7 @@ mod tests {
             &self,
         ) -> Result<
             Option<PropertyBank>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_property_bank()
         }
@@ -581,17 +584,17 @@ mod tests {
             &self,
         ) -> Result<
             Option<InheritanceGraph<()>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_topological_graph()
         }
 
         fn get_raw_property_bank_view(
             &self,
-            path: &RelativePath,
+            path: &PathKey,
         ) -> Result<
             Option<RawPropertyBankView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_raw_property_bank_view(path)
         }
@@ -599,25 +602,25 @@ mod tests {
         fn find_schema_id_by_name(
             &self,
             name: &SchemaName,
-        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_id_by_name(name)
         }
 
         fn find_schema_id_by_path(
             &self,
-            path: &RelativePath,
-        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+            path: &PathKey,
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_id_by_path(path)
         }
 
         fn find_schema_ids_by_paths(
             &self,
-            paths: &[RelativePath],
+            paths: &[PathKey],
         ) -> Result<
             Vec<Option<SchemaId>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.ids_by_paths_calls.fetch_add(1, Ordering::Relaxed);
             self.inner.find_schema_ids_by_paths(paths)
@@ -625,21 +628,21 @@ mod tests {
 
         fn list_schema_name_id_pairs(
             &self,
-        ) -> Result<NameIdPairs, crate::schema::error::SchemaStorageError>
+        ) -> Result<NameIdPairs, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schema_name_id_pairs()
         }
 
         fn list_schema_path_id_pairs(
             &self,
-        ) -> Result<PathIdPairs, crate::schema::error::SchemaStorageError>
+        ) -> Result<PathIdPairs, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schema_path_id_pairs()
         }
 
         fn get_schema_index(
             &self,
-        ) -> Result<SchemaIndex, crate::schema::error::SchemaStorageError>
+        ) -> Result<SchemaIndex, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.get_schema_index()
         }
@@ -654,7 +657,10 @@ mod tests {
 
     #[test]
     fn run_finds_all_files() {
-        use crate::fs::{DirPath, RelativePath};
+        use crate::fs::{
+            DirPath,
+            path::{RelativeDirPath, RelativeFilePath},
+        };
 
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
@@ -669,9 +675,9 @@ mod tests {
         // Create spec with vault root and relative paths
         let vault_root = DirPath::try_from(root.path().to_path_buf())
             .expect("temp root should convert to DirPath");
-        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let dir_rel = RelativeDirPath::try_from("schemas").unwrap();
         let bank_rel =
-            RelativePath::try_from("schemas/property_bank.json").unwrap();
+            RelativeFilePath::try_from("schemas/property_bank.json").unwrap();
         let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = InMemoryRepository::new();
@@ -684,7 +690,10 @@ mod tests {
 
     #[test]
     fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
-        use crate::fs::{DirPath, RelativePath};
+        use crate::fs::{
+            DirPath,
+            path::{RelativeDirPath, RelativeFilePath},
+        };
 
         let root = tempfile::tempdir().unwrap();
         let schema_dir = root.path().join("schemas");
@@ -696,9 +705,9 @@ mod tests {
         // Create spec with vault root and relative paths
         let vault_root = DirPath::try_from(root.path().to_path_buf())
             .expect("temp root should convert to DirPath");
-        let dir_rel = RelativePath::try_from("schemas").unwrap();
+        let dir_rel = RelativeDirPath::try_from("schemas").unwrap();
         let bank_rel =
-            RelativePath::try_from("schemas/property_bank.json").unwrap();
+            RelativeFilePath::try_from("schemas/property_bank.json").unwrap();
         let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
 
         let repo = CountingReadRepo::new();

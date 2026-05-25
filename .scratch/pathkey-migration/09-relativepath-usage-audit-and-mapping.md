@@ -1,9 +1,9 @@
 ---
 title: "Issue 09: Audit all RelativePath usage and map replacement target types"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 
@@ -43,3 +43,19 @@ A comprehensive audit maps every single remaining `RelativePath` reference to it
 
 **Out of scope:**
 - Executing the actual code replacements defined in the inventory.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+- This is a documentation/audit slice, verifying completeness of the migration strategy.
+
+### 2. Tracer Bullet: Audit Validation
+**Behavior:** System identifies all remaining `RelativePath` references.
+- **RED:** Write a CI script/test that searches the codebase for `RelativePath` and fails if unmapped usages exist.
+- **GREEN:** Generate `.scratch/pathkey-migration/relativepath-usage-inventory.md` mapping every finding to its target type.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added

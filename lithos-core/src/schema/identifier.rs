@@ -18,7 +18,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    fs::{BaseName, RelativePath},
+    fs::{BaseName, PathKey},
     schema::error::{SchemaError, SchemaNameError, SchemaSyntaxError},
     utils::UuidV7,
 };
@@ -293,57 +293,41 @@ impl TryFrom<Arc<str>> for SchemaName {
     }
 }
 
-impl TryFrom<&RelativePath> for SchemaName {
+impl TryFrom<&PathKey> for SchemaName {
     type Error = SchemaError;
 
-    /// Derives `SchemaName` from a path's file stem (basename without
-    /// extension).
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::{fs::RelativePath, schema::identifier::SchemaName};
-    ///
-    /// let path = RelativePath::try_from("schemas/user-profile.json").unwrap();
-    /// let name = SchemaName::try_from(&path).unwrap();
-    /// assert_eq!(name.as_str(), "user-profile");
-    /// ```
     #[inline]
-    fn try_from(path: &RelativePath) -> Result<Self, Self::Error> {
-        let filename = path.filename().ok_or_else(|| {
+    fn try_from(path: &PathKey) -> Result<Self, Self::Error> {
+        let filename = path.as_str().rsplit('/').next().ok_or_else(|| {
             SchemaError::Syntax(SchemaSyntaxError::SchemaName(
                 SchemaNameError::InvalidFormat {
-                    name: format!("Path has no filename: {path}").into(),
+                    name: format!("Path has no filename: {}", path.as_str())
+                        .into(),
                 },
             ))
         })?;
-        let basename = BaseName::try_from(filename).map_err(|_| {
-            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                SchemaNameError::InvalidFormat {
-                    name: format!("Path has no basename: {path}").into(),
-                },
-            ))
-        })?;
+        let basename = BaseName::try_from(std::path::Path::new(filename))
+            .map_err(|_| {
+                SchemaError::Syntax(SchemaSyntaxError::SchemaName(
+                    SchemaNameError::InvalidFormat {
+                        name: format!(
+                            "Path has no basename: {}",
+                            path.as_str()
+                        )
+                        .into(),
+                    },
+                ))
+            })?;
 
         Self::try_new(basename.as_str())
     }
 }
 
-impl TryFrom<RelativePath> for SchemaName {
+impl TryFrom<PathKey> for SchemaName {
     type Error = SchemaError;
 
-    /// Derives `SchemaName` from a path's file stem (basename without
-    /// extension).
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::{fs::RelativePath, schema::identifier::SchemaName};
-    ///
-    /// let path = RelativePath::try_from("schemas/user-profile.json").unwrap();
-    /// let name = SchemaName::try_from(path).unwrap();
-    /// assert_eq!(name.as_str(), "user-profile");
-    /// ```
     #[inline]
-    fn try_from(path: RelativePath) -> Result<Self, Self::Error> {
+    fn try_from(path: PathKey) -> Result<Self, Self::Error> {
         Self::try_from(&path)
     }
 }
@@ -385,14 +369,14 @@ mod tests {
 
     #[test]
     fn schema_name_try_from_path() {
-        let path = RelativePath::try_from("schemas/daily-note.toml").unwrap();
+        let path = PathKey::try_new("schemas/daily-note.toml").unwrap();
         let name = SchemaName::try_from(path).unwrap();
         assert_eq!(name.as_str(), "daily-note");
     }
 
     #[test]
     fn schema_name_try_from_invalid_path_fails() {
-        let path = RelativePath::try_from("schemas/.json").unwrap();
+        let path = PathKey::try_new("schemas/.json").unwrap();
         let result = SchemaName::try_from(path);
         result.unwrap_err();
     }

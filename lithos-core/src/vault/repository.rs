@@ -6,7 +6,7 @@ use super::{
     error::VaultRepositoryError,
     model::{DirId, DirView, FileId, FileView, FsEntryView},
 };
-use crate::fs::{FileFormat, NormalizedPath};
+use crate::fs::{FileFormat, PathKey};
 
 /// Read-only repository operations for Vault file and directory views.
 pub trait ReadRepository {
@@ -44,7 +44,7 @@ pub trait ReadRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn find_file_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FileView>, VaultRepositoryError>;
 
     /// Find a directory view by its normalized vault path.
@@ -57,7 +57,7 @@ pub trait ReadRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn find_dir_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<DirView>, VaultRepositoryError>;
 
     /// Get any filesystem entry (file or directory) at the given path.
@@ -70,7 +70,7 @@ pub trait ReadRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn get_entry(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FsEntryView>, VaultRepositoryError>;
 
     /// Find all file views with the given basename.
@@ -140,9 +140,7 @@ pub trait ReadRepository {
     /// # Errors
     ///
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
-    fn list_file_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError>;
+    fn list_file_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError>;
 
     /// List all directory views in the vault.
     ///
@@ -161,9 +159,7 @@ pub trait ReadRepository {
     /// # Errors
     ///
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
-    fn list_dir_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError>;
+    fn list_dir_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError>;
 }
 
 /// Write operations for Vault persistence.
@@ -182,7 +178,7 @@ pub trait WriteRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn save_file_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         file: &FileView,
     ) -> Result<(), VaultRepositoryError>;
 
@@ -197,7 +193,7 @@ pub trait WriteRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn save_dir_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         dir: &DirView,
     ) -> Result<(), VaultRepositoryError>;
 
@@ -230,7 +226,7 @@ pub trait WriteRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn save_many_file_views(
         &self,
-        entries: &[(NormalizedPath, FileView)],
+        entries: &[(PathKey, FileView)],
     ) -> Result<(), VaultRepositoryError>;
 
     /// Save multiple directory views in a single transaction.
@@ -242,7 +238,7 @@ pub trait WriteRepository {
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
     fn save_many_dir_views(
         &self,
-        entries: &[(NormalizedPath, DirView)],
+        entries: &[(PathKey, DirView)],
     ) -> Result<(), VaultRepositoryError>;
 
     /// Delete multiple file views in a single transaction.

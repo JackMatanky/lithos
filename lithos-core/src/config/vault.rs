@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rkyv::{Archive, Deserialize, Serialize, with::AsString};
+use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     error::ConfigError,
@@ -20,7 +20,7 @@ use super::{
     paths::{Cache, PropertyBank, Schema, Template},
     task::Task,
 };
-use crate::utils::UuidV7;
+use crate::{fs::DirPath, utils::UuidV7};
 
 // ----------------------------------------------------------- //
 //                  Fundamental Building Blocks                //
@@ -74,40 +74,54 @@ impl std::fmt::Display for VaultId {
 ///
 /// # Invariants
 ///
-/// - Must be a non-empty path.
-/// - Should ideally be an absolute path (checked at the application level).
+/// - Must be a validated directory path.
 ///
 /// # Errors
 ///
-/// Returns [`ConfigError::ValidationFailed`] if the path is empty.
+/// Returns [`ConfigError::ValidationFailed`] if the path is invalid.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct VaultRoot(#[rkyv(with = AsString)] PathBuf);
+pub struct VaultRoot(DirPath);
 
 impl VaultRoot {
     /// Creates a validated vault root path.
     ///
     /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the path is empty.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is not a valid
+    /// directory.
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        if path.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
+        let dir = DirPath::try_from(path).map_err(|error| {
+            ConfigError::ValidationFailed {
                 field: "vault_root".into(),
-                message: "path cannot be empty".into(),
-            });
-        }
-        Ok(Self(path))
+                message: format!("invalid vault_root: {error}").into(),
+            }
+        })?;
+        Ok(Self(dir))
+    }
+
+    /// Creates a vault root from an already-validated directory path.
+    #[inline]
+    #[must_use]
+    pub const fn from_dir_path(path: DirPath) -> Self {
+        Self(path)
+    }
+
+    /// Returns the validated directory path.
+    #[inline]
+    #[must_use]
+    pub const fn as_dir_path(&self) -> &DirPath {
+        &self.0
     }
 
     /// Return the inner path.
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
-        &self.0
+        self.0.as_path()
     }
 
     /// Return this path as a string suitable for DB key lookups.
@@ -130,7 +144,7 @@ impl TryFrom<String> for VaultRoot {
 impl From<VaultRoot> for String {
     #[inline]
     fn from(root: VaultRoot) -> Self {
-        root.0.to_string_lossy().into_owned()
+        root.0.as_path().to_string_lossy().into_owned()
     }
 }
 
@@ -260,7 +274,7 @@ impl Vault {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,no_run
 /// # use lithos_core::config::vault::{Metadata, VaultId, VaultRoot};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let metadata = Metadata::new(
@@ -769,12 +783,10 @@ mod tests {
     }
 
     mod fixtures {
-        use std::path::PathBuf;
-
         use super::super::*;
 
-        pub fn vault_root(path: &str) -> VaultRoot {
-            VaultRoot::try_new(PathBuf::from(path)).expect("valid vault root")
+        pub fn vault_root(path: std::path::PathBuf) -> VaultRoot {
+            VaultRoot::try_new(path).expect("valid vault root")
         }
 
         pub fn vault_id() -> VaultId {
@@ -806,7 +818,11 @@ mod tests {
         #[test]
         fn metadata_new_derives_from_vault_path() {
             // GIVEN: a vault path
-            let vault_root = fixtures::vault_root("/vaults/work");
+            let temp_root = tempfile::tempdir().expect("temp dir should exist");
+            let work_dir = temp_root.path().join("work");
+            std::fs::create_dir_all(&work_dir)
+                .expect("work dir should be created");
+            let vault_root = fixtures::vault_root(work_dir);
             let vault_id = fixtures::vault_id();
 
             // WHEN: building metadata from the path

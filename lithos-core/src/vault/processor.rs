@@ -18,7 +18,7 @@ use crate::{
     db::Store,
     fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsReader,
-        NormalizedPath,
+        PathKey,
     },
     note::{
         error::NoteProcessError,
@@ -95,15 +95,15 @@ pub struct Scanned {
     mode: ScanMode,
     files: Vec<ScannedFile>,
     dirs: Vec<ScannedDir>,
-    path_set: HashSet<NormalizedPath>,
+    path_set: HashSet<PathKey>,
 }
 
 /// Status after comparison with routing candidates.
 #[derive(Debug)]
 pub struct Compared {
     mode: ScanMode,
-    path_set: HashSet<NormalizedPath>,
-    markdown_candidates: Vec<NormalizedPath>,
+    path_set: HashSet<PathKey>,
+    markdown_candidates: Vec<PathKey>,
     report: VaultProcessReport,
 }
 
@@ -111,7 +111,7 @@ pub struct Compared {
 #[derive(Debug)]
 pub struct Routed {
     mode: ScanMode,
-    path_set: HashSet<NormalizedPath>,
+    path_set: HashSet<PathKey>,
     report: VaultProcessReport,
 }
 
@@ -122,20 +122,20 @@ pub struct Ready {
 }
 
 struct CompareOutcome {
-    markdown_candidates: Vec<NormalizedPath>,
+    markdown_candidates: Vec<PathKey>,
     file_updates: Vec<ScannedFile>,
     dir_updates: Vec<ScannedDir>,
 }
 
 #[derive(Debug, Clone)]
 struct ScannedFile {
-    path: NormalizedPath,
+    path: PathKey,
     view: FileView,
 }
 
 #[derive(Debug, Clone)]
 struct ScannedDir {
-    path: NormalizedPath,
+    path: PathKey,
     view: DirView,
 }
 
@@ -344,7 +344,7 @@ impl VaultProcessor<Discovery, Unknown> {
         self,
         store: Arc<Store>,
         config: &Config,
-        paths: &[NormalizedPath],
+        paths: &[PathKey],
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
         let repository = VaultRepository::new(Arc::clone(&store));
@@ -392,12 +392,12 @@ impl VaultProcessor<Discovery, Unknown> {
     fn discover_partial(
         self,
         source: &FsReader,
-        paths: &[NormalizedPath],
+        paths: &[PathKey],
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
         let mut files = Vec::with_capacity(paths.len());
         let mut dirs = Vec::new();
-        let mut known_dirs = HashMap::<NormalizedPath, DirId>::new();
+        let mut known_dirs = HashMap::<PathKey, DirId>::new();
 
         for path in paths {
             source.validate_path(Path::new(path.as_str())).map_err(
@@ -414,7 +414,7 @@ impl VaultProcessor<Discovery, Unknown> {
                 })?;
 
             let normalized =
-                NormalizedPath::try_new(path.as_str()).map_err(|error| {
+                PathKey::try_new(path.as_str()).map_err(|error| {
                     VaultFileError::InvalidPath {
                         path: path.as_str().into(),
                         reason: error.to_string().into(),
@@ -858,20 +858,18 @@ impl Default for VaultProcessor<Discovery, Unknown> {
 
 fn normalized_path_from_relative(
     relative: &Path,
-) -> Result<NormalizedPath, VaultFileError> {
+) -> Result<PathKey, VaultFileError> {
     let raw = relative.to_str().ok_or_else(|| VaultFileError::InvalidPath {
         path: "<invalid>".into(),
         reason: "path is not valid utf-8".into(),
     })?;
-    NormalizedPath::try_new(raw).map_err(|error| VaultFileError::InvalidPath {
+    PathKey::try_new(raw).map_err(|error| VaultFileError::InvalidPath {
         path: raw.into(),
         reason: error.to_string().into(),
     })
 }
 
-fn parent_path(
-    path: &NormalizedPath,
-) -> Result<Option<NormalizedPath>, VaultFileError> {
+fn parent_path(path: &PathKey) -> Result<Option<PathKey>, VaultFileError> {
     let parent = Path::new(path.as_str()).parent();
     let Some(parent) = parent else {
         return Ok(None);
@@ -884,7 +882,7 @@ fn parent_path(
             path: path.as_str().into(),
             reason: "parent path is not valid utf-8".into(),
         })?;
-    Ok(Some(NormalizedPath::try_new(parent_str).map_err(|error| {
+    Ok(Some(PathKey::try_new(parent_str).map_err(|error| {
         VaultFileError::InvalidPath {
             path: parent_str.into(),
             reason: error.to_string().into(),
@@ -986,7 +984,7 @@ mod tests {
 
         #[test]
         fn normalized_path_helper_rejects_non_utf8_or_invalid() {
-            assert!(NormalizedPath::try_new("../outside").is_err());
+            assert!(PathKey::try_new("../outside").is_err());
         }
     }
 
@@ -995,14 +993,13 @@ mod tests {
 
         #[test]
         fn parent_path_returns_none_for_root_file() {
-            let path = NormalizedPath::try_new("note.md").expect("path");
+            let path = PathKey::try_new("note.md").expect("path");
             assert!(parent_path(&path).expect("parent").is_none());
         }
 
         #[test]
         fn parent_path_returns_parent_for_nested_path() {
-            let path =
-                NormalizedPath::try_new("notes/a/note.md").expect("path");
+            let path = PathKey::try_new("notes/a/note.md").expect("path");
             let parent =
                 parent_path(&path).expect("parent").expect("some parent");
             assert_eq!(parent.as_str(), "notes/a");

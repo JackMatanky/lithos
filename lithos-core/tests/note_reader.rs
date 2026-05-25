@@ -37,7 +37,7 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         db::Store,
-        fs::NormalizedPath,
+        fs::PathKey,
         note::{
             aggregate::Note, repository::ReadRepository as _,
             storage::RedbRepository as NoteRepository, tag::Tag as NoteTag,
@@ -399,8 +399,7 @@ mod tests {
         std::fs::remove_file(&drop_path).expect("remove drop note");
 
         let partial_paths = vec![
-            NormalizedPath::try_new("notes/keep.md")
-                .expect("partial vault path"),
+            PathKey::try_new("notes/keep.md").expect("partial vault path"),
         ];
         let partial = VaultProcessor::new()
             .process_partial(Arc::clone(&store), &config, &partial_paths)

@@ -206,50 +206,58 @@ impl Config {
     /// schemas directory with the property bank filename from the
     /// configuration.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Never panics. The `property_bank_path()` method joins validated relative
-    /// paths, and the result is guaranteed to be a valid `RelativePath`.
+    /// Returns [`ConfigError::ValidationFailed`] if the schema directory or
+    /// property bank declarations cannot be projected into config-spec types.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
     /// # use lithos_core::config::aggregate::Config;
     /// # fn example(config: &Config) {
-    /// let spec = config.to_schema_spec();
+    /// let spec = config.to_schema_spec().expect("schema spec should build");
     /// // spec.root() returns vault root
-    /// // spec.directory() returns absolute path to schemas directory
-    /// // spec.property_bank() returns absolute path to property bank file
+    /// // spec.schema_directory_path() resolves absolute schemas directory
+    /// // spec.property_bank_file_path() resolves absolute property bank file
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    #[allow(
-        clippy::expect_used,
-        reason = "property_bank_path() joins validated relative paths"
-    )]
-    pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
+    pub fn to_schema_spec(
+        &self,
+    ) -> Result<super::paths::SchemaConfigSpec, ConfigError> {
         use super::paths::SchemaConfigSpec;
-        use crate::fs::{DirPath, RelativePath};
+        use crate::fs::path::{RelativeDirPath, RelativeFilePath};
 
-        // Convert VaultRoot (PathBuf wrapper) to DirPath
-        let root = DirPath::try_from(
-            self.vault_metadata.root().as_path().to_path_buf(),
+        let root = self.vault_metadata.root().as_dir_path().clone();
+
+        // TODO(.scratch/pathkey-migration/04-schema-configspec-redesign.md):
+        // Promote these ValidationFailed mappings into a dedicated
+        // config-spec projection error type that can be translated across
+        // context boundaries without string-based adaptation.
+        let schema_directory = RelativeDirPath::try_new(
+            self.paths
+                .schema
+                .schemas_dir()
+                .as_path()
+                .to_string_lossy()
+                .as_ref(),
         )
-        .expect("vault root should resolve to a valid directory path");
-
-        // property_bank_path() joins validated relative paths (schemas_dir +
-        // property_bank filename), so the result is guaranteed to be a
-        // valid RelativePath
-        let property_bank_rel =
-            RelativePath::try_from(self.paths.property_bank_path())
-                .expect("property bank path should be valid relative path");
-
-        SchemaConfigSpec::new(
-            root,
-            self.paths.schema.schemas_dir().clone(),
-            property_bank_rel,
+        .map_err(|error| ConfigError::ValidationFailed {
+            field: "paths.schema.schemas_dir".into(),
+            message: format!("invalid schema directory declaration: {error}")
+                .into(),
+        })?;
+        let property_bank_file = RelativeFilePath::try_new(
+            self.paths.property_bank_path().to_string_lossy().as_ref(),
         )
+        .map_err(|error| ConfigError::ValidationFailed {
+            field: "paths.property_bank_file".into(),
+            message: format!("invalid property bank declaration: {error}")
+                .into(),
+        })?;
+
+        Ok(SchemaConfigSpec::new(root, schema_directory, property_bank_file))
     }
 
     /// Create a new Config with the specified version, keeping all other fields
@@ -368,7 +376,10 @@ impl TryFrom<u64> for Version {
 
 #[cfg(test)]
 pub(crate) mod fixtures {
-    use std::path::PathBuf;
+    use std::{
+        ffi::OsStr,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::*;
     use crate::config::{
@@ -381,13 +392,24 @@ pub(crate) mod fixtures {
     }
 
     pub fn vault_root(path: &str) -> VaultRoot {
-        VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
+        let basename = std::path::Path::new(path)
+            .file_name()
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| OsStr::new("vault"));
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_millis();
+        let dir = std::env::temp_dir()
+            .join(format!("lithos-test-{millis}"))
+            .join(basename);
+        std::fs::create_dir_all(&dir).expect("test vault dir should exist");
+        VaultRoot::try_new(dir).expect("vault_root")
     }
 
     /// Create a Config with test values. Only available in tests.
     pub fn test_config() -> Config {
-        let test_root = VaultRoot::try_new("/test-vault".into())
-            .expect("test vault root must be valid");
+        let test_root = vault_root("/test-vault");
         let test_name = VaultName::from_root(&test_root);
         let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
             .expect("package version is non-empty");
@@ -493,17 +515,18 @@ mod tests {
 
         #[test]
         fn builds_handles_missing_global_sets_vault_path() {
+            let vault_root = fixtures::vault_root("/vault");
             let config = crate::config::builder::build_from_layers(
                 None,
                 None,
                 fixtures::vault_id(),
-                fixtures::vault_root("/vault"),
+                vault_root.clone(),
                 Version::initial(),
             )
             .unwrap();
             assert_eq!(
                 config.vault_metadata().root().as_path(),
-                std::path::Path::new("/vault")
+                vault_root.as_path()
             );
         }
 
@@ -678,25 +701,34 @@ mod tests {
             )
             .expect("config should build");
 
-            let spec = config.to_schema_spec();
+            let spec =
+                config.to_schema_spec().expect("schema spec should build");
 
             // Should be absolute paths (vault root + relative paths)
             assert_eq!(
-                spec.directory().as_path(),
+                spec.schema_directory_path()
+                    .expect("schema directory path should resolve")
+                    .as_path(),
                 schemas_dir.as_path(),
                 "Directory should be absolute (vault root + schemas_dir)"
             );
             assert_eq!(
-                spec.property_bank().as_path(),
+                spec.property_bank_file_path()
+                    .expect("property bank file path should resolve")
+                    .as_path(),
                 property_bank.as_path(),
                 "Property bank should be absolute (vault root + path)"
             );
             assert!(
-                spec.directory().is_absolute(),
+                spec.schema_directory_path()
+                    .expect("schema directory path should resolve")
+                    .is_absolute(),
                 "Directory path should be absolute"
             );
             assert!(
-                spec.property_bank().is_absolute(),
+                spec.property_bank_file_path()
+                    .expect("property bank file path should resolve")
+                    .is_absolute(),
                 "Property bank path should be absolute"
             );
         }
@@ -732,11 +764,55 @@ mod tests {
             )
             .unwrap();
 
-            let spec = config.to_schema_spec();
+            let spec =
+                config.to_schema_spec().expect("schema spec should build");
 
             // Should be absolute paths (vault root + custom relative paths)
-            assert_eq!(spec.directory().as_path(), custom_schemas.as_path());
-            assert_eq!(spec.property_bank().as_path(), custom_bank.as_path());
+            assert_eq!(
+                spec.schema_directory_path()
+                    .expect("schema directory path should resolve")
+                    .as_path(),
+                custom_schemas.as_path()
+            );
+            assert_eq!(
+                spec.property_bank_file_path()
+                    .expect("property bank file path should resolve")
+                    .as_path(),
+                custom_bank.as_path()
+            );
+        }
+
+        #[test]
+        fn to_schema_spec_returns_result_without_panicking() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let schemas_dir = root.path().join("schemas");
+            std::fs::create_dir_all(&schemas_dir)
+                .expect("schemas dir should be created");
+            let property_bank = schemas_dir.join("property_bank.json");
+            std::fs::write(&property_bank, "{}")
+                .expect("property bank should be writable");
+
+            let vault = crate::config::raw::RawVaultConfig {
+                vault_path: root.path().to_string_lossy().to_string(),
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
+
+            let result = config.to_schema_spec();
+            assert!(
+                result.is_ok(),
+                "to_schema_spec should return Ok for valid config"
+            );
         }
     }
 }

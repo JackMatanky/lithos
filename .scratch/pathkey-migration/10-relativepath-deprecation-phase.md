@@ -1,9 +1,9 @@
 ---
 title: "Issue 10: Start RelativePath deprecation and prevent reintroduction"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 
@@ -43,3 +43,35 @@ Begin staged `RelativePath` retirement by deprecating remaining approved uses an
 
 **Out of scope:**
 - Complete purging of all `RelativePath` references from the codebase.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Implement compile-time static analysis (architecture tests + `#[deprecated]`) to enforce the migration boundaries automatically.
+
+**Behaviors to Test (Prioritized):**
+1. The compiler formally warns on new `RelativePath` usage.
+2. Architecture tests explicitly fail if `RelativePath` exists within schema, vault, or note boundaries.
+
+### 2. Tracer Bullet: Deprecation Attribute
+**Behavior:** The compiler formally warns on new `RelativePath` usage.
+- **RED:** Add `#[deprecated]` to `RelativePath`. Build the project and verify warnings appear.
+- **GREEN:** Apply `#[expect(deprecated)]` explicitly to the legacy modules whitelisted in the audit (Rust Best Practice: Linting).
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 3. Incremental Loop: Architecture Boundary Tests
+**Behavior:** Architecture tests explicitly fail if `RelativePath` exists within schema, vault, or note boundaries.
+- **RED:** Write a test in `path_migration_architecture.rs` scanning the AST of `src/schema/repository.rs` for `RelativePath`.
+- **GREEN:** Run tests. They should pass if the previous slices were completed cleanly, locking the boundary.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added

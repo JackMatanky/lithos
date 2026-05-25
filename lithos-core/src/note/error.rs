@@ -155,15 +155,17 @@ impl From<crate::fs::ReadError> for NoteIngestError {
                 path,
                 source,
             } => (path.to_string_lossy(), source.to_string()),
-            crate::fs::ReadError::NotInBase {
-                path,
-                base,
-            } => (
+            crate::fs::ReadError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path,
+                    root,
+                },
+            ) => (
                 path.to_string_lossy(),
                 format!(
                     "Path {} is not within base {}",
                     path.display(),
-                    base.display()
+                    root.display()
                 ),
             ),
         };
@@ -825,10 +827,12 @@ mod tests {
 
         #[test]
         fn read_not_in_base_to_ingest_umbrella() {
-            let read_err = crate::fs::ReadError::NotInBase {
-                path: PathBuf::from("../outside.md"),
-                base: PathBuf::from("/vault"),
-            };
+            let read_err = crate::fs::ReadError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path: PathBuf::from("../outside.md"),
+                    root: PathBuf::from("/vault"),
+                },
+            );
             let ingest_err: NoteIngestError = read_err.into();
             assert!(
                 matches!(

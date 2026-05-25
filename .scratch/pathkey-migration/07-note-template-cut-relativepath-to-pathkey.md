@@ -1,9 +1,9 @@
 ---
 title: "Issue 07: Note/template context hard cut from RelativePath to PathKey"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 
@@ -45,3 +45,26 @@ Note and template repositories process `PathKey` exclusively. This brings the en
 
 **Out of scope:**
 - Broad removal of `RelativePath` outside of repository signatures.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Align note/template repositories to `PathKey`.
+
+**Behaviors to Test (Prioritized):**
+1. Note and template repositories process persistence requests exclusively via canonical keys.
+
+### 2. Tracer Bullet: Note/Template Takes PathKey
+**Behavior:** Note and template repositories process persistence requests exclusively via canonical keys.
+- **RED:** Modify Note and Template integration tests to construct and pass `PathKey`.
+- **GREEN:** Implement `&PathKey` in note/template domain services, applying `.as_key(root)?` at boundary orchestrations.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 3. Refactor
+- [ ] Verify `RelativePath` is completely removed from note/template domain service arguments.

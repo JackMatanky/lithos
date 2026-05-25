@@ -43,7 +43,7 @@ use super::{
 };
 use crate::{
     db::{ArchivedEntity, DbError, WriteTx},
-    fs::{BaseName, NormalizedPath},
+    fs::{BaseName, PathKey},
     vault::{
         error::VaultRepositoryError,
         model::{DirId, DirView, FileId, FileView},
@@ -55,7 +55,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_file_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         file: &FileView,
     ) -> Result<(), VaultRepositoryError> {
         let file_bytes = file.to_bytes()?;
@@ -99,7 +99,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_dir_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         dir: &DirView,
     ) -> Result<(), VaultRepositoryError> {
         let dir_bytes = dir.to_bytes()?;
@@ -140,7 +140,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_many_file_views(
         &self,
-        entries: &[(NormalizedPath, FileView)],
+        entries: &[(PathKey, FileView)],
     ) -> Result<(), VaultRepositoryError> {
         let prepared: Result<Vec<_>, VaultRepositoryError> = entries
             .iter()
@@ -188,7 +188,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_many_dir_views(
         &self,
-        entries: &[(NormalizedPath, DirView)],
+        entries: &[(PathKey, DirView)],
     ) -> Result<(), VaultRepositoryError> {
         let prepared: Result<Vec<_>, VaultRepositoryError> = entries
             .iter()
@@ -478,7 +478,7 @@ mod tests {
         db::Store,
         fs::{
             DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
-            NormalizedPath,
+            PathKey,
         },
         vault::{
             model::{DirId, DirView, FileId, FileView},
@@ -523,7 +523,7 @@ mod tests {
         fn file_persists_primary_and_indexes() {
             let (_temp, repo) = temp_vault();
             let file = sample_file(None, "test.md", FileFormat::Markdown);
-            let path = NormalizedPath::try_new("notes/test.md").unwrap();
+            let path = PathKey::try_new("notes/test.md").unwrap();
 
             let result = repo.save_file_view(&path, &file);
             assert!(result.is_ok(), "Save failed: {:?}", result.err());
@@ -549,7 +549,7 @@ mod tests {
 
             let (_temp, repo) = temp_vault();
             let file = sample_file(None, "test.md", FileFormat::Markdown);
-            let path = NormalizedPath::try_new("notes/test.md").unwrap();
+            let path = PathKey::try_new("notes/test.md").unwrap();
 
             repo.save_file_view(&path, &file).unwrap();
 
@@ -582,7 +582,7 @@ mod tests {
 
             let (_temp, repo) = temp_vault();
             let dir = sample_dir("notes");
-            let path = NormalizedPath::try_new("notes").unwrap();
+            let path = PathKey::try_new("notes").unwrap();
 
             repo.save_dir_view(&path, &dir).unwrap();
 
@@ -631,8 +631,8 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 256, false),
                 [2u8; 32],
             );
-            let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
-            let new_path = NormalizedPath::try_new("notes/new.md").unwrap();
+            let old_path = PathKey::try_new("notes/old.md").unwrap();
+            let new_path = PathKey::try_new("notes/new.md").unwrap();
 
             // Act: Save twice with same ID, different paths
             repo.save_file_view(&old_path, &first).unwrap();
@@ -677,8 +677,8 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 256, false),
                 [2u8; 32],
             );
-            let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
-            let new_path = NormalizedPath::try_new("notes/new.json").unwrap();
+            let old_path = PathKey::try_new("notes/old.md").unwrap();
+            let new_path = PathKey::try_new("notes/new.json").unwrap();
 
             repo.save_file_view(&old_path, &first).unwrap();
 
@@ -707,8 +707,8 @@ mod tests {
             let a = sample_file(None, "a.md", FileFormat::Markdown);
             let b = sample_file(None, "b.md", FileFormat::Markdown);
             let entries = vec![
-                (NormalizedPath::try_new("a.md").unwrap(), a.clone()),
-                (NormalizedPath::try_new("b.md").unwrap(), b.clone()),
+                (PathKey::try_new("a.md").unwrap(), a.clone()),
+                (PathKey::try_new("b.md").unwrap(), b.clone()),
             ];
 
             let result = repo.save_many_file_views(&entries);
@@ -722,7 +722,7 @@ mod tests {
         fn dir_persists_with_path_index() {
             let (_temp, repo) = temp_vault();
             let dir = sample_dir("notes");
-            let path = NormalizedPath::try_new("notes").unwrap();
+            let path = PathKey::try_new("notes").unwrap();
 
             let result = repo.save_dir_view(&path, &dir);
             assert!(result.is_ok(), "Dir save failed: {:?}", result.err());
@@ -744,8 +744,8 @@ mod tests {
                 DirName::new("notes".into()),
                 DirMetadata::new(FsTimes::new(None, None), false),
             );
-            let old_path = NormalizedPath::try_new("old-notes").unwrap();
-            let new_path = NormalizedPath::try_new("new-notes").unwrap();
+            let old_path = PathKey::try_new("old-notes").unwrap();
+            let new_path = PathKey::try_new("new-notes").unwrap();
 
             repo.save_dir_view(&old_path, &dir).unwrap();
 
@@ -764,8 +764,8 @@ mod tests {
             let a = sample_dir("notes");
             let b = sample_dir("archive");
             let entries = vec![
-                (NormalizedPath::try_new("notes").unwrap(), a.clone()),
-                (NormalizedPath::try_new("archive").unwrap(), b.clone()),
+                (PathKey::try_new("notes").unwrap(), a.clone()),
+                (PathKey::try_new("archive").unwrap(), b.clone()),
             ];
 
             let result = repo.save_many_dir_views(&entries);
@@ -787,7 +787,7 @@ mod tests {
         fn file_removes_primary_and_indexes() {
             let (_temp, repo) = temp_vault();
             let file = sample_file(None, "delete.md", FileFormat::Markdown);
-            let path = NormalizedPath::try_new("notes/delete.md").unwrap();
+            let path = PathKey::try_new("notes/delete.md").unwrap();
             repo.save_file_view(&path, &file).unwrap();
 
             let result = repo.delete_file_view(file.id());
@@ -806,7 +806,7 @@ mod tests {
 
             let (_temp, repo) = temp_vault();
             let file = sample_file(None, "delete.md", FileFormat::Markdown);
-            let path = NormalizedPath::try_new("notes/delete.md").unwrap();
+            let path = PathKey::try_new("notes/delete.md").unwrap();
             repo.save_file_view(&path, &file).unwrap();
 
             // Act: Delete the file
@@ -835,7 +835,7 @@ mod tests {
 
             let (_temp, repo) = temp_vault();
             let dir = sample_dir("notes");
-            let path = NormalizedPath::try_new("notes").unwrap();
+            let path = PathKey::try_new("notes").unwrap();
             repo.save_dir_view(&path, &dir).unwrap();
 
             // Act: Delete the directory
@@ -874,7 +874,7 @@ mod tests {
         fn dir_removes_path_index_and_primary() {
             let (_temp, repo) = temp_vault();
             let dir = sample_dir("notes");
-            let path = NormalizedPath::try_new("notes").unwrap();
+            let path = PathKey::try_new("notes").unwrap();
             repo.save_dir_view(&path, &dir).unwrap();
 
             let result = repo.delete_dir_view(dir.id());
@@ -900,7 +900,7 @@ mod tests {
         fn batch_file_is_idempotent() {
             let (_temp, repo) = temp_vault();
             let file = sample_file(None, "many.md", FileFormat::Markdown);
-            let path = NormalizedPath::try_new("many.md").unwrap();
+            let path = PathKey::try_new("many.md").unwrap();
             repo.save_file_view(&path, &file).unwrap();
 
             let result =
@@ -918,7 +918,7 @@ mod tests {
         fn batch_dir_is_idempotent() {
             let (_temp, repo) = temp_vault();
             let dir = sample_dir("many");
-            let path = NormalizedPath::try_new("many").unwrap();
+            let path = PathKey::try_new("many").unwrap();
             repo.save_dir_view(&path, &dir).unwrap();
 
             let result = repo.delete_many_dir_views(&[dir.id(), DirId::new()]);

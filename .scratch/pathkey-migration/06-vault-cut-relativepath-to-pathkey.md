@@ -1,9 +1,9 @@
 ---
 title: "Issue 06: Vault context hard cut from RelativePath to PathKey"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 
@@ -44,3 +44,26 @@ Vault repository and storage interfaces are strictly updated to `PathKey`. Calle
 
 **Out of scope:**
 - Note and template repository migration.
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Align vault context boundaries to `PathKey` without duplicating persistence logic.
+
+**Behaviors to Test (Prioritized):**
+1. Vault repository retrieves files exclusively by canonical keys.
+
+### 2. Tracer Bullet: Vault Repository Takes PathKey
+**Behavior:** Vault repository retrieves files exclusively by canonical keys.
+- **RED:** Modify `find_vault_file_by_path` tests to construct and pass `&PathKey`.
+- **GREEN:** Update vault repository traits and storage table definitions to enforce `PathKey`.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 3. Refactor
+- [ ] Review borrowing and ensure table definitions do not gratuitously allocate Strings.

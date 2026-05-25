@@ -5,12 +5,12 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     config::aggregate::Config,
-    fs::{FsReader, RelativePath},
+    fs::{FsReader, PathKey},
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
         discovery::{DiscoveryEngine, PropertyBankDiscovery},
-        error::SchemaLoaderError,
+        error::{SchemaIngestionError, SchemaLoaderError},
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, Construction,
@@ -57,10 +57,21 @@ where
         };
 
         // 1. Single discovery call replaces discover_files() + discover_graph()
-        let discovery = DiscoveryEngine::run(
-            &self.config.to_schema_spec(),
-            &self.repository,
-        )?;
+        let schema_spec = self.config.to_schema_spec().map_err(|error| {
+            // TODO(.scratch/pathkey-migration/04-schema-configspec-redesign.
+            // md): Introduce a dedicated cross-context projection
+            // error instead of stringifying config-spec
+            // construction failures into FileSystem.
+            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                crate::schema::error::SchemaFileError::FileSystem {
+                    reason: format!(
+                        "failed to build schema config spec: {error}"
+                    )
+                    .into(),
+                },
+            ))
+        })?;
+        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)?;
 
         // 2. Load property bank if present
         let property_bank =
@@ -142,29 +153,16 @@ where
                 },
             )?;
 
-        // Convert PathBuf to RelativePath for PropertyBankProcessor
-        let relative_raw =
-            config_path.strip_prefix(self.source.root()).map_err(|error| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: format!(
-                            "invalid property bank path (outside root): \
-                             {error}"
-                        )
-                        .into(),
-                    },
-                ))
-            })?;
-        let relative_path =
-            RelativePath::try_from(relative_raw).map_err(|error| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: format!("invalid property bank path: {error}")
-                            .into(),
-                    },
-                ))
-            })?;
-
+        let schema_spec = self.config.to_schema_spec().map_err(|error| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                crate::schema::error::SchemaFileError::FileSystem {
+                    reason: format!(
+                        "failed to build schema config spec: {error}"
+                    )
+                    .into(),
+                },
+            ))
+        })?;
         // Route directly to Comparison stage using discovered data
         // (skip Discovery stage since PropertyBankDiscovery already has all
         // data)
@@ -185,12 +183,16 @@ where
             )),
         };
 
+        let path_key = schema_spec
+            .property_bank_key()
+            .map_err(SchemaIngestionError::from)?;
+
         let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => {
-                self.handle_missing(p, &relative_path, config_path)?
+                self.handle_missing(p, &path_key, config_path)?
             }
             ComparisonBranch::Present(p) => {
-                self.handle_present(p, &relative_path, config_path)?
+                self.handle_present(p, &path_key, config_path)?
             }
         };
 
@@ -201,61 +203,63 @@ where
     fn handle_missing(
         &self,
         processor: PropertyBankProcessor<Parsed, Missing>,
-        path: &RelativePath,
+        path_key: &PathKey,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         let constructed = processor.parse(&self.source, config_path)?;
-        let completed = constructed.create(path, &self.repository)?;
+        let completed = constructed.create(path_key, &self.repository)?;
         Ok((completed.into_bank(), None))
     }
 
     fn handle_present(
         &self,
         processor: PropertyBankProcessor<Comparison, Present>,
-        path: &RelativePath,
+        path_key: &PathKey,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_timestamps(&self.source, config_path)? {
-            TimestampBranch::Match(p) => Ok((self.fetch_fresh(p)?, None)),
+            TimestampBranch::Match(p) => {
+                Ok((self.fetch_fresh(path_key, p)?, None))
+            }
             TimestampBranch::Mismatch(p) => {
-                self.handle_content_mismatch(p, path, config_path)
+                self.handle_content_mismatch(path_key, p, config_path)
             }
         }
     }
 
     fn handle_content_mismatch(
         &self,
+        path_key: &PathKey,
         processor: PropertyBankProcessor<Comparison, Suspect>,
-        path: &RelativePath,
         config_path: &std::path::Path,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match processor.check_content() {
             ContentBranch::Match(p) => {
-                Ok((self.sync_and_fetch_timestamps(p)?, None))
+                Ok((self.sync_and_fetch_timestamps(path_key, p)?, None))
             }
             ContentBranch::Mismatch(p) => {
                 let parsed = p.parse(config_path)?;
-                self.handle_analysis_branch(parsed.analyze(), path)
+                self.handle_analysis_branch(path_key, parsed.analyze())
             }
         }
     }
 
     fn handle_analysis_branch(
         &self,
+        path_key: &PathKey,
         branch: AnalysisBranch,
-        path: &RelativePath,
     ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(p) => {
-                Ok((self.sync_and_fetch_content(p)?, None))
+                Ok((self.sync_and_fetch_content(path_key, p)?, None))
             }
             AnalysisBranch::Delta(p) => {
-                let completed = p.update(path, &self.repository)?;
+                let completed = p.update(path_key, &self.repository)?;
                 let (bank, delta) = completed.into_bank_with_changes();
                 Ok((bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(p) => {
-                let completed = p.create(path, &self.repository)?;
+                let completed = p.create(path_key, &self.repository)?;
                 Ok((completed.into_bank(), None))
             }
         }
@@ -264,6 +268,7 @@ where
     #[inline]
     fn fetch_fresh(
         &self,
+        _path_key: &PathKey,
         processor: PropertyBankProcessor<Construction, Fresh>,
     ) -> Result<PropertyBank, SchemaLoaderError> {
         let completed = processor.fetch(&self.repository)?;
@@ -273,19 +278,21 @@ where
     #[inline]
     fn sync_and_fetch_timestamps(
         &self,
+        path_key: &PathKey,
         processor: PropertyBankProcessor<Refresh, StaleTimestamps>,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        let fresh = processor.sync_metadata(&self.repository)?;
-        self.fetch_fresh(fresh)
+        let fresh = processor.sync_metadata(path_key, &self.repository)?;
+        self.fetch_fresh(path_key, fresh)
     }
 
     #[inline]
     fn sync_and_fetch_content(
         &self,
+        path_key: &PathKey,
         processor: PropertyBankProcessor<Refresh, StaleContent>,
     ) -> Result<PropertyBank, SchemaLoaderError> {
-        let fresh = processor.sync_metadata(&self.repository)?;
-        self.fetch_fresh(fresh)
+        let fresh = processor.sync_metadata(path_key, &self.repository)?;
+        self.fetch_fresh(path_key, fresh)
     }
 }
 

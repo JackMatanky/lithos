@@ -48,11 +48,11 @@ pub enum VaultRepositoryError {
 
     /// Entry requested by vault path was not found.
     #[error("path not found: {0}")]
-    PathNotFound(crate::fs::NormalizedPath),
+    PathNotFound(crate::fs::PathKey),
 
     /// Persistence conflict where an entry already exists at the target path.
     #[error("duplicate path: entry already exists at {0}")]
-    DuplicatePath(crate::fs::NormalizedPath),
+    DuplicatePath(crate::fs::PathKey),
 }
 
 #[cfg(test)]

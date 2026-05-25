@@ -17,6 +17,48 @@ use super::{
     name::{BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef},
 };
 
+/// A trait for path fragments that can be appended to a directory to form a
+/// file path.
+pub trait FileFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl FileFragment for FileName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl FileFragment for RelativeFilePath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+/// A trait for path fragments that can be appended to a directory to form a
+/// directory path.
+pub trait DirFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl DirFragment for DirName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl DirFragment for RelativeDirPath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
 /// Unified path enum representing either a file or a directory.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
@@ -87,6 +129,19 @@ impl FsPath {
         match self {
             Self::File(p) => p.as_relative(base),
             Self::Dir(p) => p.as_relative(base),
+        }
+    }
+
+    /// Converts this filesystem path to a root-scoped persistence key.
+    ///
+    /// # Errors
+    /// Returns an error if this path is outside `root`, not valid UTF-8 after
+    /// root stripping, or fails `PathKey` validation.
+    #[inline]
+    pub fn as_key(&self, root: &DirPath) -> Result<PathKey, super::PathError> {
+        match self {
+            Self::File(path) => path.as_key(root),
+            Self::Dir(path) => path.as_key(root),
         }
     }
 }
@@ -210,17 +265,6 @@ impl FilePath {
         Ok(Self(path))
     }
 
-    /// Create a file path without checking filesystem existence.
-    ///
-    /// Intended for planned/configuration paths that may not exist yet.
-    // TODO(.scratch/pathkey-migration): Remove this escape hatch after
-    // SchemaConfigSpec pathkey migration defines explicit planned-path types.
-    #[inline]
-    #[must_use]
-    pub(crate) fn from_pathbuf_unchecked(path: PathBuf) -> Self {
-        Self(path)
-    }
-
     /// Return the inner path.
     #[inline]
     #[must_use]
@@ -239,13 +283,26 @@ impl FilePath {
     ) -> Result<RelativePath, super::error::FsError> {
         use super::error::{FsError, ReadError};
 
-        let rel =
-            self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
-                path: self.0.clone(),
-                base: base.to_path_buf(),
-            })?;
+        let rel = self.0.strip_prefix(base).map_err(|_| {
+            ReadError::RootScope(
+                super::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path: self.0.clone(),
+                    root: base.to_path_buf(),
+                },
+            )
+        })?;
 
         RelativePath::try_from(rel).map_err(FsError::from)
+    }
+
+    /// Converts this file path to a root-scoped persistence key.
+    ///
+    /// # Errors
+    /// Returns an error if this path is outside `root`, not valid UTF-8 after
+    /// root stripping, or fails `PathKey` validation.
+    #[inline]
+    pub fn as_key(&self, root: &DirPath) -> Result<PathKey, super::PathError> {
+        PathKey::from_rooted_path(root, self.as_path())
     }
 
     /// Returns `true` if the path is absolute.
@@ -418,13 +475,26 @@ impl DirPath {
     ) -> Result<RelativePath, super::error::FsError> {
         use super::error::{FsError, ReadError};
 
-        let rel =
-            self.0.strip_prefix(base).map_err(|_| ReadError::NotInBase {
-                path: self.0.clone(),
-                base: base.to_path_buf(),
-            })?;
+        let rel = self.0.strip_prefix(base).map_err(|_| {
+            ReadError::RootScope(
+                super::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path: self.0.clone(),
+                    root: base.to_path_buf(),
+                },
+            )
+        })?;
 
         RelativePath::try_from(rel).map_err(FsError::from)
+    }
+
+    /// Converts this directory path to a root-scoped persistence key.
+    ///
+    /// # Errors
+    /// Returns an error if this path is outside `root`, not valid UTF-8 after
+    /// root stripping, or fails `PathKey` validation.
+    #[inline]
+    pub fn as_key(&self, root: &DirPath) -> Result<PathKey, super::PathError> {
+        PathKey::from_rooted_path(root, self.as_path())
     }
 
     /// Returns `true` if the path is absolute.
@@ -482,6 +552,31 @@ impl DirPath {
         self.0.join(child)
     }
 
+    /// Appends a file fragment to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing file.
+    #[inline]
+    pub fn append_file<T: FileFragment>(
+        &self,
+        file: &T,
+    ) -> Result<FilePath, super::PathError> {
+        FilePath::try_new(self.join(Path::new(file.as_str())))
+    }
+
+    /// Appends a directory fragment to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing
+    /// directory.
+    #[inline]
+    pub fn append_dir<T: DirFragment>(
+        &self,
+        dir: &T,
+    ) -> Result<DirPath, super::PathError> {
+        DirPath::try_new(self.join(dir.as_str()))
+    }
+
     /// Appends a validated filename to this directory path.
     ///
     /// # Errors
@@ -491,7 +586,7 @@ impl DirPath {
         &self,
         file: &FileName,
     ) -> Result<FilePath, super::PathError> {
-        FilePath::try_new(self.join(Path::new(file.as_str())))
+        self.append_file(file)
     }
 
     /// Appends a validated directory name to this directory path.
@@ -504,7 +599,7 @@ impl DirPath {
         &self,
         dir: &DirName,
     ) -> Result<DirPath, super::PathError> {
-        DirPath::try_new(self.join(dir.as_str()))
+        self.append_dir(dir)
     }
 
     /// Joins a child path and classifies it by path shape.
@@ -604,20 +699,19 @@ impl<'a> ParentDir<'a> {
 ///
 /// # Comparison with [`RelativePath`]
 ///
-/// - [`NormalizedPath`]: Forward slashes, `Box<str>` storage, `as_str() ->
-///   &str`
+/// - [`PathKey`]: Forward slashes, `Box<str>` storage, `as_str() -> &str`
 /// - [`RelativePath`]: Platform slashes, `PathBuf` storage, `as_path() ->
 ///   &Path`
 ///
-/// Use [`RelativePath`] for filesystem operations; use [`NormalizedPath`]
+/// Use [`RelativePath`] for filesystem operations; use [`PathKey`]
 /// for storage and serialization.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct NormalizedPath(Box<str>);
+pub struct PathKey(Box<str>);
 
-impl NormalizedPath {
+impl PathKey {
     /// Creates a new normalized vault-relative path.
     ///
     /// # Errors
@@ -625,57 +719,107 @@ impl NormalizedPath {
     /// Returns [`PathError`] when path validation fails.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let normalized = Self::normalize_slashes(path);
-        let normalized = normalized.as_ref().trim();
+        // 1. Validate the raw input first.
+        RelativePathValidator::validate(path)?;
 
-        if normalized.is_empty() {
-            return Err(super::PathError::Empty);
-        }
+        // 2. Normalize the safe-but-potentially-messy input.
+        let normalized = Self::normalize(path.trim());
 
-        let path_buf = PathBuf::from(normalized);
-        if path_buf.is_absolute() {
-            return Err(super::PathError::NotRelative(path_buf));
-        }
+        // 3. Final safety check on the canonical form.
+        RelativePathValidator::validate(normalized.as_ref())?;
 
-        for component in path_buf.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(super::PathError::ParentTraversal(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::CurDir => {
-                    return Err(super::PathError::CurrentDirComponent(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::Prefix(_) => {
-                    return Err(super::PathError::PlatformPrefix(
-                        PathBuf::from(normalized),
-                    ));
-                }
-                Component::RootDir | Component::Normal(_) => {}
+        Ok(Self(normalized.into_owned().into_boxed_str()))
+    }
+
+    /// Converts an absolute or rooted filesystem path into a `PathKey` scoped
+    /// to `root`.
+    ///
+    /// # Errors
+    /// Returns a root-scope error when `path` is not within `root`,
+    /// [`PathError::InvalidUtf8`] when the relative slice is not UTF-8, or any
+    /// validation error produced by [`PathKey::try_new`].
+    #[inline]
+    pub fn from_rooted_path(
+        root: &DirPath,
+        path: &Path,
+    ) -> Result<Self, super::PathError> {
+        let relative = path.strip_prefix(root.as_path()).map_err(|_| {
+            super::error::RootScopeError::PathOutsideVaultRootBoundary {
+                root: root.as_path().to_path_buf(),
+                path: path.to_path_buf(),
             }
-        }
-
-        Ok(Self(normalized.into()))
+        })?;
+        let utf8 = relative
+            .to_str()
+            .ok_or_else(|| super::PathError::InvalidUtf8(path.to_path_buf()))?;
+        Self::try_new(utf8)
     }
 
     #[inline]
-    fn normalize_slashes(path: &str) -> std::borrow::Cow<'_, str> {
-        if path.contains('\\') {
-            let mut owned = String::with_capacity(path.len());
-            for ch in path.chars() {
-                if ch == '\\' {
-                    owned.push('/');
-                } else {
-                    owned.push(ch);
-                }
-            }
-            std::borrow::Cow::Owned(owned)
-        } else {
-            std::borrow::Cow::Borrowed(path)
+    fn normalize(path: &str) -> std::borrow::Cow<'_, str> {
+        let ctx = Self::collect_normalization_context(path);
+        if !ctx.has_backslash()
+            && !ctx.has_duplicate_separators()
+            && !ctx.has_trailing_separator()
+        {
+            return std::borrow::Cow::Borrowed(path);
         }
+
+        let canonicalized = Self::apply_separator_canonicalization(path);
+        std::borrow::Cow::Owned(Self::apply_trailing_separator_policy(
+            canonicalized,
+        ))
+    }
+
+    #[inline]
+    fn collect_normalization_context(path: &str) -> PathNormalizationContext {
+        let mut context = PathNormalizationContext::new();
+
+        if path.contains('\\') {
+            context.set(PathNormalizationContext::HAS_BACKSLASH);
+        }
+        if path.as_bytes().windows(2).any(|window| {
+            matches!(
+                window,
+                [a, b]
+                    if (*a == b'/' || *a == b'\\')
+                        && (*b == b'/' || *b == b'\\')
+            )
+        }) {
+            context.set(PathNormalizationContext::HAS_DUPLICATE_SEPARATORS);
+        }
+        if path.len() > 1 && (path.ends_with('/') || path.ends_with('\\')) {
+            context.set(PathNormalizationContext::HAS_TRAILING_SEPARATOR);
+        }
+
+        context
+    }
+
+    fn apply_separator_canonicalization(path: &str) -> String {
+        let mut owned = String::with_capacity(path.len());
+        let mut prev_was_separator = false;
+
+        for ch in path.chars() {
+            let is_separator = ch == '/' || ch == '\\';
+            if is_separator {
+                if !prev_was_separator {
+                    owned.push('/');
+                    prev_was_separator = true;
+                }
+            } else {
+                owned.push(ch);
+                prev_was_separator = false;
+            }
+        }
+
+        owned
+    }
+
+    fn apply_trailing_separator_policy(mut path: String) -> String {
+        if path.len() > 1 && path.ends_with('/') {
+            path.pop();
+        }
+        path
     }
 
     /// Returns the normalized path string.
@@ -686,10 +830,253 @@ impl NormalizedPath {
     }
 }
 
-impl std::fmt::Display for NormalizedPath {
+impl std::fmt::Display for PathKey {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        f.write_str(self.as_str())
+    }
+}
+
+/// Deprecated compatibility alias for callers not yet migrated to `PathKey`.
+#[deprecated(note = "Use PathKey instead")]
+pub type NormalizedPath = PathKey;
+
+#[derive(Debug, Clone, Copy)]
+struct PathNormalizationContext {
+    flags: u8,
+}
+
+impl PathNormalizationContext {
+    const HAS_BACKSLASH: u8 = 1 << 0;
+    const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
+    const HAS_TRAILING_SEPARATOR: u8 = 1 << 2;
+
+    fn new() -> Self {
+        Self {
+            flags: 0,
+        }
+    }
+
+    fn set(&mut self, flag: u8) {
+        self.flags |= flag;
+    }
+
+    fn has_backslash(self) -> bool {
+        self.flags & Self::HAS_BACKSLASH != 0
+    }
+
+    fn has_duplicate_separators(self) -> bool {
+        self.flags & Self::HAS_DUPLICATE_SEPARATORS != 0
+    }
+
+    fn has_trailing_separator(self) -> bool {
+        self.flags & Self::HAS_TRAILING_SEPARATOR != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PathValidationContext {
+    flags: u8,
+}
+
+impl PathValidationContext {
+    const HAS_CURRENT_DIR_COMPONENT: u8 = 1 << 2;
+    const HAS_PARENT_TRAVERSAL: u8 = 1 << 1;
+    const HAS_PLATFORM_PREFIX: u8 = 1 << 3;
+    const IS_ABSOLUTE: u8 = 1 << 0;
+
+    fn new() -> Self {
+        Self {
+            flags: 0,
+        }
+    }
+
+    fn analyze(path: &str) -> Self {
+        let path_buf = PathBuf::from(path);
+        let mut context = Self::new();
+
+        if path_buf.is_absolute() {
+            context.set(Self::IS_ABSOLUTE);
+        }
+
+        for component in path_buf.components() {
+            match component {
+                Component::ParentDir => {
+                    context.set(Self::HAS_PARENT_TRAVERSAL);
+                }
+                Component::CurDir => {
+                    context.set(Self::HAS_CURRENT_DIR_COMPONENT);
+                }
+                Component::Prefix(_) => {
+                    context.set(Self::HAS_PLATFORM_PREFIX);
+                }
+                Component::RootDir | Component::Normal(_) => {}
+            }
+        }
+
+        if path.split('/').any(|segment| segment == ".") {
+            context.set(Self::HAS_CURRENT_DIR_COMPONENT);
+        }
+
+        context
+    }
+
+    fn set(&mut self, flag: u8) {
+        self.flags |= flag;
+    }
+
+    fn is_absolute(self) -> bool {
+        self.flags & Self::IS_ABSOLUTE != 0
+    }
+
+    fn has_parent_traversal(self) -> bool {
+        self.flags & Self::HAS_PARENT_TRAVERSAL != 0
+    }
+
+    fn has_current_dir_component(self) -> bool {
+        self.flags & Self::HAS_CURRENT_DIR_COMPONENT != 0
+    }
+
+    fn has_platform_prefix(self) -> bool {
+        self.flags & Self::HAS_PLATFORM_PREFIX != 0
+    }
+}
+
+struct RelativePathValidator;
+
+impl RelativePathValidator {
+    fn validate(path: &str) -> Result<&str, super::PathError> {
+        let trimmed = path.trim();
+        Self::reject_empty(trimmed)?;
+
+        let ctx = PathValidationContext::analyze(trimmed);
+        Self::reject_absolute(trimmed, ctx)?;
+        Self::reject_parent_traversal(trimmed, ctx)?;
+        Self::reject_current_dir_component(trimmed, ctx)?;
+        Self::reject_platform_prefix(trimmed, ctx)?;
+
+        Ok(trimmed)
+    }
+
+    fn reject_empty(path: &str) -> Result<(), super::PathError> {
+        if path.is_empty() {
+            return Err(super::PathError::Empty);
+        }
+        Ok(())
+    }
+
+    fn reject_absolute(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.is_absolute() {
+            return Err(super::PathError::NotRelative(PathBuf::from(path)));
+        }
+        Ok(())
+    }
+
+    fn reject_parent_traversal(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_parent_traversal() {
+            return Err(super::PathError::ParentTraversal(PathBuf::from(path)));
+        }
+        Ok(())
+    }
+
+    fn reject_current_dir_component(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_current_dir_component() {
+            return Err(super::PathError::CurrentDirComponent(PathBuf::from(
+                path,
+            )));
+        }
+        Ok(())
+    }
+
+    fn reject_platform_prefix(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_platform_prefix() {
+            return Err(super::PathError::PlatformPrefix(PathBuf::from(path)));
+        }
+        Ok(())
+    }
+}
+
+/// Passive, strict relative directory declaration.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeDirPath(Box<str>);
+
+impl RelativeDirPath {
+    /// Creates a validated passive relative directory declaration.
+    ///
+    /// # Errors
+    /// Returns [`PathError`] when the value is empty, absolute, or contains
+    /// traversal components.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = RelativePathValidator::validate(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeDirPath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+/// Passive, strict relative file declaration.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeFilePath(Box<str>);
+
+impl RelativeFilePath {
+    /// Creates a validated passive relative file declaration.
+    ///
+    /// # Errors
+    /// Returns [`PathError`] when the value is empty, absolute, or contains
+    /// traversal components.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = RelativePathValidator::validate(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeFilePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
     }
 }
 
@@ -1062,24 +1449,42 @@ mod tests {
         }
     }
 
-    mod normalized {
+    mod pathkey {
         use super::*;
 
         mod constructor {
             use super::*;
 
             #[test]
-            fn accepts_forward_slashes_when_valid() {
-                let path = NormalizedPath::try_new("notes/daily/today.md")
+            fn accepts_canonical_paths_without_allocation() {
+                let path = PathKey::try_new("notes/daily/today.md")
+                    .expect("path should be valid");
+                assert_eq!(path.as_str(), "notes/daily/today.md");
+            }
+        }
+
+        mod normalization {
+            use super::*;
+
+            #[test]
+            fn normalizes_backslashes_to_forward_slashes() {
+                let path = PathKey::try_new("notes\\daily\\today.md")
                     .expect("path should be valid");
                 assert_eq!(path.as_str(), "notes/daily/today.md");
             }
 
             #[test]
-            fn normalizes_backslashes_to_forward_slashes() {
-                let path = NormalizedPath::try_new("notes\\daily\\today.md")
+            fn normalizes_duplicate_slashes() {
+                let path = PathKey::try_new("notes//daily///today.md")
                     .expect("path should be valid");
                 assert_eq!(path.as_str(), "notes/daily/today.md");
+            }
+
+            #[test]
+            fn removes_trailing_slashes() {
+                let path = PathKey::try_new("notes/daily/")
+                    .expect("path should be valid");
+                assert_eq!(path.as_str(), "notes/daily");
             }
         }
 
@@ -1088,27 +1493,138 @@ mod tests {
             use crate::fs::PathError;
 
             #[test]
-            fn rejects_parent_traversal_component() {
-                let path = NormalizedPath::try_new("../outside.md");
+            fn rejects_parent_traversals() {
+                let path = PathKey::try_new("../outside.md");
                 assert!(matches!(path, Err(PathError::ParentTraversal(_))));
             }
 
             #[test]
             fn rejects_current_dir_component() {
-                let path = NormalizedPath::try_new("./notes/file.md");
+                let path = PathKey::try_new("./notes/file.md");
                 assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
             }
 
             #[test]
-            fn rejects_empty_string() {
-                let path = NormalizedPath::try_new("");
+            fn rejects_embedded_current_dir_component() {
+                let path = PathKey::try_new("notes/./file.md");
+                assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
+            }
+
+            #[test]
+            fn rejects_messy_dangerous_path_early() {
+                // This would be rejected anyway, but we want to ensure
+                // validation happens on the raw input too.
+                let path = PathKey::try_new("notes/../secret.md");
+                assert!(matches!(path, Err(PathError::ParentTraversal(_))));
+            }
+
+            #[test]
+            fn rejects_empty_paths() {
+                let path = PathKey::try_new("");
                 assert!(matches!(path, Err(PathError::Empty)));
             }
 
             #[test]
-            fn rejects_absolute_path() {
-                let path = NormalizedPath::try_new("/usr/local/file.md");
+            fn rejects_absolute_paths() {
+                let path = PathKey::try_new("/usr/local/file.md");
                 assert!(matches!(path, Err(PathError::NotRelative(_))));
+            }
+        }
+
+        mod conversions {
+            use super::*;
+            use crate::fs::PathError;
+
+            #[test]
+            fn returns_key_when_path_is_within_root() {
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let file_path = root_dir.path().join("notes").join("daily.md");
+                std::fs::create_dir_all(
+                    file_path.parent().expect("file should have parent"),
+                )
+                .expect("create parent dirs");
+                std::fs::write(&file_path, "# daily").expect("write file");
+
+                let key = PathKey::from_rooted_path(&root, &file_path)
+                    .expect("key should convert");
+                assert_eq!(key.as_str(), "notes/daily.md");
+            }
+
+            #[test]
+            fn returns_error_when_path_is_outside_root() {
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let outside_dir = tempfile::TempDir::new().expect("temp dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let outside_file = outside_dir.path().join("outside.md");
+                std::fs::write(&outside_file, "# outside").expect("write file");
+
+                let error = PathKey::from_rooted_path(&root, &outside_file)
+                    .expect_err("path outside root should fail");
+                assert!(matches!(error, PathError::RootScope(_)));
+            }
+
+            #[test]
+            fn returns_key_from_file_path_as_key_when_within_root() {
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let file_path = root_dir.path().join("notes").join("story.md");
+                std::fs::create_dir_all(
+                    file_path.parent().expect("file should have parent"),
+                )
+                .expect("create parent dirs");
+                std::fs::write(&file_path, "# story").expect("write file");
+                let file = FilePath::try_new(file_path).expect("file path");
+
+                let key = file.as_key(&root).expect("key should convert");
+                assert_eq!(key.as_str(), "notes/story.md");
+            }
+
+            #[test]
+            fn returns_key_from_dir_path_as_key_when_within_root() {
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let notes_dir = root_dir.path().join("notes");
+                std::fs::create_dir_all(&notes_dir).expect("create notes dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let dir = DirPath::try_new(notes_dir).expect("dir path");
+
+                let key = dir.as_key(&root).expect("key should convert");
+                assert_eq!(key.as_str(), "notes");
+            }
+
+            #[test]
+            fn returns_key_from_fs_path_as_key_when_within_root() {
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let file_path = root_dir.path().join("notes.md");
+                std::fs::write(&file_path, "# note").expect("write file");
+                let file = FilePath::try_new(file_path).expect("file path");
+                let fs_path = FsPath::File(file);
+
+                let key = fs_path.as_key(&root).expect("key should convert");
+                assert_eq!(key.as_str(), "notes.md");
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn returns_invalid_utf8_when_relative_path_is_not_utf8() {
+                use std::os::unix::ffi::OsStringExt as _;
+
+                let root_dir = tempfile::TempDir::new().expect("temp dir");
+                let root = DirPath::try_new(root_dir.path().to_path_buf())
+                    .expect("root");
+                let invalid = root_dir
+                    .path()
+                    .join(std::ffi::OsString::from_vec(vec![0x66, 0x80]));
+
+                let error = PathKey::from_rooted_path(&root, &invalid)
+                    .expect_err("invalid utf-8 should fail");
+                assert!(matches!(error, PathError::InvalidUtf8(_)));
             }
         }
 
@@ -1117,21 +1633,112 @@ mod tests {
 
             #[test]
             fn preserves_value_across_rkyv_roundtrip() {
-                let original = NormalizedPath::try_new("notes/test.md")
-                    .expect("valid path");
+                let original =
+                    PathKey::try_new("notes/test.md").expect("valid path");
                 let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
                     .expect("serialize");
                 let archived = rkyv::access::<
-                    ArchivedNormalizedPath,
+                    ArchivedPathKey,
                     rkyv::rancor::Error,
                 >(&bytes)
                 .expect("archive access");
-                let deserialized: NormalizedPath = rkyv::deserialize::<
-                    NormalizedPath,
-                    rkyv::rancor::Error,
-                >(archived)
-                .expect("deserialize");
+                let deserialized: PathKey =
+                    rkyv::deserialize::<PathKey, rkyv::rancor::Error>(archived)
+                        .expect("deserialize");
                 assert_eq!(original, deserialized);
+            }
+        }
+    }
+
+    mod relative_config_path {
+        use super::*;
+
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn returns_ok_when_relative_dir_path_is_valid() {
+                let result = RelativeDirPath::try_new("schemas/cache");
+                assert!(result.is_ok(), "expected valid relative dir path");
+            }
+
+            #[test]
+            fn returns_ok_when_relative_file_path_is_valid() {
+                let result =
+                    RelativeFilePath::try_new("schemas/property_bank.json");
+                assert!(result.is_ok(), "expected valid relative file path");
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn rejects_path_when_absolute() {
+                let dir_result = RelativeDirPath::try_new("/schemas");
+                let file_result =
+                    RelativeFilePath::try_new("/schemas/bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn rejects_path_when_contains_current_dir_component() {
+                let dir_result = RelativeDirPath::try_new("schemas/./cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas/./property_bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn rejects_path_when_contains_parent_dir_component() {
+                let dir_result = RelativeDirPath::try_new("schemas/../cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas/../property_bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn accepts_path_when_contains_duplicate_forward_separators() {
+                let dir_result = RelativeDirPath::try_new("schemas//cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas//property_bank.json");
+                assert!(dir_result.is_ok());
+                assert!(file_result.is_ok());
+            }
+
+            #[test]
+            fn accepts_path_when_contains_backslashes() {
+                let dir_result = RelativeDirPath::try_new("schemas\\cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas\\property_bank.json");
+                assert!(dir_result.is_ok());
+                assert!(file_result.is_ok());
+            }
+
+            #[test]
+            fn rejects_path_when_empty() {
+                let dir_result = RelativeDirPath::try_new("  ");
+                let file_result = RelativeFilePath::try_new("");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+        }
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_original_string_when_value_is_valid() {
+                let dir = RelativeDirPath::try_new("schemas/cache")
+                    .expect("valid dir path should construct");
+                let file =
+                    RelativeFilePath::try_new("schemas/property_bank.json")
+                        .expect("valid file path should construct");
+                assert_eq!(dir.as_str(), "schemas/cache");
+                assert_eq!(file.as_str(), "schemas/property_bank.json");
             }
         }
     }
@@ -1567,6 +2174,100 @@ mod tests {
                     .expect("dir path should be valid");
                 let buf: PathBuf = path.into();
                 assert_eq!(buf, temp.path().to_path_buf());
+            }
+        }
+
+        mod append {
+            use super::*;
+
+            #[test]
+            fn returns_file_path_when_appending_relative_file_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_file = RelativeFilePath::try_new("notes/daily.md")
+                    .expect("valid rel file");
+
+                // Ensure the file exists for validation
+                let abs_file = temp.path().join("notes/daily.md");
+                std::fs::create_dir_all(abs_file.parent().unwrap()).unwrap();
+                std::fs::write(&abs_file, "content").unwrap();
+
+                let file = dir
+                    .append_file(&rel_file)
+                    .expect("append_file should succeed");
+                assert_eq!(file.as_path(), abs_file);
+            }
+
+            #[test]
+            fn returns_file_path_when_appending_file_name() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let file_name = FileName::new("note.md".into());
+
+                let abs_file = temp.path().join("note.md");
+                std::fs::write(&abs_file, "content").unwrap();
+
+                let file = dir
+                    .append_file(&file_name)
+                    .expect("append_file should succeed");
+                assert_eq!(file.as_path(), abs_file);
+            }
+
+            #[test]
+            fn returns_dir_path_when_appending_relative_dir_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_dir = RelativeDirPath::try_new("schemas/cache")
+                    .expect("valid rel dir");
+
+                let abs_dir = temp.path().join("schemas/cache");
+                std::fs::create_dir_all(&abs_dir).unwrap();
+
+                let result = dir
+                    .append_dir(&rel_dir)
+                    .expect("append_dir should succeed");
+                assert_eq!(result.as_path(), abs_dir);
+            }
+
+            #[test]
+            fn returns_dir_path_when_appending_dir_name() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let dir_name = DirName::new("notes".into());
+
+                let abs_dir = temp.path().join("notes");
+                std::fs::create_dir_all(&abs_dir).unwrap();
+
+                let result = dir
+                    .append_dir(&dir_name)
+                    .expect("append_dir should succeed");
+                assert_eq!(result.as_path(), abs_dir);
+            }
+
+            #[test]
+            fn returns_error_when_appended_file_does_not_exist() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_file = RelativeFilePath::try_new("missing.md")
+                    .expect("valid rel file");
+
+                assert!(dir.append_file(&rel_file).is_err());
+            }
+
+            #[test]
+            fn returns_error_when_appended_dir_does_not_exist() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_dir = RelativeDirPath::try_new("missing_dir")
+                    .expect("valid rel dir");
+
+                assert!(dir.append_dir(&rel_dir).is_err());
             }
         }
     }

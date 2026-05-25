@@ -20,7 +20,7 @@ use super::{
 };
 use crate::{
     db::{ArchivedEntity, DbError},
-    fs::{FileFormat, NormalizedPath},
+    fs::{FileFormat, PathKey},
     vault::{
         error::VaultRepositoryError,
         model::{DirId, DirView, FileId, FileView, FsEntryView},
@@ -70,7 +70,7 @@ impl ReadRepository for RedbRepository {
     #[inline]
     fn find_file_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FileView>, VaultRepositoryError> {
         self.store
             .read(|tx| {
@@ -99,7 +99,7 @@ impl ReadRepository for RedbRepository {
     #[inline]
     fn find_dir_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<DirView>, VaultRepositoryError> {
         self.store
             .read(|tx| {
@@ -128,7 +128,7 @@ impl ReadRepository for RedbRepository {
     #[inline]
     fn get_entry(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FsEntryView>, VaultRepositoryError> {
         // Try file first
         if let Some(file) = self.find_file_view_by_path(path)? {
@@ -260,9 +260,7 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
-    fn list_file_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError> {
+    fn list_file_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -274,7 +272,7 @@ impl ReadRepository for RedbRepository {
                 let mut paths = Vec::new();
                 for result in table.iter()? {
                     let (guard, _) = result?;
-                    let path = NormalizedPath::try_new(&guard.value())
+                    let path = PathKey::try_new(&guard.value())
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
                     paths.push(path);
                 }
@@ -305,9 +303,7 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
-    fn list_dir_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError> {
+    fn list_dir_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -319,7 +315,7 @@ impl ReadRepository for RedbRepository {
                 let mut paths = Vec::new();
                 for result in table.iter()? {
                     let (guard, _) = result?;
-                    let path = NormalizedPath::try_new(&guard.value())
+                    let path = PathKey::try_new(&guard.value())
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
                     paths.push(path);
                 }
@@ -344,7 +340,7 @@ mod tests {
         db::{ArchivedEntity, Store},
         fs::{
             DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
-            NormalizedPath,
+            PathKey,
         },
         vault::{
             model::{DirId, DirView, FileId, FileView},
@@ -456,7 +452,7 @@ mod tests {
         #[test]
         fn find_file_view_by_path_returns_none_when_path_missing() {
             let (_tempdir, repo) = temp_vault();
-            let path = NormalizedPath::try_new("missing.md").unwrap();
+            let path = PathKey::try_new("missing.md").unwrap();
             let result = repo.find_file_view_by_path(&path);
             assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
             assert!(result.unwrap().is_none());
@@ -473,7 +469,7 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 128, false),
                 [1u8; 32],
             );
-            let path = NormalizedPath::try_new("notes/test.md").unwrap();
+            let path = PathKey::try_new("notes/test.md").unwrap();
             let file_bytes = file.to_bytes().unwrap();
             repo.store
                 .write(|tx| {
@@ -503,7 +499,7 @@ mod tests {
                 DirName::new("notes".into()),
                 DirMetadata::new(FsTimes::new(None, None), false),
             );
-            let path = NormalizedPath::try_new("notes").unwrap();
+            let path = PathKey::try_new("notes").unwrap();
             let dir_bytes = dir.to_bytes().unwrap();
             repo.store
                 .write(|tx| {
@@ -541,7 +537,7 @@ mod tests {
                 DirName::new("test".into()),
                 DirMetadata::new(FsTimes::new(None, None), false),
             );
-            let path = NormalizedPath::try_new("test").unwrap();
+            let path = PathKey::try_new("test").unwrap();
             let file_bytes = file.to_bytes().unwrap();
             let dir_bytes = dir.to_bytes().unwrap();
             repo.store
@@ -574,7 +570,7 @@ mod tests {
         #[test]
         fn get_entry_returns_none_when_path_missing() {
             let (_tempdir, repo) = temp_vault();
-            let path = NormalizedPath::try_new("missing").unwrap();
+            let path = PathKey::try_new("missing").unwrap();
             let result = repo.get_entry(&path);
             assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
             assert!(result.unwrap().is_none());
@@ -809,8 +805,8 @@ mod tests {
             let (_tempdir, repo) = temp_vault();
             let id1 = FileId::new();
             let id2 = FileId::new();
-            let path1 = NormalizedPath::try_new("a.md").unwrap();
-            let path2 = NormalizedPath::try_new("b.md").unwrap();
+            let path1 = PathKey::try_new("a.md").unwrap();
+            let path2 = PathKey::try_new("b.md").unwrap();
             repo.store
                 .write(|tx| {
                     let mut table =
@@ -854,8 +850,8 @@ mod tests {
             let (_tempdir, repo) = temp_vault();
             let id1 = DirId::new();
             let id2 = DirId::new();
-            let path1 = NormalizedPath::try_new("notes").unwrap();
-            let path2 = NormalizedPath::try_new("archive").unwrap();
+            let path1 = PathKey::try_new("notes").unwrap();
+            let path2 = PathKey::try_new("archive").unwrap();
             repo.store
                 .write(|tx| {
                     let mut table =

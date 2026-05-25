@@ -2,7 +2,7 @@
 title: 05-fs-entry-types
 category: enhancement
 label: needs-triage
-status: in_progress
+status: completed
 date_created: 2026-05-11
 date_completed: 2026-05-12
 date_reopened: 2026-05-13

@@ -21,7 +21,7 @@
 //! # Helper Functions
 //!
 //! - [`parse_schema_name_key`]: Validates and converts name index keys
-//! - [`parse_relative_path_key`]: Validates and converts path index keys
+//! - [`parse_path_key`]: Validates and converts path index keys
 //!
 //! These helpers provide structured error messages with context when index
 //! keys fail validation (e.g., "invalid schema-name index key 'bad name'").
@@ -42,11 +42,11 @@ use redb::ReadableTable;
 
 use crate::{
     db::{ArchivedEntity, UuidTableReadExt},
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        error::SchemaStorageError,
+        error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs},
         property::PropertyName,
@@ -68,7 +68,7 @@ impl ReadRepository for RedbRepository {
     fn find_schema_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Schema>, SchemaStorageError> {
+    ) -> Result<Option<Schema>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -83,14 +83,14 @@ impl ReadRepository for RedbRepository {
                 let schema = Schema::from_bytes(guard.value())?;
                 Ok(Some(schema))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_many_schemas_by_id(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Option<Schema>>, SchemaStorageError> {
+    ) -> Result<Vec<Option<Schema>>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -110,20 +110,20 @@ impl ReadRepository for RedbRepository {
 
                 Ok(results)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_schemas_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<Vec<Schema>, SchemaStorageError> {
+    ) -> Result<Vec<Schema>, SchemaRepositoryError> {
         self.find_many_schemas_by_id(ids)
             .map(|schemas| schemas.into_iter().flatten().collect())
     }
 
     #[inline]
-    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaStorageError> {
+    fn list_schemas(&self) -> Result<Vec<Schema>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(SCHEMAS.definition())?
@@ -139,14 +139,15 @@ impl ReadRepository for RedbRepository {
 
                 Ok(schemas)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_schemas_using_properties(
         &self,
         property_names: &[PropertyName],
-    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageError> {
+    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaRepositoryError>
+    {
         let target_names: HashSet<&str> =
             property_names.iter().map(PropertyName::as_str).collect();
 
@@ -170,7 +171,7 @@ impl ReadRepository for RedbRepository {
     fn get_raw_schema_view(
         &self,
         id: SchemaId,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
+    ) -> Result<Option<RawSchemaView>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -186,14 +187,14 @@ impl ReadRepository for RedbRepository {
                 let view = RawSchemaView::from_bytes(guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_raw_schema_view_by_path(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawSchemaView>, SchemaStorageError> {
+        path: &PathKey,
+    ) -> Result<Option<RawSchemaView>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(path_table) =
@@ -219,14 +220,14 @@ impl ReadRepository for RedbRepository {
                 let view = RawSchemaView::from_bytes(view_guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_raw_schema_views_by_paths(
         &self,
-        paths: &[RelativePath],
-    ) -> Result<Vec<Option<RawSchemaView>>, SchemaStorageError> {
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<RawSchemaView>>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 // Open both tables
@@ -261,13 +262,13 @@ impl ReadRepository for RedbRepository {
                 }
                 Ok(results)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn get_property_bank(
         &self,
-    ) -> Result<Option<PropertyBank>, SchemaStorageError> {
+    ) -> Result<Option<PropertyBank>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -283,7 +284,7 @@ impl ReadRepository for RedbRepository {
                 let bank = PropertyBank::from_bytes(guard.value())?;
                 Ok(Some(bank))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
@@ -291,7 +292,7 @@ impl ReadRepository for RedbRepository {
         &self,
     ) -> Result<
         Option<crate::schema::inheritance::InheritanceGraph<()>>,
-        SchemaStorageError,
+        SchemaRepositoryError,
     > {
         self.store
             .read(|tx| {
@@ -308,14 +309,14 @@ impl ReadRepository for RedbRepository {
                 let graph = crate::schema::inheritance::InheritanceGraph::<()>::from_bytes(guard.value())?;
                 Ok(Some(graph))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn get_raw_property_bank_view(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<RawPropertyBankView>, SchemaStorageError> {
+        path: &PathKey,
+    ) -> Result<Option<RawPropertyBankView>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -331,14 +332,14 @@ impl ReadRepository for RedbRepository {
                 let view = RawPropertyBankView::from_bytes(guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_schema_id_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<SchemaId>, SchemaStorageError> {
+    ) -> Result<Option<SchemaId>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -354,14 +355,14 @@ impl ReadRepository for RedbRepository {
                 let id = SchemaId::from_bytes(guard.value())?;
                 Ok(Some(id))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_schema_id_by_path(
         &self,
-        path: &RelativePath,
-    ) -> Result<Option<SchemaId>, SchemaStorageError> {
+        path: &PathKey,
+    ) -> Result<Option<SchemaId>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -377,14 +378,14 @@ impl ReadRepository for RedbRepository {
                 let id = SchemaId::from_bytes(guard.value())?;
                 Ok(Some(id))
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn find_schema_ids_by_paths(
         &self,
-        paths: &[RelativePath],
-    ) -> Result<Vec<Option<SchemaId>>, SchemaStorageError> {
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<SchemaId>>, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -405,13 +406,13 @@ impl ReadRepository for RedbRepository {
                 }
                 Ok(results)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn list_schema_name_id_pairs(
         &self,
-    ) -> Result<NameIdPairs, SchemaStorageError> {
+    ) -> Result<NameIdPairs, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -429,13 +430,13 @@ impl ReadRepository for RedbRepository {
                 }
                 Ok(pairs)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn list_schema_path_id_pairs(
         &self,
-    ) -> Result<PathIdPairs, SchemaStorageError> {
+    ) -> Result<PathIdPairs, SchemaRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -447,28 +448,27 @@ impl ReadRepository for RedbRepository {
                 let mut pairs = PathIdPairs::new();
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
-                    let path =
-                        parse_relative_path_key(k_guard.value().as_str())?;
+                    let path = parse_path_key(k_guard.value().as_str())?;
                     let id = SchemaId::from_bytes(v_guard.value())?;
                     pairs.push((path, id));
                 }
                 Ok(pairs)
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn get_schema_index(
         &self,
-    ) -> Result<crate::schema::index::SchemaIndex, SchemaStorageError> {
+    ) -> Result<crate::schema::index::SchemaIndex, SchemaRepositoryError> {
         let name_pairs = self.list_schema_name_id_pairs()?;
         let path_pairs = self.list_schema_path_id_pairs()?;
 
         crate::schema::index::SchemaIndex::from_pairs(name_pairs, path_pairs)
             .map_err(|e| {
-                SchemaStorageError::from(crate::db::DbError::Deserialization(
-                    e.to_string(),
-                ))
+                SchemaRepositoryError::from(
+                    crate::db::DbError::Deserialization(e.to_string()),
+                )
             })
     }
 }
@@ -505,7 +505,7 @@ fn parse_schema_name_key(key: &str) -> Result<SchemaName, crate::db::DbError> {
 /// Parses and validates a schema-path index key.
 ///
 /// Converts a raw string key from [`SCHEMA_ID_BY_PATH`] table into a validated
-/// [`RelativePath`]. Returns a descriptive error if the key violates path
+/// [`PathKey`]. Returns a descriptive error if the key violates path
 /// constraints (e.g., empty string, absolute path).
 ///
 /// # Errors
@@ -523,10 +523,8 @@ fn parse_schema_name_key(key: &str) -> Result<SchemaName, crate::db::DbError> {
 /// [`SCHEMA_ID_BY_PATH`]: crate::schema::storage::tables::SCHEMA_ID_BY_PATH
 /// [`DbError::Deserialization`]: crate::db::DbError::Deserialization
 #[inline]
-fn parse_relative_path_key(
-    key: &str,
-) -> Result<RelativePath, crate::db::DbError> {
-    RelativePath::try_from(key).map_err(|error| {
+fn parse_path_key(key: &str) -> Result<PathKey, crate::db::DbError> {
+    PathKey::try_new(key).map_err(|error| {
         crate::db::DbError::Deserialization(format!(
             "invalid schema-path index key '{key}': {error}"
         ))
@@ -540,7 +538,7 @@ mod tests {
     use crate::{
         db::{ArchivedEntity, Store},
         fs::{
-            RelativePath,
+            PathKey,
             metadata::{FileMetadata, FsTimes},
         },
         schema::{
@@ -561,7 +559,7 @@ mod tests {
     };
 
     fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
-        let path = RelativePath::try_from(path).unwrap();
+        let path = PathKey::try_new(path).unwrap();
         let info = FileMetadata::new(FsTimes::new(None, None), 100, false);
         let hashes = HashRecord::new(
             Blake3Hash::new([hash_byte; 32]),
@@ -577,6 +575,10 @@ mod tests {
         };
         let version = SchemaVersion::new(info, hashes, &raw).unwrap();
         RawSchemaView::new(path, version)
+    }
+
+    fn key(path: &str) -> PathKey {
+        PathKey::try_new(path).expect("valid path key")
     }
 
     mod by_id {
@@ -810,7 +812,7 @@ mod tests {
             repo.save_property_bank(&bank).unwrap();
             assert_eq!(repo.get_property_bank().unwrap().unwrap(), bank);
 
-            let path = RelativePath::try_from("property-bank.toml").unwrap();
+            let path = key("property-bank.toml");
             assert!(repo.get_raw_property_bank_view(&path).unwrap().is_none());
         }
     }
@@ -831,8 +833,8 @@ mod tests {
             let id2 = SchemaId::new();
             let name1 = SchemaName::try_from("note").unwrap();
             let name2 = SchemaName::try_from("task").unwrap();
-            let path1 = RelativePath::try_from("schemas/note.json").unwrap();
-            let path2 = RelativePath::try_from("schemas/task.json").unwrap();
+            let path1 = PathKey::try_new("schemas/note.json").unwrap();
+            let path2 = PathKey::try_new("schemas/task.json").unwrap();
 
             store
                 .write(|tx| {
@@ -845,11 +847,11 @@ mod tests {
                     name_table
                         .insert(name2.as_str(), id2.to_bytes()?.as_slice())?;
                     path_table.insert(
-                        path1.as_path().to_string_lossy().to_string(),
+                        path1.as_str().to_owned(),
                         id1.to_bytes()?.as_slice(),
                     )?;
                     path_table.insert(
-                        path2.as_path().to_string_lossy().to_string(),
+                        path2.as_str().to_owned(),
                         id2.to_bytes()?.as_slice(),
                     )?;
                     Ok(())
@@ -858,13 +860,16 @@ mod tests {
 
             let repo = RedbRepository::new(store);
             assert_eq!(repo.find_schema_id_by_name(&name1).unwrap(), Some(id1));
-            assert_eq!(repo.find_schema_id_by_path(&path1).unwrap(), Some(id1));
+            assert_eq!(
+                repo.find_schema_id_by_path(&key("schemas/note.json")).unwrap(),
+                Some(id1)
+            );
 
             let batch = repo
                 .find_schema_ids_by_paths(&[
-                    path1.clone(),
-                    RelativePath::try_from("schemas/missing.json").unwrap(),
-                    path2.clone(),
+                    key("schemas/note.json"),
+                    key("schemas/missing.json"),
+                    key("schemas/task.json"),
                 ])
                 .unwrap();
             assert_eq!(batch.first().copied().flatten(), Some(id1));
@@ -878,7 +883,7 @@ mod tests {
 
             let mut path_pairs =
                 repo.list_schema_path_id_pairs().unwrap().into_vec();
-            path_pairs.sort_by(|a, b| a.0.as_path().cmp(b.0.as_path()));
+            path_pairs.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
             assert_eq!(path_pairs.len(), 2);
 
             let index = repo.get_schema_index().unwrap();
@@ -951,10 +956,10 @@ mod tests {
             assert!(
                 repo.get_raw_schema_view(SchemaId::new()).unwrap().is_none()
             );
-            let missing_path =
-                RelativePath::try_from("schemas/missing.json").unwrap();
+            let _missing_path =
+                PathKey::try_new("schemas/missing.json").unwrap();
             assert!(
-                repo.find_raw_schema_view_by_path(&missing_path)
+                repo.find_raw_schema_view_by_path(&key("schemas/missing.json"))
                     .unwrap()
                     .is_none()
             );
@@ -974,8 +979,9 @@ mod tests {
             let by_id = repo.get_raw_schema_view(id).unwrap();
             assert_eq!(by_id, Some(view.clone()));
 
-            let by_path =
-                repo.find_raw_schema_view_by_path(view.path()).unwrap();
+            let by_path = repo
+                .find_raw_schema_view_by_path(&key("schemas/note.json"))
+                .unwrap();
             assert_eq!(by_path, Some(view));
         }
 
@@ -988,13 +994,13 @@ mod tests {
             let store = Arc::new(Store::open(&db_path).unwrap());
 
             let id = SchemaId::new();
-            let path = RelativePath::try_from("schemas/orphan.json").unwrap();
+            let path = PathKey::try_new("schemas/orphan.json").unwrap();
             store
                 .write(|tx| {
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     path_table.insert(
-                        path.as_path().to_string_lossy().to_string(),
+                        path.as_str().to_owned(),
                         id.to_bytes()?.as_slice(),
                     )?;
                     Ok(())
@@ -1003,7 +1009,9 @@ mod tests {
 
             let repo = RedbRepository::new(store);
             assert!(
-                repo.find_raw_schema_view_by_path(&path).unwrap().is_none()
+                repo.find_raw_schema_view_by_path(&key("schemas/orphan.json"))
+                    .unwrap()
+                    .is_none()
             );
         }
     }
@@ -1074,16 +1082,15 @@ mod tests {
             let id2 = SchemaId::new();
             let view1 = test_raw_view("schemas/note.json", 7);
             let view2 = test_raw_view("schemas/task.json", 8);
-            let missing =
-                RelativePath::try_from("schemas/missing.json").unwrap();
+            let _missing = PathKey::try_new("schemas/missing.json").unwrap();
 
             repo.save_raw_schema_view(id1, &view1).unwrap();
             repo.save_raw_schema_view(id2, &view2).unwrap();
 
             let paths = vec![
-                view1.path().clone(),
-                missing.clone(),
-                view2.path().clone(),
+                key("schemas/note.json"),
+                key("schemas/missing.json"),
+                key("schemas/task.json"),
             ];
 
             let id_hits =

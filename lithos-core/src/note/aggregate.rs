@@ -731,6 +731,17 @@ mod tests {
         },
     };
 
+    fn test_vault_root() -> VaultRoot {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_millis();
+        let dir =
+            std::env::temp_dir().join(format!("lithos-note-test-{millis}"));
+        std::fs::create_dir_all(&dir).expect("test vault dir should exist");
+        VaultRoot::try_new(dir).expect("vault root")
+    }
+
     #[test]
     fn promoted_task_strips_promotion_tags() {
         let config = test_config_with_task_tag();
@@ -951,8 +962,7 @@ mod tests {
             None,
             Some(&raw),
             VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
+            test_vault_root(),
             crate::config::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
@@ -987,8 +997,7 @@ mod tests {
             None,
             Some(&raw),
             VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .expect("vault root"),
+            test_vault_root(),
             crate::config::aggregate::Version::initial(),
         )
         .expect("failed to build test config")

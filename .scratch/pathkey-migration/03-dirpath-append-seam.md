@@ -1,13 +1,13 @@
 ---
 title: "Issue 03: Add DirPath append seam for file/dir fragments"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
-date_completed: null
+category: enhancement
+label: ready-for-agent
+status: completed
+date_created: 2026-05-25
+date_completed: 2026-05-25
 ---
 
-# Issue 03: Add DirPath append seam for file/dir fragments
+# Issue 03: Add DirPath append seam for file/dir fragments (Completed)
 
 Labels: `ready-for-agent`
 Type: AFK
@@ -62,10 +62,46 @@ impl DirPath {
 ```
 
 **Acceptance criteria:**
-- [ ] `FileFragment` and `DirFragment` traits are defined.
-- [ ] Implementations are provided for `FileName`, `RelativeFilePath`, `DirName`, and `RelativeDirPath`.
-- [ ] `DirPath::append_file` and `DirPath::append_dir` are implemented and return validated `FilePath`/`DirPath` instances.
-- [ ] Tests cover single-segment and multi-segment append behaviors.
+- [x] `FileFragment` and `DirFragment` traits are defined.
+- [x] Implementations are provided for `FileName`, `RelativeFilePath`, `DirName`, and `RelativeDirPath`.
+- [x] `DirPath::append_file` and `DirPath::append_dir` are implemented and return validated `FilePath`/`DirPath` instances.
+- [x] Tests cover single-segment and multi-segment append behaviors.
 
 **Out of scope:**
 - Modifying callers outside of the `fs` module to use this seam (done in slice 04+).
+
+## TDD & Implementation Plan
+
+### 1. Planning & Design
+**Deep Modules / Testability:**
+- Centralize materialization logic into `DirPath::append_file` and `DirPath::append_dir` using static dispatch via generic traits (`FileFragment`, `DirFragment`).
+
+**Behaviors to Test (Prioritized):**
+1. System safely joins a directory path and a relative file fragment into a valid execution file path.
+2. System safely joins a directory path and a relative dir fragment into a valid execution dir path.
+
+### 2. Tracer Bullet: Append File
+**Behavior:** System safely joins a directory path and a relative file fragment into a valid execution file path.
+- **RED:** Write `test_dirpath_append_file` where a `DirPath` and `RelativeFilePath` are joined.
+- **GREEN:** Define `FileFragment` trait, implement it for `RelativeFilePath`, and implement `DirPath::append_file<T: FileFragment>`.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 3. Incremental Loop: Append Dir
+**Behavior:** System safely joins a directory path and a relative dir fragment into a valid execution dir path.
+- **RED:** Write `test_dirpath_append_dir` joining a `DirPath` and `RelativeDirPath`.
+- **GREEN:** Define `DirFragment` trait, implement it for `RelativeDirPath`, and implement `DirPath::append_dir<T: DirFragment>`.
+**Checklist:**
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
+
+### 4. Refactor
+- [ ] Verify static dispatch is used (`<T: FileFragment>`) over `dyn` trait objects (Rust Best Practice: Generics and Dispatch).
+- [ ] Avoid unnecessary allocations when pushing paths.

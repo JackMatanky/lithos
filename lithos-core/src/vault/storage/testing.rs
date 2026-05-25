@@ -37,7 +37,7 @@ use crate::{
         FailureInjector, FailurePoint, InMemoryDbError, InMemoryHarness,
         read_lock, write_lock,
     },
-    fs::{BaseName, FileFormat, NormalizedPath},
+    fs::{BaseName, FileFormat, PathKey},
     vault::{
         error::VaultRepositoryError,
         model::{DirId, DirView, FileId, FileView, FsEntryView},
@@ -61,14 +61,14 @@ type ByFormat = Arc<RwLock<HashMap<FileFormat, FileIdList>>>;
 ///
 /// File views maintain five storage locations in lockstep:
 /// - Primary file table (by [`FileId`])
-/// - Path-to-ID index (by [`NormalizedPath`])
+/// - Path-to-ID index (by [`PathKey`])
 /// - Basename multimap (by basename)
 /// - Parent multimap (by [`DirId`])
 /// - Format multimap (by [`FileFormat`])
 ///
 /// Directory views maintain two:
 /// - Primary directory table (by [`DirId`])
-/// - Path-to-ID index (by [`NormalizedPath`])
+/// - Path-to-ID index (by [`PathKey`])
 ///
 /// # Threading
 ///
@@ -83,8 +83,8 @@ pub(crate) struct InMemoryRepository {
     harness: Arc<InMemoryHarness>,
     file_views: Arc<RwLock<HashMap<FileId, FileView>>>,
     dir_views: Arc<RwLock<HashMap<DirId, DirView>>>,
-    file_path_to_id: Arc<RwLock<HashMap<NormalizedPath, FileId>>>,
-    dir_path_to_id: Arc<RwLock<HashMap<NormalizedPath, DirId>>>,
+    file_path_to_id: Arc<RwLock<HashMap<PathKey, FileId>>>,
+    dir_path_to_id: Arc<RwLock<HashMap<PathKey, DirId>>>,
     files_by_basename: ByBasename,
     files_by_parent: ByParent,
     files_by_format: ByFormat,
@@ -202,7 +202,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_file_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FileView>, VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
         self.harness.counters().inc_read();
@@ -217,7 +217,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_dir_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<DirView>, VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
         self.harness.counters().inc_read();
@@ -232,7 +232,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn get_entry(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FsEntryView>, VaultRepositoryError> {
         if let Some(file) = self.find_file_view_by_path(path)? {
             return Ok(Some(FsEntryView::File(file)));
@@ -298,9 +298,7 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
-    fn list_file_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError> {
+    fn list_file_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
         self.harness.counters().inc_read();
         let map = read_lock(&self.file_path_to_id, "list_file_paths")?;
@@ -316,9 +314,7 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
-    fn list_dir_paths(
-        &self,
-    ) -> Result<Vec<NormalizedPath>, VaultRepositoryError> {
+    fn list_dir_paths(&self) -> Result<Vec<PathKey>, VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
         self.harness.counters().inc_read();
         let map = read_lock(&self.dir_path_to_id, "list_dir_paths")?;
@@ -330,7 +326,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_file_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         file: &FileView,
     ) -> Result<(), VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
@@ -374,7 +370,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_dir_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         dir: &DirView,
     ) -> Result<(), VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
@@ -414,7 +410,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_many_file_views(
         &self,
-        entries: &[(NormalizedPath, FileView)],
+        entries: &[(PathKey, FileView)],
     ) -> Result<(), VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
         self.harness.counters().inc_batch();
@@ -427,7 +423,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_many_dir_views(
         &self,
-        entries: &[(NormalizedPath, DirView)],
+        entries: &[(PathKey, DirView)],
     ) -> Result<(), VaultRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
         self.harness.counters().inc_batch();
@@ -518,10 +514,10 @@ mod tests {
         /// The returned tuple is suitable for passing to `save_file_view`.
         /// The file has no parent, a fixed content hash of `[1u8; 32]`, and
         /// a metadata size of 64 bytes.
-        pub(crate) fn sample_file(name: &str) -> (NormalizedPath, FileView) {
+        pub(crate) fn sample_file(name: &str) -> (PathKey, FileView) {
             let id = FileId::new();
             (
-                NormalizedPath::try_new(name).unwrap(),
+                PathKey::try_new(name).unwrap(),
                 FileView::new(
                     id,
                     None,
@@ -541,10 +537,10 @@ mod tests {
         ///
         /// The returned tuple is suitable for passing to `save_dir_view`.
         /// The directory has no parent and default metadata.
-        pub(crate) fn sample_dir(name: &str) -> (NormalizedPath, DirView) {
+        pub(crate) fn sample_dir(name: &str) -> (PathKey, DirView) {
             let id = DirId::new();
             (
-                NormalizedPath::try_new(name).unwrap(),
+                PathKey::try_new(name).unwrap(),
                 DirView::new(
                     id,
                     None,
@@ -635,7 +631,7 @@ mod tests {
         #[test]
         fn get_entry_returns_none_for_missing_path() {
             let repo = InMemoryRepository::new();
-            let path = NormalizedPath::try_new("missing").unwrap();
+            let path = PathKey::try_new("missing").unwrap();
             let entry = repo.get_entry(&path).unwrap();
             assert!(entry.is_none());
         }
@@ -692,7 +688,7 @@ mod tests {
             let repo = InMemoryRepository::new();
             let parent_id = DirId::new();
             let id = FileId::new();
-            let path = NormalizedPath::try_new("child.md").unwrap();
+            let path = PathKey::try_new("child.md").unwrap();
             let file = FileView::new(
                 id,
                 Some(parent_id),
@@ -727,7 +723,7 @@ mod tests {
             let repo = InMemoryRepository::new();
             let (p1, f1) = fixtures::sample_file("a.md");
             let id2 = FileId::new();
-            let p2 = NormalizedPath::try_new("b.json").unwrap();
+            let p2 = PathKey::try_new("b.json").unwrap();
             let f2 = FileView::new(
                 id2,
                 None,
@@ -775,7 +771,7 @@ mod tests {
             let repo = InMemoryRepository::new();
             let (path1, file1) = fixtures::sample_file("old.md");
             let id = file1.id();
-            let path2 = NormalizedPath::try_new("new.md").unwrap();
+            let path2 = PathKey::try_new("new.md").unwrap();
             let file2 = FileView::new(
                 id,
                 None,
@@ -809,7 +805,7 @@ mod tests {
             let (path1, dir1) = fixtures::sample_dir("old_dir");
             let id = dir1.id();
             let (path2, dir2) = (
-                NormalizedPath::try_new("new_dir").unwrap(),
+                PathKey::try_new("new_dir").unwrap(),
                 DirView::new(
                     id,
                     None,

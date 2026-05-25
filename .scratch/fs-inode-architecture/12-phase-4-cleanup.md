@@ -4,6 +4,8 @@ category: enhancement
 label: ready-for-agent
 status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-25
+date_reopened: 2026-05-20
 ---
 
 ## Type
