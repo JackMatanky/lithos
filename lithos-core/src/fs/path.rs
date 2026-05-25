@@ -655,77 +655,6 @@ impl<'a> ParentDir<'a> {
 #[rkyv(derive(Debug))]
 pub struct PathKey(Box<str>);
 
-#[derive(Debug, Clone, Copy)]
-struct PathNormalizationContext {
-    flags: u8,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PathValidationContext {
-    flags: u8,
-}
-
-impl PathNormalizationContext {
-    const HAS_BACKSLASH: u8 = 1 << 0;
-    const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
-    const HAS_TRAILING_SEPARATOR: u8 = 1 << 2;
-
-    fn new() -> Self {
-        Self {
-            flags: 0,
-        }
-    }
-
-    fn set(&mut self, flag: u8) {
-        self.flags |= flag;
-    }
-
-    fn has_backslash(self) -> bool {
-        self.flags & Self::HAS_BACKSLASH != 0
-    }
-
-    fn has_duplicate_separators(self) -> bool {
-        self.flags & Self::HAS_DUPLICATE_SEPARATORS != 0
-    }
-
-    fn has_trailing_separator(self) -> bool {
-        self.flags & Self::HAS_TRAILING_SEPARATOR != 0
-    }
-}
-
-impl PathValidationContext {
-    const HAS_CURRENT_DIR_COMPONENT: u8 = 1 << 2;
-    const HAS_PARENT_TRAVERSAL: u8 = 1 << 1;
-    const HAS_PLATFORM_PREFIX: u8 = 1 << 3;
-    const IS_ABSOLUTE: u8 = 1 << 0;
-
-    fn new() -> Self {
-        Self {
-            flags: 0,
-        }
-    }
-
-    fn set(&mut self, flag: u8) {
-        self.flags |= flag;
-    }
-
-    fn is_absolute(self) -> bool {
-        self.flags & Self::IS_ABSOLUTE != 0
-    }
-
-    fn has_parent_traversal(self) -> bool {
-        self.flags & Self::HAS_PARENT_TRAVERSAL != 0
-    }
-
-    fn has_current_dir_component(self) -> bool {
-        self.flags & Self::HAS_CURRENT_DIR_COMPONENT != 0
-    }
-
-    fn has_platform_prefix(self) -> bool {
-        self.flags & Self::HAS_PLATFORM_PREFIX != 0
-    }
-}
-
 impl PathKey {
     /// Creates a new normalized vault-relative path.
     ///
@@ -935,6 +864,77 @@ impl PathKey {
 /// Deprecated compatibility alias for callers not yet migrated to `PathKey`.
 #[deprecated(note = "Use PathKey instead")]
 pub type NormalizedPath = PathKey;
+
+#[derive(Debug, Clone, Copy)]
+struct PathNormalizationContext {
+    flags: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PathValidationContext {
+    flags: u8,
+}
+
+impl PathNormalizationContext {
+    const HAS_BACKSLASH: u8 = 1 << 0;
+    const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
+    const HAS_TRAILING_SEPARATOR: u8 = 1 << 2;
+
+    fn new() -> Self {
+        Self {
+            flags: 0,
+        }
+    }
+
+    fn set(&mut self, flag: u8) {
+        self.flags |= flag;
+    }
+
+    fn has_backslash(self) -> bool {
+        self.flags & Self::HAS_BACKSLASH != 0
+    }
+
+    fn has_duplicate_separators(self) -> bool {
+        self.flags & Self::HAS_DUPLICATE_SEPARATORS != 0
+    }
+
+    fn has_trailing_separator(self) -> bool {
+        self.flags & Self::HAS_TRAILING_SEPARATOR != 0
+    }
+}
+
+impl PathValidationContext {
+    const HAS_CURRENT_DIR_COMPONENT: u8 = 1 << 2;
+    const HAS_PARENT_TRAVERSAL: u8 = 1 << 1;
+    const HAS_PLATFORM_PREFIX: u8 = 1 << 3;
+    const IS_ABSOLUTE: u8 = 1 << 0;
+
+    fn new() -> Self {
+        Self {
+            flags: 0,
+        }
+    }
+
+    fn set(&mut self, flag: u8) {
+        self.flags |= flag;
+    }
+
+    fn is_absolute(self) -> bool {
+        self.flags & Self::IS_ABSOLUTE != 0
+    }
+
+    fn has_parent_traversal(self) -> bool {
+        self.flags & Self::HAS_PARENT_TRAVERSAL != 0
+    }
+
+    fn has_current_dir_component(self) -> bool {
+        self.flags & Self::HAS_CURRENT_DIR_COMPONENT != 0
+    }
+
+    fn has_platform_prefix(self) -> bool {
+        self.flags & Self::HAS_PLATFORM_PREFIX != 0
+    }
+}
 
 /// A validated vault-relative path.
 ///
