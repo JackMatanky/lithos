@@ -51,6 +51,8 @@ pub mod parser;
 pub mod processor;
 /// Raw note types and helpers.
 pub(crate) mod raw;
+/// Repository traits for Note persistence.
+pub mod repository;
 /// Unified repository storage.
 pub mod storage;
 
