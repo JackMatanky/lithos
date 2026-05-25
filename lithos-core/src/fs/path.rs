@@ -663,9 +663,13 @@ impl PathKey {
     /// Returns [`PathError`] when path validation fails.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let trimmed = path.trim();
-        let normalized = Self::normalize(trimmed);
+        // 1. Validate the raw input first.
+        RelativePathValidator::validate(path)?;
 
+        // 2. Normalize the safe-but-potentially-messy input.
+        let normalized = Self::normalize(path.trim());
+
+        // 3. Final safety check on the canonical form.
         RelativePathValidator::validate(normalized.as_ref())?;
 
         Ok(Self(normalized.into_owned().into_boxed_str()))
@@ -1441,6 +1445,14 @@ mod tests {
             fn rejects_embedded_current_dir_component() {
                 let path = PathKey::try_new("notes/./file.md");
                 assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
+            }
+
+            #[test]
+            fn rejects_messy_dangerous_path_early() {
+                // This would be rejected anyway, but we want to ensure
+                // validation happens on the raw input too.
+                let path = PathKey::try_new("notes/../secret.md");
+                assert!(matches!(path, Err(PathError::ParentTraversal(_))));
             }
 
             #[test]
