@@ -26,7 +26,7 @@ use crate::{
     },
     vault::{
         model::{DirId, DirView, FileId, FileView},
-        storage::{RedbRepository as VaultRepository, Repository as _},
+        storage_legacy::{RedbRepository as VaultRepository, Repository as _},
     },
 };
 
