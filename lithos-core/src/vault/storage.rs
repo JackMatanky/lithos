@@ -6,7 +6,7 @@ use redb::ReadableTable as _;
 
 use crate::{
     db::{ArchivedEntity, BatchReader, BatchWriter, Database, DbError},
-    fs::{BaseName, FileFormat, NormalizedPath},
+    fs::{BaseName, FileFormat, PathKey},
     vault::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
         FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
@@ -45,7 +45,7 @@ pub trait Repository: Send + Sync {
     /// Returns a repository error if the lookup fails.
     fn find_file_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FileView>, Self::Error>;
 
     /// Finds a stored directory view by normalized path.
@@ -55,7 +55,7 @@ pub trait Repository: Send + Sync {
     /// Returns a repository error if the lookup fails.
     fn find_dir_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<DirView>, Self::Error>;
 
     /// Returns a stored file view by ID.
@@ -85,7 +85,7 @@ pub trait Repository: Send + Sync {
     /// Returns a repository error if either lookup fails.
     fn get_entry(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FsEntryView>, Self::Error>;
 
     /// Finds files by basename index.
@@ -137,7 +137,7 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns a repository error if the scan fails.
-    fn list_file_paths(&self) -> Result<Vec<NormalizedPath>, Self::Error>;
+    fn list_file_paths(&self) -> Result<Vec<PathKey>, Self::Error>;
 
     /// Lists all directory views from primary table.
     ///
@@ -151,7 +151,7 @@ pub trait Repository: Send + Sync {
     /// # Errors
     ///
     /// Returns a repository error if the scan fails.
-    fn list_dir_paths(&self) -> Result<Vec<NormalizedPath>, Self::Error>;
+    fn list_dir_paths(&self) -> Result<Vec<PathKey>, Self::Error>;
 
     /// Saves a file view and all related indexes atomically.
     ///
@@ -161,7 +161,7 @@ pub trait Repository: Send + Sync {
     /// fail.
     fn save_file_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         file: &FileView,
     ) -> Result<(), Self::Error>;
 
@@ -173,7 +173,7 @@ pub trait Repository: Send + Sync {
     /// fail.
     fn save_dir_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         dir: &DirView,
     ) -> Result<(), Self::Error>;
 
@@ -276,7 +276,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn find_file_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FileView>, Self::Error> {
         let read_tx =
             self.db.begin_read().map_err(VaultRepositoryError::Storage)?;
@@ -305,7 +305,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn find_dir_view_by_path(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<DirView>, Self::Error> {
         let read_tx =
             self.db.begin_read().map_err(VaultRepositoryError::Storage)?;
@@ -364,7 +364,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn get_entry(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
     ) -> Result<Option<FsEntryView>, Self::Error> {
         if let Some(file) = self.find_file_view_by_path(path)? {
             return Ok(Some(FsEntryView::File(file)));
@@ -504,7 +504,7 @@ impl Repository for RedbRepository<'_> {
     }
 
     #[inline]
-    fn list_file_paths(&self) -> Result<Vec<NormalizedPath>, Self::Error> {
+    fn list_file_paths(&self) -> Result<Vec<PathKey>, Self::Error> {
         let read_tx =
             self.db.begin_read().map_err(VaultRepositoryError::Storage)?;
         let table = match read_tx.open_table(FILE_ID_BY_PATH.definition()) {
@@ -517,11 +517,11 @@ impl Repository for RedbRepository<'_> {
         let mut out = Vec::new();
         for row in table.iter().map_err(storage_err)? {
             let (path_key, _) = row.map_err(storage_err)?;
-            out.push(NormalizedPath::try_new(&path_key.value()).map_err(
-                |error| VaultRepositoryError::ConstraintViolation {
+            out.push(PathKey::try_new(&path_key.value()).map_err(|error| {
+                VaultRepositoryError::ConstraintViolation {
                     message: error.to_string().into(),
-                },
-            )?);
+                }
+            })?);
         }
         Ok(out)
     }
@@ -549,7 +549,7 @@ impl Repository for RedbRepository<'_> {
     }
 
     #[inline]
-    fn list_dir_paths(&self) -> Result<Vec<NormalizedPath>, Self::Error> {
+    fn list_dir_paths(&self) -> Result<Vec<PathKey>, Self::Error> {
         let read_tx =
             self.db.begin_read().map_err(VaultRepositoryError::Storage)?;
         let table = match read_tx.open_table(DIR_ID_BY_PATH.definition()) {
@@ -562,11 +562,11 @@ impl Repository for RedbRepository<'_> {
         let mut out = Vec::new();
         for row in table.iter().map_err(storage_err)? {
             let (path_key, _) = row.map_err(storage_err)?;
-            out.push(NormalizedPath::try_new(&path_key.value()).map_err(
-                |error| VaultRepositoryError::ConstraintViolation {
+            out.push(PathKey::try_new(&path_key.value()).map_err(|error| {
+                VaultRepositoryError::ConstraintViolation {
                     message: error.to_string().into(),
-                },
-            )?);
+                }
+            })?);
         }
         Ok(out)
     }
@@ -574,7 +574,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn save_file_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         file: &FileView,
     ) -> Result<(), Self::Error> {
         let tx =
@@ -628,7 +628,7 @@ impl Repository for RedbRepository<'_> {
     #[inline]
     fn save_dir_view(
         &self,
-        path: &NormalizedPath,
+        path: &PathKey,
         dir: &DirView,
     ) -> Result<(), Self::Error> {
         let tx =
@@ -855,7 +855,7 @@ mod tests {
         db::Database,
         fs::{
             DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
-            NormalizedPath,
+            PathKey,
         },
         vault::{
             FILE_VIEWS,
@@ -898,7 +898,7 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path = NormalizedPath::try_new("notes/note.md").expect("path");
+            let path = PathKey::try_new("notes/note.md").expect("path");
             let file = sample_file_view(None);
             repo.save_file_view(&path, &file).expect("save");
 
@@ -912,7 +912,7 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path = NormalizedPath::try_new("notes").expect("path");
+            let path = PathKey::try_new("notes").expect("path");
             let dir = sample_dir_view(None);
             repo.save_dir_view(&path, &dir).expect("save");
 
@@ -931,7 +931,7 @@ mod tests {
             let repo = RedbRepository::new(&db);
 
             let parent = DirId::new();
-            let path = NormalizedPath::try_new("notes/note.md").expect("path");
+            let path = PathKey::try_new("notes/note.md").expect("path");
             let file = sample_file_view(Some(parent));
             repo.save_file_view(&path, &file).expect("save");
 
@@ -954,10 +954,8 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path_a =
-                NormalizedPath::try_new("notes/shared.md").expect("path a");
-            let path_b =
-                NormalizedPath::try_new("archive/shared.md").expect("path b");
+            let path_a = PathKey::try_new("notes/shared.md").expect("path a");
+            let path_b = PathKey::try_new("archive/shared.md").expect("path b");
 
             let file_a = FileView::new(
                 FileId::new(),
@@ -1017,7 +1015,7 @@ mod tests {
             let repo = RedbRepository::new(&db);
 
             let parent = DirId::new();
-            let path = NormalizedPath::try_new("notes/stale.md").expect("path");
+            let path = PathKey::try_new("notes/stale.md").expect("path");
             let file = FileView::new(
                 FileId::new(),
                 Some(parent),
@@ -1065,8 +1063,7 @@ mod tests {
             let repo = RedbRepository::new(&db);
 
             let file_id = FileId::new();
-            let path =
-                NormalizedPath::try_new("notes/format-swap.md").expect("path");
+            let path = PathKey::try_new("notes/format-swap.md").expect("path");
             let markdown = FileView::new(
                 file_id,
                 None,
@@ -1110,8 +1107,7 @@ mod tests {
             let old_parent = DirId::new();
             let new_parent = DirId::new();
 
-            let old_path =
-                NormalizedPath::try_new("notes/old.md").expect("path");
+            let old_path = PathKey::try_new("notes/old.md").expect("path");
             let old = FileView::new(
                 file_id,
                 Some(old_parent),
@@ -1122,8 +1118,7 @@ mod tests {
             );
             repo.save_file_view(&old_path, &old).expect("save old");
 
-            let new_path =
-                NormalizedPath::try_new("notes/new.txt").expect("path");
+            let new_path = PathKey::try_new("notes/new.txt").expect("path");
             let new = FileView::new(
                 file_id,
                 Some(new_parent),
@@ -1189,7 +1184,7 @@ mod tests {
 
             let dir_id = DirId::new();
 
-            let old_path = NormalizedPath::try_new("notes").expect("path");
+            let old_path = PathKey::try_new("notes").expect("path");
             let old = DirView::new(
                 dir_id,
                 None,
@@ -1198,7 +1193,7 @@ mod tests {
             );
             repo.save_dir_view(&old_path, &old).expect("save old");
 
-            let new_path = NormalizedPath::try_new("archive").expect("path");
+            let new_path = PathKey::try_new("archive").expect("path");
             let new = DirView::new(
                 dir_id,
                 None,
@@ -1225,8 +1220,7 @@ mod tests {
             let repo = RedbRepository::new(&db);
 
             let parent = DirId::new();
-            let path =
-                NormalizedPath::try_new("notes/delete-me.md").expect("path");
+            let path = PathKey::try_new("notes/delete-me.md").expect("path");
             let file = FileView::new(
                 FileId::new(),
                 Some(parent),
@@ -1263,8 +1257,7 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path =
-                NormalizedPath::try_new("notes/delete-dir").expect("path");
+            let path = PathKey::try_new("notes/delete-dir").expect("path");
             let dir = DirView::new(
                 DirId::new(),
                 None,
@@ -1290,7 +1283,7 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path = NormalizedPath::try_new("notes/shared").expect("path");
+            let path = PathKey::try_new("notes/shared").expect("path");
             let file = FileView::new(
                 FileId::new(),
                 None,
@@ -1318,7 +1311,7 @@ mod tests {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
 
-            let path = NormalizedPath::try_new("notes/dir-only").expect("path");
+            let path = PathKey::try_new("notes/dir-only").expect("path");
             let dir = DirView::new(
                 DirId::new(),
                 None,
@@ -1352,7 +1345,7 @@ mod tests {
 
             let file_id = FileId::new();
             let first_path =
-                NormalizedPath::try_new("notes/original.md").expect("path");
+                PathKey::try_new("notes/original.md").expect("path");
             let first = FileView::new(
                 file_id,
                 None,
@@ -1364,7 +1357,7 @@ mod tests {
             repo.save_file_view(&first_path, &first).expect("save first");
 
             let second_path =
-                NormalizedPath::try_new("notes/renamed.txt").expect("path");
+                PathKey::try_new("notes/renamed.txt").expect("path");
             let second = FileView::new(
                 file_id,
                 None,
@@ -1399,7 +1392,7 @@ mod tests {
 
             let dir_id = DirId::new();
             let first_path =
-                NormalizedPath::try_new("notes/original-dir").expect("path");
+                PathKey::try_new("notes/original-dir").expect("path");
             let first = DirView::new(
                 dir_id,
                 None,
@@ -1409,7 +1402,7 @@ mod tests {
             repo.save_dir_view(&first_path, &first).expect("save first");
 
             let second_path =
-                NormalizedPath::try_new("archive/renamed-dir").expect("path");
+                PathKey::try_new("archive/renamed-dir").expect("path");
             let second = DirView::new(
                 dir_id,
                 None,
@@ -1443,8 +1436,7 @@ mod tests {
         fn repository_path_indexes_are_queryable_for_views_only() {
             let (_temp, db) = open_test_db();
             let repo = RedbRepository::new(&db);
-            let path =
-                NormalizedPath::try_new("notes/migration.md").expect("path");
+            let path = PathKey::try_new("notes/migration.md").expect("path");
             let file = FileView::new(
                 FileId::new(),
                 None,

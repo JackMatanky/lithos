@@ -604,20 +604,19 @@ impl<'a> ParentDir<'a> {
 ///
 /// # Comparison with [`RelativePath`]
 ///
-/// - [`NormalizedPath`]: Forward slashes, `Box<str>` storage, `as_str() ->
-///   &str`
+/// - [`PathKey`]: Forward slashes, `Box<str>` storage, `as_str() -> &str`
 /// - [`RelativePath`]: Platform slashes, `PathBuf` storage, `as_path() ->
 ///   &Path`
 ///
-/// Use [`RelativePath`] for filesystem operations; use [`NormalizedPath`]
+/// Use [`RelativePath`] for filesystem operations; use [`PathKey`]
 /// for storage and serialization.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct NormalizedPath(Box<str>);
+pub struct PathKey(Box<str>);
 
-impl NormalizedPath {
+impl PathKey {
     /// Creates a new normalized vault-relative path.
     ///
     /// # Errors
@@ -1063,14 +1062,14 @@ mod tests {
 
             #[test]
             fn accepts_forward_slashes_when_valid() {
-                let path = NormalizedPath::try_new("notes/daily/today.md")
+                let path = PathKey::try_new("notes/daily/today.md")
                     .expect("path should be valid");
                 assert_eq!(path.as_str(), "notes/daily/today.md");
             }
 
             #[test]
             fn normalizes_backslashes_to_forward_slashes() {
-                let path = NormalizedPath::try_new("notes\\daily\\today.md")
+                let path = PathKey::try_new("notes\\daily\\today.md")
                     .expect("path should be valid");
                 assert_eq!(path.as_str(), "notes/daily/today.md");
             }
@@ -1082,25 +1081,25 @@ mod tests {
 
             #[test]
             fn rejects_parent_traversal_component() {
-                let path = NormalizedPath::try_new("../outside.md");
+                let path = PathKey::try_new("../outside.md");
                 assert!(matches!(path, Err(PathError::ParentTraversal(_))));
             }
 
             #[test]
             fn rejects_current_dir_component() {
-                let path = NormalizedPath::try_new("./notes/file.md");
+                let path = PathKey::try_new("./notes/file.md");
                 assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
             }
 
             #[test]
             fn rejects_empty_string() {
-                let path = NormalizedPath::try_new("");
+                let path = PathKey::try_new("");
                 assert!(matches!(path, Err(PathError::Empty)));
             }
 
             #[test]
             fn rejects_absolute_path() {
-                let path = NormalizedPath::try_new("/usr/local/file.md");
+                let path = PathKey::try_new("/usr/local/file.md");
                 assert!(matches!(path, Err(PathError::NotRelative(_))));
             }
         }
@@ -1110,20 +1109,18 @@ mod tests {
 
             #[test]
             fn preserves_value_across_rkyv_roundtrip() {
-                let original = NormalizedPath::try_new("notes/test.md")
-                    .expect("valid path");
+                let original =
+                    PathKey::try_new("notes/test.md").expect("valid path");
                 let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
                     .expect("serialize");
                 let archived = rkyv::access::<
-                    ArchivedNormalizedPath,
+                    ArchivedPathKey,
                     rkyv::rancor::Error,
                 >(&bytes)
                 .expect("archive access");
-                let deserialized: NormalizedPath = rkyv::deserialize::<
-                    NormalizedPath,
-                    rkyv::rancor::Error,
-                >(archived)
-                .expect("deserialize");
+                let deserialized: PathKey =
+                    rkyv::deserialize::<PathKey, rkyv::rancor::Error>(archived)
+                        .expect("deserialize");
                 assert_eq!(original, deserialized);
             }
         }
