@@ -386,6 +386,11 @@ mod tests {
         },
     };
 
+    fn temp_vault() -> (tempfile::TempDir, RedbRepository) {
+        let (tempdir, store) = Store::open_temp().unwrap();
+        (tempdir, RedbRepository::new(Arc::new(store)))
+    }
+
     fn sample_file(
         parent: Option<DirId>,
         name: &str,
@@ -410,185 +415,249 @@ mod tests {
         )
     }
 
-    #[test]
-    fn save_file_view_persists_view_and_indexes() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let file = sample_file(None, "test.md", FileFormat::Markdown);
-        let path = NormalizedPath::try_new("notes/test.md").unwrap();
+    mod upsert {
+        use super::*;
 
-        repo.save_file_view(&path, &file).unwrap();
+        #[test]
+        fn file_persists_primary_and_indexes() {
+            let (_temp, repo) = temp_vault();
+            let file = sample_file(None, "test.md", FileFormat::Markdown);
+            let path = NormalizedPath::try_new("notes/test.md").unwrap();
 
-        assert_eq!(
-            repo.get_file_view(file.id()).unwrap().unwrap().id(),
-            file.id()
-        );
-        assert_eq!(
-            repo.find_file_view_by_path(&path).unwrap().unwrap().id(),
-            file.id()
-        );
-        assert_eq!(repo.find_file_views_by_basename("test").unwrap().len(), 1);
-        assert_eq!(repo.list_markdown_file_views().unwrap().len(), 1);
+            let result = repo.save_file_view(&path, &file);
+            assert!(result.is_ok(), "Save failed: {:?}", result.err());
+
+            assert_eq!(
+                repo.get_file_view(file.id()).unwrap().unwrap().id(),
+                file.id()
+            );
+            assert_eq!(
+                repo.find_file_view_by_path(&path).unwrap().unwrap().id(),
+                file.id()
+            );
+            assert_eq!(
+                repo.find_file_views_by_basename("test").unwrap().len(),
+                1
+            );
+            assert_eq!(repo.list_markdown_file_views().unwrap().len(), 1);
+        }
+
+        #[test]
+        fn file_cleans_stale_indexes_on_overwrite() {
+            let (_temp, repo) = temp_vault();
+
+            let id = FileId::new();
+            let first = FileView::new(
+                id,
+                None,
+                FileName::new("old.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [1u8; 32],
+            );
+            let second = FileView::new(
+                id,
+                None,
+                FileName::new("new.json".into()),
+                FileFormat::Json,
+                FileMetadata::new(FsTimes::new(None, None), 256, false),
+                [2u8; 32],
+            );
+            let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
+            let new_path = NormalizedPath::try_new("notes/new.json").unwrap();
+
+            repo.save_file_view(&old_path, &first).unwrap();
+
+            let result = repo.save_file_view(&new_path, &second);
+            assert!(result.is_ok(), "Overwrite failed: {:?}", result.err());
+
+            assert!(repo.find_file_view_by_path(&old_path).unwrap().is_none());
+            assert!(
+                repo.find_file_views_by_basename("old").unwrap().is_empty()
+            );
+            assert!(
+                repo.list_file_views_by_format(FileFormat::Markdown)
+                    .unwrap()
+                    .is_empty()
+            );
+
+            let current =
+                repo.find_file_view_by_path(&new_path).unwrap().unwrap();
+            assert_eq!(current.id(), id);
+            assert_eq!(current.format(), FileFormat::Json);
+        }
+
+        #[test]
+        fn file_batch_persists_all_entries() {
+            let (_temp, repo) = temp_vault();
+            let a = sample_file(None, "a.md", FileFormat::Markdown);
+            let b = sample_file(None, "b.md", FileFormat::Markdown);
+            let entries = vec![
+                (NormalizedPath::try_new("a.md").unwrap(), a.clone()),
+                (NormalizedPath::try_new("b.md").unwrap(), b.clone()),
+            ];
+
+            let result = repo.save_many_file_views(&entries);
+            assert!(result.is_ok(), "Batch save failed: {:?}", result.err());
+
+            assert!(repo.get_file_view(a.id()).unwrap().is_some());
+            assert!(repo.get_file_view(b.id()).unwrap().is_some());
+        }
+
+        #[test]
+        fn dir_persists_with_path_index() {
+            let (_temp, repo) = temp_vault();
+            let dir = sample_dir("notes");
+            let path = NormalizedPath::try_new("notes").unwrap();
+
+            let result = repo.save_dir_view(&path, &dir);
+            assert!(result.is_ok(), "Dir save failed: {:?}", result.err());
+
+            assert_eq!(
+                repo.find_dir_view_by_path(&path).unwrap().unwrap().id(),
+                dir.id()
+            );
+        }
+
+        #[test]
+        fn dir_cleans_stale_path_index_on_overwrite() {
+            let (_temp, repo) = temp_vault();
+
+            let id = DirId::new();
+            let dir = DirView::new(
+                id,
+                None,
+                DirName::new("notes".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            let old_path = NormalizedPath::try_new("old-notes").unwrap();
+            let new_path = NormalizedPath::try_new("new-notes").unwrap();
+
+            repo.save_dir_view(&old_path, &dir).unwrap();
+
+            let result = repo.save_dir_view(&new_path, &dir);
+            assert!(result.is_ok(), "Dir overwrite failed: {:?}", result.err());
+
+            assert!(repo.find_dir_view_by_path(&old_path).unwrap().is_none());
+            let current =
+                repo.find_dir_view_by_path(&new_path).unwrap().unwrap();
+            assert_eq!(current.id(), id);
+        }
+
+        #[test]
+        fn dir_batch_persists_all_entries() {
+            let (_temp, repo) = temp_vault();
+            let a = sample_dir("notes");
+            let b = sample_dir("archive");
+            let entries = vec![
+                (NormalizedPath::try_new("notes").unwrap(), a.clone()),
+                (NormalizedPath::try_new("archive").unwrap(), b.clone()),
+            ];
+
+            let result = repo.save_many_dir_views(&entries);
+            assert!(
+                result.is_ok(),
+                "Dir batch save failed: {:?}",
+                result.err()
+            );
+
+            assert!(repo.get_dir_view(a.id()).unwrap().is_some());
+            assert!(repo.get_dir_view(b.id()).unwrap().is_some());
+        }
     }
 
-    #[test]
-    fn delete_file_view_removes_primary_and_indexes() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let file = sample_file(None, "delete.md", FileFormat::Markdown);
-        let path = NormalizedPath::try_new("notes/delete.md").unwrap();
-        repo.save_file_view(&path, &file).unwrap();
+    mod delete {
+        use super::*;
 
-        repo.delete_file_view(file.id()).unwrap();
+        #[test]
+        fn file_removes_primary_and_indexes() {
+            let (_temp, repo) = temp_vault();
+            let file = sample_file(None, "delete.md", FileFormat::Markdown);
+            let path = NormalizedPath::try_new("notes/delete.md").unwrap();
+            repo.save_file_view(&path, &file).unwrap();
 
-        assert!(repo.get_file_view(file.id()).unwrap().is_none());
-        assert!(repo.find_file_view_by_path(&path).unwrap().is_none());
-        assert!(repo.find_file_views_by_basename("delete").unwrap().is_empty());
-    }
+            let result = repo.delete_file_view(file.id());
+            assert!(result.is_ok(), "Delete file failed: {:?}", result.err());
 
-    #[test]
-    fn save_dir_view_and_delete_dir_view_round_trip() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let dir = sample_dir("notes");
-        let path = NormalizedPath::try_new("notes").unwrap();
+            assert!(repo.get_file_view(file.id()).unwrap().is_none());
+            assert!(repo.find_file_view_by_path(&path).unwrap().is_none());
+            assert!(
+                repo.find_file_views_by_basename("delete").unwrap().is_empty()
+            );
+        }
 
-        repo.save_dir_view(&path, &dir).unwrap();
-        assert_eq!(
-            repo.find_dir_view_by_path(&path).unwrap().unwrap().id(),
-            dir.id()
-        );
+        #[test]
+        fn file_is_idempotent_when_missing() {
+            let (_temp, repo) = temp_vault();
 
-        repo.delete_dir_view(dir.id()).unwrap();
-        assert!(repo.get_dir_view(dir.id()).unwrap().is_none());
-        assert!(repo.find_dir_view_by_path(&path).unwrap().is_none());
-    }
+            let result = repo.delete_file_view(FileId::new());
+            assert!(
+                result.is_ok(),
+                "Delete missing file failed: {:?}",
+                result.err()
+            );
+        }
 
-    #[test]
-    fn save_many_file_views_persists_all_entries() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let a = sample_file(None, "a.md", FileFormat::Markdown);
-        let b = sample_file(None, "b.md", FileFormat::Markdown);
-        let entries = vec![
-            (NormalizedPath::try_new("a.md").unwrap(), a.clone()),
-            (NormalizedPath::try_new("b.md").unwrap(), b.clone()),
-        ];
+        #[test]
+        fn dir_removes_path_index_and_primary() {
+            let (_temp, repo) = temp_vault();
+            let dir = sample_dir("notes");
+            let path = NormalizedPath::try_new("notes").unwrap();
+            repo.save_dir_view(&path, &dir).unwrap();
 
-        repo.save_many_file_views(&entries).unwrap();
+            let result = repo.delete_dir_view(dir.id());
+            assert!(result.is_ok(), "Delete dir failed: {:?}", result.err());
 
-        assert!(repo.get_file_view(a.id()).unwrap().is_some());
-        assert!(repo.get_file_view(b.id()).unwrap().is_some());
-    }
+            assert!(repo.get_dir_view(dir.id()).unwrap().is_none());
+            assert!(repo.find_dir_view_by_path(&path).unwrap().is_none());
+        }
 
-    #[test]
-    fn delete_many_file_views_is_idempotent() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let file = sample_file(None, "many.md", FileFormat::Markdown);
-        let path = NormalizedPath::try_new("many.md").unwrap();
-        repo.save_file_view(&path, &file).unwrap();
+        #[test]
+        fn dir_is_idempotent_when_missing() {
+            let (_temp, repo) = temp_vault();
 
-        repo.delete_many_file_views(&[file.id(), FileId::new()]).unwrap();
+            let result = repo.delete_dir_view(DirId::new());
+            assert!(
+                result.is_ok(),
+                "Delete missing dir failed: {:?}",
+                result.err()
+            );
+        }
 
-        assert!(repo.get_file_view(file.id()).unwrap().is_none());
-    }
+        #[test]
+        fn batch_file_is_idempotent() {
+            let (_temp, repo) = temp_vault();
+            let file = sample_file(None, "many.md", FileFormat::Markdown);
+            let path = NormalizedPath::try_new("many.md").unwrap();
+            repo.save_file_view(&path, &file).unwrap();
 
-    #[test]
-    fn save_file_view_overwrite_cleans_stale_indexes() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+            let result =
+                repo.delete_many_file_views(&[file.id(), FileId::new()]);
+            assert!(
+                result.is_ok(),
+                "Batch delete file failed: {:?}",
+                result.err()
+            );
 
-        let id = FileId::new();
-        let first = FileView::new(
-            id,
-            None,
-            FileName::new("old.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [1u8; 32],
-        );
-        let second = FileView::new(
-            id,
-            None,
-            FileName::new("new.json".into()),
-            FileFormat::Json,
-            FileMetadata::new(FsTimes::new(None, None), 256, false),
-            [2u8; 32],
-        );
+            assert!(repo.get_file_view(file.id()).unwrap().is_none());
+        }
 
-        let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
-        let new_path = NormalizedPath::try_new("notes/new.json").unwrap();
+        #[test]
+        fn batch_dir_is_idempotent() {
+            let (_temp, repo) = temp_vault();
+            let dir = sample_dir("many");
+            let path = NormalizedPath::try_new("many").unwrap();
+            repo.save_dir_view(&path, &dir).unwrap();
 
-        repo.save_file_view(&old_path, &first).unwrap();
-        repo.save_file_view(&new_path, &second).unwrap();
+            let result = repo.delete_many_dir_views(&[dir.id(), DirId::new()]);
+            assert!(
+                result.is_ok(),
+                "Batch delete dir failed: {:?}",
+                result.err()
+            );
 
-        assert!(repo.find_file_view_by_path(&old_path).unwrap().is_none());
-        assert!(repo.find_file_views_by_basename("old").unwrap().is_empty());
-        assert!(
-            repo.list_file_views_by_format(FileFormat::Markdown)
-                .unwrap()
-                .is_empty()
-        );
-
-        let current = repo.find_file_view_by_path(&new_path).unwrap().unwrap();
-        assert_eq!(current.id(), id);
-        assert_eq!(current.format(), FileFormat::Json);
-    }
-
-    #[test]
-    fn save_dir_view_overwrite_cleans_stale_path_index() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let id = DirId::new();
-        let dir = DirView::new(
-            id,
-            None,
-            DirName::new("notes".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-        let old_path = NormalizedPath::try_new("old-notes").unwrap();
-        let new_path = NormalizedPath::try_new("new-notes").unwrap();
-
-        repo.save_dir_view(&old_path, &dir).unwrap();
-        repo.save_dir_view(&new_path, &dir).unwrap();
-
-        assert!(repo.find_dir_view_by_path(&old_path).unwrap().is_none());
-        let current = repo.find_dir_view_by_path(&new_path).unwrap().unwrap();
-        assert_eq!(current.id(), id);
-    }
-
-    #[test]
-    fn save_many_dir_views_persists_all_entries() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let a = sample_dir("notes");
-        let b = sample_dir("archive");
-        let entries = vec![
-            (NormalizedPath::try_new("notes").unwrap(), a.clone()),
-            (NormalizedPath::try_new("archive").unwrap(), b.clone()),
-        ];
-
-        repo.save_many_dir_views(&entries).unwrap();
-
-        assert!(repo.get_dir_view(a.id()).unwrap().is_some());
-        assert!(repo.get_dir_view(b.id()).unwrap().is_some());
-    }
-
-    #[test]
-    fn delete_many_dir_views_is_idempotent() {
-        let (_temp, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let dir = sample_dir("many");
-        let path = NormalizedPath::try_new("many").unwrap();
-        repo.save_dir_view(&path, &dir).unwrap();
-
-        repo.delete_many_dir_views(&[dir.id(), DirId::new()]).unwrap();
-
-        assert!(repo.get_dir_view(dir.id()).unwrap().is_none());
-        assert!(repo.find_dir_view_by_path(&path).unwrap().is_none());
+            assert!(repo.get_dir_view(dir.id()).unwrap().is_none());
+            assert!(repo.find_dir_view_by_path(&path).unwrap().is_none());
+        }
     }
 }
