@@ -1,9 +1,9 @@
 ---
 title: "Issue 11: Architecture enforcement and final cleanup for path migration"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 

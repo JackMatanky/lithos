@@ -1,9 +1,9 @@
 ---
 title: "Issue 09: Audit all RelativePath usage and map replacement target types"
-category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
-date_created: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-05-25
 date_completed: null
 ---
 

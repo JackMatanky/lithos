@@ -1,15 +1,15 @@
 ---
 title: "Issue 02: Add passive RelativeDirPath and RelativeFilePath config types"
-category: "enhancement"
-label: "completed"
-status: "completed"
-date_created: "2026-05-25"
-date_completed: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: completed
+date_created: 2026-05-25
+date_completed: 2026-05-25
 ---
 
 # Issue 02: Add passive RelativeDirPath and RelativeFilePath config types (Completed)
 
-Labels: `completed`
+Labels: `ready-for-agent`
 Type: AFK
 
 ## Parent
