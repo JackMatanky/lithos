@@ -33,7 +33,7 @@ use crate::{
         parser::MarkdownParser,
         paths::NotePath,
         raw::RawNote,
-        storage::Repository,
+        storage_legacy::Repository,
         views::ListView,
     },
 };

@@ -53,8 +53,11 @@ pub mod processor;
 pub(crate) mod raw;
 /// Repository traits for Note persistence.
 pub mod repository;
-/// Unified repository storage.
+/// New storage implementation (in progress).
 pub mod storage;
+/// Legacy storage implementation (to be removed).
+#[allow(dead_code, reason = "Legacy code still in use during migration")]
+pub mod storage_legacy;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;

@@ -8,7 +8,7 @@ use lithos_core::{
     db::Database,
     note::{
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
-        storage::{RedbRepository, Repository as _},
+        storage_legacy::{RedbRepository, Repository as _},
     },
 };
 

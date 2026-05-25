@@ -40,7 +40,7 @@ mod tests {
         fs::NormalizedPath,
         note::{
             aggregate::Note,
-            storage::{RedbRepository, Repository as _},
+            storage_legacy::{RedbRepository, Repository as _},
             tag::Tag as NoteTag,
         },
         vault::VaultProcessor,

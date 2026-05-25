@@ -54,7 +54,7 @@ use crate::{
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct NoteId(UuidV7);
+pub struct NoteId(pub(crate) UuidV7);
 
 impl NoteId {
     /// Creates a new random note identifier (UUID v7).

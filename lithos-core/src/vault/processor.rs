@@ -22,7 +22,7 @@ use crate::{
         error::NoteProcessError,
         paths::NotePath,
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
-        storage::RedbRepository as NoteRepository,
+        storage_legacy::RedbRepository as NoteRepository,
     },
     vault::{
         model::{DirId, DirView, FileId, FileView},

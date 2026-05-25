@@ -23,9 +23,9 @@ use crate::{
     clippy::arbitrary_source_item_ordering,
     reason = "Repository trait groups operations by usage semantics"
 )]
-#[expect(
+#[allow(
     clippy::missing_errors_doc,
-    reason = "All trait methods return repository errors by contract"
+    reason = "Legacy code being replaced - not worth documenting errors"
 )]
 pub trait Repository: Send + Sync {
     /// Batch reader type for grouped read operations.
