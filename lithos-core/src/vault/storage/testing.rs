@@ -1,4 +1,31 @@
-//! In-memory repository for vault storage tests.
+//! In-memory repository test double for vault storage.
+//!
+//! Provides [`InMemoryRepository`], which implements the segregated repository
+//! traits ([`ReadRepository`] and [`WriteRepository`]) using `HashMap`-backed
+//! storage. This enables deterministic, fast unit tests without a real
+//! database.
+//!
+//! # Architecture
+//!
+//! - All state lives behind `Arc<RwLock<...>>` for `Clone`-ability and
+//!   thread-safe concurrent access (within a single test).
+//! - Primary tables and index maps are kept in lockstep — every write mutates
+//!   both the view table and its corresponding path/basename/parent/format
+//!   indexes.
+//! - An [`InMemoryHarness`] provides failure injection and operation counting
+//!   for verifying error handling and measuring read/write/batch call volumes.
+//!
+//! # Test Organisation
+//!
+//! Tests in `mod tests` are grouped by capability:
+//! - `defaults` — empty-repository invariants
+//! - `lookup` — direct lookups and path-based lookups
+//! - `list` — table and index scans
+//! - `indexes` — multimap index queries
+//! - `update` — save / overwrite semantics
+//! - `delete` — remove and idempotency
+//! - `counters` — operation counting
+//! - `injection` — failure injection at `BeforeRead` / `BeforeWrite`
 
 use std::{
     collections::HashMap,
@@ -23,6 +50,34 @@ type ByBasename = Arc<RwLock<HashMap<String, FileIdList>>>;
 type ByParent = Arc<RwLock<HashMap<DirId, FileIdList>>>;
 type ByFormat = Arc<RwLock<HashMap<FileFormat, FileIdList>>>;
 
+/// In-memory repository that implements both [`ReadRepository`] and
+/// [`WriteRepository`] using `HashMap`-backed storage.
+///
+/// Designed as a test double for vault persistence — fast, deterministic,
+/// and instrumented with failure injection and operation counting via its
+/// [`InMemoryHarness`].
+///
+/// # Index Maintenance
+///
+/// File views maintain five storage locations in lockstep:
+/// - Primary file table (by [`FileId`])
+/// - Path-to-ID index (by [`NormalizedPath`])
+/// - Basename multimap (by basename)
+/// - Parent multimap (by [`DirId`])
+/// - Format multimap (by [`FileFormat`])
+///
+/// Directory views maintain two:
+/// - Primary directory table (by [`DirId`])
+/// - Path-to-ID index (by [`NormalizedPath`])
+///
+/// # Threading
+///
+/// `Clone` is cheap — all state is `Arc`-wrapped. Multiple references to the
+/// same repository share the same underlying maps and harness, enabling shared
+/// state verification patterns in tests.
+///
+/// [`ReadRepository`]: crate::vault::repository::ReadRepository
+/// [`WriteRepository`]: crate::vault::repository::WriteRepository
 #[derive(Debug, Clone)]
 pub(crate) struct InMemoryRepository {
     harness: Arc<InMemoryHarness>,
@@ -36,11 +91,21 @@ pub(crate) struct InMemoryRepository {
 }
 
 impl InMemoryRepository {
+    /// Creates a new empty repository with a default [`InMemoryHarness`].
+    ///
+    /// The harness starts with no failure injector and zeroed counters.
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::with_harness(InMemoryHarness::new())
     }
 
+    /// Creates a new repository with a pre-configured harness.
+    ///
+    /// Use this when you need custom failure injection, e.g.:
+    /// ```rust,ignore
+    /// let harness = InMemoryHarness::with_injector(Box::new(WriteFailInjector));
+    /// let repo = InMemoryRepository::with_harness(harness);
+    /// ```
     #[must_use]
     pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
         Self {
@@ -55,11 +120,25 @@ impl InMemoryRepository {
         }
     }
 
+    /// Provides access to the underlying harness for test assertions.
+    ///
+    /// Use this to inspect operation counters or configure failure injection
+    /// between calls:
+    /// ```rust,ignore
+    /// let snapshot = repo.harness().counters().snapshot();
+    /// assert_eq!(snapshot.writes, 1);
+    /// ```
     #[must_use]
     pub(crate) fn harness(&self) -> &InMemoryHarness {
         &self.harness
     }
 
+    // Removes a file from all multimap indexes (basename, parent, format).
+    //
+    // Called before inserting an updated view or after deleting a view so that
+    // stale index entries don't persist across overwrites. Each index is
+    // checked independently — if a file wasn't in an index (e.g. no parent),
+    // that lock is simply skipped.
     fn remove_file_from_indexes(
         &self,
         file_id: FileId,
@@ -89,6 +168,7 @@ impl InMemoryRepository {
     }
 }
 
+/// Defaults to an empty repository with a clean [`InMemoryHarness`].
 impl Default for InMemoryRepository {
     #[inline]
     fn default() -> Self {
@@ -389,9 +469,11 @@ mod tests {
     use super::*;
     use crate::{db::testing::InMemoryHarness, fs::FsTimes};
 
+    /// Shared fixtures for vault storage tests.
     mod fixtures {
         use super::*;
 
+        /// Injects failures at `BeforeWrite` to test write-error pathways.
         pub(crate) struct WriteFailInjector;
 
         impl FailureInjector for WriteFailInjector {
@@ -411,6 +493,7 @@ mod tests {
             }
         }
 
+        /// Injects failures at `BeforeRead` to test read-error pathways.
         pub(crate) struct ReadFailInjector;
 
         impl FailureInjector for ReadFailInjector {
@@ -430,6 +513,11 @@ mod tests {
             }
         }
 
+        /// Creates a minimal markdown file view at the given path.
+        ///
+        /// The returned tuple is suitable for passing to `save_file_view`.
+        /// The file has no parent, a fixed content hash of `[1u8; 32]`, and
+        /// a metadata size of 64 bytes.
         pub(crate) fn sample_file(name: &str) -> (NormalizedPath, FileView) {
             let id = FileId::new();
             (
@@ -449,6 +537,10 @@ mod tests {
             )
         }
 
+        /// Creates a minimal directory view with the given name.
+        ///
+        /// The returned tuple is suitable for passing to `save_dir_view`.
+        /// The directory has no parent and default metadata.
         pub(crate) fn sample_dir(name: &str) -> (NormalizedPath, DirView) {
             let id = DirId::new();
             (
@@ -466,6 +558,7 @@ mod tests {
         }
     }
 
+    /// Tests that a freshly created repository is empty.
     mod defaults {
         use super::*;
 
@@ -479,6 +572,7 @@ mod tests {
         }
     }
 
+    /// Tests for direct and path-based lookups.
     mod lookup {
         use super::*;
 
@@ -547,6 +641,7 @@ mod tests {
         }
     }
 
+    /// Tests for table and index scan operations.
     mod list {
         use super::*;
 
@@ -568,6 +663,7 @@ mod tests {
         }
     }
 
+    /// Tests for multimap index queries (basename, parent, format).
     mod indexes {
         use super::*;
 
@@ -670,6 +766,7 @@ mod tests {
         }
     }
 
+    /// Tests for save and overwrite semantics.
     mod update {
         use super::*;
 
@@ -747,6 +844,7 @@ mod tests {
         }
     }
 
+    /// Tests for delete operations and idempotency.
     mod delete {
         use super::*;
 
@@ -789,6 +887,7 @@ mod tests {
         }
     }
 
+    /// Tests for operation counter accuracy.
     mod counters {
         use super::*;
 
@@ -808,6 +907,7 @@ mod tests {
         }
     }
 
+    /// Tests for failure injection at read and write points.
     mod injection {
         use super::*;
 
